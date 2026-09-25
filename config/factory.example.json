@@ -1,0 +1,35 @@
+{
+  "factory_version": 1,
+  "project": {
+    "key": "agente-sql-financeiro",
+    "name": "Agente SQL Financeiro",
+    "repository": "leandrosilveiradepaula/agente-sql-langgraph",
+    "kind": "ai_agent"
+  },
+  "autonomy": {
+    "default_mode": "autonomous",
+    "production_requires_human": true,
+    "destructive_data_change_requires_human": true,
+    "new_paid_service_requires_human": true,
+    "material_requirement_change_requires_human": true
+  },
+  "codex": {
+    "strategy": "conservative",
+    "minimum_level": 3,
+    "max_calls_per_task": 1,
+    "continue_without_codex_when_possible": true
+  },
+  "commands": {
+    "test": ["python -m unittest discover -s tests -v"],
+    "lint": [],
+    "eval": []
+  },
+  "environments": ["dev", "prod"],
+  "gates": [
+    "tests_pass",
+    "evals_pass",
+    "no_critical_review_findings",
+    "human_approval_for_production"
+  ],
+  "integrations": ["github", "supabase", "watson_orchestrate"]
+}

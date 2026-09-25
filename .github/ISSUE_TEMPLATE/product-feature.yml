@@ -1,0 +1,24 @@
+name: Product Feature
+about: Feature implementada pela AI Product Factory
+title: "[feature] "
+labels: []
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Resultado esperado
+      description: O que precisa existir ou funcionar ao final?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceite
+      description: Como verificamos objetivamente que esta pronto?
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Restricoes conhecidas
+      description: O que nao pode ser alterado ou quais limites devem ser respeitados?
