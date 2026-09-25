@@ -43,6 +43,7 @@ jobs:
     timeout-minutes: 10
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PYTHONPATH: src
     steps:
       - uses: actions/checkout@v4
 
