@@ -25,6 +25,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
         return None if not raw else json.loads(raw)
 
+    def recover_expired(self,max_attempts:int=3)->dict:
+        data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
+        return data or {"requeued":0,"failed":0}
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         data=self._rpc("factory_claim_next_run",{"p_worker_id":worker_id})
         if data is None: return None

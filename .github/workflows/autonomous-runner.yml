@@ -41,6 +41,9 @@ jobs:
         run: |
           test -n "$SUPABASE_URL"
           test -n "$SUPABASE_SERVICE_ROLE_KEY"
+      - name: Recover expired worker leases
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Process at most one product-stage run
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
