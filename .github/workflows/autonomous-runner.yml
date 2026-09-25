@@ -7,6 +7,11 @@ on:
         description: Optional project key for backlog dispatch
         required: false
         type: string
+      run_direct:
+        description: Run at most one Direct implementation task
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "17 * * * *"
 
@@ -57,3 +62,28 @@ jobs:
       - name: Dispatch at most one planned task
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode dispatch --project-key "${{ inputs.project_key }}"
+
+  direct:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_direct == true }}
+    needs: product-stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      checks: read
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Process at most one Direct implementation task
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"

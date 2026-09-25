@@ -7,6 +7,14 @@ from .runtime_auth import AuthKind,RuntimeAuthResolver
 from .runtime_worker import RuntimeWorker
 from .supabase_runtime_queue import SupabaseRuntimeQueue
 from .supabase_backlog_dispatch import SupabaseBacklogDispatch
+from .direct_run_queue import SupabaseDirectRunQueue
+from .implementation_producer import ModelImplementationProducer
+from .execution_worker import DirectExecutionWorker
+from .github_rest import GitHubRestAdapter
+from .autonomous_github import AutonomousGitHubLoop
+from .issue_materializer import GitHubIssueMaterializer
+from .supabase_issue_binding import SupabaseIssueBindingStore
+from .supabase_delivery_store import SupabaseDeliveryStore
 
 def build_handler():
  auth=RuntimeAuthResolver().resolve()
@@ -20,15 +28,29 @@ def run_product_once(worker_id:str)->dict:
  result=RuntimeWorker(queue=SupabaseRuntimeQueue(),handler=handler,worker_id=worker_id).run_once()
  return {"claimed":result is not None,"status":result.status.value if result else None,"error":result.error if result else None}
 
+def run_direct_once(worker_id:str)->dict:
+ auth=RuntimeAuthResolver().resolve()
+ if auth.kind != AuthKind.OPENAI_API_KEY:return {"claimed":False,"status":"blocked","error":f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})"}
+ # Build the model producer before claiming so missing/unsupported auth cannot strand a run.
+ producer=ModelImplementationProducer(ModelExecutor(primary=OpenAIResponsesProvider()))
+ item=SupabaseDirectRunQueue().claim_next(worker_id)
+ if item is None:return {"claimed":False,"status":"empty"}
+ github=GitHubRestAdapter(repository=item.repository)
+ loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
+ materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
+ session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
+ return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pr_number}
+
 def run_dispatch_once(project_key:str)->dict:
  decision=SupabaseBacklogDispatch().dispatch_next(project_key)
  if decision is None:return {"claimed":False,"status":"empty"}
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch"),default="product");p.add_argument("--project-key")
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct"),default="product");p.add_argument("--project-key")
  args=p.parse_args()
- if args.mode=="dispatch":
+ if args.mode=="direct":out=run_direct_once(args.worker_id)
+ elif args.mode=="dispatch":
   if not args.project_key:p.error("--project-key is required for dispatch mode")
   out=run_dispatch_once(args.project_key)
  else:out=run_product_once(args.worker_id)
