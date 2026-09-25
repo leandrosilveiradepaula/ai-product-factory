@@ -20,4 +20,4 @@ def test_terminal_and_stage_rpcs():
  q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret");item=WorkItem("r","t","p","demo",(),{})
  with patch("urllib.request.urlopen",return_value=Response(None)) as call:
   q.record_stage(item,StageEvidence("discovery","completed",{"ok":True}));q.complete(item);q.fail(item,"x")
- assert call.call_count==3
+ assert call.call_count==4
