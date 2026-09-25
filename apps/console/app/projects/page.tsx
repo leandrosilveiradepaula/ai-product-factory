@@ -1,0 +1,2 @@
+import {getDashboard} from "../../lib/control-plane";
+export default async function Projects(){const d=await getDashboard();return <><div className="eyebrow">Portfolio</div><h1 className="title">Projetos</h1><p className="muted">Produtos novos e repositórios existentes gerenciados pela Factory.</p><section className="section">{d.projects.map(p=><article className="card" key={p.key}><h2>{p.name}</h2><p className="muted">{p.key}</p><span className="pill">{p.stage}</span></article>)}</section></>}

@@ -1,0 +1,1 @@
+export default function Runs(){return <><div className="eyebrow">Execution</div><h1 className="title">Execuções</h1><p className="muted">Histórico de runs, CI, repair loops, modelos, ferramentas e evidências.</p><div className="card section">Nenhuma execução ativa no momento.</div></>}
