@@ -18,11 +18,11 @@ class RuntimeCliTests(unittest.TestCase):
                 build_handler()
         self.assertIn(AuthKind.NONE.value, str(ctx.exception))
 
-    def test_unimplemented_chatgpt_token_does_not_silently_fall_back(self):
+    def test_unofficial_chatgpt_token_is_ignored_by_primary_runtime(self):
         with patch.dict("os.environ", {"CHATGPT_ACCESS_TOKEN": "x"}, clear=True):
             with self.assertRaises(RuntimeError) as ctx:
                 build_handler()
-        self.assertIn(AuthKind.CHATGPT_ACCESS_TOKEN.value, str(ctx.exception))
+        self.assertIn(AuthKind.NONE.value, str(ctx.exception))
 
 
 if __name__ == "__main__":
