@@ -10,7 +10,7 @@ O usuario deve conseguir iniciar com algo como:
 
 > Quero um sistema que faca X.
 
-A fabrica conduz o discovery, cria a especificacao, decompoe o trabalho, implementa, testa, publica preview e interrompe somente quando houver uma decisao humana real ou um gate de risco.
+A fabrica conduz discovery, especificacao, planejamento, implementacao, review, testes/evals, preview e release, interrompendo apenas em decisoes humanas reais ou gates de risco.
 
 ## Fases
 
@@ -20,55 +20,71 @@ A fabrica conduz o discovery, cria a especificacao, decompoe o trabalho, impleme
 - [x] State machine.
 - [x] Codex Policy Engine.
 - [x] Human Gate Policy.
-- [x] Schema inicial do control plane.
 - [x] Prompts dos papeis.
-- [x] Testes unitarios do nucleo.
+- [x] CI da propria factory.
 
 ### F1 - Control Plane
-- [x] Criar repositorio `ai-product-factory`.
-- [x] Publicar scaffold.
-- [x] Provisionar Supabase dedicado.
-- [x] Aplicar schema seguro.
-- [x] Implementar persistencia de projects/tasks/runs/decisions.
-- [x] Registrar consumo de ferramentas e Codex.
+- [x] Repositorio `ai-product-factory`.
+- [x] Supabase dedicado.
+- [x] Schema seguro + RLS/server-side boundary.
+- [x] Persistencia de projects/tasks/runs/decisions.
+- [x] Ledger de ferramentas e Codex.
 - [x] Adapter Supabase server-side.
-- [ ] Registrar automaticamente cada execucao real da factory no Supabase.
+- [x] Registro real de execucoes no control plane.
 
 ### F2 - GitHub Autonomous Loop
-- [ ] Adapter GitHub real no runtime.
-- [x] Criar/ler issues via integracao.
-- [x] Criar branch de trabalho via integracao.
-- [ ] Persistir plano tecnico automaticamente.
-- [x] Criar commits e PR via integracao.
-- [x] Ler CI e decidir correcao/gate/merge.
-- [ ] Fechar o loop sem orquestracao manual da conversa.
+- [x] Adapter GitHub REST server-side.
+- [x] Criar/ler issues.
+- [x] Criar branch.
+- [x] Persistir plano tecnico.
+- [x] Criar commits atomicos e PR.
+- [x] Ler CI.
+- [x] CI failure evidence.
+- [x] Bounded auto-repair.
+- [x] Merge automatico quando nao houver gate humano.
+- [x] Fechar issue apos merge.
 
 ### F3 - Runtime de Desenvolvimento
-- [ ] Executor direto para mudancas pequenas/medias.
-- [x] Roteador para tarefas especializadas.
-- [ ] Integracao seletiva com Codex quando disponivel.
-- [x] Estrutura de ledger de Codex.
-- [ ] Review automatico.
+- [x] Direct Executor para mudancas pequenas/medias.
+- [x] Roteador Direct vs Codex.
+- [x] Provider-neutral Model Executor.
+- [x] Budget por tarefa para modelo principal e Codex.
+- [x] Pipeline Engine ponta a ponta.
+- [x] Project Memory versionada.
+- [x] Review/evaluation quality gates.
+- [ ] Provider real do modelo principal.
+- [ ] Provider real do Codex.
 
 ### F4 - Testes, Evals e Preview
-- [ ] Padrao de testes por projeto.
-- [ ] Padrao de evals de agentes.
-- [ ] Adapter Vercel Preview.
-- [ ] Adapter Supabase DEV.
-- [ ] Evidencias automaticas no PR.
+- [x] CI deterministico por projeto via manifest.
+- [x] Contrato de evals obrigatorios/opcionais.
+- [x] Evidence bundle.
+- [ ] Preview adapter por projeto quando aplicavel.
+- [ ] Browser/E2E adapter quando aplicavel.
+- [ ] Release deployment adapter por plataforma.
 
 ### F5 - Piloto Agente SQL Financeiro
-- [ ] Onboarding de `agente-sql-langgraph`.
-- [ ] Importar comandos reais de teste/deploy.
-- [ ] Conectar benchmark de 63 perguntas.
-- [ ] Definir baseline.
-- [ ] Executar primeira tarefa real de ponta a ponta.
+- [x] Onboarding de `agente-sql-langgraph`.
+- [x] Importar comando real de regressao: `python scripts/check_all.py`.
+- [x] Importar CI real: `Offline validation`.
+- [x] Preservar n8n como caminho oficial.
+- [x] Preservar LangGraph como offline shadow.
+- [x] Registrar projeto no control plane.
+- [ ] Escolher proxima linha semantica de planned_filters.
+- [ ] Benchmark de 63 perguntas permanece postergado por decisao registrada no projeto.
+- [ ] Primeira tarefa funcional nova executada integralmente pela factory.
 
 ### F6 - Greenfield Test
 - [ ] Criar um produto pequeno do zero somente via factory.
 - [ ] Medir intervencoes humanas.
 - [ ] Medir tarefas diretas vs. Codex.
 - [ ] Revisar gates e ampliar autonomia.
+
+## Gate atual
+
+O nucleo deterministico do MVP esta operacional. Para transformar a Factory em um runtime independente da sessao do ChatGPT, falta configurar um provider real de modelo principal e, opcionalmente, um provider Codex.
+
+Essa decisao pode introduzir credenciais e custo de API, portanto permanece como gate humano.
 
 ## Metricas do projeto
 
