@@ -30,7 +30,7 @@ export async function getDashboard():Promise<Dashboard>{
   failedRuns:f.length
  };
 }
-export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string};
+export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
 export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string};
 
 function serverHeaders(){
@@ -42,7 +42,7 @@ function serverHeaders(){
 export async function getRuns(limit=50):Promise<RunSummary[]>{
  await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)return [];
- const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,created_at&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,created_at,attempt_count,lease_owner,lease_expires_at,last_error&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
  if(!runsResponse.ok)throw new Error("Unable to load Factory runs");
  const runs=await runsResponse.json();
  const taskIds=[...new Set(runs.map((x:any)=>x.task_id).filter(Boolean))];
@@ -51,7 +51,7 @@ export async function getRuns(limit=50):Promise<RunSummary[]>{
   const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title&id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
   if(tasksResponse.ok){const tasks=await tasksResponse.json();taskMap=new Map(tasks.map((x:any)=>[String(x.id),String(x.title)]));}
  }
- return runs.map((x:any)=>({id:x.id,taskId:x.task_id,status:x.status,route:x.execution_route,candidateCommit:x.candidate_commit,createdAt:x.created_at,taskTitle:taskMap.get(String(x.task_id))||"Task"}));
+ return runs.map((x:any)=>({id:x.id,taskId:x.task_id,status:x.status,route:x.execution_route,candidateCommit:x.candidate_commit,createdAt:x.created_at,taskTitle:taskMap.get(String(x.task_id))||"Task",attemptCount:Number(x.attempt_count||0),leaseOwner:x.lease_owner||null,leaseExpiresAt:x.lease_expires_at||null,lastError:x.last_error||null}));
 }
 
 export async function getHumanGates(limit=50):Promise<GateSummary[]>{
