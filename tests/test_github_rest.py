@@ -8,7 +8,7 @@ from ai_product_factory.github_rest import GitHubRestAdapter
 class FakeGitHubTransport:
     def __init__(self):
         self.calls = []
-        self.check_runs = [{"status": "completed", "conclusion": "success"}]
+        self.check_runs = [{"name": "test", "status": "completed", "conclusion": "success", "details_url": "https://example/check", "output": {}}]
 
     def __call__(self, method, url, headers, body):
         payload = json.loads(body.decode()) if body else None
@@ -66,6 +66,19 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
         self.transport.check_runs = [{"status": "completed", "conclusion": "failure"}]
         self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+
+    def test_failed_checks_are_structured(self):
+        self.transport.check_runs = [{
+            "name": "unit-tests",
+            "status": "completed",
+            "conclusion": "failure",
+            "details_url": "https://example/check/1",
+            "output": {"summary": "2 tests failed"},
+        }]
+        failures = self.github.get_failed_checks(9)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0].name, "unit-tests")
+        self.assertEqual(failures[0].summary, "2 tests failed")
 
     def test_merge_uses_current_head_sha(self):
         sha = self.github.merge_pull_request(9)
