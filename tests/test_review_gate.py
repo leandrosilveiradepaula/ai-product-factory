@@ -16,6 +16,12 @@ class ReviewGateTests(unittest.TestCase):
         ))
         self.assertTrue(d.passed)
 
+    def test_error_finding_blocks(self):
+        d = evaluate_quality_gate(findings=(
+            ReviewFinding("CORRECTNESS", Severity.ERROR, "broken"),
+        ))
+        self.assertFalse(d.passed)
+
     def test_critical_finding_blocks(self):
         d = evaluate_quality_gate(findings=(
             ReviewFinding("SECURITY", Severity.CRITICAL, "unsafe"),
