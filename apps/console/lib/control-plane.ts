@@ -10,12 +10,21 @@ export async function getDashboard():Promise<Dashboard>{
  const url=process.env.SUPABASE_URL; const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!url||!key)return demo;
  const headers={apikey:key,Authorization:`Bearer ${key}`};
- const [projects,runs,gates,tools]=await Promise.all([
-  fetch(`${url}/rest/v1/factory_projects?select=project_key,name,current_stage,status,updated_at&order=updated_at.desc`,{headers,cache:"no-store"}),
-  fetch(`${url}/rest/v1/factory_runs?select=status&status=eq.running`,{headers,cache:"no-store"}),
+ const [projects,runs,gates,codex,tools,failed]=await Promise.all([
+  fetch(`${url}/rest/v1/factory_projects?select=project_key,name,lifecycle_stage,is_active,updated_at&order=updated_at.desc`,{headers,cache:"no-store"}),
+  fetch(`${url}/rest/v1/factory_runs?select=status&status=in.(running,implementing,ci_pending,queued)`,{headers,cache:"no-store"}),
   fetch(`${url}/rest/v1/factory_human_gates?select=status&status=eq.pending`,{headers,cache:"no-store"}),
-  fetch(`${url}/rest/v1/factory_tool_usage?select=tool_name`,{headers,cache:"no-store"})]);
+  fetch(`${url}/rest/v1/factory_codex_usage?select=invocation_count`,{headers,cache:"no-store"}),
+  fetch(`${url}/rest/v1/factory_tool_usage?select=tool_family`,{headers,cache:"no-store"}),
+  fetch(`${url}/rest/v1/factory_runs?select=status&status=eq.failed`,{headers,cache:"no-store"})]);
  if(!projects.ok)throw new Error("Control plane unavailable");
- const p=await projects.json(); const r=runs.ok?await runs.json():[]; const g=gates.ok?await gates.json():[]; const t=tools.ok?await tools.json():[];
- return {projects:p.map((x:any)=>({key:x.project_key,name:x.name,stage:x.current_stage,status:x.status,updatedAt:x.updated_at})),activeRuns:r.length,pendingGates:g.length,codexCalls:t.filter((x:any)=>String(x.tool_name).toLowerCase().includes("codex")).length,modelCalls:t.filter((x:any)=>String(x.tool_name).toLowerCase().includes("model")).length,failedRuns:0};
+ const p=await projects.json(); const r=runs.ok?await runs.json():[]; const g=gates.ok?await gates.json():[]; const cx=codex.ok?await codex.json():[]; const t=tools.ok?await tools.json():[]; const f=failed.ok?await failed.json():[];
+ return {
+  projects:p.map((x:any)=>({key:x.project_key,name:x.name,stage:x.lifecycle_stage,status:x.is_active?"active":"inactive",updatedAt:x.updated_at})),
+  activeRuns:r.length,
+  pendingGates:g.length,
+  codexCalls:cx.reduce((sum:number,x:any)=>sum+Number(x.invocation_count||0),0),
+  modelCalls:t.filter((x:any)=>["model","openai"].includes(String(x.tool_family).toLowerCase())).length,
+  failedRuns:f.length
+ };
 }
