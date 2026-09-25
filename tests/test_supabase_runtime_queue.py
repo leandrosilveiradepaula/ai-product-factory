@@ -21,3 +21,11 @@ def test_terminal_and_stage_rpcs():
  with patch("urllib.request.urlopen",return_value=Response(None)) as call:
   q.record_stage(item,StageEvidence("discovery","completed",{"ok":True}));q.complete(item);q.fail(item,"x")
  assert call.call_count==4
+
+
+def test_recovery_rpc_is_bounded_and_service_secret_not_in_body():
+ q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+ with patch("urllib.request.urlopen",return_value=Response({"requeued":1,"failed":0})) as call:
+  out=q.recover_expired(3)
+ assert out=={"requeued":1,"failed":0}
+ req=call.call_args.args[0];assert req.full_url.endswith("/rest/v1/rpc/factory_recover_expired_runs");assert b"secret" not in req.data
