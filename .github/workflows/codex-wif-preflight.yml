@@ -1,0 +1,58 @@
+name: Codex WIF preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: codex-wif-preflight
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
+      OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      OPENAI_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/openai-wif/identity-token
+      OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-preflight","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"ci"}}'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate WIF configuration
+        shell: bash
+        run: |
+          test -n "$OPENAI_FEDERATION_RULE_ID"
+          test -n "$OPENAI_WIF_AUDIENCE"
+
+      - name: Request GitHub OIDC token
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$(dirname "$OPENAI_IDENTITY_TOKEN_FILE")"
+          AUDIENCE="$(python -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["OPENAI_WIF_AUDIENCE"], safe=""))')"
+          RESPONSE_FILE="$RUNNER_TEMP/openai-wif-response.json"
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            > "$RESPONSE_FILE"
+          python -c 'import json,os,sys; p=os.environ["OPENAI_IDENTITY_TOKEN_FILE"]; token=json.load(open(sys.argv[1],encoding="utf-8"))["value"]; open(p,"w",encoding="utf-8").write(token); os.chmod(p,0o600)' "$RESPONSE_FILE"
+          rm -f "$RESPONSE_FILE"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Codex CLI
+        shell: bash
+        run: |
+          npm install -g @openai/codex@latest
+          codex --version
+
+      - name: Verify workload identity login
+        shell: bash
+        run: codex login status
