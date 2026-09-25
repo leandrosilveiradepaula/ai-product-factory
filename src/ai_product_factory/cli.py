@@ -5,7 +5,9 @@ import json
 
 from .codex_policy import classify_codex_need
 from .manifest import load_manifest
+from .model_executor import ModelRequest
 from .models import Complexity, TaskProfile
+from .openai_provider import OpenAIResponsesProvider
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -23,6 +25,13 @@ def _build_parser() -> argparse.ArgumentParser:
     codex.add_argument("--broad-repo-investigation", action="store_true")
     codex.add_argument("--direct-tools-insufficient", action="store_true")
     codex.add_argument("--mechanical-change", action="store_true")
+
+    execute = sub.add_parser("openai-execute", help="execute one primary-model request")
+    execute.add_argument("--task-id", required=True)
+    execute.add_argument("--objective", required=True)
+    execute.add_argument("--context", default="")
+    execute.add_argument("--complexity", choices=[c.value for c in Complexity], default="medium")
+    execute.add_argument("--reasoning-effort", default="medium")
     return parser
 
 
@@ -50,6 +59,25 @@ def main() -> int:
             "level": decision.level,
             "should_use": decision.should_use,
             "reasons": decision.reasons,
+        }, ensure_ascii=False))
+        return 0
+
+    if args.command == "openai-execute":
+        provider = OpenAIResponsesProvider()
+        result = provider.execute_for_complexity(
+            ModelRequest(
+                task_id=args.task_id,
+                objective=args.objective,
+                context=args.context,
+            ),
+            Complexity(args.complexity),
+            reasoning_effort=args.reasoning_effort,
+        )
+        print(json.dumps({
+            "role": result.role.value,
+            "provider_ref": result.provider_ref,
+            "usage": result.usage or {},
+            "output": result.output,
         }, ensure_ascii=False))
         return 0
 
