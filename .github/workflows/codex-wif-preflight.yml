@@ -34,26 +34,13 @@ jobs:
         run: |
           set -euo pipefail
           install -d -m 700 "$(dirname "$OPENAI_IDENTITY_TOKEN_FILE")"
-          AUDIENCE="$(python - <<'PY'
-import os, urllib.parse
-print(urllib.parse.quote(os.environ["OPENAI_WIF_AUDIENCE"], safe=""))
-PY
-)"
+          AUDIENCE="$(python -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["OPENAI_WIF_AUDIENCE"], safe=""))')"
           RESPONSE_FILE="$RUNNER_TEMP/openai-wif-response.json"
           curl --fail-with-body --silent --show-error \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
             > "$RESPONSE_FILE"
-          python - "$RESPONSE_FILE" <<'PY'
-import json, os, sys
-response_file=sys.argv[1]
-path=os.environ["OPENAI_IDENTITY_TOKEN_FILE"]
-with open(response_file,"r",encoding="utf-8") as f:
-    token=json.load(f)["value"]
-with open(path,"w",encoding="utf-8") as f:
-    f.write(token)
-os.chmod(path,0o600)
-PY
+          python -c 'import json,os,sys; p=os.environ["OPENAI_IDENTITY_TOKEN_FILE"]; token=json.load(open(sys.argv[1],encoding="utf-8"))["value"]; open(p,"w",encoding="utf-8").write(token); os.chmod(p,0o600)' "$RESPONSE_FILE"
           rm -f "$RESPONSE_FILE"
 
       - uses: actions/setup-node@v4
