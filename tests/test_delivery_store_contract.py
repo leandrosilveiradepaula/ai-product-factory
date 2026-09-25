@@ -9,7 +9,7 @@ class GitHub:
  def get_issue(self,n):return GitHubIssue(n,"T","B",f"https://i/{n}")
  def create_branch(self,b,base_branch="main"):return "base"
  def commit_files(self,b,files,message):return "plan" if ".factory/plans/issue-7.md" in files else "impl"
- def create_pull_request(self,**kw):return GitHubPullRequest(9,kw["head"],kw["base"],"impl","https://p/9")
+ def create_pull_request(self,**kw):return GitHubPullRequest(9,"impl","https://p/9")
  def get_ci_state(self,n):
   from ai_product_factory.github_loop import CIState
   return CIState.SUCCESS
