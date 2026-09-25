@@ -22,6 +22,9 @@ def build_handler():
   return ProductStageExecutor(ModelExecutor(primary=OpenAIResponsesProvider()))
  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
 
+def run_recovery_once(max_attempts:int=3)->dict:
+ return SupabaseRuntimeQueue().recover_expired(max_attempts)
+
 def run_product_once(worker_id:str)->dict:
  try:handler=build_handler()
  except RuntimeError as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
@@ -47,9 +50,10 @@ def run_dispatch_once(project_key:str)->dict:
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct"),default="product");p.add_argument("--project-key")
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
- if args.mode=="direct":out=run_direct_once(args.worker_id)
+ if args.mode=="recovery":out=run_recovery_once(args.max_attempts)
+ elif args.mode=="direct":out=run_direct_once(args.worker_id)
  elif args.mode=="dispatch":
   if not args.project_key:p.error("--project-key is required for dispatch mode")
   out=run_dispatch_once(args.project_key)
