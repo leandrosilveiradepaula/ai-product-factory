@@ -1,0 +1,68 @@
+name: OpenAI runtime smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: Factory task id
+        required: true
+        type: string
+      objective:
+        description: Objective for the primary model
+        required: true
+        type: string
+      complexity:
+        description: Task complexity
+        required: true
+        default: medium
+        type: choice
+        options:
+          - low
+          - medium
+          - high
+          - very_high
+      reasoning_effort:
+        description: Reasoning effort
+        required: true
+        default: medium
+        type: choice
+        options:
+          - none
+          - low
+          - medium
+          - high
+          - xhigh
+          - max
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate secret presence
+        shell: bash
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is not configured for this repository."
+            exit 2
+          fi
+
+      - name: Execute primary model
+        shell: bash
+        run: |
+          python -m ai_product_factory.cli openai-execute \
+            --task-id "${{ inputs.task_id }}" \
+            --objective "${{ inputs.objective }}" \
+            --complexity "${{ inputs.complexity }}" \
+            --reasoning-effort "${{ inputs.reasoning_effort }}"
