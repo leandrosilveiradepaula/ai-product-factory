@@ -143,3 +143,38 @@ create index if not exists idx_factory_codex_run
   on public.factory_codex_usage(run_id);
 create index if not exists idx_factory_audit_project_created
   on public.factory_audit_events(project_id, created_at);
+
+-- Security boundary: the factory control plane is server-side only.
+-- Keep the tables in public for compatibility with Supabase tooling, but do not
+-- expose them to anon/authenticated clients. RLS is enabled as defense in depth.
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'factory_projects',
+    'factory_product_specs',
+    'factory_tasks',
+    'factory_runs',
+    'factory_decisions',
+    'factory_human_gates',
+    'factory_tool_usage',
+    'factory_codex_usage',
+    'factory_evaluations',
+    'factory_deployments',
+    'factory_audit_events'
+  ]
+  loop
+    execute format('alter table public.%I enable row level security', table_name);
+    execute format('revoke all on table public.%I from anon, authenticated', table_name);
+    execute format('grant all on table public.%I to service_role', table_name);
+  end loop;
+end
+$$;
+
+revoke all on sequence public.factory_tool_usage_id_seq from anon, authenticated;
+revoke all on sequence public.factory_codex_usage_id_seq from anon, authenticated;
+revoke all on sequence public.factory_audit_events_id_seq from anon, authenticated;
+grant usage, select on sequence public.factory_tool_usage_id_seq to service_role;
+grant usage, select on sequence public.factory_codex_usage_id_seq to service_role;
+grant usage, select on sequence public.factory_audit_events_id_seq to service_role;

@@ -25,8 +25,8 @@ A fabrica conduz o discovery, cria a especificacao, decompoe o trabalho, impleme
 - [x] Testes unitarios do nucleo.
 
 ### F1 - Control Plane
-- [ ] Criar repositorio `ai-product-factory`.
-- [ ] Publicar scaffold.
+- [x] Criar repositorio `ai-product-factory`.
+- [x] Publicar scaffold.
 - [ ] Provisionar/selecionar Supabase dedicado.
 - [ ] Aplicar schema.
 - [ ] Implementar persistencia de projects/tasks/runs/decisions.
