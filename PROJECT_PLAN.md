@@ -27,24 +27,27 @@ A fabrica conduz o discovery, cria a especificacao, decompoe o trabalho, impleme
 ### F1 - Control Plane
 - [x] Criar repositorio `ai-product-factory`.
 - [x] Publicar scaffold.
-- [ ] Provisionar/selecionar Supabase dedicado.
-- [ ] Aplicar schema.
-- [ ] Implementar persistencia de projects/tasks/runs/decisions.
-- [ ] Registrar consumo de ferramentas e Codex.
+- [x] Provisionar Supabase dedicado.
+- [x] Aplicar schema seguro.
+- [x] Implementar persistencia de projects/tasks/runs/decisions.
+- [x] Registrar consumo de ferramentas e Codex.
+- [x] Adapter Supabase server-side.
+- [ ] Registrar automaticamente cada execucao real da factory no Supabase.
 
 ### F2 - GitHub Autonomous Loop
-- [ ] Adapter GitHub real.
-- [ ] Criar/ler issues.
-- [ ] Criar branch de trabalho.
-- [ ] Persistir plano tecnico.
-- [ ] Criar commits e PR.
-- [ ] Ler CI e retornar para correcao quando necessario.
+- [ ] Adapter GitHub real no runtime.
+- [x] Criar/ler issues via integracao.
+- [x] Criar branch de trabalho via integracao.
+- [ ] Persistir plano tecnico automaticamente.
+- [x] Criar commits e PR via integracao.
+- [x] Ler CI e decidir correcao/gate/merge.
+- [ ] Fechar o loop sem orquestracao manual da conversa.
 
 ### F3 - Runtime de Desenvolvimento
 - [ ] Executor direto para mudancas pequenas/medias.
-- [ ] Roteador para tarefas especializadas.
+- [x] Roteador para tarefas especializadas.
 - [ ] Integracao seletiva com Codex quando disponivel.
-- [ ] Budget/usage ledger de Codex.
+- [x] Estrutura de ledger de Codex.
 - [ ] Review automatico.
 
 ### F4 - Testes, Evals e Preview
@@ -72,7 +75,7 @@ A fabrica conduz o discovery, cria a especificacao, decompoe o trabalho, impleme
 - percentual de tarefas concluidas sem intervencao humana;
 - percentual de tarefas que realmente usaram Codex;
 - taxa de sucesso de CI na primeira tentativa;
-- numero de regressões detectadas antes do merge;
+- numero de regressoes detectadas antes do merge;
 - tempo entre requisito aprovado e preview;
 - custo por run / por tarefa quando mensuravel;
 - quantidade de gates humanos realmente necessarios.
