@@ -1,0 +1,3 @@
+"use server";import {redirect} from "next/navigation";import {clearAuthCookies,setAuthCookies} from "../lib/auth-server";import {signInPassword} from "../lib/auth-api";
+export async function signInAction(formData:FormData){const email=String(formData.get("email")||"").trim(),password=String(formData.get("password")||"");if(!email||!password)redirect("/login?error=missing");try{const session=await signInPassword(email,password);await setAuthCookies(session);}catch{redirect("/login?error=invalid");}redirect("/");}
+export async function signOutAction(){await clearAuthCookies();redirect("/login");}

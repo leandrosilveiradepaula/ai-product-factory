@@ -1,0 +1,5 @@
+import {cookies} from "next/headers";import {redirect} from "next/navigation";import {getConsoleOperator,type AuthSession} from "./auth-api";
+export const ACCESS_COOKIE="factory_access_token";export const REFRESH_COOKIE="factory_refresh_token";const cookieBase={httpOnly:true,sameSite:"lax" as const,secure:process.env.NODE_ENV==="production",path:"/"};
+export async function setAuthCookies(session:AuthSession){const jar=await cookies();jar.set(ACCESS_COOKIE,session.access_token,{...cookieBase,maxAge:Math.max(60,session.expires_in)});jar.set(REFRESH_COOKIE,session.refresh_token,cookieBase);}
+export async function clearAuthCookies(){const jar=await cookies();jar.delete(ACCESS_COOKIE);jar.delete(REFRESH_COOKIE);}
+export async function requireConsoleOperator(){const jar=await cookies();const token=jar.get(ACCESS_COOKIE)?.value;if(!token)redirect("/login");const operator=await getConsoleOperator(token);if(!operator)redirect("/unauthorized");return operator;}
