@@ -52,8 +52,8 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Pipeline Engine ponta a ponta.
 - [x] Project Memory versionada.
 - [x] Review/evaluation quality gates.
-- [ ] Provider real do modelo principal.
-- [ ] Provider real do Codex.
+- [x] Provider OpenAI Responses implementado (API key validada tecnicamente; consumo bloqueado por quota/billing separado).
+- [ ] Provider real do Codex/ChatGPT entitlement (token/WIF em investigacao).
 
 ### F4 - Testes, Evals e Preview
 - [x] CI deterministico por projeto via manifest.
@@ -75,16 +75,16 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [ ] Primeira tarefa funcional nova executada integralmente pela factory.
 
 ### F6 - Greenfield Test
-- [ ] Criar um produto pequeno do zero somente via factory.
-- [ ] Medir intervencoes humanas.
-- [ ] Medir tarefas diretas vs. Codex.
+- [x] Validar lifecycle greenfield offline sem chamadas externas.
+- [x] Validar que fluxo low-risk pode chegar a release sem gate humano.
+- [x] Validar greenfield offline com 0 chamadas de Codex/modelo.
 - [ ] Revisar gates e ampliar autonomia.
 
 ## Gate atual
 
-O nucleo deterministico do MVP esta operacional. Para transformar a Factory em um runtime independente da sessao do ChatGPT, falta configurar um provider real de modelo principal e, opcionalmente, um provider Codex.
+O nucleo deterministico do MVP esta operacional e o provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
-Essa decisao pode introduzir credenciais e custo de API, portanto permanece como gate humano.
+Para evitar custo adicional antes de necessario, o caminho prioritario agora e autenticar o runtime com o entitlement existente do ChatGPT/Codex. A Factory ja possui uma camada de auth desacoplada para API key, ChatGPT/Codex access token e workload identity; o transporte de token/WIF so sera habilitado apos confirmar o mecanismo oficial disponivel no workspace Infodive.
 
 ## Metricas do projeto
 
@@ -95,3 +95,10 @@ Essa decisao pode introduzir credenciais e custo de API, portanto permanece como
 - tempo entre requisito aprovado e preview;
 - custo por run / por tarefa quando mensuravel;
 - quantidade de gates humanos realmente necessarios.
+
+
+## Validacoes adicionais
+
+- Auth resolver: WIF > ChatGPT/Codex access token > API key, sem expor valores secretos.
+- Usage observability: provider/model/tokens/custo conhecido ou explicitamente desconhecido.
+- Greenfield offline: lifecycle completo low-risk validado com 0 chamadas externas; producao para corretamente em human gate.
