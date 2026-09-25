@@ -19,26 +19,28 @@ O ChatGPT atua como orquestrador principal e usa diretamente as ferramentas disp
 5. **Gates humanos por risco**, nao por etapa burocratica.
 6. **GitHub como fonte de verdade** do codigo, issues, PRs e CI.
 7. **Evidencia antes de release**: testes, evals, preview e resultados precisam ser rastreaveis.
-8. **Producao protegida**: no MVP, deploy destrutivo ou de alto impacto exige aprovacao humana.
+8. **Producao protegida**: a politica atual exige aprovacao humana para release em producao e para mudancas destrutivas ou de alto impacto.
 
-## Nucleo v0.1
+## Plataforma
 
 - Project Manifest padrao.
 - State machine do ciclo de produto.
 - Codex Policy Engine.
 - Politica de gates humanos.
-- Control plane em Supabase (schema inicial).
+- Control Plane persistente em Supabase, com auditoria, runs, tarefas, gates, uso de ferramentas e deployments.
 - Prompts/papeis de Product Manager, Engineering Manager, Developer, Reviewer, Evaluator e Release Manager.
-- CI da propria fabrica.
+- Factory Console autenticado para projetos, backlog, runs e human gates.
+- Runtime duravel com fila, worker, roteamento Direct/Codex e runner autonomo limitado.
+- GitHub Autonomous Loop para issue, branch, commit, PR, CI, repair e merge.
 - Contratos de adapters para integracoes externas.
 
 ## Primeiro piloto
 
-O primeiro projeto existente a ser integrado sera:
+O primeiro projeto existente integrado e:
 
 `leandrosilveiradepaula/agente-sql-langgraph`
 
-No piloto, a fabrica devera conseguir planejar uma tarefa, alterar o projeto, executar testes e o benchmark de 63 perguntas, produzir evidencias e preparar a mudanca para aprovacao.
+O piloto ja esta onboardado na Factory. O benchmark de 63 perguntas permanece deliberadamente adiado; a Factory nao deve executa-lo ate que essa validacao seja reaberta como tarefa especifica.
 
 ## Uso local
 
@@ -49,3 +51,7 @@ python -m unittest discover -s tests -v
 ```
 
 O projeto usa apenas a biblioteca padrao do Python no nucleo para manter o bootstrap simples.
+
+## Estado atual
+
+Veja [docs/STATUS.md](docs/STATUS.md) para o estado operacional, gates externos e proximos blocos.
