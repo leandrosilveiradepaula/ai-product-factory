@@ -1,0 +1,5 @@
+"use server";
+import {redirect} from "next/navigation";
+import {normalizeIntake,validateIntake,type ProjectIntake} from "../../../lib/intake";
+export type IntakeState={errors:Record<string,string>;message?:string};
+export async function submitIntake(_prev:IntakeState,formData:FormData):Promise<IntakeState>{const input:ProjectIntake={mode:(formData.get("mode")==="import"?"import":"greenfield"),name:String(formData.get("name")||""),summary:String(formData.get("summary")||""),repository:String(formData.get("repository")||""),users:String(formData.get("users")||""),mustHave:String(formData.get("mustHave")||""),integrations:String(formData.get("integrations")||"")};const clean=normalizeIntake(input);const validation=validateIntake(clean);if(!validation.ok)return{errors:validation.errors};const encoded=Buffer.from(JSON.stringify(clean)).toString("base64url");redirect(`/projects/new/review?intake=${encoded}`);}
