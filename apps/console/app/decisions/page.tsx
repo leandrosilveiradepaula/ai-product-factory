@@ -1,0 +1,1 @@
+export default function Decisions(){return <><div className="eyebrow">Human gates</div><h1 className="title">Decisões</h1><p className="muted">A Factory só interrompe você quando uma decisão realmente exige autoridade humana.</p><div className="card section"><span className="status"><i className="dot"/>Nenhuma decisão pendente</span></div></>}

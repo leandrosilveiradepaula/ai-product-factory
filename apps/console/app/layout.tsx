@@ -1,0 +1,4 @@
+import "./globals.css";
+import Link from "next/link";
+export const metadata={title:"AI Product Factory",description:"Autonomous product development control plane"};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="pt-BR"><body><div className="shell"><aside className="side"><div className="brand">AI Product Factory<small>CONTROL CONSOLE</small></div><nav className="nav"><Link href="/">Visão geral</Link><Link href="/projects">Projetos</Link><Link href="/runs">Execuções</Link><Link href="/decisions">Decisões</Link></nav></aside><main className="main">{children}</main></div></body></html>}
