@@ -59,3 +59,16 @@ class ProjectState:
     project_key: str
     stage: LifecycleStage = LifecycleStage.DISCOVERY
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class ExecutionRoute(StrEnum):
+    DIRECT = "direct"
+    CODEX = "codex"
+
+
+@dataclass(frozen=True)
+class ExecutionDecision:
+    route: ExecutionRoute
+    codex: CodexDecision
+    human_gate_required: bool
+    gate_reasons: tuple[str, ...] = ()
