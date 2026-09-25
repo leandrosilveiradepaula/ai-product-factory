@@ -1,0 +1,6 @@
+from __future__ import annotations
+from typing import Protocol
+
+class DeliveryStore(Protocol):
+ def update_run_status(self,run_id:str,status:str,*,candidate_commit:str|None=None):...
+ def record_tool_usage(self,*,run_id:str,tool_family:str,operation:str|None=None,usage_units:float|None=None,estimated_cost:float|None=None,metadata:dict|None=None):...
