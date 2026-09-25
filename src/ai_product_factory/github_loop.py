@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from .control_plane import ControlPlaneStore
+from .delivery_store import DeliveryStore
 
 
 class CIState(StrEnum):
@@ -45,7 +45,7 @@ def decide_after_ci(ci_state: CIState, *, human_gate_required: bool) -> GitHubLo
 class GitHubLoopCoordinator:
     """Coordinates CI feedback and merge without embedding GitHub transport details."""
 
-    def __init__(self, github: GitHubAdapter, store: ControlPlaneStore) -> None:
+    def __init__(self, github: GitHubAdapter, store: DeliveryStore) -> None:
         self.github = github
         self.store = store
 

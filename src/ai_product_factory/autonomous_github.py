@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .control_plane import ControlPlaneStore
+from .delivery_store import DeliveryStore
 from .github_loop import GitHubLoopAction, GitHubLoopCoordinator, GitHubLoopDecision
 from .github_rest import GitHubIssue, GitHubPullRequest, GitHubRestAdapter
 
@@ -20,7 +20,7 @@ class GitHubWorkSession:
 class AutonomousGitHubLoop:
     """Executable GitHub workflow around an already-routed factory run."""
 
-    def __init__(self, github: GitHubRestAdapter, store: ControlPlaneStore) -> None:
+    def __init__(self, github: GitHubRestAdapter, store: DeliveryStore) -> None:
         self.github = github
         self.store = store
         self.ci = GitHubLoopCoordinator(github, store)
