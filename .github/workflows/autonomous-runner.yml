@@ -1,0 +1,59 @@
+name: Factory autonomous runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_key:
+        description: Optional project key for backlog dispatch
+        required: false
+        type: string
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-autonomous-runner
+  cancel-in-progress: false
+
+jobs:
+  product-stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate control-plane credentials
+        shell: bash
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
+      - name: Process at most one product-stage run
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
+
+  dispatch:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.project_key != '' }}
+    needs: product-stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dispatch at most one planned task
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode dispatch --project-key "${{ inputs.project_key }}"
