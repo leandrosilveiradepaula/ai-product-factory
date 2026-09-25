@@ -58,3 +58,17 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
  const rows=await response.json();
  return rows.map((x:any)=>({id:x.id,runId:x.run_id,type:x.gate_type,status:x.status,reasons:x.reasons,requestedAt:x.requested_at}));
 }
+
+export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;tasks:ProjectTaskSummary[]};
+
+export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
+ const cfg=serverHeaders();if(!cfg)return null;
+ const projectResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name,repository,project_kind,lifecycle_stage,is_active,updated_at&project_key=eq.${encodeURIComponent(projectKey)}&limit=1`,{headers:cfg.headers,cache:"no-store"});
+ if(!projectResponse.ok)throw new Error("Unable to load project");
+ const projects=await projectResponse.json();if(!projects.length)return null;
+ const p=projects[0];
+ const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
+ const tasks=tasksResponse.ok?await tasksResponse.json():[];
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+}
