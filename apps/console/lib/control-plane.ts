@@ -28,3 +28,33 @@ export async function getDashboard():Promise<Dashboard>{
   failedRuns:f.length
  };
 }
+export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string};
+
+function serverHeaders(){
+ const url=process.env.SUPABASE_URL;const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+ if(!url||!key)return null;
+ return {url,headers:{apikey:key,Authorization:`Bearer ${key}`}};
+}
+
+export async function getRuns(limit=50):Promise<RunSummary[]>{
+ const cfg=serverHeaders();if(!cfg)return [];
+ const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,created_at&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ if(!runsResponse.ok)throw new Error("Unable to load Factory runs");
+ const runs=await runsResponse.json();
+ const taskIds=[...new Set(runs.map((x:any)=>x.task_id).filter(Boolean))];
+ let taskMap=new Map<string,string>();
+ if(taskIds.length){
+  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title&id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(tasksResponse.ok){const tasks=await tasksResponse.json();taskMap=new Map(tasks.map((x:any)=>[String(x.id),String(x.title)]));}
+ }
+ return runs.map((x:any)=>({id:x.id,taskId:x.task_id,status:x.status,route:x.execution_route,candidateCommit:x.candidate_commit,createdAt:x.created_at,taskTitle:taskMap.get(String(x.task_id))||"Task"}));
+}
+
+export async function getHumanGates(limit=50):Promise<GateSummary[]>{
+ const cfg=serverHeaders();if(!cfg)return [];
+ const response=await fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load human gates");
+ const rows=await response.json();
+ return rows.map((x:any)=>({id:x.id,runId:x.run_id,type:x.gate_type,status:x.status,reasons:x.reasons,requestedAt:x.requested_at}));
+}
