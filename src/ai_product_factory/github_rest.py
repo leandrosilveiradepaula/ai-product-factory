@@ -35,6 +35,14 @@ class GitHubPullRequest:
     html_url: str
 
 
+@dataclass(frozen=True)
+class GitHubCheckFailure:
+    name: str
+    conclusion: str
+    details_url: str | None = None
+    summary: str | None = None
+
+
 class GitHubRestAdapter:
     """Server-side GitHub REST adapter used by the autonomous loop."""
 
@@ -129,6 +137,29 @@ class GitHubRestAdapter:
         if any(check.get("conclusion") not in passing for check in checks):
             return CIState.FAILURE
         return CIState.SUCCESS
+
+    def get_failed_checks(self, pr_number: int) -> tuple[GitHubCheckFailure, ...]:
+        pr = self.get_pull_request(pr_number)
+        checks = self._call(
+            "GET",
+            f"/repos/{self.repository}/commits/{pr.head_sha}/check-runs",
+            query={"per_page": "100"},
+        ).get("check_runs", [])
+        passing = {"success", "neutral", "skipped"}
+        failures = []
+        for check in checks:
+            if check.get("status") != "completed" or check.get("conclusion") in passing:
+                continue
+            output = check.get("output") or {}
+            failures.append(
+                GitHubCheckFailure(
+                    name=check.get("name") or "unnamed-check",
+                    conclusion=check.get("conclusion") or "failure",
+                    details_url=check.get("details_url"),
+                    summary=output.get("summary") or output.get("title"),
+                )
+            )
+        return tuple(failures)
 
     def merge_pull_request(self, pr_number: int) -> str:
         pr = self.get_pull_request(pr_number)
