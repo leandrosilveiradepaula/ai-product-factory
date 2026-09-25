@@ -2,45 +2,14 @@ name: OpenAI runtime smoke
 
 on:
   workflow_dispatch:
-    inputs:
-      task_id:
-        description: Factory task id
-        required: true
-        type: string
-      objective:
-        description: Objective for the primary model
-        required: true
-        type: string
-      complexity:
-        description: Task complexity
-        required: true
-        default: medium
-        type: choice
-        options:
-          - low
-          - medium
-          - high
-          - very_high
-      reasoning_effort:
-        description: Reasoning effort
-        required: true
-        default: medium
-        type: choice
-        options:
-          - none
-          - low
-          - medium
-          - high
-          - xhigh
-          - max
 
 permissions:
   contents: read
 
 jobs:
-  execute:
+  smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       PYTHONPATH: src
@@ -59,11 +28,11 @@ jobs:
             exit 2
           fi
 
-      - name: Execute primary model
+      - name: Execute smoke test
         shell: bash
         run: |
           python -m ai_product_factory.cli openai-execute \
-            --task-id "${{ inputs.task_id }}" \
-            --objective "${{ inputs.objective }}" \
-            --complexity "${{ inputs.complexity }}" \
-            --reasoning-effort "${{ inputs.reasoning_effort }}"
+            --task-id "smoke-openai-api" \
+            --objective "Return exactly FACTORY_SMOKE_OK and nothing else." \
+            --complexity "low" \
+            --reasoning-effort "none"
