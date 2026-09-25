@@ -79,6 +79,10 @@ class GitHubRestAdapter:
             raise RuntimeError(f"GitHub request failed with HTTP {status}")
         return data
 
+    def create_issue(self, *, title: str, body: str) -> GitHubIssue:
+        row = self._call("POST", f"/repos/{self.repository}/issues", payload={"title": title, "body": body})
+        return GitHubIssue(row["number"], row["title"], row.get("body") or "", row["html_url"])
+
     def get_issue(self, issue_number: int) -> GitHubIssue:
         row = self._call("GET", f"/repos/{self.repository}/issues/{issue_number}")
         if "pull_request" in row:
