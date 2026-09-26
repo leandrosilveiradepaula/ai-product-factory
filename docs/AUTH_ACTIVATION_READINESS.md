@@ -37,16 +37,18 @@ Production deployment remains independently human-gated.
 
 ## Verified Preview
 
-Ready only when all of these are true:
+The standard GitHub Actions path is ready when:
 
-- the project has a Vercel preview configuration (`manifest.preview`) or an explicit non-secret environment fallback;
-- `VERCEL_TOKEN` is configured in the execution environment;
-- `FACTORY_VERCEL_PREVIEW_ENABLED=true`;
-- `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON` contains a reviewed argv-style command;
-- `FACTORY_BROWSER_EVIDENCE_ENABLED=true`;
-- the browser/e2e command returns structured success evidence for the exact Preview URL.
+- the project has an explicit Preview applicability/configuration policy in `manifest.preview`;
+- a Preview is actually required for the PR's changed files;
+- the repository has the official Vercel↔GitHub integration and project mode is `github`;
+- the workflow can read GitHub checks with its native `GITHUB_TOKEN`;
+- the manual Preview job can install its pinned Playwright/Chromium runtime;
+- Playwright returns structured success evidence for the exact discovered Preview URL.
 
-Preview execution is manual-only until this gate is intentionally activated. The adapter cannot target production.
+The manual job supplies `FACTORY_VERCEL_PREVIEW_ENABLED=true`, `FACTORY_BROWSER_EVIDENCE_ENABLED=true`, and the built-in browser command. It does not require an external browser service or `VERCEL_TOKEN` in `mode: github`.
+
+For `mode: api` or non-GitHub execution environments, Vercel/browser credentials and commands remain explicit external configuration. Preview execution remains manual-only and no Preview adapter can target production.
 
 ## Operational GitHub alerts
 
