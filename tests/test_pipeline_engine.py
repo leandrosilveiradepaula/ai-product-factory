@@ -8,6 +8,10 @@ from ai_product_factory.github_loop import CIState
 from ai_product_factory.github_rest import GitHubCheckFailure, GitHubIssue, GitHubPullRequest
 from ai_product_factory.pipeline_engine import PipelineEngine, PipelineStatus
 from ai_product_factory.review_gate import EvalResult, ReviewFinding, Severity
+from ai_product_factory.browser_evidence import BrowserEvidence
+from ai_product_factory.deployment import DeploymentResult
+from ai_product_factory.preview_flow import VerifiedPreviewResult
+from ai_product_factory.release_policy import ReleaseEnvironment
 
 
 class FakeGitHub:
@@ -53,11 +57,18 @@ class PipelineEngineTests(unittest.TestCase):
             pr_body="x",
         )
 
-    def test_happy_path_merges(self):
+    def test_happy_path_requires_preview_before_merge(self):
         q = self.engine.evaluate_quality(self.session, evals=(EvalResult("tests", True),))
         self.assertEqual(q.status, PipelineStatus.CI_PENDING)
         out = self.engine.evaluate_ci(self.session, human_gate_required=False)
-        self.assertEqual(out.status, PipelineStatus.MERGED)
+        self.assertEqual(out.status, PipelineStatus.PREVIEW_READY)
+        preview = VerifiedPreviewResult(
+            DeploymentResult("vercel", ReleaseEnvironment.PREVIEW, "success", "dep-1", "https://preview.example"),
+            BrowserEvidence("success", "https://preview.example", ("page_load",)),
+        )
+        merged = self.engine.finalize_preview(self.session, preview=preview)
+        self.assertEqual(merged.status, PipelineStatus.MERGED)
+        self.assertEqual(self.github.merged, [1])
 
     def test_quality_failure_blocks_before_ci(self):
         out = self.engine.evaluate_quality(
