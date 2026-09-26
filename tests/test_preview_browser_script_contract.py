@@ -12,10 +12,13 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('emit("success"',text)
         self.assertIn('emit("failure"',text)
 
-    def test_manual_preview_job_self_hosts_pinned_playwright(self):
+    def test_scheduled_preview_job_self_hosts_playwright_only_when_needed(self):
         text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
         preview=text.split("\n  preview:",1)[1].split("\n  alerts:",1)[0]
         self.assertIn("inputs.run_preview == true",preview)
+        self.assertIn("github.event_name == 'schedule'",preview)
+        self.assertIn("--mode preview-probe",preview)
+        self.assertIn("steps.preview_probe.outputs.browser == 'true'",preview)
         self.assertIn("checks: read",preview)
         self.assertIn("playwright@1.63.0",preview)
         self.assertIn('FACTORY_BROWSER_EVIDENCE_ENABLED: "true"',preview)
