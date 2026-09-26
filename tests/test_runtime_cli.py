@@ -60,7 +60,8 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertTrue(out["control_plane_configured"])
         self.assertFalse(out["primary_enabled"])
         self.assertFalse(out["budget_configured"])
-        self.assertFalse(out["vercel_preview"]["ready"])
+        self.assertFalse(out["vercel_preview_api"]["ready"])
+        self.assertFalse(out["vercel_preview_github"]["ready"])
         self.assertFalse(out["github_alerts"]["ready"])
 
     def test_ci_followup_empty_queue_has_no_github_side_effect(self):
@@ -151,6 +152,35 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertTrue(out["preview_required"])
         self.assertEqual(out["preview_url"],"https://preview.example")
         loop.finalize_verified_preview.assert_called_once()
+
+
+    def test_github_integrated_preview_needs_no_vercel_token(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("web/page.tsx",)
+        verified=SimpleNamespace(deployment=SimpleNamespace(preview_url="https://preview.example",deployment_ref="check-1"))
+        coordinator=MagicMock();coordinator.execute.return_value=verified
+        loop=MagicMock();loop.finalize_verified_preview.return_value="awaiting_release"
+        env={
+            "FACTORY_VERCEL_PREVIEW_ENABLED":"true","GITHUB_TOKEN":"gh",
+            "FACTORY_BROWSER_EVIDENCE_ENABLED":"true","FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["verify"]',
+        }
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.GitHubVercelPreviewAdapter") as github_vercel, \
+             patch("ai_product_factory.runtime_cli.DurablePreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeploymentEvidenceStore"), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceConfig.from_env",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_preview_once()
+        self.assertEqual(out["status"],"awaiting_release")
+        github_vercel.assert_called_once()
+        self.assertNotIn("VERCEL_TOKEN",env)
 
     def test_release_followup_empty_queue_has_no_github_side_effect(self):
         queue=MagicMock()

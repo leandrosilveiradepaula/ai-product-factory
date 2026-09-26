@@ -30,6 +30,13 @@ def vercel_preview_readiness() -> AdapterReadiness:
     )
 
 
+def github_vercel_preview_readiness() -> AdapterReadiness:
+    return _evaluate(
+        "FACTORY_VERCEL_PREVIEW_ENABLED",
+        ("GITHUB_TOKEN",),
+    )
+
+
 def github_alerts_readiness() -> AdapterReadiness:
     return _evaluate(
         "FACTORY_GITHUB_ALERTS_ENABLED",
@@ -43,10 +50,15 @@ def browser_evidence_readiness() -> AdapterReadiness:
     )
 
 
-def verified_preview_readiness() -> AdapterReadiness:
-    vercel=vercel_preview_readiness()
+def verified_preview_readiness(mode: str = "api") -> AdapterReadiness:
+    if mode == "api":
+        provider=vercel_preview_readiness()
+    elif mode == "github":
+        provider=github_vercel_preview_readiness()
+    else:
+        raise ValueError(f"unsupported preview readiness mode: {mode}")
     browser=browser_evidence_readiness()
-    missing=tuple(dict.fromkeys((*vercel.missing,*browser.missing)))
-    enabled=vercel.enabled and browser.enabled
-    configured=vercel.configured and browser.configured
+    missing=tuple(dict.fromkeys((*provider.missing,*browser.missing)))
+    enabled=provider.enabled and browser.enabled
+    configured=provider.configured and browser.configured
     return AdapterReadiness(enabled=enabled,configured=configured,ready=enabled and configured,missing=missing)

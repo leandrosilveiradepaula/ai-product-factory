@@ -41,12 +41,12 @@ Do not enable the primary model merely because an API key exists. Billing/quota 
 
 ## Verified Preview activation
 
-The project supplies non-secret deployment metadata in `factory_projects.manifest.preview`, for example provider, Vercel team id, and Vercel project name. Runtime credentials remain environment secrets.
+The project supplies non-secret deployment metadata in `factory_projects.manifest.preview`. `mode: github` discovers the exact Vercel Preview from GitHub check-runs using `GITHUB_TOKEN`; `mode: api` creates/polls the Preview through the Vercel API and requires Vercel team/project metadata.
 
 Global prerequisites:
 
 - `FACTORY_VERCEL_PREVIEW_ENABLED=true`;
-- `VERCEL_TOKEN`;
+- `GITHUB_TOKEN` for `mode: github`, or `VERCEL_TOKEN` for `mode: api`;
 - `FACTORY_BROWSER_EVIDENCE_ENABLED=true`;
 - `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON` as a JSON argv array;
 - optional bounded `FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS`.

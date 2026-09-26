@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ai_product_factory.integration_readiness import browser_evidence_readiness, github_alerts_readiness, verified_preview_readiness, vercel_preview_readiness
+from ai_product_factory.integration_readiness import browser_evidence_readiness, github_alerts_readiness, github_vercel_preview_readiness, verified_preview_readiness, vercel_preview_readiness
 
 
 class IntegrationReadinessTests(unittest.TestCase):
@@ -28,6 +28,27 @@ class IntegrationReadinessTests(unittest.TestCase):
         }
         with patch.dict("os.environ", env, clear=True):
             self.assertTrue(vercel_preview_readiness().ready)
+
+
+    def test_github_vercel_ready_with_github_token_and_enable(self):
+        env={
+            "FACTORY_VERCEL_PREVIEW_ENABLED":"true",
+            "GITHUB_TOKEN":"x",
+        }
+        with patch.dict("os.environ",env,clear=True):
+            self.assertTrue(github_vercel_preview_readiness().ready)
+
+    def test_verified_preview_github_mode_needs_no_vercel_token(self):
+        env={
+            "FACTORY_VERCEL_PREVIEW_ENABLED":"true",
+            "GITHUB_TOKEN":"x",
+            "FACTORY_BROWSER_EVIDENCE_ENABLED":"true",
+            "FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["node","verify.mjs"]',
+        }
+        with patch.dict("os.environ",env,clear=True):
+            state=verified_preview_readiness("github")
+        self.assertTrue(state.ready)
+        self.assertNotIn("VERCEL_TOKEN",state.missing)
 
     def test_github_alerts_ready_only_with_flag_and_config(self):
         env = {
