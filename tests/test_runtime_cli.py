@@ -4,7 +4,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once, run_release_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -98,6 +98,32 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(kwargs["baseline_ref"],"abc")
         self.assertEqual(kwargs["status"],"success")
 
+    def test_release_followup_empty_queue_has_no_github_side_effect(self):
+        queue=MagicMock()
+        queue.next_pending.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            out=run_release_once()
+        self.assertEqual(out,{"claimed":False,"status":"empty"})
+        github.assert_not_called()
+
+    def test_release_followup_observes_human_merge_without_merging(self):
+        item=SimpleNamespace(repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        issue=SimpleNamespace(number=7)
+        pr=SimpleNamespace(number=9,head_sha="abc")
+        github.get_issue.return_value=issue
+        github.get_pull_request.return_value=pr
+        store=MagicMock()
+        loop=MagicMock();loop.observe_manual_merge.return_value="merge123"
+        with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_release_once()
+        self.assertEqual(out["status"],"merged")
+        self.assertEqual(out["merge_sha"],"merge123")
+        github.merge_pull_request.assert_not_called()
     def test_alert_mode_is_blocked_without_explicit_enable_and_config(self):
         with patch.dict("os.environ", {}, clear=True):
             out=run_alerts_once()
