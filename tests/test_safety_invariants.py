@@ -22,6 +22,12 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("SUPABASE_SECRET_KEY",text)
   self.assertIn("SUPABASE_SERVICE_ROLE_KEY",text)
   self.assertIn('[ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]',text)
+ def test_alert_job_is_manual_only(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  alerts=text.split("\n  alerts:",1)[1]
+  self.assertIn("github.event_name == 'workflow_dispatch'",alerts)
+  self.assertIn("inputs.run_alerts == true",alerts)
+  self.assertIn("FACTORY_GITHUB_ALERTS_ENABLED",alerts)
  def test_primary_requires_explicit_enable_flag(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED',text)

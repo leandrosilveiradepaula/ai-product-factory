@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_alerts:
+        description: Evaluate operational alerts and publish deduplicated GitHub Issues
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "17 * * * *"
 
@@ -124,3 +129,28 @@ jobs:
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"
+
+  alerts:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_alerts == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FACTORY_GITHUB_ALERTS_ENABLED: ${{ vars.FACTORY_GITHUB_ALERTS_ENABLED }}
+      FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
+      FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Evaluate and publish operational alerts
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode alerts
