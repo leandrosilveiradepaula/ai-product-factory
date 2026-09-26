@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
@@ -45,12 +46,40 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["github_alerts"]["ready"])
 
     def test_ci_followup_empty_queue_has_no_github_side_effect(self):
-        queue=unittest.mock.MagicMock()
+        queue=MagicMock()
         queue.next_pending.return_value=None
         with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             out=run_ci_once()
         self.assertEqual(out,{"claimed":False,"status":"empty"})
         github.assert_not_called()
+
+    def test_green_ci_persists_quality_gate_evidence(self):
+        item=SimpleNamespace(
+            repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",
+            branch="factory/t",run_id="r",human_gate_required=False,
+        )
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        github.get_issue.return_value=SimpleNamespace(number=7)
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        store=MagicMock()
+        loop=MagicMock()
+        loop.evaluate.return_value=SimpleNamespace(
+            action=SimpleNamespace(value="preview_ready"),
+            ci_state=SimpleNamespace(value="success"),
+        )
+        with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_ci_once()
+        self.assertEqual(out["status"],"preview_ready")
+        store.record_evaluation.assert_called_once()
+        kwargs=store.record_evaluation.call_args.kwargs
+        self.assertEqual(kwargs["eval_type"],"quality_gate")
+        self.assertEqual(kwargs["baseline_ref"],"abc")
+        self.assertEqual(kwargs["status"],"success")
+
     def test_alert_mode_is_blocked_without_explicit_enable_and_config(self):
         with patch.dict("os.environ", {}, clear=True):
             out=run_alerts_once()

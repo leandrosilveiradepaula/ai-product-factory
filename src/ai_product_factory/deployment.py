@@ -40,8 +40,8 @@ class DeploymentCoordinator:
         if request.evidence.ci_status != "success":
             raise ValueError("deployment requires successful CI evidence")
         metadata = request.evidence.metadata or {}
-        if metadata.get("quality_gate_passed") is False:
-            raise ValueError("deployment requires passed quality gate")
+        if metadata.get("quality_gate_passed") is not True:
+            raise ValueError("deployment requires explicit passed quality gate evidence")
         return evaluate_release(request.environment, request.risk)
 
     def deploy_if_autonomous(
