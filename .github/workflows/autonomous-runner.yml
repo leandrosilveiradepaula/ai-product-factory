@@ -36,15 +36,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Validate control-plane credentials
+      - name: Detect runtime readiness
+        id: readiness
         shell: bash
         run: |
-          test -n "$SUPABASE_URL"
-          test -n "$SUPABASE_SERVICE_ROLE_KEY"
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "control_plane=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "control_plane=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "primary_model=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "primary_model=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Report blocked dependencies
+        if: ${{ steps.readiness.outputs.control_plane != 'true' || steps.readiness.outputs.primary_model != 'true' }}
+        shell: bash
+        run: |
+          echo "Factory runner is healthy but blocked by external configuration."
+          echo "control_plane=${{ steps.readiness.outputs.control_plane }}"
+          echo "primary_model=${{ steps.readiness.outputs.primary_model }}"
       - name: Recover expired worker leases
+        if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Process at most one product-stage run
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && steps.readiness.outputs.primary_model == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
 
