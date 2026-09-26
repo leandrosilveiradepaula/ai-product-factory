@@ -12,22 +12,25 @@ class SafetyInvariantTests(unittest.TestCase):
  def test_strict_paid_execution_needs_budget_and_reservation(self):
   self.assertFalse(evaluate_cost_ceiling(budget=None,known_spend=Decimal("0"),reserved_cost=Decimal("1"),strict=True).allowed)
   self.assertFalse(evaluate_cost_ceiling(budget=Decimal("10"),known_spend=Decimal("0"),reserved_cost=None,strict=True).allowed)
- def test_direct_job_is_manual_only(self):
+ def test_scheduled_direct_requires_explicit_primary_and_budget_gates(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
-  direct=text.split("\n  direct:",1)[1]
-  self.assertIn("github.event_name == 'workflow_dispatch'",direct)
+  direct=text.split("\n  direct:",1)[1].split("\n\n  preview:",1)[0]
   self.assertIn("inputs.run_direct == true",direct)
+  self.assertIn("github.event_name == 'schedule'",direct)
+  self.assertIn("vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true'",direct)
+  self.assertIn("vars.FACTORY_MODEL_BUDGET_USD != ''",direct)
+  self.assertIn("vars.FACTORY_MODEL_RESERVE_USD != ''",direct)
  def test_control_plane_accepts_modern_or_legacy_server_secret(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn("SUPABASE_SECRET_KEY",text)
   self.assertIn("SUPABASE_SERVICE_ROLE_KEY",text)
   self.assertIn('[ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]',text)
- def test_alert_job_is_manual_only(self):
+ def test_alert_job_is_scheduled_and_deduplicated_sink_is_explicitly_enabled(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   alerts=text.split("\n  alerts:",1)[1]
-  self.assertIn("github.event_name == 'workflow_dispatch'",alerts)
+  self.assertIn("github.event_name == 'schedule'",alerts)
   self.assertIn("inputs.run_alerts == true",alerts)
-  self.assertIn("FACTORY_GITHUB_ALERTS_ENABLED",alerts)
+  self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',alerts)
  def test_release_followup_cannot_merge_or_write_code(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   release=text.split("\n  release-followup:",1)[1].split("\n  dispatch:",1)[0]
@@ -37,11 +40,13 @@ class SafetyInvariantTests(unittest.TestCase):
   runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
   start=runtime.split("def run_release_once",1)[1].split("def run_alerts_once",1)[0]
   self.assertNotIn("merge_pull_request",start)
- def test_preview_job_is_manual_only_and_read_only_in_github(self):
+ def test_scheduled_preview_is_read_only_and_probed_before_browser_install(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   preview=text.split("\n  preview:",1)[1].split("\n  alerts:",1)[0]
-  self.assertIn("github.event_name == 'workflow_dispatch'",preview)
+  self.assertIn("github.event_name == 'schedule'",preview)
   self.assertIn("inputs.run_preview == true",preview)
+  self.assertIn("--mode preview-probe",preview)
+  self.assertIn("steps.preview_probe.outputs.browser == 'true'",preview)
   self.assertIn("contents: read",preview)
   self.assertIn("issues: read",preview)
   self.assertIn("pull-requests: read",preview)
