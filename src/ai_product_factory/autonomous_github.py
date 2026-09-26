@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from .delivery_store import DeliveryStore
 from .github_loop import GitHubLoopAction, GitHubLoopCoordinator, GitHubLoopDecision
 from .github_rest import GitHubIssue, GitHubPullRequest, GitHubRestAdapter
+from .preview_flow import VerifiedPreviewResult
 
 
 @dataclass(frozen=True)
@@ -95,10 +96,35 @@ class AutonomousGitHubLoop:
                 payload=evidence,
                 actor_ref="autonomous_github_loop",
             )
-        if decision.action == GitHubLoopAction.MERGE:
-            self.github.close_issue(session.issue.number)
-            self.store.record_tool_usage(
-                run_id=session.run_id, tool_family="github", operation="close_issue",
-                metadata={"issue": session.issue.number},
-            )
         return decision
+
+    def finalize_verified_preview(self, session: GitHubWorkSession, preview: VerifiedPreviewResult) -> str:
+        if session.pull_request is None:
+            raise ValueError("pull request has not been opened")
+        if preview.deployment.status != "success":
+            raise ValueError("merge requires successful preview deployment")
+        if preview.browser_evidence.status != "success":
+            raise ValueError("merge requires successful browser/e2e evidence")
+        if not preview.deployment.preview_url or preview.deployment.preview_url != preview.browser_evidence.preview_url:
+            raise ValueError("preview deployment and browser evidence URL must match")
+        merge_sha = self.github.merge_pull_request(session.pull_request.number)
+        self.store.update_run_status(session.run_id, "merged", candidate_commit=merge_sha)
+        self.store.record_tool_usage(
+            run_id=session.run_id,
+            tool_family="github",
+            operation="merge_after_verified_preview",
+            metadata={
+                "pr": session.pull_request.number,
+                "merge_sha": merge_sha,
+                "preview_url": preview.deployment.preview_url,
+                "deployment_ref": preview.deployment.deployment_ref,
+            },
+        )
+        self.github.close_issue(session.issue.number)
+        self.store.record_tool_usage(
+            run_id=session.run_id,
+            tool_family="github",
+            operation="close_issue",
+            metadata={"issue": session.issue.number},
+        )
+        return merge_sha

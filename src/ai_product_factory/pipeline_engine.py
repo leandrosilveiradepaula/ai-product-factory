@@ -8,6 +8,7 @@ from .ci_repair import CIRepairController, RepairPlanner
 from .direct_executor import ChangeSet, DirectExecutor
 from .github_loop import CIState, GitHubLoopAction
 from .review_gate import EvalResult, ReviewFinding, evaluate_quality_gate
+from .preview_flow import VerifiedPreviewResult
 
 
 class PipelineStatus(StrEnum):
@@ -17,6 +18,7 @@ class PipelineStatus(StrEnum):
     REPAIRING = "repairing"
     AWAITING_HUMAN = "awaiting_human"
     FAILED_GATE = "failed_gate"
+    PREVIEW_READY = "preview_ready"
     MERGED = "merged"
 
 
@@ -82,6 +84,15 @@ class PipelineEngine:
             return PipelineOutcome(PipelineStatus.QUALITY_FAILED, "; ".join(decision.reasons))
         return PipelineOutcome(PipelineStatus.CI_PENDING, "quality gates passed")
 
+    def finalize_preview(
+        self,
+        session: GitHubWorkSession,
+        *,
+        preview: VerifiedPreviewResult,
+    ) -> PipelineOutcome:
+        merge_sha = self.github_loop.finalize_verified_preview(session, preview)
+        return PipelineOutcome(PipelineStatus.MERGED, f"verified preview merged as {merge_sha}")
+
     def evaluate_ci(
         self,
         session: GitHubWorkSession,
@@ -98,8 +109,8 @@ class PipelineEngine:
             human_gate_required=human_gate_required,
         )
 
-        if decision.action == GitHubLoopAction.MERGE:
-            return PipelineOutcome(PipelineStatus.MERGED, decision.reason, repair_attempts)
+        if decision.action == GitHubLoopAction.PREVIEW_READY:
+            return PipelineOutcome(PipelineStatus.PREVIEW_READY, decision.reason, repair_attempts)
         if decision.action == GitHubLoopAction.WAIT_HUMAN:
             return PipelineOutcome(PipelineStatus.AWAITING_HUMAN, decision.reason, repair_attempts)
         if decision.action == GitHubLoopAction.WAIT_CI:

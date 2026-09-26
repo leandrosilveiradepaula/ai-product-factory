@@ -4,6 +4,10 @@ from ai_product_factory.autonomous_github import AutonomousGitHubLoop
 from ai_product_factory.control_plane import MemoryControlPlaneStore
 from ai_product_factory.github_loop import CIState, GitHubLoopAction
 from ai_product_factory.github_rest import GitHubIssue, GitHubPullRequest
+from ai_product_factory.browser_evidence import BrowserEvidence
+from ai_product_factory.deployment import DeploymentResult
+from ai_product_factory.preview_flow import VerifiedPreviewResult
+from ai_product_factory.release_policy import ReleaseEnvironment
 
 
 class FakeGitHub:
@@ -51,13 +55,36 @@ class AutonomousGitHubLoopTests(unittest.TestCase):
         self.loop.commit_implementation(session, files={"x.py": "x = 1\n"}, message="feat: implement")
         return self.loop.open_pull_request(session, title="Feature", body="Closes #5")
 
-    def test_full_green_loop_merges_and_closes_issue(self):
+    def test_full_green_loop_stops_at_preview_boundary(self):
         session = self._session_with_pr()
         decision = self.loop.evaluate(session, human_gate_required=False)
-        self.assertEqual(decision.action, GitHubLoopAction.MERGE)
+        self.assertEqual(decision.action, GitHubLoopAction.PREVIEW_READY)
+        self.assertEqual(self.github.merged, [])
+        self.assertEqual(self.github.closed, [])
+        self.assertEqual(self.store.runs[self.run.id].status, "preview_ready")
+
+    def test_verified_preview_allows_merge_and_closes_issue(self):
+        session = self._session_with_pr()
+        self.loop.evaluate(session, human_gate_required=False)
+        preview = VerifiedPreviewResult(
+            DeploymentResult("vercel", ReleaseEnvironment.PREVIEW, "success", "dep-1", "https://preview.example"),
+            BrowserEvidence("success", "https://preview.example", ("page_load", "console_clean")),
+        )
+        merge_sha = self.loop.finalize_verified_preview(session, preview)
+        self.assertEqual(merge_sha, "merge999")
         self.assertEqual(self.github.merged, [9])
         self.assertEqual(self.github.closed, [5])
         self.assertEqual(self.store.runs[self.run.id].status, "merged")
+
+    def test_unverified_preview_cannot_merge(self):
+        session = self._session_with_pr()
+        preview = VerifiedPreviewResult(
+            DeploymentResult("vercel", ReleaseEnvironment.PREVIEW, "success", "dep-1", "https://preview.example"),
+            BrowserEvidence("failure", "https://preview.example"),
+        )
+        with self.assertRaises(ValueError):
+            self.loop.finalize_verified_preview(session, preview)
+        self.assertEqual(self.github.merged, [])
 
     def test_failed_ci_returns_to_implementation_without_closing_issue(self):
         self.github.ci_state = CIState.FAILURE

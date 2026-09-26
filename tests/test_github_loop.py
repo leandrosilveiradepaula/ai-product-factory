@@ -35,9 +35,9 @@ class GitHubLoopDecisionTests(unittest.TestCase):
         d = decide_after_ci(CIState.SUCCESS, human_gate_required=True)
         self.assertEqual(d.action, GitHubLoopAction.WAIT_HUMAN)
 
-    def test_green_ci_without_gate_merges(self):
+    def test_green_ci_without_gate_stops_at_preview(self):
         d = decide_after_ci(CIState.SUCCESS, human_gate_required=False)
-        self.assertEqual(d.action, GitHubLoopAction.MERGE)
+        self.assertEqual(d.action, GitHubLoopAction.PREVIEW_READY)
 
 
 class GitHubLoopCoordinatorTests(unittest.TestCase):
@@ -63,17 +63,16 @@ class GitHubLoopCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.store.runs[self.run.id].status, "needs_correction")
         self.assertEqual(github.merged, [])
 
-    def test_success_without_gate_merges_and_records_sha(self):
+    def test_success_without_gate_marks_preview_ready_without_merge(self):
         github = FakeGitHub(CIState.SUCCESS)
         d = GitHubLoopCoordinator(github, self.store).evaluate(
             pr_number=12,
             run_id=self.run.id,
             human_gate_required=False,
         )
-        self.assertEqual(d.action, GitHubLoopAction.MERGE)
-        self.assertEqual(github.merged, [12])
-        self.assertEqual(self.store.runs[self.run.id].status, "merged")
-        self.assertEqual(self.store.runs[self.run.id].candidate_commit, "merge-sha-123")
+        self.assertEqual(d.action, GitHubLoopAction.PREVIEW_READY)
+        self.assertEqual(github.merged, [])
+        self.assertEqual(self.store.runs[self.run.id].status, "preview_ready")
 
     def test_success_with_gate_never_merges(self):
         github = FakeGitHub(CIState.SUCCESS)
