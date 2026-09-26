@@ -1,14 +1,14 @@
 from __future__ import annotations
 import json,os,urllib.error,urllib.request
 from .deployment import DeploymentRequest,DeploymentResult
+from .supabase_server import resolve_supabase_server_config
 
 class SupabaseDeploymentEvidenceStore:
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
-  self.url=(url or os.getenv("SUPABASE_URL","")).rstrip("/");self.key=service_role_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY","")
-  if not self.url or not self.key:raise RuntimeError("Supabase runtime credentials are not configured")
+  cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers
  def record(self,*,run_id:str,result:DeploymentResult,metadata:dict|None=None):
   payload={"run_id":run_id,"environment":result.environment.value,"status":result.status,"deployment_ref":result.deployment_ref,"metadata":{"provider":result.provider,"preview_url":result.preview_url,**(metadata or {})}}
-  req=urllib.request.Request(f"{self.url}/rest/v1/factory_deployments",data=json.dumps(payload).encode(),method="POST",headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json","Prefer":"return=representation"})
+  req=urllib.request.Request(f"{self.url}/rest/v1/factory_deployments",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json","Prefer":"return=representation"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
   except urllib.error.HTTPError as exc:raise RuntimeError(f"deployment evidence insert failed ({exc.code})") from exc

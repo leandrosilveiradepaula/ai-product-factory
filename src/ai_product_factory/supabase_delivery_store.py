@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json,os,urllib.error,urllib.request
 from dataclasses import dataclass
+from .supabase_server import resolve_supabase_server_config
 
 @dataclass(frozen=True)
 class DurableRunRecord:
@@ -9,10 +10,9 @@ class DurableRunRecord:
 class SupabaseDeliveryStore:
  """Narrow durable store for the GitHub delivery loop."""
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
-  self.url=(url or os.getenv("SUPABASE_URL","")).rstrip("/");self.key=service_role_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY","")
-  if not self.url or not self.key:raise RuntimeError("Supabase runtime credentials are not configured")
+  cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers
  def _rpc(self,name:str,payload:dict):
-  req=urllib.request.Request(f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),method="POST",headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  req=urllib.request.Request(f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
   except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
@@ -23,7 +23,7 @@ class SupabaseDeliveryStore:
  def record_tool_usage(self,*,run_id:str,tool_family:str,operation:str|None=None,usage_units:float|None=None,estimated_cost:float|None=None,metadata:dict|None=None):
   return self._rpc("factory_record_delivery_tool_usage",{"p_run_id":run_id,"p_tool_family":tool_family,"p_operation":operation,"p_usage_units":usage_units,"p_estimated_cost":estimated_cost,"p_metadata":metadata or {}})
  def _insert(self,table:str,payload:dict):
-  req=urllib.request.Request(f"{self.url}/rest/v1/{table}",data=json.dumps(payload).encode(),method="POST",headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json","Prefer":"return=representation"})
+  req=urllib.request.Request(f"{self.url}/rest/v1/{table}",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json","Prefer":"return=representation"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
   except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane insert failed: {table} ({exc.code})") from exc

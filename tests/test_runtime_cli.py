@@ -44,5 +44,11 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["vercel_preview"]["ready"])
         self.assertFalse(out["github_alerts"]["ready"])
 
+    def test_health_recognizes_modern_supabase_secret_key(self):
+        env={"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SECRET_KEY":"sb_secret_modern"}
+        with patch.dict("os.environ", env, clear=True):
+            out=run_health_once()
+        self.assertTrue(out["control_plane_configured"])
+
 if __name__ == "__main__":
     unittest.main()

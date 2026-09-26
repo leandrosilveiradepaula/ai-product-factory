@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json,os,urllib.error,urllib.request
 from .backlog_dispatcher import BacklogDispatcher,DispatchDecision,PlannedTask
+from .supabase_server import resolve_supabase_server_config
 
 class SupabaseBacklogDispatch:
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None,dispatcher:BacklogDispatcher|None=None)->None:
-  self.url=(url or os.getenv("SUPABASE_URL","")).rstrip("/");self.key=service_role_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY","");self.dispatcher=dispatcher or BacklogDispatcher()
-  if not self.url or not self.key:raise RuntimeError("Supabase runtime credentials are not configured")
+  cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers;self.dispatcher=dispatcher or BacklogDispatcher()
  def _rpc(self,name:str,payload:dict):
-  req=urllib.request.Request(f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),method="POST",headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  req=urllib.request.Request(f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
   except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
