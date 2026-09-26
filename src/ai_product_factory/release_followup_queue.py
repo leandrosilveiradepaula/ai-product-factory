@@ -59,14 +59,14 @@ class SupabaseReleaseFollowupQueue:
         if not projects or not projects[0].get("repository"):
             raise RuntimeError("awaiting_release run project repository is not configured")
 
-        usage=self._get(f"factory_tool_usage?select=metadata&run_id=eq.{quote(run_id)}&operation=eq.verified_preview_awaiting_human_merge&order=created_at.desc&limit=1")
+        usage=self._get(f"factory_tool_usage?select=metadata,operation&run_id=eq.{quote(run_id)}&operation=in.(verified_preview_awaiting_human_merge,preview_not_required_awaiting_human_merge)&order=created_at.desc&limit=1")
         if not usage:
-            raise RuntimeError("awaiting_release run has no verified preview release evidence")
+            raise RuntimeError("awaiting_release run has no durable release-readiness evidence")
         meta=usage[0].get("metadata") or {}
         pr_number=int(meta.get("pr") or 0)
         head_sha=str(meta.get("head_sha") or "")
         if pr_number < 1 or head_sha != candidate:
-            raise RuntimeError("verified preview release evidence does not match run candidate commit")
+            raise RuntimeError("release-readiness evidence does not match run candidate commit")
 
         project=projects[0]
         return ReleaseFollowupItem(
