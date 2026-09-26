@@ -212,24 +212,33 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
+      checks: read
     env:
       PYTHONPATH: src
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
-      FACTORY_VERCEL_PREVIEW_ENABLED: ${{ vars.FACTORY_VERCEL_PREVIEW_ENABLED }}
+      FACTORY_VERCEL_PREVIEW_ENABLED: "true"
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
       FACTORY_VERCEL_PROJECT_NAME: ${{ vars.FACTORY_VERCEL_PROJECT_NAME }}
-      FACTORY_BROWSER_EVIDENCE_ENABLED: ${{ vars.FACTORY_BROWSER_EVIDENCE_ENABLED }}
-      FACTORY_BROWSER_EVIDENCE_COMMAND_JSON: ${{ vars.FACTORY_BROWSER_EVIDENCE_COMMAND_JSON }}
-      FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS: ${{ vars.FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS }}
+      FACTORY_BROWSER_EVIDENCE_ENABLED: "true"
+      FACTORY_BROWSER_EVIDENCE_COMMAND_JSON: '["node","scripts/verify_preview.mjs"]'
+      FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS: "120"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned Playwright browser
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
       - name: Run at most one verified Preview
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode preview
