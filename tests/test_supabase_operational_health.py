@@ -20,7 +20,7 @@ class Tests(unittest.TestCase):
             {"status":"running","attempt_count":1,"last_error":None,"lease_expires_at":"2026-01-01T00:00:00+00:00"},
             {"status":"failed","attempt_count":3,"last_error":"maximum attempts reached","lease_expires_at":None},
         ]
-        usage=[{"estimated_cost":"1.25"},{"estimated_cost":None}]
+        usage=[{"tool_family":"openai","estimated_cost":"1.25"},{"tool_family":"model","estimated_cost":None},{"tool_family":"github","estimated_cost":None}]
         with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(usage)]):
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             out=reader.read(budget=Decimal("5"),now=datetime(2026,9,26,tzinfo=timezone.utc))

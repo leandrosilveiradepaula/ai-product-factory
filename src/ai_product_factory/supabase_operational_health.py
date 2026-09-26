@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from .operational_alerts import OperationalHealth
+from .cost_observability import requires_cost_estimate
 from .supabase_server import resolve_supabase_server_config
 
 
@@ -34,7 +35,7 @@ class SupabaseOperationalHealthReader:
     def read(self, *, budget: Decimal | None = None, now: datetime | None = None) -> OperationalHealth:
         now=now or datetime.now(timezone.utc)
         runs=self._get("factory_runs?select=status,attempt_count,last_error,lease_expires_at&order=created_at.desc&limit=200")
-        usage=self._get("factory_tool_usage?select=estimated_cost&order=created_at.desc&limit=1000")
+        usage=self._get("factory_tool_usage?select=tool_family,estimated_cost&order=created_at.desc&limit=1000")
         expired=0
         dead=0
         failed=0
@@ -52,7 +53,8 @@ class SupabaseOperationalHealthReader:
         for row in usage:
             value=row.get("estimated_cost")
             if value is None:
-                unknown+=1
+                if requires_cost_estimate(row.get("tool_family")):
+                    unknown+=1
             else:
                 known+=Decimal(str(value))
         return OperationalHealth(expired_leases=expired,dead_letter_runs=dead,failed_runs=failed,unknown_cost_events=unknown,known_cost=known,budget=budget)
