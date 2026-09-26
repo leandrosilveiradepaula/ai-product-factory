@@ -22,6 +22,7 @@ from .operational_alerts import evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
+from .review_gate import EvalResult,evaluate_quality_gate
 
 def require_paid_runtime_budget()->None:
  budget=os.getenv("FACTORY_MODEL_BUDGET_USD");reserve=os.getenv("FACTORY_MODEL_RESERVE_USD");spent=os.getenv("FACTORY_MODEL_KNOWN_SPEND_USD","0")
@@ -74,6 +75,11 @@ def run_ci_once()->dict:
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
+ if decision.action.value=="preview_ready":
+  quality=evaluate_quality_gate(evals=(EvalResult("github_ci",True,required=True),))
+  if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
+  store.record_evaluation(run_id=item.run_id,eval_type="quality_gate",status="success",baseline_ref=item.candidate_commit,result={"passed":True,"reasons":list(quality.reasons),"source":"github_ci"})
+  store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
  return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
 
 def run_alerts_once()->dict:
