@@ -21,10 +21,11 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 1. Implementation opens a PR; production is not touched.
 2. CI follow-up verifies the PR head matches the durable candidate commit.
 3. Green CI persists explicit `quality_gate` evidence.
-4. Verified Preview requires the same candidate commit, successful quality evidence, Vercel Preview deployment, and successful browser/e2e evidence for the exact Preview URL.
-5. The run moves to `awaiting_release`.
-6. A human reviews and merges the PR. The Factory never performs this production merge.
-7. The release observer sees the already-merged PR, records the merge SHA/audit evidence, marks the run `merged`, and closes the linked issue.
+4. Preview applicability is evaluated from explicit project policy and the PR changed files. Missing policy fails closed to Preview required. `required=false` or a non-matching `required_paths` policy records durable `preview_not_required` evidence instead of fabricating a deployment.
+5. When Preview is required, it requires the same candidate commit, successful quality evidence, Preview deployment, and successful browser/e2e evidence for the exact Preview URL.
+6. The run moves to `awaiting_release`.
+7. A human reviews and merges the PR. The Factory never performs this production merge.
+8. The release observer sees the already-merged PR, records the merge SHA/audit evidence, marks the run `merged`, and closes the linked issue.
 
 ## Primary model activation
 
@@ -91,3 +92,12 @@ Factory Console production health:
 `GET https://ai-product-factory-console.vercel.app/api/health`
 
 The response is intentionally minimal and contains only service status and a truncated deployed commit.
+
+## Preview applicability policy
+
+Preview is fail-closed by default. A project can make non-applicability explicit in `factory_projects.manifest.preview`:
+
+- `required: false` with a reason for projects that have no deployable Preview surface;
+- `required_paths: ["apps/web/**", ...]` for monorepos where only specific file changes require a Preview.
+
+The policy is evaluated against the exact PR changed-file list. Skipping a Preview still produces durable release-readiness evidence and never skips the human production merge.
