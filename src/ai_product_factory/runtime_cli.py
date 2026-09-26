@@ -112,6 +112,22 @@ def run_ci_once()->dict:
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
  return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
 
+def run_preview_probe_once()->dict:
+ item=SupabasePreviewFollowupQueue().next_pending()
+ if item is None:return {"claimed":False,"status":"empty","preview_required":False}
+ github=GitHubRestAdapter(repository=item.repository)
+ pr=github.get_pull_request(item.pr_number)
+ if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
+ changed_files=github.get_pull_request_files(item.pr_number)
+ applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
+ if not applicability.required:
+  return {"claimed":True,"status":"ready","run_id":item.run_id,"preview_required":False,"reason":applicability.reason}
+ try:
+  project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
+ except ValueError as exc:
+  return {"claimed":True,"status":"blocked","run_id":item.run_id,"preview_required":True,"error":str(exc)}
+ return {"claimed":True,"status":"ready","run_id":item.run_id,"preview_required":True,"preview_mode":project_cfg.mode}
+
 def run_preview_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
@@ -171,24 +187,24 @@ def run_alerts_once()->dict:
  results=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository)).publish_many(alerts)
  return {"status":"ok","published":sum(1 for result in results if result.created),"alerts":[{"code":result.code,"created":result.created,"issue_number":result.issue_number} for result in results]}
 
-def run_dispatch_once(project_key:str)->dict:
- decision=SupabaseBacklogDispatch().dispatch_next(project_key)
+def run_dispatch_once(project_key:str|None=None)->dict:
+ dispatch=SupabaseBacklogDispatch()
+ decision=dispatch.dispatch_next(project_key) if project_key else dispatch.dispatch_next_any()
  if decision is None:return {"claimed":False,"status":"empty"}
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci","release","preview"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="preview-probe":out=run_preview_probe_once()
  elif args.mode=="preview":out=run_preview_once()
  elif args.mode=="release":out=run_release_once()
  elif args.mode=="ci":out=run_ci_once()
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id)
- elif args.mode=="dispatch":
-  if not args.project_key:p.error("--project-key is required for dispatch mode")
-  out=run_dispatch_once(args.project_key)
+ elif args.mode=="dispatch":out=run_dispatch_once(args.project_key)
  else:out=run_product_once(args.worker_id)
  print(json.dumps(out));return 0 if not out.get("error") else 2
 if __name__=="__main__":raise SystemExit(main())
