@@ -14,7 +14,7 @@ class ReleasePolicyTests(unittest.TestCase):
         decision = evaluate_release(ReleaseEnvironment.PREVIEW)
         self.assertTrue(decision.may_release_autonomously)
 
-    def test_production_always_requires_human_in_mvp(self):
+    def test_production_always_requires_human(self):
         decision = evaluate_release(ReleaseEnvironment.PROD)
         self.assertFalse(decision.may_release_autonomously)
         self.assertTrue(decision.human_gate_required)

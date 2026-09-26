@@ -79,7 +79,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar lifecycle greenfield offline sem chamadas externas.
 - [x] Validar que fluxo low-risk pode chegar autonomamente ate Preview; producao permanece sempre sob gate humano.
 - [x] Validar greenfield offline com 0 chamadas de Codex/modelo.
-- [ ] Revisar gates e ampliar autonomia.
+- [x] Revisar gates e ampliar autonomia ate o limite seguro: non-prod low-risk autonomo; apenas riscos definidos e producao exigem humano.
 
 ## Gate atual
 
