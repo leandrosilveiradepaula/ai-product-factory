@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib import request
+from urllib import error, request
 
 from .model_executor import ModelProvider, ModelRequest, ModelResult, ModelRole
 from .models import Complexity
@@ -15,9 +15,20 @@ Transport = Callable[[str, str, dict[str, str], bytes], tuple[int, Any]]
 
 def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes) -> tuple[int, Any]:
     req = request.Request(url, data=body, headers=headers, method=method)
-    with request.urlopen(req, timeout=120) as response:
-        raw = response.read().decode("utf-8")
-        return response.status, json.loads(raw)
+    try:
+        with request.urlopen(req, timeout=120) as response:
+            raw = response.read().decode("utf-8")
+            return response.status, json.loads(raw)
+    except error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            data = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            data = {"error": {"message": raw[:500]}}
+        request_id = exc.headers.get("x-request-id") if exc.headers else None
+        if request_id:
+            data["_request_id"] = request_id
+        return exc.code, data
 
 
 @dataclass(frozen=True)
@@ -84,7 +95,21 @@ class OpenAIResponsesProvider(ModelProvider):
             json.dumps(payload).encode("utf-8"),
         )
         if status < 200 or status >= 300:
-            raise RuntimeError(f"OpenAI request failed with HTTP {status}")
+            error_data = data.get("error") if isinstance(data, dict) else None
+            if not isinstance(error_data, dict):
+                error_data = {}
+            error_type = error_data.get("type")
+            error_code = error_data.get("code")
+            message = error_data.get("message")
+            request_id = data.get("_request_id") if isinstance(data, dict) else None
+            details = [
+                f"HTTP {status}",
+                f"type={error_type}" if error_type else None,
+                f"code={error_code}" if error_code else None,
+                f"message={message}" if message else None,
+                f"request_id={request_id}" if request_id else None,
+            ]
+            raise RuntimeError("OpenAI request failed: " + "; ".join(x for x in details if x))
 
         output_text = self._extract_output_text(data)
         usage_raw = data.get("usage") or {}
