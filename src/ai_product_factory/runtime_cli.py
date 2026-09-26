@@ -25,6 +25,7 @@ from .ci_followup_queue import SupabaseCIFollowupQueue
 from .release_followup_queue import SupabaseReleaseFollowupQueue
 from .preview_followup_queue import SupabasePreviewFollowupQueue
 from .project_preview_config import resolve_project_vercel_preview_config
+from .preview_policy import evaluate_preview_applicability
 from .vercel_preview import VercelPreviewAdapter,VercelPreviewConfig
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
 from .supabase_deployment import DurablePreviewAdapter,SupabaseDeploymentEvidenceStore
@@ -101,27 +102,34 @@ def run_ci_once()->dict:
  return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
 
 def run_preview_once()->dict:
- readiness=verified_preview_readiness()
- if not readiness.ready:return {"claimed":False,"status":"blocked","missing":list(readiness.missing)}
  item=SupabasePreviewFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
  issue=github.get_issue(item.issue_number)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
+ changed_files=github.get_pull_request_files(item.pr_number)
+ applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
+ store=SupabaseDeliveryStore()
+ loop=AutonomousGitHubLoop(github,store)
+ session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
+ if not applicability.required:
+  status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
+  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":False,"reason":applicability.reason}
+ readiness=verified_preview_readiness()
+ if not readiness.ready:return {"claimed":False,"status":"blocked","run_id":item.run_id,"missing":list(readiness.missing)}
  try:
   project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
  except ValueError as exc:
   return {"claimed":False,"status":"blocked","run_id":item.run_id,"error":str(exc)}
  vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id,project_name=project_cfg.project_name,github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
- store=SupabaseDeliveryStore()
  deployment=DurablePreviewAdapter(VercelPreviewAdapter(vercel_cfg),SupabaseDeploymentEvidenceStore(),run_id=item.run_id)
  browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
- session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
- status=AutonomousGitHubLoop(github,store).finalize_verified_preview(session,verified)
- return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref}
+ status=loop.finalize_verified_preview(session,verified)
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref}
+
 def run_release_once()->dict:
  item=SupabaseReleaseFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
