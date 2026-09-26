@@ -31,6 +31,7 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,7 +46,7 @@ jobs:
           else
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ -n "$OPENAI_API_KEY" ]; then
+          if [ "$FACTORY_PRIMARY_MODEL_ENABLED" = "true" ] && [ -n "$OPENAI_API_KEY" ]; then
             echo "primary_model=true" >> "$GITHUB_OUTPUT"
           else
             echo "primary_model=false" >> "$GITHUB_OUTPUT"
@@ -99,12 +100,20 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Refuse Direct when paid primary model is not explicitly enabled
+        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED != 'true' }}
+        shell: bash
+        run: |
+          echo "Direct execution is fail-closed: set FACTORY_PRIMARY_MODEL_ENABLED=true only after primary auth/quota readiness is approved."
+          exit 1
       - name: Process at most one Direct implementation task
+        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"

@@ -120,3 +120,19 @@ export async function getProjectOperations(projectId:string):Promise<ProjectOper
  timeline.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
  return{timeline,estimatedCost:tu.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),usageUnits:tu.reduce((s:number,x:any)=>s+Number(x.usage_units||0),0),codexInvocations:cu.reduce((s:number,x:any)=>s+Number(x.invocation_count||0),0),evaluations:ev.length,deployments:dp.length};
 }
+
+
+export type OperationsHealth={expiredLeases:number;deadLetterRuns:number;failedRuns:number;queuedRuns:number;knownCost:number;unknownCostEvents:number;incidents:{id:string;status:string;route:string|null;attempts:number;error:string|null;leaseExpiresAt:string|null;createdAt:string}[]};
+export async function getOperationsHealth():Promise<OperationsHealth>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{expiredLeases:0,deadLetterRuns:0,failedRuns:0,queuedRuns:0,knownCost:0,unknownCostEvents:0,incidents:[]};
+ const [runsResponse,usageResponse]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=estimated_cost,created_at&order=created_at.desc&limit=1000`,{headers:cfg.headers,cache:"no-store"})
+ ]);
+ if(!runsResponse.ok)throw new Error("Unable to load operational health");
+ const runs=await runsResponse.json();const usage=usageResponse.ok?await usageResponse.json():[];const now=Date.now();
+ const expired=(x:any)=>x.lease_expires_at&&Date.parse(x.lease_expires_at)<now&&["running","implementing"].includes(x.status);
+ const dead=(x:any)=>x.status==="failed"&&String(x.last_error||"").includes("maximum attempts");
+ const incidents=runs.filter((x:any)=>expired(x)||dead(x)||x.status==="failed").map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
+ return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter((x:any)=>x.status==="failed").length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null).length,incidents};
+}
