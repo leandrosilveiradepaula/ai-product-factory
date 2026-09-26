@@ -84,3 +84,39 @@ export async function resolveHumanGate(gateId:string,resolution:"approved"|"reje
 export type OperatorAdminRow={userId:string;email:string|null;role:"operator"|"admin"|null;active:boolean};
 export async function getOperatorAdminRows():Promise<OperatorAdminRow[]>{await requireConsoleAdmin();const cfg=serverHeaders();if(!cfg)return[];const usersResponse=await fetch(`${cfg.url}/auth/v1/admin/users?page=1&per_page=100`,{headers:cfg.headers,cache:"no-store"});if(!usersResponse.ok)throw new Error("Unable to list Supabase Auth users");const payload=await usersResponse.json();const users=Array.isArray(payload)?payload:(payload.users||[]);const operatorsResponse=await fetch(`${cfg.url}/rest/v1/factory_console_operators?select=user_id,role,is_active`,{headers:cfg.headers,cache:"no-store"});if(!operatorsResponse.ok)throw new Error("Unable to list console operators");const operators=await operatorsResponse.json();const byId=new Map(operators.map((x:any)=>[String(x.user_id),x]));return users.map((u:any)=>{const op:any=byId.get(String(u.id));return{userId:String(u.id),email:u.email?String(u.email):null,role:op?.role||null,active:Boolean(op?.is_active)}});}
 export async function upsertConsoleOperator(targetUserId:string,role:"operator"|"admin",active:boolean){const actor=await requireConsoleAdmin();const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");if(targetUserId===actor.userId&&!active)throw new Error("Você não pode desativar o próprio acesso administrativo.");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_upsert_console_operator`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_actor_user_id:actor.userId,p_target_user_id:targetUserId,p_role:role,p_active:active}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível atualizar o operador.");}
+
+
+export type ProjectTimelineItem={id:string;kind:string;title:string;status:string|null;at:string;detail:string|null;cost:number|null;units:number|null;ref:string|null};
+export type ProjectOperations={timeline:ProjectTimelineItem[];estimatedCost:number;usageUnits:number;codexInvocations:number;evaluations:number;deployments:number};
+export async function getProjectOperations(projectId:string):Promise<ProjectOperations>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{timeline:[],estimatedCost:0,usageUnits:0,codexInvocations:0,evaluations:0,deployments:0};
+ const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id&project_id=eq.${encodeURIComponent(projectId)}`,{headers:cfg.headers,cache:"no-store"});
+ const tasks=tasksResponse.ok?await tasksResponse.json():[];const taskIds=tasks.map((x:any)=>String(x.id));
+ if(!taskIds.length)return{timeline:[],estimatedCost:0,usageUnits:0,codexInvocations:0,evaluations:0,deployments:0};
+ const taskFilter=taskIds.join(",");
+ const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,branch_name,created_at,finished_at&task_id=in.(${taskFilter})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
+ const runs=runsResponse.ok?await runsResponse.json():[];const runIds=runs.map((x:any)=>String(x.id));const runFilter=runIds.join(",");
+ const empty=Promise.resolve({ok:false,json:async()=>[]}) as any;
+ const req=(path:string)=>runIds.length?fetch(`${cfg.url}/rest/v1/${path}`,{headers:cfg.headers,cache:"no-store"}):empty;
+ const [tools,codex,evals,deploys,gates,audit,decisions]=await Promise.all([
+  req(`factory_tool_usage?select=id,run_id,tool_family,operation,usage_units,estimated_cost,metadata,created_at&run_id=in.(${runFilter})`),
+  req(`factory_codex_usage?select=id,run_id,policy_level,reason,invocation_count,reported_usage,created_at&run_id=in.(${runFilter})`),
+  req(`factory_evaluations?select=id,run_id,eval_type,status,score,baseline_ref,result,created_at&run_id=in.(${runFilter})`),
+  req(`factory_deployments?select=id,run_id,environment,status,deployment_ref,rollback_ref,deployed_at,metadata,created_at&run_id=in.(${runFilter})`),
+  req(`factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at,resolved_at,resolved_by,resolution&run_id=in.(${runFilter})`),
+  fetch(`${cfg.url}/rest/v1/factory_audit_events?select=id,run_id,actor_type,actor_ref,event_type,payload,created_at&project_id=eq.${encodeURIComponent(projectId)}`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_decisions?select=id,task_id,decision_type,question,decision,decided_by,created_at&project_id=eq.${encodeURIComponent(projectId)}`,{headers:cfg.headers,cache:"no-store"})
+ ]);
+ const read=async(r:any)=>r.ok?await r.json():[];const [tu,cu,ev,dp,gt,au,de]=await Promise.all([read(tools),read(codex),read(evals),read(deploys),read(gates),read(audit),read(decisions)]);
+ const timeline:ProjectTimelineItem[]=[];
+ runs.forEach((x:any)=>timeline.push({id:`run-${x.id}`,kind:"run",title:`Run · ${x.execution_route||"unrouted"}`,status:x.status,at:x.finished_at||x.created_at,detail:x.branch_name||null,cost:null,units:null,ref:x.candidate_commit||null}));
+ tu.forEach((x:any)=>timeline.push({id:`tool-${x.id}`,kind:"tool",title:`${x.tool_family} · ${x.operation}`,status:null,at:x.created_at,detail:null,cost:x.estimated_cost==null?null:Number(x.estimated_cost),units:x.usage_units==null?null:Number(x.usage_units),ref:null}));
+ cu.forEach((x:any)=>timeline.push({id:`codex-${x.id}`,kind:"codex",title:`Codex policy L${x.policy_level}`,status:Number(x.invocation_count)>0?"invoked":"not invoked",at:x.created_at,detail:JSON.stringify(x.reason||{}),cost:null,units:Number(x.invocation_count||0),ref:null}));
+ ev.forEach((x:any)=>timeline.push({id:`eval-${x.id}`,kind:"evaluation",title:x.eval_type,status:x.status,at:x.created_at,detail:x.score==null?null:`score ${x.score}`,cost:null,units:null,ref:x.baseline_ref||null}));
+ dp.forEach((x:any)=>timeline.push({id:`deploy-${x.id}`,kind:"deployment",title:`Deployment · ${x.environment}`,status:x.status,at:x.deployed_at||x.created_at,detail:null,cost:null,units:null,ref:x.deployment_ref||null}));
+ gt.forEach((x:any)=>timeline.push({id:`gate-${x.id}`,kind:"gate",title:`Gate · ${x.gate_type}`,status:x.status,at:x.resolved_at||x.requested_at,detail:x.resolved_by||null,cost:null,units:null,ref:null}));
+ au.forEach((x:any)=>timeline.push({id:`audit-${x.id}`,kind:"audit",title:x.event_type,status:null,at:x.created_at,detail:[x.actor_type,x.actor_ref].filter(Boolean).join(" · ")||null,cost:null,units:null,ref:null}));
+ de.forEach((x:any)=>timeline.push({id:`decision-${x.id}`,kind:"decision",title:x.decision_type,status:null,at:x.created_at,detail:x.question||x.decided_by||null,cost:null,units:null,ref:null}));
+ timeline.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+ return{timeline,estimatedCost:tu.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),usageUnits:tu.reduce((s:number,x:any)=>s+Number(x.usage_units||0),0),codexInvocations:cu.reduce((s:number,x:any)=>s+Number(x.invocation_count||0),0),evaluations:ev.length,deployments:dp.length};
+}
