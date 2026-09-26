@@ -41,7 +41,7 @@ class AutonomousGitHubLoop:
         self.store.update_run_status(run_id, "implementing", candidate_commit=plan_commit)
         return GitHubWorkSession(issue, branch, run_id, base_sha, plan_commit)
 
-    def commit_implementation(self, session: GitHubWorkSession, *, files: dict[str, str], message: str) -> str:
+    def commit_implementation(self, session: GitHubWorkSession, *, files: dict[str, str | None], message: str) -> str:
         sha = self.github.commit_files(session.branch, files, message=message)
         self.store.record_tool_usage(
             run_id=session.run_id, tool_family="github", operation="commit_implementation",
