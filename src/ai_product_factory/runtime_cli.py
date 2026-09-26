@@ -40,9 +40,19 @@ from .review_gate import EvalResult,evaluate_quality_gate
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
 
-def require_paid_runtime_budget()->None:
- budget=os.getenv("FACTORY_MODEL_BUDGET_USD");reserve=os.getenv("FACTORY_MODEL_RESERVE_USD");spent=os.getenv("FACTORY_MODEL_KNOWN_SPEND_USD","0")
- require_cost_ceiling(budget=Decimal(budget) if budget else None,known_spend=Decimal(spent),reserved_cost=Decimal(reserve) if reserve else None,strict=True)
+def require_paid_runtime_budget(*, health_reader=None)->None:
+ budget_raw=os.getenv("FACTORY_MODEL_BUDGET_USD")
+ reserve_raw=os.getenv("FACTORY_MODEL_RESERVE_USD")
+ budget=Decimal(budget_raw) if budget_raw else None
+ reserve=Decimal(reserve_raw) if reserve_raw else None
+ if budget is None or reserve is None:
+  require_cost_ceiling(budget=budget,known_spend=Decimal("0"),reserved_cost=reserve,strict=True)
+  return
+ reader=health_reader or SupabaseOperationalHealthReader()
+ health=reader.read(budget=budget)
+ if health.unknown_cost_events>0:
+  raise PermissionError("paid usage ledger contains unknown-cost events")
+ require_cost_ceiling(budget=budget,known_spend=health.known_cost,reserved_cost=reserve,strict=True)
 
 def build_handler():
  require_primary_runtime_enabled()
