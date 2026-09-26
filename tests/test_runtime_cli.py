@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, run_alerts_once, run_health_once
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, run_alerts_once, run_ci_once, run_health_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -44,6 +44,13 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["vercel_preview"]["ready"])
         self.assertFalse(out["github_alerts"]["ready"])
 
+    def test_ci_followup_empty_queue_has_no_github_side_effect(self):
+        queue=unittest.mock.MagicMock()
+        queue.next_pending.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            out=run_ci_once()
+        self.assertEqual(out,{"claimed":False,"status":"empty"})
+        github.assert_not_called()
     def test_alert_mode_is_blocked_without_explicit_enable_and_config(self):
         with patch.dict("os.environ", {}, clear=True):
             out=run_alerts_once()
