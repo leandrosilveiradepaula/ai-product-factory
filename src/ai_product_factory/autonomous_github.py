@@ -134,6 +134,34 @@ class AutonomousGitHubLoop:
             )
         return "awaiting_release"
 
+    def finalize_preview_not_required(self, session: GitHubWorkSession, *, reason: str, changed_files: tuple[str, ...]) -> str:
+        if session.pull_request is None:
+            raise ValueError("pull request has not been opened")
+        if not reason.strip():
+            raise ValueError("preview-not-required reason cannot be empty")
+        self.store.update_run_status(session.run_id, "awaiting_release", candidate_commit=session.pull_request.head_sha)
+        metadata={
+            "pr": session.pull_request.number,
+            "head_sha": session.pull_request.head_sha,
+            "reason": reason,
+            "changed_files": list(changed_files),
+        }
+        self.store.record_tool_usage(
+            run_id=session.run_id,
+            tool_family="github",
+            operation="preview_not_required_awaiting_human_merge",
+            metadata=metadata,
+        )
+        record_audit_event=getattr(self.store,"record_audit_event",None)
+        if record_audit_event is not None:
+            record_audit_event(
+                run_id=session.run_id,
+                event_type="release.preview_not_required",
+                payload=metadata,
+                actor_ref="autonomous_github_loop",
+            )
+        return "awaiting_release"
+
     def observe_manual_merge(self, session: GitHubWorkSession) -> str | None:
         if session.pull_request is None:
             raise ValueError("pull request has not been opened")
