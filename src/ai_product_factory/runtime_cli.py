@@ -33,21 +33,20 @@ def run_recovery_once(max_attempts:int=3)->dict:
 
 def run_product_once(worker_id:str)->dict:
  try:
-  require_paid_runtime_budget()
   handler=build_handler()
- except RuntimeError as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
+  require_paid_runtime_budget()
+ except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  result=RuntimeWorker(queue=SupabaseRuntimeQueue(),handler=handler,worker_id=worker_id).run_once()
  return {"claimed":result is not None,"status":result.status.value if result else None,"error":result.error if result else None}
 
 def run_direct_once(worker_id:str)->dict:
- try:require_paid_runtime_budget()
- except PermissionError as exc:return {"claimed":False,"status":"blocked","error":f"cost ceiling: {exc}"}
  auth=RuntimeAuthResolver().resolve()
  if auth.kind != AuthKind.OPENAI_API_KEY:return {"claimed":False,"status":"blocked","error":f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})"}
- # Build the model producer before claiming so missing/unsupported auth cannot strand a run.
- producer=ModelImplementationProducer(ModelExecutor(primary=OpenAIResponsesProvider()))
  item=SupabaseDirectRunQueue().claim_next(worker_id)
  if item is None:return {"claimed":False,"status":"empty"}
+ try:require_paid_runtime_budget()
+ except PermissionError as exc:return {"claimed":False,"status":"blocked","error":f"cost ceiling: {exc}"}
+ producer=ModelImplementationProducer(ModelExecutor(primary=OpenAIResponsesProvider()))
  github=GitHubRestAdapter(repository=item.repository)
  loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
