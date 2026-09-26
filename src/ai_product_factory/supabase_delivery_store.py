@@ -22,3 +22,13 @@ class SupabaseDeliveryStore:
   return DurableRunRecord(d["run_id"],d["task_id"],d["status"],d.get("candidate_commit"))
  def record_tool_usage(self,*,run_id:str,tool_family:str,operation:str|None=None,usage_units:float|None=None,estimated_cost:float|None=None,metadata:dict|None=None):
   return self._rpc("factory_record_delivery_tool_usage",{"p_run_id":run_id,"p_tool_family":tool_family,"p_operation":operation,"p_usage_units":usage_units,"p_estimated_cost":estimated_cost,"p_metadata":metadata or {}})
+ def _insert(self,table:str,payload:dict):
+  req=urllib.request.Request(f"{self.url}/rest/v1/{table}",data=json.dumps(payload).encode(),method="POST",headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json","Prefer":"return=representation"})
+  try:
+   with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
+  except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane insert failed: {table} ({exc.code})") from exc
+  return None if not raw else json.loads(raw)
+ def record_evaluation(self,*,run_id:str,eval_type:str,status:str,score:float|None=None,baseline_ref:str|None=None,result:dict|None=None):
+  return self._insert("factory_evaluations",{"run_id":run_id,"eval_type":eval_type,"status":status,"score":score,"baseline_ref":baseline_ref,"result":result or {}})
+ def record_audit_event(self,*,run_id:str,event_type:str,payload:dict|None=None,actor_type:str="factory",actor_ref:str|None=None):
+  return self._insert("factory_audit_events",{"run_id":run_id,"actor_type":actor_type,"actor_ref":actor_ref,"event_type":event_type,"payload":payload or {}})
