@@ -78,3 +78,4 @@ Production release requires a human gate. For repositories where merging the PR 
 3. Supply the external Vercel token and browser/e2e command only when Preview execution is intentionally activated; per-project Vercel team/project configuration is read from the Control Plane manifest with explicit env fallback.
 4. Keep verified Preview manual-only until its external credentials and browser command pass readiness; the executable path is wired and cannot promote to production.
 5. Decide whether to schedule `runtime --mode alerts`; the executable alert path exists but remains unscheduled and disabled by default.
+6. Supabase Auth leaked-password protection is currently reported disabled by the security advisor; enable it through the Supabase Auth dashboard when administrative hardening is performed.
