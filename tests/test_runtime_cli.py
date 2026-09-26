@@ -4,23 +4,41 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, run_alerts_once, run_ci_once, run_health_once
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once
 
 
 class RuntimeCliTests(unittest.TestCase):
     def test_runtime_builds_primary_handler_for_api_key(self):
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}, clear=True):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
             handler = build_handler()
         self.assertIsInstance(handler, ProductStageExecutor)
 
+    def test_primary_runtime_flag_is_required_intrinsically(self):
+        with patch.dict("os.environ", {"OPENAI_API_KEY":"test"}, clear=True):
+            with self.assertRaises(PermissionError):
+                require_primary_runtime_enabled()
+
+    def test_product_blocks_before_queue_when_primary_flag_is_off(self):
+        env={"OPENAI_API_KEY":"test","FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
+        with patch.dict("os.environ",env,clear=True), patch("ai_product_factory.runtime_cli.SupabaseRuntimeQueue") as queue:
+            out=run_product_once("w")
+        self.assertEqual(out["status"],"blocked")
+        queue.assert_not_called()
+
+    def test_direct_blocks_before_claim_when_primary_flag_is_off(self):
+        env={"OPENAI_API_KEY":"test","FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
+        with patch.dict("os.environ",env,clear=True), patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue") as queue:
+            out=run_direct_once("w")
+        self.assertEqual(out["status"],"blocked")
+        queue.assert_not_called()
     def test_runtime_fails_before_claim_when_auth_is_missing(self):
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {"FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
             with self.assertRaises(RuntimeError) as ctx:
                 build_handler()
         self.assertIn(AuthKind.NONE.value, str(ctx.exception))
 
     def test_unofficial_chatgpt_token_is_ignored_by_primary_runtime(self):
-        with patch.dict("os.environ", {"CHATGPT_ACCESS_TOKEN": "x"}, clear=True):
+        with patch.dict("os.environ", {"CHATGPT_ACCESS_TOKEN": "x","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
             with self.assertRaises(RuntimeError) as ctx:
                 build_handler()
         self.assertIn(AuthKind.NONE.value, str(ctx.exception))
