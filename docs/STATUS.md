@@ -30,7 +30,7 @@ The runtime includes:
 - provider-independent operational alert policy with cost relevance filtering so non-billable GitHub/Supabase events do not create false unknown-cost incidents;
 - optional GitHub Issues alert adapter with deterministic per-code deduplication;
 - explicit `runtime --mode alerts`, fail-closed unless GitHub alerting is intentionally enabled and configured;
-- optional fail-closed Vercel preview adapter with per-project team/project configuration, runtime token, and no production target;
+- optional fail-closed Vercel preview adapters: GitHub-integrated discovery using the workflow `GITHUB_TOKEN`, plus Vercel API token fallback; neither can target production;
 - explicit manual `runtime --mode preview` that selects only `preview_ready` runs with durable PR + quality-gate evidence; explicit project policy may mark Preview not applicable, otherwise the runtime creates/verifies Preview and then stops at `awaiting_release`;
 - side-effect-free readiness reporting for Vercel preview and GitHub Issues alerts; both remain disabled until explicit enable flags and complete configuration are present;
 - modern Supabase server credentials (`SUPABASE_SECRET_KEY`) across the Console, Python runtime adapters, and GitHub Actions, with legacy service-role fallback;
@@ -75,7 +75,7 @@ Production release requires a human gate. For repositories where merging the PR 
 
 1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
 2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
-3. Supply the external Vercel token and browser/e2e command only when Preview execution is intentionally activated; per-project Vercel team/project configuration is read from the Control Plane manifest with explicit env fallback.
+3. Supply the browser/e2e command when Preview execution is intentionally activated. Projects with official Vercel↔GitHub integration can use `mode: github` without a Vercel token; `VERCEL_TOKEN` remains an API-mode fallback.
 4. Keep verified Preview manual-only until its external credentials and browser command pass readiness; the executable path is wired and cannot promote to production.
 5. Decide whether to schedule `runtime --mode alerts`; the executable alert path exists but remains unscheduled and disabled by default.
 6. Supabase Auth leaked-password protection is currently reported disabled by the security advisor; enable it through the Supabase Auth dashboard when administrative hardening is performed.
