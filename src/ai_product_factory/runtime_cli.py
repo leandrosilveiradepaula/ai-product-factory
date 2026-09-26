@@ -1,5 +1,6 @@
 from __future__ import annotations
-import argparse,json,socket
+import argparse,json,os,socket
+from decimal import Decimal
 from .model_executor import ModelExecutor
 from .openai_provider import OpenAIResponsesProvider
 from .product_stage_executor import ProductStageExecutor
@@ -15,6 +16,11 @@ from .autonomous_github import AutonomousGitHubLoop
 from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
+from .cost_policy import require_cost_ceiling
+
+def require_paid_runtime_budget()->None:
+ budget=os.getenv("FACTORY_MODEL_BUDGET_USD");reserve=os.getenv("FACTORY_MODEL_RESERVE_USD");spent=os.getenv("FACTORY_MODEL_KNOWN_SPEND_USD","0")
+ require_cost_ceiling(budget=Decimal(budget) if budget else None,known_spend=Decimal(spent),reserved_cost=Decimal(reserve) if reserve else None,strict=True)
 
 def build_handler():
  auth=RuntimeAuthResolver().resolve()
@@ -26,12 +32,16 @@ def run_recovery_once(max_attempts:int=3)->dict:
  return SupabaseRuntimeQueue().recover_expired(max_attempts)
 
 def run_product_once(worker_id:str)->dict:
- try:handler=build_handler()
+ try:
+  require_paid_runtime_budget()
+  handler=build_handler()
  except RuntimeError as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  result=RuntimeWorker(queue=SupabaseRuntimeQueue(),handler=handler,worker_id=worker_id).run_once()
  return {"claimed":result is not None,"status":result.status.value if result else None,"error":result.error if result else None}
 
 def run_direct_once(worker_id:str)->dict:
+ try:require_paid_runtime_budget()
+ except PermissionError as exc:return {"claimed":False,"status":"blocked","error":f"cost ceiling: {exc}"}
  auth=RuntimeAuthResolver().resolve()
  if auth.kind != AuthKind.OPENAI_API_KEY:return {"claimed":False,"status":"blocked","error":f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})"}
  # Build the model producer before claiming so missing/unsupported auth cannot strand a run.
