@@ -17,4 +17,23 @@ class Tests(unittest.TestCase):
   with patch("urllib.request.urlopen",return_value=Response(None)) as call:
    d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret").dispatch_next("demo")
   self.assertIsNone(d);self.assertEqual(call.call_count,1)
+
+ def test_global_dispatch_uses_oldest_active_project(self):
+  claimed={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","title":"small","description":"x","complexity":"low","risk":{},"metadata":{"estimated_files":1}}
+  responses=[
+   Response([{"project_id":"p"}]),
+   Response([{"project_key":"demo"}]),
+   Response(claimed),
+   Response(None),
+  ]
+  with patch("urllib.request.urlopen",side_effect=responses) as call:
+   d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret").dispatch_next_any()
+  self.assertEqual(d.task.project_key,"demo")
+  self.assertEqual(call.call_count,4)
+
+ def test_global_dispatch_empty_is_read_only(self):
+  with patch("urllib.request.urlopen",return_value=Response([])) as call:
+   d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret").dispatch_next_any()
+  self.assertIsNone(d)
+  self.assertEqual(call.call_count,1)
 if __name__=="__main__":unittest.main()
