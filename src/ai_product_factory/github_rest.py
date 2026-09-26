@@ -114,7 +114,7 @@ class GitHubRestAdapter:
                    payload={"ref": f"refs/heads/{branch}", "sha": base_sha})
         return base_sha
 
-    def commit_files(self, branch: str, files: dict[str, str], *, message: str) -> str:
+    def commit_files(self, branch: str, files: dict[str, str | None], *, message: str) -> str:
         if not files:
             raise ValueError("files cannot be empty")
         base_sha = self.get_branch_sha(branch)
@@ -123,6 +123,9 @@ class GitHubRestAdapter:
 
         tree = []
         for path, content in files.items():
+            if content is None:
+                tree.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+                continue
             blob = self._call("POST", f"/repos/{self.repository}/git/blobs",
                               payload={"content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
                                        "encoding": "base64"})
