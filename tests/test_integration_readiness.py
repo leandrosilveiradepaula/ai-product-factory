@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ai_product_factory.integration_readiness import github_alerts_readiness, vercel_preview_readiness
+from ai_product_factory.integration_readiness import browser_evidence_readiness, github_alerts_readiness, verified_preview_readiness, vercel_preview_readiness
 
 
 class IntegrationReadinessTests(unittest.TestCase):
@@ -49,6 +49,26 @@ class IntegrationReadinessTests(unittest.TestCase):
             state = github_alerts_readiness()
         self.assertTrue(state.ready)
         self.assertEqual(state.missing, ())
+
+    def test_browser_evidence_requires_explicit_enable_and_command(self):
+        with patch.dict("os.environ", {"FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["node","verify.mjs"]'}, clear=True):
+            state=browser_evidence_readiness()
+        self.assertTrue(state.configured)
+        self.assertFalse(state.ready)
+
+    def test_verified_preview_requires_both_adapters(self):
+        env={
+            "FACTORY_VERCEL_PREVIEW_ENABLED":"true",
+            "VERCEL_TOKEN":"x",
+            "FACTORY_VERCEL_TEAM_ID":"team",
+            "FACTORY_VERCEL_PROJECT_NAME":"project",
+            "FACTORY_VERCEL_GITHUB_ORG":"owner",
+            "FACTORY_VERCEL_GITHUB_REPO":"repo",
+            "FACTORY_BROWSER_EVIDENCE_ENABLED":"true",
+            "FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["node","verify.mjs"]',
+        }
+        with patch.dict("os.environ",env,clear=True):
+            self.assertTrue(verified_preview_readiness().ready)
 
 
 if __name__ == "__main__":
