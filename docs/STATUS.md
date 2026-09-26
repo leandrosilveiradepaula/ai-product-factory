@@ -28,9 +28,11 @@ The runtime includes:
 - deterministic cost ceilings before paid model providers;
 - lease recovery, dead-letter visibility and operational incident health;
 - provider-independent operational alert policy;
-- optional GitHub Issues alert adapter with deterministic per-code deduplication, disabled until explicitly invoked;
+- optional GitHub Issues alert adapter with deterministic per-code deduplication;
+- explicit `runtime --mode alerts`, fail-closed unless GitHub alerting is intentionally enabled and configured;
 - optional fail-closed Vercel preview adapter with explicit team/project/token configuration and no production target;
 - side-effect-free readiness reporting for Vercel preview and GitHub Issues alerts; both remain disabled until explicit enable flags and complete configuration are present;
+- modern Supabase server credentials (`SUPABASE_SECRET_KEY`) across the Console, Python runtime adapters, and GitHub Actions, with legacy service-role fallback;
 - an hourly bounded autonomous runner for supported work.
 
 Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable.
@@ -70,6 +72,6 @@ Production release currently requires a human gate. Destructive data changes, se
 
 1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
 2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
-3. Supply runtime credentials/configuration for Vercel Preview and GitHub Issues alerts only when those adapters are intentionally activated; readiness is now reported without side effects.
+3. Supply runtime credentials/configuration for Vercel Preview and GitHub Issues alerts only when those adapters are intentionally activated; readiness is reported without side effects.
 4. Connect the ready Vercel adapter to the verified preview flow only after its enable flag is explicitly set; do not promote to production automatically.
-5. Connect the ready GitHub Issues alert adapter to operational alert evaluation only after its enable flag is explicitly set; it remains passive by default.
+5. Decide whether to schedule `runtime --mode alerts`; the executable alert path exists but remains unscheduled and disabled by default.
