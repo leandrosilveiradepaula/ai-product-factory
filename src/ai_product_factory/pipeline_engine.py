@@ -19,6 +19,7 @@ class PipelineStatus(StrEnum):
     AWAITING_HUMAN = "awaiting_human"
     FAILED_GATE = "failed_gate"
     PREVIEW_READY = "preview_ready"
+    AWAITING_RELEASE = "awaiting_release"
     MERGED = "merged"
 
 
@@ -90,8 +91,10 @@ class PipelineEngine:
         *,
         preview: VerifiedPreviewResult,
     ) -> PipelineOutcome:
-        merge_sha = self.github_loop.finalize_verified_preview(session, preview)
-        return PipelineOutcome(PipelineStatus.MERGED, f"verified preview merged as {merge_sha}")
+        status = self.github_loop.finalize_verified_preview(session, preview)
+        if status != "awaiting_release":
+            raise RuntimeError("verified preview did not reach the human release boundary")
+        return PipelineOutcome(PipelineStatus.AWAITING_RELEASE, "verified preview complete; awaiting human PR merge")
 
     def evaluate_ci(
         self,
