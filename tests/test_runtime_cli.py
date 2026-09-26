@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -118,6 +118,32 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(kwargs["eval_type"],"quality_gate")
         self.assertEqual(kwargs["baseline_ref"],"abc")
         self.assertEqual(kwargs["status"],"success")
+
+
+    def test_preview_probe_empty_has_no_github_side_effect(self):
+        queue=MagicMock();queue.next_pending.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            out=run_preview_probe_once()
+        self.assertEqual(out["status"],"empty")
+        self.assertFalse(out["preview_required"])
+        github.assert_not_called()
+
+    def test_preview_probe_reports_non_applicable_without_external_readiness(self):
+        item=SimpleNamespace(run_id="r",repository="owner/repo",manifest={"preview":{"required":False,"reason":"backend only"}},pr_number=9,candidate_commit="abc")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_pull_request.return_value=SimpleNamespace(head_sha="abc");github.get_pull_request_files.return_value=("src/core.py",)
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github):
+            out=run_preview_probe_once()
+        self.assertEqual(out["status"],"ready")
+        self.assertFalse(out["preview_required"])
+
+    def test_dispatch_without_project_uses_global_selector(self):
+        dispatch=MagicMock()
+        dispatch.dispatch_next_any.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch):
+            out=run_dispatch_once()
+        self.assertEqual(out["status"],"empty")
+        dispatch.dispatch_next_any.assert_called_once()
 
     def test_preview_mode_empty_queue_does_not_require_external_readiness(self):
         queue=MagicMock();queue.next_pending.return_value=None

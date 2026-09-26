@@ -29,16 +29,16 @@ The runtime includes:
 - lease recovery, dead-letter visibility and operational incident health;
 - provider-independent operational alert policy with cost relevance filtering so non-billable GitHub/Supabase events do not create false unknown-cost incidents;
 - optional GitHub Issues alert adapter with deterministic per-code deduplication;
-- explicit `runtime --mode alerts`, fail-closed unless GitHub alerting is intentionally enabled and configured;
+- explicit `runtime --mode alerts`, scheduled hourly with deterministic per-code deduplication and backend-only GitHub issue writes;
 - optional fail-closed Vercel preview adapters: GitHub-integrated discovery using the workflow `GITHUB_TOKEN`, plus Vercel API token fallback; neither can target production;
-- explicit manual `runtime --mode preview` that selects only `preview_ready` runs with durable PR + quality-gate evidence; explicit project policy may mark Preview not applicable, otherwise the runtime discovers/creates Preview, runs self-hosted Playwright browser evidence, persists evidence, and then stops at `awaiting_release`;
+- bounded scheduled `runtime --mode preview` with a read-only probe; Playwright is installed only when a queued run actually requires browser verification. Explicit project policy may mark Preview not applicable; all paths still stop at `awaiting_release`;
 - side-effect-free readiness reporting for Vercel preview and GitHub Issues alerts; both remain disabled until explicit enable flags and complete configuration are present;
 - modern Supabase server credentials (`SUPABASE_SECRET_KEY`) across the Console, Python runtime adapters, and GitHub Actions, with legacy service-role fallback;
 - an hourly bounded autonomous runner for supported work;
 - a bounded CI follow-up worker that resumes `ci_pending` Direct runs without model calls and moves green CI to `preview_ready`;
 - a bounded release follow-up worker that only observes a human PR merge, records the merge evidence, marks the run `merged`, and closes the issue after that human action.
 
-Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable. CI follow-up is independent of model authentication and may run hourly.
+Scheduled Direct is wired but remains inert unless Primary is explicitly enabled and both model budget and per-run reservation are configured; runtime auth and the Control Plane cost ledger still fail closed before claim/provider use. Dispatch, CI follow-up, Preview follow-up, release observation, recovery, and operational alerts may run hourly without paid model access.
 
 ## Console deployment
 
@@ -76,6 +76,5 @@ Production release requires a human gate. For repositories where merging the PR 
 1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
 2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
 3. For projects with official Vercel↔GitHub integration, `mode: github` uses the workflow `GITHUB_TOKEN` and the manual Preview job self-hosts pinned Playwright/Chromium; no Vercel token or external browser service is required. `VERCEL_TOKEN` remains an API-mode fallback for other projects.
-4. Keep verified Preview manual-only; its GitHub-integrated standard path is self-contained in Actions and cannot promote to production.
-5. Decide whether to schedule `runtime --mode alerts`; the executable alert path exists but remains unscheduled and disabled by default.
-6. Supabase Auth leaked-password protection is currently reported disabled by the security advisor; enable it through the Supabase Auth dashboard when administrative hardening is performed.
+4. Verified Preview and operational alerts are now scheduled bounded follow-ups; production still stops at the human merge gate.
+5. Supabase Auth leaked-password protection is currently reported disabled by the security advisor; enable it through the Supabase Auth dashboard when administrative hardening is performed.
