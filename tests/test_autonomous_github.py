@@ -15,6 +15,8 @@ class FakeGitHub:
         self.ci_state = CIState.SUCCESS
         self.closed = []
         self.merged = []
+        self.pr_merged = False
+        self.merge_commit_sha = None
 
     def get_issue(self, issue_number):
         return GitHubIssue(issue_number, "Feature", "Body", f"https://example/issue/{issue_number}")
@@ -27,6 +29,9 @@ class FakeGitHub:
 
     def create_pull_request(self, *, title, body, head, base="main"):
         return GitHubPullRequest(9, "impl456", "https://example/pr/9")
+
+    def get_pull_request(self, pr_number):
+        return GitHubPullRequest(pr_number, "impl456", f"https://example/pr/{pr_number}", self.pr_merged, self.merge_commit_sha, "closed" if self.pr_merged else "open")
 
     def get_ci_state(self, pr_number):
         return self.ci_state
@@ -63,18 +68,39 @@ class AutonomousGitHubLoopTests(unittest.TestCase):
         self.assertEqual(self.github.closed, [])
         self.assertEqual(self.store.runs[self.run.id].status, "preview_ready")
 
-    def test_verified_preview_allows_merge_and_closes_issue(self):
+    def test_verified_preview_stops_at_human_release_gate(self):
         session = self._session_with_pr()
         self.loop.evaluate(session, human_gate_required=False)
         preview = VerifiedPreviewResult(
             DeploymentResult("vercel", ReleaseEnvironment.PREVIEW, "success", "dep-1", "https://preview.example"),
             BrowserEvidence("success", "https://preview.example", ("page_load", "console_clean")),
         )
-        merge_sha = self.loop.finalize_verified_preview(session, preview)
+        status = self.loop.finalize_verified_preview(session, preview)
+        self.assertEqual(status, "awaiting_release")
+        self.assertEqual(self.github.merged, [])
+        self.assertEqual(self.github.closed, [])
+        self.assertEqual(self.store.runs[self.run.id].status, "awaiting_release")
+
+    def test_manual_merge_observation_closes_issue_and_marks_merged(self):
+        session = self._session_with_pr()
+        preview = VerifiedPreviewResult(
+            DeploymentResult("vercel", ReleaseEnvironment.PREVIEW, "success", "dep-1", "https://preview.example"),
+            BrowserEvidence("success", "https://preview.example", ("page_load",)),
+        )
+        self.loop.finalize_verified_preview(session, preview)
+        self.github.pr_merged = True
+        self.github.merge_commit_sha = "merge999"
+        merge_sha = self.loop.observe_manual_merge(session)
         self.assertEqual(merge_sha, "merge999")
-        self.assertEqual(self.github.merged, [9])
+        self.assertEqual(self.github.merged, [])
         self.assertEqual(self.github.closed, [5])
         self.assertEqual(self.store.runs[self.run.id].status, "merged")
+
+    def test_unmerged_release_observation_is_side_effect_free(self):
+        session = self._session_with_pr()
+        self.assertIsNone(self.loop.observe_manual_merge(session))
+        self.assertEqual(self.github.closed, [])
+        self.assertEqual(self.github.merged, [])
 
     def test_unverified_preview_cannot_merge(self):
         session = self._session_with_pr()
