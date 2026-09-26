@@ -41,8 +41,8 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Ler CI.
 - [x] CI failure evidence.
 - [x] Bounded auto-repair.
-- [x] Merge automatico quando nao houver gate humano.
-- [x] Fechar issue apos merge.
+- [x] Verified Preview para em `awaiting_release`; merge de producao e exclusivamente humano.
+- [x] Release follow-up observa o merge humano, registra evidencia e fecha a issue depois da acao humana.
 
 ### F3 - Runtime de Desenvolvimento
 - [x] Direct Executor para mudancas pequenas/medias.
@@ -59,9 +59,10 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] CI deterministico por projeto via manifest.
 - [x] Contrato de evals obrigatorios/opcionais.
 - [x] Evidence bundle.
-- [ ] Preview adapter por projeto quando aplicavel.
-- [ ] Browser/E2E adapter quando aplicavel.
-- [ ] Release deployment adapter por plataforma.
+- [x] Preview adapter Vercel com configuracao por projeto e fail-closed.
+- [x] Browser/E2E command adapter com evidencia estruturada e URL exata.
+- [x] Verified Preview runtime com evidencia duravel e fronteira `awaiting_release`.
+- [x] Release observer por plataforma GitHub, sem capacidade de merge automatico.
 
 ### F5 - Piloto Agente SQL Financeiro
 - [x] Onboarding de `agente-sql-langgraph`.
@@ -76,15 +77,15 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 
 ### F6 - Greenfield Test
 - [x] Validar lifecycle greenfield offline sem chamadas externas.
-- [x] Validar que fluxo low-risk pode chegar a release sem gate humano.
+- [x] Validar que fluxo low-risk pode chegar autonomamente ate Preview; producao permanece sempre sob gate humano.
 - [x] Validar greenfield offline com 0 chamadas de Codex/modelo.
 - [ ] Revisar gates e ampliar autonomia.
 
 ## Gate atual
 
-O nucleo deterministico do MVP esta operacional e o provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
+O nucleo deterministico da solucao esta operacional e o provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
-Para evitar custo adicional antes de necessario, o caminho prioritario agora e autenticar o runtime com o entitlement existente do ChatGPT/Codex. A Factory ja possui uma camada de auth desacoplada para API key, ChatGPT/Codex access token e workload identity; o transporte de token/WIF so sera habilitado apos confirmar o mecanismo oficial disponivel no workspace Infodive.
+Para evitar custo adicional antes de necessario, o caminho prioritario continua sendo validar o mecanismo oficial de Workload Identity do workspace para Codex. O runtime aceita API key para o modelo principal e as variaveis oficiais de WIF para Codex; tokens ChatGPT nao oficiais sao deliberadamente rejeitados.
 
 ## Metricas do projeto
 
@@ -99,6 +100,6 @@ Para evitar custo adicional antes de necessario, o caminho prioritario agora e a
 
 ## Validacoes adicionais
 
-- Auth resolver: WIF > ChatGPT/Codex access token > API key, sem expor valores secretos.
+- Auth resolver: mecanismos oficiais apenas; API key para o modelo principal e WIF oficial para Codex, sem expor valores secretos.
 - Usage observability: provider/model/tokens/custo conhecido ou explicitamente desconhecido.
 - Greenfield offline: lifecycle completo low-risk validado com 0 chamadas externas; producao para corretamente em human gate.
