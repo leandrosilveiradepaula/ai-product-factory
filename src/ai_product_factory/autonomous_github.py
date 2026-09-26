@@ -98,27 +98,55 @@ class AutonomousGitHubLoop:
             )
         return decision
 
-    def finalize_verified_preview(self, session: GitHubWorkSession, preview: VerifiedPreviewResult) -> str:
+    def stage_verified_preview(self, session: GitHubWorkSession, preview: VerifiedPreviewResult) -> None:
         if session.pull_request is None:
             raise ValueError("pull request has not been opened")
         if preview.deployment.status != "success":
-            raise ValueError("merge requires successful preview deployment")
+            raise ValueError("release gate requires successful preview deployment")
         if preview.browser_evidence.status != "success":
-            raise ValueError("merge requires successful browser/e2e evidence")
+            raise ValueError("release gate requires successful browser/e2e evidence")
         if not preview.deployment.preview_url or preview.deployment.preview_url != preview.browser_evidence.preview_url:
             raise ValueError("preview deployment and browser evidence URL must match")
-        merge_sha = self.github.merge_pull_request(session.pull_request.number)
+        self.store.update_run_status(session.run_id, "awaiting_release")
+        self.store.record_tool_usage(
+            run_id=session.run_id,
+            tool_family="release_gate",
+            operation="preview_verified",
+            metadata={
+                "pr": session.pull_request.number,
+                "preview_url": preview.deployment.preview_url,
+                "deployment_ref": preview.deployment.deployment_ref,
+                "human_action_required": "merge_pull_request",
+            },
+        )
+        record_audit_event = getattr(self.store, "record_audit_event", None)
+        if record_audit_event is not None:
+            record_audit_event(
+                run_id=session.run_id,
+                event_type="release.awaiting_human_merge",
+                payload={
+                    "pr": session.pull_request.number,
+                    "preview_url": preview.deployment.preview_url,
+                    "deployment_ref": preview.deployment.deployment_ref,
+                },
+                actor_ref="verified-preview",
+            )
+
+    def observe_manual_release(self, session: GitHubWorkSession) -> str | None:
+        if session.pull_request is None:
+            raise ValueError("pull request has not been opened")
+        current = self.github.get_pull_request(session.pull_request.number)
+        if not current.merged:
+            return None
+        merge_sha = current.merge_commit_sha
+        if not merge_sha:
+            raise RuntimeError("merged pull request did not expose merge_commit_sha")
         self.store.update_run_status(session.run_id, "merged", candidate_commit=merge_sha)
         self.store.record_tool_usage(
             run_id=session.run_id,
             tool_family="github",
-            operation="merge_after_verified_preview",
-            metadata={
-                "pr": session.pull_request.number,
-                "merge_sha": merge_sha,
-                "preview_url": preview.deployment.preview_url,
-                "deployment_ref": preview.deployment.deployment_ref,
-            },
+            operation="observe_manual_release",
+            metadata={"pr": current.number, "merge_sha": merge_sha},
         )
         self.github.close_issue(session.issue.number)
         self.store.record_tool_usage(
