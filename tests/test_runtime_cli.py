@@ -41,6 +41,8 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertTrue(out["control_plane_configured"])
         self.assertFalse(out["primary_enabled"])
         self.assertFalse(out["budget_configured"])
+        self.assertFalse(out["vercel_preview"]["ready"])
+        self.assertFalse(out["github_alerts"]["ready"])
 
 if __name__ == "__main__":
     unittest.main()
