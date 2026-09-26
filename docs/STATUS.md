@@ -33,9 +33,10 @@ The runtime includes:
 - optional fail-closed Vercel preview adapter with explicit team/project/token configuration and no production target;
 - side-effect-free readiness reporting for Vercel preview and GitHub Issues alerts; both remain disabled until explicit enable flags and complete configuration are present;
 - modern Supabase server credentials (`SUPABASE_SECRET_KEY`) across the Console, Python runtime adapters, and GitHub Actions, with legacy service-role fallback;
-- an hourly bounded autonomous runner for supported work.
+- an hourly bounded autonomous runner for supported work;
+- a bounded CI follow-up worker that resumes `ci_pending` Direct runs without model calls and moves green CI to `preview_ready`.
 
-Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable.
+Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable. CI follow-up is independent of model authentication and may run hourly.
 
 ## Console deployment
 

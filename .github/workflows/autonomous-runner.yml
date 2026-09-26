@@ -77,6 +77,40 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
 
+  ci-followup:
+    needs: product-stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      checks: read
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Detect Control Plane readiness
+        id: readiness
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            echo "control_plane=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "control_plane=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Process at most one pending CI run
+        if: ${{ steps.readiness.outputs.control_plane == 'true' }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode ci
+
   dispatch:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.project_key != '' }}
     needs: product-stage
