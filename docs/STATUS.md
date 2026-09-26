@@ -28,6 +28,8 @@ The runtime includes:
 - deterministic cost ceilings before paid model providers;
 - lease recovery, dead-letter visibility and operational incident health;
 - provider-independent operational alert policy;
+- optional GitHub Issues alert adapter with deterministic per-code deduplication, disabled until explicitly invoked;
+- optional fail-closed Vercel preview adapter with explicit team/project/token configuration and no production target;
 - an hourly bounded autonomous runner for supported work.
 
 Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable.
@@ -38,7 +40,7 @@ OpenAI API authentication and Codex workspace authentication are intentionally s
 
 The existing API key reached the OpenAI API but returned HTTP 429/quota, so the Factory does not use it for unattended paid work.
 
-Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists, but the managed ChatGPT workspace still needs the Codex WIF rule/provider configuration before it can be exercised.
+Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. The managed ChatGPT workspace currently does not expose the Workload Identity configuration in the Admin Portal; an Enterprise support request has been opened to enable or provide access to Codex WIF before the preflight can be exercised.
 
 Codex invocations performed by the Factory so far: 0.
 
@@ -57,5 +59,5 @@ Production release currently requires a human gate. Destructive data changes, se
 1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
 2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
 3. Enable execution adapters only after their independent readiness gates pass.
-4. Attach a real preview deployment/browser adapter only when its external provider is selected and authorized; the verified preview orchestration and evidence boundary are implemented.
-5. Attach an external notification adapter (for example Slack/email) only when a notification destination is explicitly selected; alert generation is implemented without external side effects.
+4. If Vercel is selected for Factory previews, supply explicit Vercel runtime credentials/configuration and connect the implemented adapter to the verified preview flow; do not promote to production automatically.
+5. If GitHub Issues is selected as the first external alert destination, explicitly wire the implemented deduplicating adapter; it remains passive by default.
