@@ -9,12 +9,12 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `health` | Report configuration/readiness only | None | Hourly runner | None |
 | `recovery` | Requeue expired leases or fail exhausted runs | Control Plane writes | Hourly runner | Bounded attempts |
 | `product` | Execute one product-stage run | Model call + Control Plane writes | Hourly only when ready | Primary enable + auth + budget |
-| `dispatch` | Route one planned task | Control Plane writes | Manual | Project key |
-| `direct` | Produce implementation and open PR | Model + GitHub writes | Manual only | Primary enable + auth + budget + risk gate |
+| `dispatch` | Route one planned task | Control Plane writes | Hourly bounded + manual | Optional project key |
+| `direct` | Produce implementation and open PR | Model + GitHub writes | Hourly only after explicit Primary+budget activation; manual supported | Primary enable + auth + ledger budget + risk gate |
 | `ci` | Resume one `ci_pending` run | GitHub reads + evidence writes | Hourly | Matching durable PR evidence |
-| `preview` | Deploy and verify one `preview_ready` run | Vercel Preview + browser/e2e + evidence writes | Manual only | Preview/browser readiness + quality evidence |
+| `preview` | Deploy and verify one `preview_ready` run | Vercel Preview + browser/e2e + evidence writes | Hourly bounded + manual | Preview applicability/readiness + quality evidence |
 | `release` | Observe one human PR merge | GitHub reads; issue close/evidence after merge | Hourly | Human merge must already exist |
-| `alerts` | Evaluate operational alerts and publish GitHub Issues | GitHub issue writes | Manual only | Explicit alerts enable/config |
+| `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
 
 ## Required release sequence
 
@@ -37,7 +37,7 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 - configured per-run reservation;
 - known spend not already exhausting the configured budget.
 
-Do not enable the primary model merely because an API key exists. Billing/quota readiness and a bounded smoke test are separate prerequisites.
+Do not enable the primary model merely because an API key exists. Billing/quota readiness and a bounded smoke test are separate prerequisites. Scheduled Direct additionally requires non-empty budget and reservation variables; the runtime reads current known spend from the Control Plane ledger and blocks if paid usage has unknown cost.
 
 ## Verified Preview activation
 
@@ -55,7 +55,7 @@ Codex is a selective executor, not the orchestrator. Scheduled Direct remains di
 
 ## Operational alerts
 
-`alerts` is disabled unless `FACTORY_GITHUB_ALERTS_ENABLED=true`. Alert issues are deduplicated by deterministic code. Non-billable GitHub/Supabase usage without cost data must not be treated as unknown paid spend.
+The scheduled alerts job explicitly enables the GitHub Issues sink for that job only. Alert issues are deduplicated by deterministic code. Non-billable GitHub/Supabase usage without cost data must not be treated as unknown paid spend.
 
 ## Supabase credentials
 
