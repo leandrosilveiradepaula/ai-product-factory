@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, run_health_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -33,6 +33,14 @@ class RuntimeCliTests(unittest.TestCase):
         env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25","FACTORY_MODEL_KNOWN_SPEND_USD":"1"}
         with patch.dict("os.environ", env, clear=True):
             require_paid_runtime_budget()
+
+    def test_health_is_side_effect_free_configuration_report(self):
+        with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True):
+            out=run_health_once()
+        self.assertEqual(out["status"],"healthy")
+        self.assertTrue(out["control_plane_configured"])
+        self.assertFalse(out["primary_enabled"])
+        self.assertFalse(out["budget_configured"])
 
 if __name__ == "__main__":
     unittest.main()

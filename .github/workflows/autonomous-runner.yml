@@ -58,6 +58,10 @@ jobs:
           echo "Factory runner is healthy but blocked by external configuration."
           echo "control_plane=${{ steps.readiness.outputs.control_plane }}"
           echo "primary_model=${{ steps.readiness.outputs.primary_model }}"
+      - name: Report runtime health
+        if: ${{ steps.readiness.outputs.control_plane == 'true' }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode health
       - name: Recover expired worker leases
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
