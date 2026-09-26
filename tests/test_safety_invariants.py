@@ -37,6 +37,16 @@ class SafetyInvariantTests(unittest.TestCase):
   runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
   start=runtime.split("def run_release_once",1)[1].split("def run_alerts_once",1)[0]
   self.assertNotIn("merge_pull_request",start)
+ def test_preview_job_is_manual_only_and_read_only_in_github(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  preview=text.split("\n  preview:",1)[1].split("\n  alerts:",1)[0]
+  self.assertIn("github.event_name == 'workflow_dispatch'",preview)
+  self.assertIn("inputs.run_preview == true",preview)
+  self.assertIn("contents: read",preview)
+  self.assertIn("issues: read",preview)
+  self.assertIn("pull-requests: read",preview)
+  self.assertNotIn("contents: write",preview)
+  self.assertNotIn("pull-requests: write",preview)
  def test_primary_requires_explicit_enable_flag(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED',text)
