@@ -29,7 +29,6 @@ class GitHubLoopDecision:
 
 class GitHubAdapter(Protocol):
     def get_ci_state(self, pr_number: int) -> CIState: ...
-    def merge_pull_request(self, pr_number: int) -> str: ...
 
 
 def decide_after_ci(ci_state: CIState, *, human_gate_required: bool) -> GitHubLoopDecision:
