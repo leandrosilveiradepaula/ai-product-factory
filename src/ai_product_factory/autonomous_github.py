@@ -102,29 +102,73 @@ class AutonomousGitHubLoop:
         if session.pull_request is None:
             raise ValueError("pull request has not been opened")
         if preview.deployment.status != "success":
-            raise ValueError("merge requires successful preview deployment")
+            raise ValueError("release requires successful preview deployment")
         if preview.browser_evidence.status != "success":
-            raise ValueError("merge requires successful browser/e2e evidence")
+            raise ValueError("release requires successful browser/e2e evidence")
         if not preview.deployment.preview_url or preview.deployment.preview_url != preview.browser_evidence.preview_url:
             raise ValueError("preview deployment and browser evidence URL must match")
-        merge_sha = self.github.merge_pull_request(session.pull_request.number)
-        self.store.update_run_status(session.run_id, "merged", candidate_commit=merge_sha)
+        self.store.update_run_status(session.run_id, "awaiting_release", candidate_commit=session.pull_request.head_sha)
         self.store.record_tool_usage(
             run_id=session.run_id,
             tool_family="github",
-            operation="merge_after_verified_preview",
+            operation="verified_preview_awaiting_human_merge",
             metadata={
                 "pr": session.pull_request.number,
-                "merge_sha": merge_sha,
+                "head_sha": session.pull_request.head_sha,
                 "preview_url": preview.deployment.preview_url,
                 "deployment_ref": preview.deployment.deployment_ref,
             },
         )
+        record_audit_event = getattr(self.store, "record_audit_event", None)
+        if record_audit_event is not None:
+            record_audit_event(
+                run_id=session.run_id,
+                event_type="release.awaiting_human_merge",
+                payload={
+                    "pr": session.pull_request.number,
+                    "head_sha": session.pull_request.head_sha,
+                    "preview_url": preview.deployment.preview_url,
+                    "deployment_ref": preview.deployment.deployment_ref,
+                },
+                actor_ref="autonomous_github_loop",
+            )
+        return "awaiting_release"
+
+    def observe_manual_merge(self, session: GitHubWorkSession) -> str | None:
+        if session.pull_request is None:
+            raise ValueError("pull request has not been opened")
+        current = self.github.get_pull_request(session.pull_request.number)
+        if current.head_sha != session.pull_request.head_sha:
+            raise RuntimeError("pull request head changed after verified preview")
+        if not current.merged:
+            self.store.update_run_status(session.run_id, "awaiting_release", candidate_commit=current.head_sha)
+            return None
+        if not current.merge_commit_sha:
+            raise RuntimeError("merged pull request has no merge commit SHA")
+        self.store.update_run_status(session.run_id, "merged", candidate_commit=current.merge_commit_sha)
+        self.store.record_tool_usage(
+            run_id=session.run_id,
+            tool_family="github",
+            operation="observe_human_merge",
+            metadata={
+                "pr": current.number,
+                "head_sha": current.head_sha,
+                "merge_sha": current.merge_commit_sha,
+            },
+        )
+        record_audit_event = getattr(self.store, "record_audit_event", None)
+        if record_audit_event is not None:
+            record_audit_event(
+                run_id=session.run_id,
+                event_type="release.human_merge_observed",
+                payload={"pr": current.number, "head_sha": current.head_sha, "merge_sha": current.merge_commit_sha},
+                actor_ref="release-followup",
+            )
         self.github.close_issue(session.issue.number)
         self.store.record_tool_usage(
             run_id=session.run_id,
             tool_family="github",
-            operation="close_issue",
-            metadata={"issue": session.issue.number},
+            operation="close_issue_after_human_merge",
+            metadata={"issue": session.issue.number, "pr": current.number},
         )
-        return merge_sha
+        return current.merge_commit_sha
