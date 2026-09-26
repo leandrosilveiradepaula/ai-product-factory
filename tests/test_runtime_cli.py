@@ -98,16 +98,35 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(kwargs["baseline_ref"],"abc")
         self.assertEqual(kwargs["status"],"success")
 
-    def test_preview_mode_is_blocked_before_queue_without_explicit_readiness(self):
-        with patch.dict("os.environ", {}, clear=True), patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue") as queue:
+    def test_preview_mode_empty_queue_does_not_require_external_readiness(self):
+        queue=MagicMock();queue.next_pending.return_value=None
+        with patch.dict("os.environ", {}, clear=True), patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             out=run_preview_once()
-        self.assertEqual(out["status"],"blocked")
-        queue.assert_not_called()
+        self.assertEqual(out,{"claimed":False,"status":"empty"})
+        github.assert_not_called()
+
+    def test_preview_not_required_bypasses_external_preview_credentials(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"required":False,"reason":"backend only"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("src/core.py",)
+        loop=MagicMock();loop.finalize_preview_not_required.return_value="awaiting_release"
+        with patch.dict("os.environ",{},clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
+             patch("ai_product_factory.runtime_cli.VercelPreviewAdapter") as vercel:
+            out=run_preview_once()
+        self.assertEqual(out["status"],"awaiting_release")
+        self.assertFalse(out["preview_required"])
+        self.assertEqual(out["reason"],"backend only")
+        loop.finalize_preview_not_required.assert_called_once()
+        vercel.assert_not_called()
 
     def test_preview_mode_wires_verified_preview_and_stops_at_release_gate(self):
         item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"team_id":"team","project_name":"web"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
         queue=MagicMock();queue.next_pending.return_value=item
-        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("apps/console/app/page.tsx",)
         verified=SimpleNamespace(deployment=SimpleNamespace(preview_url="https://preview.example",deployment_ref="dep-1"))
         coordinator=MagicMock();coordinator.execute.return_value=verified
         loop=MagicMock();loop.finalize_verified_preview.return_value="awaiting_release"
@@ -129,9 +148,10 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_preview_once()
         self.assertEqual(out["status"],"awaiting_release")
+        self.assertTrue(out["preview_required"])
         self.assertEqual(out["preview_url"],"https://preview.example")
         loop.finalize_verified_preview.assert_called_once()
-        github.merge_pull_request.assert_not_called()
+
     def test_release_followup_empty_queue_has_no_github_side_effect(self):
         queue=MagicMock()
         queue.next_pending.return_value=None

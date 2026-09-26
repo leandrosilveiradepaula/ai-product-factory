@@ -33,6 +33,8 @@ class FakeGitHubTransport:
             return 200, {"object": {"sha": payload["sha"]}}
         if url.endswith("/pulls") and method == "POST":
             return 201, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1"}}
+        if "/pulls/9/files" in url and method == "GET":
+            return 200, [{"filename":"apps/console/app/page.tsx"},{"filename":"src/core.py"}]
         if "/pulls/9" in url and method == "GET":
             return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1"}}
         if "/check-runs" in url and method == "GET":
@@ -67,6 +69,9 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(pr.number, 9)
         self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
 
+    def test_pull_request_files_are_structured(self):
+        files=self.github.get_pull_request_files(9)
+        self.assertEqual(files,("apps/console/app/page.tsx","src/core.py"))
     def test_pending_and_failed_ci(self):
         self.transport.check_runs = [{"status": "in_progress", "conclusion": None}]
         self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)

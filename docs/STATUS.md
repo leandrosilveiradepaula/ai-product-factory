@@ -31,7 +31,7 @@ The runtime includes:
 - optional GitHub Issues alert adapter with deterministic per-code deduplication;
 - explicit `runtime --mode alerts`, fail-closed unless GitHub alerting is intentionally enabled and configured;
 - optional fail-closed Vercel preview adapter with per-project team/project configuration, runtime token, and no production target;
-- explicit manual `runtime --mode preview` that selects only `preview_ready` runs with durable PR + quality-gate evidence, creates Vercel Preview, runs browser/e2e evidence, persists deployment/evaluation evidence, then stops at `awaiting_release`;
+- explicit manual `runtime --mode preview` that selects only `preview_ready` runs with durable PR + quality-gate evidence; explicit project policy may mark Preview not applicable, otherwise the runtime creates/verifies Preview and then stops at `awaiting_release`;
 - side-effect-free readiness reporting for Vercel preview and GitHub Issues alerts; both remain disabled until explicit enable flags and complete configuration are present;
 - modern Supabase server credentials (`SUPABASE_SECRET_KEY`) across the Console, Python runtime adapters, and GitHub Actions, with legacy service-role fallback;
 - an hourly bounded autonomous runner for supported work;
