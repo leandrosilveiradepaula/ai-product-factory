@@ -11,7 +11,7 @@ class DirectExecutionItem:
 
 @dataclass(frozen=True)
 class ImplementationArtifact:
- plan_markdown:str;files:dict[str,str];commit_message:str;pr_title:str;pr_body:str
+ plan_markdown:str;files:dict[str,str|None];commit_message:str;pr_title:str;pr_body:str
 
 class ImplementationProducer(Protocol):
  def produce(self,item:DirectExecutionItem)->ImplementationArtifact:...
