@@ -43,15 +43,11 @@ Do not enable the primary model merely because an API key exists. Billing/quota 
 
 The project supplies non-secret deployment metadata in `factory_projects.manifest.preview`. `mode: github` discovers the exact Vercel Preview from GitHub check-runs using `GITHUB_TOKEN`; `mode: api` creates/polls the Preview through the Vercel API and requires Vercel team/project metadata.
 
-Global prerequisites:
+For the standard manual GitHub Actions path, the job itself provides the activation flags, uses the native `GITHUB_TOKEN`, installs pinned Playwright/Chromium, and invokes `scripts/verify_preview.mjs`. No external browser service or Vercel token is required when the project uses `mode: github`.
 
-- `FACTORY_VERCEL_PREVIEW_ENABLED=true`;
-- `GITHUB_TOKEN` for `mode: github`, or `VERCEL_TOKEN` for `mode: api`;
-- `FACTORY_BROWSER_EVIDENCE_ENABLED=true`;
-- `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON` as a JSON argv array;
-- optional bounded `FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS`.
+For alternative runtimes or `mode: api`, configuration remains explicit: `FACTORY_VERCEL_PREVIEW_ENABLED=true`, provider credentials (`GITHUB_TOKEN` or `VERCEL_TOKEN`), `FACTORY_BROWSER_EVIDENCE_ENABLED=true`, a reviewed `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON`, and an optional bounded timeout.
 
-The Vercel adapter refuses non-Preview environments. The browser adapter receives the exact deployed URL through `FACTORY_PREVIEW_URL` and must return structured JSON evidence.
+The Vercel adapters refuse non-Preview environments. The browser adapter receives the exact deployed URL through `FACTORY_PREVIEW_URL` and must return structured JSON evidence. The built-in Playwright verifier checks page load, HTTP status, visible non-empty body, and browser console/page errors.
 
 ## Codex
 
