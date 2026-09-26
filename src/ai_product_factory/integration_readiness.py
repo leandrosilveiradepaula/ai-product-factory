@@ -26,13 +26,7 @@ def _evaluate(enabled_name: str, required: tuple[str, ...]) -> AdapterReadiness:
 def vercel_preview_readiness() -> AdapterReadiness:
     return _evaluate(
         "FACTORY_VERCEL_PREVIEW_ENABLED",
-        (
-            "VERCEL_TOKEN",
-            "FACTORY_VERCEL_TEAM_ID",
-            "FACTORY_VERCEL_PROJECT_NAME",
-            "FACTORY_VERCEL_GITHUB_ORG",
-            "FACTORY_VERCEL_GITHUB_REPO",
-        ),
+        ("VERCEL_TOKEN",),
     )
 
 

@@ -14,13 +14,7 @@ class IntegrationReadinessTests(unittest.TestCase):
         self.assertIn("VERCEL_TOKEN", state.missing)
 
     def test_vercel_requires_explicit_enable_even_when_configured(self):
-        env = {
-            "VERCEL_TOKEN": "x",
-            "FACTORY_VERCEL_TEAM_ID": "team",
-            "FACTORY_VERCEL_PROJECT_NAME": "project",
-            "FACTORY_VERCEL_GITHUB_ORG": "owner",
-            "FACTORY_VERCEL_GITHUB_REPO": "repo",
-        }
+        env = {"VERCEL_TOKEN": "x"}
         with patch.dict("os.environ", env, clear=True):
             state = vercel_preview_readiness()
         self.assertTrue(state.configured)
@@ -31,10 +25,6 @@ class IntegrationReadinessTests(unittest.TestCase):
         env = {
             "FACTORY_VERCEL_PREVIEW_ENABLED": "true",
             "VERCEL_TOKEN": "x",
-            "FACTORY_VERCEL_TEAM_ID": "team",
-            "FACTORY_VERCEL_PROJECT_NAME": "project",
-            "FACTORY_VERCEL_GITHUB_ORG": "owner",
-            "FACTORY_VERCEL_GITHUB_REPO": "repo",
         }
         with patch.dict("os.environ", env, clear=True):
             self.assertTrue(vercel_preview_readiness().ready)
@@ -60,10 +50,6 @@ class IntegrationReadinessTests(unittest.TestCase):
         env={
             "FACTORY_VERCEL_PREVIEW_ENABLED":"true",
             "VERCEL_TOKEN":"x",
-            "FACTORY_VERCEL_TEAM_ID":"team",
-            "FACTORY_VERCEL_PROJECT_NAME":"project",
-            "FACTORY_VERCEL_GITHUB_ORG":"owner",
-            "FACTORY_VERCEL_GITHUB_REPO":"repo",
             "FACTORY_BROWSER_EVIDENCE_ENABLED":"true",
             "FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["node","verify.mjs"]',
         }

@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_preview:
+        description: Run at most one verified Preview deployment
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "17 * * * *"
 
@@ -197,6 +202,37 @@ jobs:
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"
+
+
+  preview:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_preview == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_VERCEL_PREVIEW_ENABLED: ${{ vars.FACTORY_VERCEL_PREVIEW_ENABLED }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
+      FACTORY_VERCEL_PROJECT_NAME: ${{ vars.FACTORY_VERCEL_PROJECT_NAME }}
+      FACTORY_BROWSER_EVIDENCE_ENABLED: ${{ vars.FACTORY_BROWSER_EVIDENCE_ENABLED }}
+      FACTORY_BROWSER_EVIDENCE_COMMAND_JSON: ${{ vars.FACTORY_BROWSER_EVIDENCE_COMMAND_JSON }}
+      FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS: ${{ vars.FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run at most one verified Preview
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode preview
 
   alerts:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_alerts == true }}
