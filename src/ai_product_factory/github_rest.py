@@ -181,14 +181,6 @@ class GitHubRestAdapter:
             )
         return tuple(failures)
 
-    def merge_pull_request(self, pr_number: int) -> str:
-        pr = self.get_pull_request(pr_number)
-        row = self._call("PUT", f"/repos/{self.repository}/pulls/{pr_number}/merge",
-                         payload={"merge_method": "squash", "sha": pr.head_sha})
-        if not row.get("merged"):
-            raise RuntimeError(row.get("message") or "GitHub did not merge the pull request")
-        return row["sha"]
-
     def close_issue(self, issue_number: int) -> None:
         self._call("PATCH", f"/repos/{self.repository}/issues/{issue_number}",
                    payload={"state": "closed", "state_reason": "completed"})
