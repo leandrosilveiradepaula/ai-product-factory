@@ -27,7 +27,7 @@ The runtime includes:
 - preview deployment contracts plus fail-closed browser/e2e evidence and durable evaluation recording;
 - deterministic cost ceilings before paid model providers;
 - lease recovery, dead-letter visibility and operational incident health;
-- provider-independent operational alert policy;
+- provider-independent operational alert policy with cost relevance filtering so non-billable GitHub/Supabase events do not create false unknown-cost incidents;
 - optional GitHub Issues alert adapter with deterministic per-code deduplication;
 - explicit `runtime --mode alerts`, fail-closed unless GitHub alerting is intentionally enabled and configured;
 - optional fail-closed Vercel preview adapter with explicit team/project/token configuration and no production target;
@@ -46,7 +46,7 @@ Verified production state:
 - the bootstrap administrator exists as an active `admin` operator;
 - server-side Supabase access prefers `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
 - the production health probe `GET /api/health` is public, returns HTTP 200, and exposes only service status plus a truncated deployment commit;
-- production health was verified on commit `ee0106a6bc2f4d0a3b106d8b38c1ac94eb33419b`.
+- production health was verified on Console commit `59e0352306128dd7a5beb6dd63ec112f864a0204`; later non-Console merges are intentionally ignored by Vercel.
 
 ## Authentication / model gate
 
