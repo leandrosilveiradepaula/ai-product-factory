@@ -23,7 +23,11 @@ The runtime includes:
 - structured product-stage execution;
 - structured Direct implementation production;
 - bounded CI auto-repair;
-- durable GitHub delivery state;
+- durable GitHub delivery state and CI evaluation/audit evidence;
+- preview deployment contracts plus fail-closed browser/e2e evidence and durable evaluation recording;
+- deterministic cost ceilings before paid model providers;
+- lease recovery, dead-letter visibility and operational incident health;
+- provider-independent operational alert policy;
 - an hourly bounded autonomous runner for supported work.
 
 Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable.
@@ -53,5 +57,5 @@ Production release currently requires a human gate. Destructive data changes, se
 1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
 2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
 3. Enable execution adapters only after their independent readiness gates pass.
-4. Add browser/e2e evidence to preview delivery.
-5. Continue operational hardening and alerting without enabling paid execution implicitly.
+4. Attach a real preview deployment/browser adapter only when its external provider is selected and authorized; the verified preview orchestration and evidence boundary are implemented.
+5. Attach an external notification adapter (for example Slack/email) only when a notification destination is explicitly selected; alert generation is implemented without external side effects.
