@@ -53,15 +53,20 @@ def run_direct_once(worker_id:str)->dict:
  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pr_number}
 
+def run_health_once()->dict:
+ auth=RuntimeAuthResolver().resolve()
+ return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY")),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD"))}
+
 def run_dispatch_once(project_key:str)->dict:
  decision=SupabaseBacklogDispatch().dispatch_next(project_key)
  if decision is None:return {"claimed":False,"status":"empty"}
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
- if args.mode=="recovery":out=run_recovery_once(args.max_attempts)
+ if args.mode=="health":out=run_health_once()
+ elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id)
  elif args.mode=="dispatch":
   if not args.project_key:p.error("--project-key is required for dispatch mode")
