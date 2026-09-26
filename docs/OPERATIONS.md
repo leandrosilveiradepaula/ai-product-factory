@@ -1,0 +1,93 @@
+# Operations Runbook
+
+This runbook describes the safe operating modes of the AI Product Factory runtime. It intentionally contains no secret values.
+
+## Runtime modes
+
+| Mode | Purpose | External side effects | Default scheduling | Main gate |
+| --- | --- | --- | --- | --- |
+| `health` | Report configuration/readiness only | None | Hourly runner | None |
+| `recovery` | Requeue expired leases or fail exhausted runs | Control Plane writes | Hourly runner | Bounded attempts |
+| `product` | Execute one product-stage run | Model call + Control Plane writes | Hourly only when ready | Primary enable + auth + budget |
+| `dispatch` | Route one planned task | Control Plane writes | Manual | Project key |
+| `direct` | Produce implementation and open PR | Model + GitHub writes | Manual only | Primary enable + auth + budget + risk gate |
+| `ci` | Resume one `ci_pending` run | GitHub reads + evidence writes | Hourly | Matching durable PR evidence |
+| `preview` | Deploy and verify one `preview_ready` run | Vercel Preview + browser/e2e + evidence writes | Manual only | Preview/browser readiness + quality evidence |
+| `release` | Observe one human PR merge | GitHub reads; issue close/evidence after merge | Hourly | Human merge must already exist |
+| `alerts` | Evaluate operational alerts and publish GitHub Issues | GitHub issue writes | Manual only | Explicit alerts enable/config |
+
+## Required release sequence
+
+1. Implementation opens a PR; production is not touched.
+2. CI follow-up verifies the PR head matches the durable candidate commit.
+3. Green CI persists explicit `quality_gate` evidence.
+4. Verified Preview requires the same candidate commit, successful quality evidence, Vercel Preview deployment, and successful browser/e2e evidence for the exact Preview URL.
+5. The run moves to `awaiting_release`.
+6. A human reviews and merges the PR. The Factory never performs this production merge.
+7. The release observer sees the already-merged PR, records the merge SHA/audit evidence, marks the run `merged`, and closes the linked issue.
+
+## Primary model activation
+
+`product` and `direct` are fail-closed inside the Python runtime itself. They require all of:
+
+- `FACTORY_PRIMARY_MODEL_ENABLED=true`;
+- a supported primary authentication path;
+- configured model budget;
+- configured per-run reservation;
+- known spend not already exhausting the configured budget.
+
+Do not enable the primary model merely because an API key exists. Billing/quota readiness and a bounded smoke test are separate prerequisites.
+
+## Verified Preview activation
+
+The project supplies non-secret deployment metadata in `factory_projects.manifest.preview`, for example provider, Vercel team id, and Vercel project name. Runtime credentials remain environment secrets.
+
+Global prerequisites:
+
+- `FACTORY_VERCEL_PREVIEW_ENABLED=true`;
+- `VERCEL_TOKEN`;
+- `FACTORY_BROWSER_EVIDENCE_ENABLED=true`;
+- `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON` as a JSON argv array;
+- optional bounded `FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS`.
+
+The Vercel adapter refuses non-Preview environments. The browser adapter receives the exact deployed URL through `FACTORY_PREVIEW_URL` and must return structured JSON evidence.
+
+## Codex
+
+Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
+
+## Operational alerts
+
+`alerts` is disabled unless `FACTORY_GITHUB_ALERTS_ENABLED=true`. Alert issues are deduplicated by deterministic code. Non-billable GitHub/Supabase usage without cost data must not be treated as unknown paid spend.
+
+## Supabase credentials
+
+Server-side code prefers `SUPABASE_SECRET_KEY` (`sb_secret_...`) and keeps `SUPABASE_SERVICE_ROLE_KEY` only as legacy fallback. Modern secret keys are sent as `apikey` only; they are not JWT bearer tokens.
+
+Factory tables intentionally use RLS with no public client policies. Privileged worker/Console operations use backend credentials only.
+
+## Incident handling
+
+- Expired worker lease: recovery may requeue within the bounded attempt limit.
+- Exhausted attempts: terminal failure/dead-letter visibility; do not infinite-retry.
+- CI failure: return to bounded correction/repair, never merge.
+- Browser/e2e failure: persist failure evidence and stop before release.
+- Candidate SHA mismatch at CI/Preview/Release: fail closed; do not reinterpret the run.
+- Unknown paid cost or exhausted budget: block paid execution.
+- Missing external credentials: report blocked readiness; do not fabricate values.
+
+## Production safety invariants
+
+- Production release is always human-gated.
+- The release-followup worker has no code-write or PR-merge permission.
+- Preview cannot target production.
+- Direct is manual-only while primary authentication remains externally blocked.
+- The 63-question Agent SQL benchmark is not an implicit Factory task.
+
+## Health checks
+
+Factory Console production health:
+
+`GET https://ai-product-factory-console.vercel.app/api/health`
+
+The response is intentionally minimal and contains only service status and a truncated deployed commit.

@@ -26,22 +26,26 @@ Task Router
                                       GitHub / Supabase / Vercel
                                                   |
                                                   v
-                                         Review + Tests + Evals
+                                     Review + Tests + Evals
                                                   |
                                                   v
-                                              Preview
-                                                  |
-                                         risco exige gate?
-                                           /            \
-                                         nao            sim
-                                          |              |
-                                          v              v
-                                       continua       Usuario
-                                          |              |
-                                          +------<-------+
+                                           Quality Gate
                                                   |
                                                   v
-                                               Release
+                                         Verified Preview
+                                      (deploy + browser/e2e)
+                                                  |
+                                                  v
+                                         awaiting_release
+                                                  |
+                                                  v
+                                      Usuario faz merge do PR
+                                                  |
+                                                  v
+                                      Release observer registra
+                                                  |
+                                                  v
+                                             Operations
 ```
 
 ## Camadas
@@ -74,7 +78,7 @@ Executa alteracoes em codigo e servicos por adapters. O executor deve sempre pro
 Separa validacao tradicional de software de evals de IA. Um projeto pode exigir ambas.
 
 ### 7. Human Gate Layer
-Gates sao baseados em risco. Uma tarefa de baixo risco pode atravessar varias fases sem interromper o usuario.
+Gates sao baseados em risco. Uma tarefa de baixo risco pode atravessar discovery, planejamento, implementacao, review, CI e Preview sem interromper o usuario. Producao permanece diferente: quando o merge do PR publica `main`, o runtime para em `awaiting_release`; somente uma pessoa pode executar o merge. O worker de release apenas observa e registra um merge que ja aconteceu.
 
 ### 8. Control Plane
 Supabase/Postgres registra projetos, tarefas, runs, decisoes, gates, uso de ferramentas, evals e deployments.
@@ -82,3 +86,7 @@ Supabase/Postgres registra projetos, tarefas, runs, decisoes, gates, uso de ferr
 ## Codex nao e o orquestrador
 
 Codex e um executor especializado. A factory deve continuar operando quando Codex estiver indisponivel ou quando o usuario atingir limites de uso.
+
+## Fronteira de release
+
+O runtime nunca deve transformar a aprovacao tecnica de um Preview em permissao implicita para publicar em producao. CI verde, quality gate e browser/e2e sao pre-condicoes; nao substituem o gate humano de producao. O observador de release possui permissoes de leitura no PR e nao possui permissao de escrita em codigo ou de merge.

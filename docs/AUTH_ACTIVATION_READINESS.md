@@ -34,3 +34,26 @@ Do not invent the federation rule id or audience. The preflight is intentionally
 5. Scheduled Direct remains disabled until Primary readiness is proven.
 
 Production deployment remains independently human-gated.
+
+## Verified Preview
+
+Ready only when all of these are true:
+
+- the project has a Vercel preview configuration (`manifest.preview`) or an explicit non-secret environment fallback;
+- `VERCEL_TOKEN` is configured in the execution environment;
+- `FACTORY_VERCEL_PREVIEW_ENABLED=true`;
+- `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON` contains a reviewed argv-style command;
+- `FACTORY_BROWSER_EVIDENCE_ENABLED=true`;
+- the browser/e2e command returns structured success evidence for the exact Preview URL.
+
+Preview execution is manual-only until this gate is intentionally activated. The adapter cannot target production.
+
+## Operational GitHub alerts
+
+Ready only when all of these are true:
+
+- `FACTORY_GITHUB_ALERTS_ENABLED=true`;
+- `GITHUB_TOKEN` is available to the job;
+- `FACTORY_ALERTS_GITHUB_REPOSITORY` identifies the alert destination.
+
+Alert publication remains opt-in and deduplicated by deterministic alert code.

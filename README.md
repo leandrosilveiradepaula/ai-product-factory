@@ -6,7 +6,7 @@ Fabrica autonoma de produtos de software e agentes de IA.
 
 Transformar uma necessidade de produto em software funcional com minima intervencao humana:
 
-`Ideia -> Discovery -> Product Spec -> Plano -> Implementacao -> Review -> Testes/Evals -> Preview -> Gate Humano -> Release -> Operacao`
+`Ideia -> Discovery -> Product Spec -> Plano -> Implementacao -> Review -> Testes/Evals -> Preview verificado -> Gate humano de merge -> Release -> Operacao`
 
 O ChatGPT atua como orquestrador principal e usa diretamente as ferramentas disponiveis (GitHub, Supabase, Vercel e outras). Codex e um recurso especializado e seletivo, acionado apenas quando a tarefa realmente se beneficia dele.
 
@@ -31,7 +31,7 @@ O ChatGPT atua como orquestrador principal e usa diretamente as ferramentas disp
 - Prompts/papeis de Product Manager, Engineering Manager, Developer, Reviewer, Evaluator e Release Manager.
 - Factory Console autenticado para projetos, backlog, runs e human gates.
 - Runtime duravel com fila, worker, roteamento Direct/Codex e runner autonomo limitado.
-- GitHub Autonomous Loop para issue, branch, commit, PR, CI, repair e merge.
+- GitHub Autonomous Loop para issue, branch, commit, PR, CI e repair; apos Preview verificado, o fluxo para em `awaiting_release` e o merge de producao e humano.
 - Contratos de adapters para integracoes externas.
 
 ## Primeiro piloto
@@ -54,4 +54,4 @@ O projeto usa apenas a biblioteca padrao do Python no nucleo para manter o boots
 
 ## Estado atual
 
-Veja [docs/STATUS.md](docs/STATUS.md) para o estado operacional, gates externos e proximos blocos.
+Veja [docs/STATUS.md](docs/STATUS.md) para o estado operacional e [docs/OPERATIONS.md](docs/OPERATIONS.md) para o runbook dos workers, gates e procedimentos.
