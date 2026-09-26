@@ -28,6 +28,15 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("github.event_name == 'workflow_dispatch'",alerts)
   self.assertIn("inputs.run_alerts == true",alerts)
   self.assertIn("FACTORY_GITHUB_ALERTS_ENABLED",alerts)
+ def test_release_followup_cannot_merge_or_write_code(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  release=text.split("\n  release-followup:",1)[1].split("\n  dispatch:",1)[0]
+  self.assertIn("pull-requests: read",release)
+  self.assertIn("issues: write",release)
+  self.assertNotIn("contents: write",release)
+  runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+  start=runtime.split("def run_release_once",1)[1].split("def run_alerts_once",1)[0]
+  self.assertNotIn("merge_pull_request",start)
  def test_primary_requires_explicit_enable_flag(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED',text)

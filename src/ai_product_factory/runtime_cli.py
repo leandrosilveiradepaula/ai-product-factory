@@ -22,6 +22,7 @@ from .operational_alerts import evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
+from .release_followup_queue import SupabaseReleaseFollowupQueue
 from .review_gate import EvalResult,evaluate_quality_gate
 
 def require_primary_runtime_enabled()->None:
@@ -89,6 +90,20 @@ def run_ci_once()->dict:
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
  return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
 
+def run_release_once()->dict:
+ item=SupabaseReleaseFollowupQueue().next_pending()
+ if item is None:return {"claimed":False,"status":"empty"}
+ github=GitHubRestAdapter(repository=item.repository)
+ issue=github.get_issue(item.issue_number)
+ pr=github.get_pull_request(item.pr_number)
+ if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches verified release candidate")
+ store=SupabaseDeliveryStore()
+ loop=AutonomousGitHubLoop(github,store)
+ session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
+ merge_sha=loop.observe_manual_merge(session)
+ if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
+ return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
+
 def run_alerts_once()->dict:
  readiness=github_alerts_readiness()
  if not readiness.ready:return {"status":"blocked","published":0,"missing":list(readiness.missing)}
@@ -107,9 +122,10 @@ def run_dispatch_once(project_key:str)->dict:
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci","release"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="release":out=run_release_once()
  elif args.mode=="ci":out=run_ci_once()
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)

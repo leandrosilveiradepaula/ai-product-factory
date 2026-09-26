@@ -66,9 +66,9 @@ class PipelineEngineTests(unittest.TestCase):
             DeploymentResult("vercel", ReleaseEnvironment.PREVIEW, "success", "dep-1", "https://preview.example"),
             BrowserEvidence("success", "https://preview.example", ("page_load",)),
         )
-        merged = self.engine.finalize_preview(self.session, preview=preview)
-        self.assertEqual(merged.status, PipelineStatus.MERGED)
-        self.assertEqual(self.github.merged, [1])
+        release = self.engine.finalize_preview(self.session, preview=preview)
+        self.assertEqual(release.status, PipelineStatus.AWAITING_RELEASE)
+        self.assertEqual(self.github.merged, [])
 
     def test_quality_failure_blocks_before_ci(self):
         out = self.engine.evaluate_quality(
