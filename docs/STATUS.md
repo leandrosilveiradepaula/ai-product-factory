@@ -34,6 +34,17 @@ The runtime includes:
 
 Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable.
 
+## Console deployment
+
+The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
+
+Verified production state:
+- Supabase Auth login is operational;
+- the bootstrap administrator exists as an active `admin` operator;
+- server-side Supabase access prefers `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
+- the production health probe `GET /api/health` is public, returns HTTP 200, and exposes only service status plus a truncated deployment commit;
+- production health was verified on commit `ee0106a6bc2f4d0a3b106d8b38c1ac94eb33419b`.
+
 ## Authentication / model gate
 
 OpenAI API authentication and Codex workspace authentication are intentionally separate.
