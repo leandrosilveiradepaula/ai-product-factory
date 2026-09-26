@@ -17,6 +17,7 @@ from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
 from .cost_policy import require_cost_ceiling
+from .integration_readiness import github_alerts_readiness,vercel_preview_readiness
 
 def require_paid_runtime_budget()->None:
  budget=os.getenv("FACTORY_MODEL_BUDGET_USD");reserve=os.getenv("FACTORY_MODEL_RESERVE_USD");spent=os.getenv("FACTORY_MODEL_KNOWN_SPEND_USD","0")
@@ -55,7 +56,8 @@ def run_direct_once(worker_id:str)->dict:
 
 def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
- return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY")),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD"))}
+ vercel=vercel_preview_readiness();alerts=github_alerts_readiness()
+ return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY")),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"vercel_preview":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
 def run_dispatch_once(project_key:str)->dict:
  decision=SupabaseBacklogDispatch().dispatch_next(project_key)

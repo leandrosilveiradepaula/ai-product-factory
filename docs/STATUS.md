@@ -30,9 +30,21 @@ The runtime includes:
 - provider-independent operational alert policy;
 - optional GitHub Issues alert adapter with deterministic per-code deduplication, disabled until explicitly invoked;
 - optional fail-closed Vercel preview adapter with explicit team/project/token configuration and no production target;
+- side-effect-free readiness reporting for Vercel preview and GitHub Issues alerts; both remain disabled until explicit enable flags and complete configuration are present;
 - an hourly bounded autonomous runner for supported work.
 
 Scheduled Direct implementation remains disabled until a supported primary-model authentication path is operational. Manual Direct mode is wired but fail-closed before claim when auth is unavailable.
+
+## Console deployment
+
+The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
+
+Verified production state:
+- Supabase Auth login is operational;
+- the bootstrap administrator exists as an active `admin` operator;
+- server-side Supabase access prefers `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
+- the production health probe `GET /api/health` is public, returns HTTP 200, and exposes only service status plus a truncated deployment commit;
+- production health was verified on commit `ee0106a6bc2f4d0a3b106d8b38c1ac94eb33419b`.
 
 ## Authentication / model gate
 
@@ -58,6 +70,6 @@ Production release currently requires a human gate. Destructive data changes, se
 
 1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
 2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
-3. Enable execution adapters only after their independent readiness gates pass.
-4. If Vercel is selected for Factory previews, supply explicit Vercel runtime credentials/configuration and connect the implemented adapter to the verified preview flow; do not promote to production automatically.
-5. If GitHub Issues is selected as the first external alert destination, explicitly wire the implemented deduplicating adapter; it remains passive by default.
+3. Supply runtime credentials/configuration for Vercel Preview and GitHub Issues alerts only when those adapters are intentionally activated; readiness is now reported without side effects.
+4. Connect the ready Vercel adapter to the verified preview flow only after its enable flag is explicitly set; do not promote to production automatically.
+5. Connect the ready GitHub Issues alert adapter to operational alert evaluation only after its enable flag is explicitly set; it remains passive by default.
