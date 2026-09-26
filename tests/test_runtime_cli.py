@@ -4,7 +4,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once, run_release_once
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -98,6 +98,40 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(kwargs["baseline_ref"],"abc")
         self.assertEqual(kwargs["status"],"success")
 
+    def test_preview_mode_is_blocked_before_queue_without_explicit_readiness(self):
+        with patch.dict("os.environ", {}, clear=True), patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue") as queue:
+            out=run_preview_once()
+        self.assertEqual(out["status"],"blocked")
+        queue.assert_not_called()
+
+    def test_preview_mode_wires_verified_preview_and_stops_at_release_gate(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"team_id":"team","project_name":"web"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        verified=SimpleNamespace(deployment=SimpleNamespace(preview_url="https://preview.example",deployment_ref="dep-1"))
+        coordinator=MagicMock();coordinator.execute.return_value=verified
+        loop=MagicMock();loop.finalize_verified_preview.return_value="awaiting_release"
+        env={
+            "FACTORY_VERCEL_PREVIEW_ENABLED":"true","VERCEL_TOKEN":"token",
+            "FACTORY_BROWSER_EVIDENCE_ENABLED":"true","FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["verify"]',
+        }
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.VercelPreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.DurablePreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeploymentEvidenceStore"), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceConfig.from_env",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_preview_once()
+        self.assertEqual(out["status"],"awaiting_release")
+        self.assertEqual(out["preview_url"],"https://preview.example")
+        loop.finalize_verified_preview.assert_called_once()
+        github.merge_pull_request.assert_not_called()
     def test_release_followup_empty_queue_has_no_github_side_effect(self):
         queue=MagicMock()
         queue.next_pending.return_value=None
