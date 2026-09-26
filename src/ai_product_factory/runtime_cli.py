@@ -17,7 +17,7 @@ from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
 from .cost_policy import require_cost_ceiling
-from .integration_readiness import github_alerts_readiness,vercel_preview_readiness,verified_preview_readiness
+from .integration_readiness import github_alerts_readiness,github_vercel_preview_readiness,vercel_preview_readiness,verified_preview_readiness
 from .operational_alerts import evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
@@ -27,6 +27,7 @@ from .preview_followup_queue import SupabasePreviewFollowupQueue
 from .project_preview_config import resolve_project_vercel_preview_config
 from .preview_policy import evaluate_preview_applicability
 from .vercel_preview import VercelPreviewAdapter,VercelPreviewConfig
+from .github_vercel_preview import GitHubVercelPreviewAdapter,config_from_env as github_vercel_config_from_env
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
 from .supabase_deployment import DurablePreviewAdapter,SupabaseDeploymentEvidenceStore
 from .browser_evidence_store import BrowserEvidenceRecorder
@@ -80,8 +81,8 @@ def run_direct_once(worker_id:str)->dict:
 
 def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
- vercel=vercel_preview_readiness();alerts=github_alerts_readiness()
- return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"vercel_preview":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
+ vercel=vercel_preview_readiness();github_vercel=github_vercel_preview_readiness();alerts=github_alerts_readiness()
+ return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
 def run_ci_once()->dict:
  item=SupabaseCIFollowupQueue().next_pending()
@@ -116,14 +117,18 @@ def run_preview_once()->dict:
  if not applicability.required:
   status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
   return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":False,"reason":applicability.reason}
- readiness=verified_preview_readiness()
- if not readiness.ready:return {"claimed":False,"status":"blocked","run_id":item.run_id,"missing":list(readiness.missing)}
  try:
   project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
  except ValueError as exc:
   return {"claimed":False,"status":"blocked","run_id":item.run_id,"error":str(exc)}
- vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id,project_name=project_cfg.project_name,github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
- deployment=DurablePreviewAdapter(VercelPreviewAdapter(vercel_cfg),SupabaseDeploymentEvidenceStore(),run_id=item.run_id)
+ readiness=verified_preview_readiness(project_cfg.mode)
+ if not readiness.ready:return {"claimed":False,"status":"blocked","run_id":item.run_id,"missing":list(readiness.missing),"preview_mode":project_cfg.mode}
+ if project_cfg.mode=="github":
+  provider=GitHubVercelPreviewAdapter(github_vercel_config_from_env(item.repository))
+ else:
+  vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id or "",project_name=project_cfg.project_name or "",github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
+  provider=VercelPreviewAdapter(vercel_cfg)
+ deployment=DurablePreviewAdapter(provider,SupabaseDeploymentEvidenceStore(),run_id=item.run_id)
  browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
