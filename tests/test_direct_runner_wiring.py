@@ -13,7 +13,8 @@ class Tests(unittest.TestCase):
  def test_direct_empty_queue_does_not_construct_github(self):
   class Q:
    def claim_next(self,w):return None
-  with patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=Resolver(AuthKind.OPENAI_API_KEY)),patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider"),patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=Q()),patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as gh:
+  env={"FACTORY_PRIMARY_MODEL_ENABLED":"true","FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
+  with patch.dict("os.environ",env,clear=True),patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=Resolver(AuthKind.OPENAI_API_KEY)),patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider"),patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=Q()),patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as gh:
    out=run_direct_once("w")
   self.assertEqual(out["status"],"empty");gh.assert_not_called()
 if __name__=="__main__":unittest.main()
