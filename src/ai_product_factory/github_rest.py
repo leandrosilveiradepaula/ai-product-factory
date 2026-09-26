@@ -83,6 +83,19 @@ class GitHubRestAdapter:
         row = self._call("POST", f"/repos/{self.repository}/issues", payload={"title": title, "body": body})
         return GitHubIssue(row["number"], row["title"], row.get("body") or "", row["html_url"])
 
+    def find_open_issue_containing(self, marker: str) -> GitHubIssue | None:
+        if not marker.strip():
+            raise ValueError("marker cannot be empty")
+        query = f'repo:{self.repository} is:issue is:open in:body "{marker}"'
+        rows = self._call("GET", "/search/issues", query={"q": query, "per_page": "10"}).get("items", [])
+        for row in rows:
+            if "pull_request" in row:
+                continue
+            body = row.get("body") or ""
+            if marker in body:
+                return GitHubIssue(row["number"], row["title"], body, row["html_url"])
+        return None
+
     def get_issue(self, issue_number: int) -> GitHubIssue:
         row = self._call("GET", f"/repos/{self.repository}/issues/{issue_number}")
         if "pull_request" in row:

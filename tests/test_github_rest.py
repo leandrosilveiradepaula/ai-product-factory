@@ -15,6 +15,8 @@ class FakeGitHubTransport:
         self.calls.append((method, url, headers, payload))
         if "/issues/5" in url and method == "GET":
             return 200, {"number": 5, "title": "Feature", "body": "Do it", "html_url": "https://example/issue/5"}
+        if "/search/issues?" in url and method == "GET":
+            return 200, {"items": [{"number": 7, "title": "Alert", "body": "<!-- factory-alert:dead_letter -->", "html_url": "https://example/issue/7"}]}
         if "/git/ref/heads/" in url and method == "GET":
             return 200, {"object": {"sha": "base123"}}
         if url.endswith("/git/refs") and method == "POST":
@@ -45,6 +47,12 @@ class GitHubRestAdapterTests(unittest.TestCase):
     def setUp(self):
         self.transport = FakeGitHubTransport()
         self.github = GitHubRestAdapter(repository="owner/repo", token="token-placeholder", transport=self.transport)
+
+    def test_find_open_issue_containing_marker(self):
+        issue = self.github.find_open_issue_containing("factory-alert:dead_letter")
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue.number, 7)
+        self.assertIn("search/issues", self.transport.calls[-1][1])
 
     def test_token_is_only_in_authorization_header(self):
         self.github.get_issue(5)
