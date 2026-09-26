@@ -81,6 +81,20 @@ class AutonomousGitHubLoopTests(unittest.TestCase):
         self.assertEqual(self.github.closed, [])
         self.assertEqual(self.store.runs[self.run.id].status, "awaiting_release")
 
+
+    def test_explicit_preview_not_required_stops_at_human_release_gate(self):
+        session = self._session_with_pr()
+        status = self.loop.finalize_preview_not_required(
+            session,
+            reason="no deployable surface changed",
+            changed_files=("src/core.py",),
+        )
+        self.assertEqual(status, "awaiting_release")
+        self.assertEqual(self.github.closed, [])
+        self.assertEqual(self.store.runs[self.run.id].status, "awaiting_release")
+        operations=[x.operation for x in self.store.tool_usage if x.run_id==self.run.id]
+        self.assertIn("preview_not_required_awaiting_human_merge", operations)
+
     def test_manual_merge_observation_closes_issue_and_marks_merged(self):
         session = self._session_with_pr()
         preview = VerifiedPreviewResult(
