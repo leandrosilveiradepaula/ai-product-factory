@@ -12,7 +12,7 @@ from .direct_run_queue import SupabaseDirectRunQueue
 from .implementation_producer import ModelImplementationProducer
 from .execution_worker import DirectExecutionWorker
 from .github_rest import GitHubRestAdapter
-from .autonomous_github import AutonomousGitHubLoop
+from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
@@ -21,6 +21,7 @@ from .integration_readiness import github_alerts_readiness,vercel_preview_readin
 from .operational_alerts import evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
+from .ci_followup_queue import SupabaseCIFollowupQueue
 
 def require_paid_runtime_budget()->None:
  budget=os.getenv("FACTORY_MODEL_BUDGET_USD");reserve=os.getenv("FACTORY_MODEL_RESERVE_USD");spent=os.getenv("FACTORY_MODEL_KNOWN_SPEND_USD","0")
@@ -62,6 +63,19 @@ def run_health_once()->dict:
  vercel=vercel_preview_readiness();alerts=github_alerts_readiness()
  return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"vercel_preview":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
+def run_ci_once()->dict:
+ item=SupabaseCIFollowupQueue().next_pending()
+ if item is None:return {"claimed":False,"status":"empty"}
+ github=GitHubRestAdapter(repository=item.repository)
+ issue=github.get_issue(item.issue_number)
+ pr=github.get_pull_request(item.pr_number)
+ if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches durable candidate commit")
+ store=SupabaseDeliveryStore()
+ loop=AutonomousGitHubLoop(github,store)
+ session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
+ decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
+ return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
+
 def run_alerts_once()->dict:
  readiness=github_alerts_readiness()
  if not readiness.ready:return {"status":"blocked","published":0,"missing":list(readiness.missing)}
@@ -80,9 +94,10 @@ def run_dispatch_once(project_key:str)->dict:
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="ci":out=run_ci_once()
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id)
