@@ -77,6 +77,20 @@ class AutonomousGitHubLoop:
                 "action": decision.action.value,
             },
         )
+        evidence = {"pr": session.pull_request.number, "ci_state": decision.ci_state.value, "action": decision.action.value, "head_sha": session.pull_request.head_sha}
+        self.store.record_evaluation(
+            run_id=session.run_id,
+            eval_type="github_ci",
+            status=decision.ci_state.value,
+            baseline_ref=session.pull_request.head_sha,
+            result=evidence,
+        )
+        self.store.record_audit_event(
+            run_id=session.run_id,
+            event_type="delivery_ci_evaluated",
+            payload=evidence,
+            actor_ref="autonomous_github_loop",
+        )
         if decision.action == GitHubLoopAction.MERGE:
             self.github.close_issue(session.issue.number)
             self.store.record_tool_usage(
