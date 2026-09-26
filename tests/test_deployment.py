@@ -46,6 +46,13 @@ class DeploymentTests(unittest.TestCase):
                 DeploymentRequest("p", ReleaseEnvironment.PREVIEW, "b", bad)
             )
 
+    def test_missing_quality_gate_evidence_is_rejected(self):
+        missing = EvidenceBundle("a", "b", "success", metadata={})
+        with self.assertRaises(ValueError):
+            self.coordinator.authorize(
+                DeploymentRequest("p", ReleaseEnvironment.PREVIEW, "b", missing)
+            )
+
     def test_mismatched_commit_is_rejected(self):
         with self.assertRaises(ValueError):
             self.coordinator.authorize(
