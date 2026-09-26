@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse, request
 
 from .github_loop import CIState
+from .github_auth import resolve_github_token
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
@@ -60,9 +60,7 @@ class GitHubRestAdapter:
         if "/" not in repository:
             raise ValueError("repository must be in owner/name form")
         self.repository = repository
-        self.token = token or os.environ.get("GITHUB_TOKEN", "")
-        if not self.token:
-            raise ValueError("GITHUB_TOKEN is required")
+        self.token = resolve_github_token(repository, explicit_token=token)
         self.api_url = api_url.rstrip("/")
         self.transport = transport or _default_transport
 
