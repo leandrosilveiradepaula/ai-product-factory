@@ -17,7 +17,7 @@ class GitHubLoopAction(StrEnum):
     WAIT_CI = "wait_ci"
     RETURN_TO_IMPLEMENTATION = "return_to_implementation"
     WAIT_HUMAN = "wait_human"
-    MERGE = "merge"
+    PREVIEW_READY = "preview_ready"
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ def decide_after_ci(ci_state: CIState, *, human_gate_required: bool) -> GitHubLo
         return GitHubLoopDecision(ci_state, GitHubLoopAction.RETURN_TO_IMPLEMENTATION, "CI falhou")
     if human_gate_required:
         return GitHubLoopDecision(ci_state, GitHubLoopAction.WAIT_HUMAN, "CI verde, mas existe gate humano")
-    return GitHubLoopDecision(ci_state, GitHubLoopAction.MERGE, "CI verde e nenhum gate humano")
+    return GitHubLoopDecision(ci_state, GitHubLoopAction.PREVIEW_READY, "CI verde; preview verificável é obrigatório antes do merge")
 
 
 class GitHubLoopCoordinator:
@@ -59,8 +59,7 @@ class GitHubLoopCoordinator:
             self.store.update_run_status(run_id, "needs_correction")
         elif decision.action == GitHubLoopAction.WAIT_HUMAN:
             self.store.update_run_status(run_id, "awaiting_human")
-        elif decision.action == GitHubLoopAction.MERGE:
-            merge_sha = self.github.merge_pull_request(pr_number)
-            self.store.update_run_status(run_id, "merged", candidate_commit=merge_sha)
+        elif decision.action == GitHubLoopAction.PREVIEW_READY:
+            self.store.update_run_status(run_id, "preview_ready")
 
         return decision
