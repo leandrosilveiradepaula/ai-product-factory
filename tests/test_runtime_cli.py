@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler
+from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -24,6 +24,15 @@ class RuntimeCliTests(unittest.TestCase):
                 build_handler()
         self.assertIn(AuthKind.NONE.value, str(ctx.exception))
 
+    def test_paid_runtime_budget_is_fail_closed_when_unconfigured(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaises(PermissionError):
+                require_paid_runtime_budget()
+
+    def test_paid_runtime_budget_accepts_explicit_bounded_reservation(self):
+        env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25","FACTORY_MODEL_KNOWN_SPEND_USD":"1"}
+        with patch.dict("os.environ", env, clear=True):
+            require_paid_runtime_budget()
 
 if __name__ == "__main__":
     unittest.main()
