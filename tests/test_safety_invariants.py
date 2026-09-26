@@ -52,6 +52,11 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("pull-requests: read",preview)
   self.assertNotIn("contents: write",preview)
   self.assertNotIn("pull-requests: write",preview)
+ def test_cross_repo_jobs_receive_explicit_factory_github_secret(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  for job,next_job in (("ci-followup","release-followup"),("release-followup","dispatch"),("direct","preview"),("preview","alerts")):
+   block=text.split(f"\n  {job}:",1)[1].split(f"\n  {next_job}:",1)[0]
+   self.assertIn("FACTORY_GITHUB_TOKEN",block)
  def test_runtime_has_no_automatic_merge_capability(self):
   adapter=(ROOT/"src/ai_product_factory/github_rest.py").read_text()
   protocol=(ROOT/"src/ai_product_factory/github_loop.py").read_text()

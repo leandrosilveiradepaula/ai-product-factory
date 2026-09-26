@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 import urllib.error
@@ -11,6 +10,7 @@ from typing import Any, Callable
 
 from .deployment import DeploymentRequest, DeploymentResult
 from .release_policy import ReleaseEnvironment
+from .github_auth import resolve_github_token
 
 
 _VERCEL_HOST=re.compile(r"(?P<host>[A-Za-z0-9][A-Za-z0-9-]*\.vercel\.app)")
@@ -88,4 +88,4 @@ class GitHubVercelPreviewAdapter:
 
 
 def config_from_env(repository:str)->GitHubVercelPreviewConfig:
-    return GitHubVercelPreviewConfig(repository=repository,token=os.getenv("GITHUB_TOKEN",""))
+    return GitHubVercelPreviewConfig(repository=repository,token=resolve_github_token(repository))

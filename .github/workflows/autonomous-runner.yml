@@ -99,6 +99,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -133,6 +134,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -196,6 +198,7 @@ jobs:
       FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
       FACTORY_MODEL_RESERVE_USD: ${{ vars.FACTORY_MODEL_RESERVE_USD }}
       GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -229,6 +232,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
       FACTORY_VERCEL_PREVIEW_ENABLED: "true"
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
@@ -286,6 +290,7 @@ jobs:
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
       FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
       GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

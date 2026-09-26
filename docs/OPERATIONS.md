@@ -97,3 +97,11 @@ Preview is fail-closed by default. A project can make non-applicability explicit
 - `required_paths: ["apps/web/**", ...]` for monorepos where only specific file changes require a Preview.
 
 The policy is evaluated against the exact PR changed-file list. Skipping a Preview still produces durable release-readiness evidence and never skips the human production merge.
+
+## GitHub credentials across repositories
+
+GitHub Actions `GITHUB_TOKEN` is treated as repository-scoped. Inside Actions it may be used only when the target repository equals `GITHUB_REPOSITORY`.
+
+Cross-repository issue/branch/PR/CI/Preview operations require `FACTORY_GITHUB_TOKEN`. The runtime never falls back to the current repository token for a different repository. Configure that secret only in the Factory execution environment and never expose it to generated code or browser clients.
+
+Minimum target-repository permissions depend on the operation: contents read/write, issues read/write, pull requests read/write, and checks read for full Direct delivery. Follow-up readers can use narrower permissions when separate credentials are used.
