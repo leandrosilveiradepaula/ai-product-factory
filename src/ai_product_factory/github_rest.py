@@ -147,6 +147,11 @@ class GitHubRestAdapter:
         row = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}")
         return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"], bool(row.get("merged",False)), row.get("merge_commit_sha"), str(row.get("state") or "open"))
 
+    def get_pull_request_files(self, pr_number: int) -> tuple[str, ...]:
+        rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
+        return tuple(str(row["filename"]) for row in rows if row.get("filename"))
+
+
     def get_ci_state(self, pr_number: int) -> CIState:
         pr = self.get_pull_request(pr_number)
         checks = self._call("GET", f"/repos/{self.repository}/commits/{pr.head_sha}/check-runs",
