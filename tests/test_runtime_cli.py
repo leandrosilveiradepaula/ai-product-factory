@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock,patch
 
@@ -51,7 +52,7 @@ class RuntimeCliTests(unittest.TestCase):
     def test_paid_runtime_budget_accepts_ledger_known_spend(self):
         env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
         reader=MagicMock()
-        reader.read.return_value=SimpleNamespace(known_cost=1,unknown_cost_events=0)
+        reader.read.return_value=SimpleNamespace(known_cost=Decimal("1"),unknown_cost_events=0)
         with patch.dict("os.environ", env, clear=True):
             require_paid_runtime_budget(health_reader=reader)
         reader.read.assert_called_once()
@@ -59,7 +60,7 @@ class RuntimeCliTests(unittest.TestCase):
     def test_paid_runtime_budget_blocks_unknown_paid_cost(self):
         env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
         reader=MagicMock()
-        reader.read.return_value=SimpleNamespace(known_cost=1,unknown_cost_events=1)
+        reader.read.return_value=SimpleNamespace(known_cost=Decimal("1"),unknown_cost_events=1)
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 require_paid_runtime_budget(health_reader=reader)
@@ -67,7 +68,7 @@ class RuntimeCliTests(unittest.TestCase):
     def test_paid_runtime_budget_blocks_when_ledger_exhausts_budget(self):
         env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
         reader=MagicMock()
-        reader.read.return_value=SimpleNamespace(known_cost=4.9,unknown_cost_events=0)
+        reader.read.return_value=SimpleNamespace(known_cost=Decimal("4.9"),unknown_cost_events=0)
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 require_paid_runtime_budget(health_reader=reader)
