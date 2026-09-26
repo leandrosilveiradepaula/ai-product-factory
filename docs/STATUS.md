@@ -1,6 +1,6 @@
 # Current status
 
-Last reconciled: 2026-09-25.
+Last reconciled: 2026-09-26.
 
 ## Operational foundation
 
@@ -50,9 +50,8 @@ Production release currently requires a human gate. Destructive data changes, se
 
 ## Next engineering blocks
 
-1. Complete first-operator provisioning and admin operator management for the Console.
-2. Configure and validate Codex WIF with the managed ChatGPT workspace.
-3. Enable the Codex execution adapter only after WIF preflight succeeds.
-4. Enable scheduled Direct execution only after a supported primary-model auth route succeeds end-to-end.
-5. Add preview/deployment adapters and browser/e2e evidence to the autonomous runner.
-6. Harden operations: retry/recovery leases, dead-letter handling, cost ceilings, alerts, and incident views.
+1. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md` and validate Codex WIF preflight.
+2. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
+3. Enable execution adapters only after their independent readiness gates pass.
+4. Add browser/e2e evidence to preview delivery.
+5. Continue operational hardening and alerting without enabling paid execution implicitly.
