@@ -42,7 +42,7 @@ class Tests(unittest.TestCase):
         provider = OpenAIResponsesProvider(api_key="secret", transport=transport)
         with self.assertRaises(RuntimeError) as ctx:
             provider.execute_for_complexity(
-                ModelRequest(task_id="t", objective="x", context={}),
+                ModelRequest(task_id="t", objective="x", context=""),
                 Complexity.LOW,
                 reasoning_effort="none",
             )
