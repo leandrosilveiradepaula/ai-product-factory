@@ -33,6 +33,9 @@ class GitHubPullRequest:
     number: int
     head_sha: str
     html_url: str
+    merged: bool = False
+    merge_commit_sha: str | None = None
+    state: str = "open"
 
 
 @dataclass(frozen=True)
@@ -138,11 +141,11 @@ class GitHubRestAdapter:
     def create_pull_request(self, *, title: str, body: str, head: str, base: str = "main") -> GitHubPullRequest:
         row = self._call("POST", f"/repos/{self.repository}/pulls",
                          payload={"title": title, "body": body, "head": head, "base": base, "draft": False})
-        return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"])
+        return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"], bool(row.get("merged",False)), row.get("merge_commit_sha"), str(row.get("state") or "open"))
 
     def get_pull_request(self, pr_number: int) -> GitHubPullRequest:
         row = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}")
-        return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"])
+        return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"], bool(row.get("merged",False)), row.get("merge_commit_sha"), str(row.get("state") or "open"))
 
     def get_ci_state(self, pr_number: int) -> CIState:
         pr = self.get_pull_request(pr_number)
