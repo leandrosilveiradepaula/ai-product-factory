@@ -37,8 +37,6 @@ class FakeGitHubTransport:
             return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1"}}
         if "/check-runs" in url and method == "GET":
             return 200, {"check_runs": self.check_runs}
-        if "/pulls/9/merge" in url and method == "PUT":
-            return 200, {"merged": True, "sha": "merge999"}
         if "/issues/5" in url and method == "PATCH":
             return 200, {"number": 5, "state": "closed"}
         return 500, {"message": "unexpected"}
@@ -88,9 +86,8 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(failures[0].name, "unit-tests")
         self.assertEqual(failures[0].summary, "2 tests failed")
 
-    def test_merge_uses_current_head_sha(self):
-        sha = self.github.merge_pull_request(9)
-        self.assertEqual(sha, "merge999")
+    def test_adapter_exposes_no_merge_operation(self):
+        self.assertFalse(hasattr(self.github, "merge_pull_request"))
 
     def test_missing_token_fails_fast(self):
         with self.assertRaises(ValueError):

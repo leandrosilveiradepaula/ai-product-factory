@@ -47,6 +47,11 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("pull-requests: read",preview)
   self.assertNotIn("contents: write",preview)
   self.assertNotIn("pull-requests: write",preview)
+ def test_runtime_has_no_automatic_merge_capability(self):
+  adapter=(ROOT/"src/ai_product_factory/github_rest.py").read_text()
+  protocol=(ROOT/"src/ai_product_factory/github_loop.py").read_text()
+  self.assertNotIn("def merge_pull_request",adapter)
+  self.assertNotIn("def merge_pull_request",protocol)
  def test_primary_requires_explicit_enable_flag(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED',text)
