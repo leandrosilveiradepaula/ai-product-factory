@@ -17,12 +17,22 @@ from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
 from .cost_policy import require_cost_ceiling
-from .integration_readiness import github_alerts_readiness,vercel_preview_readiness
+from .integration_readiness import github_alerts_readiness,vercel_preview_readiness,verified_preview_readiness
 from .operational_alerts import evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
 from .release_followup_queue import SupabaseReleaseFollowupQueue
+from .preview_followup_queue import SupabasePreviewFollowupQueue
+from .project_preview_config import resolve_project_vercel_preview_config
+from .vercel_preview import VercelPreviewAdapter,VercelPreviewConfig
+from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
+from .supabase_deployment import DurablePreviewAdapter,SupabaseDeploymentEvidenceStore
+from .browser_evidence_store import BrowserEvidenceRecorder
+from .preview_flow import VerifiedPreviewCoordinator
+from .deployment import DeploymentRequest
+from .release_policy import ReleaseEnvironment
+from .evidence import EvidenceBundle
 from .review_gate import EvalResult,evaluate_quality_gate
 
 def require_primary_runtime_enabled()->None:
@@ -90,6 +100,28 @@ def run_ci_once()->dict:
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
  return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
 
+def run_preview_once()->dict:
+ readiness=verified_preview_readiness()
+ if not readiness.ready:return {"claimed":False,"status":"blocked","missing":list(readiness.missing)}
+ item=SupabasePreviewFollowupQueue().next_pending()
+ if item is None:return {"claimed":False,"status":"empty"}
+ github=GitHubRestAdapter(repository=item.repository)
+ issue=github.get_issue(item.issue_number)
+ pr=github.get_pull_request(item.pr_number)
+ if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
+ try:
+  project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
+ except ValueError as exc:
+  return {"claimed":False,"status":"blocked","run_id":item.run_id,"error":str(exc)}
+ vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id,project_name=project_cfg.project_name,github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
+ store=SupabaseDeliveryStore()
+ deployment=DurablePreviewAdapter(VercelPreviewAdapter(vercel_cfg),SupabaseDeploymentEvidenceStore(),run_id=item.run_id)
+ browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
+ request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
+ verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
+ session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
+ status=AutonomousGitHubLoop(github,store).finalize_verified_preview(session,verified)
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref}
 def run_release_once()->dict:
  item=SupabaseReleaseFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
@@ -122,9 +154,10 @@ def run_dispatch_once(project_key:str)->dict:
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci","release"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci","release","preview"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="preview":out=run_preview_once()
  elif args.mode=="release":out=run_release_once()
  elif args.mode=="ci":out=run_ci_once()
  elif args.mode=="alerts":out=run_alerts_once()
