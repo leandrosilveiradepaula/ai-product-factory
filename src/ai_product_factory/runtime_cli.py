@@ -18,6 +18,9 @@ from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
 from .cost_policy import require_cost_ceiling
 from .integration_readiness import github_alerts_readiness,vercel_preview_readiness
+from .operational_alerts import evaluate_operational_alerts
+from .supabase_operational_health import SupabaseOperationalHealthReader
+from .github_alert_adapter import GitHubIssueAlertAdapter
 
 def require_paid_runtime_budget()->None:
  budget=os.getenv("FACTORY_MODEL_BUDGET_USD");reserve=os.getenv("FACTORY_MODEL_RESERVE_USD");spent=os.getenv("FACTORY_MODEL_KNOWN_SPEND_USD","0")
@@ -59,15 +62,28 @@ def run_health_once()->dict:
  vercel=vercel_preview_readiness();alerts=github_alerts_readiness()
  return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"vercel_preview":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
+def run_alerts_once()->dict:
+ readiness=github_alerts_readiness()
+ if not readiness.ready:return {"status":"blocked","published":0,"missing":list(readiness.missing)}
+ budget_raw=os.getenv("FACTORY_MODEL_BUDGET_USD")
+ budget=Decimal(budget_raw) if budget_raw else None
+ health=SupabaseOperationalHealthReader().read(budget=budget)
+ alerts=evaluate_operational_alerts(health)
+ if not alerts:return {"status":"ok","published":0,"alerts":[]}
+ repository=os.environ["FACTORY_ALERTS_GITHUB_REPOSITORY"]
+ results=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository)).publish_many(alerts)
+ return {"status":"ok","published":sum(1 for result in results if result.created),"alerts":[{"code":result.code,"created":result.created,"issue_number":result.issue_number} for result in results]}
+
 def run_dispatch_once(project_key:str)->dict:
  decision=SupabaseBacklogDispatch().dispatch_next(project_key)
  if decision is None:return {"claimed":False,"status":"empty"}
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id)
  elif args.mode=="dispatch":
