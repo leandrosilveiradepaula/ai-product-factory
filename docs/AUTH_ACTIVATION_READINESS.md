@@ -22,8 +22,10 @@ Ready only when all of these are true:
 - `OPENAI_WIF_AUDIENCE` contains the real accepted audience.
 - GitHub Actions can mint the OIDC token into `OPENAI_IDENTITY_TOKEN_FILE`.
 - the manual `Codex WIF preflight` workflow reaches a successful `codex login status`.
+- `FACTORY_GITHUB_TOKEN` is configured with the minimum target-repository permissions needed by the delivery loop before cross-repository Codex execution.
+- only after the preflight is preserved as evidence, `FACTORY_CODEX_ENABLED=true` is set.
 
-Do not invent the federation rule id or audience. The preflight is intentionally manual and does not execute a Codex task.
+Do not invent the federation rule id or audience. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key or an unofficial ChatGPT token.
 
 ## Activation order
 
