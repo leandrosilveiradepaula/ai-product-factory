@@ -273,7 +273,6 @@ jobs:
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
       OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
-      CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
       OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-codex-worker","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"openai-codex"}}'
       FACTORY_CODEX_GITHUB_ENVIRONMENT: openai-codex
       GITHUB_TOKEN: ${{ github.token }}
@@ -284,6 +283,8 @@ jobs:
     steps:
       - name: Detect Codex runtime readiness
         id: readiness
+        env:
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
         shell: bash
         run: |
           auth_mode=none
@@ -327,6 +328,8 @@ jobs:
           codex --version
       - name: Process at most one Codex implementation task
         if: ${{ steps.readiness.outputs.ready == 'true' }}
+        env:
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
