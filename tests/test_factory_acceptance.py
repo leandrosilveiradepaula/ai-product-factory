@@ -113,11 +113,15 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "dispatch",
             "direct",
             "codex",
+            "codex-manual",
             "preview",
             "alerts",
         ):
             self.assertIn(f"\n  {job}:", workflow)
         self.assertIn('cron: "17 * * * *"', workflow)
+        self.assertIn("ai_product_factory.manual_codex_handoff --mode prepare", workflow)
+        self.assertIn("ai_product_factory.manual_codex_handoff --mode followup", workflow)
+        self.assertIn("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED", workflow)
         for mode in (
             "health",
             "recovery",
@@ -207,6 +211,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927010724_factory_claim_next_codex_run.sql",
             "20260927014211_reconcile_runtime_delivery_functions.sql",
             "20260927014826_add_factory_audit_task_id.sql",
+            "20260927151800_manual_codex_handoff.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -290,6 +295,24 @@ class FactoryAcceptanceTests(unittest.TestCase):
         console_workflow = (ROOT / ".github/workflows/console.yml").read_text()
         self.assertIn("npm run typecheck", console_workflow)
         self.assertIn("npm run build", console_workflow)
+
+    def test_manual_codex_fallback_preserves_release_and_credential_boundaries(self):
+        workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+        manual = (ROOT / "src/ai_product_factory/manual_codex_handoff.py").read_text()
+        migration = (ROOT / "supabase/migrations/20260927151800_manual_codex_handoff.sql").read_text()
+
+        self.assertIn("awaiting_codex_manual", manual)
+        self.assertIn("Factory run:", manual)
+        self.assertIn("Do not merge", manual)
+        self.assertIn("factory_adopt_manual_codex_pr", manual)
+        self.assertNotIn("OPENAI_API_KEY", manual)
+        self.assertNotIn("CODEX_ACCESS_TOKEN", manual)
+        self.assertNotIn("merge_pull_request", manual)
+        self.assertIn("estimated_cost,metadata", migration)
+        self.assertIn("'github','create_pr',1,0", migration)
+        self.assertIn("preparing_codex_manual", migration)
+        self.assertIn("awaiting_codex_manual", migration)
+        self.assertIn("FACTORY_CODEX_ENABLED != 'true'", workflow)
 
     def test_codex_official_access_token_fallback_is_fail_closed(self):
         auth = (ROOT / "src/ai_product_factory/runtime_auth.py").read_text()
