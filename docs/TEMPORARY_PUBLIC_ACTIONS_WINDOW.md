@@ -14,16 +14,16 @@ The repository history also contains commit author metadata. Treat that as publi
 
 ## Pre-open checklist
 
-- [ ] Confirm there are no open pull requests from untrusted contributors.
-- [ ] Confirm no current branch/file contains a literal credential.
-- [ ] Keep `FACTORY_PRIMARY_MODEL_ENABLED=false`.
-- [ ] Keep Codex execution disabled unless its independent auth gate has already passed.
-- [ ] Confirm the only workflows triggered by `pull_request` are read-only and do not reference secrets or OIDC.
-- [ ] Confirm no workflow uses `pull_request_target`.
-- [ ] In GitHub Settings > Actions > General, require approval for workflows from external fork contributors.
-- [ ] In the Vercel project settings, confirm Git Fork Protection is enabled before the repository becomes public.
-- [ ] Do not authorize Vercel deployments originating from unknown forks.
-- [ ] Record the public-window start time.
+- [x] Confirm there are no open pull requests from untrusted contributors.
+- [x] Confirm no current branch/file contains a literal credential.
+- [x] Keep `FACTORY_PRIMARY_MODEL_ENABLED=false`.
+- [x] Keep Codex execution disabled unless its independent auth gate has already passed.
+- [x] Confirm the only workflows triggered by `pull_request` are read-only and do not reference secrets or OIDC.
+- [x] Confirm no workflow uses `pull_request_target`.
+- [x] GitHub fork pull-request workflows are disabled; external fork PRs cannot run repository workflows.
+- [x] Vercel Git Fork Protection confirmed enabled.
+- [x] Do not authorize Vercel deployments originating from unknown forks.
+- [x] Public-window start: 2026-09-27T14:42Z (repository owner action).
 
 ## During the public window
 
@@ -50,3 +50,15 @@ Monitor new forks, external pull requests, workflow approvals, and unexpected de
 - [ ] Record the public-window end time and any irreversible exposure/forks observed.
 
 If Vercel Git Fork Protection or GitHub external-workflow approval cannot be confirmed, do not open the repository.
+
+
+## Current window evidence
+
+- Repository visibility: public.
+- Forks observed after opening: 0.
+- Open external pull requests observed after opening: 0.
+- Main validation after opening: `validate` run #1041 succeeded, including unit tests, compile and `factory-acceptance`.
+- Console validation after opening: run #209 succeeded, including `npm install`, typecheck and production build.
+- Historical redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151`: rerun of the previously quota-blocked `validate` and `Console validation` jobs succeeded.
+- Vercel deployment quota remains exhausted for the current daily window; production health remains HTTP 200 on the last READY deployment.
+- Browser/Playwright evidence for the historical candidate has not yet been re-executed.
