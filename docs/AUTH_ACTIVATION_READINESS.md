@@ -22,7 +22,7 @@ Current known state:
   - GitHub Environment `openai-api`
   - exact mapping checks for issuer, audience, repository, `refs/heads/main`, and `openai-api`
   - restricted model request access for `/v1/responses`
-- the API WIF no-model preflight is implemented but cannot run until GitHub Actions quota is available;
+- the API WIF no-model preflight now runs during the temporary public Actions window. The real GitHub OIDC token is issued successfully, but OpenAI currently rejects the exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. The actual immutable GitHub subject is `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`; the OpenAI Platform mapping must be reconciled to these real claims before WIF is treated as ready;
 - the API Platform Billing screen currently shows `$0.00` credit remaining, so model execution remains disabled;
 - the existing `OPENAI_API_KEY` is retained temporarily until WIF preflight succeeds and must not be treated as a reason to enable paid execution.
 
@@ -90,7 +90,7 @@ Alert publication remains opt-in and deduplicated by deterministic alert code.
 
 ## GitHub OIDC claim contract
 
-The Factory uses dedicated GitHub Environments so OpenAI workload identity can be restricted without trusting every workflow in the repository.
+The Factory uses dedicated GitHub Environments so OpenAI workload identity can be restricted without trusting every workflow in the repository. GitHub repositories created under the current immutable OIDC subject scheme include stable owner and repository numeric IDs in `sub`; the Factory validates that real format rather than assuming the legacy owner/repository-only subject.
 
 ### API Platform workload identity
 
@@ -98,7 +98,7 @@ Jobs that may call the Primary model run in GitHub Environment `openai-api`.
 
 Expected GitHub OIDC subject:
 
-`repo:leandrosilveiradepaula/ai-product-factory:environment:openai-api`
+`repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`
 
 Recommended exact mapping checks in the OpenAI API Workload Identity Provider:
 
@@ -114,7 +114,7 @@ The selective Codex worker runs in GitHub Environment `openai-codex`.
 
 Expected GitHub OIDC subject:
 
-`repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex`
+`repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-codex`
 
 Recommended Codex federation-rule checks:
 
@@ -133,7 +133,7 @@ The Codex WIF preflight and worker run in GitHub Environment `openai-codex`. Bef
 
 - `iss = https://token.actions.githubusercontent.com`
 - `aud = <administrator-configured Codex audience>`
-- `sub = repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex`
+- `sub = repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-codex`
 - `repository = leandrosilveiradepaula/ai-product-factory`
 - `ref = refs/heads/main`
 - `environment = openai-codex`
