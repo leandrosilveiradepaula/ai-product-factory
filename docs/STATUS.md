@@ -96,6 +96,18 @@ After the fix, all transactional smoke paths passed. Final residual state remain
 
 GitHub Actions validation is temporarily unavailable because the daily Actions quota is exhausted. This is treated as an external operational dependency and must not be represented as a green CI run until the quota resets.
 
+## Operational Console redesign
+
+Issue #224 is implemented in PR #228 using the approved Stitch/Figma operational direction: dark developer-tool shell, collapsible sidebar, overview, projects/project detail, New Work, runs/run detail, Work Queue, Human Gates, Evals, Deployments, Models & Usage, Audit Log, Configuration and operator administration.
+
+All operational views use real Control Plane data through the existing server-side Supabase boundary. A live schema compatibility check confirmed zero missing database columns for the new queries. Factory acceptance now requires these operational surfaces and checks that privileged Factory/OpenAI/GitHub secrets are not present in the Console TSX surface.
+
+The PR remains intentionally unmerged because Console changes require Verified Preview. Two external daily quotas currently block final verification:
+- GitHub Actions quota exhausted: `validate` and `Console validation` cannot allocate a runner and execute zero steps;
+- Vercel free deployment quota exhausted: Preview creation returns `api-deployments-free-per-day`.
+
+Figma MCP Starter calls are also exhausted, so no additional design-context comparison can be performed until that quota resets. These are external verification blockers, not evidence of a successful build or preview.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
