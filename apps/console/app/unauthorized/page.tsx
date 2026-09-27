@@ -1,1 +1,9 @@
-import {signOutAction} from "../auth-actions";export default function Unauthorized(){return <><div className="eyebrow">Access denied</div><h1 className="title">Usuário sem permissão</h1><p className="muted">Sua sessão é válida, mas este usuário não está cadastrado como operador da Factory.</p><form action={signOutAction}><button className="secondary" type="submit">Sair</button></form></>}
+import {signOutAction} from "../auth-actions";
+import {Button,PageHeader} from "../ui";
+
+export default function Unauthorized(){
+ return <>
+  <PageHeader eyebrow="Access denied" title="Usuário sem permissão" subtitle="Sua sessão é válida, mas este usuário não está cadastrado como operador da Factory."/>
+  <form action={signOutAction}><Button type="submit">Sair</Button></form>
+ </>;
+}
