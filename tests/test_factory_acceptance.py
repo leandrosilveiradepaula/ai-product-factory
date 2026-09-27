@@ -172,12 +172,30 @@ class FactoryAcceptanceTests(unittest.TestCase):
         for relative in required_paths:
             self.assertTrue((ROOT / relative).exists(), relative)
 
-        migrations = "\n".join(
+        migration_names = {
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
-        )
-        self.assertIn("20260925172455_create_factory_control_plane.sql", migrations)
-        self.assertIn("20260925172519_add_control_plane_fk_indexes.sql", migrations)
-        self.assertIn("20260927010724_factory_claim_next_codex_run.sql", migrations)
+        }
+        expected_history = {
+            "20260925172455_create_factory_control_plane.sql",
+            "20260925172519_add_control_plane_fk_indexes.sql",
+            "20260925200339_factory_create_project_intake_rpc.sql",
+            "20260925200742_factory_enqueue_project_bootstrap_rpc.sql",
+            "20260925201128_factory_runtime_worker_rpcs.sql",
+            "20260925202145_factory_persist_product_stage_rpc.sql",
+            "20260925202913_factory_backlog_dispatch_rpcs.sql",
+            "20260925232713_factory_console_auth_and_gate_resolution.sql",
+            "20260925233709_factory_run_leases_and_recovery.sql",
+            "20260925234331_factory_console_operator_admin.sql",
+            "20260927010724_factory_claim_next_codex_run.sql",
+            "20260927012500_reconcile_runtime_delivery_functions.sql",
+        }
+        self.assertTrue(expected_history.issubset(migration_names))
+        for orphan in (
+            "20260925204000_factory_claim_next_direct_run.sql",
+            "20260925205000_factory_bind_github_issue.sql",
+            "20260925210500_factory_delivery_store.sql",
+        ):
+            self.assertNotIn(orphan, migration_names)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
