@@ -96,7 +96,8 @@ def run_direct_once(worker_id:str)->dict:
  loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
- return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pr_number}
+ if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_codex_once(worker_id:str)->dict:
  try:
