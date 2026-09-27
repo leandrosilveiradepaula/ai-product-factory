@@ -1,9 +1,16 @@
-import Link from "next/link";
 import {getConsoleConfiguration} from "../../lib/control-plane";
+import {ActionLink,MetricCard,PageHeader,SectionHeader,StatusPill} from "../ui";
+
 export default async function Configuration(){
  const c=await getConsoleConfiguration();
- return <><div className="pageHeader"><div><div className="eyebrow">System</div><h1 className="title">Configuration</h1><p className="subtitle">Configuração operacional visível do Control Plane. Segredos e tokens nunca são expostos no Console.</p></div></div>
- <div className="grid compact"><div className="card metricCard"><span className="metricLabel">Control Plane</span><div className="metric">{c.controlPlaneConfigured?"Ready":"Missing"}</div><div className="metricNote">server-side credentials</div></div><div className="card metricCard"><span className="metricLabel">Projects</span><div className="metric">{c.projects.length}</div></div><div className="card metricCard"><span className="metricLabel">Model activation</span><div className="metric">External</div><div className="metricNote">managed by runtime environment</div></div><div className="card metricCard"><span className="metricLabel">Secrets</span><div className="metric">Server only</div><div className="metricNote">never rendered by Console</div></div></div>
- <section className="section"><div className="sectionHeader"><h2>Project manifests</h2><Link className="secondary linkButton" href="/admin/operators">Operators</Link></div><div className="stack">{c.projects.map(p=><article className="card" key={p.key}><div className="cardTop"><div><h3 className="cardTitle">{p.name}</h3><p className="cardMeta mono">{p.repository||p.key}</p></div><div className="badgeLine"><span className="pill">{p.kind}</span><span className="pill accent">{p.stage}</span></div></div><details style={{marginTop:14}}><summary className="muted">Manifest</summary><pre className="jsonBlock">{JSON.stringify(p.manifest,null,2)}</pre></details></article>)}</div></section>
+ return <>
+  <PageHeader eyebrow="System" title="Configuration" subtitle="Configuração operacional visível do Control Plane. Segredos e tokens nunca são expostos no Console."/>
+  <div className="grid compact">
+   <MetricCard label="Control Plane" value={c.controlPlaneConfigured?"Ready":"Missing"} note="server-side credentials"/>
+   <MetricCard label="Projects" value={c.projects.length}/>
+   <MetricCard label="Model activation" value="External" note="managed by runtime environment"/>
+   <MetricCard label="Secrets" value="Server only" note="never rendered by Console"/>
+  </div>
+  <section className="section"><SectionHeader title="Project manifests" action={<ActionLink href="/admin/operators">Operators</ActionLink>}/><div className="stack">{c.projects.map(p=><article className="card" key={p.key}><div className="cardTop"><div><h3 className="cardTitle">{p.name}</h3><p className="cardMeta mono">{p.repository||p.key}</p></div><div className="badgeLine"><StatusPill status={p.kind}/><StatusPill status={p.stage} tone="accent"/></div></div><details style={{marginTop:14}}><summary className="muted">Manifest</summary><pre className="jsonBlock">{JSON.stringify(p.manifest,null,2)}</pre></details></article>)}</div></section>
  </>;
 }
