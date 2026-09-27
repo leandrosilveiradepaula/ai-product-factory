@@ -214,6 +214,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927152310_manual_codex_handoff.sql",
             "20260927193500_factory_existing_project_reconciliation.sql",
             "20260927194500_factory_project_attachments.sql",
+            "20260927195500_factory_project_state_snapshots.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
