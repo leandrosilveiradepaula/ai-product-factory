@@ -69,11 +69,12 @@ The runtime writes the GitHub OIDC token to the protected path already configure
 1. Configure `OPENAI_FEDERATION_RULE_ID`.
 2. Configure `OPENAI_WIF_AUDIENCE`.
 3. Leave `FACTORY_CODEX_ENABLED=false`.
-4. Run the manual **Codex WIF preflight** after GitHub Actions quota is available.
-5. Confirm `codex login status` succeeds under WIF.
-6. Run one bounded non-production Codex smoke.
-7. Confirm the durable `factory_codex_usage` ledger increments only for the real invocation.
-8. Only then set `FACTORY_CODEX_ENABLED=true`.
+4. Ensure the managed Codex security requirements deny model-controlled reads of the identity-token directory with `permissions.filesystem.deny_read`.
+5. Run the manual **Codex WIF preflight** after GitHub Actions quota is available. The preflight first validates the GitHub OIDC claims locally and refuses a repository/ref/environment mismatch.
+6. Confirm `codex login status` succeeds under WIF.
+7. Run one bounded non-production Codex smoke.
+8. Confirm the durable `factory_codex_usage` ledger increments only for the real invocation.
+9. Only then set `FACTORY_CODEX_ENABLED=true`.
 
 Do not use an unofficial ChatGPT token as a fallback.
 
@@ -186,3 +187,12 @@ Do not add balance automatically.
 ### Shared infrastructure
 
 - GitHub Actions daily quota is currently exhausted/limited, so preflights cannot be treated as executed until a runner is actually allocated.
+
+
+### Codex runtime token lifecycle
+
+For GitHub Actions, the trusted host obtains the GitHub OIDC JWT and writes it outside the repository checkout. The worker validates the token's exact issuer, audience, subject, repository, branch and environment before writing it. The file is replaced atomically with mode `0600` inside a mode `0700` directory.
+
+During an active Codex worker run, the host refreshes the GitHub OIDC token every 240 seconds. The Codex process receives only the federation-rule ID, absolute identity-token file path and optional audit context. GitHub credentials and OpenAI API keys remain excluded from the Codex subprocess environment.
+
+Codex CLI remains pinned to `0.157.0`, which is newer than the documented WIF minimum `0.148.0`.
