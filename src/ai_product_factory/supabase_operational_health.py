@@ -42,7 +42,7 @@ class SupabaseOperationalHealthReader:
         for row in runs:
             status=str(row.get("status") or "")
             lease=_parse_time(row.get("lease_expires_at"))
-            if lease is not None and lease < now and status in {"running","implementing"}:
+            if lease is not None and lease < now and status in {"running","implementing","preparing_codex_manual"}:
                 expired+=1
             if status == "failed":
                 failed+=1
