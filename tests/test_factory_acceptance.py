@@ -333,6 +333,19 @@ class FactoryAcceptanceTests(unittest.TestCase):
             self.assertNotIn("$" + "{{ secrets.", workflow, name)
             self.assertNotIn("id-token: write", workflow, name)
 
+    def test_vercel_deployments_are_bounded_to_console_branches(self):
+        vercel = (ROOT / "apps/console/vercel.json").read_text()
+        workflow = (ROOT / ".github/workflows/console.yml").read_text()
+        operations = (ROOT / "docs/OPERATIONS.md").read_text()
+
+        self.assertIn('"**": false', vercel)
+        self.assertIn('"main": true', vercel)
+        self.assertIn('"console/**": true', vercel)
+        self.assertIn('"ignoreCommand"', vercel)
+        self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)
+        self.assertIn("console/*)", workflow)
+        self.assertIn("Vercel deployment budget policy", operations)
+
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         codex = (ROOT / "src/ai_product_factory/codex_cli_producer.py").read_text()
