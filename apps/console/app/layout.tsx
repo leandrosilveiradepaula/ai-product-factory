@@ -1,3 +1,4 @@
+import "./theme.css";
 import "./globals.css";
 import Link from "next/link";
 import {signOutAction} from "./auth-actions";
