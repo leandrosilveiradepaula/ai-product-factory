@@ -1,0 +1,61 @@
+name: Console historical browser evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: Exact existing Vercel Preview URL to verify
+        required: false
+        default: "https://ai-product-factory-console-pbpcipzs8-leandros-projects-102e32ab.vercel.app"
+        type: string
+      expected_text:
+        description: Text that must be rendered by the application
+        required: false
+        default: "AI Product Factory"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  browser-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned Playwright browser
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Mint short-lived GitHub OIDC token
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+      - name: Verify exact protected Preview
+        env:
+          FACTORY_PREVIEW_URL: ${{ inputs.preview_url }}
+          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ inputs.expected_text }}
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        shell: bash
+        run: |
+          result="$(node scripts/verify_preview.mjs)"
+          echo "$result"
+          RESULT="$result" node - <<'NODE'
+          const result = JSON.parse(process.env.RESULT);
+          const required = ["page_load", "http_status", "body_visible", "expected_text", "console_clean"];
+          if (result.status !== "success") {
+            throw new Error(result.detail || "browser evidence failed");
+          }
+          for (const check of required) {
+            if (!result.checks.includes(check)) throw new Error(`missing browser evidence check: ${check}`);
+          }
+          NODE
