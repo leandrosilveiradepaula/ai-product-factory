@@ -105,3 +105,19 @@ Recommended Codex federation-rule checks:
 - the real accepted audience configured in the OpenAI Admin Portal.
 
 This leaves the audience as an administrator-owned value while making all other GitHub claims deterministic in code.
+
+
+### Codex GitHub Actions hardening
+
+The Codex WIF preflight and worker run in GitHub Environment `openai-codex`. Before Codex sees the identity-token file, the trusted host code decodes the GitHub OIDC JWT locally and fails closed unless all expected claims match:
+
+- `iss = https://token.actions.githubusercontent.com`
+- `aud = <administrator-configured Codex audience>`
+- `sub = repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex`
+- `repository = leandrosilveiradepaula/ai-product-factory`
+- `ref = refs/heads/main`
+- `environment = openai-codex`
+
+The raw token is never logged. The token directory/file are created with restrictive permissions and the worker replaces the token atomically. A trusted host refresher renews GitHub OIDC every 240 seconds while a Codex implementation process is running so Codex can re-read a current source token if it needs a later exchange.
+
+OpenAI also recommends a managed Codex requirement that denies model-controlled reads of the entire identity-token directory via `permissions.filesystem.deny_read`. This is a workspace/admin policy requirement and must be enabled as part of Codex rollout once managed WIF is available; file mode alone is not treated as sufficient protection.
