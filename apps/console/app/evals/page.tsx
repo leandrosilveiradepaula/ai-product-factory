@@ -1,0 +1,9 @@
+import Link from "next/link";
+import {getEvaluations} from "../../lib/control-plane";
+function tone(status:string){return status==="passed"||status==="success"?"success":status==="failed"?"danger":status==="pending"?"warning":""}
+export default async function Evals(){
+ const rows=await getEvaluations();const passed=rows.filter(x=>["passed","success"].includes(x.status)).length;const failed=rows.filter(x=>x.status==="failed").length;
+ return <><div className="pageHeader"><div><div className="eyebrow">Quality</div><h1 className="title">Evals</h1><p className="subtitle">Evidências de qualidade associadas a runs e candidatos específicos.</p></div></div>
+ <div className="grid compact"><div className="card metricCard"><span className="metricLabel">Evaluations</span><div className="metric">{rows.length}</div></div><div className="card metricCard"><span className="metricLabel">Passed</span><div className="metric">{passed}</div></div><div className="card metricCard"><span className="metricLabel">Failed</span><div className="metric">{failed}</div></div><div className="card metricCard"><span className="metricLabel">With score</span><div className="metric">{rows.filter(x=>x.score!=null).length}</div></div></div>
+ <section className="section"><div className="table"><div className="tableRow tableHeader"><span>Evaluation / Task</span><span>Project</span><span>Status / Score</span><span>Created</span></div>{rows.length===0?<div className="emptyState">No evaluation evidence yet.</div>:rows.map(x=><div className="tableRow" key={x.id}><div><strong>{x.type}</strong><div><Link className="muted" href={`/runs/${x.runId}`}>{x.taskTitle}</Link></div></div><Link href={`/projects/${x.projectKey}`}>{x.projectName}</Link><span className={`pill ${tone(x.status)}`}>{x.status}{x.score==null?"":` · ${x.score}`}</span><span className="muted">{new Date(x.createdAt).toLocaleString("pt-BR")}</span></div>)}</div></section></>;
+}
