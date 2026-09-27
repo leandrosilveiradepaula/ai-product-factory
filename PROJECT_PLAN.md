@@ -65,7 +65,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Verified Preview runtime com evidencia duravel e fronteira `awaiting_release`.
 - [x] Release observer por plataforma GitHub, sem capacidade de merge automatico.
 
-### F5 - Piloto Agente SQL Financeiro
+### F5 - Piloto Agente SQL Financeiro — adiado por decisao do usuario
 - [x] Onboarding de `agente-sql-langgraph`.
 - [x] Importar comando real de regressao: `python scripts/check_all.py`.
 - [x] Importar CI real: `Offline validation`.
@@ -82,9 +82,18 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar greenfield offline com 0 chamadas de Codex/modelo.
 - [x] Revisar gates e ampliar autonomia ate o limite seguro: non-prod low-risk autonomo; apenas riscos definidos e producao exigem humano.
 
+### F7 - Factory Finalization
+- [x] Definir matriz formal de aceitacao da Factory.
+- [x] Criar acceptance gate executavel cobrindo lifecycle, roteamento, Preview, release, operacao, custos e invariantes de seguranca.
+- [x] Adicionar check dedicado `factory-acceptance` ao CI da propria Factory.
+- [x] Reconciliar migration do worker Codex entre Git e Supabase de producao.
+- [x] Separar completude interna de ativacao administrativa de providers externos.
+
 ## Gate atual
 
-O nucleo deterministico da solucao esta operacional e o provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
+A Factory core esta funcionalmente implementada. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
+
+O provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
 Para evitar custo adicional antes de necessario, o caminho prioritario continua sendo validar o mecanismo oficial de Workload Identity do workspace para Codex. O runtime aceita API key para o modelo principal e as variaveis oficiais de WIF para Codex; tokens ChatGPT nao oficiais sao deliberadamente rejeitados.
 
