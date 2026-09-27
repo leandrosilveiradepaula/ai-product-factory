@@ -108,6 +108,16 @@ The PR remains intentionally unmerged because Console changes require Verified P
 
 Figma MCP Starter calls are also exhausted, so no additional design-context comparison can be performed until that quota resets. These are external verification blockers, not evidence of a successful build or preview.
 
+## Console security boundary audit
+
+The operational Console redesign was checked against the live Control Plane boundary:
+
+- 1 active Console operator and 1 active admin exist;
+- all 11 Factory Control Plane tables deny direct table privileges to `anon` and `authenticated` while retaining privileged server-side service access;
+- 15 critical runtime/Console RPCs were checked and remain `SECURITY INVOKER`;
+- those RPCs deny `EXECUTE` to `anon` and `authenticated` and allow the server-side `service_role`;
+- the redesigned TSX client surface is covered by Factory acceptance assertions that privileged Supabase/OpenAI/GitHub secret names are not rendered into pages.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
