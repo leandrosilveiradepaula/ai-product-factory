@@ -162,17 +162,21 @@ class OpenAIResponsesProvider(ModelProvider):
     ) -> None:
         self.transport = transport or _default_transport
         key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
+        wif_values = {
+            "OPENAI_IDENTITY_PROVIDER_ID": os.getenv("OPENAI_IDENTITY_PROVIDER_ID", "").strip(),
+            "OPENAI_SERVICE_ACCOUNT_ID": os.getenv("OPENAI_SERVICE_ACCOUNT_ID", "").strip(),
+            "OPENAI_WIF_AUDIENCE": os.getenv("OPENAI_WIF_AUDIENCE", "").strip(),
+        }
         if access_token_provider is not None:
             self._access_token_provider = access_token_provider
-        elif key:
-            self._access_token_provider = lambda: key
-        elif (
-            os.getenv("OPENAI_IDENTITY_PROVIDER_ID", "").strip()
-            and os.getenv("OPENAI_SERVICE_ACCOUNT_ID", "").strip()
-            and os.getenv("OPENAI_WIF_AUDIENCE", "").strip()
-        ):
+        elif any(wif_values.values()):
+            missing = [name for name, value in wif_values.items() if not value]
+            if missing:
+                raise ValueError("OpenAI API workload identity configuration is incomplete: " + ", ".join(missing))
             wif = GitHubActionsOpenAIWorkloadIdentity.from_env(transport=self.transport)
             self._access_token_provider = wif.get_access_token
+        elif key:
+            self._access_token_provider = lambda: key
         else:
             raise ValueError("OPENAI_API_KEY or OpenAI API workload identity configuration is required")
         self.policy = policy or OpenAIModelPolicy()
