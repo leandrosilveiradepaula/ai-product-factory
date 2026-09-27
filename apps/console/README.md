@@ -50,3 +50,15 @@ The Console exposes real Control Plane data through server-rendered routes:
 - `/admin/operators` — operator administration
 
 Secrets, provider credentials, and GitHub tokens must never be rendered into these routes.
+
+## Design system
+
+The operational Console has a centralized presentation layer:
+
+- `app/theme.css` is the single source for typography, palette, semantic status colors, radii, spacing and shared visual effects;
+- `app/globals.css` implements layout/component classes by consuming those tokens rather than owning the theme;
+- `app/ui.tsx` contains reusable primitives for page headers, metrics, status pills, section headers, empty states and shared actions.
+
+Global visual changes should start in `theme.css`. For example, changing `--font-sans` changes the Console typography without editing individual screens. Status meaning remains semantic: success, warning, danger and accent are mapped centrally.
+
+Business actions remain outside the visual primitives. UI components render the control; authorization and state transitions continue through the server-side Control Plane functions.
