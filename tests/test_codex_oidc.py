@@ -25,12 +25,19 @@ def jwt(claims: dict) -> str:
 
 
 class CodexOidcTests(unittest.TestCase):
-    def claims(self) -> dict:
+    def claims(self, *, immutable: bool = False) -> dict:
         now = int(time.time())
+        subject = (
+            "repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-codex"
+            if immutable
+            else "repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex"
+        )
         return {
             "iss": "https://token.actions.githubusercontent.com",
             "aud": "https://codex.example.invalid",
-            "sub": "repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex",
+            "sub": subject,
+            "repository_owner_id": "256917842",
+            "repository_id": "1387883686",
             "repository": "leandrosilveiradepaula/ai-product-factory",
             "ref": "refs/heads/main",
             "environment": "openai-codex",
@@ -47,6 +54,31 @@ class CodexOidcTests(unittest.TestCase):
             ref="refs/heads/main",
             environment="openai-codex",
         )
+
+    def test_validates_immutable_subject_with_repository_ids(self):
+        claims = decode_unverified_claims(jwt(self.claims(immutable=True)))
+        validate_github_claims(
+            claims,
+            audience="https://codex.example.invalid",
+            repository="leandrosilveiradepaula/ai-product-factory",
+            ref="refs/heads/main",
+            environment="openai-codex",
+            repository_owner_id="256917842",
+            repository_id="1387883686",
+        )
+
+    def test_immutable_subject_rejects_wrong_repository_ids(self):
+        claims = self.claims(immutable=True)
+        with self.assertRaises(PermissionError):
+            validate_github_claims(
+                claims,
+                audience="https://codex.example.invalid",
+                repository="leandrosilveiradepaula/ai-product-factory",
+                ref="refs/heads/main",
+                environment="openai-codex",
+                repository_owner_id="256917842",
+                repository_id="999",
+            )
 
     def test_mismatched_identity_claims_fail_closed(self):
         for field, value in (

@@ -30,7 +30,7 @@ The Codex job runs in GitHub Environment:
 
 Expected GitHub OIDC subject:
 
-`repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex`
+`repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-codex`
 
 Other deterministic claims to require:
 
@@ -107,7 +107,7 @@ Primary jobs run in GitHub Environment:
 
 Expected GitHub OIDC subject:
 
-`repo:leandrosilveiradepaula/ai-product-factory:environment:openai-api`
+`repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`
 
 Recommended exact mapping checks:
 
@@ -188,7 +188,7 @@ Do not add balance automatically.
 
 ### Shared infrastructure
 
-- GitHub Actions daily quota is currently exhausted/limited, so preflights cannot be treated as executed until a runner is actually allocated.
+- GitHub Actions runners are currently available during the temporary public-repository window. The API WIF no-model preflight has executed for real; the current blocker is the OpenAI service-account mapping mismatch, not runner capacity.
 
 
 ### Codex runtime token lifecycle
@@ -213,7 +213,7 @@ OpenAI Platform:
 - service account: `ai-product-factory-primary`
 - service account ID: `user-964d27e5d9d6b216dd475e06`
 - permissions: Restricted; Model capabilities Request with Responses `/v1/responses` Write
-- mapping: exact `iss`, `aud`, `sub`, `repository`, `ref=refs/heads/main`, and `environment=openai-api`
+- intended mapping: exact `iss`, `aud`, immutable `sub`, `repository`, `ref=refs/heads/main`, and `environment=openai-api`; the current mapping is not yet accepted by OpenAI and must be corrected against the observed token
 
 GitHub:
 - Environment `openai-api` exists;
@@ -221,8 +221,11 @@ GitHub:
 - Environment `openai-codex` also exists but intentionally has no Codex WIF values yet.
 
 Activation status:
-- authentication configuration: complete, pending no-model WIF preflight;
-- billing/model execution: blocked because API credit remaining is currently `$0.00`;
+- GitHub OIDC issuance: verified working;
+- token exchange: currently blocked by `HTTP 401 / invalid_grant` with message `The provided service_account_id mapping does not match token attributes.`;
+- actual immutable GitHub subject observed: `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`;
+- administrator action required: reconcile the OpenAI Platform service-account mapping to the actual token attributes, then rerun the no-model preflight;
+- billing/model execution: independently blocked because API credit remaining is currently `$0.00`;
 - `FACTORY_PRIMARY_MODEL_ENABLED`: must remain false;
 - `OPENAI_API_KEY`: retain temporarily until WIF preflight succeeds, then review removal.
 

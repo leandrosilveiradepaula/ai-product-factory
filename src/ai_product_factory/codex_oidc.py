@@ -37,9 +37,25 @@ def validate_github_claims(
     repository: str,
     ref: str,
     environment: str,
+    repository_owner_id: str | None = None,
+    repository_id: str | None = None,
     now: float | None = None,
 ) -> None:
-    expected_sub = f"repo:{repository}:environment:{environment}"
+    if bool(repository_owner_id) != bool(repository_id):
+        raise PermissionError("GitHub OIDC immutable subject configuration is incomplete")
+    if repository_owner_id and repository_id:
+        try:
+            owner, repo_name = repository.split("/", 1)
+        except ValueError as exc:
+            raise PermissionError("GitHub repository name is invalid") from exc
+        if not repository_owner_id.isdigit() or not repository_id.isdigit():
+            raise PermissionError("GitHub OIDC immutable subject IDs must be numeric")
+        expected_sub = (
+            f"repo:{owner}@{repository_owner_id}/{repo_name}@{repository_id}"
+            f":environment:{environment}"
+        )
+    else:
+        expected_sub = f"repo:{repository}:environment:{environment}"
     expected = {
         "iss": "https://token.actions.githubusercontent.com",
         "sub": expected_sub,
@@ -120,6 +136,8 @@ def refresh_once(
     repository: str,
     ref: str,
     environment: str,
+    repository_owner_id: str | None = None,
+    repository_id: str | None = None,
     fetcher: TokenFetcher = fetch_github_oidc_token,
 ) -> None:
     token = fetcher(audience)
@@ -130,6 +148,8 @@ def refresh_once(
         repository=repository,
         ref=ref,
         environment=environment,
+        repository_owner_id=repository_owner_id,
+        repository_id=repository_id,
     )
     write_token_atomically(token_file, token)
 
@@ -154,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
     audience = _required_env("OPENAI_WIF_AUDIENCE")
     repository = _required_env("GITHUB_REPOSITORY")
     ref = _required_env("GITHUB_REF")
+    repository_owner_id = _required_env("GITHUB_REPOSITORY_OWNER_ID")
+    repository_id = _required_env("GITHUB_REPOSITORY_ID")
     environment = _required_env("FACTORY_CODEX_GITHUB_ENVIRONMENT")
 
     while True:
@@ -163,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
             repository=repository,
             ref=ref,
             environment=environment,
+            repository_owner_id=repository_owner_id,
+            repository_id=repository_id,
         )
         print("codex_oidc_refresh=ok", flush=True)
         if args.refresh_seconds == 0:
