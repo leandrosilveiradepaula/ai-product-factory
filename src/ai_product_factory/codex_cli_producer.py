@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 import pathlib
 import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable
 
 from .execution_worker import ImplementationArtifact
 from .github_auth import resolve_github_token
@@ -36,21 +35,14 @@ class CodexCLIConfig:
 
     @classmethod
     def from_env(cls) -> "CodexCLIConfig":
-        raw = os.getenv("FACTORY_CODEX_COMMAND_JSON", "").strip()
-        if raw:
-            value = json.loads(raw)
-            if not isinstance(value, list) or not value or not all(isinstance(x, str) and x for x in value):
-                raise ValueError("FACTORY_CODEX_COMMAND_JSON must be a non-empty JSON string array")
-            command = tuple(value)
-        else:
-            command = (
-                "codex",
-                "exec",
-                "--sandbox",
-                "workspace-write",
-                "--ask-for-approval",
-                "never",
-            )
+        command = (
+            "codex",
+            "exec",
+            "--sandbox",
+            "workspace-write",
+            "--ask-for-approval",
+            "never",
+        )
         timeout = int(os.getenv("FACTORY_CODEX_TIMEOUT_SECONDS", "900"))
         max_files = int(os.getenv("FACTORY_CODEX_MAX_FILES", "20"))
         max_bytes = int(os.getenv("FACTORY_CODEX_MAX_BYTES", "250000"))
