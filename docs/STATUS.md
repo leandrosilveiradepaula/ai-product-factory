@@ -82,6 +82,21 @@ Security rules:
 
 No token has been created or stored by the Factory, and `FACTORY_CODEX_ENABLED` remains false until preflight evidence exists.
 
+## Manual Codex Control Plane activation
+
+Production migration `20260927152310_manual_codex_handoff` is applied in Supabase and the repository migration history uses the same version ID.
+
+A live-schema transactional smoke with explicit `ROLLBACK` verified:
+- Codex-routed queue claim -> `preparing_codex_manual`;
+- durable GitHub Issue binding -> `awaiting_codex_manual`;
+- manual PR adoption -> `ci_pending`;
+- candidate SHA/branch persistence;
+- zero-cost GitHub PR evidence;
+- automated Codex invocation count remains zero;
+- the three manual-Codex audit events are persisted inside the transaction.
+
+After rollback: zero synthetic projects, zero active runs, zero pending gates and zero Codex invocations remained.
+
 ## Manual Codex fallback
 
 The operating strategy is now explicit: deterministic tools first, OpenAI API/Direct as the primary AI path, and Codex only when its marginal value justifies the extra cost/complexity.

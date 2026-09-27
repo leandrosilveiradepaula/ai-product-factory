@@ -211,7 +211,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927010724_factory_claim_next_codex_run.sql",
             "20260927014211_reconcile_runtime_delivery_functions.sql",
             "20260927014826_add_factory_audit_task_id.sql",
-            "20260927151800_manual_codex_handoff.sql",
+            "20260927152310_manual_codex_handoff.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -299,7 +299,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
     def test_manual_codex_fallback_preserves_release_and_credential_boundaries(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         manual = (ROOT / "src/ai_product_factory/manual_codex_handoff.py").read_text()
-        migration = (ROOT / "supabase/migrations/20260927151800_manual_codex_handoff.sql").read_text()
+        migration = (ROOT / "supabase/migrations/20260927152310_manual_codex_handoff.sql").read_text()
 
         self.assertIn("awaiting_codex_manual", manual)
         self.assertIn("Factory run:", manual)
