@@ -299,7 +299,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
     def test_manual_codex_fallback_preserves_release_and_credential_boundaries(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         manual = (ROOT / "src/ai_product_factory/manual_codex_handoff.py").read_text()
-        migration = (ROOT / "supabase/migrations/20260927151800_manual_codex_handoff.sql").read_text()
+        migration = (ROOT / "supabase/migrations/20260927152310_manual_codex_handoff.sql").read_text()
 
         self.assertIn("awaiting_codex_manual", manual)
         self.assertIn("Factory run:", manual)
