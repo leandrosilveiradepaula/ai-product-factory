@@ -58,7 +58,7 @@ OpenAI API authentication and Codex workspace authentication are intentionally s
 
 The existing API key reached the OpenAI API but returned HTTP 429/quota, so the Factory does not use it for unattended paid work.
 
-Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. The managed ChatGPT workspace currently does not expose the Workload Identity configuration in the Admin Portal; an Enterprise support request has been opened to enable or provide access to Codex WIF before the preflight can be exercised.
+Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. On 2026-09-27 the Infodive managed ChatGPT workspace Admin Portal was inspected directly in both current and legacy administration surfaces; the documented `Workload identity` section is not present. This confirms the external beta enablement is still missing. Issue #240 tracks the required OpenAI Support/admin action before the preflight can be exercised.
 
 The selective Codex worker is implemented behind fail-closed activation: atomic Codex-only claim, isolated checkout, workspace-bounded CLI execution, file/byte limits, durable invocation ledger, existing GitHub Issue/branch/PR delivery loop, and an OIDC/WIF Actions job. The job performs no OIDC minting, CLI installation, queue claim, or Codex call unless the enable flag, WIF values, cross-repository GitHub credential, and Control Plane credentials are all present. GitHub credentials are used only by the parent checkout path and are removed from the Codex subprocess environment.
 
