@@ -16,7 +16,7 @@ on:
       expected_text:
         description: Text that must be rendered by the application
         required: false
-        default: "AI Product Factory"
+        default: "Entrar na Factory"
         type: string
 
 permissions:
@@ -48,7 +48,7 @@ jobs:
       - name: Verify exact protected Preview
         env:
           FACTORY_PREVIEW_URL: ${{ inputs.preview_url || 'https://ai-product-factory-console-j358m351z-leandros-projects-102e32ab.vercel.app' }}
-          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ inputs.expected_text || 'AI Product Factory' }}
+          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ inputs.expected_text || 'Entrar na Factory' }}
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         shell: bash
         run: |
