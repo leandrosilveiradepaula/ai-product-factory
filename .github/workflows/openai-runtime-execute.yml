@@ -43,6 +43,7 @@ permissions:
 jobs:
   execute:
     runs-on: ubuntu-latest
+    environment: openai-api
     timeout-minutes: 10
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
