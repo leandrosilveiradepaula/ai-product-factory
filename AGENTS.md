@@ -11,6 +11,8 @@ Este repositorio implementa uma fabrica autonoma de desenvolvimento. O objetivo 
 3. Agente especializado de baixo custo.
 4. Codex somente quando a complexidade justificar.
 
+Enquanto a autenticacao autonoma do Codex nao estiver disponivel, uma tarefa realmente classificada para Codex pode usar handoff manual duravel: a Factory prepara a GitHub Issue, espera o PR produzido pelo operador no Codex e retoma automaticamente em CI. Isso nao transforma complexidade em gate de produto e nao bloqueia tarefas Direct/API independentes.
+
 ## Nao usar Codex para
 
 - discovery;
