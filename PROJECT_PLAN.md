@@ -89,6 +89,10 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Adicionar check dedicado `factory-acceptance` ao CI da propria Factory.
 - [x] Reconciliar migration do worker Codex entre Git e Supabase de producao.
 - [x] Separar completude interna de ativacao administrativa de providers externos.
+- [x] Validar Control Plane real por smoke transacional com rollback.
+- [x] Implementar redesign operacional do Console com dados reais do Control Plane.
+- [ ] Validar CI/typecheck/build do Console apos reset da cota diaria do GitHub Actions.
+- [ ] Validar Preview exato do Console apos reset da cota diaria do Vercel.
 
 ## Gate atual
 
