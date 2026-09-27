@@ -222,7 +222,7 @@ jobs:
 
 
   codex:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true) }}
+    if: ${{ always() && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: dispatch
     runs-on: ubuntu-latest
     timeout-minutes: 20
