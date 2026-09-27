@@ -258,6 +258,34 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", client_surface)
         self.assertNotIn("FACTORY_GITHUB_TOKEN", client_surface)
 
+        theme = (ROOT / "apps/console/app/theme.css").read_text()
+        globals_css = (ROOT / "apps/console/app/globals.css").read_text()
+        ui = (ROOT / "apps/console/app/ui.tsx").read_text()
+        for token in (
+            "--font-sans",
+            "--font-mono",
+            "--color-canvas",
+            "--color-accent",
+            "--color-success",
+            "--color-warning",
+            "--color-danger",
+            "--radius-lg",
+        ):
+            self.assertIn(token, theme)
+        self.assertIn("var(--font-sans)", globals_css)
+        self.assertIn("var(--color-canvas)", globals_css)
+        self.assertNotIn("font-family:Inter", globals_css)
+        for primitive in (
+            "PageHeader",
+            "MetricCard",
+            "StatusPill",
+            "SectionHeader",
+            "EmptyState",
+            "ActionLink",
+            "Button",
+        ):
+            self.assertIn("function "+primitive, ui)
+
         console_workflow = (ROOT / ".github/workflows/console.yml").read_text()
         self.assertIn("npm run typecheck", console_workflow)
         self.assertIn("npm run build", console_workflow)
