@@ -7,6 +7,7 @@ class AuthKind(StrEnum):
  OPENAI_API_KEY="openai_api_key"
  OPENAI_API_WIF="openai_api_wif"
  CODEX_WORKLOAD_IDENTITY="codex_workload_identity"
+ CODEX_ACCESS_TOKEN="codex_access_token"
  NONE="none"
 
 @dataclass(frozen=True)
@@ -34,8 +35,12 @@ class RuntimeAuthResolver:
  def resolve_codex(self)->RuntimeAuth:
   rule=self.environ.get("OPENAI_FEDERATION_RULE_ID")
   token_file=self.environ.get("OPENAI_IDENTITY_TOKEN_FILE")
-  if rule and token_file:
-   return RuntimeAuth(AuthKind.CODEX_WORKLOAD_IDENTITY,"Codex workload identity",True)
+  if rule or token_file:
+   if rule and token_file:
+    return RuntimeAuth(AuthKind.CODEX_WORKLOAD_IDENTITY,"Codex workload identity",True)
+   return RuntimeAuth(AuthKind.NONE,"incomplete Codex workload identity",False)
+  if self.environ.get("CODEX_ACCESS_TOKEN"):
+   return RuntimeAuth(AuthKind.CODEX_ACCESS_TOKEN,"CODEX_ACCESS_TOKEN",True)
   return RuntimeAuth(AuthKind.NONE,"none",False)
 
  def resolve(self)->RuntimeAuth:
