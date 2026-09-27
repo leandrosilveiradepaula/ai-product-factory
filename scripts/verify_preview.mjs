@@ -1,6 +1,8 @@
 import { chromium } from "playwright";
 
 const previewUrl = process.env.FACTORY_PREVIEW_URL;
+const expectedText = (process.env.FACTORY_PREVIEW_EXPECTED_TEXT || "").trim();
+const trustedOidcToken = (process.env.FACTORY_VERCEL_TRUSTED_OIDC_TOKEN || "").trim();
 const checks = [];
 const errors = [];
 
@@ -16,7 +18,12 @@ if (!previewUrl || !/^https:\/\//.test(previewUrl)) {
 let browser;
 try {
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const context = await browser.newContext({
+    extraHTTPHeaders: trustedOidcToken
+      ? { "x-vercel-trusted-oidc-idp-token": trustedOidcToken }
+      : {},
+  });
+  const page = await context.newPage();
   page.on("pageerror", error => errors.push(`pageerror: ${error.message}`));
   page.on("console", message => {
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
@@ -34,6 +41,13 @@ try {
   const bodyText = (await page.locator("body").innerText()).trim();
   if (!bodyText) throw new Error("preview rendered an empty body");
   checks.push("body_visible");
+
+  if (expectedText) {
+    if (!bodyText.includes(expectedText)) {
+      throw new Error(`preview did not contain expected text: ${expectedText}`);
+    }
+    checks.push("expected_text");
+  }
 
   if (errors.length) {
     emit("failure", errors.slice(0, 10).join(" | "));
