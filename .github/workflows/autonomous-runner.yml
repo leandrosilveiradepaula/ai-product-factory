@@ -273,7 +273,7 @@ jobs:
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
       OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
-      OPENAI_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/openai-wif/identity-token
+      CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
       OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-codex-worker","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"openai-codex"}}'
       FACTORY_CODEX_GITHUB_ENVIRONMENT: openai-codex
       GITHUB_TOKEN: ${{ github.token }}
@@ -286,16 +286,28 @@ jobs:
         id: readiness
         shell: bash
         run: |
+          auth_mode=none
+          if [ -n "$OPENAI_FEDERATION_RULE_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -n "$OPENAI_FEDERATION_RULE_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+              auth_mode=wif
+              echo "OPENAI_IDENTITY_TOKEN_FILE=/home/runner/work/_temp/openai-wif/identity-token" >> "$GITHUB_ENV"
+            else
+              echo "Codex WIF is partially configured; refusing access-token fallback."
+            fi
+          elif [ -n "$CODEX_ACCESS_TOKEN" ]; then
+            auth_mode=access_token
+          fi
+          echo "auth_mode=$auth_mode" >> "$GITHUB_OUTPUT"
+
           if [ "$FACTORY_CODEX_ENABLED" = "true" ] \
-             && [ -n "$OPENAI_FEDERATION_RULE_ID" ] \
-             && [ -n "$OPENAI_WIF_AUDIENCE" ] \
+             && [ "$auth_mode" != "none" ] \
              && [ -n "$GITHUB_TOKEN" ] \
              && [ -n "$SUPABASE_URL" ] \
              && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Codex worker is inert: enable flag, WIF values, native repository credential, and Control Plane credentials are required. Cross-repository work still requires FACTORY_GITHUB_TOKEN at execution time."
+            echo "Codex worker is inert: enable flag, complete official Codex auth, native repository credential, and Control Plane credentials are required. Cross-repository work still requires FACTORY_GITHUB_TOKEN at execution time."
           fi
       - uses: actions/checkout@v4
         if: ${{ steps.readiness.outputs.ready == 'true' }}
@@ -318,24 +330,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m ai_product_factory.codex_oidc --refresh-seconds 240 &
-          OIDC_PID=$!
-          cleanup() {
-            kill "$OIDC_PID" 2>/dev/null || true
-            wait "$OIDC_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for _ in $(seq 1 40); do
-            if [ -s "$OPENAI_IDENTITY_TOKEN_FILE" ]; then
-              break
-            fi
-            if ! kill -0 "$OIDC_PID" 2>/dev/null; then
-              echo "OIDC refresher exited before producing a token."
-              exit 2
-            fi
-            sleep 0.25
-          done
-          test -s "$OPENAI_IDENTITY_TOKEN_FILE"
+          if [ "${{ steps.readiness.outputs.auth_mode }}" = "wif" ]; then
+            python -m ai_product_factory.codex_oidc --refresh-seconds 240 &
+            OIDC_PID=$!
+            cleanup() {
+              kill "$OIDC_PID" 2>/dev/null || true
+              wait "$OIDC_PID" 2>/dev/null || true
+            }
+            trap cleanup EXIT
+            for _ in $(seq 1 40); do
+              if [ -s "$OPENAI_IDENTITY_TOKEN_FILE" ]; then
+                break
+              fi
+              if ! kill -0 "$OIDC_PID" 2>/dev/null; then
+                echo "OIDC refresher exited before producing a token."
+                exit 2
+              fi
+              sleep 0.25
+            done
+            test -s "$OPENAI_IDENTITY_TOKEN_FILE"
+          fi
           python -m ai_product_factory.runtime_cli --mode codex --worker-id "gha-codex-${{ github.run_id }}"
 
 
