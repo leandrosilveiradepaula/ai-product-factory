@@ -19,7 +19,6 @@ jobs:
     env:
       OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
-      CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
       OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-preflight","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"openai-codex"}}'
       FACTORY_CODEX_GITHUB_ENVIRONMENT: openai-codex
     steps:
@@ -27,6 +26,8 @@ jobs:
 
       - name: Select official Codex authentication
         id: auth
+        env:
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
         shell: bash
         run: |
           auth_mode=none
@@ -77,5 +78,7 @@ jobs:
           PY
 
       - name: Verify Codex authentication
+        env:
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
         shell: bash
         run: codex login status
