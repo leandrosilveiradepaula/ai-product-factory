@@ -202,6 +202,17 @@ class FactoryAcceptanceTests(unittest.TestCase):
         }
         self.assertEqual(migration_names, expected_history)
 
+    def test_api_wif_preflight_is_manual_and_non_model(self):
+        workflow = (ROOT / ".github/workflows/openai-api-wif-preflight.yml").read_text()
+        module = (ROOT / "src/ai_product_factory/openai_wif_preflight.py").read_text()
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("environment: openai-api", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("GitHubActionsOpenAIWorkloadIdentity", module)
+        self.assertIn("model_call=not_performed", module)
+        self.assertNotIn("/v1/responses", workflow)
+        self.assertNotIn("/v1/responses", module)
+
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         codex = (ROOT / "src/ai_product_factory/codex_cli_producer.py").read_text()
