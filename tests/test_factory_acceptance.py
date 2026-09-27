@@ -381,8 +381,12 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("refs/heads/${RELEASE_BRANCH}", release)
         self.assertNotIn("VERCEL_TOKEN", release)
         self.assertNotIn("vercel deploy", release)
-        self.assertIn("Production Branch", operations)
+        self.assertIn("release-candidate branch", operations)
+        self.assertIn("human promotes the existing deployment to Production", operations)
+        self.assertIn("does not rebuild it", operations)
         self.assertIn("console-production", operations)
+        self.assertNotIn("VERCEL_TOKEN", release)
+        self.assertNotIn("vercel promote", release)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
