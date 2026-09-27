@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_codex:
+        description: Run at most one Codex implementation task
+        required: false
+        default: false
+        type: boolean
       run_alerts:
         description: Evaluate operational alerts and publish deduplicated GitHub Issues
         required: false
@@ -214,6 +219,80 @@ jobs:
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"
+
+
+  codex:
+    if: ${{ always() && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    needs: dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
+      OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
+      OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      OPENAI_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/openai-wif/identity-token
+      OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-codex-worker","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"ci"}}'
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+      FACTORY_CODEX_TIMEOUT_SECONDS: "900"
+      FACTORY_CODEX_MAX_FILES: "20"
+      FACTORY_CODEX_MAX_BYTES: "250000"
+    steps:
+      - name: Detect Codex runtime readiness
+        id: readiness
+        shell: bash
+        run: |
+          if [ "$FACTORY_CODEX_ENABLED" = "true" ] \
+             && [ -n "$OPENAI_FEDERATION_RULE_ID" ] \
+             && [ -n "$OPENAI_WIF_AUDIENCE" ] \
+             && [ -n "$FACTORY_GITHUB_TOKEN" ] \
+             && [ -n "$SUPABASE_URL" ] \
+             && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Codex worker is inert: enable flag, WIF values, cross-repo GitHub credential, and Control Plane credentials are all required."
+          fi
+      - uses: actions/checkout@v4
+        if: ${{ steps.readiness.outputs.ready == 'true' }}
+      - uses: actions/setup-python@v5
+        if: ${{ steps.readiness.outputs.ready == 'true' }}
+        with:
+          python-version: "3.12"
+      - name: Request GitHub OIDC token
+        if: ${{ steps.readiness.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$(dirname "$OPENAI_IDENTITY_TOKEN_FILE")"
+          AUDIENCE="$(python -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["OPENAI_WIF_AUDIENCE"], safe=""))')"
+          RESPONSE_FILE="$RUNNER_TEMP/openai-wif-response.json"
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            > "$RESPONSE_FILE"
+          python -c 'import json,os,sys; p=os.environ["OPENAI_IDENTITY_TOKEN_FILE"]; token=json.load(open(sys.argv[1],encoding="utf-8"))["value"]; open(p,"w",encoding="utf-8").write(token); os.chmod(p,0o600)' "$RESPONSE_FILE"
+          rm -f "$RESPONSE_FILE"
+      - uses: actions/setup-node@v4
+        if: ${{ steps.readiness.outputs.ready == 'true' }}
+        with:
+          node-version: "22"
+      - name: Install pinned Codex CLI
+        if: ${{ steps.readiness.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          npm install -g @openai/codex@0.157.0
+          codex --version
+      - name: Process at most one Codex implementation task
+        if: ${{ steps.readiness.outputs.ready == 'true' }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode codex --worker-id "gha-codex-${{ github.run_id }}"
 
 
   preview:

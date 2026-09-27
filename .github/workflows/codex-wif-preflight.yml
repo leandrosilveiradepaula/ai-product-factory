@@ -50,7 +50,7 @@ jobs:
       - name: Install Codex CLI
         shell: bash
         run: |
-          npm install -g @openai/codex@latest
+          npm install -g @openai/codex@0.157.0
           codex --version
 
       - name: Verify workload identity login

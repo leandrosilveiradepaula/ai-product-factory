@@ -57,6 +57,22 @@ class SafetyInvariantTests(unittest.TestCase):
   for job,next_job in (("ci-followup","release-followup"),("release-followup","dispatch"),("direct","preview"),("preview","alerts")):
    block=text.split(f"\n  {job}:",1)[1].split(f"\n  {next_job}:",1)[0]
    self.assertIn("FACTORY_GITHUB_TOKEN",block)
+ def test_codex_worker_is_wif_only_bounded_and_inert_without_readiness(self):
+  workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  codex=workflow.split("\n  codex:",1)[1].split("\n\n  preview:",1)[0]
+  self.assertIn("id-token: write",codex)
+  self.assertIn("FACTORY_CODEX_ENABLED",codex)
+  self.assertIn("OPENAI_FEDERATION_RULE_ID",codex)
+  self.assertIn("OPENAI_WIF_AUDIENCE",codex)
+  self.assertIn("FACTORY_GITHUB_TOKEN",codex)
+  self.assertIn("steps.readiness.outputs.ready == 'true'",codex)
+  self.assertIn("@openai/codex@0.157.0",codex)
+  self.assertNotIn("OPENAI_API_KEY",codex)
+  producer=(ROOT/"src/ai_product_factory/codex_cli_producer.py").read_text()
+  self.assertIn("FACTORY_CODEX_MAX_FILES",producer)
+  self.assertIn("FACTORY_CODEX_MAX_BYTES",producer)
+  self.assertIn("63-question benchmark",producer)
+  self.assertNotIn("danger-full-access",producer)
  def test_runtime_has_no_automatic_merge_capability(self):
   adapter=(ROOT/"src/ai_product_factory/github_rest.py").read_text()
   protocol=(ROOT/"src/ai_product_factory/github_loop.py").read_text()

@@ -47,6 +47,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 ### F3 - Runtime de Desenvolvimento
 - [x] Direct Executor para mudancas pequenas/medias.
 - [x] Roteador Direct vs Codex.
+- [x] Worker Codex fail-closed: claim atomico, checkout isolado, limites de saida, ledger de invocacao e job OIDC/WIF inerte sem readiness.
 - [x] Provider-neutral Model Executor.
 - [x] Budget por tarefa para modelo principal e Codex.
 - [x] Pipeline Engine ponta a ponta.

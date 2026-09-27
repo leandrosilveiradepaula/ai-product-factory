@@ -9,6 +9,9 @@ from .runtime_worker import RuntimeWorker
 from .supabase_runtime_queue import SupabaseRuntimeQueue
 from .supabase_backlog_dispatch import SupabaseBacklogDispatch
 from .direct_run_queue import SupabaseDirectRunQueue
+from .codex_run_queue import SupabaseCodexRunQueue
+from .codex_cli_producer import CodexCLIProducer
+from .codex_usage import SupabaseCodexUsageRecorder
 from .implementation_producer import ModelImplementationProducer
 from .execution_worker import DirectExecutionWorker
 from .github_rest import GitHubRestAdapter
@@ -54,6 +57,12 @@ def require_paid_runtime_budget(*, health_reader=None)->None:
   raise PermissionError("paid usage ledger contains unknown-cost events")
  require_cost_ceiling(budget=budget,known_spend=health.known_cost,reserved_cost=reserve,strict=True)
 
+def require_codex_runtime_enabled()->None:
+ if os.getenv("FACTORY_CODEX_ENABLED")!="true":raise PermissionError("Codex execution is disabled")
+ missing=[name for name in ("OPENAI_FEDERATION_RULE_ID","OPENAI_WIF_AUDIENCE","OPENAI_IDENTITY_TOKEN_FILE","FACTORY_GITHUB_TOKEN") if not os.getenv(name,"").strip()]
+ if missing:raise PermissionError("Codex runtime configuration is incomplete: "+", ".join(missing))
+ if not os.path.isfile(os.environ["OPENAI_IDENTITY_TOKEN_FILE"]):raise PermissionError("Codex identity token file does not exist")
+
 def build_handler():
  require_primary_runtime_enabled()
  auth=RuntimeAuthResolver().resolve()
@@ -87,12 +96,30 @@ def run_direct_once(worker_id:str)->dict:
  loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
- return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pr_number}
+ if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
+
+def run_codex_once(worker_id:str)->dict:
+ try:
+  require_codex_runtime_enabled()
+ except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
+ item=SupabaseCodexRunQueue().claim_next(worker_id)
+ if item is None:return {"claimed":False,"status":"empty"}
+ usage=SupabaseCodexUsageRecorder()
+ producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
+ github=GitHubRestAdapter(repository=item.repository)
+ store=SupabaseDeliveryStore()
+ loop=AutonomousGitHubLoop(github,store)
+ materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
+ session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
+ if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
  vercel=vercel_preview_readiness();github_vercel=github_vercel_preview_readiness();alerts=github_alerts_readiness()
- return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
+ codex_missing=[name for name in ("OPENAI_FEDERATION_RULE_ID","OPENAI_WIF_AUDIENCE","OPENAI_IDENTITY_TOKEN_FILE","FACTORY_GITHUB_TOKEN") if not os.getenv(name,"").strip()]
+ return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"codex":{"enabled":os.getenv("FACTORY_CODEX_ENABLED")=="true","configured":not codex_missing,"ready":os.getenv("FACTORY_CODEX_ENABLED")=="true" and not codex_missing and os.path.isfile(os.getenv("OPENAI_IDENTITY_TOKEN_FILE","")),"missing":codex_missing},"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
 def run_ci_once()->dict:
  item=SupabaseCIFollowupQueue().next_pending()
@@ -194,7 +221,7 @@ def run_dispatch_once(project_key:str|None=None)->dict:
  return {"claimed":True,"status":"routed","route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--mode",choices=("product","dispatch","direct","codex","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
  elif args.mode=="preview-probe":out=run_preview_probe_once()
@@ -204,6 +231,7 @@ def main()->int:
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id)
+ elif args.mode=="codex":out=run_codex_once(args.worker_id)
  elif args.mode=="dispatch":out=run_dispatch_once(args.project_key)
  else:out=run_product_once(args.worker_id)
  print(json.dumps(out));return 0 if not out.get("error") else 2
