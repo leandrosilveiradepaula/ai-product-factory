@@ -55,7 +55,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Review/evaluation quality gates.
 - [x] Provider OpenAI Responses implementado (API key validada tecnicamente; consumo bloqueado por quota/billing separado).
 - [x] OpenAI API WIF implementado e configurado em OpenAI Platform + GitHub (`openai-api`); preflight sem modelo aguarda cota do Actions, e billing API permanece gate separado.
-- [ ] Provider real do Codex/ChatGPT entitlement (WIF beta aguardando habilitacao/regra oficial do workspace).
+- [ ] Provider real do Codex/ChatGPT entitlement (Factory pronta; WIF beta confirmado ausente no Admin Portal do workspace Infodive e aguardando habilitacao/regra oficial da OpenAI, issue #240).
 
 ### F4 - Testes, Evals e Preview
 - [x] CI deterministico por projeto via manifest.
@@ -91,8 +91,9 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Separar completude interna de ativacao administrativa de providers externos.
 - [x] Validar Control Plane real por smoke transacional com rollback.
 - [x] Implementar redesign operacional do Console com dados reais do Control Plane.
-- [ ] Validar CI/typecheck/build do Console apos reset da cota diaria do GitHub Actions.
-- [ ] Validar Preview exato do Console apos reset da cota diaria do Vercel.
+- [x] Centralizar design tokens, tipografia, cores semanticas e primitivas reutilizaveis do Console.
+- [ ] Validar CI/typecheck/build do Console quando GitHub Actions voltar a aceitar consumo (2.000/2.000 minutos incluidos consumidos; billing/spending limit bloqueando novos runners).
+- [ ] Validar Preview exato do Console quando o Vercel liberar novos builds (check atual: build-rate-limit).
 
 ## Gate atual
 
