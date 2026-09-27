@@ -76,6 +76,16 @@ The project is onboarded and tracked by the Factory. Existing semantic/product c
 
 Production release requires a human gate. For repositories where merging the PR triggers production, the verified-preview path stops at `awaiting_release`; the Factory never performs that merge automatically. A follow-up observer may record the merge and close the linked issue only after the human merge has already happened. Destructive data changes, sensitive access expansion, paid-service creation, and material product requirement changes also require human authority regardless of environment.
 
+## Factory completion audit
+
+The Factory core now has an explicit executable completion contract in `docs/FACTORY_ACCEPTANCE.md` and `tests/test_factory_acceptance.py`. The dedicated CI job `factory-acceptance` verifies the lifecycle, routing, Preview policy, release boundary, operational workers, paid-model gates, Codex/WIF isolation, migration-history presence, and benchmark safety without calling external providers.
+
+The completion audit also found historical Supabase migration-version drift. Repository migration filenames have been reconciled to the versions already recorded by production Supabase. The original base schema and FK-index migrations have been restored under their production version IDs.
+
+Three runtime/delivery functions that predated complete migration-history discipline are consolidated in `20260927012500_reconcile_runtime_delivery_functions.sql` using their current production definitions. This reconciliation migration has been validated against the live schema inside `BEGIN ... ROLLBACK`; no production state was changed by that validation.
+
+The Agent SQL pilot is explicitly deferred and is not part of the current Factory finalization scope.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
