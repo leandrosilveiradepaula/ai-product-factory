@@ -1,4 +1,4 @@
-import type {ReactNode} from "react";
+import type {ButtonHTMLAttributes,ReactNode} from "react";
 import Link from "next/link";
 
 export type StatusTone="success"|"warning"|"danger"|"accent"|"";
@@ -42,4 +42,9 @@ export function EmptyState({children}:{children:ReactNode}){
 
 export function ActionLink({href,children,variant="secondary"}:{href:string;children:ReactNode;variant?:"primary"|"secondary"|"ghostButton"}){
   return <Link className={variant+" linkButton"} href={href}>{children}</Link>;
+}
+
+export function Button({variant="secondary",className="",...props}:ButtonHTMLAttributes<HTMLButtonElement>&{variant?:"primary"|"secondary"|"danger"|"ghostButton"}){
+  const classes=[variant,className].filter(Boolean).join(" ");
+  return <button {...props} className={classes}/>;
 }
