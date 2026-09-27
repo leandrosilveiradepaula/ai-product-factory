@@ -5,9 +5,12 @@ class Tests(unittest.TestCase):
  def test_api_key(self):
   self.assertEqual(RuntimeAuthResolver({"OPENAI_API_KEY":"x"}).resolve_primary_api().kind,AuthKind.OPENAI_API_KEY)
 
- def test_api_wif_requires_provider_and_service_account(self):
-  self.assertEqual(RuntimeAuthResolver({"OPENAI_API_WIF_PROVIDER_ID":"p"}).resolve_primary_api().kind,AuthKind.NONE)
-  self.assertEqual(RuntimeAuthResolver({"OPENAI_API_WIF_PROVIDER_ID":"p","OPENAI_API_WIF_SERVICE_ACCOUNT_ID":"s"}).resolve_primary_api().kind,AuthKind.OPENAI_API_WIF)
+ def test_api_wif_requires_official_github_wif_variables(self):
+  incomplete=RuntimeAuthResolver({"OPENAI_IDENTITY_PROVIDER_ID":"p","OPENAI_API_KEY":"fallback"}).resolve_primary_api()
+  self.assertEqual(incomplete.kind,AuthKind.NONE)
+  self.assertFalse(incomplete.configured)
+  self.assertIn("incomplete",incomplete.source)
+  self.assertEqual(RuntimeAuthResolver({"OPENAI_IDENTITY_PROVIDER_ID":"p","OPENAI_SERVICE_ACCOUNT_ID":"s","OPENAI_WIF_AUDIENCE":"aud"}).resolve_primary_api().kind,AuthKind.OPENAI_API_WIF)
 
  def test_codex_wif_requires_both_official_variables(self):
   self.assertEqual(RuntimeAuthResolver({"OPENAI_FEDERATION_RULE_ID":"idpm_x"}).resolve_codex().kind,AuthKind.NONE)

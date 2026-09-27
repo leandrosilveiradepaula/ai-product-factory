@@ -2,18 +2,25 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib import error, request
+from urllib import error, parse, request
 
 from .model_executor import ModelProvider, ModelRequest, ModelResult, ModelRole
 from .models import Complexity
 
 
-Transport = Callable[[str, str, dict[str, str], bytes], tuple[int, Any]]
+Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
+AccessTokenProvider = Callable[[], str]
 
 
-def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes) -> tuple[int, Any]:
+def _default_transport(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: bytes | None,
+) -> tuple[int, Any]:
     req = request.Request(url, data=body, headers=headers, method=method)
     try:
         with request.urlopen(req, timeout=120) as response:
@@ -29,6 +36,98 @@ def _default_transport(method: str, url: str, headers: dict[str, str], body: byt
         if request_id:
             data["_request_id"] = request_id
         return exc.code, data
+
+
+class GitHubActionsOpenAIWorkloadIdentity:
+    """Exchanges a GitHub Actions OIDC assertion for a short-lived OpenAI API token."""
+
+    token_endpoint = "https://auth.openai.com/oauth/token"
+
+    def __init__(
+        self,
+        *,
+        identity_provider_id: str,
+        service_account_id: str,
+        audience: str,
+        transport: Transport | None = None,
+    ) -> None:
+        self.identity_provider_id = identity_provider_id
+        self.service_account_id = service_account_id
+        self.audience = audience
+        self.transport = transport or _default_transport
+        self._access_token = ""
+        self._expires_at = 0.0
+
+    @classmethod
+    def from_env(cls, *, transport: Transport | None = None) -> "GitHubActionsOpenAIWorkloadIdentity":
+        required = {
+            "OPENAI_IDENTITY_PROVIDER_ID": os.getenv("OPENAI_IDENTITY_PROVIDER_ID", "").strip(),
+            "OPENAI_SERVICE_ACCOUNT_ID": os.getenv("OPENAI_SERVICE_ACCOUNT_ID", "").strip(),
+            "OPENAI_WIF_AUDIENCE": os.getenv("OPENAI_WIF_AUDIENCE", "").strip(),
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError("OpenAI API workload identity configuration is incomplete: " + ", ".join(missing))
+        return cls(
+            identity_provider_id=required["OPENAI_IDENTITY_PROVIDER_ID"],
+            service_account_id=required["OPENAI_SERVICE_ACCOUNT_ID"],
+            audience=required["OPENAI_WIF_AUDIENCE"],
+            transport=transport,
+        )
+
+    def get_access_token(self) -> str:
+        if self._access_token and time.time() < self._expires_at - 60:
+            return self._access_token
+
+        request_url = os.getenv("ACTIONS_ID_TOKEN_REQUEST_URL", "").strip()
+        request_token = os.getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "").strip()
+        if not request_url or not request_token:
+            raise RuntimeError(
+                "GitHub Actions OIDC environment is unavailable; id-token: write is required for OpenAI API WIF"
+            )
+
+        parts = parse.urlsplit(request_url)
+        query = dict(parse.parse_qsl(parts.query, keep_blank_values=True))
+        query["audience"] = self.audience
+        oidc_url = parse.urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, parse.urlencode(query), parts.fragment)
+        )
+        status, oidc = self.transport(
+            "GET",
+            oidc_url,
+            {"Authorization": f"bearer {request_token}"},
+            None,
+        )
+        if status < 200 or status >= 300 or not isinstance(oidc, dict) or not oidc.get("value"):
+            raise RuntimeError(f"GitHub OIDC token request failed: HTTP {status}")
+
+        payload = {
+            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+            "subject_token": oidc["value"],
+            "identity_provider_id": self.identity_provider_id,
+            "service_account_id": self.service_account_id,
+        }
+        status, exchanged = self.transport(
+            "POST",
+            self.token_endpoint,
+            {"Content-Type": "application/json"},
+            json.dumps(payload).encode("utf-8"),
+        )
+        if status < 200 or status >= 300 or not isinstance(exchanged, dict):
+            raise RuntimeError(f"OpenAI workload identity token exchange failed: HTTP {status}")
+
+        access_token = exchanged.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise RuntimeError("OpenAI workload identity token exchange returned no access token")
+
+        expires_at = exchanged.get("expires_at")
+        if isinstance(expires_at, (int, float)):
+            self._expires_at = float(expires_at)
+        else:
+            self._expires_at = time.time() + float(exchanged.get("expires_in") or 300)
+        self._access_token = access_token
+        return access_token
 
 
 @dataclass(frozen=True)
@@ -50,21 +149,37 @@ class OpenAIModelPolicy:
 
 
 class OpenAIResponsesProvider(ModelProvider):
-    """OpenAI Responses API provider for the factory's primary model path."""
+    """OpenAI Responses API provider supporting API key or GitHub Actions WIF."""
 
     def __init__(
         self,
         *,
         api_key: str | None = None,
+        access_token_provider: AccessTokenProvider | None = None,
         policy: OpenAIModelPolicy | None = None,
         transport: Transport | None = None,
         api_url: str = "https://api.openai.com/v1/responses",
     ) -> None:
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY is required")
-        self.policy = policy or OpenAIModelPolicy()
         self.transport = transport or _default_transport
+        key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
+        wif_values = {
+            "OPENAI_IDENTITY_PROVIDER_ID": os.getenv("OPENAI_IDENTITY_PROVIDER_ID", "").strip(),
+            "OPENAI_SERVICE_ACCOUNT_ID": os.getenv("OPENAI_SERVICE_ACCOUNT_ID", "").strip(),
+            "OPENAI_WIF_AUDIENCE": os.getenv("OPENAI_WIF_AUDIENCE", "").strip(),
+        }
+        if access_token_provider is not None:
+            self._access_token_provider = access_token_provider
+        elif any(wif_values.values()):
+            missing = [name for name, value in wif_values.items() if not value]
+            if missing:
+                raise ValueError("OpenAI API workload identity configuration is incomplete: " + ", ".join(missing))
+            wif = GitHubActionsOpenAIWorkloadIdentity.from_env(transport=self.transport)
+            self._access_token_provider = wif.get_access_token
+        elif key:
+            self._access_token_provider = lambda: key
+        else:
+            raise ValueError("OPENAI_API_KEY or OpenAI API workload identity configuration is required")
+        self.policy = policy or OpenAIModelPolicy()
         self.api_url = api_url
 
     def execute_for_complexity(
@@ -89,7 +204,7 @@ class OpenAIResponsesProvider(ModelProvider):
             "POST",
             self.api_url,
             {
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {self._access_token_provider()}",
                 "Content-Type": "application/json",
             },
             json.dumps(payload).encode("utf-8"),

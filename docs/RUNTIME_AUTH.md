@@ -4,11 +4,13 @@ The Factory keeps OpenAI API authentication separate from Codex workspace authen
 
 ## OpenAI API
 
-An API key authenticates a Platform project. API workload identity federation maps a workload to a Platform service account. This improves credential security, but it does not turn ChatGPT workspace credits into API balance.
+An API key authenticates a Platform project. API workload identity federation maps a workload to a Platform service account and is supported by the Factory through the official `OPENAI_IDENTITY_PROVIDER_ID`, `OPENAI_SERVICE_ACCOUNT_ID`, and `OPENAI_WIF_AUDIENCE` configuration. In GitHub Actions the runtime requests a short-lived GitHub OIDC assertion and exchanges it for a short-lived OpenAI access token. This improves credential security, but it does not turn ChatGPT workspace credits into API balance.
 
 ## Codex workspace automation
 
 Codex workload identity federation maps a trusted workload to a user or service account in a managed ChatGPT workspace. This is the supported path for unattended Codex automation that should use the workspace's Codex access/allowance.
+
+Codex WIF uses `OPENAI_FEDERATION_RULE_ID` plus an absolute `OPENAI_IDENTITY_TOKEN_FILE`. The audience is consumed by the external token-minting layer, not by Codex itself.
 
 Codex WIF is currently beta and must be enabled for the managed workspace. The administrator configures the provider/rule in the OpenAI Admin Portal and maps restrictive GitHub OIDC claims (repository, ref/workflow) to the intended workspace principal.
 

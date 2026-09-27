@@ -61,9 +61,59 @@ class OpenAIResponsesProviderTests(unittest.TestCase):
         self.assertEqual(headers["Authorization"], "Bearer placeholder-key")
         self.assertNotIn("placeholder-key", json.dumps(payload))
 
-    def test_missing_key_fails_fast(self):
-        with self.assertRaises(ValueError):
-            OpenAIResponsesProvider(api_key="", transport=self.transport)
+
+    def test_workload_identity_exchanges_github_oidc_and_uses_short_lived_token(self):
+        calls = []
+
+        def transport(method, url, headers, body):
+            calls.append((method, url, headers, body))
+            if method == "GET":
+                self.assertIn("audience=api%3A%2F%2Fopenai-factory", url)
+                return 200, {"value": "github-oidc-token"}
+            if url == "https://auth.openai.com/oauth/token":
+                payload = json.loads(body.decode("utf-8"))
+                self.assertEqual(payload["subject_token"], "github-oidc-token")
+                self.assertEqual(payload["identity_provider_id"], "idp_test")
+                self.assertEqual(payload["service_account_id"], "svc_test")
+                return 200, {"access_token": "short-lived-openai-token", "expires_in": 3600}
+            self.assertEqual(headers["Authorization"], "Bearer short-lived-openai-token")
+            return 200, {
+                "id": "resp_wif",
+                "output": [{"content": [{"type": "output_text", "text": "result"}]}],
+                "usage": {"total_tokens": 3},
+            }
+
+        env = {
+            "OPENAI_IDENTITY_PROVIDER_ID": "idp_test",
+            "OPENAI_SERVICE_ACCOUNT_ID": "svc_test",
+            "OPENAI_WIF_AUDIENCE": "api://openai-factory",
+            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://example.invalid/oidc?x=1",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "github-request-token",
+        }
+        from unittest.mock import patch
+        with patch.dict("os.environ", env, clear=True):
+            provider = OpenAIResponsesProvider(api_key="", transport=transport)
+            result = provider.execute(self.request)
+            provider.execute(self.request)
+        self.assertEqual(result.provider_ref, "resp_wif")
+        self.assertEqual(sum(1 for method, url, _, _ in calls if method == "GET"), 1)
+        self.assertEqual(sum(1 for _, url, _, _ in calls if url == "https://auth.openai.com/oauth/token"), 1)
+
+    def test_missing_auth_fails_fast(self):
+        from unittest.mock import patch
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaises(ValueError):
+                OpenAIResponsesProvider(api_key="", transport=self.transport)
+
+    def test_partial_workload_identity_fails_closed_instead_of_falling_back_to_api_key(self):
+        from unittest.mock import patch
+        env = {
+            "OPENAI_API_KEY": "long-lived-key",
+            "OPENAI_IDENTITY_PROVIDER_ID": "idp_test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(ValueError):
+                OpenAIResponsesProvider(transport=self.transport)
 
     def test_missing_output_text_fails_closed(self):
         def bad_transport(method, url, headers, body):

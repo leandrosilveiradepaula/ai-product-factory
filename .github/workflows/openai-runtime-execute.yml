@@ -38,6 +38,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   execute:
@@ -45,6 +46,9 @@ jobs:
     timeout-minutes: 10
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+      OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
+      OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       PYTHONPATH: src
     steps:
       - uses: actions/checkout@v4
@@ -53,11 +57,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate secret presence
+      - name: Validate primary authentication
         shell: bash
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "OPENAI_API_KEY is not configured for this repository."
+          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+              echo "primary_auth=workload_identity"
+            else
+              echo "OpenAI API workload identity is partially configured; refusing API-key fallback."
+              exit 2
+            fi
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            echo "primary_auth=api_key"
+          else
+            echo "Primary OpenAI auth is not configured."
             exit 2
           fi
 

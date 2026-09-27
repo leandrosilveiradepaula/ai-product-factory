@@ -149,7 +149,15 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED", workflow)
         self.assertIn("FACTORY_MODEL_BUDGET_USD", workflow)
         self.assertIn("FACTORY_MODEL_RESERVE_USD", workflow)
+        self.assertIn("OPENAI_IDENTITY_PROVIDER_ID", workflow)
+        self.assertIn("OPENAI_SERVICE_ACCOUNT_ID", workflow)
+        self.assertIn("OPENAI_WIF_AUDIENCE", workflow)
         self.assertIn("require_paid_runtime_budget", runtime)
+
+        provider = (ROOT / "src/ai_product_factory/openai_provider.py").read_text()
+        self.assertIn("https://auth.openai.com/oauth/token", provider)
+        self.assertIn("OPENAI_IDENTITY_PROVIDER_ID", provider)
+        self.assertIn("OPENAI_SERVICE_ACCOUNT_ID", provider)
 
         self.assertIn("FACTORY_CODEX_ENABLED", workflow)
         self.assertIn("OPENAI_FEDERATION_RULE_ID", workflow)

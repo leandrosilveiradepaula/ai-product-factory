@@ -40,6 +40,9 @@ concurrency:
 jobs:
   product-stage:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: 8
     env:
       PYTHONPATH: src
@@ -47,6 +50,9 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+      OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
+      OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
       FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
       FACTORY_MODEL_RESERVE_USD: ${{ vars.FACTORY_MODEL_RESERVE_USD }}
@@ -64,7 +70,17 @@ jobs:
           else
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "$FACTORY_PRIMARY_MODEL_ENABLED" = "true" ] && [ -n "$OPENAI_API_KEY" ] && [ -n "$FACTORY_MODEL_BUDGET_USD" ] && [ -n "$FACTORY_MODEL_RESERVE_USD" ]; then
+          primary_auth=false
+          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+              primary_auth=true
+            fi
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            primary_auth=true
+          fi
+          if [ "$FACTORY_PRIMARY_MODEL_ENABLED" = "true" ] \
+             && [ "$primary_auth" = "true" ] \
+             && [ -n "$FACTORY_MODEL_BUDGET_USD" ] && [ -n "$FACTORY_MODEL_RESERVE_USD" ]; then
             echo "primary_model=true" >> "$GITHUB_OUTPUT"
           else
             echo "primary_model=false" >> "$GITHUB_OUTPUT"
@@ -193,12 +209,16 @@ jobs:
       issues: write
       pull-requests: write
       checks: read
+      id-token: write
     env:
       PYTHONPATH: src
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+      OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
+      OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
       FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
       FACTORY_MODEL_RESERVE_USD: ${{ vars.FACTORY_MODEL_RESERVE_USD }}
@@ -215,6 +235,19 @@ jobs:
         run: |
           echo "Direct execution is fail-closed: set FACTORY_PRIMARY_MODEL_ENABLED=true only after primary auth/quota readiness is approved."
           exit 1
+      - name: Validate Direct primary authentication
+        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
+        shell: bash
+        run: |
+          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -z "$OPENAI_IDENTITY_PROVIDER_ID" ] || [ -z "$OPENAI_SERVICE_ACCOUNT_ID" ] || [ -z "$OPENAI_WIF_AUDIENCE" ]; then
+              echo "OpenAI API workload identity is partially configured; refusing API-key fallback."
+              exit 2
+            fi
+          elif [ -z "$OPENAI_API_KEY" ]; then
+            echo "Direct execution has no primary OpenAI authentication."
+            exit 2
+          fi
       - name: Process at most one Direct implementation task
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash

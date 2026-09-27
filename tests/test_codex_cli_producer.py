@@ -17,7 +17,6 @@ class CodexCLIProducerTests(unittest.TestCase):
                 "HOME": os.environ.get("HOME", ""),
                 "FACTORY_CODEX_ENABLED": "true",
                 "OPENAI_FEDERATION_RULE_ID": "rule",
-                "OPENAI_WIF_AUDIENCE": "aud",
                 "OPENAI_IDENTITY_TOKEN_FILE": identity.name,
                 "GITHUB_TOKEN": "github-secret",
                 "FACTORY_GITHUB_TOKEN": "factory-secret",
@@ -71,7 +70,6 @@ class CodexCLIProducerTests(unittest.TestCase):
                 "HOME": os.environ.get("HOME", ""),
                 "FACTORY_CODEX_ENABLED": "true",
                 "OPENAI_FEDERATION_RULE_ID": "rule",
-                "OPENAI_WIF_AUDIENCE": "aud",
                 "OPENAI_IDENTITY_TOKEN_FILE": identity.name,
                 "GITHUB_TOKEN": "managed-token",
             }
