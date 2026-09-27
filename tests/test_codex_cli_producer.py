@@ -24,7 +24,7 @@ class CodexCLIProducerTests(unittest.TestCase):
                 "OPENAI_API_KEY": "api-secret",
             }
             with patch.dict("os.environ", env, clear=True):
-                producer = CodexCLIProducer(config=CodexCLIConfig(("codex", "exec", "-")))
+                producer = CodexCLIProducer(config=CodexCLIConfig(("codex", "exec")))
                 child = producer._codex_env()
         self.assertNotIn("GITHUB_TOKEN", child)
         self.assertNotIn("FACTORY_GITHUB_TOKEN", child)
@@ -77,7 +77,7 @@ class CodexCLIProducerTests(unittest.TestCase):
             }
             with patch.dict("os.environ", env, clear=True):
                 artifact = CodexCLIProducer(
-                    config=CodexCLIConfig(("codex", "exec", "-"), max_files=2, max_bytes=1000),
+                    config=CodexCLIConfig(("codex", "exec"), max_files=2, max_bytes=1000),
                     runner=runner,
                     on_invoke=lambda: invoked.append(True),
                 ).produce(item)
