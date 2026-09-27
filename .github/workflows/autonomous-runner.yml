@@ -276,6 +276,7 @@ jobs:
       OPENAI_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/openai-wif/identity-token
       OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-codex-worker","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"openai-codex"}}'
       FACTORY_CODEX_GITHUB_ENVIRONMENT: openai-codex
+      GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
       FACTORY_CODEX_TIMEOUT_SECONDS: "900"
       FACTORY_CODEX_MAX_FILES: "20"
@@ -288,13 +289,13 @@ jobs:
           if [ "$FACTORY_CODEX_ENABLED" = "true" ] \
              && [ -n "$OPENAI_FEDERATION_RULE_ID" ] \
              && [ -n "$OPENAI_WIF_AUDIENCE" ] \
-             && [ -n "$FACTORY_GITHUB_TOKEN" ] \
+             && [ -n "$GITHUB_TOKEN" ] \
              && [ -n "$SUPABASE_URL" ] \
              && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Codex worker is inert: enable flag, WIF values, cross-repo GitHub credential, and Control Plane credentials are all required."
+            echo "Codex worker is inert: enable flag, WIF values, native repository credential, and Control Plane credentials are required. Cross-repository work still requires FACTORY_GITHUB_TOKEN at execution time."
           fi
       - uses: actions/checkout@v4
         if: ${{ steps.readiness.outputs.ready == 'true' }}
