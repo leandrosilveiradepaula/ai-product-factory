@@ -52,6 +52,19 @@ Do not invent the federation rule id or audience. Codex itself receives only `OP
 
 Current commercial/admin state: Codex WIF is still beta and requires workspace enablement by OpenAI Support. On 2026-09-27 the Infodive workspace Admin Portal was inspected directly; the documented `Workload identity` section is absent in both available admin surfaces, confirming that the workspace has not yet received the Codex WIF beta/admin capability. No support response with a federation rule or enablement confirmation has been found. Issue #240 tracks this external blocker. Separately, the Infodive ChatGPT Business workspace had a historical out-of-credits notice on 2026-09-04, but the user has confirmed the workspace currently has credits. Do not infer current credit state from that historical email. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key, browser cookie, scraped session, or unofficial ChatGPT token. The official `CODEX_ACCESS_TOKEN` is the only supported stored-token fallback.
 
+## Manual Codex path while unattended auth is blocked
+
+The Factory does not need Codex WIF or a stored Codex access token for occasional operator-assisted Codex work.
+
+When automatic Codex auth is unavailable:
+- routing may still classify a task as Codex when complexity justifies it;
+- the Factory prepares a durable GitHub handoff and waits in `awaiting_codex_manual`;
+- the operator starts Codex using the existing managed ChatGPT Business login;
+- the resulting PR carries the Factory run marker;
+- the Factory adopts that PR and resumes from CI.
+
+This is intentionally different from storing a human credential in GitHub. No ChatGPT login material enters the Factory. Automatic WIF/access-token support remains a future convenience, not a prerequisite for the core Factory to operate through API/Direct.
+
 ## Activation order
 
 1. Configure the external administrative values.
