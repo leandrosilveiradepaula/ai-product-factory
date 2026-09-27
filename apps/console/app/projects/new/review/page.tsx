@@ -22,7 +22,9 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
     <div><span className="detailLabel">Must have</span><p className="muted">{intake.mustHave||"Not informed"}</p></div>
    </div>
    <div><span className="detailLabel">Known integrations</span><p className="muted">{intake.integrations||"Not informed"}</p></div>
+   <div className="section"><span className="detailLabel">References</span>{intake.references?.length?<div className="stack">{intake.references.map((ref,i)=><div className="badgeLine" key={ref.value+i}><span className="pill accent">{ref.kind}</span><code>{ref.value}</code></div>)}</div>:<p className="muted">Not informed</p>}</div>
+   <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">A Factory registra este pedido como fonte do projeto, cria o bootstrap e entra em Discovery. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana.</p></div>
   </div>
-  <div className="actions"><ActionLink href="/projects/new">Edit</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">Start Factory</Button></form></div>
+  <div className="actions"><ActionLink href="/projects/new">Edit</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">Iniciar Discovery</Button></form></div>
  </>;
 }
