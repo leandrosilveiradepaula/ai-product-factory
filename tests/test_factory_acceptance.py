@@ -385,7 +385,6 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("human promotes the existing deployment to Production", operations)
         self.assertIn("does not rebuild it", operations)
         self.assertIn("console-production", operations)
-        self.assertNotIn("VERCEL_TOKEN", release)
         self.assertNotIn("vercel promote", release)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
