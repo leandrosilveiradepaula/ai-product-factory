@@ -10,10 +10,10 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
  const p=await searchParams;const intake=decode(p.intake);
  if(!intake)return <><PageHeader eyebrow="New Work" title="Invalid intake" subtitle="O conteúdo de intake não pôde ser validado."/><ActionLink href="/projects/new">Back</ActionLink></>;
  return <>
-  <PageHeader eyebrow="Review Intake" title={intake.name} subtitle="Ao iniciar, a Factory persiste o produto, cria o bootstrap e abre o estágio de discovery no Control Plane."/>
+  <PageHeader eyebrow="Review Intake" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o bootstrap e abre o estágio de discovery no Control Plane."}/>
   <div className="card" style={{maxWidth:860}}>
    <div className="detailGrid">
-    <div className="detailItem"><span className="detailLabel">Mode</span><strong>{intake.mode==="greenfield"?"New product":"Import repository"}</strong></div>
+    <div className="detailItem"><span className="detailLabel">Mode</span><strong>{intake.mode==="greenfield"?"Novo produto":"Projeto em andamento"}</strong></div>
     <div className="detailItem"><span className="detailLabel">Repository</span><strong>{intake.repository||"Will be created later"}</strong></div>
    </div>
    <div className="section"><span className="detailLabel">Objective</span><p>{intake.summary}</p></div>
@@ -22,9 +22,10 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
     <div><span className="detailLabel">Must have</span><p className="muted">{intake.mustHave||"Not informed"}</p></div>
    </div>
    <div><span className="detailLabel">Known integrations</span><p className="muted">{intake.integrations||"Not informed"}</p></div>
+   {intake.mode==="existing"?<><div className="detailGrid section"><div className="detailItem"><span className="detailLabel">Estágio informado</span><strong>{intake.reportedStage||"unknown"}</strong></div><div className="detailItem"><span className="detailLabel">Pendências conhecidas</span><strong>{intake.knownPending||"Não informadas"}</strong></div></div><div className="section"><span className="detailLabel">Restrições a preservar</span><p className="muted">{intake.constraints||"Não informadas"}</p></div></>:null}
    <div className="section"><span className="detailLabel">References</span>{intake.references?.length?<div className="stack">{intake.references.map((ref,i)=><div className="badgeLine" key={ref.value+i}><span className="pill accent">{ref.kind}</span><code>{ref.value}</code></div>)}</div>:<p className="muted">Not informed</p>}</div>
-   <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">A Factory registra este pedido como fonte do projeto, cria o bootstrap e entra em Discovery. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana.</p></div>
+   <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">{intake.mode==="existing"?"A Factory registra este briefing, reconcilia as evidências disponíveis do projeto e cria somente o trabalho que falta. O estágio informado é uma pista, não uma verdade presumida.":"A Factory registra este pedido como fonte do projeto, cria o bootstrap e entra em Discovery. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana."}</p></div>
   </div>
-  <div className="actions"><ActionLink href="/projects/new">Edit</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">Iniciar Discovery</Button></form></div>
+  <div className="actions"><ActionLink href="/projects/new">Edit</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">{intake.mode==="existing"?"Importar e reconciliar":"Iniciar Discovery"}</Button></form></div>
  </>;
 }
