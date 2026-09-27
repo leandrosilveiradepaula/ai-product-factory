@@ -70,8 +70,16 @@ jobs:
           else
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
           fi
+          primary_auth=false
+          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+              primary_auth=true
+            fi
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            primary_auth=true
+          fi
           if [ "$FACTORY_PRIMARY_MODEL_ENABLED" = "true" ] \
-             && { [ -n "$OPENAI_API_KEY" ] || { [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; }; } \
+             && [ "$primary_auth" = "true" ] \
              && [ -n "$FACTORY_MODEL_BUDGET_USD" ] && [ -n "$FACTORY_MODEL_RESERVE_USD" ]; then
             echo "primary_model=true" >> "$GITHUB_OUTPUT"
           else
@@ -227,6 +235,19 @@ jobs:
         run: |
           echo "Direct execution is fail-closed: set FACTORY_PRIMARY_MODEL_ENABLED=true only after primary auth/quota readiness is approved."
           exit 1
+      - name: Validate Direct primary authentication
+        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
+        shell: bash
+        run: |
+          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -z "$OPENAI_IDENTITY_PROVIDER_ID" ] || [ -z "$OPENAI_SERVICE_ACCOUNT_ID" ] || [ -z "$OPENAI_WIF_AUDIENCE" ]; then
+              echo "OpenAI API workload identity is partially configured; refusing API-key fallback."
+              exit 2
+            fi
+          elif [ -z "$OPENAI_API_KEY" ]; then
+            echo "Direct execution has no primary OpenAI authentication."
+            exit 2
+          fi
       - name: Process at most one Direct implementation task
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
