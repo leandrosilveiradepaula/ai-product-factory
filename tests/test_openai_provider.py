@@ -99,6 +99,43 @@ class OpenAIResponsesProviderTests(unittest.TestCase):
         self.assertEqual(sum(1 for method, url, _, _ in calls if method == "GET"), 1)
         self.assertEqual(sum(1 for _, url, _, _ in calls if url == "https://auth.openai.com/oauth/token"), 1)
 
+    def test_workload_identity_exchange_error_surfaces_safe_details_without_tokens(self):
+        from unittest.mock import patch
+        calls = []
+
+        def transport(method, url, headers, body):
+            calls.append((method, url, headers, body))
+            if method == "GET":
+                return 200, {"value": "sensitive-github-oidc-token"}
+            return 401, {
+                "error": {
+                    "type": "invalid_grant",
+                    "code": "mapping_not_found",
+                    "message": "No matching service account mapping",
+                },
+                "_request_id": "req_wif_123",
+            }
+
+        env = {
+            "OPENAI_IDENTITY_PROVIDER_ID": "idp_test",
+            "OPENAI_SERVICE_ACCOUNT_ID": "svc_acct_test",
+            "OPENAI_WIF_AUDIENCE": "https://api.openai.com/v1",
+            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://example.invalid/oidc?x=1",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "sensitive-github-request-token",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            provider = OpenAIResponsesProvider(api_key="", transport=transport)
+            with self.assertRaises(RuntimeError) as ctx:
+                provider.execute(self.request)
+
+        message = str(ctx.exception)
+        self.assertIn("HTTP 401", message)
+        self.assertIn("invalid_grant", message)
+        self.assertIn("mapping_not_found", message)
+        self.assertIn("req_wif_123", message)
+        self.assertNotIn("sensitive-github-oidc-token", message)
+        self.assertNotIn("sensitive-github-request-token", message)
+
     def test_missing_auth_fails_fast(self):
         from unittest.mock import patch
         with patch.dict("os.environ", {}, clear=True):
