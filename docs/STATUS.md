@@ -86,6 +86,16 @@ Three runtime/delivery functions that predated complete migration-history discip
 
 The Agent SQL pilot is explicitly deferred and is not part of the current Factory finalization scope.
 
+## Live transactional validation
+
+A production-schema transactional smoke was completed on 2026-09-27 with explicit rollbacks. The smoke covered intake/bootstrap, product stages, backlog dispatch, Direct execution claim/delivery persistence, human gate approval, Codex claim/ledger, and lease recovery.
+
+It found and fixed a real Control Plane schema mismatch: seven RPCs wrote `task_id` into `factory_audit_events`, but the column was missing. Production migration `20260927014826_add_factory_audit_task_id` added the nullable FK and `idx_factory_audit_task`.
+
+After the fix, all transactional smoke paths passed. Final residual state remained zero synthetic projects, zero active runs, zero pending gates, and zero persisted Codex invocations.
+
+GitHub Actions validation is temporarily unavailable because the daily Actions quota is exhausted. This is treated as an external operational dependency and must not be represented as a green CI run until the quota resets.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
