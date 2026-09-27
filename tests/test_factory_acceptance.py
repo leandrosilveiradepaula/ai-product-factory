@@ -189,13 +189,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927010724_factory_claim_next_codex_run.sql",
             "20260927012500_reconcile_runtime_delivery_functions.sql",
         }
-        self.assertTrue(expected_history.issubset(migration_names))
-        for orphan in (
-            "20260925204000_factory_claim_next_direct_run.sql",
-            "20260925205000_factory_bind_github_issue.sql",
-            "20260925210500_factory_delivery_store.sql",
-        ):
-            self.assertNotIn(orphan, migration_names)
+        self.assertEqual(migration_names, expected_history)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
