@@ -2,37 +2,20 @@
 import {useActionState,useState} from "react";
 import {Button} from "../../ui";
 import {submitIntake,type IntakeState} from "./actions";
-
 const initial:IntakeState={errors:{}};
-
 export function IntakeForm(){
  const[state,action,pending]=useActionState(submitIntake,initial);
- const[mode,setMode]=useState<"greenfield"|"import">("greenfield");
+ const[mode,setMode]=useState<"greenfield"|"existing">("greenfield");
+ const existing=mode==="existing";
  return <form action={action} className="form card intakeForm">
-  <div className="mode"><button type="button" className={mode==="greenfield"?"selected":""} onClick={()=>setMode("greenfield")}>Novo produto</button><button type="button" className={mode==="import"?"selected":""} onClick={()=>setMode("import")}>Projeto existente</button></div>
+  <div className="mode"><button type="button" className={!existing?"selected":""} onClick={()=>setMode("greenfield")}>Novo produto</button><button type="button" className={existing?"selected":""} onClick={()=>setMode("existing")}>Projeto em andamento</button></div>
   <input type="hidden" name="mode" value={mode}/>
-
-  <div className="intakePrompt">
-   <label>O que você quer construir?
-    <textarea name="summary" rows={9} autoFocus placeholder="Conte para a Factory como você contaria para uma equipe: qual problema quer resolver, para quem, o resultado esperado e qualquer contexto importante."/>
-   </label>
-   {state.errors.summary&&<small>{state.errors.summary}</small>}
-   <p className="muted intakeHint">Você não precisa escolher stack, agentes ou modelos. A Factory usa este pedido como origem do Discovery.</p>
-  </div>
-
-  <div className="twoCol">
-   <div><label>Nome do projeto<input name="name" placeholder="Ex.: Portal de Atendimento"/></label>{state.errors.name&&<small>{state.errors.name}</small>}</div>
-   {mode==="import"?<div><label>Repositório GitHub<input name="repository" placeholder="owner/repository"/></label>{state.errors.repository&&<small>{state.errors.repository}</small>}</div>:<div><label>Quem vai usar?<input name="users" placeholder="Ex.: equipe comercial e clientes"/></label></div>}
-  </div>
-
-  {mode==="greenfield"?<label>Quem vai usar? <span className="muted">(opcional)</span><textarea name="users" rows={2}/></label>:null}
-  <label>O que é obrigatório? <span className="muted">(opcional)</span><textarea name="mustHave" rows={3} placeholder="Regras, funcionalidades ou restrições que não podem faltar."/></label>
+  <div className="intakePrompt"><label>{existing?"Onde o projeto está e o que você quer finalizar ou mudar?":"O que você quer construir?"}<textarea name="summary" rows={9} autoFocus placeholder={existing?"Conte o estado atual, o que já funciona, o que falta e qual resultado você quer alcançar. A Factory vai reconciliar as evidências antes de continuar.":"Conte para a Factory como você contaria para uma equipe: qual problema quer resolver, para quem, o resultado esperado e qualquer contexto importante."}/></label>{state.errors.summary&&<small>{state.errors.summary}</small>}<p className="muted intakeHint">{existing?"O briefing orienta a continuidade, mas não substitui a reconciliação do código, documentação, CI e infraestrutura disponíveis.":"Você não precisa escolher stack, agentes ou modelos. A Factory usa este pedido como origem do Discovery."}</p></div>
+  <div className="twoCol"><div><label>Nome do projeto<input name="name" placeholder="Ex.: Portal de Atendimento"/></label>{state.errors.name&&<small>{state.errors.name}</small>}</div>{existing?<div><label>Repositório GitHub <span className="muted">(se existir)</span><input name="repository" placeholder="owner/repository"/></label>{state.errors.repository&&<small>{state.errors.repository}</small>}</div>:<div><label>Quem vai usar?<input name="users" placeholder="Ex.: equipe comercial e clientes"/></label></div>}</div>
+  {existing?<><label>Em que estágio você acredita que ele está?<select name="reportedStage" defaultValue="unknown"><option value="unknown">Não sei / quero que a Factory descubra</option><option value="discovery">Discovery</option><option value="specification">Especificação</option><option value="planning">Planejamento</option><option value="implementation">Implementação</option><option value="review">Review</option><option value="validation">Testes / Evals</option><option value="preview">Preview</option><option value="operations">Já está em operação</option></select></label><label>Pendências que você já conhece <span className="muted">(opcional)</span><textarea name="knownPending" rows={3} placeholder="Ex.: autenticação incompleta, tela X pendente, CI quebrado..."/></label><label>O que não pode ser alterado? <span className="muted">(opcional)</span><textarea name="constraints" rows={3} placeholder="Regras de negócio, arquitetura, integrações ou decisões que precisam ser preservadas."/></label></>:<><label>Quem vai usar? <span className="muted">(opcional)</span><textarea name="users" rows={2}/></label><label>O que é obrigatório? <span className="muted">(opcional)</span><textarea name="mustHave" rows={3} placeholder="Regras, funcionalidades ou restrições que não podem faltar."/></label></>}
   <label>Integrações já conhecidas <span className="muted">(opcional)</span><textarea name="integrations" rows={2} placeholder="Ex.: Supabase, SAP, n8n, Vercel..."/></label>
   <label>Referências <span className="muted">(opcional)</span><textarea name="references" rows={3} placeholder={"Uma URL por linha. Pode incluir Figma, documentação, site de referência etc.\nhttps://www.figma.com/design/..."}/></label>
-  <div className="intakeAttachments">
-   <strong>Anexos</strong>
-   <span className="muted">Arquivos serão adicionados na próxima etapa desta implementação. URLs e Figma já podem seguir com o intake sem expor credenciais ao navegador.</span>
-  </div>
-  <Button variant="primary" disabled={pending}>{pending?"Preparando Discovery...":"Revisar e iniciar Discovery"}</Button>
+  <div className="intakeAttachments"><strong>Anexos</strong><span className="muted">Arquivos serão ligados a armazenamento persistente e auditável; não serão simulados como upload local descartável.</span></div>
+  <Button variant="primary" disabled={pending}>{pending?(existing?"Preparando reconciliação...":"Preparando Discovery..."):(existing?"Revisar e importar projeto":"Revisar e iniciar Discovery")}</Button>
  </form>;
 }
