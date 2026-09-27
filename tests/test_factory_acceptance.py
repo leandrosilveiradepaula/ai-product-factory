@@ -212,6 +212,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927014211_reconcile_runtime_delivery_functions.sql",
             "20260927014826_add_factory_audit_task_id.sql",
             "20260927152310_manual_codex_handoff.sql",
+            "20260927193500_factory_existing_project_reconciliation.sql",
+            "20260927194500_factory_project_attachments.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
