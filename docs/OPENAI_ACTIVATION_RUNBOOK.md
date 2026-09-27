@@ -196,3 +196,30 @@ For GitHub Actions, the trusted host obtains the GitHub OIDC JWT and writes it o
 During an active Codex worker run, the host refreshes the GitHub OIDC token every 240 seconds. The Codex process receives only the federation-rule ID, absolute identity-token file path and optional audit context. GitHub credentials and OpenAI API keys remain excluded from the Codex subprocess environment.
 
 Codex CLI remains pinned to `0.157.0`, which is newer than the documented WIF minimum `0.148.0`.
+
+
+## Current API WIF deployment state
+
+Configured on 2026-09-27.
+
+OpenAI Platform:
+- provider: `github-actions-ai-product-factory`
+- provider ID: `idp_cc3f1adbaa5185a08932c2e9`
+- issuer: `https://token.actions.githubusercontent.com`
+- audience: `https://api.openai.com/v1`
+- project: `Default project`
+- service account: `ai-product-factory-primary`
+- service account ID: `user-964d27e5d9d6b216dd475e06`
+- permissions: Restricted; Model capabilities Request with Responses `/v1/responses` Write
+- mapping: exact `iss`, `aud`, `sub`, `repository`, `ref=refs/heads/main`, and `environment=openai-api`
+
+GitHub:
+- Environment `openai-api` exists;
+- environment variables `OPENAI_IDENTITY_PROVIDER_ID`, `OPENAI_SERVICE_ACCOUNT_ID`, and `OPENAI_WIF_AUDIENCE` are configured;
+- Environment `openai-codex` also exists but intentionally has no Codex WIF values yet.
+
+Activation status:
+- authentication configuration: complete, pending no-model WIF preflight;
+- billing/model execution: blocked because API credit remaining is currently `$0.00`;
+- `FACTORY_PRIMARY_MODEL_ENABLED`: must remain false;
+- `OPENAI_API_KEY`: retain temporarily until WIF preflight succeeds, then review removal.
