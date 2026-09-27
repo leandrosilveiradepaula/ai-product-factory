@@ -1,4 +1,5 @@
 name: OpenAI API WIF preflight once
+# diagnostic-rerun: safe structured exchange errors
 
 on:
   push:
