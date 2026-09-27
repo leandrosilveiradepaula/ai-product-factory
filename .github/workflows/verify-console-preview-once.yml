@@ -27,6 +27,7 @@ jobs:
         env:
           FACTORY_PREVIEW_URL: https://ai-product-factory-console-pbpcipzs8-leandros-projects-102e32ab.vercel.app
           EXPECTED_TEXT: AI Product Factory
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           node <<'NODE'
           const { chromium } = require("playwright");
@@ -36,7 +37,12 @@ jobs:
           let browser;
           (async () => {
             browser = await chromium.launch({ headless: true });
-            const page = await browser.newPage();
+            const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET || "";
+            console.log("vercel_automation_bypass_configured=" + (bypass ? "true" : "false"));
+            const context = await browser.newContext({
+              extraHTTPHeaders: bypass ? { "x-vercel-protection-bypass": bypass } : {}
+            });
+            const page = await context.newPage();
             page.on("pageerror", error => errors.push("pageerror: " + error.message));
             page.on("console", message => {
               if (message.type() === "error") errors.push("console: " + message.text());
