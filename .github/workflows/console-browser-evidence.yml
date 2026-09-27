@@ -47,8 +47,8 @@ jobs:
             core.setOutput("token", token);
       - name: Verify exact protected Preview
         env:
-          FACTORY_PREVIEW_URL: ${{ inputs.preview_url }}
-          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ inputs.expected_text }}
+          FACTORY_PREVIEW_URL: ${{ inputs.preview_url || 'https://ai-product-factory-console-pbpcipzs8-leandros-projects-102e32ab.vercel.app' }}
+          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ inputs.expected_text || 'AI Product Factory' }}
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         shell: bash
         run: |
