@@ -209,6 +209,87 @@ class FactoryAcceptanceTests(unittest.TestCase):
         }
         self.assertEqual(migration_names, expected_history)
 
+    def test_operational_console_surface_is_complete_and_server_bounded(self):
+        required_routes = (
+            "apps/console/app/page.tsx",
+            "apps/console/app/projects/page.tsx",
+            "apps/console/app/projects/[key]/page.tsx",
+            "apps/console/app/projects/new/page.tsx",
+            "apps/console/app/projects/new/review/page.tsx",
+            "apps/console/app/runs/page.tsx",
+            "apps/console/app/runs/[id]/page.tsx",
+            "apps/console/app/queue/page.tsx",
+            "apps/console/app/gates/page.tsx",
+            "apps/console/app/evals/page.tsx",
+            "apps/console/app/deployments/page.tsx",
+            "apps/console/app/usage/page.tsx",
+            "apps/console/app/audit/page.tsx",
+            "apps/console/app/configuration/page.tsx",
+            "apps/console/app/admin/operators/page.tsx",
+        )
+        for relative in required_routes:
+            self.assertTrue((ROOT / relative).is_file(), relative)
+
+        control_plane = (ROOT / "apps/console/lib/control-plane.ts").read_text()
+        for function_name in (
+            "getDashboard",
+            "getProjectDetail",
+            "getProjectOperations",
+            "getRuns",
+            "getRunDetail",
+            "getWorkQueue",
+            "getHumanGates",
+            "getEvaluations",
+            "getDeployments",
+            "getUsageOverview",
+            "getAuditEvents",
+            "getConsoleConfiguration",
+        ):
+            self.assertIn(f"function {function_name}", control_plane)
+        self.assertIn("requireConsoleOperator()", control_plane)
+
+        client_surface = "\n".join(
+            path.read_text()
+            for path in (ROOT / "apps/console/app").rglob("*.tsx")
+            if path.name not in {"auth-actions.tsx"}
+        )
+        self.assertNotIn("SUPABASE_SECRET_KEY", client_surface)
+        self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", client_surface)
+        self.assertNotIn("OPENAI_API_KEY", client_surface)
+        self.assertNotIn("FACTORY_GITHUB_TOKEN", client_surface)
+
+        theme = (ROOT / "apps/console/app/theme.css").read_text()
+        globals_css = (ROOT / "apps/console/app/globals.css").read_text()
+        ui = (ROOT / "apps/console/app/ui.tsx").read_text()
+        for token in (
+            "--font-sans",
+            "--font-mono",
+            "--color-canvas",
+            "--color-accent",
+            "--color-success",
+            "--color-warning",
+            "--color-danger",
+            "--radius-lg",
+        ):
+            self.assertIn(token, theme)
+        self.assertIn("var(--font-sans)", globals_css)
+        self.assertIn("var(--color-canvas)", globals_css)
+        self.assertNotIn("font-family:Inter", globals_css)
+        for primitive in (
+            "PageHeader",
+            "MetricCard",
+            "StatusPill",
+            "SectionHeader",
+            "EmptyState",
+            "ActionLink",
+            "Button",
+        ):
+            self.assertIn("function "+primitive, ui)
+
+        console_workflow = (ROOT / ".github/workflows/console.yml").read_text()
+        self.assertIn("npm run typecheck", console_workflow)
+        self.assertIn("npm run build", console_workflow)
+
     def test_api_wif_preflight_is_manual_and_non_model(self):
         workflow = (ROOT / ".github/workflows/openai-api-wif-preflight.yml").read_text()
         module = (ROOT / "src/ai_product_factory/openai_wif_preflight.py").read_text()

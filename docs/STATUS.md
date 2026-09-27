@@ -94,7 +94,7 @@ It found and fixed a real Control Plane schema mismatch: seven RPCs wrote `task_
 
 After the fix, all transactional smoke paths passed. Final residual state remained zero synthetic projects, zero active runs, zero pending gates, and zero persisted Codex invocations.
 
-GitHub Actions validation is temporarily unavailable because the daily Actions quota is exhausted. This is treated as an external operational dependency and must not be represented as a green CI run until the quota resets.
+GitHub Actions validation is temporarily unavailable because the personal GitHub Free account has consumed its 2,000 included Actions minutes for the current billing period. GitHub reports that jobs are not started until account billing/spending capacity is available again. This is an external operational dependency and must not be represented as a green CI run.
 
 ## OpenAI authentication reconciliation
 
@@ -145,6 +145,28 @@ GitHub:
 The no-model API WIF preflight is implemented and merged. It performs only GitHub OIDC -> OpenAI short-lived token exchange and never calls a model endpoint. It cannot execute until GitHub Actions quota is available.
 
 The API Platform Billing screen currently reports `$0.00` credit remaining. Therefore `FACTORY_PRIMARY_MODEL_ENABLED` remains false and no paid model smoke is authorized. No credits were added automatically.
+
+## Operational Console redesign
+
+Issue #224 is implemented in a rebased release-candidate branch built from the current Factory `main`: dark developer-tool shell, collapsible sidebar, overview, projects/project detail, New Work, runs/run detail, Work Queue, Human Gates, Evals, Deployments, Models & Usage, Audit Log, Configuration and operator administration.
+
+All operational views use real Control Plane data through the existing server-side Supabase boundary. A live schema compatibility check confirmed zero missing database columns for the new queries. Factory acceptance requires these operational surfaces and checks that privileged Factory/OpenAI/GitHub secrets are not present in the Console TSX surface. The visual layer is centralized: `apps/console/app/theme.css` owns typography, palette, semantic status colors, radii and spacing, while `apps/console/app/ui.tsx` owns reusable page/header/metric/status/action primitives.
+
+The Console release candidate remains intentionally unmerged because `apps/console/**` changes require Verified Preview. External daily quotas currently block final verification:
+- GitHub Actions included minutes exhausted (2,000 / 2,000): validation jobs are rejected before any step because billing/spending capacity is unavailable;
+- Vercel Preview builds are currently blocked by `build-rate-limit`, so no exact Preview can be claimed or browser-verified.
+
+Figma MCP Starter calls are also exhausted, so no additional design-context comparison can be performed until that quota resets. These are external verification blockers, not evidence of a successful build or preview.
+
+## Console security boundary audit
+
+The operational Console redesign was checked against the live Control Plane boundary:
+
+- 1 active Console operator and 1 active admin exist;
+- all 11 Factory Control Plane tables deny direct table privileges to `anon` and `authenticated` while retaining privileged server-side service access;
+- 15 critical runtime/Console RPCs were checked and remain `SECURITY INVOKER`;
+- those RPCs deny `EXECUTE` to `anon` and `authenticated` and allow the server-side `service_role`;
+- the redesigned TSX client surface is covered by Factory acceptance assertions that privileged Supabase/OpenAI/GitHub secret names are not rendered into pages.
 
 ## Next engineering blocks
 

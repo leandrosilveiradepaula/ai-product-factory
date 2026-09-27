@@ -1,2 +1,7 @@
 import {IntakeForm} from "./intake-form";
-export default function NewProject(){return <><div className="eyebrow">Product intake</div><h1 className="title">Iniciar desenvolvimento</h1><p className="muted">Conte o que precisa. A Factory transforma o contexto em discovery, especificação e plano executável.</p><IntakeForm/></>}
+import {PageHeader} from "../../ui";
+
+export default function NewProject(){return <>
+ <PageHeader eyebrow="New Work" title="Start a product" subtitle="Descreva o problema e o contexto. A Factory transforma o intake em discovery, especificação e plano executável."/>
+ <IntakeForm/>
+</>;}

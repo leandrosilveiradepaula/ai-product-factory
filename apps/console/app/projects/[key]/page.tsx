@@ -1,2 +1,26 @@
-import {notFound} from "next/navigation";import {getProjectDetail,getProjectOperations} from "../../../lib/control-plane";
-export default async function Project({params}:{params:Promise<{key:string}>}){const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const ops=await getProjectOperations(p.id);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));return <><div className="eyebrow">Project control</div><h1 className="title">{p.name}</h1><p className="muted">{p.key}{p.repository?` · ${p.repository}`:""}</p><div className="grid"><div className="card"><span className="muted">Estágio</span><div className="metric">{p.stage}</div></div><div className="card"><span className="muted">Tarefas abertas</span><div className="metric">{activeTasks.length}</div></div><div className="card"><span className="muted">Custo estimado</span><div className="metric">{ops.estimatedCost.toFixed(4)}</div></div><div className="card"><span className="muted">Codex invocations</span><div className="metric">{ops.codexInvocations}</div></div><div className="card"><span className="muted">Evals</span><div className="metric">{ops.evaluations}</div></div><div className="card"><span className="muted">Deployments</span><div className="metric">{ops.deployments}</div></div></div><section className="section"><h2>Backlog</h2><div className="row muted"><span>Tarefa</span><span>Complexidade</span><span>Status</span><span>Chave</span></div>{p.tasks.length===0?<div className="card">Nenhuma tarefa registrada.</div>:p.tasks.map(t=><div className="row" key={t.id}><strong>{t.title}</strong><span className="pill">{t.complexity}</span><span className="status"><i className={`dot ${t.status.includes("fail")||t.status==="awaiting_human"?"warn":""}`}/>{t.status}</span><span className="muted">{t.externalKey||t.id.slice(0,8)}</span></div>)}</section><section className="section"><h2>Timeline operacional</h2>{ops.timeline.length===0?<div className="card">Ainda não há evidências operacionais para este projeto.</div>:ops.timeline.map(item=><article className="card" key={item.id}><div className="heading"><div><span className="pill">{item.kind}</span> <strong>{item.title}</strong></div><span className="muted">{new Date(item.at).toLocaleString("pt-BR")}</span></div>{item.status?<div className="status"><i className={`dot ${item.status.includes("fail")||item.status==="rejected"?"warn":""}`}/>{item.status}</div>:null}{item.detail?<p className="muted">{item.detail}</p>:null}{item.cost!=null||item.units!=null?<p className="muted">custo {item.cost??"—"} · unidades {item.units??"—"}</p>:null}{item.ref?<code>{item.ref}</code>:null}</article>)}</section></>}
+import {notFound} from "next/navigation";
+import {getProjectDetail,getProjectOperations} from "../../../lib/control-plane";
+import {ActionLink,EmptyState,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
+
+const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
+function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.round(((i+1)/stages.length)*100)}
+
+export default async function Project({params}:{params:Promise<{key:string}>}){
+ const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const ops=await getProjectOperations(p.id);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));
+ return <>
+  <PageHeader eyebrow="Project Detail" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Work Queue</ActionLink></>}/>
+  <div className="grid compact">
+   <MetricCard label="Lifecycle" value={progress(p.stage)+"%"} note={<div className="progressTrack"><div className="progressFill" style={{width:progress(p.stage)+"%"}}/></div>}/>
+   <MetricCard label="Open tasks" value={activeTasks.length} note={p.tasks.length+" total"}/>
+   <MetricCard label="Known cost" value={ops.estimatedCost.toFixed(4)} note={ops.usageUnits+" usage units"}/>
+   <MetricCard label="Evidence" value={ops.evaluations+ops.deployments} note={ops.evaluations+" evals · "+ops.deployments+" deploys"}/>
+  </div>
+  <section className="section"><SectionHeader title="Backlog" action={<span className="muted">{p.tasks.length} tasks</span>}/><div className="table">
+   <div className="tableRow tableHeader"><span>Task</span><span>Complexity</span><span>Status</span><span>Key</span></div>
+   {p.tasks.length===0?<EmptyState>Nenhuma tarefa registrada.</EmptyState>:p.tasks.map(t=><div className="tableRow" key={t.id}><strong>{t.title}</strong><StatusPill status={t.complexity}/><StatusPill status={t.status}/><span className="muted mono">{t.externalKey||t.id.slice(0,8)}</span></div>)}
+  </div></section>
+  <section className="section"><SectionHeader title="Operational timeline" action={<span className="muted">{ops.timeline.length} evidence events</span>}/>
+   {ops.timeline.length===0?<EmptyState>Ainda não há evidências operacionais para este projeto.</EmptyState>:<div className="card"><div className="timeline">{ops.timeline.slice(0,40).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><StatusPill status={item.kind}/><strong>{item.title}</strong>{item.status?<StatusPill status={item.status}/>:null}</div><div className="timelineMeta"><span>{new Date(item.at).toLocaleString("pt-BR")}</span>{item.detail?<span>{item.detail}</span>:null}{item.cost!=null?<span>cost {item.cost}</span>:null}{item.ref?<code>{item.ref}</code>:null}</div></div>)}</div></div>}
+  </section>
+ </>;
+}

@@ -132,3 +132,108 @@ export async function getOperationsHealth():Promise<OperationsHealth>{
  const incidents=runs.filter((x:any)=>expired(x)||dead(x)||x.status==="failed").map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
  const paidFamilies=new Set(["model","openai","llm","paid_provider"]);return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter((x:any)=>x.status==="failed").length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,incidents};
 }
+
+
+export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string};
+export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load work queue");
+ const rows=await response.json();const projectIds=[...new Set(rows.map((x:any)=>String(x.project_id)).filter(Boolean))];
+ let projects=new Map<string,{key:string;name:string}>();
+ if(projectIds.length){
+  const p=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(p.ok){const values=await p.json();projects=new Map(values.map((x:any)=>[String(x.id),{key:String(x.project_key),name:String(x.name)}]));}
+ }
+ return rows.map((x:any)=>{const p=projects.get(String(x.project_id));return{id:String(x.id),title:String(x.title),status:String(x.status),complexity:String(x.complexity),externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),projectKey:p?.key||"unknown",projectName:p?.name||"Unknown project"};});
+}
+
+export type EvaluationRow={id:string;runId:string;type:string;status:string;score:number|null;baselineRef:string|null;createdAt:string;taskTitle:string;projectKey:string;projectName:string};
+async function getRunContextMap(runIds:string[]){
+ const cfg=serverHeaders();if(!cfg||!runIds.length)return new Map<string,{taskTitle:string;projectKey:string;projectName:string}>();
+ const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id&id=in.(${runIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+ if(!runsResponse.ok)return new Map();
+ const runs=await runsResponse.json();const taskIds=[...new Set(runs.map((x:any)=>String(x.task_id)).filter(Boolean))];
+ const taskMap=new Map<string,{title:string;projectId:string}>();
+ if(taskIds.length){
+  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,project_id&id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(tasksResponse.ok){const tasks=await tasksResponse.json();tasks.forEach((x:any)=>taskMap.set(String(x.id),{title:String(x.title),projectId:String(x.project_id)}));}
+ }
+ const projectIds=[...new Set([...taskMap.values()].map(x=>x.projectId))];
+ const projectMap=new Map<string,{key:string;name:string}>();
+ if(projectIds.length){
+  const p=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(p.ok){const values=await p.json();values.forEach((x:any)=>projectMap.set(String(x.id),{key:String(x.project_key),name:String(x.name)}));}
+ }
+ const out=new Map<string,{taskTitle:string;projectKey:string;projectName:string}>();
+ runs.forEach((x:any)=>{const task=taskMap.get(String(x.task_id));const project=task?projectMap.get(task.projectId):undefined;out.set(String(x.id),{taskTitle:task?.title||"Task",projectKey:project?.key||"unknown",projectName:project?.name||"Unknown project"});});
+ return out;
+}
+
+export async function getEvaluations(limit=100):Promise<EvaluationRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(`${cfg.url}/rest/v1/factory_evaluations?select=id,run_id,eval_type,status,score,baseline_ref,created_at&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load evaluations");
+ const rows=await response.json();const ctx=await getRunContextMap(rows.map((x:any)=>String(x.run_id)));
+ return rows.map((x:any)=>{const c=ctx.get(String(x.run_id));return{id:String(x.id),runId:String(x.run_id),type:String(x.eval_type),status:String(x.status),score:x.score==null?null:Number(x.score),baselineRef:x.baseline_ref?String(x.baseline_ref):null,createdAt:String(x.created_at),taskTitle:c?.taskTitle||"Task",projectKey:c?.projectKey||"unknown",projectName:c?.projectName||"Unknown project"};});
+}
+
+export type DeploymentRow={id:string;runId:string;environment:string;status:string;deploymentRef:string|null;rollbackRef:string|null;deployedAt:string|null;createdAt:string;taskTitle:string;projectKey:string;projectName:string};
+export async function getDeployments(limit=100):Promise<DeploymentRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(`${cfg.url}/rest/v1/factory_deployments?select=id,run_id,environment,status,deployment_ref,rollback_ref,deployed_at,created_at&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load deployments");
+ const rows=await response.json();const ctx=await getRunContextMap(rows.map((x:any)=>String(x.run_id)));
+ return rows.map((x:any)=>{const c=ctx.get(String(x.run_id));return{id:String(x.id),runId:String(x.run_id),environment:String(x.environment),status:String(x.status),deploymentRef:x.deployment_ref?String(x.deployment_ref):null,rollbackRef:x.rollback_ref?String(x.rollback_ref):null,deployedAt:x.deployed_at?String(x.deployed_at):null,createdAt:String(x.created_at),taskTitle:c?.taskTitle||"Task",projectKey:c?.projectKey||"unknown",projectName:c?.projectName||"Unknown project"};});
+}
+
+export type UsageOverview={knownCost:number;unknownPaidCostEvents:number;toolEvents:number;codexInvocations:number;codexPolicyRows:number;byFamily:{family:string;events:number;knownCost:number}[]};
+export async function getUsageOverview():Promise<UsageOverview>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{knownCost:0,unknownPaidCostEvents:0,toolEvents:0,codexInvocations:0,codexPolicyRows:0,byFamily:[]};
+ const [toolResponse,codexResponse]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=tool_family,estimated_cost,created_at&order=created_at.desc&limit=2000`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_codex_usage?select=policy_level,invocation_count,created_at&order=created_at.desc&limit=2000`,{headers:cfg.headers,cache:"no-store"})
+ ]);
+ const tools=toolResponse.ok?await toolResponse.json():[];const codex=codexResponse.ok?await codexResponse.json():[];
+ const paidFamilies=new Set(["model","openai","llm","paid_provider"]);const grouped=new Map<string,{events:number;knownCost:number}>();
+ tools.forEach((x:any)=>{const family=String(x.tool_family||"unknown");const current=grouped.get(family)||{events:0,knownCost:0};current.events+=1;current.knownCost+=Number(x.estimated_cost||0);grouped.set(family,current);});
+ return{knownCost:tools.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownPaidCostEvents:tools.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,toolEvents:tools.length,codexInvocations:codex.reduce((s:number,x:any)=>s+Number(x.invocation_count||0),0),codexPolicyRows:codex.length,byFamily:[...grouped.entries()].map(([family,v])=>({family,...v})).sort((a,b)=>b.events-a.events)};
+}
+
+export type AuditRow={id:string;eventType:string;actorType:string;actorRef:string|null;createdAt:string;runId:string|null;taskId:string|null;projectKey:string|null;projectName:string|null;payload:unknown};
+export async function getAuditEvents(limit=150):Promise<AuditRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(`${cfg.url}/rest/v1/factory_audit_events?select=id,project_id,task_id,run_id,actor_type,actor_ref,event_type,payload,created_at&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load audit log");
+ const rows=await response.json();const projectIds=[...new Set(rows.map((x:any)=>x.project_id?String(x.project_id):"").filter(Boolean))];const projects=new Map<string,{key:string;name:string}>();
+ if(projectIds.length){const p=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});if(p.ok){const values=await p.json();values.forEach((x:any)=>projects.set(String(x.id),{key:String(x.project_key),name:String(x.name)}));}}
+ return rows.map((x:any)=>{const p=x.project_id?projects.get(String(x.project_id)):undefined;return{id:String(x.id),eventType:String(x.event_type),actorType:String(x.actor_type),actorRef:x.actor_ref?String(x.actor_ref):null,createdAt:String(x.created_at),runId:x.run_id?String(x.run_id):null,taskId:x.task_id?String(x.task_id):null,projectKey:p?.key||null,projectName:p?.name||null,payload:x.payload};});
+}
+
+export type RunDetail=RunSummary&{projectKey:string;projectName:string;projectStage:string;taskStatus:string;taskComplexity:string;branchName:string|null;metadata:unknown;evaluations:EvaluationRow[];deployments:DeploymentRow[];gates:GateSummary[];audit:AuditRow[];toolUsage:{id:string;family:string;operation:string|null;units:number|null;cost:number|null;createdAt:string}[];codex:{id:string;level:number;invocations:number;createdAt:string}[]};
+export async function getRunDetail(runId:string):Promise<RunDetail|null>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
+ const runResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,branch_name,metadata,created_at,attempt_count,lease_owner,lease_expires_at,last_error&id=eq.${encodeURIComponent(runId)}&limit=1`,{headers:cfg.headers,cache:"no-store"});
+ if(!runResponse.ok)throw new Error("Unable to load run");const runs=await runResponse.json();if(!runs.length)return null;const r=runs[0];
+ const taskResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,title,status,complexity&id=eq.${r.task_id}&limit=1`,{headers:cfg.headers,cache:"no-store"});const tasks=taskResponse.ok?await taskResponse.json():[];const t=tasks[0];if(!t)return null;
+ const projectResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name,lifecycle_stage&id=eq.${t.project_id}&limit=1`,{headers:cfg.headers,cache:"no-store"});const projects=projectResponse.ok?await projectResponse.json():[];const p=projects[0];if(!p)return null;
+ const [evals,deployments,gates,audit,tools,codex]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_evaluations?select=id,run_id,eval_type,status,score,baseline_ref,created_at&run_id=eq.${r.id}&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_deployments?select=id,run_id,environment,status,deployment_ref,rollback_ref,deployed_at,created_at&run_id=eq.${r.id}&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&run_id=eq.${r.id}&order=requested_at.desc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_audit_events?select=id,project_id,task_id,run_id,actor_type,actor_ref,event_type,payload,created_at&run_id=eq.${r.id}&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=id,tool_family,operation,usage_units,estimated_cost,created_at&run_id=eq.${r.id}&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_codex_usage?select=id,policy_level,invocation_count,created_at&run_id=eq.${r.id}&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"})
+ ]);
+ const read=async(x:any)=>x.ok?await x.json():[];const [ev,dp,gt,au,tu,cu]=await Promise.all([read(evals),read(deployments),read(gates),read(audit),read(tools),read(codex)]);
+ const context={taskTitle:String(t.title),projectKey:String(p.project_key),projectName:String(p.name)};
+ return{id:String(r.id),taskId:String(r.task_id),status:String(r.status),route:r.execution_route?String(r.execution_route):null,candidateCommit:r.candidate_commit?String(r.candidate_commit):null,createdAt:String(r.created_at),taskTitle:String(t.title),attemptCount:Number(r.attempt_count||0),leaseOwner:r.lease_owner?String(r.lease_owner):null,leaseExpiresAt:r.lease_expires_at?String(r.lease_expires_at):null,lastError:r.last_error?String(r.last_error):null,projectKey:String(p.project_key),projectName:String(p.name),projectStage:String(p.lifecycle_stage),taskStatus:String(t.status),taskComplexity:String(t.complexity),branchName:r.branch_name?String(r.branch_name):null,metadata:r.metadata,evaluations:ev.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.eval_type),status:String(x.status),score:x.score==null?null:Number(x.score),baselineRef:x.baseline_ref?String(x.baseline_ref):null,createdAt:String(x.created_at),...context})),deployments:dp.map((x:any)=>({id:String(x.id),runId:String(x.run_id),environment:String(x.environment),status:String(x.status),deploymentRef:x.deployment_ref?String(x.deployment_ref):null,rollbackRef:x.rollback_ref?String(x.rollback_ref):null,deployedAt:x.deployed_at?String(x.deployed_at):null,createdAt:String(x.created_at),...context})),gates:gt.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at)})),audit:au.map((x:any)=>({id:String(x.id),eventType:String(x.event_type),actorType:String(x.actor_type),actorRef:x.actor_ref?String(x.actor_ref):null,createdAt:String(x.created_at),runId:x.run_id?String(x.run_id):null,taskId:x.task_id?String(x.task_id):null,projectKey:String(p.project_key),projectName:String(p.name),payload:x.payload})),toolUsage:tu.map((x:any)=>({id:String(x.id),family:String(x.tool_family),operation:x.operation?String(x.operation):null,units:x.usage_units==null?null:Number(x.usage_units),cost:x.estimated_cost==null?null:Number(x.estimated_cost),createdAt:String(x.created_at)})),codex:cu.map((x:any)=>({id:String(x.id),level:Number(x.policy_level||0),invocations:Number(x.invocation_count||0),createdAt:String(x.created_at)}))};
+}
+
+export type ConsoleConfiguration={controlPlaneConfigured:boolean;projects:{key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;manifest:unknown}[]};
+export async function getConsoleConfiguration():Promise<ConsoleConfiguration>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{controlPlaneConfigured:false,projects:[]};
+ const response=await fetch(`${cfg.url}/rest/v1/factory_projects?select=project_key,name,repository,project_kind,lifecycle_stage,is_active,manifest&order=project_key.asc`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load configuration");
+ const rows=await response.json();return{controlPlaneConfigured:true,projects:rows.map((x:any)=>({key:String(x.project_key),name:String(x.name),repository:x.repository?String(x.repository):null,kind:String(x.project_kind),stage:String(x.lifecycle_stage),active:Boolean(x.is_active),manifest:x.manifest}))};
+}
