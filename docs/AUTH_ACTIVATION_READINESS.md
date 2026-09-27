@@ -66,3 +66,42 @@ Ready only when all of these are true:
 - `FACTORY_ALERTS_GITHUB_REPOSITORY` identifies the alert destination.
 
 Alert publication remains opt-in and deduplicated by deterministic alert code.
+
+
+## GitHub OIDC claim contract
+
+The Factory uses dedicated GitHub Environments so OpenAI workload identity can be restricted without trusting every workflow in the repository.
+
+### API Platform workload identity
+
+Jobs that may call the Primary model run in GitHub Environment `openai-api`.
+
+Expected GitHub OIDC subject:
+
+`repo:leandrosilveiradepaula/ai-product-factory:environment:openai-api`
+
+Recommended exact mapping checks in the OpenAI API Workload Identity Provider:
+
+- `repository = leandrosilveiradepaula/ai-product-factory`
+- `ref = refs/heads/main`
+- `environment = openai-api`
+
+The provider audience must be the exact administrator-configured audience. The Factory does not invent or hardcode it.
+
+### Codex workload identity
+
+The selective Codex worker runs in GitHub Environment `openai-codex`.
+
+Expected GitHub OIDC subject:
+
+`repo:leandrosilveiradepaula/ai-product-factory:environment:openai-codex`
+
+Recommended Codex federation-rule checks:
+
+- exact external subject above, or equivalent exact claim checks;
+- `repository = leandrosilveiradepaula/ai-product-factory`;
+- `ref = refs/heads/main`;
+- `environment = openai-codex`;
+- the real accepted audience configured in the OpenAI Admin Portal.
+
+This leaves the audience as an administrator-owned value while making all other GitHub claims deterministic in code.

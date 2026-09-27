@@ -152,6 +152,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("OPENAI_IDENTITY_PROVIDER_ID", workflow)
         self.assertIn("OPENAI_SERVICE_ACCOUNT_ID", workflow)
         self.assertIn("OPENAI_WIF_AUDIENCE", workflow)
+        self.assertIn("environment: openai-api", workflow)
+        self.assertIn("environment: openai-codex", workflow)
         self.assertIn("require_paid_runtime_budget", runtime)
 
         provider = (ROOT / "src/ai_product_factory/openai_provider.py").read_text()
