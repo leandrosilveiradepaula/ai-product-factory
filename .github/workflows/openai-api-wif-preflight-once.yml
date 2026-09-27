@@ -1,0 +1,29 @@
+name: OpenAI API WIF preflight once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/openai-api-wif-preflight-once.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: openai-api
+    env:
+      OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+      OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
+      OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Exchange GitHub OIDC for short-lived OpenAI token
+        run: python -m ai_product_factory.openai_wif_preflight
