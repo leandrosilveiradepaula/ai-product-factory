@@ -93,3 +93,69 @@ $$;
 
 revoke all on function public.factory_claim_next_codex_run(text) from public,anon,authenticated;
 grant execute on function public.factory_claim_next_codex_run(text) to service_role;
+
+create or replace function public.factory_record_codex_invocation(
+  p_run_id uuid,
+  p_reported_usage jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare
+  v_usage public.factory_codex_usage%rowtype;
+  v_task_id uuid;
+  v_project_id uuid;
+begin
+  select r.task_id,t.project_id
+  into v_task_id,v_project_id
+  from public.factory_runs r
+  join public.factory_tasks t on t.id=r.task_id
+  where r.id=p_run_id
+    and r.execution_route='codex'
+  for update of r;
+
+  if v_task_id is null then
+    raise exception 'codex run not found';
+  end if;
+
+  select u.*
+  into v_usage
+  from public.factory_codex_usage u
+  where u.run_id=p_run_id
+  order by u.created_at desc,u.id desc
+  for update
+  limit 1;
+
+  if v_usage.id is null then
+    raise exception 'codex policy ledger row not found';
+  end if;
+
+  update public.factory_codex_usage
+  set invocation_count=invocation_count+1,
+      reported_usage=coalesce(reported_usage,'{}'::jsonb)||coalesce(p_reported_usage,'{}'::jsonb)
+  where id=v_usage.id
+  returning * into v_usage;
+
+  insert into public.factory_audit_events(
+    project_id,task_id,run_id,actor_type,actor_ref,event_type,payload
+  )
+  values(
+    v_project_id,v_task_id,p_run_id,'system','codex-worker','execution.codex.invoked',
+    jsonb_build_object(
+      'policy_level',v_usage.policy_level,
+      'invocation_count',v_usage.invocation_count
+    )
+  );
+
+  return jsonb_build_object(
+    'run_id',p_run_id,
+    'policy_level',v_usage.policy_level,
+    'invocation_count',v_usage.invocation_count
+  );
+end;
+$$;
+
+revoke all on function public.factory_record_codex_invocation(uuid,jsonb) from public,anon,authenticated;
+grant execute on function public.factory_record_codex_invocation(uuid,jsonb) to service_role;
