@@ -59,8 +59,16 @@ jobs:
             await page.waitForTimeout(1000);
             const bodyText = (await page.locator("body").innerText()).trim();
             if (!bodyText) throw new Error("preview rendered an empty body");
-            if (!bodyText.includes(expected)) {
-              throw new Error(`expected text not found: ${expected}`);
+
+            const finalUrl = new URL(page.url());
+            const expectedUrl = new URL(url);
+            if (finalUrl.hostname !== expectedUrl.hostname) {
+              throw new Error(`preview redirected to unexpected host: ${finalUrl.hostname}`);
+            }
+
+            const title = await page.title();
+            if (title !== expected) {
+              throw new Error(`unexpected application title: ${title}`);
             }
             if (errors.length) {
               throw new Error(errors.slice(0, 10).join(" | "));
@@ -73,7 +81,8 @@ jobs:
               checks: [
                 "http_status_lt_400",
                 "body_visible",
-                "expected_text_present",
+                "same_preview_host",
+                "application_title_exact",
                 "console_clean",
                 "pageerror_clean"
               ]
