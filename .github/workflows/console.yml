@@ -17,6 +17,14 @@ jobs:
       run:
         working-directory: apps/console
     steps:
+      - name: Enforce Console branch convention
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          case "${GITHUB_HEAD_REF}" in
+            console/*) ;;
+            *) echo "::error::Changes under apps/console/** must use a console/* branch so Vercel Preview remains explicit and bounded."; exit 1 ;;
+          esac
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
