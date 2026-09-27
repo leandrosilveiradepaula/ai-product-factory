@@ -1,8 +1,17 @@
 import {getUsageOverview} from "../../lib/control-plane";
+import {EmptyState,MetricCard,PageHeader,SectionHeader,StatusPill} from "../ui";
+
 export default async function Usage(){
  const u=await getUsageOverview();
- return <><div className="pageHeader"><div><div className="eyebrow">Observability</div><h1 className="title">Models & Usage</h1><p className="subtitle">Ledger de ferramentas, custo conhecido e uso real de Codex. Custo pago desconhecido permanece fail-closed.</p></div></div>
- <div className="grid compact"><div className="card metricCard"><span className="metricLabel">Known cost</span><div className="metric">{u.knownCost.toFixed(4)}</div></div><div className="card metricCard"><span className="metricLabel">Tool events</span><div className="metric">{u.toolEvents}</div></div><div className="card metricCard"><span className="metricLabel">Codex invocations</span><div className="metric">{u.codexInvocations}</div></div><div className="card metricCard"><span className="metricLabel">Unknown paid cost</span><div className="metric">{u.unknownPaidCostEvents}</div><div className="metricNote">{u.unknownPaidCostEvents?"execution must block":"clean"}</div></div></div>
- <section className="section"><div className="sectionHeader"><h2>Usage by tool family</h2></div><div className="table"><div className="tableRow tableHeader"><span>Family</span><span>Events</span><span>Known cost</span><span>Share</span></div>{u.byFamily.length===0?<div className="emptyState">No usage recorded.</div>:u.byFamily.map(x=><div className="tableRow" key={x.family}><strong>{x.family}</strong><span>{x.events}</span><span>{x.knownCost.toFixed(4)}</span><span className="muted">{u.toolEvents?Math.round((x.events/u.toolEvents)*100):0}%</span></div>)}</div></section>
- <section className="section"><div className="card"><div className="badgeLine"><span className="pill success">Deterministic first</span><span className="pill warning">Primary model gated</span><span className="pill warning">Codex WIF gated</span></div><p className="muted" style={{marginBottom:0}}>A Factory só usa providers pagos quando enablement, credencial oficial, budget total e reserva por run estiverem válidos.</p></div></section></>;
+ return <>
+  <PageHeader eyebrow="Observability" title="Models & Usage" subtitle="Ledger de ferramentas, custo conhecido e uso real de Codex. Custo pago desconhecido permanece fail-closed."/>
+  <div className="grid compact">
+   <MetricCard label="Known cost" value={u.knownCost.toFixed(4)}/>
+   <MetricCard label="Tool events" value={u.toolEvents}/>
+   <MetricCard label="Codex invocations" value={u.codexInvocations}/>
+   <MetricCard label="Unknown paid cost" value={u.unknownPaidCostEvents} note={u.unknownPaidCostEvents?"execution must block":"clean"}/>
+  </div>
+  <section className="section"><SectionHeader title="Usage by tool family"/><div className="table"><div className="tableRow tableHeader"><span>Family</span><span>Events</span><span>Known cost</span><span>Share</span></div>{u.byFamily.length===0?<EmptyState>No usage recorded.</EmptyState>:u.byFamily.map(x=><div className="tableRow" key={x.family}><strong>{x.family}</strong><span>{x.events}</span><span>{x.knownCost.toFixed(4)}</span><span className="muted">{u.toolEvents?Math.round((x.events/u.toolEvents)*100):0}%</span></div>)}</div></section>
+  <section className="section"><div className="card"><div className="badgeLine"><StatusPill status="healthy" label="Deterministic first"/><StatusPill status="pending" label="Primary model gated"/><StatusPill status="pending" label="Codex WIF gated"/></div><p className="muted" style={{marginBottom:0}}>A Factory só usa providers pagos quando enablement, credencial oficial, budget total e reserva por run estiverem válidos.</p></div></section>
+ </>;
 }
