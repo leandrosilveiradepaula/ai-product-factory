@@ -10,7 +10,8 @@ Default routing:
 
 Security and cost controls:
 
-- `OPENAI_API_KEY` comes only from server-side environment;
+- authentication can use a server-side `OPENAI_API_KEY` or GitHub Actions workload identity with `OPENAI_IDENTITY_PROVIDER_ID`, `OPENAI_SERVICE_ACCOUNT_ID`, and `OPENAI_WIF_AUDIENCE`;
+- API workload identity exchanges the GitHub OIDC assertion for a short-lived OpenAI access token and does not persist it;
 - requests use `store=false`;
 - output is capped with `max_output_tokens`;
 - reasoning effort is explicit;
