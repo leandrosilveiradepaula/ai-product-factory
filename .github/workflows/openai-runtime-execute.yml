@@ -60,10 +60,15 @@ jobs:
       - name: Validate primary authentication
         shell: bash
         run: |
-          if [ -n "$OPENAI_API_KEY" ]; then
+          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+              echo "primary_auth=workload_identity"
+            else
+              echo "OpenAI API workload identity is partially configured; refusing API-key fallback."
+              exit 2
+            fi
+          elif [ -n "$OPENAI_API_KEY" ]; then
             echo "primary_auth=api_key"
-          elif [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
-            echo "primary_auth=workload_identity"
           else
             echo "Primary OpenAI auth is not configured."
             exit 2
