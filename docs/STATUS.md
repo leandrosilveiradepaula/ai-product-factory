@@ -146,6 +146,28 @@ The no-model API WIF preflight is implemented and merged. It performs only GitHu
 
 The API Platform Billing screen currently reports `$0.00` credit remaining. Therefore `FACTORY_PRIMARY_MODEL_ENABLED` remains false and no paid model smoke is authorized. No credits were added automatically.
 
+## Operational Console redesign
+
+Issue #224 is implemented in a rebased release-candidate branch built from the current Factory `main`: dark developer-tool shell, collapsible sidebar, overview, projects/project detail, New Work, runs/run detail, Work Queue, Human Gates, Evals, Deployments, Models & Usage, Audit Log, Configuration and operator administration.
+
+All operational views use real Control Plane data through the existing server-side Supabase boundary. A live schema compatibility check confirmed zero missing database columns for the new queries. Factory acceptance requires these operational surfaces and checks that privileged Factory/OpenAI/GitHub secrets are not present in the Console TSX surface.
+
+The Console release candidate remains intentionally unmerged because `apps/console/**` changes require Verified Preview. External daily quotas currently block final verification:
+- GitHub Actions quota exhausted: validation jobs cannot allocate a runner and execute zero steps;
+- Vercel free deployment quota exhausted: Preview creation is blocked until the deployment quota resets.
+
+Figma MCP Starter calls are also exhausted, so no additional design-context comparison can be performed until that quota resets. These are external verification blockers, not evidence of a successful build or preview.
+
+## Console security boundary audit
+
+The operational Console redesign was checked against the live Control Plane boundary:
+
+- 1 active Console operator and 1 active admin exist;
+- all 11 Factory Control Plane tables deny direct table privileges to `anon` and `authenticated` while retaining privileged server-side service access;
+- 15 critical runtime/Console RPCs were checked and remain `SECURITY INVOKER`;
+- those RPCs deny `EXECUTE` to `anon` and `authenticated` and allow the server-side `service_role`;
+- the redesigned TSX client surface is covered by Factory acceptance assertions that privileged Supabase/OpenAI/GitHub secret names are not rendered into pages.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
