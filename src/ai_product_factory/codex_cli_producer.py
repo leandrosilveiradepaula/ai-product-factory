@@ -50,7 +50,6 @@ class CodexCLIConfig:
                 "workspace-write",
                 "--ask-for-approval",
                 "never",
-                "-",
             )
         timeout = int(os.getenv("FACTORY_CODEX_TIMEOUT_SECONDS", "900"))
         max_files = int(os.getenv("FACTORY_CODEX_MAX_FILES", "20"))
@@ -131,10 +130,9 @@ class CodexCLIProducer:
             prompt = self._prompt(item)
             self.on_invoke()
             result = self.runner(
-                list(self.config.command),
+                [*self.config.command, prompt],
                 cwd=str(checkout),
                 env=self._codex_env(),
-                input=prompt,
                 text=True,
                 capture_output=True,
                 timeout=self.config.timeout_seconds,
