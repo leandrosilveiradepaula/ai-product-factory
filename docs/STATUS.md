@@ -68,6 +68,20 @@ Production migration `20260927010724_factory_claim_next_codex_run` is applied an
 
 Codex invocations performed by the Factory so far: 0.
 
+## Codex official access-token fallback
+
+Current OpenAI documentation confirms that ChatGPT Business supports Codex access tokens for trusted non-interactive automation. The Factory now supports the official `CODEX_ACCESS_TOKEN` path as a temporary alternative while workspace WIF beta remains unavailable.
+
+Security rules:
+- complete WIF remains preferred and takes precedence;
+- partial WIF fails closed and never falls back to a token;
+- the token is read only from GitHub Environment secret `openai-codex/CODEX_ACCESS_TOKEN`;
+- the token is passed only to the Codex subprocess, not to clone/GitHub logic or generated files;
+- browser cookies, scraped sessions, `CHATGPT_ACCESS_TOKEN`, API keys and other unofficial substitutes remain rejected;
+- the manual Codex auth preflight validates login without running a Codex task.
+
+No token has been created or stored by the Factory, and `FACTORY_CODEX_ENABLED` remains false until preflight evidence exists.
+
 ## First pilot
 
 Repository: `leandrosilveiradepaula/agente-sql-langgraph`.

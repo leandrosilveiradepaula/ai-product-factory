@@ -30,6 +30,36 @@ class CodexCLIProducerTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", child)
         self.assertEqual(child["OPENAI_FEDERATION_RULE_ID"], "rule")
 
+    def test_access_token_is_passed_only_to_codex_subprocess(self):
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "FACTORY_CODEX_ENABLED": "true",
+            "CODEX_ACCESS_TOKEN": "codex-secret",
+            "GITHUB_TOKEN": "github-secret",
+            "OPENAI_API_KEY": "api-secret",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            producer = CodexCLIProducer(config=CodexCLIConfig(("codex", "exec")))
+            self.assertEqual(producer._require_auth(), "access_token")
+            child = producer._codex_env()
+            clone = producer._base_env()
+        self.assertEqual(child["CODEX_ACCESS_TOKEN"], "codex-secret")
+        self.assertNotIn("CODEX_ACCESS_TOKEN", clone)
+        self.assertNotIn("GITHUB_TOKEN", child)
+        self.assertNotIn("OPENAI_API_KEY", child)
+
+    def test_partial_wif_refuses_access_token_fallback(self):
+        env = {
+            "FACTORY_CODEX_ENABLED": "true",
+            "OPENAI_FEDERATION_RULE_ID": "rule-only",
+            "CODEX_ACCESS_TOKEN": "fallback",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            producer = CodexCLIProducer(config=CodexCLIConfig(("codex", "exec")))
+            with self.assertRaises(PermissionError):
+                producer._require_auth()
+
     def test_rejects_secret_bearing_output_paths(self):
         for path in (".env", "secrets/token.txt", "credentials/key.txt", "private.pem", "../escape.py"):
             with self.subTest(path=path):

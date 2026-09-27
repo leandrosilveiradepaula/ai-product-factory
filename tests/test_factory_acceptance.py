@@ -164,6 +164,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("FACTORY_CODEX_ENABLED", workflow)
         self.assertIn("OPENAI_FEDERATION_RULE_ID", workflow)
         self.assertIn("OPENAI_WIF_AUDIENCE", workflow)
+        self.assertIn("CODEX_ACCESS_TOKEN", workflow)
         self.assertIn("OPENAI_IDENTITY_TOKEN_FILE", workflow)
         self.assertIn("environment: openai-codex", workflow)
         self.assertIn("python -m ai_product_factory.codex_oidc --refresh-seconds 240", workflow)
@@ -289,6 +290,21 @@ class FactoryAcceptanceTests(unittest.TestCase):
         console_workflow = (ROOT / ".github/workflows/console.yml").read_text()
         self.assertIn("npm run typecheck", console_workflow)
         self.assertIn("npm run build", console_workflow)
+
+    def test_codex_official_access_token_fallback_is_fail_closed(self):
+        auth = (ROOT / "src/ai_product_factory/runtime_auth.py").read_text()
+        producer = (ROOT / "src/ai_product_factory/codex_cli_producer.py").read_text()
+        workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+        preflight = (ROOT / ".github/workflows/codex-wif-preflight.yml").read_text()
+
+        self.assertIn("CODEX_ACCESS_TOKEN", auth)
+        self.assertIn("CODEX_ACCESS_TOKEN", producer)
+        self.assertIn("CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}", workflow)
+        self.assertIn("CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}", preflight)
+        self.assertIn("Codex WIF is partially configured; refusing access-token fallback.", workflow)
+        self.assertIn("Codex WIF is partially configured; refusing access-token fallback.", preflight)
+        self.assertNotIn("CHATGPT_ACCESS_TOKEN", workflow)
+        self.assertNotIn("CHATGPT_ACCESS_TOKEN", preflight)
 
     def test_api_wif_preflight_is_manual_and_non_model(self):
         workflow = (ROOT / ".github/workflows/openai-api-wif-preflight.yml").read_text()

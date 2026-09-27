@@ -1,4 +1,4 @@
-name: Codex WIF preflight
+name: Codex auth preflight
 
 on:
   workflow_dispatch:
@@ -19,23 +19,41 @@ jobs:
     env:
       OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
-      OPENAI_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/openai-wif/identity-token
       OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-preflight","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"openai-codex"}}'
       FACTORY_CODEX_GITHUB_ENVIRONMENT: openai-codex
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate WIF configuration
+      - name: Select official Codex authentication
+        id: auth
+        env:
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
         shell: bash
         run: |
-          test -n "$OPENAI_FEDERATION_RULE_ID"
-          test -n "$OPENAI_WIF_AUDIENCE"
+          auth_mode=none
+          if [ -n "$OPENAI_FEDERATION_RULE_ID$OPENAI_WIF_AUDIENCE" ]; then
+            if [ -n "$OPENAI_FEDERATION_RULE_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+              auth_mode=wif
+              echo "OPENAI_IDENTITY_TOKEN_FILE=/home/runner/work/_temp/openai-wif/identity-token" >> "$GITHUB_ENV"
+            else
+              echo "Codex WIF is partially configured; refusing access-token fallback."
+              exit 2
+            fi
+          elif [ -n "$CODEX_ACCESS_TOKEN" ]; then
+            auth_mode=access_token
+          else
+            echo "No official Codex authentication is configured."
+            exit 2
+          fi
+          echo "mode=$auth_mode" >> "$GITHUB_OUTPUT"
+          echo "auth_mode=$auth_mode"
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Request and validate GitHub OIDC token
+        if: ${{ steps.auth.outputs.mode == 'wif' }}
         env:
           PYTHONPATH: src
         shell: bash
@@ -59,6 +77,8 @@ jobs:
               raise SystemExit("Codex WIF requires Codex 0.148.0 or newer")
           PY
 
-      - name: Verify workload identity login
+      - name: Verify Codex authentication
+        env:
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
         shell: bash
         run: codex login status
