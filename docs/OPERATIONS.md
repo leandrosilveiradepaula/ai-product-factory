@@ -116,16 +116,25 @@ The response is intentionally minimal and contains only service status and a tru
 
 ## Vercel deployment budget policy
 
-The Console Vercel project must not create a deployment for every Factory branch. Automatic Git deployments are allowlisted in `apps/console/vercel.json`:
+The Console uses a dedicated production release branch so backend-only merges do not create Vercel deployment records.
 
-- `main` may deploy production after the human merge gate;
+Git deployment policy in `apps/console/vercel.json`:
+
+- `main` is explicitly disabled for Vercel Git deployments;
 - branches under `console/**` may create Preview deployments;
-- every other branch is denied at the Git-deployment layer;
-- `ignoreCommand` remains a second path-based guard and skips the build when the Console working tree did not change.
+- `console-production` is the only branch reserved for production Git deployment;
+- every other branch is denied by the catch-all rule;
+- `ignoreCommand` remains a second path guard inside eligible branches.
 
-Any pull request that changes `apps/console/**` must therefore use a `console/<slug>` branch. The Console validation workflow enforces this convention. Backend, documentation, Codex, OpenAI/auth and other non-Console branches must not consume Vercel deployment quota.
+`console-production` is a generated release-candidate branch. The GitHub workflow `.github/workflows/console-production-release.yml` listens only to pushes on `main` that changed `apps/console/**`. Before advancing `console-production`, it verifies through the GitHub API that the exact `main` SHA is the merge commit of a merged pull request targeting `main`. The release-candidate branch is then advanced by fast-forward only.
 
-This policy reduces unnecessary deployment creation; it does not remove Vercel account-level quotas. A real Console Preview still consumes a deployment and must be reserved for work that actually changes the Console.
+The Vercel Git integration builds `console-production` as a Preview deployment. Production is a separate human gate: after that exact deployment is READY and verified, a human promotes the existing deployment to Production in Vercel. The supported Vercel promotion operation repoints production traffic to the existing deployment and does not rebuild it.
+
+Do not push directly to `console-production`. Non-Console merges to `main` leave it untouched and therefore create no Vercel deployment.
+
+This design deliberately avoids a long-lived `VERCEL_TOKEN` in GitHub Actions. A credential-readiness probe on 2026-09-27 confirmed that no repository `VERCEL_TOKEN` is configured. Preview discovery continues through the official Vercel GitHub integration.
+
+A real Console Preview or production release still consumes one Vercel deployment. The policy removes deployment creation for unrelated Factory work; it does not change Vercel account-level limits.
 
 ## Preview applicability policy
 
