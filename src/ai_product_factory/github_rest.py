@@ -38,6 +38,7 @@ class GitHubPullRequest:
     state: str = "open"
     head_ref: str | None = None
     base_ref: str | None = None
+    head_repository: str | None = None
 
 
 @dataclass(frozen=True)
@@ -163,11 +164,22 @@ class GitHubRestAdapter:
             state=str(row.get("state") or "open"),
             head_ref=row.get("head",{}).get("ref"),
             base_ref=row.get("base",{}).get("ref"),
+            head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
         )
 
     def get_pull_request(self, pr_number: int) -> GitHubPullRequest:
         row = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}")
-        return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"], bool(row.get("merged",False)), row.get("merge_commit_sha"), str(row.get("state") or "open"))
+        return GitHubPullRequest(
+            number=row["number"],
+            head_sha=row["head"]["sha"],
+            html_url=row["html_url"],
+            merged=bool(row.get("merged",False)),
+            merge_commit_sha=row.get("merge_commit_sha"),
+            state=str(row.get("state") or "open"),
+            head_ref=row.get("head",{}).get("ref"),
+            base_ref=row.get("base",{}).get("ref"),
+            head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
+        )
 
     def get_pull_request_files(self, pr_number: int) -> tuple[str, ...]:
         rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
