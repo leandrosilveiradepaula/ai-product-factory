@@ -40,6 +40,7 @@ concurrency:
 jobs:
   product-stage:
     runs-on: ubuntu-latest
+    environment: openai-api
     permissions:
       contents: read
       id-token: write
@@ -200,6 +201,7 @@ jobs:
           fi
 
   direct:
+    environment: openai-api
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || (github.event_name == 'schedule' && vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && vars.FACTORY_MODEL_BUDGET_USD != '' && vars.FACTORY_MODEL_RESERVE_USD != '') }}
     needs: dispatch
     runs-on: ubuntu-latest
@@ -255,6 +257,7 @@ jobs:
 
 
   codex:
+    environment: openai-codex
     if: ${{ always() && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: dispatch
     runs-on: ubuntu-latest
