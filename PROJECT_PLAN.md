@@ -72,7 +72,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Preservar n8n como caminho oficial.
 - [x] Preservar LangGraph como offline shadow.
 - [x] Registrar projeto no control plane.
-- [ ] Escolher proxima linha semantica de planned_filters.
+- [x] Escolher proxima linha semantica de planned_filters: suporte generico offline a bindings multi-valor (`IN`) concluido no piloto, sem ativacao semantica.
 - [ ] Benchmark de 63 perguntas permanece postergado por decisao registrada no projeto.
 - [ ] Primeira tarefa funcional nova executada integralmente pela factory.
 
