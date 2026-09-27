@@ -96,6 +96,19 @@ Factory Console production health:
 
 The response is intentionally minimal and contains only service status and a truncated deployed commit.
 
+## Vercel deployment budget policy
+
+The Console Vercel project must not create a deployment for every Factory branch. Automatic Git deployments are allowlisted in `apps/console/vercel.json`:
+
+- `main` may deploy production after the human merge gate;
+- branches under `console/**` may create Preview deployments;
+- every other branch is denied at the Git-deployment layer;
+- `ignoreCommand` remains a second path-based guard and skips the build when the Console working tree did not change.
+
+Any pull request that changes `apps/console/**` must therefore use a `console/<slug>` branch. The Console validation workflow enforces this convention. Backend, documentation, Codex, OpenAI/auth and other non-Console branches must not consume Vercel deployment quota.
+
+This policy reduces unnecessary deployment creation; it does not remove Vercel account-level quotas. A real Console Preview still consumes a deployment and must be reserved for work that actually changes the Console.
+
 ## Preview applicability policy
 
 Preview is fail-closed by default. A project can make non-applicability explicit in `factory_projects.manifest.preview`:
