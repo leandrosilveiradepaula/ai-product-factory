@@ -1,0 +1,67 @@
+name: Console release candidate trigger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/console/**"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: console-production-release
+  cancel-in-progress: false
+
+jobs:
+  advance-release-candidate:
+    if: ${{ github.repository == 'leandrosilveiradepaula/ai-product-factory' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_BRANCH: console-production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require merged pull request evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" > /tmp/associated-prs.json
+          python - <<'PY'
+          import json
+          data=json.load(open("/tmp/associated-prs.json"))
+          valid=[
+              pr for pr in data
+              if pr.get("merged_at")
+              and (pr.get("base") or {}).get("ref") == "main"
+              and pr.get("merge_commit_sha") == __import__("os").environ["GITHUB_SHA"]
+          ]
+          if not valid:
+              raise SystemExit("Release candidate refused: main commit is not the merge commit of a merged PR targeting main.")
+          print(f"human_merge_pr={valid[0].get('number')}")
+          PY
+
+      - name: Advance Console release-candidate branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}"
+          if ! git merge-base --is-ancestor "origin/${RELEASE_BRANCH}" "${GITHUB_SHA}"; then
+            echo "::error::Refusing to rewind or diverge ${RELEASE_BRANCH}."
+            exit 3
+          fi
+          git push origin "${GITHUB_SHA}:refs/heads/${RELEASE_BRANCH}"
+          {
+            echo "Console release-candidate branch advanced to ${GITHUB_SHA}."
+            echo
+            echo "Vercel will build this branch as a Preview deployment. Production remains a separate human action: promote that exact READY deployment in Vercel only after verification."
+          } >> "${GITHUB_STEP_SUMMARY}"
