@@ -8,15 +8,17 @@ They are different products, identities, control planes, and billing domains.
 
 ---
 
-## Track A — Codex workload identity
+## Track A — Codex workspace authentication
 
 ### Purpose
 
-Allow the selective Factory Codex worker to execute through the managed ChatGPT workspace without storing a long-lived ChatGPT credential or API key.
+Allow the selective Factory Codex worker to execute through the managed ChatGPT workspace with an official non-interactive credential. WIF remains the preferred path because it avoids a stored long-lived OpenAI credential; while the beta is unavailable, the Factory may use an official `CODEX_ACCESS_TOKEN` stored only as a GitHub Environment secret.
 
-### External prerequisite
+### Authentication choices
 
-Codex workload identity federation is beta and must be enabled for the managed ChatGPT workspace by OpenAI.
+Preferred: Codex workload identity federation, which is beta and must be enabled for the managed ChatGPT workspace by OpenAI.
+
+Fallback: official `CODEX_ACCESS_TOKEN` for trusted non-interactive automation. Store it only as an encrypted secret in GitHub Environment `openai-codex`. Do not persist browser cookies, scraped ChatGPT sessions, or unofficial tokens.
 
 Do not proceed with invented federation values.
 
@@ -223,3 +225,20 @@ Activation status:
 - billing/model execution: blocked because API credit remaining is currently `$0.00`;
 - `FACTORY_PRIMARY_MODEL_ENABLED`: must remain false;
 - `OPENAI_API_KEY`: retain temporarily until WIF preflight succeeds, then review removal.
+
+
+### Temporary access-token path
+
+Until Codex WIF is enabled for the Infodive workspace, the Factory may use the official Codex access-token path.
+
+1. Create an official Codex access token from the workspace access-token administration surface.
+2. Give it the shortest practical expiration and only the Codex access required for this automation.
+3. Store the value once as GitHub Environment secret `CODEX_ACCESS_TOKEN` under `openai-codex`.
+4. Leave all WIF variables unset in that environment. Partial WIF blocks token fallback by design.
+5. Keep `FACTORY_CODEX_ENABLED=false`.
+6. Run the manual **Codex auth preflight**. It installs the pinned CLI and runs only `codex login status`; no Codex task/model execution is requested.
+7. Preserve successful workflow evidence.
+8. Run one bounded non-production Codex task and verify the durable invocation ledger.
+9. Only then enable `FACTORY_CODEX_ENABLED=true`.
+
+Credential precedence is WIF > official access token. Access-token creation/revocation is a human credential action and is never automated by the Factory.
