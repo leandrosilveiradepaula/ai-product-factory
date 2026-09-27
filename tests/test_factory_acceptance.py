@@ -165,6 +165,13 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("OPENAI_FEDERATION_RULE_ID", workflow)
         self.assertIn("OPENAI_WIF_AUDIENCE", workflow)
         self.assertIn("OPENAI_IDENTITY_TOKEN_FILE", workflow)
+        self.assertIn("environment: openai-codex", workflow)
+        self.assertIn("python -m ai_product_factory.codex_oidc --refresh-seconds 240", workflow)
+
+        preflight = (ROOT / ".github/workflows/codex-wif-preflight.yml").read_text()
+        self.assertIn("environment: openai-codex", preflight)
+        self.assertIn("python -m ai_product_factory.codex_oidc", preflight)
+        self.assertIn("@openai/codex@0.157.0", preflight)
         self.assertIn("workspace-write", codex)
         self.assertNotIn("danger-full-access", codex)
         self.assertNotIn("OPENAI_API_KEY", codex)

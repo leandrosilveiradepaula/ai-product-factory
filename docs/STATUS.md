@@ -111,6 +111,20 @@ Findings:
 
 No paid model call and no credit purchase were performed during this reconciliation.
 
+## Codex WIF runtime hardening
+
+Current official Codex WIF guidance was reconciled again on 2026-09-27. The Factory already pins Codex CLI `0.157.0`, satisfying the documented WIF minimum `0.148.0`.
+
+Issue #235 hardens the GitHub Actions path before any workspace activation:
+- preflight is bound to GitHub Environment `openai-codex`;
+- GitHub OIDC claims are decoded locally and checked for exact issuer, audience, subject, repository, main ref and environment;
+- raw JWTs are never logged;
+- identity-token writes are atomic with restrictive directory/file permissions;
+- the long-running Codex worker refreshes GitHub OIDC every 240 seconds so a later Codex exchange can use a current source token;
+- audit context now records `openai-codex` instead of the generic `ci` label.
+
+OpenAI additionally recommends managed `permissions.filesystem.deny_read` protection for the token directory. That control belongs to managed Codex/workspace policy and remains part of the external Codex WIF rollout once the beta is enabled.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
