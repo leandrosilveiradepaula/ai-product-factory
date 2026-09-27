@@ -96,6 +96,21 @@ After the fix, all transactional smoke paths passed. Final residual state remain
 
 GitHub Actions validation is temporarily unavailable because the daily Actions quota is exhausted. This is treated as an external operational dependency and must not be represented as a green CI run until the quota resets.
 
+## OpenAI authentication reconciliation
+
+Current official OpenAI documentation was reconciled against the Factory runtime on 2026-09-27.
+
+Findings:
+- Codex workload identity requires `OPENAI_FEDERATION_RULE_ID` plus `OPENAI_IDENTITY_TOKEN_FILE`; the OIDC audience belongs to the external token-minting layer.
+- The existing Codex producer incorrectly treated `OPENAI_WIF_AUDIENCE` as a Codex process credential. Issue #229 corrects that coupling while keeping audience validation in GitHub Actions.
+- API workload identity is a separate OpenAI Platform feature. The Factory previously detected API WIF configuration but the Responses provider still required `OPENAI_API_KEY`; issue #229 implements the actual GitHub OIDC -> OpenAI short-lived token exchange using the official `OPENAI_IDENTITY_PROVIDER_ID`, `OPENAI_SERVICE_ACCOUNT_ID`, and `OPENAI_WIF_AUDIENCE` variables.
+- API WIF improves credential security but does not bypass API Platform billing/quota.
+- The connected OpenAI Platform account exposes organization `Personal` and project `Default project`; billing state is not exposed through the available connector.
+- An OpenAI email dated 2026-09-04 states the Infodive ChatGPT workspace is out of credits and links to ChatGPT admin billing. Those credits are separate from API Platform credits.
+- No new email response has been found confirming Codex WIF beta enablement or providing a federation rule.
+
+No paid model call and no credit purchase were performed during this reconciliation.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
