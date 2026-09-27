@@ -106,7 +106,7 @@ Findings:
 - API workload identity is a separate OpenAI Platform feature. The Factory previously detected API WIF configuration but the Responses provider still required `OPENAI_API_KEY`; issue #229 implements the actual GitHub OIDC -> OpenAI short-lived token exchange using the official `OPENAI_IDENTITY_PROVIDER_ID`, `OPENAI_SERVICE_ACCOUNT_ID`, and `OPENAI_WIF_AUDIENCE` variables.
 - API WIF improves credential security but does not bypass API Platform billing/quota.
 - The connected OpenAI Platform account exposes organization `Personal` and project `Default project`; billing state is not exposed through the available connector.
-- An OpenAI email dated 2026-09-04 states the Infodive ChatGPT workspace is out of credits and links to ChatGPT admin billing. Those credits are separate from API Platform credits.
+- An OpenAI email dated 2026-09-04 reported the Infodive ChatGPT workspace out of credits at that time; the user has confirmed the workspace currently has credits. The historical email must not be treated as current status. ChatGPT workspace credits remain separate from API Platform credits.
 - No new email response has been found confirming Codex WIF beta enablement or providing a federation rule.
 
 No paid model call and no credit purchase were performed during this reconciliation.
