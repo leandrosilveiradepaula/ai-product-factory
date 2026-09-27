@@ -3,12 +3,14 @@ import {getProjectDetail,getProjectOperations} from "../../../lib/control-plane"
 import {ActionLink,EmptyState,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
+const stageLabels=["Discovery","Spec","Plano","Build","Review","Testes / Evals","Preview","Aprovação","Release","Operação"];
 function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.round(((i+1)/stages.length)*100)}
 
 export default async function Project({params}:{params:Promise<{key:string}>}){
  const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const ops=await getProjectOperations(p.id);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));
  return <>
   <PageHeader eyebrow="Project Detail" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Work Queue</ActionLink></>}/>
+  <div className="lifecycleRail" aria-label="Ciclo do produto"><span className="lifecycleIdea done">Ideia</span>{stageLabels.map((label,i)=><span key={label} className={i<stages.indexOf(p.stage)?"done":i===stages.indexOf(p.stage)?"current":""}>{label}</span>)}</div>
   <div className="grid compact">
    <MetricCard label="Lifecycle" value={progress(p.stage)+"%"} note={<div className="progressTrack"><div className="progressFill" style={{width:progress(p.stage)+"%"}}/></div>}/>
    <MetricCard label="Open tasks" value={activeTasks.length} note={p.tasks.length+" total"}/>
