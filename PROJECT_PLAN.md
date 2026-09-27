@@ -92,9 +92,9 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar Control Plane real por smoke transacional com rollback.
 - [x] Implementar redesign operacional do Console com dados reais do Control Plane.
 - [x] Centralizar design tokens, tipografia, cores semanticas e primitivas reutilizaveis do Console.
-- [ ] Validar CI/factory-acceptance no GitHub Actions quando a conta voltar a aceitar consumo (2.000/2.000 minutos incluidos consumidos; jobs atuais falham antes do primeiro step).
+- [x] Validar CI/factory-acceptance no GitHub Actions: janela publica temporaria habilitou runners hospedados; `validate` run #1041 passou e o rerun exato do candidato do Console tambem passou.
 - [x] Validar build do Console por Preview exato Vercel do candidato `10f593d7d169d30fe5048eac9d98a94b8be1e151` (deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX`, `READY`).
-- [ ] Reexecutar browser/Playwright evidence quando GitHub Actions voltar; o release de 27/09/2026 foi uma excecao explicitamente autorizada pelo operador humano, sem afirmar que esse check passou.
+- [ ] Reexecutar browser/Playwright evidence do candidato exato; Actions voltou a executar durante a janela publica, mas a evidencia browser especifica ainda nao foi refeita.
 
 ## Gate atual
 
