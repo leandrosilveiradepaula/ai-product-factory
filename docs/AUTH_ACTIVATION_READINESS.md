@@ -30,22 +30,27 @@ Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merel
 
 ChatGPT Business workspace credits are a separate balance and do not fund the API Platform. An OpenAI email dated 2026-09-04 reported the Infodive ChatGPT workspace out of credits at that time. The user has since confirmed that the workspace currently has credits. This historical email is not evidence of the current workspace balance and is not evidence of API Platform balance.
 
-## Codex workspace WIF
+## Codex workspace authentication
 
-Ready only when all of these are true:
+The Factory supports two official Codex authentication paths:
+
+1. Workload Identity Federation (preferred when available);
+2. `CODEX_ACCESS_TOKEN` stored as a protected secret for trusted non-interactive automation.
+
+Ready only when one complete official path is configured and the corresponding preflight succeeds.
 
 - the managed OpenAI/ChatGPT workspace has an approved Workload Identity rule/provider.
 - `OPENAI_FEDERATION_RULE_ID` contains the real administrator-provided rule id.
 - the federation rule accepts the real audience used by the external OIDC provider;
 - the GitHub Actions token-minting layer knows that audience (the Factory uses `OPENAI_WIF_AUDIENCE` for this purpose);
 - GitHub Actions can mint the OIDC token into `OPENAI_IDENTITY_TOKEN_FILE`.
-- the manual `Codex WIF preflight` workflow reaches a successful `codex login status`.
+- the manual Codex auth preflight reaches a successful `codex login status`.
 - `FACTORY_GITHUB_TOKEN` is configured with the minimum target-repository permissions needed by the delivery loop before cross-repository Codex execution.
 - only after the preflight is preserved as evidence, `FACTORY_CODEX_ENABLED=true` is set.
 
-Do not invent the federation rule id or audience. Codex itself receives only `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`; `OPENAI_WIF_AUDIENCE` belongs to the token-issuance layer.
+Do not invent the federation rule id or audience. Codex itself receives only `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`; `OPENAI_WIF_AUDIENCE` belongs to the token-issuance layer. If WIF is entirely absent, an official `CODEX_ACCESS_TOKEN` may be used instead. Any partial WIF configuration fails closed and must never fall back to the token.
 
-Current commercial/admin state: Codex WIF is still beta and requires workspace enablement by OpenAI Support. On 2026-09-27 the Infodive workspace Admin Portal was inspected directly; the documented `Workload identity` section is absent in both available admin surfaces, confirming that the workspace has not yet received the Codex WIF beta/admin capability. No support response with a federation rule or enablement confirmation has been found. Issue #240 tracks this external blocker. Separately, the Infodive ChatGPT Business workspace had a historical out-of-credits notice on 2026-09-04, but the user has confirmed the workspace currently has credits. Do not infer current credit state from that historical email. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key or an unofficial ChatGPT token.
+Current commercial/admin state: Codex WIF is still beta and requires workspace enablement by OpenAI Support. On 2026-09-27 the Infodive workspace Admin Portal was inspected directly; the documented `Workload identity` section is absent in both available admin surfaces, confirming that the workspace has not yet received the Codex WIF beta/admin capability. No support response with a federation rule or enablement confirmation has been found. Issue #240 tracks this external blocker. Separately, the Infodive ChatGPT Business workspace had a historical out-of-credits notice on 2026-09-04, but the user has confirmed the workspace currently has credits. Do not infer current credit state from that historical email. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key, browser cookie, scraped session, or unofficial ChatGPT token. The official `CODEX_ACCESS_TOKEN` is the only supported stored-token fallback.
 
 ## Activation order
 
