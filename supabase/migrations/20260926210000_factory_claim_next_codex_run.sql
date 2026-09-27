@@ -48,7 +48,7 @@ begin
   set status='implementing',
       started_at=coalesce(started_at,now()),
       lease_owner=p_worker_id,
-      lease_expires_at=now()+interval '15 minutes',
+      lease_expires_at=now()+interval '25 minutes',
       attempt_count=attempt_count+1,
       metadata=metadata||jsonb_build_object(
         'execution_worker_id',p_worker_id,
