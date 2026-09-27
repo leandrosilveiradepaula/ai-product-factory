@@ -1,0 +1,84 @@
+name: Recover Console browser evidence
+
+on:
+  push:
+    branches:
+      - "test/recover-console-browser-evidence"
+    paths:
+      - ".github/workflows/recover-console-browser-evidence.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned Playwright and Chromium
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Verify exact existing Console Preview
+        shell: bash
+        env:
+          FACTORY_PREVIEW_URL: "https://ai-product-factory-console-pbpcipzs8-leandros-projects-102e32ab.vercel.app"
+          FACTORY_CANDIDATE_SHA: "10f593d7d169d30fe5048eac9d98a94b8be1e151"
+          FACTORY_EXPECT_TEXT: "AI Product Factory"
+        run: |
+          node --input-type=module <<'NODE'
+          import { chromium } from "playwright";
+
+          const url = process.env.FACTORY_PREVIEW_URL;
+          const candidate = process.env.FACTORY_CANDIDATE_SHA;
+          const expected = process.env.FACTORY_EXPECT_TEXT;
+          const errors = [];
+          let browser;
+
+          try {
+            browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            page.on("pageerror", error => errors.push(`pageerror: ${error.message}`));
+            page.on("console", message => {
+              if (message.type() === "error") errors.push(`console: ${message.text()}`);
+            });
+
+            const response = await page.goto(url, {
+              waitUntil: "domcontentloaded",
+              timeout: 45000,
+            });
+            if (!response) throw new Error("navigation did not return an HTTP response");
+            if (response.status() >= 400) {
+              throw new Error(`preview returned HTTP ${response.status()}`);
+            }
+
+            await page.waitForTimeout(1000);
+            const bodyText = (await page.locator("body").innerText()).trim();
+            if (!bodyText) throw new Error("preview rendered an empty body");
+            if (!bodyText.includes(expected)) {
+              throw new Error(`expected text not found: ${expected}`);
+            }
+            if (errors.length) {
+              throw new Error(errors.slice(0, 10).join(" | "));
+            }
+
+            console.log(JSON.stringify({
+              status: "success",
+              candidate,
+              preview_url: url,
+              checks: [
+                "http_status_lt_400",
+                "body_visible",
+                "expected_text_present",
+                "console_clean",
+                "pageerror_clean"
+              ]
+            }));
+          } finally {
+            if (browser) await browser.close();
+          }
+          NODE
