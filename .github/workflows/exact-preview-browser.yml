@@ -1,0 +1,54 @@
+name: Exact Console Preview browser evidence
+
+on:
+  push:
+    branches:
+      - test/exact-preview-browser
+    paths:
+      - ".github/workflows/exact-preview-browser.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned Playwright browser
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Verify exact historical Preview
+        env:
+          TARGET_URL: https://ai-product-factory-console-pbpcipzs8-leandros-projects-102e32ab.vercel.app
+          EXPECT_TEXT: AI Product Factory
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          const url = process.env.TARGET_URL;
+          const expected = process.env.EXPECT_TEXT;
+          const errors = [];
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            try {
+              const page = await browser.newPage();
+              page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
+              page.on('console', m => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+              const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+              if (!response) throw new Error('navigation did not return an HTTP response');
+              if (response.status() >= 400) throw new Error(`HTTP ${response.status()}`);
+              await page.waitForTimeout(1000);
+              const body = (await page.locator('body').innerText()).trim();
+              if (!body) throw new Error('empty body');
+              if (!body.includes(expected)) throw new Error(`expected application marker not found; final_url=${page.url()}`);
+              if (errors.length) throw new Error(errors.slice(0, 10).join(' | '));
+              console.log(JSON.stringify({status:'success',checks:['page_load','http_status','body_visible','app_marker','console_clean'],final_url:page.url()}));
+            } finally {
+              await browser.close();
+            }
+          })().catch(err => { console.error(err.stack || String(err)); process.exit(1); });
+          NODE
