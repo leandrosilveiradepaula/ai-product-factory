@@ -36,7 +36,7 @@ export default async function Home(){
      <div className="valueRow"><span className="muted">Status</span><span className={attention?"pill warning":"pill success"}>{attention?"attention":"healthy"}</span></div>
     </div>
     <div className="sectionHeader section"><h2>Autonomy</h2></div>
-    <div className="card"><div className="badgeLine"><span className="pill success">Direct ready</span><span className="pill warning">Primary gated</span><span className="pill warning">Codex WIF gated</span></div><p className="muted" style={{marginBottom:0}}>A Factory segue fail-closed para providers pagos e preserva o gate humano de produção.</p></div>
+    <div className="card"><div className="badgeLine"><span className="pill success">Deterministic first</span><span className="pill">Paid providers fail closed</span><span className="pill">Production requires authority</span></div><p className="muted" style={{marginBottom:0}}>A Factory segue fail-closed para providers pagos e preserva o gate humano de produção.</p></div>
    </aside>
   </div>
  </>;
