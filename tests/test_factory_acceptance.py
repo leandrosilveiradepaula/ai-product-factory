@@ -317,6 +317,22 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("/v1/responses", workflow)
         self.assertNotIn("/v1/responses", module)
 
+    def test_pull_request_workflows_are_safe_for_public_window(self):
+        workflow_dir = ROOT / ".github/workflows"
+        workflows = {
+            path.name: path.read_text()
+            for path in workflow_dir.glob("*.yml")
+        }
+        for name, workflow in workflows.items():
+            self.assertNotIn("pull_request_target:", workflow, name)
+
+        for name in ("validate.yml", "console.yml"):
+            workflow = workflows[name]
+            self.assertIn("pull_request:", workflow, name)
+            self.assertIn("permissions:\n  contents: read", workflow, name)
+            self.assertNotIn("$" + "{{ secrets.", workflow, name)
+            self.assertNotIn("id-token: write", workflow, name)
+
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         codex = (ROOT / "src/ai_product_factory/codex_cli_producer.py").read_text()
