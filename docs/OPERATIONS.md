@@ -60,6 +60,24 @@ A Codex run is claimed only when `execution_route=codex`. Claiming uses a lease 
 
 The durable `factory_codex_usage` policy row is created at dispatch with zero invocations. The worker increments it only immediately before a real Codex CLI invocation. Do not fabricate token/cost data when the CLI does not report it. The Agent SQL 63-question benchmark remains explicitly excluded from implicit Codex work.
 
+## Manual Codex fallback
+
+Codex remains a selective executor. When `FACTORY_CODEX_ENABLED` is not true, the scheduled `codex-manual` job may handle Codex-routed work without any OpenAI credential.
+
+The flow is:
+
+1. claim one `execution_route=codex` run as `preparing_codex_manual`;
+2. create or reuse a GitHub Issue with the exact marker `Factory run: <run_id>`;
+3. persist the Issue binding and move the run to `awaiting_codex_manual`;
+4. an operator opens Codex using the managed ChatGPT Business account and asks it to implement that Issue;
+5. the Codex-created PR must target `main` and include the exact run marker in its body;
+6. the follow-up worker discovers that PR, persists its head SHA/branch as candidate evidence and moves the run to `ci_pending`;
+7. normal CI, Preview and human production release semantics resume.
+
+The manual handoff never stores ChatGPT cookies, browser sessions, human tokens, `OPENAI_API_KEY` or `CODEX_ACCESS_TOKEN`. It does not increment the automated Codex invocation ledger because the invocation occurred outside the Factory. Lease recovery covers interrupted `preparing_codex_manual` claims.
+
+Setting `FACTORY_CODEX_MANUAL_FALLBACK_ENABLED=false` disables new manual handoffs. Existing `awaiting_codex_manual` runs may still be followed up. Once `FACTORY_CODEX_ENABLED=true` is safely activated, new queued Codex work is left to the automatic worker and the manual prepare step stops claiming work.
+
 ## Operational alerts
 
 The scheduled alerts job explicitly enables the GitHub Issues sink for that job only. Alert issues are deduplicated by deterministic code. Non-billable GitHub/Supabase usage without cost data must not be treated as unknown paid spend.

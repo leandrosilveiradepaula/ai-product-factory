@@ -82,6 +82,20 @@ Security rules:
 
 No token has been created or stored by the Factory, and `FACTORY_CODEX_ENABLED` remains false until preflight evidence exists.
 
+## Manual Codex fallback
+
+The operating strategy is now explicit: deterministic tools first, OpenAI API/Direct as the primary AI path, and Codex only when its marginal value justifies the extra cost/complexity.
+
+While unattended Codex authentication is externally unavailable, a Codex-routed task no longer blocks unrelated Factory work. The scheduled runtime can:
+- claim one queued Codex task into a durable `preparing_codex_manual` state;
+- create or reuse a GitHub Issue containing the exact `Factory run: <run_id>` marker and operator instructions;
+- move the run to `awaiting_codex_manual` without storing any human credential;
+- watch for an open PR containing that exact marker;
+- adopt the PR head SHA/branch as durable candidate evidence and move the run to `ci_pending`;
+- resume the existing CI -> Preview -> `awaiting_release` path.
+
+Manual work initiated outside the Factory does not increment `factory_codex_usage.invocation_count`. The GitHub PR adoption is recorded as zero-cost GitHub delivery evidence. Automatic Codex remains available later when WIF or the official access-token path is activated.
+
 ## First pilot
 
 Repository: `leandrosilveiradepaula/agente-sql-langgraph`.

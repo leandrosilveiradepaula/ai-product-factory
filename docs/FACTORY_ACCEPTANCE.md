@@ -23,7 +23,7 @@ The purpose of this gate is to distinguish **internal product completeness** fro
 | Release | Release worker observes an already-merged PR and records evidence; it does not perform the merge. |
 | Operations | Recovery, health and deduplicated operational alerts are wired into the scheduled runner. |
 | Cost safety | Paid primary execution requires explicit enablement, known budget and per-run reservation. |
-| Codex safety | Codex requires explicit enablement + official WIF values + identity token file + cross-repo GitHub credential. |
+| Codex safety | Automatic Codex requires explicit official auth; when it is unavailable, manual Codex handoff stores no human credential, records durable Issue/PR evidence, and resumes at CI without auto-merge. |
 | Cross-repo safety | Native Actions token is repository-scoped; external repositories require `FACTORY_GITHUB_TOKEN`. |
 | Benchmark safety | The Agent SQL 63-question benchmark is never an implicit Factory action. |
 
@@ -43,7 +43,7 @@ The Factory is internally complete when all of the following are true:
 These are **not missing implementation work**:
 
 - OpenAI primary-model API quota/billing must be administratively approved before `FACTORY_PRIMARY_MODEL_ENABLED=true`;
-- Codex managed-workspace Workload Identity Federation must provide real `OPENAI_FEDERATION_RULE_ID` and `OPENAI_WIF_AUDIENCE` values before `FACTORY_CODEX_ENABLED=true`;
+- Codex managed-workspace Workload Identity Federation or official access-token auth is required only before `FACTORY_CODEX_ENABLED=true`; occasional Codex work can use the credential-free manual handoff path meanwhile;
 - cross-repository execution requires a real `FACTORY_GITHUB_TOKEN` with the minimum required repository permissions;
 - Supabase leaked-password protection remains an administrative hardening item.
 

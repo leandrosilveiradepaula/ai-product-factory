@@ -18,13 +18,14 @@ class Tests(unittest.TestCase):
     def test_maps_operational_health_without_side_effects(self):
         runs=[
             {"status":"running","attempt_count":1,"last_error":None,"lease_expires_at":"2026-01-01T00:00:00+00:00"},
+            {"status":"preparing_codex_manual","attempt_count":1,"last_error":None,"lease_expires_at":"2026-01-01T00:00:00+00:00"},
             {"status":"failed","attempt_count":3,"last_error":"maximum attempts reached","lease_expires_at":None},
         ]
         usage=[{"tool_family":"openai","estimated_cost":"1.25"},{"tool_family":"model","estimated_cost":None},{"tool_family":"github","estimated_cost":None}]
         with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(usage)]):
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             out=reader.read(budget=Decimal("5"),now=datetime(2026,9,26,tzinfo=timezone.utc))
-        self.assertEqual(out.expired_leases,1)
+        self.assertEqual(out.expired_leases,2)
         self.assertEqual(out.dead_letter_runs,1)
         self.assertEqual(out.failed_runs,1)
         self.assertEqual(out.unknown_cost_events,1)

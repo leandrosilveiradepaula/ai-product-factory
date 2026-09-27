@@ -48,6 +48,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Direct Executor para mudancas pequenas/medias.
 - [x] Roteador Direct vs Codex.
 - [x] Worker Codex fail-closed: claim atomico, checkout isolado, limites de saida, ledger de invocacao e job OIDC/WIF inerte sem readiness.
+- [x] Fallback temporario de Codex manual: handoff duravel em GitHub Issue, PR identificado por marcador de run e retomada automatica em CI sem armazenar credencial humana.
 - [x] Provider-neutral Model Executor.
 - [x] Budget por tarefa para modelo principal e Codex.
 - [x] Pipeline Engine ponta a ponta.
@@ -102,7 +103,7 @@ A Factory core esta funcionalmente implementada. O acceptance gate executavel e 
 
 O provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
-Para evitar custo adicional antes de necessario, os dois bloqueios externos de autenticacao permanecem separados: corrigir o mapping da API WIF (#250) e obter o enablement/credencial oficial do Codex (#240). O runtime aceita API key/API WIF para o modelo principal e WIF/CODEX_ACCESS_TOKEN oficial para Codex; tokens ChatGPT nao oficiais sao deliberadamente rejeitados.
+A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct como caminho principal e Codex apenas quando a complexidade justificar. A ativacao autonoma da API ainda depende de corrigir o mapping WIF (#250) e de billing/quota aprovado. A autenticacao autonoma do Codex (#240) deixou de bloquear o fluxo: enquanto WIF/access token nao estiverem disponiveis, tarefas Codex podem usar handoff manual e a Factory retoma a partir do PR. Tokens ChatGPT nao oficiais continuam rejeitados.
 
 ## Metricas do projeto
 

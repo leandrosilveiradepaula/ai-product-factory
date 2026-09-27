@@ -356,6 +356,38 @@ jobs:
           python -m ai_product_factory.runtime_cli --mode codex --worker-id "gha-codex-${{ github.run_id }}"
 
 
+
+  codex-manual:
+    if: ${{ always() && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    needs: dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+      FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
+      FACTORY_CODEX_MANUAL_FALLBACK_ENABLED: ${{ vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare at most one manual Codex handoff
+        if: ${{ env.FACTORY_CODEX_ENABLED != 'true' && env.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED != 'false' }}
+        shell: bash
+        run: python -m ai_product_factory.manual_codex_handoff --mode prepare --worker-id "gha-codex-manual-${{ github.run_id }}"
+      - name: Resume at most one completed manual Codex handoff
+        shell: bash
+        run: python -m ai_product_factory.manual_codex_handoff --mode followup
+
   preview:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true) }}
     needs: ci-followup
