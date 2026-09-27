@@ -187,7 +187,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260925233709_factory_run_leases_and_recovery.sql",
             "20260925234331_factory_console_operator_admin.sql",
             "20260927010724_factory_claim_next_codex_run.sql",
-            "20260927012500_reconcile_runtime_delivery_functions.sql",
+            "20260927014211_reconcile_runtime_delivery_functions.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
