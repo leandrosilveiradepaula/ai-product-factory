@@ -132,3 +132,88 @@ export async function getOperationsHealth():Promise<OperationsHealth>{
  const incidents=runs.filter((x:any)=>expired(x)||dead(x)||x.status==="failed").map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
  const paidFamilies=new Set(["model","openai","llm","paid_provider"]);return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter((x:any)=>x.status==="failed").length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,incidents};
 }
+
+
+export type WorkQueueItem={id:string;projectId:string;projectName:string;title:string;status:string;complexity:string;externalKey:string|null;createdAt:string;updatedAt:string};
+export type EvaluationRow={id:string;runId:string;type:string;status:string;score:number|null;baselineRef:string|null;createdAt:string};
+export type DeploymentRow={id:string;runId:string;environment:string;status:string;deploymentRef:string|null;deployedAt:string|null;createdAt:string};
+export type UsageRow={id:string;runId:string|null;family:string;operation:string;units:number|null;cost:number|null;createdAt:string};
+export type AuditRow={id:string;projectId:string|null;runId:string|null;actorType:string;actorRef:string|null;eventType:string;createdAt:string;payload:unknown};
+export type ProjectConfigRow={id:string;key:string;name:string;repository:string|null;stage:string;active:boolean;manifest:Record<string,unknown>};
+export type RunDetail={id:string;taskId:string;taskTitle:string;projectId:string|null;projectName:string|null;status:string;route:string|null;candidateCommit:string|null;branchName:string|null;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null;createdAt:string;finishedAt:string|null;evaluations:EvaluationRow[];deployments:DeploymentRow[];gates:GateSummary[];usage:UsageRow[];audit:AuditRow[]};
+
+async function projectNameMap(projectIds:string[],cfg:NonNullable<ReturnType<typeof getSupabaseServerConfig>>){
+ if(!projectIds.length)return new Map<string,string>();
+ const response=await fetch(cfg.url+"/rest/v1/factory_projects?select=id,name&id=in.("+projectIds.join(",")+")",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)return new Map<string,string>();
+ const rows=await response.json();return new Map(rows.map((x:any)=>[String(x.id),String(x.name)]));
+}
+
+export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_tasks?select=id,project_id,title,status,complexity,external_key,created_at,updated_at&status=not.in.(completed,cancelled)&order=updated_at.desc&limit="+limit,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load work queue");
+ const rows=await response.json();const ids=[...new Set(rows.map((x:any)=>String(x.project_id)).filter(Boolean))] as string[];const names=await projectNameMap(ids,cfg);
+ return rows.map((x:any)=>({id:String(x.id),projectId:String(x.project_id),projectName:names.get(String(x.project_id))||"Project",title:String(x.title),status:String(x.status),complexity:String(x.complexity||"—"),externalKey:x.external_key||null,createdAt:String(x.created_at),updatedAt:String(x.updated_at)}));
+}
+
+export async function getEvaluations(limit=100):Promise<EvaluationRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_evaluations?select=id,run_id,eval_type,status,score,baseline_ref,created_at&order=created_at.desc&limit="+limit,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load evaluations");
+ const rows=await response.json();return rows.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.eval_type),status:String(x.status),score:x.score==null?null:Number(x.score),baselineRef:x.baseline_ref||null,createdAt:String(x.created_at)}));
+}
+
+export async function getDeployments(limit=100):Promise<DeploymentRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_deployments?select=id,run_id,environment,status,deployment_ref,deployed_at,created_at&order=created_at.desc&limit="+limit,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load deployments");
+ const rows=await response.json();return rows.map((x:any)=>({id:String(x.id),runId:String(x.run_id),environment:String(x.environment),status:String(x.status),deploymentRef:x.deployment_ref||null,deployedAt:x.deployed_at||null,createdAt:String(x.created_at)}));
+}
+
+export async function getUsage(limit=250):Promise<UsageRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_tool_usage?select=id,run_id,tool_family,operation,usage_units,estimated_cost,created_at&order=created_at.desc&limit="+limit,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load usage");
+ const rows=await response.json();return rows.map((x:any)=>({id:String(x.id),runId:x.run_id?String(x.run_id):null,family:String(x.tool_family),operation:String(x.operation),units:x.usage_units==null?null:Number(x.usage_units),cost:x.estimated_cost==null?null:Number(x.estimated_cost),createdAt:String(x.created_at)}));
+}
+
+export async function getAuditLog(limit=200):Promise<AuditRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_audit_events?select=id,project_id,run_id,actor_type,actor_ref,event_type,payload,created_at&order=created_at.desc&limit="+limit,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load audit log");
+ const rows=await response.json();return rows.map((x:any)=>({id:String(x.id),projectId:x.project_id?String(x.project_id):null,runId:x.run_id?String(x.run_id):null,actorType:String(x.actor_type),actorRef:x.actor_ref||null,eventType:String(x.event_type),createdAt:String(x.created_at),payload:x.payload}));
+}
+
+export async function getProjectConfigs():Promise<ProjectConfigRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_projects?select=id,project_key,name,repository,lifecycle_stage,is_active,manifest&order=name.asc",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load project configuration");
+ const rows=await response.json();return rows.map((x:any)=>({id:String(x.id),key:String(x.project_key),name:String(x.name),repository:x.repository||null,stage:String(x.lifecycle_stage),active:Boolean(x.is_active),manifest:(x.manifest||{}) as Record<string,unknown>}));
+}
+
+export async function getRunDetail(runId:string):Promise<RunDetail|null>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
+ const runResponse=await fetch(cfg.url+"/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,branch_name,attempt_count,lease_owner,lease_expires_at,last_error,created_at,finished_at&id=eq."+encodeURIComponent(runId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!runResponse.ok)throw new Error("Unable to load run");const runs=await runResponse.json();if(!runs.length)return null;const r=runs[0];
+ let taskTitle="Task",projectId:string|null=null,projectName:string|null=null;
+ const taskResponse=await fetch(cfg.url+"/rest/v1/factory_tasks?select=id,title,project_id&id=eq."+encodeURIComponent(String(r.task_id))+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(taskResponse.ok){const tasks=await taskResponse.json();if(tasks.length){taskTitle=String(tasks[0].title);projectId=String(tasks[0].project_id);const names=await projectNameMap([projectId],cfg);projectName=names.get(projectId)||null;}}
+ const runFilter=encodeURIComponent(runId);
+ const [ev,dp,gt,us,au]=await Promise.all([
+  fetch(cfg.url+"/rest/v1/factory_evaluations?select=id,run_id,eval_type,status,score,baseline_ref,created_at&run_id=eq."+runFilter+"&order=created_at.asc",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_deployments?select=id,run_id,environment,status,deployment_ref,deployed_at,created_at&run_id=eq."+runFilter+"&order=created_at.asc",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&run_id=eq."+runFilter+"&order=requested_at.asc",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_tool_usage?select=id,run_id,tool_family,operation,usage_units,estimated_cost,created_at&run_id=eq."+runFilter+"&order=created_at.asc",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_audit_events?select=id,project_id,run_id,actor_type,actor_ref,event_type,payload,created_at&run_id=eq."+runFilter+"&order=created_at.asc",{headers:cfg.headers,cache:"no-store"})
+ ]);
+ const read=async(x:any)=>x.ok?await x.json():[];
+ const [evals,deployments,gates,usage,audit]=await Promise.all([read(ev),read(dp),read(gt),read(us),read(au)]);
+ return{id:String(r.id),taskId:String(r.task_id),taskTitle,projectId,projectName,status:String(r.status),route:r.execution_route||null,candidateCommit:r.candidate_commit||null,branchName:r.branch_name||null,attemptCount:Number(r.attempt_count||0),leaseOwner:r.lease_owner||null,leaseExpiresAt:r.lease_expires_at||null,lastError:r.last_error||null,createdAt:String(r.created_at),finishedAt:r.finished_at||null,
+  evaluations:evals.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.eval_type),status:String(x.status),score:x.score==null?null:Number(x.score),baselineRef:x.baseline_ref||null,createdAt:String(x.created_at)})),
+  deployments:deployments.map((x:any)=>({id:String(x.id),runId:String(x.run_id),environment:String(x.environment),status:String(x.status),deploymentRef:x.deployment_ref||null,deployedAt:x.deployed_at||null,createdAt:String(x.created_at)})),
+  gates:gates.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at)})),
+  usage:usage.map((x:any)=>({id:String(x.id),runId:x.run_id?String(x.run_id):null,family:String(x.tool_family),operation:String(x.operation),units:x.usage_units==null?null:Number(x.usage_units),cost:x.estimated_cost==null?null:Number(x.estimated_cost),createdAt:String(x.created_at)})),
+  audit:audit.map((x:any)=>({id:String(x.id),projectId:x.project_id?String(x.project_id):null,runId:x.run_id?String(x.run_id):null,actorType:String(x.actor_type),actorRef:x.actor_ref||null,eventType:String(x.event_type),createdAt:String(x.created_at),payload:x.payload}))
+ };
+}
