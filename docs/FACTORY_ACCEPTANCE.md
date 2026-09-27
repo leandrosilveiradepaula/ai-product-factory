@@ -49,6 +49,23 @@ These are **not missing implementation work**:
 
 The platform must remain useful and observable while those providers are blocked. Health/readiness should report the dependency; the runtime must not invent credentials, switch to unofficial tokens, or spend money merely to probe readiness.
 
+## Live Control Plane transactional smoke
+
+On 2026-09-27 the live production schema was exercised through transactional smoke tests with explicit `ROLLBACK`, so no synthetic Factory state remained afterward.
+
+Validated paths:
+
+- intake -> bootstrap -> product worker claim;
+- discovery -> specification -> planning -> durable backlog creation;
+- backlog dispatch -> Direct route -> Direct claim -> GitHub issue binding -> delivery status;
+- production-risk human gate -> approval -> requeue -> Direct claim;
+- Codex route -> Codex claim -> invocation-ledger RPC without calling any model/provider;
+- expired lease requeue;
+- max-attempt terminal lease recovery;
+- audit/evidence creation.
+
+The smoke exposed one real schema mismatch: multiple RPCs wrote `task_id` into `factory_audit_events` while the column was absent. Production migration `20260927014826_add_factory_audit_task_id` added the nullable FK and index. Re-running the smoke after the fix passed all paths, with zero residual synthetic projects, active runs, pending gates, or persisted Codex invocations.
+
 ## Release semantics
 
 Production remains a human-authorized action. The user may provide standing authorization for merges, but the runtime itself still has no automatic merge capability. This preserves the architectural separation between implementation automation and production authority.
