@@ -82,7 +82,7 @@ The Factory core now has an explicit executable completion contract in `docs/FAC
 
 The completion audit also found historical Supabase migration-version drift. Repository migration filenames have been reconciled to the versions already recorded by production Supabase. The original base schema and FK-index migrations have been restored under their production version IDs.
 
-Three runtime/delivery functions that predated complete migration-history discipline are consolidated in `20260927012500_reconcile_runtime_delivery_functions.sql` using their current production definitions. This reconciliation migration has been validated against the live schema inside `BEGIN ... ROLLBACK`; no production state was changed by that validation.
+Three runtime/delivery functions that predated complete migration-history discipline are consolidated in `20260927014211_reconcile_runtime_delivery_functions.sql` using their current production definitions. This reconciliation migration has been validated against the live schema inside `BEGIN ... ROLLBACK`; no production state was changed by that validation.
 
 The Agent SQL pilot is explicitly deferred and is not part of the current Factory finalization scope.
 
