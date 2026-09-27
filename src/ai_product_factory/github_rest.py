@@ -36,6 +36,8 @@ class GitHubPullRequest:
     merged: bool = False
     merge_commit_sha: str | None = None
     state: str = "open"
+    head_ref: str | None = None
+    base_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,19 @@ class GitHubRestAdapter:
                 return GitHubIssue(row["number"], row["title"], body, row["html_url"])
         return None
 
+    def find_open_pull_request_containing(self, marker: str) -> GitHubPullRequest | None:
+        if not marker.strip():
+            raise ValueError("marker cannot be empty")
+        query = f'repo:{self.repository} is:pr is:open in:body "{marker}"'
+        rows = self._call("GET", "/search/issues", query={"q": query, "per_page": "10"}).get("items", [])
+        for row in rows:
+            if "pull_request" not in row:
+                continue
+            body = row.get("body") or ""
+            if marker in body:
+                return self.get_pull_request(int(row["number"]))
+        return None
+
     def get_issue(self, issue_number: int) -> GitHubIssue:
         row = self._call("GET", f"/repos/{self.repository}/issues/{issue_number}")
         if "pull_request" in row:
@@ -139,7 +154,16 @@ class GitHubRestAdapter:
     def create_pull_request(self, *, title: str, body: str, head: str, base: str = "main") -> GitHubPullRequest:
         row = self._call("POST", f"/repos/{self.repository}/pulls",
                          payload={"title": title, "body": body, "head": head, "base": base, "draft": False})
-        return GitHubPullRequest(row["number"], row["head"]["sha"], row["html_url"], bool(row.get("merged",False)), row.get("merge_commit_sha"), str(row.get("state") or "open"))
+        return GitHubPullRequest(
+            number=row["number"],
+            head_sha=row["head"]["sha"],
+            html_url=row["html_url"],
+            merged=bool(row.get("merged",False)),
+            merge_commit_sha=row.get("merge_commit_sha"),
+            state=str(row.get("state") or "open"),
+            head_ref=row.get("head",{}).get("ref"),
+            base_ref=row.get("base",{}).get("ref"),
+        )
 
     def get_pull_request(self, pr_number: int) -> GitHubPullRequest:
         row = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}")
