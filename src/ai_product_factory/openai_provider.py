@@ -115,7 +115,20 @@ class GitHubActionsOpenAIWorkloadIdentity:
             json.dumps(payload).encode("utf-8"),
         )
         if status < 200 or status >= 300 or not isinstance(exchanged, dict):
-            raise RuntimeError(f"OpenAI workload identity token exchange failed: HTTP {status}")
+            details = [f"HTTP {status}"]
+            if isinstance(exchanged, dict):
+                error_data = exchanged.get("error")
+                if isinstance(error_data, dict):
+                    for key in ("type", "code", "message"):
+                        value = error_data.get(key)
+                        if isinstance(value, str) and value:
+                            details.append(f"{key}={value}")
+                elif isinstance(error_data, str) and error_data:
+                    details.append(f"error={error_data}")
+                request_id = exchanged.get("_request_id")
+                if isinstance(request_id, str) and request_id:
+                    details.append(f"request_id={request_id}")
+            raise RuntimeError("OpenAI workload identity token exchange failed: " + "; ".join(details))
 
         access_token = exchanged.get("access_token")
         if not isinstance(access_token, str) or not access_token:
