@@ -14,12 +14,14 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    environment: openai-codex
     timeout-minutes: 8
     env:
       OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       OPENAI_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/openai-wif/identity-token
-      OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-preflight","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"ci"}}'
+      OPENAI_WORKLOAD_IDENTITY_CONTEXT: '{"instance_id":"github-actions-preflight","display_name":"ai-product-factory","labels":{"repository":"ai-product-factory","environment":"openai-codex"}}'
+      FACTORY_CODEX_GITHUB_ENVIRONMENT: openai-codex
     steps:
       - uses: actions/checkout@v4
 
@@ -29,29 +31,33 @@ jobs:
           test -n "$OPENAI_FEDERATION_RULE_ID"
           test -n "$OPENAI_WIF_AUDIENCE"
 
-      - name: Request GitHub OIDC token
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Request and validate GitHub OIDC token
+        env:
+          PYTHONPATH: src
         shell: bash
-        run: |
-          set -euo pipefail
-          install -d -m 700 "$(dirname "$OPENAI_IDENTITY_TOKEN_FILE")"
-          AUDIENCE="$(python -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["OPENAI_WIF_AUDIENCE"], safe=""))')"
-          RESPONSE_FILE="$RUNNER_TEMP/openai-wif-response.json"
-          curl --fail-with-body --silent --show-error \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
-            > "$RESPONSE_FILE"
-          python -c 'import json,os,sys; p=os.environ["OPENAI_IDENTITY_TOKEN_FILE"]; token=json.load(open(sys.argv[1],encoding="utf-8"))["value"]; open(p,"w",encoding="utf-8").write(token); os.chmod(p,0o600)' "$RESPONSE_FILE"
-          rm -f "$RESPONSE_FILE"
+        run: python -m ai_product_factory.codex_oidc
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install Codex CLI
+      - name: Install compatible Codex CLI
         shell: bash
         run: |
           npm install -g @openai/codex@0.157.0
-          codex --version
+          VERSION="$(codex --version)"
+          echo "$VERSION"
+          python - <<'PY'
+          import re, subprocess
+          text=subprocess.check_output(["codex","--version"], text=True)
+          match=re.search(r"(\d+)\.(\d+)\.(\d+)", text)
+          if not match or tuple(map(int,match.groups())) < (0,148,0):
+              raise SystemExit("Codex WIF requires Codex 0.148.0 or newer")
+          PY
 
       - name: Verify workload identity login
         shell: bash
