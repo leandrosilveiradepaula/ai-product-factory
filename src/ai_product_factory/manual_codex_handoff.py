@@ -263,13 +263,21 @@ def followup_once(
             "marker": marker,
         }
 
-    if pr.base_ref and pr.base_ref != "main":
+    if pr.base_ref != "main":
         return {
             "claimed": True,
             "status": "blocked",
             "run_id": item.run_id,
             "pr_number": pr.number,
             "error": "manual Codex PR must target main",
+        }
+    if pr.head_repository != item.repository:
+        return {
+            "claimed": True,
+            "status": "blocked",
+            "run_id": item.run_id,
+            "pr_number": pr.number,
+            "error": "manual Codex PR must originate from the target repository",
         }
 
     adopted = queue.adopt_pr(item, pr)
