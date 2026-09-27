@@ -62,3 +62,17 @@ The operational Console has a centralized presentation layer:
 Global visual changes should start in `theme.css`. For example, changing `--font-sans` changes the Console typography without editing individual screens. Status meaning remains semantic: success, warning, danger and accent are mapped centrally.
 
 Business actions remain outside the visual primitives. UI components render the control; authorization and state transitions continue through the server-side Control Plane functions.
+
+## Production release candidate branch
+
+Production is intentionally decoupled from ordinary `main` pushes to protect the Vercel deployment budget.
+
+- Console feature branches use `console/**` and remain eligible for Vercel Preview.
+- Vercel Git deployment is disabled for `main`.
+- `console-production` is a generated **release-candidate** branch, not an automatically trusted production branch.
+- After a human merges a PR to `main`, `.github/workflows/console-production-release.yml` advances `console-production` only when that merge changed `apps/console/**`.
+- The workflow verifies the exact `main` SHA is associated with a merged PR and refuses branch rewinds.
+- Vercel builds `console-production` as a Preview deployment. After that exact deployment is READY and verified, a human promotes that existing deployment to Production in Vercel. Promotion does not rebuild the deployment.
+- `console-production` is generated release state; do not push to it manually.
+
+This keeps production human-gated and avoids requiring a long-lived `VERCEL_TOKEN` in GitHub Actions, while preventing backend-only Factory merges from creating Vercel deployment records.
