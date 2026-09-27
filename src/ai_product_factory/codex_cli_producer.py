@@ -70,7 +70,7 @@ class CodexCLIProducer:
         self.on_invoke = on_invoke or (lambda: None)
 
     def produce(self, item) -> ImplementationArtifact:
-        self._require_wif()
+        auth_mode = self._require_auth()
         if not _REPOSITORY.fullmatch(item.repository):
             raise ValueError("repository must be in owner/name form")
         token = resolve_github_token(item.repository)
@@ -153,19 +153,21 @@ class CodexCLIProducer:
                 ),
             )
 
-    def _require_wif(self) -> None:
+    def _require_auth(self) -> str:
         if os.getenv("FACTORY_CODEX_ENABLED", "").strip().lower() != "true":
             raise PermissionError("Codex execution is disabled")
-        required = (
-            "OPENAI_FEDERATION_RULE_ID",
-            "OPENAI_IDENTITY_TOKEN_FILE",
-        )
-        missing = [name for name in required if not os.getenv(name, "").strip()]
-        if missing:
-            raise PermissionError("Codex WIF configuration is incomplete: " + ", ".join(missing))
-        token_file = pathlib.Path(os.environ["OPENAI_IDENTITY_TOKEN_FILE"])
-        if not token_file.is_file():
-            raise PermissionError("Codex identity token file does not exist")
+        rule = os.getenv("OPENAI_FEDERATION_RULE_ID", "").strip()
+        token_file_value = os.getenv("OPENAI_IDENTITY_TOKEN_FILE", "").strip()
+        if rule or token_file_value:
+            if not rule or not token_file_value:
+                raise PermissionError("Codex WIF configuration is incomplete")
+            token_file = pathlib.Path(token_file_value)
+            if not token_file.is_file():
+                raise PermissionError("Codex identity token file does not exist")
+            return "wif"
+        if os.getenv("CODEX_ACCESS_TOKEN", "").strip():
+            return "access_token"
+        raise PermissionError("Codex authentication is not configured")
 
     @staticmethod
     def _base_env() -> dict[str, str]:
@@ -178,6 +180,7 @@ class CodexCLIProducer:
             "OPENAI_FEDERATION_RULE_ID",
             "OPENAI_IDENTITY_TOKEN_FILE",
             "OPENAI_WORKLOAD_IDENTITY_CONTEXT",
+            "CODEX_ACCESS_TOKEN",
         ):
             value = os.getenv(key)
             if value:
