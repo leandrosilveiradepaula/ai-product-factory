@@ -9,11 +9,12 @@ export default function RootLayout({children}:{children:React.ReactNode}){
  return <html lang="pt-BR">
   <body>
    <div className="consoleShell">
+    <input className="sidebarToggle" type="checkbox" id="sidebar-toggle" aria-label="Toggle navigation"/>
     <aside className="sidebar">
-     <Link href="/" className="brandBlock">
+     <div className="brandRow"><Link href="/" className="brandBlock">
       <div className="brandMark">AI</div>
-      <div><strong>Product Factory</strong><span>CONTROL PLANE</span></div>
-     </Link>
+      <div className="brandText"><strong>Product Factory</strong><span>CONTROL PLANE</span></div>
+     </Link><label htmlFor="sidebar-toggle" className="collapseButton" title="Collapse sidebar">‹</label></div>
      <ConsoleNav/>
      <div className="sidebarFooter">
       <div className="envBadge"><i/>Production</div>
