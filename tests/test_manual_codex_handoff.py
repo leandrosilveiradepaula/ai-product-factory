@@ -136,6 +136,7 @@ class ManualCodexHandoffTests(unittest.TestCase):
             html_url="https://example/pull/21",
             head_ref="codex/refactor",
             base_ref="main",
+            head_repository="owner/repo",
         )
         github = MagicMock()
         github.find_open_pull_request_containing.return_value = pr
@@ -150,6 +151,28 @@ class ManualCodexHandoffTests(unittest.TestCase):
         self.assertEqual(out["candidate_commit"], "abc123")
         queue.adopt_pr.assert_called_once_with(waiting, pr)
 
+    def test_followup_refuses_pr_from_external_repository(self):
+        queue = MagicMock()
+        queue.next_waiting.return_value = item(issue_number=17)
+        github = MagicMock()
+        github.find_open_pull_request_containing.return_value = GitHubPullRequest(
+            number=23,
+            head_sha="fed789",
+            html_url="https://example/pull/23",
+            head_ref="codex/refactor",
+            base_ref="main",
+            head_repository="attacker/fork",
+        )
+
+        out = followup_once(
+            queue=queue,
+            github_factory=lambda repository: github,
+        )
+
+        self.assertEqual(out["status"], "blocked")
+        self.assertIn("target repository", out["error"])
+        queue.adopt_pr.assert_not_called()
+
     def test_followup_refuses_pr_targeting_non_main(self):
         queue = MagicMock()
         queue.next_waiting.return_value = item(issue_number=17)
@@ -160,6 +183,7 @@ class ManualCodexHandoffTests(unittest.TestCase):
             html_url="https://example/pull/22",
             head_ref="codex/refactor",
             base_ref="develop",
+            head_repository="owner/repo",
         )
 
         out = followup_once(
