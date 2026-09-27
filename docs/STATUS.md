@@ -110,7 +110,7 @@ It found and fixed a real Control Plane schema mismatch: seven RPCs wrote `task_
 
 After the fix, all transactional smoke paths passed. Final residual state remained zero synthetic projects, zero active runs, zero pending gates, and zero persisted Codex invocations.
 
-GitHub Actions validation is temporarily unavailable because the personal GitHub Free account has consumed its 2,000 included Actions minutes for the current billing period. GitHub reports that jobs are not started until account billing/spending capacity is available again. This is an external operational dependency and must not be represented as a green CI run.
+GitHub Actions validation is available during the temporary public-repository window opened on 2026-09-27. Main `validate` run #1041 completed successfully, including unit tests, compile and `factory-acceptance`; `Console validation` run #209 also completed successfully with install, typecheck and build. The previously quota-blocked exact redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` and `Console validation` passed. Browser/Playwright evidence for that historical candidate remains a separate pending item.
 
 ## OpenAI authentication reconciliation
 
@@ -170,14 +170,30 @@ All operational views use real Control Plane data through the existing server-si
 
 Release evidence:
 - candidate commit `10f593d7d169d30fe5048eac9d98a94b8be1e151` had exact Vercel Preview deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX` in `READY` state and GitHub Vercel status `success`;
-- GitHub Actions could not run tests, typecheck or factory-acceptance because the account had consumed 2,000 / 2,000 included Actions minutes; the affected jobs failed before executing any step;
-- Playwright/browser evidence therefore did not run. The human operator explicitly authorized the production merge with that external limitation known; this is an exception record, not a claim that CI/browser checks passed;
+- At release time, GitHub Actions could not run because the account had consumed 2,000 / 2,000 included Actions minutes. After opening a temporary public window, the exact candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` (including `factory-acceptance`) and `Console validation` passed;
+- Playwright/browser evidence was not rerun yet. The original production merge remains recorded as a human-authorized exception at release time, while the missing CI evidence has now been recovered retroactively;
 - squash merge commit is `96fb81c3eb6de66c955562a604d3460ad99a92ae`;
 - production Vercel deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` reached `READY`;
 - production `GET /api/health` returned HTTP 200 and commit `96fb81c3eb6d`;
 - Vercel reported no runtime errors in the post-release verification window.
 
 Figma MCP Starter calls remain exhausted, so no additional design-context comparison can be performed until that quota resets. GitHub Actions validation and Playwright evidence remain pending re-execution when billing/spending capacity is available again.
+
+## Temporary public Actions window
+
+The repository was made public by the owner on 2026-09-27 to temporarily recover GitHub-hosted Actions capacity without adding paid Actions budget. Before opening, the repository was audited for literal credentials; fork workflows were disabled, default workflow permissions were read-only, Vercel Git Fork Protection was confirmed enabled, and acceptance checks reject `pull_request_target`, PR secrets and PR OIDC.
+
+Current observed public-window state:
+- 0 forks;
+- 0 open external pull requests;
+- main CI/factory-acceptance green;
+- Console typecheck/build green;
+- exact historical redesign candidate CI recovered green;
+- paid model execution remains disabled;
+- Codex execution remains disabled;
+- Agent SQL 63-question benchmark remains excluded.
+
+The repository must return to private after the remaining verification debt is closed or the temporary window is no longer needed.
 
 ## Console security boundary audit
 
