@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -32,6 +32,47 @@ class RuntimeCliTests(unittest.TestCase):
             out=run_direct_once("w")
         self.assertEqual(out["status"],"blocked")
         queue.assert_not_called()
+    def test_codex_blocks_before_claim_when_not_explicitly_enabled(self):
+        env={"OPENAI_FEDERATION_RULE_ID":"rule","OPENAI_WIF_AUDIENCE":"aud","OPENAI_IDENTITY_TOKEN_FILE":"/tmp/missing","FACTORY_GITHUB_TOKEN":"gh"}
+        with patch.dict("os.environ",env,clear=True), patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue") as queue:
+            out=run_codex_once("w")
+        self.assertEqual(out["status"],"blocked")
+        queue.assert_not_called()
+
+    def test_codex_runtime_requires_cross_repo_credential(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile() as identity:
+            env={
+                "FACTORY_CODEX_ENABLED":"true",
+                "OPENAI_FEDERATION_RULE_ID":"rule",
+                "OPENAI_WIF_AUDIENCE":"aud",
+                "OPENAI_IDENTITY_TOKEN_FILE":identity.name,
+            }
+            with patch.dict("os.environ",env,clear=True):
+                with self.assertRaises(PermissionError) as ctx:
+                    require_codex_runtime_enabled()
+        self.assertIn("FACTORY_GITHUB_TOKEN",str(ctx.exception))
+
+    def test_codex_empty_queue_has_no_github_or_cli_side_effect(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile() as identity:
+            env={
+                "FACTORY_CODEX_ENABLED":"true",
+                "OPENAI_FEDERATION_RULE_ID":"rule",
+                "OPENAI_WIF_AUDIENCE":"aud",
+                "OPENAI_IDENTITY_TOKEN_FILE":identity.name,
+                "FACTORY_GITHUB_TOKEN":"factory-gh",
+            }
+            queue=MagicMock();queue.claim_next.return_value=None
+            with patch.dict("os.environ",env,clear=True), \
+                 patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue), \
+                 patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
+                 patch("ai_product_factory.runtime_cli.CodexCLIProducer") as producer:
+                out=run_codex_once("w")
+        self.assertEqual(out,{"claimed":False,"status":"empty"})
+        github.assert_not_called()
+        producer.assert_not_called()
+
     def test_runtime_fails_before_claim_when_auth_is_missing(self):
         with patch.dict("os.environ", {"FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
             with self.assertRaises(RuntimeError) as ctx:
