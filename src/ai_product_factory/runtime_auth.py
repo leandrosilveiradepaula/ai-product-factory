@@ -18,8 +18,15 @@ class RuntimeAuthResolver:
  def __init__(self,environ:dict[str,str]|None=None)->None:self.environ=environ if environ is not None else os.environ
 
  def resolve_primary_api(self)->RuntimeAuth:
-  if self.environ.get("OPENAI_IDENTITY_PROVIDER_ID") and self.environ.get("OPENAI_SERVICE_ACCOUNT_ID") and self.environ.get("OPENAI_WIF_AUDIENCE"):
-   return RuntimeAuth(AuthKind.OPENAI_API_WIF,"OpenAI API workload identity",True)
+  wif_values=(
+   self.environ.get("OPENAI_IDENTITY_PROVIDER_ID"),
+   self.environ.get("OPENAI_SERVICE_ACCOUNT_ID"),
+   self.environ.get("OPENAI_WIF_AUDIENCE"),
+  )
+  if any(wif_values):
+   if all(wif_values):
+    return RuntimeAuth(AuthKind.OPENAI_API_WIF,"OpenAI API workload identity",True)
+   return RuntimeAuth(AuthKind.NONE,"incomplete OpenAI API workload identity",False)
   if self.environ.get("OPENAI_API_KEY"):
    return RuntimeAuth(AuthKind.OPENAI_API_KEY,"OPENAI_API_KEY",True)
   return RuntimeAuth(AuthKind.NONE,"none",False)
