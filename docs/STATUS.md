@@ -133,7 +133,7 @@ Current official Codex WIF guidance was reconciled again on 2026-09-27. The Fact
 
 Issue #235 hardens the GitHub Actions path before any workspace activation:
 - preflight is bound to GitHub Environment `openai-codex`;
-- GitHub OIDC claims are decoded locally and checked for exact issuer, audience, subject, repository, main ref and environment;
+- GitHub OIDC claims are decoded locally and checked for exact issuer, audience, immutable subject (including stable owner/repository IDs), repository, main ref and environment;
 - raw JWTs are never logged;
 - identity-token writes are atomic with restrictive directory/file permissions;
 - the long-running Codex worker refreshes GitHub OIDC every 240 seconds so a later Codex exchange can use a current source token;
@@ -151,14 +151,14 @@ OpenAI Platform:
 - audience `https://api.openai.com/v1`;
 - project `Default project`;
 - restricted service account `ai-product-factory-primary` with ID `user-964d27e5d9d6b216dd475e06`;
-- exact GitHub mapping for the Factory repository, main ref and `openai-api` environment;
+- intended GitHub mapping for the Factory repository, main ref and `openai-api` environment; current service-account mapping is not yet accepted by OpenAI because it does not match the actual immutable GitHub OIDC token attributes;
 - model access restricted to the model-request/Responses capability required by the Factory.
 
 GitHub:
 - Environment `openai-api` exists with the three non-secret WIF variables configured;
 - Environment `openai-codex` exists and remains intentionally empty pending the managed ChatGPT workspace federation rule.
 
-The no-model API WIF preflight is implemented and merged. It performs only GitHub OIDC -> OpenAI short-lived token exchange and never calls a model endpoint. It cannot execute until GitHub Actions quota is available.
+The no-model API WIF preflight is implemented and has executed on a real GitHub-hosted runner. GitHub OIDC issuance succeeds, but OpenAI currently rejects the token exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. The observed immutable subject is `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`. Issue #250 tracks the required OpenAI Platform mapping correction. No model endpoint was called.
 
 The API Platform Billing screen currently reports `$0.00` credit remaining. Therefore `FACTORY_PRIMARY_MODEL_ENABLED` remains false and no paid model smoke is authorized. No credits were added automatically.
 
@@ -177,15 +177,15 @@ Release evidence:
 - production `GET /api/health` returned HTTP 200 and commit `96fb81c3eb6d`;
 - Vercel reported no runtime errors in the post-release verification window.
 
-Figma MCP Starter calls remain exhausted, so no additional design-context comparison can be performed until that quota resets. GitHub Actions validation and Playwright evidence remain pending re-execution when billing/spending capacity is available again.
+Figma MCP Starter calls remain exhausted, so no additional design-context comparison can be performed until that quota resets. GitHub Actions validation has been recovered during the temporary public window; only the historical exact-candidate Playwright/browser evidence remains pending.
 
 ## Temporary public Actions window
 
 The repository was made public by the owner on 2026-09-27 to temporarily recover GitHub-hosted Actions capacity without adding paid Actions budget. Before opening, the repository was audited for literal credentials; fork workflows were disabled, default workflow permissions were read-only, Vercel Git Fork Protection was confirmed enabled, and acceptance checks reject `pull_request_target`, PR secrets and PR OIDC.
 
 Current observed public-window state:
-- 0 forks;
-- 0 open external pull requests;
+- 0 forks observed at the latest check;
+- 0 open external pull requests observed at the latest check;
 - main CI/factory-acceptance green;
 - Console typecheck/build green;
 - exact historical redesign candidate CI recovered green;

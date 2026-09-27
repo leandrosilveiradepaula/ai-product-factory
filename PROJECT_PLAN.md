@@ -54,7 +54,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Project Memory versionada.
 - [x] Review/evaluation quality gates.
 - [x] Provider OpenAI Responses implementado (API key validada tecnicamente; consumo bloqueado por quota/billing separado).
-- [x] OpenAI API WIF implementado e configurado em OpenAI Platform + GitHub (`openai-api`); preflight sem modelo aguarda cota do Actions, e billing API permanece gate separado.
+- [x] OpenAI API WIF implementado no runtime e GitHub (`openai-api`); GitHub OIDC real foi validado. O exchange OpenAI esta bloqueado por mapping administrativo incompatível com o subject imutavel (`invalid_grant`, issue #250), e billing API permanece gate separado.
 - [ ] Provider real do Codex/ChatGPT entitlement (Factory suporta WIF preferencial e fallback oficial `CODEX_ACCESS_TOKEN`; falta criar/configurar a credencial e validar preflight antes de habilitar o worker. WIF beta continua issue #240).
 
 ### F4 - Testes, Evals e Preview
@@ -102,7 +102,7 @@ A Factory core esta funcionalmente implementada. O acceptance gate executavel e 
 
 O provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
-Para evitar custo adicional antes de necessario, o caminho prioritario continua sendo validar o mecanismo oficial de Workload Identity do workspace para Codex. O runtime aceita API key para o modelo principal e as variaveis oficiais de WIF para Codex; tokens ChatGPT nao oficiais sao deliberadamente rejeitados.
+Para evitar custo adicional antes de necessario, os dois bloqueios externos de autenticacao permanecem separados: corrigir o mapping da API WIF (#250) e obter o enablement/credencial oficial do Codex (#240). O runtime aceita API key/API WIF para o modelo principal e WIF/CODEX_ACCESS_TOKEN oficial para Codex; tokens ChatGPT nao oficiais sao deliberadamente rejeitados.
 
 ## Metricas do projeto
 

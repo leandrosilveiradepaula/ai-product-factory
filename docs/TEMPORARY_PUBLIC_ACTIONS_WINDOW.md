@@ -62,3 +62,5 @@ If Vercel Git Fork Protection or GitHub external-workflow approval cannot be con
 - Historical redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151`: rerun of the previously quota-blocked `validate` and `Console validation` jobs succeeded.
 - Vercel deployment quota remains exhausted for the current daily window; production health remains HTTP 200 on the last READY deployment.
 - Browser/Playwright evidence for the historical candidate has not yet been re-executed.
+- Codex auth preflight was rerun and correctly failed before OIDC because workspace WIF values remain absent (#240); no Codex task/model call occurred.
+- OpenAI API WIF no-model preflight was executed. GitHub OIDC issuance works, but OpenAI token exchange currently fails with `invalid_grant` because the service-account mapping does not match the real immutable GitHub subject (#250).
