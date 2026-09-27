@@ -125,6 +125,27 @@ Issue #235 hardens the GitHub Actions path before any workspace activation:
 
 OpenAI additionally recommends managed `permissions.filesystem.deny_read` protection for the token directory. That control belongs to managed Codex/workspace policy and remains part of the external Codex WIF rollout once the beta is enabled.
 
+## OpenAI API WIF configured
+
+The OpenAI API workload identity path is now configured end-to-end at the administrative level.
+
+OpenAI Platform:
+- Workload Identity Provider `github-actions-ai-product-factory`;
+- provider ID `idp_cc3f1adbaa5185a08932c2e9`;
+- audience `https://api.openai.com/v1`;
+- project `Default project`;
+- restricted service account `ai-product-factory-primary` with ID `user-964d27e5d9d6b216dd475e06`;
+- exact GitHub mapping for the Factory repository, main ref and `openai-api` environment;
+- model access restricted to the model-request/Responses capability required by the Factory.
+
+GitHub:
+- Environment `openai-api` exists with the three non-secret WIF variables configured;
+- Environment `openai-codex` exists and remains intentionally empty pending the managed ChatGPT workspace federation rule.
+
+The no-model API WIF preflight is implemented and merged. It performs only GitHub OIDC -> OpenAI short-lived token exchange and never calls a model endpoint. It cannot execute until GitHub Actions quota is available.
+
+The API Platform Billing screen currently reports `$0.00` credit remaining. Therefore `FACTORY_PRIMARY_MODEL_ENABLED` remains false and no paid model smoke is authorized. No credits were added automatically.
+
 ## Next engineering blocks
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.

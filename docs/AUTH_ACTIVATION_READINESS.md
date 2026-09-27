@@ -11,7 +11,22 @@ Ready only when all of these are true:
 - a bounded smoke test has succeeded after quota/billing readiness is confirmed.
 - `FACTORY_PRIMARY_MODEL_ENABLED=true` is explicitly set.
 
-Current known state: the existing key reached the API but returned HTTP 429/quota. The connected Platform account exposes a Personal organization with a Default project, but no available connector exposes live billing/credit balance. Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merely to poll readiness.
+Current known state:
+- API workload identity is configured in OpenAI Platform and GitHub for the Factory:
+  - provider `github-actions-ai-product-factory`
+  - provider ID `idp_cc3f1adbaa5185a08932c2e9`
+  - project `Default project`
+  - service account `ai-product-factory-primary`
+  - service account ID `user-964d27e5d9d6b216dd475e06`
+  - audience `https://api.openai.com/v1`
+  - GitHub Environment `openai-api`
+  - exact mapping checks for issuer, audience, repository, `refs/heads/main`, and `openai-api`
+  - restricted model request access for `/v1/responses`
+- the API WIF no-model preflight is implemented but cannot run until GitHub Actions quota is available;
+- the API Platform Billing screen currently shows `$0.00` credit remaining, so model execution remains disabled;
+- the existing `OPENAI_API_KEY` is retained temporarily until WIF preflight succeeds and must not be treated as a reason to enable paid execution.
+
+Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merely to poll readiness and do not add credits automatically.
 
 ChatGPT Business workspace credits are a separate balance and do not fund the API Platform. An OpenAI email dated 2026-09-04 reported the Infodive ChatGPT workspace out of credits at that time. The user has since confirmed that the workspace currently has credits. This historical email is not evidence of the current workspace balance and is not evidence of API Platform balance.
 
