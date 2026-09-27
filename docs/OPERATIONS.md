@@ -11,6 +11,7 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `product` | Execute one product-stage run | Model call + Control Plane writes | Hourly only when ready | Primary enable + auth + budget |
 | `dispatch` | Route one planned task | Control Plane writes | Hourly bounded + manual | Optional project key |
 | `direct` | Produce implementation and open PR | Model + GitHub writes | Hourly only after explicit Primary+budget activation; manual supported | Primary enable + auth + ledger budget + risk gate |
+| `codex` | Execute one already-routed complex implementation through isolated Codex CLI and open PR | Codex workspace + GitHub writes | Hourly/manual only when explicitly enabled and WIF-ready | Codex enable + WIF + cross-repo GitHub credential + Control Plane |
 | `ci` | Resume one `ci_pending` run | GitHub reads + evidence writes | Hourly | Matching durable PR evidence |
 | `preview` | Deploy and verify one `preview_ready` run | Vercel Preview + browser/e2e + evidence writes | Hourly bounded + manual | Preview applicability/readiness + quality evidence |
 | `release` | Observe one human PR merge | GitHub reads; issue close/evidence after merge | Hourly | Human merge must already exist |
@@ -52,6 +53,12 @@ The Vercel adapters refuse non-Preview environments. The browser adapter receive
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
+
+The Codex worker is independently gated by `FACTORY_CODEX_ENABLED=true`, `OPENAI_FEDERATION_RULE_ID`, `OPENAI_WIF_AUDIENCE`, a real `OPENAI_IDENTITY_TOKEN_FILE`, `FACTORY_GITHUB_TOKEN`, and Control Plane credentials. The scheduled/manual Actions job checks readiness before checkout, OIDC minting, Node/Codex installation, or queue claim. Missing configuration therefore leaves the worker inert.
+
+A Codex run is claimed only when `execution_route=codex`. Claiming uses a lease and bounded recovery. Repository code is cloned to a temporary checkout with the GitHub credential held by the parent process; the remote is removed before Codex starts, and GitHub/API credentials are not passed to the Codex subprocess. Codex runs with `workspace-write` and non-interactive approvals, never `danger-full-access`. Output is limited by file count and total bytes, rejects deletions, symlinks, non-UTF-8 files, path traversal, and secret-bearing paths, then enters the same Issue -> branch -> commit -> PR -> CI -> Preview -> `awaiting_release` loop as Direct.
+
+The durable `factory_codex_usage` policy row is created at dispatch with zero invocations. The worker increments it only immediately before a real Codex CLI invocation. Do not fabricate token/cost data when the CLI does not report it. The Agent SQL 63-question benchmark remains explicitly excluded from implicit Codex work.
 
 ## Operational alerts
 
