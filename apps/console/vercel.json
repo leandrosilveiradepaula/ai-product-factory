@@ -3,8 +3,9 @@
   "git": {
     "deploymentEnabled": {
       "**": false,
-      "main": true,
-      "console/**": true
+      "main": false,
+      "console/**": true,
+      "console-production": true
     }
   },
   "ignoreCommand": "git diff --quiet HEAD^ HEAD ./"

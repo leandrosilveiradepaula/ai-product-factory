@@ -53,6 +53,8 @@ Verified production state:
 - production deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` for merge commit `96fb81c3eb6de66c955562a604d3460ad99a92ae` reached `READY`;
 - production health was verified after the redesign release: `GET /api/health` returned HTTP 200 with service `ai-product-factory-console` and commit `96fb81c3eb6d`;
 - unauthenticated production root returned the redesigned shell and login surface successfully; no runtime errors were reported by Vercel in the verification window.
+- Vercel quota hardening is being moved to a dedicated `console-production` Git release branch: `main` Git deployments are disabled in repository config, and a path-gated GitHub workflow advances the release branch only after a merged PR that changed `apps/console/**`. Activation requires the Vercel project Production Branch to be set to `console-production` and then verified with the first Console release.
+- A non-secret Actions probe confirmed `VERCEL_TOKEN` is not configured; the dedicated release-branch design avoids introducing that long-lived credential.
 
 ## Authentication / model gate
 

@@ -96,6 +96,8 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar CI/factory-acceptance no GitHub Actions: janela publica temporaria habilitou runners hospedados; `validate` run #1041 passou e o rerun exato do candidato do Console tambem passou.
 - [x] Validar build do Console por Preview exato Vercel do candidato `10f593d7d169d30fe5048eac9d98a94b8be1e151` (deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX`, `READY`).
 - [ ] Reexecutar browser/Playwright evidence do candidato exato; Actions voltou a executar durante a janela publica, mas a evidencia browser especifica ainda nao foi refeita.
+- [x] Implementar release branch dedicado do Console para impedir deployments Vercel em merges backend-only de `main`.
+- [ ] Alterar no Vercel a Production Branch para `console-production` e verificar o primeiro release path-gated antes de encerrar #247.
 
 ## Gate atual
 
