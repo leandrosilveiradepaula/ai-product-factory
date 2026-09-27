@@ -11,7 +11,9 @@ Ready only when all of these are true:
 - a bounded smoke test has succeeded after quota/billing readiness is confirmed.
 - `FACTORY_PRIMARY_MODEL_ENABLED=true` is explicitly set.
 
-Current known state: the existing key reached the API but returned HTTP 429/quota. Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merely to poll readiness.
+Current known state: the existing key reached the API but returned HTTP 429/quota. The connected Platform account exposes a Personal organization with a Default project, but no available connector exposes live billing/credit balance. Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merely to poll readiness.
+
+ChatGPT Business workspace credits are a separate balance and do not fund the API Platform. An OpenAI email dated 2026-09-04 reported the Infodive ChatGPT workspace out of credits; this is relevant to ChatGPT/Codex workspace usage, not evidence of API Platform balance.
 
 ## Codex workspace WIF
 
@@ -26,7 +28,9 @@ Ready only when all of these are true:
 - `FACTORY_GITHUB_TOKEN` is configured with the minimum target-repository permissions needed by the delivery loop before cross-repository Codex execution.
 - only after the preflight is preserved as evidence, `FACTORY_CODEX_ENABLED=true` is set.
 
-Do not invent the federation rule id or audience. Codex itself receives only `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`; `OPENAI_WIF_AUDIENCE` belongs to the token-issuance layer. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key or an unofficial ChatGPT token.
+Do not invent the federation rule id or audience. Codex itself receives only `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`; `OPENAI_WIF_AUDIENCE` belongs to the token-issuance layer.
+
+Current commercial/admin state: Codex WIF is still beta and requires workspace enablement by OpenAI Support. No support response with a federation rule or enablement confirmation has been found. Separately, the Infodive ChatGPT Business workspace was reported out of credits on 2026-09-04. Do not add workspace credits automatically; that remains a human cost decision. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key or an unofficial ChatGPT token.
 
 ## Activation order
 
