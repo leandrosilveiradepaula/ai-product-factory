@@ -23,7 +23,7 @@ export default function RootLayout({children}:{children:React.ReactNode}){
     <div className="workspace">
      <header className="topbar">
       <div><span className="topbarKicker">AI PRODUCT FACTORY</span><strong>Operational Console</strong></div>
-      <div className="topbarMeta"><span className="healthDot"/>Control Plane online</div>
+      <div className="topbarMeta"><span className="healthDot"/>Production console</div>
      </header>
      <main className="main">{children}</main>
     </div>
