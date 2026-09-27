@@ -126,9 +126,11 @@ Git deployment policy in `apps/console/vercel.json`:
 - every other branch is denied by the catch-all rule;
 - `ignoreCommand` remains a second path guard inside eligible branches.
 
-The Vercel project **Production Branch** must be `console-production`. The GitHub workflow `.github/workflows/console-production-release.yml` listens only to pushes on `main` that changed `apps/console/**`. Before advancing `console-production`, it verifies through the GitHub API that the exact `main` SHA is the merge commit of a merged pull request targeting `main`, preserving the human production gate. The release branch is then advanced by fast-forward only.
+`console-production` is a generated release-candidate branch. The GitHub workflow `.github/workflows/console-production-release.yml` listens only to pushes on `main` that changed `apps/console/**`. Before advancing `console-production`, it verifies through the GitHub API that the exact `main` SHA is the merge commit of a merged pull request targeting `main`. The release-candidate branch is then advanced by fast-forward only.
 
-Do not push directly to `console-production`. It is a generated release pointer. Non-Console merges to `main` leave it untouched and therefore create no Vercel deployment.
+The Vercel Git integration builds `console-production` as a Preview deployment. Production is a separate human gate: after that exact deployment is READY and verified, a human promotes the existing deployment to Production in Vercel. The supported Vercel promotion operation repoints production traffic to the existing deployment and does not rebuild it.
+
+Do not push directly to `console-production`. Non-Console merges to `main` leave it untouched and therefore create no Vercel deployment.
 
 This design deliberately avoids a long-lived `VERCEL_TOKEN` in GitHub Actions. A credential-readiness probe on 2026-09-27 confirmed that no repository `VERCEL_TOKEN` is configured. Preview discovery continues through the official Vercel GitHub integration.
 
