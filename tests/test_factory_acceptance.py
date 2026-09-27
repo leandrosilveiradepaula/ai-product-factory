@@ -175,8 +175,9 @@ class FactoryAcceptanceTests(unittest.TestCase):
         migrations = "\n".join(
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
         )
-        self.assertIn("create_factory_control_plane", migrations)
-        self.assertIn("factory_claim_next_codex_run", migrations)
+        self.assertIn("20260925172455_create_factory_control_plane.sql", migrations)
+        self.assertIn("20260925172519_add_control_plane_fk_indexes.sql", migrations)
+        self.assertIn("20260927010724_factory_claim_next_codex_run.sql", migrations)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
