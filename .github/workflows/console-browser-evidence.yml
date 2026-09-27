@@ -1,6 +1,11 @@
 name: Console historical browser evidence
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/console-browser-evidence.yml"
   workflow_dispatch:
     inputs:
       preview_url:
