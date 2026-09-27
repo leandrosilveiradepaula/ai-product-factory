@@ -1,1 +1,10 @@
-import {signInAction} from "../auth-actions";export default async function Login({searchParams}:{searchParams:Promise<{error?:string}>}){const p=await searchParams;return <><div className="eyebrow">Secure access</div><h1 className="title">Entrar na Factory</h1><p className="muted">Apenas operadores autorizados no Control Plane podem acessar o Console.</p><form className="form authForm" action={signInAction}><label>E-mail<input name="email" type="email" autoComplete="email" required/></label><label>Senha<input name="password" type="password" autoComplete="current-password" required/></label>{p.error?<small>{p.error==="missing"?"Preencha e-mail e senha.":"Credenciais inválidas."}</small>:null}<button className="primary" type="submit">Entrar</button></form></>}
+import {signInAction} from "../auth-actions";
+import {Button,PageHeader} from "../ui";
+
+export default async function Login({searchParams}:{searchParams:Promise<{error?:string}>}){
+ const p=await searchParams;
+ return <>
+  <PageHeader eyebrow="Secure access" title="Entrar na Factory" subtitle="Apenas operadores autorizados no Control Plane podem acessar o Console."/>
+  <form className="form card authForm" action={signInAction}><label>E-mail<input name="email" type="email" autoComplete="email" required/></label><label>Senha<input name="password" type="password" autoComplete="current-password" required/></label>{p.error?<small>{p.error==="missing"?"Preencha e-mail e senha.":"Credenciais inválidas."}</small>:null}<Button variant="primary" type="submit">Entrar</Button></form>
+ </>;
+}
