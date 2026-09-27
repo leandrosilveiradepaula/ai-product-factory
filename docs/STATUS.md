@@ -50,7 +50,9 @@ Verified production state:
 - the bootstrap administrator exists as an active `admin` operator;
 - server-side Supabase access prefers `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
 - the production health probe `GET /api/health` is public, returns HTTP 200, and exposes only service status plus a truncated deployment commit;
-- production health was verified on Console commit `59e0352306128dd7a5beb6dd63ec112f864a0204`; later non-Console merges are intentionally ignored by Vercel.
+- production deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` for merge commit `96fb81c3eb6de66c955562a604d3460ad99a92ae` reached `READY`;
+- production health was verified after the redesign release: `GET /api/health` returned HTTP 200 with service `ai-product-factory-console` and commit `96fb81c3eb6d`;
+- unauthenticated production root returned the redesigned shell and login surface successfully; no runtime errors were reported by Vercel in the verification window.
 
 ## Authentication / model gate
 
@@ -148,15 +150,20 @@ The API Platform Billing screen currently reports `$0.00` credit remaining. Ther
 
 ## Operational Console redesign
 
-Issue #224 is implemented in a rebased release-candidate branch built from the current Factory `main`: dark developer-tool shell, collapsible sidebar, overview, projects/project detail, New Work, runs/run detail, Work Queue, Human Gates, Evals, Deployments, Models & Usage, Audit Log, Configuration and operator administration.
+Issue #224 is completed and PR #239 was merged to `main` by explicit human release authorization on 2026-09-27. The delivered Console includes the dark developer-tool shell, collapsible sidebar, overview, projects/project detail, New Work, runs/run detail, Work Queue, Human Gates, Evals, Deployments, Models & Usage, Audit Log, Configuration and operator administration.
 
 All operational views use real Control Plane data through the existing server-side Supabase boundary. A live schema compatibility check confirmed zero missing database columns for the new queries. Factory acceptance requires these operational surfaces and checks that privileged Factory/OpenAI/GitHub secrets are not present in the Console TSX surface. The visual layer is centralized: `apps/console/app/theme.css` owns typography, palette, semantic status colors, radii and spacing, while `apps/console/app/ui.tsx` owns reusable page/header/metric/status/action primitives.
 
-The Console release candidate remains intentionally unmerged because `apps/console/**` changes require Verified Preview. External daily quotas currently block final verification:
-- GitHub Actions included minutes exhausted (2,000 / 2,000): validation jobs are rejected before any step because billing/spending capacity is unavailable;
-- Vercel Preview builds are currently blocked by `build-rate-limit`, so no exact Preview can be claimed or browser-verified.
+Release evidence:
+- candidate commit `10f593d7d169d30fe5048eac9d98a94b8be1e151` had exact Vercel Preview deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX` in `READY` state and GitHub Vercel status `success`;
+- GitHub Actions could not run tests, typecheck or factory-acceptance because the account had consumed 2,000 / 2,000 included Actions minutes; the affected jobs failed before executing any step;
+- Playwright/browser evidence therefore did not run. The human operator explicitly authorized the production merge with that external limitation known; this is an exception record, not a claim that CI/browser checks passed;
+- squash merge commit is `96fb81c3eb6de66c955562a604d3460ad99a92ae`;
+- production Vercel deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` reached `READY`;
+- production `GET /api/health` returned HTTP 200 and commit `96fb81c3eb6d`;
+- Vercel reported no runtime errors in the post-release verification window.
 
-Figma MCP Starter calls are also exhausted, so no additional design-context comparison can be performed until that quota resets. These are external verification blockers, not evidence of a successful build or preview.
+Figma MCP Starter calls remain exhausted, so no additional design-context comparison can be performed until that quota resets. GitHub Actions validation and Playwright evidence remain pending re-execution when billing/spending capacity is available again.
 
 ## Console security boundary audit
 
