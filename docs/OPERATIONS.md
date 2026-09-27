@@ -33,12 +33,12 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 `product` and `direct` are fail-closed inside the Python runtime itself. They require all of:
 
 - `FACTORY_PRIMARY_MODEL_ENABLED=true`;
-- a supported primary authentication path;
+- a supported primary authentication path: API key or API workload identity;
 - configured model budget;
 - configured per-run reservation;
 - known spend not already exhausting the configured budget.
 
-Do not enable the primary model merely because an API key exists. Billing/quota readiness and a bounded smoke test are separate prerequisites. Scheduled Direct additionally requires non-empty budget and reservation variables; the runtime reads current known spend from the Control Plane ledger and blocks if paid usage has unknown cost.
+Do not enable the primary model merely because an API key or API WIF mapping exists. Billing/quota readiness and a bounded smoke test are separate prerequisites. Scheduled Direct additionally requires non-empty budget and reservation variables; the runtime reads current known spend from the Control Plane ledger and blocks if paid usage has unknown cost.
 
 ## Verified Preview activation
 
@@ -54,7 +54,7 @@ The Vercel adapters refuse non-Preview environments. The browser adapter receive
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
 
-The Codex worker is independently gated by `FACTORY_CODEX_ENABLED=true`, `OPENAI_FEDERATION_RULE_ID`, `OPENAI_WIF_AUDIENCE`, a real `OPENAI_IDENTITY_TOKEN_FILE`, `FACTORY_GITHUB_TOKEN`, and Control Plane credentials. The scheduled/manual Actions job checks readiness before checkout, OIDC minting, Node/Codex installation, or queue claim. Missing configuration therefore leaves the worker inert.
+The Codex worker is independently gated by `FACTORY_CODEX_ENABLED=true`, `OPENAI_FEDERATION_RULE_ID`, a real `OPENAI_IDENTITY_TOKEN_FILE`, `FACTORY_GITHUB_TOKEN`, and Control Plane credentials. The GitHub Actions token-minting layer also requires `OPENAI_WIF_AUDIENCE` to request the external OIDC assertion. The scheduled/manual Actions job checks readiness before checkout, OIDC minting, Node/Codex installation, or queue claim. Missing configuration therefore leaves the worker inert.
 
 A Codex run is claimed only when `execution_route=codex`. Claiming uses a lease and bounded recovery. Repository code is cloned to a temporary checkout with the GitHub credential held by the parent process; the remote is removed before Codex starts, and GitHub/API credentials are not passed to the Codex subprocess. Codex runs with `workspace-write` and non-interactive approvals, never `danger-full-access`. Output is limited by file count and total bytes, rejects deletions, symlinks, non-UTF-8 files, path traversal, and secret-bearing paths, then enters the same Issue -> branch -> commit -> PR -> CI -> Preview -> `awaiting_release` loop as Direct.
 
