@@ -192,6 +192,59 @@ class FactoryAcceptanceTests(unittest.TestCase):
         }
         self.assertEqual(migration_names, expected_history)
 
+    def test_operational_console_surface_is_complete_and_server_bounded(self):
+        required_routes = (
+            "apps/console/app/page.tsx",
+            "apps/console/app/projects/page.tsx",
+            "apps/console/app/projects/[key]/page.tsx",
+            "apps/console/app/projects/new/page.tsx",
+            "apps/console/app/projects/new/review/page.tsx",
+            "apps/console/app/runs/page.tsx",
+            "apps/console/app/runs/[id]/page.tsx",
+            "apps/console/app/queue/page.tsx",
+            "apps/console/app/gates/page.tsx",
+            "apps/console/app/evals/page.tsx",
+            "apps/console/app/deployments/page.tsx",
+            "apps/console/app/usage/page.tsx",
+            "apps/console/app/audit/page.tsx",
+            "apps/console/app/configuration/page.tsx",
+            "apps/console/app/admin/operators/page.tsx",
+        )
+        for relative in required_routes:
+            self.assertTrue((ROOT / relative).is_file(), relative)
+
+        control_plane = (ROOT / "apps/console/lib/control-plane.ts").read_text()
+        for function_name in (
+            "getDashboard",
+            "getProjectDetail",
+            "getProjectOperations",
+            "getRuns",
+            "getRunDetail",
+            "getWorkQueue",
+            "getHumanGates",
+            "getEvaluations",
+            "getDeployments",
+            "getUsageOverview",
+            "getAuditEvents",
+            "getConsoleConfiguration",
+        ):
+            self.assertIn(f"function {function_name}", control_plane)
+        self.assertIn("requireConsoleOperator()", control_plane)
+
+        client_surface = "\n".join(
+            path.read_text()
+            for path in (ROOT / "apps/console/app").rglob("*.tsx")
+            if path.name not in {"auth-actions.tsx"}
+        )
+        self.assertNotIn("SUPABASE_SECRET_KEY", client_surface)
+        self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", client_surface)
+        self.assertNotIn("OPENAI_API_KEY", client_surface)
+        self.assertNotIn("FACTORY_GITHUB_TOKEN", client_surface)
+
+        console_workflow = (ROOT / ".github/workflows/console.yml").read_text()
+        self.assertIn("npm run typecheck", console_workflow)
+        self.assertIn("npm run build", console_workflow)
+
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         codex = (ROOT / "src/ai_product_factory/codex_cli_producer.py").read_text()
