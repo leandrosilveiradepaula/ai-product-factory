@@ -58,7 +58,7 @@ OpenAI API authentication and Codex workspace authentication are intentionally s
 
 The existing API key reached the OpenAI API but returned HTTP 429/quota, so the Factory does not use it for unattended paid work.
 
-Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. The managed ChatGPT workspace currently does not expose the Workload Identity configuration in the Admin Portal; an Enterprise support request has been opened to enable or provide access to Codex WIF before the preflight can be exercised.
+Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. On 2026-09-27 the Infodive managed ChatGPT workspace Admin Portal was inspected directly in both current and legacy administration surfaces; the documented `Workload identity` section is not present. This confirms the external beta enablement is still missing. Issue #240 tracks the required OpenAI Support/admin action before the preflight can be exercised.
 
 The selective Codex worker is implemented behind fail-closed activation: atomic Codex-only claim, isolated checkout, workspace-bounded CLI execution, file/byte limits, durable invocation ledger, existing GitHub Issue/branch/PR delivery loop, and an OIDC/WIF Actions job. The job performs no OIDC minting, CLI installation, queue claim, or Codex call unless the enable flag, WIF values, cross-repository GitHub credential, and Control Plane credentials are all present. GitHub credentials are used only by the parent checkout path and are removed from the Codex subprocess environment.
 
@@ -94,7 +94,7 @@ It found and fixed a real Control Plane schema mismatch: seven RPCs wrote `task_
 
 After the fix, all transactional smoke paths passed. Final residual state remained zero synthetic projects, zero active runs, zero pending gates, and zero persisted Codex invocations.
 
-GitHub Actions validation is temporarily unavailable because the daily Actions quota is exhausted. This is treated as an external operational dependency and must not be represented as a green CI run until the quota resets.
+GitHub Actions validation is temporarily unavailable because the personal GitHub Free account has consumed its 2,000 included Actions minutes for the current billing period. GitHub reports that jobs are not started until account billing/spending capacity is available again. This is an external operational dependency and must not be represented as a green CI run.
 
 ## OpenAI authentication reconciliation
 
@@ -150,11 +150,11 @@ The API Platform Billing screen currently reports `$0.00` credit remaining. Ther
 
 Issue #224 is implemented in a rebased release-candidate branch built from the current Factory `main`: dark developer-tool shell, collapsible sidebar, overview, projects/project detail, New Work, runs/run detail, Work Queue, Human Gates, Evals, Deployments, Models & Usage, Audit Log, Configuration and operator administration.
 
-All operational views use real Control Plane data through the existing server-side Supabase boundary. A live schema compatibility check confirmed zero missing database columns for the new queries. Factory acceptance requires these operational surfaces and checks that privileged Factory/OpenAI/GitHub secrets are not present in the Console TSX surface.
+All operational views use real Control Plane data through the existing server-side Supabase boundary. A live schema compatibility check confirmed zero missing database columns for the new queries. Factory acceptance requires these operational surfaces and checks that privileged Factory/OpenAI/GitHub secrets are not present in the Console TSX surface. The visual layer is centralized: `apps/console/app/theme.css` owns typography, palette, semantic status colors, radii and spacing, while `apps/console/app/ui.tsx` owns reusable page/header/metric/status/action primitives.
 
 The Console release candidate remains intentionally unmerged because `apps/console/**` changes require Verified Preview. External daily quotas currently block final verification:
-- GitHub Actions quota exhausted: validation jobs cannot allocate a runner and execute zero steps;
-- Vercel free deployment quota exhausted: Preview creation is blocked until the deployment quota resets.
+- GitHub Actions included minutes exhausted (2,000 / 2,000): validation jobs are rejected before any step because billing/spending capacity is unavailable;
+- Vercel Preview builds are currently blocked by `build-rate-limit`, so no exact Preview can be claimed or browser-verified.
 
 Figma MCP Starter calls are also exhausted, so no additional design-context comparison can be performed until that quota resets. These are external verification blockers, not evidence of a successful build or preview.
 
