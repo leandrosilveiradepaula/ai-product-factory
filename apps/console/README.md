@@ -6,10 +6,11 @@ The Console is a server-rendered control surface for AI Product Factory.
 
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SECRET_KEY` (preferred server-side key)
+- `SUPABASE_SERVICE_ROLE_KEY` (legacy fallback only)
 - `FACTORY_BOOTSTRAP_ADMIN_EMAIL` for the one-time first-admin allowlist
 
-The publishable key authenticates the operator. The service role remains server-side and is used only after identity/role checks.
+The publishable key authenticates the operator. Privileged Supabase access remains server-side; the Console prefers `SUPABASE_SECRET_KEY` and accepts the legacy service-role key only as fallback, after identity/role checks.
 
 ## First admin bootstrap
 
@@ -27,6 +28,25 @@ Admins can open `/admin/operators` and grant/revoke Console access only for user
 
 ## Human gates
 
-Pending gates are created when routing determines that human authority is required. Authorized Console operators can approve or reject them from `/decisions`. Resolution is persisted in the Control Plane and written to the audit log.
+Pending gates are created when routing determines that human authority is required. Authorized Console operators can approve or reject them from `/gates`. The legacy `/decisions` route redirects there. Resolution is persisted in the Control Plane and written to the audit log.
 
 Do not expose the Console publicly without the auth environment configured.
+
+## Operational surfaces
+
+The Console exposes real Control Plane data through server-rendered routes:
+
+- `/` — Factory Overview
+- `/projects` and `/projects/[key]` — portfolio and project operations
+- `/projects/new` — New Work intake
+- `/runs` and `/runs/[id]` — run history and evidence detail
+- `/queue` — executable Work Queue
+- `/gates` — Human Gates
+- `/evals` — evaluation evidence
+- `/deployments` — deployment/preview/release evidence
+- `/usage` — Models & Usage ledger
+- `/audit` — audit trail
+- `/configuration` — non-secret project configuration
+- `/admin/operators` — operator administration
+
+Secrets, provider credentials, and GitHub tokens must never be rendered into these routes.
