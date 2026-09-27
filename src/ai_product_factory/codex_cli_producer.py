@@ -158,7 +158,6 @@ class CodexCLIProducer:
             raise PermissionError("Codex execution is disabled")
         required = (
             "OPENAI_FEDERATION_RULE_ID",
-            "OPENAI_WIF_AUDIENCE",
             "OPENAI_IDENTITY_TOKEN_FILE",
         )
         missing = [name for name in required if not os.getenv(name, "").strip()]
@@ -177,7 +176,6 @@ class CodexCLIProducer:
         env = self._base_env()
         for key in (
             "OPENAI_FEDERATION_RULE_ID",
-            "OPENAI_WIF_AUDIENCE",
             "OPENAI_IDENTITY_TOKEN_FILE",
             "OPENAI_WORKLOAD_IDENTITY_CONTEXT",
         ):
