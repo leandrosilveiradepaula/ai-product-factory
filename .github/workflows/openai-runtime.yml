@@ -10,6 +10,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    environment: openai-api
     timeout-minutes: 5
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
