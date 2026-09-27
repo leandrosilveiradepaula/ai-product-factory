@@ -54,7 +54,8 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Project Memory versionada.
 - [x] Review/evaluation quality gates.
 - [x] Provider OpenAI Responses implementado (API key validada tecnicamente; consumo bloqueado por quota/billing separado).
-- [ ] Provider real do Codex/ChatGPT entitlement (token/WIF em investigacao).
+- [x] OpenAI API WIF implementado para GitHub Actions com token curto, mantendo API key como fallback e billing/quota como gate separado.
+- [ ] Provider real do Codex/ChatGPT entitlement (WIF beta aguardando habilitacao/regra oficial do workspace).
 
 ### F4 - Testes, Evals e Preview
 - [x] CI deterministico por projeto via manifest.
