@@ -1,4 +1,4 @@
-name: Console production release trigger
+name: Console release candidate trigger
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  advance-release-branch:
+  advance-release-candidate:
     if: ${{ github.repository == 'leandrosilveiradepaula/ai-product-factory' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -46,11 +46,11 @@ jobs:
               and pr.get("merge_commit_sha") == __import__("os").environ["GITHUB_SHA"]
           ]
           if not valid:
-              raise SystemExit("Production release refused: main commit is not the merge commit of a merged PR targeting main.")
+              raise SystemExit("Release candidate refused: main commit is not the merge commit of a merged PR targeting main.")
           print(f"human_merge_pr={valid[0].get('number')}")
           PY
 
-      - name: Advance Console production branch
+      - name: Advance Console release-candidate branch
         shell: bash
         run: |
           set -euo pipefail
@@ -60,4 +60,8 @@ jobs:
             exit 3
           fi
           git push origin "${GITHUB_SHA}:refs/heads/${RELEASE_BRANCH}"
-          echo "Console release branch advanced to ${GITHUB_SHA}." >> "${GITHUB_STEP_SUMMARY}"
+          {
+            echo "Console release-candidate branch advanced to ${GITHUB_SHA}."
+            echo
+            echo "Vercel will build this branch as a Preview deployment. Production remains a separate human action: promote that exact READY deployment in Vercel only after verification."
+          } >> "${GITHUB_STEP_SUMMARY}"
