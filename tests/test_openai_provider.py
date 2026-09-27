@@ -100,8 +100,20 @@ class OpenAIResponsesProviderTests(unittest.TestCase):
         self.assertEqual(sum(1 for _, url, _, _ in calls if url == "https://auth.openai.com/oauth/token"), 1)
 
     def test_missing_auth_fails_fast(self):
-        with self.assertRaises(ValueError):
-            OpenAIResponsesProvider(api_key="", transport=self.transport)
+        from unittest.mock import patch
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaises(ValueError):
+                OpenAIResponsesProvider(api_key="", transport=self.transport)
+
+    def test_partial_workload_identity_fails_closed_instead_of_falling_back_to_api_key(self):
+        from unittest.mock import patch
+        env = {
+            "OPENAI_API_KEY": "long-lived-key",
+            "OPENAI_IDENTITY_PROVIDER_ID": "idp_test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(ValueError):
+                OpenAIResponsesProvider(transport=self.transport)
 
     def test_missing_output_text_fails_closed(self):
         def bad_transport(method, url, headers, body):
