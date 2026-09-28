@@ -382,6 +382,30 @@ class FactoryAcceptanceTests(unittest.TestCase):
             self.assertNotIn("$" + "{{ secrets.", workflow, name)
             self.assertNotIn("id-token: write", workflow, name)
 
+    def test_authenticated_visual_evidence_broker_is_source_controlled_and_fail_closed(self):
+        broker = (ROOT / "supabase/functions/factory-visual-evidence-broker/index.ts").read_text()
+        workflow = (ROOT / ".github/workflows/authenticated-visual-evidence.yml").read_text()
+
+        for claim in (
+            'audience: AUDIENCE',
+            'repository: "leandrosilveiradepaula/ai-product-factory"',
+            'repository_id: "1387883686"',
+            'repository_owner_id: "256917842"',
+            'ref: "refs/heads/main"',
+            'environment: "openai-api"',
+            'workflow_ref:',
+        ):
+            self.assertIn(claim, broker)
+
+        self.assertIn('role: "operator"', broker)
+        self.assertNotIn('role: "admin"', broker)
+        self.assertIn('cleanupUser', broker)
+        self.assertIn('source_commit_mismatch', broker)
+        self.assertIn('factory-visual-evidence', workflow)
+        self.assertIn('id-token: write', workflow)
+        self.assertNotIn('SUPABASE_SERVICE_ROLE_KEY', workflow)
+        self.assertNotIn('SUPABASE_SECRET_KEY', workflow)
+
     def test_vercel_deployments_are_bounded_to_console_branches(self):
         vercel = (ROOT / "apps/console/vercel.json").read_text()
         workflow = (ROOT / ".github/workflows/console.yml").read_text()
