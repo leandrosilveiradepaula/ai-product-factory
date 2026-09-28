@@ -23,6 +23,7 @@ class GitHubVercelPreviewConfig:
     api_url: str = "https://api.github.com"
     poll_attempts: int = 20
     poll_interval_seconds: float = 3.0
+    pull_request_number: int | None = None
 
     def validate(self) -> None:
         if "/" not in self.repository:
@@ -67,10 +68,33 @@ class GitHubVercelPreviewAdapter:
         match=_VERCEL_HOST.search(haystack)
         return f"https://{match.group('host')}" if match else None
 
+    def _quota_blocked(self)->bool:
+        if self.config.pull_request_number is None:
+            return False
+        url=f"{self.config.api_url.rstrip('/')}/repos/{self.config.repository}/issues/{self.config.pull_request_number}/comments?per_page=100"
+        req=urllib.request.Request(url,method="GET",headers={
+            "Authorization":f"Bearer {self.config.token}",
+            "Accept":"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+        })
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:
+                raw=response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"GitHub Vercel quota discovery failed ({exc.code})") from exc
+        for row in json.loads(raw) if raw else []:
+            login=str((row.get("user") or {}).get("login") or "").lower()
+            body=str(row.get("body") or "").lower()
+            if "vercel" in login and "api-deployments-free-per-day" in body:
+                return True
+        return False
+
     def deploy(self,request_:DeploymentRequest)->DeploymentResult:
         if request_.environment is not ReleaseEnvironment.PREVIEW:
             raise PermissionError("GitHubVercelPreviewAdapter refuses non-preview deployments")
         for attempt in range(self.config.poll_attempts):
+            if self._quota_blocked():
+                return DeploymentResult(self.name,request_.environment,"blocked_quota","vercel-daily-deployment-quota",None)
             checks=[row for row in self._checks(request_.candidate_commit) if str((row.get("app") or {}).get("slug") or "").lower()=="vercel"]
             for row in checks:
                 if str(row.get("status") or "").lower()!="completed":
@@ -87,5 +111,5 @@ class GitHubVercelPreviewAdapter:
         raise TimeoutError("Vercel GitHub Preview was not discoverable for the candidate commit")
 
 
-def config_from_env(repository:str)->GitHubVercelPreviewConfig:
-    return GitHubVercelPreviewConfig(repository=repository,token=resolve_github_token(repository))
+def config_from_env(repository:str,*,pull_request_number:int|None=None)->GitHubVercelPreviewConfig:
+    return GitHubVercelPreviewConfig(repository=repository,token=resolve_github_token(repository),pull_request_number=pull_request_number)

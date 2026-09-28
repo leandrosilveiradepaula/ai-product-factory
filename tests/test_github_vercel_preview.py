@@ -41,6 +41,23 @@ class Tests(unittest.TestCase):
             out=GitHubVercelPreviewAdapter(self.config(),sleeper=lambda _:None).deploy(request())
         self.assertEqual(out.preview_url,"https://demo.vercel.app")
 
+    def test_vercel_quota_comment_stops_without_check_retry(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=5,poll_interval_seconds=0,pull_request_number=42)
+        comments=Response([{"user":{"login":"vercel[bot]"},"body":"Deployment blocked: api-deployments-free-per-day"}])
+        with patch("urllib.request.urlopen",return_value=comments) as call:
+            out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
+        self.assertEqual(out.status,"blocked_quota")
+        self.assertEqual(out.deployment_ref,"vercel-daily-deployment-quota")
+        self.assertEqual(call.call_count,1)
+
+    def test_non_vercel_quota_text_is_ignored(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0,pull_request_number=42)
+        comments=Response([{"user":{"login":"someone"},"body":"api-deployments-free-per-day"}])
+        checks=Response({"check_runs":[{"id":2,"status":"completed","conclusion":"success","app":{"slug":"vercel"},"output":{"summary":"demo.vercel.app"}}]})
+        with patch("urllib.request.urlopen",side_effect=[comments,checks]):
+            out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
+        self.assertEqual(out.status,"success")
+
     def test_refuses_production(self):
         with self.assertRaises(PermissionError):
             GitHubVercelPreviewAdapter(self.config()).deploy(request(ReleaseEnvironment.PROD))
