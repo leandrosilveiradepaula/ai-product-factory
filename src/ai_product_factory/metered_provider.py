@@ -57,37 +57,90 @@ class MeteredPrimaryProvider:
         )
         try:
             result = self.provider.execute(request)
-        except Exception:
-            # Keep the reservation as conservative known spend if the provider
-            # outcome cannot be priced reliably.
+        except Exception as exc:
+            store.update_tool_usage(
+                reservation.id,
+                operation="model_call_cost_unknown",
+                usage_units=0,
+                estimated_cost=None,
+                metadata={
+                    "status": "cost_unknown",
+                    "auth_kind": auth.kind.value,
+                    "reserve_usd": str(reserve_usd),
+                    "failure_type": type(exc).__name__,
+                },
+            )
             raise
 
-        if not result.model:
-            raise RuntimeError("paid provider returned no model identity")
-        cost = estimate_openai_text_cost_usd(model=result.model, usage=result.usage)
+        usage = result.usage or {}
+        if not result.model or "input_tokens" not in usage or "output_tokens" not in usage:
+            store.update_tool_usage(
+                reservation.id,
+                operation="model_call_cost_unknown",
+                usage_units=float(usage.get("total_tokens", 0)),
+                estimated_cost=None,
+                metadata={
+                    "status": "cost_unknown",
+                    "provider": "openai",
+                    "model": result.model,
+                    "auth_kind": auth.kind.value,
+                    "provider_ref": result.provider_ref,
+                    "reserve_usd": str(reserve_usd),
+                    "reason": "missing model identity or token usage",
+                },
+            )
+            raise RuntimeError("paid provider result cannot be priced safely")
+
+        try:
+            cost = estimate_openai_text_cost_usd(model=result.model, usage=usage)
+        except Exception as exc:
+            store.update_tool_usage(
+                reservation.id,
+                operation="model_call_cost_unknown",
+                usage_units=float(usage.get("total_tokens", 0)),
+                estimated_cost=None,
+                metadata={
+                    "status": "cost_unknown",
+                    "provider": "openai",
+                    "model": result.model,
+                    "auth_kind": auth.kind.value,
+                    "provider_ref": result.provider_ref,
+                    "reserve_usd": str(reserve_usd),
+                    "failure_type": type(exc).__name__,
+                },
+            )
+            raise
+
+        total_tokens = float(usage.get("total_tokens", 0))
+        metadata = {
+            "provider": "openai",
+            "model": result.model,
+            "auth_kind": auth.kind.value,
+            "provider_ref": result.provider_ref,
+            "input_tokens": int(usage.get("input_tokens", 0)),
+            "cached_input_tokens": int(usage.get("cached_input_tokens", 0)),
+            "output_tokens": int(usage.get("output_tokens", 0)),
+            "total_tokens": int(usage.get("total_tokens", 0)),
+            "reserve_usd": str(reserve_usd),
+            "actual_cost_usd": str(cost),
+        }
         if cost > reserve_usd:
+            store.update_tool_usage(
+                reservation.id,
+                operation="model_call_over_reserve",
+                usage_units=total_tokens,
+                estimated_cost=float(cost),
+                metadata={**metadata, "status": "over_reserve"},
+            )
             raise RuntimeError(
                 f"actual provider cost exceeded reserved cost: {cost} > {reserve_usd}"
             )
-        usage = result.usage or {}
-        total_tokens = float(usage.get("total_tokens", 0))
+
         store.update_tool_usage(
             reservation.id,
             operation="model_call",
             usage_units=total_tokens,
             estimated_cost=float(cost),
-            metadata={
-                "status": "completed",
-                "provider": "openai",
-                "model": result.model,
-                "auth_kind": auth.kind.value,
-                "provider_ref": result.provider_ref,
-                "input_tokens": int(usage.get("input_tokens", 0)),
-                "cached_input_tokens": int(usage.get("cached_input_tokens", 0)),
-                "output_tokens": int(usage.get("output_tokens", 0)),
-                "total_tokens": int(usage.get("total_tokens", 0)),
-                "reserve_usd": str(reserve_usd),
-                "actual_cost_usd": str(cost),
-            },
+            metadata={**metadata, "status": "completed"},
         )
         return result
