@@ -60,8 +60,7 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
-export type ProjectStateSnapshot={id:string;runId:string|null;observedStage:string|null;summary:string;evidence:unknown[];gaps:unknown[];constraints:unknown[];sourceStatus:Record<string,unknown>;createdAt:string};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;objective:string|null;tasks:ProjectTaskSummary[]};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
@@ -72,7 +71,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  const p=projects[0];
  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
  const tasks=tasksResponse.ok?await tasksResponse.json():[];
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,objective:null,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){const operator=await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_resolve_human_gate`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_gate_id:gateId,p_resolution:resolution,p_resolved_by:operator.email||operator.userId,p_note:note||null}),cache:"no-store"});if(!response.ok)throw new Error("Unable to resolve human gate");return response.json();}
