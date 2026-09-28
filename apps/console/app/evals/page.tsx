@@ -8,7 +8,7 @@ export default async function Evals(){
  const failed=rows.filter(x=>x.status==="failed").length;
  const scored=rows.filter(x=>x.score!=null).length;
  return <>
-  <PageHeader eyebrow="Evals · Quality Gates" title="Avaliações" subtitle="Evidências de qualidade vinculadas a execuções e candidatos específicos."/>
+  <PageHeader eyebrow="Avaliações · Qualidade" title="Avaliações" subtitle="Evidências de qualidade vinculadas a execuções e candidatos específicos."/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Total</span><strong>{rows.length}</strong></div>
    <div className="operationalStat"><span>Aprovadas</span><strong>{passed}</strong></div>
