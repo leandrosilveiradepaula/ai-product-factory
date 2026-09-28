@@ -554,7 +554,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('"console/**": true', vercel)
         self.assertIn('"ignoreCommand"', vercel)
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)
-        self.assertIn("console/*)", workflow)
+        self.assertIn("console/*|ci/*|test/*)", workflow)
         self.assertIn("Vercel deployment budget policy", operations)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):

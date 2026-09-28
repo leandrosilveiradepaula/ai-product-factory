@@ -1,10 +1,12 @@
 name: Console validation
 on:
   push:
+    branches: [main]
     paths:
       - "apps/console/**"
       - ".github/workflows/console.yml"
   pull_request:
+    branches: [main]
     paths:
       - "apps/console/**"
       - ".github/workflows/console.yml"
@@ -23,8 +25,9 @@ jobs:
         shell: bash
         run: |
           case "${GITHUB_HEAD_REF}" in
-            console/*) ;;
-            *) echo "::error::Changes under apps/console/** must use a console/* branch so Vercel Preview remains explicit and bounded."; exit 1 ;;
+            console/*|ci/*|test/*) ;;
+            preview/*) echo "::error::preview/** refs are reserved for promoted release candidates."; exit 1 ;;
+            *) echo "::error::Console/config changes must use console/*, ci/*, or test/*; preview/** is reserved for final candidates."; exit 1 ;;
           esac
       - uses: actions/setup-node@v4
         with:
