@@ -59,10 +59,10 @@ Verified production state:
 Vercel Trusted Sources now includes GitHub Actions OIDC for `leandrosilveiradepaula/ai-product-factory`, branch `main`, environment `Preview`. The browser verifier sends the short-lived GitHub OIDC token in `x-vercel-trusted-oidc-idp-token`; no Vercel token or reusable bypass secret is required for the standard path.
 
 Current PR #269 candidate:
-- head `8f9f9e514e3c6a13784ce39ad1b9082c937edb9f`;
-- exact Vercel Preview deployment `dpl_5fjYFoLraW2aHo1SPSaSGZKoZUqn` is `READY`;
+- head `505c712864950d94638c874d8e267531fb544d62`;
+- exact Vercel Preview deployment `dpl_J9kneq8tf9bouJ3StBPyh4UNd7GX` is `READY`;
 - Console `validate`, `factory-acceptance`, typecheck and build are green;
-- Playwright/OIDC run `36374705190` passed `page_load`, `http_status`, `body_visible`, `expected_text` and `console_clean`;
+- Playwright/OIDC run `36376673624` passed `page_load`, `http_status`, `body_visible`, `expected_text` and `console_clean`;
 - observed pt-BR shell includes `Visão geral`, `Projetos`, `Execuções`, `Fila de trabalho`, `Aprovações humanas`, `Avaliações`, `Implantações`, `Modelos e uso`, `Log de auditoria`, `Configuração` and `Operadores`.
 
 PR #269 adds the conversational new-project path, ongoing-project reconcile-first onboarding, private attachment storage contract, durable current-state snapshots and the pt-BR Console surface. The new Supabase migrations were validated against the live schema inside an explicit transaction with `ROLLBACK`; they are not applied to production yet. Live checks still show no `factory_project_attachments`, no `factory_project_state_snapshots`, and no `factory-project-files` bucket. Applying those migrations and merging the Console PR are production gates and require human authority.
