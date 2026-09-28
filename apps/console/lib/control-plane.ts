@@ -74,6 +74,16 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type ProjectDatabaseBinding={id:string;provider:string;environment:string;projectRef:string|null;organizationRef:string|null;region:string|null;accessMode:string;permissionMode:string;status:string;isExisting:boolean;lastVerifiedAt:string|null};
+
+export async function getProjectDatabases(projectId:string):Promise<ProjectDatabaseBinding[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_project_databases?select=id,provider,environment,project_ref,organization_ref,region,access_mode,permission_mode,status,is_existing,last_verified_at&project_id=eq."+encodeURIComponent(projectId)+"&order=environment.asc",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Unable to load project databases");
+ const rows=await response.json();
+ return rows.map((x:any)=>({id:String(x.id),provider:String(x.provider),environment:String(x.environment),projectRef:x.project_ref?String(x.project_ref):null,organizationRef:x.organization_ref?String(x.organization_ref):null,region:x.region?String(x.region):null,accessMode:String(x.access_mode),permissionMode:String(x.permission_mode),status:String(x.status),isExisting:Boolean(x.is_existing),lastVerifiedAt:x.last_verified_at?String(x.last_verified_at):null}));
+}
+
 export type ProjectStateSnapshot={id:string;runId:string|null;observedStage:string|null;summary:string;evidence:unknown[];gaps:unknown[];constraints:unknown[];sourceStatus:Record<string,unknown>;createdAt:string};
 export type ProjectStateContext={objective:string|null;snapshot:ProjectStateSnapshot|null};
 
