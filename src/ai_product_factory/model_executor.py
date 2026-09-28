@@ -17,6 +17,7 @@ class ModelRequest:
     task_id: str
     objective: str
     context: str
+    run_id: str | None = None
     acceptance_criteria: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
@@ -28,6 +29,7 @@ class ModelResult:
     output: str
     provider_ref: str | None = None
     usage: dict[str, float] | None = None
+    model: str | None = None
 
 
 class ModelProvider(Protocol):
