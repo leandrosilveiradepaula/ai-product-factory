@@ -1,3 +1,7 @@
+alter table public.factory_tasks add column if not exists agent_role text;
+alter table public.factory_tasks add column if not exists required_capabilities jsonb not null default '[]'::jsonb;
+alter table public.factory_tasks add column if not exists scope_keys jsonb not null default '[]'::jsonb;
+
 create table if not exists public.factory_agents (
  id uuid primary key default gen_random_uuid(),
  agent_key text not null unique,
@@ -227,3 +231,105 @@ begin
 end;$$;
 revoke all on function public.factory_schedule_run_agent(uuid,text,jsonb,jsonb,integer) from public,anon,authenticated;
 grant execute on function public.factory_schedule_run_agent(uuid,text,jsonb,jsonb,integer) to service_role;
+
+
+create or replace function public.factory_schedule_next_unassigned_run()
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_result jsonb;
+begin
+ select r.* into v_run
+ from public.factory_runs r
+ join public.factory_tasks t on t.id=r.task_id
+ where r.status='queued'
+   and r.execution_route in ('direct','codex')
+   and t.status='queued_execution'
+   and not exists(
+     select 1 from public.factory_run_agent_assignments a
+     where a.run_id=r.id and a.status in ('assigned','claimed')
+   )
+ order by r.created_at
+ for update of r skip locked
+ limit 1;
+ if v_run.id is null then return null; end if;
+
+ select * into v_task from public.factory_tasks where id=v_run.task_id;
+ v_result:=public.factory_schedule_run_agent(
+   v_run.id,
+   coalesce(nullif(v_task.agent_role,''),'development'),
+   coalesce(v_task.required_capabilities,'[]'::jsonb),
+   coalesce(v_task.scope_keys,'[]'::jsonb),
+   900
+ );
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_task.project_id,v_task.id,v_run.id,'system','agent-scheduler','agent.assigned',v_result);
+ return v_result || jsonb_build_object('run_id',v_run.id,'task_id',v_task.id);
+end;$$;
+revoke all on function public.factory_schedule_next_unassigned_run() from public,anon,authenticated;
+grant execute on function public.factory_schedule_next_unassigned_run() to service_role;
+
+create or replace function public.factory_claim_next_direct_run(p_worker_id text,p_agent_key text default null)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
+begin
+ if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
+ select r.*,a2.agent_key into v_run,v_agent_key
+ from public.factory_runs r
+ join public.factory_tasks t on t.id=r.task_id
+ join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where r.status='queued' and r.execution_route='direct' and t.status='queued_execution'
+   and (p_agent_key is null or a2.agent_key=p_agent_key)
+ order by r.created_at
+ for update of r skip locked limit 1;
+ if v_run.id is null then return null;end if;
+ select * into v_task from public.factory_tasks where id=v_run.task_id for update;
+ select * into v_project from public.factory_projects where id=v_task.project_id;
+ v_branch:='factory/'||v_agent_key||'/task-'||v_task.id::text;
+ update public.factory_runs set status='implementing',started_at=coalesce(started_at,now()),lease_owner=p_worker_id,
+  lease_expires_at=now()+interval '15 minutes',attempt_count=attempt_count+1,last_error=null,
+  metadata=metadata||jsonb_build_object('execution_worker_id',p_worker_id,'execution_claimed_at',now(),'agent_key',v_agent_key)
+ where id=v_run.id;
+ update public.factory_tasks set status='implementing',updated_at=now() where id=v_task.id;
+ update public.factory_run_agent_assignments set status='claimed',claimed_at=coalesce(claimed_at,now()) where run_id=v_run.id;
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_project.id,v_task.id,v_run.id,'agent',v_agent_key,'execution.direct.claimed',jsonb_build_object('lease_minutes',15,'worker_id',p_worker_id));
+ return jsonb_build_object('run_id',v_run.id,'task_id',v_task.id,'project_key',v_project.project_key,'repository',v_project.repository,
+  'issue_number',null,'title',v_task.title,'description',v_task.description,'branch',v_branch,'agent_key',v_agent_key,
+  'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
+end;$$;
+revoke all on function public.factory_claim_next_direct_run(text,text) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_direct_run(text,text) to service_role;
+
+create or replace function public.factory_claim_next_codex_run(p_worker_id text,p_agent_key text default null)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
+begin
+ if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
+ select r.*,a2.agent_key into v_run,v_agent_key
+ from public.factory_runs r
+ join public.factory_tasks t on t.id=r.task_id
+ join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where r.status='queued' and r.execution_route='codex' and t.status='queued_execution'
+   and (p_agent_key is null or a2.agent_key=p_agent_key)
+ order by r.created_at
+ for update of r skip locked limit 1;
+ if v_run.id is null then return null;end if;
+ select * into v_task from public.factory_tasks where id=v_run.task_id for update;
+ select * into v_project from public.factory_projects where id=v_task.project_id;
+ v_branch:='factory/'||v_agent_key||'/task-'||v_task.id::text;
+ update public.factory_runs set status='implementing',started_at=coalesce(started_at,now()),lease_owner=p_worker_id,
+  lease_expires_at=now()+interval '15 minutes',attempt_count=attempt_count+1,last_error=null,
+  metadata=metadata||jsonb_build_object('execution_worker_id',p_worker_id,'execution_claimed_at',now(),'agent_key',v_agent_key)
+ where id=v_run.id;
+ update public.factory_tasks set status='implementing',updated_at=now() where id=v_task.id;
+ update public.factory_run_agent_assignments set status='claimed',claimed_at=coalesce(claimed_at,now()) where run_id=v_run.id;
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_project.id,v_task.id,v_run.id,'agent',v_agent_key,'execution.codex.claimed',jsonb_build_object('lease_minutes',15,'worker_id',p_worker_id));
+ return jsonb_build_object('run_id',v_run.id,'task_id',v_task.id,'project_key',v_project.project_key,'repository',v_project.repository,
+  'issue_number',null,'title',v_task.title,'description',v_task.description,'branch',v_branch,'agent_key',v_agent_key,
+  'codex_level',coalesce((v_run.metadata->>'codex_level')::int,1),
+  'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
+end;$$;
+revoke all on function public.factory_claim_next_codex_run(text,text) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_codex_run(text,text) to service_role;
