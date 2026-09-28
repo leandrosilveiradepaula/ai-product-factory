@@ -229,8 +229,22 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928042946_factory_project_state_snapshots.sql",
             "20260928043102_factory_project_state_snapshot_run_index.sql",
             "20260928145528_factory_authenticated_visual_evidence.sql",
+            "20260928164000_factory_existing_project_runtime_stages.sql",
         }
         self.assertEqual(migration_names, expected_history)
+
+    def test_existing_project_runtime_claims_snapshot_and_persists_reconciliation(self):
+        migration = (ROOT / "supabase/migrations/20260928164000_factory_existing_project_runtime_stages.sql").read_text()
+        executor = (ROOT / "src/ai_product_factory/product_stage_executor.py").read_text()
+
+        self.assertIn("'snapshot',v_snapshot", migration)
+        self.assertIn("'spec',coalesce(v_spec", migration)
+        self.assertIn("'reconciliation'", migration)
+        self.assertIn("'gap_analysis'", migration)
+        self.assertIn("factory_project_state_snapshots", migration)
+        self.assertIn("reconciliation evidence is required", migration)
+        self.assertIn('"reconciliation","gap_analysis"', executor)
+        self.assertIn("durable project-state snapshot with evidence", executor)
 
     def test_operational_console_surface_is_complete_and_server_bounded(self):
         required_routes = (
