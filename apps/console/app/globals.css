@@ -329,3 +329,8 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 @media(max-width:1180px){.deploymentEnvGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:860px){.queueTable .tableRow,.evalTable .tableRow,.deploymentTable .tableRow,.auditTable .tableRow{grid-template-columns:1fr 1fr}.deploymentEnvGrid{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.deploymentEnvGrid{grid-template-columns:1fr}}
+
+/* Specialist Agent Registry view. */
+.agentWorkTable .tableRow{grid-template-columns:1.15fr 1.8fr .7fr .8fr .65fr}
+@media(max-width:860px){.agentWorkTable .tableRow{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.agentWorkTable .tableRow{grid-template-columns:1fr}}
