@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   capture:
@@ -20,63 +21,61 @@ jobs:
     timeout-minutes: 12
     env:
       FACTORY_CONSOLE_URL: "https://ai-product-factory-console.vercel.app"
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Require privileged Supabase configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ]; then
-            echo "SUPABASE_URL is required" >&2
-            exit 1
-          fi
-          key="${SUPABASE_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
-          if [ -z "$key" ]; then
-            echo "A privileged Supabase server key is required" >&2
-            exit 1
-          fi
-          echo "::add-mask::$key"
-          echo "SUPABASE_SECRET_KEY=$key" >> "$GITHUB_ENV"
       - name: Install pinned Playwright browser
         shell: bash
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
           npx playwright install --with-deps chromium
-      - name: Prepare encrypted evidence registry
+      - name: Mint provisioning GitHub OIDC token
+        id: oidc_provision
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken("factory-visual-evidence");
+            core.setSecret(token);
+            core.setOutput("token", token);
+      - name: Provision ephemeral visual operator
+        id: provision
         shell: bash
+        env:
+          FACTORY_GITHUB_OIDC: ${{ steps.oidc_provision.outputs.token }}
         run: |
           set -euo pipefail
-          key="$(openssl rand -hex 32)"
-          echo "::add-mask::$key"
-          echo "FACTORY_VISUAL_EVIDENCE_KEY=$key" >> "$GITHUB_ENV"
-          artifact="authenticated-console-${GITHUB_RUN_ID}"
-          echo "FACTORY_VISUAL_ARTIFACT=$artifact" >> "$GITHUB_ENV"
-          node - <<'NODE'
-          const url=process.env.SUPABASE_URL.replace(/\/$/,"");
-          const key=process.env.SUPABASE_SECRET_KEY;
-          const headers={apikey:key,"Content-Type":"application/json",Prefer:"return=minimal"};
-          if(!key.startsWith("sb_secret_"))headers.Authorization=`Bearer ${key}`;
-          const body={
-            workflow_run_id:Number(process.env.GITHUB_RUN_ID),
-            source_commit:process.env.GITHUB_SHA,
-            artifact_name:process.env.FACTORY_VISUAL_ARTIFACT,
-            encryption_key:process.env.FACTORY_VISUAL_EVIDENCE_KEY,
-            status:"prepared"
-          };
-          const r=await fetch(`${url}/rest/v1/factory_visual_evidence_runs`,{method:"POST",headers,body:JSON.stringify(body)});
-          if(!r.ok)throw new Error(`registry insert failed ${r.status}: ${await r.text()}`);
+          body="$(node -e 'process.stdout.write(JSON.stringify({action:"provision",workflowRunId:Number(process.env.GITHUB_RUN_ID),sourceCommit:process.env.GITHUB_SHA}))')"
+          response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
+            -H "Content-Type: application/json" \
+            --data "$body" \
+            "$FACTORY_VISUAL_BROKER_URL")"
+          RESPONSE="$response" node - <<'NODE'
+          const data=JSON.parse(process.env.RESPONSE);
+          for (const key of ["email","password","userId","encryptionKey","artifactName"]) {
+            if (!data[key]) throw new Error("broker response missing "+key);
+          }
+          for (const value of [data.email,data.password,data.userId,data.encryptionKey]) {
+            console.log("::add-mask::"+value);
+          }
+          const fs=require("fs");
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            "FACTORY_VISUAL_EMAIL="+data.email+"\n"+
+            "FACTORY_VISUAL_PASSWORD="+data.password+"\n"+
+            "FACTORY_VISUAL_USER_ID="+data.userId+"\n"+
+            "FACTORY_VISUAL_EVIDENCE_KEY="+data.encryptionKey+"\n"+
+            "FACTORY_VISUAL_ARTIFACT="+data.artifactName+"\n");
           NODE
       - name: Capture authenticated Console
+        id: capture_console
         shell: bash
         run: node scripts/capture_authenticated_console.mjs
       - name: Encrypt visual evidence
+        id: encrypt
         shell: bash
         run: |
           set -euo pipefail
@@ -86,39 +85,50 @@ jobs:
             -out visual-evidence.tar.gz.enc \
             -pass env:FACTORY_VISUAL_EVIDENCE_KEY
           rm -rf visual-evidence visual-evidence.tar.gz
-      - name: Mark evidence captured
-        shell: bash
-        run: |
-          set -euo pipefail
-          node - <<'NODE'
-          const url=process.env.SUPABASE_URL.replace(/\/$/,"");
-          const key=process.env.SUPABASE_SECRET_KEY;
-          const headers={apikey:key,"Content-Type":"application/json",Prefer:"return=minimal"};
-          if(!key.startsWith("sb_secret_"))headers.Authorization=`Bearer ${key}`;
-          const r=await fetch(`${url}/rest/v1/factory_visual_evidence_runs?workflow_run_id=eq.${process.env.GITHUB_RUN_ID}`,{
-            method:"PATCH",headers,body:JSON.stringify({status:"captured"})
-          });
-          if(!r.ok)throw new Error(`registry update failed ${r.status}: ${await r.text()}`);
-          NODE
-      - name: Expire registry on failed capture
-        if: failure()
-        shell: bash
-        run: |
-          set +e
-          node - <<'NODE'
-          const url=(process.env.SUPABASE_URL||"").replace(/\/$/,"");
-          const key=process.env.SUPABASE_SECRET_KEY||"";
-          if(!url||!key)process.exit(0);
-          const headers={apikey:key,"Content-Type":"application/json",Prefer:"return=minimal"};
-          if(!key.startsWith("sb_secret_"))headers.Authorization=`Bearer ${key}`;
-          await fetch(`${url}/rest/v1/factory_visual_evidence_runs?workflow_run_id=eq.${process.env.GITHUB_RUN_ID}`,{
-            method:"PATCH",headers,body:JSON.stringify({status:"expired"})
-          });
-          NODE
       - name: Upload encrypted evidence
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.FACTORY_VISUAL_ARTIFACT }}
           path: visual-evidence.tar.gz.enc
           retention-days: 1
           if-no-files-found: error
+      - name: Mint cleanup GitHub OIDC token
+        if: always()
+        id: oidc_cleanup
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken("factory-visual-evidence");
+            core.setSecret(token);
+            core.setOutput("token", token);
+      - name: Finalize registry and remove ephemeral operator
+        if: always()
+        shell: bash
+        env:
+          FACTORY_GITHUB_OIDC: ${{ steps.oidc_cleanup.outputs.token }}
+          CAPTURE_OUTCOME: ${{ steps.capture_console.outcome }}
+          ENCRYPT_OUTCOME: ${{ steps.encrypt.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FACTORY_VISUAL_USER_ID:-}" ]; then
+            echo "No ephemeral operator was provisioned."
+            exit 0
+          fi
+          if [ "$CAPTURE_OUTCOME" = "success" ] && [ "$ENCRYPT_OUTCOME" = "success" ] && [ "$UPLOAD_OUTCOME" = "success" ]; then
+            action="captured"
+            body="$(node -e 'process.stdout.write(JSON.stringify({action:"captured",workflowRunId:Number(process.env.GITHUB_RUN_ID)}))')"
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
+              -H "Content-Type: application/json" --data "$body" "$FACTORY_VISUAL_BROKER_URL" >/dev/null
+            cleanup="$(node -e 'process.stdout.write(JSON.stringify({action:"cleanup",workflowRunId:Number(process.env.GITHUB_RUN_ID),userId:process.env.FACTORY_VISUAL_USER_ID}))')"
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
+              -H "Content-Type: application/json" --data "$cleanup" "$FACTORY_VISUAL_BROKER_URL" >/dev/null
+          else
+            body="$(node -e 'process.stdout.write(JSON.stringify({action:"expire",workflowRunId:Number(process.env.GITHUB_RUN_ID),userId:process.env.FACTORY_VISUAL_USER_ID}))')"
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
+              -H "Content-Type: application/json" --data "$body" "$FACTORY_VISUAL_BROKER_URL" >/dev/null
+          fi
