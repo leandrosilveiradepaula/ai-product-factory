@@ -388,5 +388,37 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("63-question benchmark", codex)
 
 
+
+    def test_console_primary_ui_is_portuguese(self):
+        files = [
+            ROOT / "apps" / "console" / "app" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "[key]" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "new" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "new" / "review" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "runs" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "queue" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "gates" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "nav.tsx",
+        ]
+        text = "\n".join(path.read_text(encoding="utf-8") for path in files)
+        forbidden = [
+            "Start a product",
+            "New Work",
+            "Project Detail",
+            "Operational timeline",
+            "Work Queue",
+            "Open tasks",
+            "Known cost",
+            "Review Intake",
+            "New product",
+            "Import repository",
+            "Will be created later",
+            "Known integrations",
+            "Start Factory",
+        ]
+        for phrase in forbidden:
+            self.assertNotIn(phrase, text)
+
 if __name__ == "__main__":
     unittest.main()
