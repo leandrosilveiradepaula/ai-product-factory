@@ -62,3 +62,28 @@ def verified_preview_readiness(mode: str = "api") -> AdapterReadiness:
     enabled=provider.enabled and browser.enabled
     configured=provider.configured and browser.configured
     return AdapterReadiness(enabled=enabled,configured=configured,ready=enabled and configured,missing=missing)
+
+
+def supabase_project_readiness() -> AdapterReadiness:
+    return _evaluate(
+        "FACTORY_PROJECT_SUPABASE_ENABLED",
+        ("FACTORY_PROJECT_SUPABASE_ACCESS_TOKEN", "FACTORY_PROJECT_SUPABASE_REF"),
+    )
+
+
+def supabase_project_write_readiness() -> AdapterReadiness:
+    base=supabase_project_readiness()
+    write_enabled=_truthy("FACTORY_PROJECT_SUPABASE_WRITE_ENABLED")
+    return AdapterReadiness(
+        enabled=base.enabled and write_enabled,
+        configured=base.configured,
+        ready=base.ready and write_enabled,
+        missing=base.missing,
+    )
+
+
+def supabase_provision_readiness() -> AdapterReadiness:
+    return _evaluate(
+        "FACTORY_SUPABASE_PROVISION_ENABLED",
+        ("FACTORY_SUPABASE_MANAGEMENT_TOKEN", "FACTORY_SUPABASE_ORGANIZATION"),
+    )
