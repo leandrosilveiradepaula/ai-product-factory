@@ -5,9 +5,10 @@ const expectedText = (process.env.FACTORY_PREVIEW_EXPECTED_TEXT || "").trim();
 const trustedOidcToken = (process.env.FACTORY_VERCEL_TRUSTED_OIDC_TOKEN || "").trim();
 const checks = [];
 const errors = [];
+const observed = { finalUrl: null, title: null, statusCode: null, bodySample: null };
 
 function emit(status, detail = null) {
-  process.stdout.write(JSON.stringify({ status, checks, detail }));
+  process.stdout.write(JSON.stringify({ status, checks, detail, observed }));
 }
 
 if (!previewUrl || !/^https:\/\//.test(previewUrl)) {
@@ -34,11 +35,15 @@ try {
   checks.push("page_load");
 
   const status = response.status();
+  observed.statusCode = status;
+  observed.finalUrl = page.url();
+  observed.title = await page.title();
   if (status >= 400) throw new Error(`preview returned HTTP ${status}`);
   checks.push("http_status");
 
   await page.waitForTimeout(750);
   const bodyText = (await page.locator("body").innerText()).trim();
+  observed.bodySample = bodyText.replace(/\s+/g, " ").slice(0, 300);
   if (!bodyText) throw new Error("preview rendered an empty body");
   checks.push("body_visible");
 
