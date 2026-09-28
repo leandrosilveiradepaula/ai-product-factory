@@ -313,7 +313,7 @@ export async function getFactoryAgents():Promise<FactoryAgentSummary[]>{
  return agents.map((a:any)=>{
   const agentAssignments=assignments.filter((x:any)=>String(x.agent_id)===String(a.id));
   const activeAssignments=agentAssignments.filter((x:any)=>["assigned","claimed"].includes(String(x.status)));
-  const uniqueRunIds=[...new Set(agentAssignments.map((x:any)=>String(x.run_id)))];
+  const uniqueRunIds:string[]=[...new Set<string>(agentAssignments.map((x:any)=>String(x.run_id)))];
   const activeRuns=activeAssignments.map((x:any)=>{
    const run:any=runById.get(String(x.run_id))||{};
    return {runId:String(x.run_id),taskTitle:taskById.get(String(run.task_id))||"Tarefa sem título",status:String(run.status||x.status),route:run.execution_route?String(run.execution_route):null};
