@@ -233,6 +233,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928170000_factory_project_database_registry.sql",
             "20260928170600_factory_project_database_verification.sql",
             "20260928202000_factory_resource_limit_snapshots.sql",
+            "20260928204500_factory_project_database_oauth_vault.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -613,3 +614,17 @@ def test_resource_limit_observability_is_fail_closed_and_secret_free():
     assert 'if p>=100:return "blocked"' in model
     assert 'if p>=90:return "critical"' in model
     assert 'if p>=70:return "attention"' in model
+
+
+def test_supabase_oauth_vault_backend_keeps_definers_private():
+    migration=(ROOT/"supabase/migrations/20260928204500_factory_project_database_oauth_vault.sql").read_text()
+    assert "create schema if not exists factory_private" in migration
+    assert "security definer" in migration
+    assert "factory_private.store_project_database_oauth" in migration
+    assert "factory_private.get_project_database_oauth_tokens" in migration
+    assert "factory_private.revoke_project_database_oauth" in migration
+    assert "security invoker" in migration
+    assert "last_verified_at=null" in migration
+    assert "verified_at=null" not in migration
+    assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
+    assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
