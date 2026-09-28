@@ -244,6 +244,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getDashboard",
             "getProjectDetail",
             "getProjectOperations",
+            "getProjectStateContext",
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
@@ -266,6 +267,14 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", client_surface)
         self.assertNotIn("OPENAI_API_KEY", client_surface)
         self.assertNotIn("FACTORY_GITHUB_TOKEN", client_surface)
+        project_page = (ROOT / "apps/console/app/projects/[key]/page.tsx").read_text()
+        self.assertIn("Estado reconciliado", project_page)
+        self.assertIn("Lacunas restantes", project_page)
+        self.assertIn("Evidências confirmadas", project_page)
+        snapshot_migration = (ROOT / "supabase/migrations/20260927195500_factory_project_state_snapshots.sql").read_text()
+        self.assertIn("factory_project_state_snapshots", snapshot_migration)
+        self.assertIn("factory_record_project_state_snapshot", snapshot_migration)
+
 
         theme = (ROOT / "apps/console/app/theme.css").read_text()
         globals_css = (ROOT / "apps/console/app/globals.css").read_text()

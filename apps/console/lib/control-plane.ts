@@ -74,6 +74,25 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type ProjectStateSnapshot={id:string;runId:string|null;observedStage:string|null;summary:string;evidence:unknown[];gaps:unknown[];constraints:unknown[];sourceStatus:Record<string,unknown>;createdAt:string};
+export type ProjectStateContext={objective:string|null;snapshot:ProjectStateSnapshot|null};
+
+export async function getProjectStateContext(projectId:string):Promise<ProjectStateContext>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();if(!cfg)return{objective:null,snapshot:null};
+ const id=encodeURIComponent(projectId);
+ const [specResponse,snapshotResponse]=await Promise.all([
+  fetch(cfg.url+"/rest/v1/factory_product_specs?select=spec,version&project_id=eq."+id+"&order=version.desc&limit=1",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_project_state_snapshots?select=id,run_id,observed_stage,summary,evidence,gaps,constraints,source_status,created_at&project_id=eq."+id+"&order=created_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"})
+ ]);
+ const specs=specResponse.ok?await specResponse.json():[];const spec=specs[0]?.spec||{};
+ const snapshots=snapshotResponse.ok?await snapshotResponse.json():[];const x=snapshots[0];
+ return{
+  objective:typeof spec.summary==="string"?spec.summary:null,
+  snapshot:x?{id:String(x.id),runId:x.run_id?String(x.run_id):null,observedStage:x.observed_stage?String(x.observed_stage):null,summary:String(x.summary),evidence:Array.isArray(x.evidence)?x.evidence:[],gaps:Array.isArray(x.gaps)?x.gaps:[],constraints:Array.isArray(x.constraints)?x.constraints:[],sourceStatus:x.source_status&&typeof x.source_status==="object"?x.source_status:{},createdAt:String(x.created_at)}:null
+ };
+}
+
 export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){const operator=await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_resolve_human_gate`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_gate_id:gateId,p_resolution:resolution,p_resolved_by:operator.email||operator.userId,p_note:note||null}),cache:"no-store"});if(!response.ok)throw new Error("Unable to resolve human gate");return response.json();}
 
 
