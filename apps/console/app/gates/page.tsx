@@ -1,6 +1,6 @@
 import {revalidatePath} from "next/cache";
 import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
-import {EmptyState,MetricCard,PageHeader,StatusPill} from "../ui";
+import {EmptyState,PageHeader,StatusPill} from "../ui";
 
 function reasonText(value:unknown){
  if(Array.isArray(value))return value.join(", ");
@@ -17,10 +17,40 @@ async function resolveGate(formData:FormData){
  revalidatePath("/gates");revalidatePath("/runs");revalidatePath("/queue");
 }
 export default async function Gates(){
- const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");
+ const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");const resolved=gates.length-pending.length;
  return <>
-  <PageHeader eyebrow="Autoridade humana" title="Aprovações humanas" subtitle="A Factory só interrompe quando produção, dados, acesso, custo recorrente ou requisito material exigem autoridade humana."/>
-  <div className="grid compact"><MetricCard label="Pendentes" value={pending.length}/><MetricCard label="Histórico" value={gates.length}/><MetricCard label="Política" value="Falha fechada"/><MetricCard label="Produção" value="Humana"/></div>
-  <section className="section"><div className="stack">{gates.length===0?<EmptyState><span className="status"><i className="statusDot"/>Nenhuma aprovação humana registrada.</span></EmptyState>:gates.map(g=><article className="card" key={g.id}><div className="cardTop"><div><StatusPill status={g.type}/><h2 style={{margin:"10px 0 5px",fontSize:15}}>{g.status==="pending"?"Decisão necessária":"Aprovação resolvida"}</h2><p className="muted" style={{margin:0}}>{reasonText(g.reasons)}</p></div><StatusPill status={g.status}/></div><div className="timelineMeta"><span>execução {g.runId.slice(0,8)}</span><span>{new Date(g.requestedAt).toLocaleString("pt-BR")}</span></div>{g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><input name="note" placeholder="Observação opcional da decisão"/><div className="actions"><button className="primary" name="resolution" value="approved">Aprovar</button><button className="danger" name="resolution" value="rejected">Rejeitar</button></div></form>:null}</article>)}</div></section>
+  <PageHeader eyebrow="Motor de política · execução determinística" title="Aprovações humanas e prontidão de liberação" subtitle="A Factory prepara evidências autonomamente e congela a execução quando produção, dados, acesso, custo ou requisito material exigem autoridade humana." actions={<StatusPill status={pending.length?"attention":"healthy"} label={pending.length?pending.length+" críticas pendentes":"nenhuma pendência"}/>}/>
+  <div className="operationalStrip">
+   <div className="operationalStat warning"><span>Aguardando assinatura</span><strong>{pending.length}</strong><small>ação humana</small></div>
+   <div className="operationalStat"><span>Resolvidas</span><strong>{resolved}</strong><small>histórico durável</small></div>
+   <div className="operationalStat"><span>Política</span><strong>fail-closed</strong><small>sem bypass</small></div>
+   <div className="operationalStat"><span>Produção</span><strong>humana</strong><small>merge nunca automático</small></div>
+  </div>
+  <div className="gateLayout">
+   <section className="denseStack">
+    {gates.length===0?<EmptyState><span className="status"><i className="statusDot"/>Nenhuma aprovação humana registrada.</span></EmptyState>:gates.map(g=><article className={g.status==="pending"?"card gateCard pending":"card gateCard"} key={g.id}>
+     <div className="gateBanner"><div className="badgeLine"><StatusPill status={g.status}/><StatusPill status={g.type}/></div><span className="muted mono">GATE · {g.id.slice(0,12)}</span></div>
+     <div className="gateContent">
+      <div><span className="detailLabel">Motivo</span><h3>{g.status==="pending"?"Decisão humana necessária":"Gate resolvido"}</h3><p className="muted">{reasonText(g.reasons)}</p></div>
+      <div className="gateMeta"><div><span className="detailLabel">Execução</span><strong className="mono">{g.runId.slice(0,12)}</strong></div><div><span className="detailLabel">Solicitado</span><strong>{new Date(g.requestedAt).toLocaleString("pt-BR")}</strong></div></div>
+     </div>
+     {g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><input name="note" placeholder="Observação opcional da decisão"/><div className="gateActionBar"><button className="danger" name="resolution" value="rejected">Rejeitar / interromper</button><button className="primary" name="resolution" value="approved">Assinar e aprovar</button></div></form>:null}
+    </article>)}
+   </section>
+   <aside className="denseStack">
+    <div className="card">
+     <div className="panelHeading"><strong>Princípio de governança</strong><StatusPill status="active" label="vigente"/></div>
+     <p className="muted">A Factory não possui caminho de auto-merge. Preview, CI e avaliações podem preparar a liberação, mas a promoção para produção depende de uma ação humana já realizada.</p>
+     <div className="compactList">
+      <div className="compactRow"><span>Liberação de produção</span><span className="muted">merge humano</span></div>
+      <div className="compactRow"><span>Destruição de dados</span><span className="muted">aprovação</span></div>
+      <div className="compactRow"><span>Acesso sensível</span><span className="muted">aprovação</span></div>
+      <div className="compactRow"><span>Serviço pago recorrente</span><span className="muted">aprovação</span></div>
+      <div className="compactRow"><span>Mudança material</span><span className="muted">aprovação</span></div>
+     </div>
+    </div>
+    <div className="logPanel">gate.policy = durable<br/>gate.default = fail_closed<br/>release.auto_merge = false<br/>release.observer = read_only</div>
+   </aside>
+  </div>
  </>;
 }
