@@ -454,6 +454,22 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("targetUrl:consoleUrl", script)
         self.assertIn("workflowSourceCommit", script)
 
+    def test_crm_cross_repo_preflight_is_read_only_and_explicit(self):
+        workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
+        self.assertIn("FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}", workflow)
+        self.assertIn("environment: openai-api", workflow)
+        self.assertIn("blocked_missing_token", workflow)
+        self.assertIn("leandrosilveiradepaula/crm-infodive", workflow)
+        self.assertIn("/git/ref/heads/main", workflow)
+        self.assertIn('"private":True', workflow)
+        self.assertNotIn("curl -X POST", workflow)
+        self.assertNotIn("curl -X PATCH", workflow)
+        self.assertNotIn("curl -X PUT", workflow)
+        self.assertNotIn("curl -X DELETE", workflow)
+        self.assertNotIn("contents: write", workflow)
+        self.assertNotIn("issues: write", workflow)
+        self.assertNotIn("pull-requests: write", workflow)
+
     def test_control_plane_oidc_broker_is_fail_closed_and_secretless(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         action = (ROOT / ".github/actions/control-plane-oidc/action.yml").read_text()
