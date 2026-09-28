@@ -62,3 +62,20 @@ returns jsonb language sql security definer set search_path='' as $$
 $$;
 revoke all on function public.factory_get_project_database_oauth_tokens(uuid) from public,anon,authenticated;
 grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role;
+
+
+create or replace function public.factory_revoke_project_database_oauth(p_database_id uuid)
+returns void language plpgsql security definer set search_path='' as $$
+declare v_old public.factory_project_database_oauth%rowtype;
+begin
+ select * into v_old from public.factory_project_database_oauth where database_id=p_database_id for update;
+ if not found then return; end if;
+ delete from public.factory_project_database_oauth where database_id=p_database_id;
+ delete from vault.secrets where id=v_old.vault_access_secret_id;
+ if v_old.vault_refresh_secret_id is not null then delete from vault.secrets where id=v_old.vault_refresh_secret_id; end if;
+ update public.factory_project_databases
+ set access_mode='unconfigured',permission_mode='none',status='pending_access',verified_at=null,updated_at=now()
+ where id=p_database_id;
+end;$$;
+revoke all on function public.factory_revoke_project_database_oauth(uuid) from public,anon,authenticated;
+grant execute on function public.factory_revoke_project_database_oauth(uuid) to service_role;
