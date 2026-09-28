@@ -137,6 +137,18 @@ class FactoryAcceptanceTests(unittest.TestCase):
         ):
             self.assertIn(f"--mode {mode}", workflow)
 
+    def test_scheduled_workers_skip_cleanly_without_control_plane_credentials(self):
+        workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+        self.assertGreaterEqual(workflow.count("Detect Control Plane readiness"), 6)
+        for message in (
+            "Dispatch is inert: Control Plane credentials are not configured.",
+            "Manual Codex handoff is inert: Control Plane credentials are not configured.",
+            "Preview follow-up is inert: Control Plane credentials are not configured.",
+            "Operational alerts are inert: Control Plane credentials are not configured.",
+        ):
+            self.assertIn(message, workflow)
+        self.assertIn("steps.readiness.outputs.control_plane == 'true'", workflow)
+
     def test_production_merge_is_observed_not_executed_by_runtime(self):
         adapter = (ROOT / "src/ai_product_factory/github_rest.py").read_text()
         runtime = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
