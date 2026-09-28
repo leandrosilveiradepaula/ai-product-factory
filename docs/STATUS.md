@@ -54,18 +54,18 @@ Verified production state:
 - production health was verified after the redesign release: `GET /api/health` returned HTTP 200 with service `ai-product-factory-console` and commit `96fb81c3eb6d`;
 - unauthenticated production root returned the redesigned shell and login surface successfully; no runtime errors were reported by Vercel in the verification window.
 
-## Protected Preview / Console intake candidate
+## Protected Preview / Console intake release
 
 Vercel Trusted Sources now includes GitHub Actions OIDC for `leandrosilveiradepaula/ai-product-factory`, branch `main`, environment `Preview`. The browser verifier sends the short-lived GitHub OIDC token in `x-vercel-trusted-oidc-idp-token`; no Vercel token or reusable bypass secret is required for the standard path.
 
-Current PR #269 candidate:
+Released PR #269 candidate:
 - head `505c712864950d94638c874d8e267531fb544d62`;
 - exact Vercel Preview deployment `dpl_J9kneq8tf9bouJ3StBPyh4UNd7GX` is `READY`;
 - Console `validate`, `factory-acceptance`, typecheck and build are green;
 - Playwright/OIDC run `36376673624` passed `page_load`, `http_status`, `body_visible`, `expected_text` and `console_clean`;
 - observed pt-BR shell includes `Visão geral`, `Projetos`, `Execuções`, `Fila de trabalho`, `Aprovações humanas`, `Avaliações`, `Implantações`, `Modelos e uso`, `Log de auditoria`, `Configuração` and `Operadores`.
 
-PR #269 adds the conversational new-project path, ongoing-project reconcile-first onboarding, private attachment storage contract, durable current-state snapshots and the pt-BR Console surface. The new Supabase migrations were validated against the live schema inside an explicit transaction with `ROLLBACK`; they are not applied to production yet. Live checks still show no `factory_project_attachments`, no `factory_project_state_snapshots`, and no `factory-project-files` bucket. Applying those migrations and merging the Console PR are production gates and require human authority.
+PR #269 added the conversational new-project path, ongoing-project reconcile-first onboarding, private attachment storage, durable current-state snapshots and the pt-BR Console surface. Human authorization was given on 2026-09-28; the Supabase production migrations were applied and verified before release, including fail-closed RLS, service-role-only RPC access, a private 10 MiB attachment bucket, and the snapshot `run_id` FK index. PR #269 was then squash-merged as `98d81dee46c7ffc7ae4ae0662712fadcda3258b3`. Production deployment `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` reached `READY`; `GET /api/health` returned HTTP 200 with commit `98d81dee46c7`; the unauthenticated production shell rendered in pt-BR; and Vercel reported no runtime errors in the verification window.
 
 ## Authentication / model gate
 
@@ -152,7 +152,7 @@ It found and fixed a real Control Plane schema mismatch: seven RPCs wrote `task_
 
 After the fix, all transactional smoke paths passed. Final residual state remained zero synthetic projects, zero active runs, zero pending gates, and zero persisted Codex invocations.
 
-GitHub Actions validation is available during the temporary public-repository window opened on 2026-09-27. Main `validate` run #1041 completed successfully, including unit tests, compile and `factory-acceptance`; `Console validation` run #209 also completed successfully with install, typecheck and build. The previously quota-blocked exact redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` and `Console validation` passed. Its historical exact Playwright artifact was not recreated; current protected-Preview browser evidence is green on the active PR #269 candidate and is the release evidence used going forward.
+GitHub Actions validation is available during the temporary public-repository window opened on 2026-09-27. For the #269 production merge commit `98d81dee46c7ffc7ae4ae0662712fadcda3258b3`, both `validate` and `Console validation` completed successfully. The previously quota-blocked exact redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` and `Console validation` passed. Its historical exact Playwright artifact was not recreated; the exact protected Preview evidence for the released #269 candidate is the operative release evidence.
 
 ## OpenAI authentication reconciliation
 

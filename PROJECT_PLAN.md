@@ -99,7 +99,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 
 ## Gate atual
 
-A Factory core esta funcionalmente implementada. O fluxo atual de Preview protegido esta verificado com Trusted Source GitHub Actions OIDC. O PR #269 conclui a entrada Novo produto / Projeto em andamento, anexos privados, reconciliacao, Current State Snapshot e interface pt-BR; suas migrations ainda nao foram aplicadas ao Supabase de producao e seu merge publica o Console, portanto ambos permanecem sob gate humano de producao. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
+A Factory core esta funcionalmente implementada. O fluxo de Preview protegido esta verificado com Trusted Source GitHub Actions OIDC. O PR #269 foi liberado por autorizacao humana explicita em 2026-09-28 e mergeado em `98d81dee46c7ffc7ae4ae0662712fadcda3258b3`; o deployment de producao `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` chegou a `READY`, `GET /api/health` retornou HTTP 200 com o commit correto, a interface pt-BR foi observada em producao e a Vercel nao reportou erros de runtime na janela de verificacao. As migrations de anexos privados, reconciliacao e Current State Snapshot foram aplicadas e verificadas no Supabase de producao. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
 
 O provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
