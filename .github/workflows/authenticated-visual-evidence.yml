@@ -1,0 +1,114 @@
+name: Authenticated Console visual evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/authenticated-visual-evidence.yml"
+      - "scripts/capture_authenticated_console.mjs"
+      - "supabase/migrations/20260928145528_factory_authenticated_visual_evidence.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FACTORY_CONSOLE_URL: "https://ai-product-factory-console.vercel.app"
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require privileged Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "SUPABASE_URL is required" >&2
+            exit 1
+          fi
+          key="${SUPABASE_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
+          if [ -z "$key" ]; then
+            echo "A privileged Supabase server key is required" >&2
+            exit 1
+          fi
+          echo "::add-mask::$key"
+          echo "EFFECTIVE_SUPABASE_SECRET_KEY=$key" >> "$GITHUB_ENV"
+      - name: Install pinned Playwright browser
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Prepare encrypted evidence registry
+        shell: bash
+        env:
+          SUPABASE_SECRET_KEY: ${{ env.EFFECTIVE_SUPABASE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          key="$(openssl rand -hex 32)"
+          echo "::add-mask::$key"
+          echo "FACTORY_VISUAL_EVIDENCE_KEY=$key" >> "$GITHUB_ENV"
+          artifact="authenticated-console-${GITHUB_RUN_ID}"
+          echo "FACTORY_VISUAL_ARTIFACT=$artifact" >> "$GITHUB_ENV"
+          node - <<'NODE'
+          const url=process.env.SUPABASE_URL.replace(/\/$/,"");
+          const key=process.env.SUPABASE_SECRET_KEY;
+          const headers={apikey:key,"Content-Type":"application/json",Prefer:"return=minimal"};
+          if(!key.startsWith("sb_secret_"))headers.Authorization=`Bearer ${key}`;
+          const body={
+            workflow_run_id:Number(process.env.GITHUB_RUN_ID),
+            source_commit:process.env.GITHUB_SHA,
+            artifact_name:process.env.FACTORY_VISUAL_ARTIFACT,
+            encryption_key:process.env.FACTORY_VISUAL_EVIDENCE_KEY,
+            status:"prepared"
+          };
+          const r=await fetch(`${url}/rest/v1/factory_visual_evidence_runs`,{method:"POST",headers,body:JSON.stringify(body)});
+          if(!r.ok)throw new Error(`registry insert failed ${r.status}: ${await r.text()}`);
+          NODE
+      - name: Capture authenticated Console
+        shell: bash
+        env:
+          SUPABASE_SECRET_KEY: ${{ env.EFFECTIVE_SUPABASE_SECRET_KEY }}
+        run: node scripts/capture_authenticated_console.mjs
+      - name: Encrypt visual evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf visual-evidence.tar.gz visual-evidence
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in visual-evidence.tar.gz \
+            -out visual-evidence.tar.gz.enc \
+            -pass env:FACTORY_VISUAL_EVIDENCE_KEY
+          rm -rf visual-evidence visual-evidence.tar.gz
+      - name: Mark evidence captured
+        shell: bash
+        env:
+          SUPABASE_SECRET_KEY: ${{ env.EFFECTIVE_SUPABASE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const url=process.env.SUPABASE_URL.replace(/\/$/,"");
+          const key=process.env.SUPABASE_SECRET_KEY;
+          const headers={apikey:key,"Content-Type":"application/json",Prefer:"return=minimal"};
+          if(!key.startsWith("sb_secret_"))headers.Authorization=`Bearer ${key}`;
+          const r=await fetch(`${url}/rest/v1/factory_visual_evidence_runs?workflow_run_id=eq.${process.env.GITHUB_RUN_ID}`,{
+            method:"PATCH",headers,body:JSON.stringify({status:"captured"})
+          });
+          if(!r.ok)throw new Error(`registry update failed ${r.status}: ${await r.text()}`);
+          NODE
+      - name: Upload encrypted evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FACTORY_VISUAL_ARTIFACT }}
+          path: visual-evidence.tar.gz.enc
+          retention-days: 1
+          if-no-files-found: error
