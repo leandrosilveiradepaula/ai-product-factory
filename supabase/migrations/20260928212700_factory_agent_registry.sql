@@ -276,7 +276,7 @@ returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
  if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
- select r.*,a2.agent_key into v_run,v_agent_key
+ select r,a2.agent_key into v_run,v_agent_key
  from public.factory_runs r
  join public.factory_tasks t on t.id=r.task_id
  join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
@@ -309,7 +309,7 @@ returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
  if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
- select r.*,a2.agent_key into v_run,v_agent_key
+ select r,a2.agent_key into v_run,v_agent_key
  from public.factory_runs r
  join public.factory_tasks t on t.id=r.task_id
  join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
@@ -389,3 +389,44 @@ begin
 end;$$;
 revoke all on function public.factory_persist_product_stage(uuid,text,jsonb) from public,anon,authenticated;
 grant execute on function public.factory_persist_product_stage(uuid,text,jsonb) to service_role;
+
+
+create or replace function public.factory_recover_expired_agent_slots()
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_released integer:=0;v_agent uuid;
+begin
+ for v_agent in
+  select distinct a.agent_id
+  from public.factory_run_agent_assignments a
+  join public.factory_runs r on r.id=a.run_id
+  where a.status in ('assigned','claimed')
+    and (
+      r.status in ('completed','failed','merged','released','cancelled')
+      or (r.lease_expires_at is not null and r.lease_expires_at <= now())
+    )
+ loop
+  update public.factory_run_agent_assignments a
+  set status='released',released_at=now()
+  from public.factory_runs r
+  where a.run_id=r.id and a.agent_id=v_agent and a.status in ('assigned','claimed')
+    and (
+      r.status in ('completed','failed','merged','released','cancelled')
+      or (r.lease_expires_at is not null and r.lease_expires_at <= now())
+    );
+  get diagnostics v_released=v_released + row_count;
+  update public.factory_agent_scope_locks l set released_at=now()
+  from public.factory_runs r
+  where l.run_id=r.id and l.agent_id=v_agent and l.released_at is null
+    and (
+      r.status in ('completed','failed','merged','released','cancelled')
+      or l.lease_expires_at <= now()
+      or (r.lease_expires_at is not null and r.lease_expires_at <= now())
+    );
+  if not exists(select 1 from public.factory_run_agent_assignments where agent_id=v_agent and status in ('assigned','claimed')) then
+   update public.factory_agents set health_status=case when is_active then 'idle' else 'disabled' end,updated_at=now() where id=v_agent;
+  end if;
+ end loop;
+ return jsonb_build_object('released',v_released);
+end;$$;
+revoke all on function public.factory_recover_expired_agent_slots() from public,anon,authenticated;
+grant execute on function public.factory_recover_expired_agent_slots() to service_role;
