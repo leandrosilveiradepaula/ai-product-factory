@@ -1,3 +1,4 @@
+// Supabase OAuth preview checkpoint: exact Vercel Preview required before release.
 import {notFound} from "next/navigation";
 import {getProjectDatabases,getProjectDetail,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
