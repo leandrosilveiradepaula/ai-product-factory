@@ -14,8 +14,14 @@ export default async function Home(){
    eyebrow="Control Plane · sessão ativa"
    title="Visão geral da Factory"
    subtitle="Plano de controle autônomo de desenvolvimento, com evidências duráveis, execução determinística primeiro e autoridade humana na produção."
-   actions={<><StatusPill status={blocked||pending.length?"attention":"healthy"} label={blocked||pending.length?"atenção necessária":"orquestrador online"}/><ActionLink href="/projects/new" variant="primary">+ Novo trabalho</ActionLink></>}
+   actions={<StatusPill status={blocked||pending.length?"attention":"healthy"} label={blocked||pending.length?"atenção necessária":"orquestrador online"}/>} 
   />
+
+  <div className="overviewControlBar">
+   <span className="overviewControl">Escopo <strong>{d.projects.length} projetos</strong></span>
+   <span className="overviewControl">Atualização <strong>dados ao vivo</strong></span>
+   <Link className="overviewControl overviewControlLink" href="/audit">Diagnósticos</Link>
+  </div>
 
   <div className="overviewStats">
    <div className="operationalStat"><span>Projetos ativos</span><strong>{d.projects.length}</strong><small>{d.projects.filter(p=>p.status==="active").length} ativos</small></div>
