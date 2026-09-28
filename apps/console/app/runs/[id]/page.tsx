@@ -6,7 +6,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
  const {id}=await params;const r=await getRunDetail(id);if(!r)notFound();
  const codexCalls=r.codex.reduce((s,x)=>s+x.invocations,0);
  return <>
-  <PageHeader eyebrow="Run Detail" title={r.taskTitle} subtitle={r.projectName+" · "+r.id} actions={<><StatusPill status={r.route||"unrouted"}/><StatusPill status={r.status}/></>}/>
+  <PageHeader eyebrow="Detalhes da execução" title={r.taskTitle} subtitle={r.projectName+" · "+r.id} actions={<><StatusPill status={r.route||"unrouted"}/><StatusPill status={r.status}/></>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Tentativas</span><strong>{r.attemptCount}</strong></div>
    <div className="operationalStat"><span>Avaliações</span><strong>{r.evaluations.length}</strong></div>
