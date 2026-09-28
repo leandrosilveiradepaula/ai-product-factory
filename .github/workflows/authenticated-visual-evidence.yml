@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$key"
-          echo "EFFECTIVE_SUPABASE_SECRET_KEY=$key" >> "$GITHUB_ENV"
+          echo "SUPABASE_SECRET_KEY=$key" >> "$GITHUB_ENV"
       - name: Install pinned Playwright browser
         shell: bash
         run: |
@@ -50,8 +50,6 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Prepare encrypted evidence registry
         shell: bash
-        env:
-          SUPABASE_SECRET_KEY: ${{ env.EFFECTIVE_SUPABASE_SECRET_KEY }}
         run: |
           set -euo pipefail
           key="$(openssl rand -hex 32)"
@@ -76,8 +74,6 @@ jobs:
           NODE
       - name: Capture authenticated Console
         shell: bash
-        env:
-          SUPABASE_SECRET_KEY: ${{ env.EFFECTIVE_SUPABASE_SECRET_KEY }}
         run: node scripts/capture_authenticated_console.mjs
       - name: Encrypt visual evidence
         shell: bash
@@ -91,8 +87,6 @@ jobs:
           rm -rf visual-evidence visual-evidence.tar.gz
       - name: Mark evidence captured
         shell: bash
-        env:
-          SUPABASE_SECRET_KEY: ${{ env.EFFECTIVE_SUPABASE_SECRET_KEY }}
         run: |
           set -euo pipefail
           node - <<'NODE'
@@ -104,6 +98,21 @@ jobs:
             method:"PATCH",headers,body:JSON.stringify({status:"captured"})
           });
           if(!r.ok)throw new Error(`registry update failed ${r.status}: ${await r.text()}`);
+          NODE
+      - name: Expire registry on failed capture
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          node - <<'NODE'
+          const url=(process.env.SUPABASE_URL||"").replace(/\/$/,"");
+          const key=process.env.SUPABASE_SECRET_KEY||"";
+          if(!url||!key)process.exit(0);
+          const headers={apikey:key,"Content-Type":"application/json",Prefer:"return=minimal"};
+          if(!key.startsWith("sb_secret_"))headers.Authorization=`Bearer ${key}`;
+          await fetch(`${url}/rest/v1/factory_visual_evidence_runs?workflow_run_id=eq.${process.env.GITHUB_RUN_ID}`,{
+            method:"PATCH",headers,body:JSON.stringify({status:"expired"})
+          });
           NODE
       - name: Upload encrypted evidence
         uses: actions/upload-artifact@v4
