@@ -95,7 +95,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Centralizar design tokens, tipografia, cores semanticas e primitivas reutilizaveis do Console.
 - [x] Validar CI/factory-acceptance no GitHub Actions: janela publica temporaria habilitou runners hospedados; `validate` run #1041 passou e o rerun exato do candidato do Console tambem passou.
 - [x] Validar build do Console por Preview exato Vercel do candidato `10f593d7d169d30fe5048eac9d98a94b8be1e151` (deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX`, `READY`).
-- [x] Validar browser/Playwright evidence em Preview exato protegido: GitHub OIDC Trusted Source foi configurado na Vercel e o Preview do PR #269 (`8f9f9e514e3c6a13784ce39ad1b9082c937edb9f`, deployment `dpl_5fjYFoLraW2aHo1SPSaSGZKoZUqn`) passou `page_load`, `http_status`, `body_visible`, `expected_text` e `console_clean` no run `36374705190`. O candidato historico `10f593...` permanece apenas como divida arquivistica; nao e a evidencia do release atual.
+- [x] Validar browser/Playwright evidence em Preview exato protegido: GitHub OIDC Trusted Source foi configurado na Vercel e o candidato final pt-BR do PR #269 (`505c712864950d94638c874d8e267531fb544d62`, deployment `dpl_J9kneq8tf9bouJ3StBPyh4UNd7GX`) passou `page_load`, `http_status`, `body_visible`, `expected_text` e `console_clean` no run `36376673624`. O corpo observado confirmou a navegacao principal em portugues. O candidato historico `10f593...` permanece apenas como divida arquivistica; nao e a evidencia do release atual.
 
 ## Gate atual
 
