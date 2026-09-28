@@ -41,6 +41,21 @@ The runtime includes:
 
 Scheduled Direct is enabled through the retained API key with a prepaid Factory budget of US$ 4.00 and a US$ 0.50 per-call/run reservation. It remains bounded by queue availability, real Control Plane spend and unknown-cost fail-closed checks before provider use. Product Stage uses the same paid boundary. Dispatch, CI follow-up, Preview follow-up, release observation, recovery, and operational alerts may run hourly without paid model access.
 
+## Figma fidelity release - 2026-09-28
+
+The exported Figma source bundle supplied by the operator became the visual source of truth for the Console redesign. PR #299 was released after exact-candidate verification:
+- candidate `abcebae87bff8b76b02eda45c7c773caea854c30` passed `validate`, `factory-acceptance`, Console typecheck/build and exact protected-Preview Playwright verification;
+- exact Preview deployment `dpl_CoGDyXTeMM6nkzcsSbV3Y1XmV9Xa` reached `READY`;
+- the final browser evidence run `36435511811` verified `page_load`, `http_status`, `body_visible`, `expected_text` and `console_clean` on the exact final Preview URL;
+- the exact exported AI Product Factory logo and the nine operational Figma frames were used to reconcile shell, density, typography, palette, navigation and operational page composition;
+- explicit human release authorization was provided and PR #299 was squash-merged as `24fc055271c6e19c90af983df8ad4d9d20829a80`;
+- Vercel production deployment `dpl_HWK2ANY1iK26YhK7ZuBKmXQrRgQM` reached `READY` and owns the production alias;
+- `GET /api/health` returned HTTP 200 with commit `24fc055271c6`;
+- post-merge `validate` and `Console validation` both completed successfully;
+- Vercel reported no runtime errors in the post-release verification window.
+
+The authenticated operational pages still require a real Supabase operator session for browser screenshot comparison. No temporary operator or access expansion was created solely for visual testing.
+
 ## Console deployment
 
 The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
