@@ -1,14 +1,17 @@
 name: Authenticated Console visual evidence
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/authenticated-visual-evidence.yml"
-      - "scripts/capture_authenticated_console.mjs"
-      - "supabase/migrations/20260928145528_factory_authenticated_visual_evidence.sql"
   workflow_dispatch:
+    inputs:
+      target_url:
+        description: Exact Console production or Vercel Preview URL to capture
+        required: false
+        default: https://ai-product-factory-console.vercel.app
+        type: string
+      target_commit:
+        description: Exact repository commit represented by target_url (defaults to workflow SHA)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,7 +23,8 @@ jobs:
     environment: openai-api
     timeout-minutes: 12
     env:
-      FACTORY_CONSOLE_URL: "https://ai-product-factory-console.vercel.app"
+      FACTORY_CONSOLE_URL: ${{ inputs.target_url || 'https://ai-product-factory-console.vercel.app' }}
+      FACTORY_VISUAL_TARGET_COMMIT: ${{ inputs.target_commit || github.sha }}
       FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
@@ -28,6 +32,35 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Validate exact visual target
+        uses: actions/github-script@v7
+        env:
+          TARGET_URL: ${{ env.FACTORY_CONSOLE_URL }}
+          TARGET_COMMIT: ${{ env.FACTORY_VISUAL_TARGET_COMMIT }}
+        with:
+          script: |
+            const target = new URL(process.env.TARGET_URL);
+            const production = "ai-product-factory-console.vercel.app";
+            const allowedHost =
+              target.hostname === production ||
+              target.hostname.endsWith(".vercel.app");
+            if (target.protocol !== "https:" || !allowedHost) {
+              core.setFailed("Visual target must be HTTPS on the production host or *.vercel.app");
+              return;
+            }
+            if (target.username || target.password || target.search || target.hash) {
+              core.setFailed("Visual target must not contain credentials, query, or fragment");
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/.test(process.env.TARGET_COMMIT)) {
+              core.setFailed("target_commit must be an exact 40-character Git SHA");
+              return;
+            }
+            await github.rest.repos.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: process.env.TARGET_COMMIT,
+            });
       - name: Install pinned Playwright browser
         shell: bash
         run: |
