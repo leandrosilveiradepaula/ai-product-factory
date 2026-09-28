@@ -1,0 +1,35 @@
+name: OpenAI billing smoke once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/openai-billing-smoke-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: openai-api
+    timeout-minutes: 5
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require API key without WIF fallback
+        shell: bash
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::OPENAI_API_KEY is not configured in environment openai-api."
+            exit 2
+          fi
+      - name: Execute one bounded paid request
+        shell: bash
+        run: python -m ai_product_factory.openai_billing_smoke
