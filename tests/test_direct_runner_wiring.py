@@ -5,6 +5,7 @@ from ai_product_factory.runtime_auth import AuthKind,RuntimeAuth
 class Resolver:
  def __init__(self,kind):self.kind=kind
  def resolve(self):return RuntimeAuth(self.kind,"test",True)
+ def resolve_primary_api(self):return RuntimeAuth(self.kind,"test",True)
 class Tests(unittest.TestCase):
  def test_direct_fails_before_claim_when_primary_auth_unsupported(self):
   with patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=Resolver(AuthKind.NONE)),patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue") as queue:
