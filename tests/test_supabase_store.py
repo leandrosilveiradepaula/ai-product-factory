@@ -53,6 +53,12 @@ class FakeTransport:
             return 201, [{"id": "d1", **payload}]
         if url.endswith("/factory_tool_usage"):
             return 201, [{"id": 1, **payload}]
+        if "factory_tool_usage?" in url:
+            return 200, [{
+                "id": 1, "run_id": "r1", "tool_family": "openai",
+                "operation": payload.get("operation"), "usage_units": payload.get("usage_units"),
+                "estimated_cost": payload.get("estimated_cost"), "metadata": payload.get("metadata") or {},
+            }]
         if url.endswith("/factory_codex_usage"):
             return 201, [{"id": 1, **payload}]
         return 500, {"message": "unexpected"}
@@ -109,6 +115,20 @@ class SupabaseStoreTests(unittest.TestCase):
         self.assertEqual(decision.decision["route"], "direct")
         self.assertEqual(tool.tool_family, "github")
         self.assertEqual(codex.invocation_count, 0)
+
+    def test_update_tool_usage_can_clear_cost_to_unknown(self):
+        row = self.store.update_tool_usage(
+            1,
+            operation="model_call_cost_unknown",
+            usage_units=0,
+            estimated_cost=None,
+            metadata={"status": "cost_unknown"},
+        )
+        method, _, _, payload = self.transport.calls[-1]
+        self.assertEqual(method, "PATCH")
+        self.assertIn("estimated_cost", payload)
+        self.assertIsNone(payload["estimated_cost"])
+        self.assertIsNone(row.estimated_cost)
 
     def test_missing_credentials_fail_fast(self):
         with self.assertRaises(ValueError):
