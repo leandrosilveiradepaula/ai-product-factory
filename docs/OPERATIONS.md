@@ -46,6 +46,8 @@ The project supplies non-secret deployment metadata in `factory_projects.manifes
 
 For the standard manual GitHub Actions path, the job itself provides the activation flags, uses the native `GITHUB_TOKEN`, installs pinned Playwright/Chromium, and invokes `scripts/verify_preview.mjs`. No external browser service or Vercel token is required when the project uses `mode: github`.
 
+When Vercel Authentication protects Preview deployments, configure **Project Settings -> Deployment Protection -> Trusted Sources** with GitHub Actions scoped to the Factory repository, trusted branch (`main`) and `Preview` environment. Keep the default GitHub OIDC audience unless the workflow explicitly calls `getIDToken()` with a custom audience. The browser job requires `id-token: write`, mints a short-lived token with `core.getIDToken()`, masks it, and sends it only as the `x-vercel-trusted-oidc-idp-token` request header. A successful check must end on the Factory Preview, not on `vercel.com/login`.
+
 For alternative runtimes or `mode: api`, configuration remains explicit: `FACTORY_VERCEL_PREVIEW_ENABLED=true`, provider credentials (`GITHUB_TOKEN` or `VERCEL_TOKEN`), `FACTORY_BROWSER_EVIDENCE_ENABLED=true`, a reviewed `FACTORY_BROWSER_EVIDENCE_COMMAND_JSON`, and an optional bounded timeout.
 
 The Vercel adapters refuse non-Preview environments. The browser adapter receives the exact deployed URL through `FACTORY_PREVIEW_URL` and must return structured JSON evidence. The built-in Playwright verifier checks page load, HTTP status, visible non-empty body, and browser console/page errors.

@@ -1,6 +1,6 @@
 # Current status
 
-Last reconciled: 2026-09-27.
+Last reconciled: 2026-09-28.
 
 ## Operational foundation
 
@@ -53,6 +53,19 @@ Verified production state:
 - production deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` for merge commit `96fb81c3eb6de66c955562a604d3460ad99a92ae` reached `READY`;
 - production health was verified after the redesign release: `GET /api/health` returned HTTP 200 with service `ai-product-factory-console` and commit `96fb81c3eb6d`;
 - unauthenticated production root returned the redesigned shell and login surface successfully; no runtime errors were reported by Vercel in the verification window.
+
+## Protected Preview / Console intake candidate
+
+Vercel Trusted Sources now includes GitHub Actions OIDC for `leandrosilveiradepaula/ai-product-factory`, branch `main`, environment `Preview`. The browser verifier sends the short-lived GitHub OIDC token in `x-vercel-trusted-oidc-idp-token`; no Vercel token or reusable bypass secret is required for the standard path.
+
+Current PR #269 candidate:
+- head `8f9f9e514e3c6a13784ce39ad1b9082c937edb9f`;
+- exact Vercel Preview deployment `dpl_5fjYFoLraW2aHo1SPSaSGZKoZUqn` is `READY`;
+- Console `validate`, `factory-acceptance`, typecheck and build are green;
+- Playwright/OIDC run `36374705190` passed `page_load`, `http_status`, `body_visible`, `expected_text` and `console_clean`;
+- observed pt-BR shell includes `Visão geral`, `Projetos`, `Execuções`, `Fila de trabalho`, `Aprovações humanas`, `Avaliações`, `Implantações`, `Modelos e uso`, `Log de auditoria`, `Configuração` and `Operadores`.
+
+PR #269 adds the conversational new-project path, ongoing-project reconcile-first onboarding, private attachment storage contract, durable current-state snapshots and the pt-BR Console surface. The new Supabase migrations were validated against the live schema inside an explicit transaction with `ROLLBACK`; they are not applied to production yet. Live checks still show no `factory_project_attachments`, no `factory_project_state_snapshots`, and no `factory-project-files` bucket. Applying those migrations and merging the Console PR are production gates and require human authority.
 
 ## Authentication / model gate
 
@@ -139,7 +152,7 @@ It found and fixed a real Control Plane schema mismatch: seven RPCs wrote `task_
 
 After the fix, all transactional smoke paths passed. Final residual state remained zero synthetic projects, zero active runs, zero pending gates, and zero persisted Codex invocations.
 
-GitHub Actions validation is available during the temporary public-repository window opened on 2026-09-27. Main `validate` run #1041 completed successfully, including unit tests, compile and `factory-acceptance`; `Console validation` run #209 also completed successfully with install, typecheck and build. The previously quota-blocked exact redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` and `Console validation` passed. Browser/Playwright evidence for that historical candidate remains a separate pending item.
+GitHub Actions validation is available during the temporary public-repository window opened on 2026-09-27. Main `validate` run #1041 completed successfully, including unit tests, compile and `factory-acceptance`; `Console validation` run #209 also completed successfully with install, typecheck and build. The previously quota-blocked exact redesign candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` and `Console validation` passed. Its historical exact Playwright artifact was not recreated; current protected-Preview browser evidence is green on the active PR #269 candidate and is the release evidence used going forward.
 
 ## OpenAI authentication reconciliation
 
@@ -200,13 +213,13 @@ All operational views use real Control Plane data through the existing server-si
 Release evidence:
 - candidate commit `10f593d7d169d30fe5048eac9d98a94b8be1e151` had exact Vercel Preview deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX` in `READY` state and GitHub Vercel status `success`;
 - At release time, GitHub Actions could not run because the account had consumed 2,000 / 2,000 included Actions minutes. After opening a temporary public window, the exact candidate `10f593d7d169d30fe5048eac9d98a94b8be1e151` was rerun and both `validate` (including `factory-acceptance`) and `Console validation` passed;
-- Playwright/browser evidence was not rerun yet. The original production merge remains recorded as a human-authorized exception at release time, while the missing CI evidence has now been recovered retroactively;
+- the historical `10f593...` Playwright artifact was not recreated. The original production merge remains recorded as a human-authorized exception; the active PR #269 now has exact protected-Preview Playwright/OIDC evidence and supersedes the historical operational verification need;
 - squash merge commit is `96fb81c3eb6de66c955562a604d3460ad99a92ae`;
 - production Vercel deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` reached `READY`;
 - production `GET /api/health` returned HTTP 200 and commit `96fb81c3eb6d`;
 - Vercel reported no runtime errors in the post-release verification window.
 
-Figma MCP Starter calls remain exhausted, so no additional design-context comparison can be performed until that quota resets. GitHub Actions validation has been recovered during the temporary public window; only the historical exact-candidate Playwright/browser evidence remains pending.
+Figma MCP Starter calls remain exhausted, so no additional design-context comparison can be performed until that quota resets. GitHub Actions validation and current exact protected-Preview browser evidence are green. The unrecreated historical `10f593...` browser artifact is archival debt, not a blocker for the current release candidate.
 
 ## Temporary public Actions window
 
