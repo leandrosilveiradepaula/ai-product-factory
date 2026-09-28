@@ -25,5 +25,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          body="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $SUPABASE_SECRET_KEY" "$SUPABASE_URL/rest/v1/factory_projects?select=project_key&order=project_key.asc&limit=5")"
+          status="$(curl --silent --show-error -o /tmp/control-plane.json -w "%{http_code}" -H "Authorization: Bearer $SUPABASE_SECRET_KEY" "$SUPABASE_URL/rest/v1/factory_projects?select=project_key&order=project_key.asc&limit=5")"
+          body="$(cat /tmp/control-plane.json)"
+          if [ "$status" != "200" ]; then
+            echo "Control Plane broker returned HTTP $status"
+            BODY="$body" python -c 'import json,os; d=json.loads(os.environ["BODY"]); print(json.dumps({"error":d.get("error"),"detail":d.get("detail")}))'
+            exit 1
+          fi
           BODY="$body" python -c 'import json,os; rows=json.loads(os.environ["BODY"]); assert isinstance(rows,list), "Control Plane response is not a list"; keys={str(r.get("project_key") or "") for r in rows}; assert "ai-product-factory" in keys, "Expected Factory project is not readable through OIDC broker"; print(json.dumps({"status":"ok","projects":sorted(keys)}))'
