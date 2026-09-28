@@ -13,10 +13,13 @@ grant select,insert,update,delete on table public.factory_project_database_oauth
 
 create or replace function public.factory_store_project_database_oauth(
  p_database_id uuid,p_access_token text,p_refresh_token text,p_token_type text,p_expires_at timestamptz
-) returns void language plpgsql security definer set search_path='public','vault' as $
+) returns void language plpgsql security definer set search_path='' as $
 declare v_access uuid;v_refresh uuid;v_old public.factory_project_database_oauth%rowtype;
 begin
  if nullif(btrim(p_access_token),'') is null then raise exception 'access token required';end if;
+ if not exists(select 1 from public.factory_project_databases where id=p_database_id) then
+   raise exception 'database binding not found';
+ end if;
  select * into v_old from public.factory_project_database_oauth where database_id=p_database_id;
  if found then
    delete from vault.secrets where id=v_old.vault_access_secret_id;
@@ -42,3 +45,20 @@ returns text language sql security definer set search_path='' as $$
 $$;
 revoke all on function public.factory_get_project_database_oauth_access_token(uuid) from public,anon,authenticated;
 grant execute on function public.factory_get_project_database_oauth_access_token(uuid) to service_role;
+
+
+create or replace function public.factory_get_project_database_oauth_tokens(p_database_id uuid)
+returns jsonb language sql security definer set search_path='' as $$
+ select jsonb_build_object(
+   'access_token',a.decrypted_secret,
+   'refresh_token',r.decrypted_secret,
+   'token_type',o.token_type,
+   'expires_at',o.expires_at
+ )
+ from public.factory_project_database_oauth o
+ join vault.decrypted_secrets a on a.id=o.vault_access_secret_id
+ left join vault.decrypted_secrets r on r.id=o.vault_refresh_secret_id
+ where o.database_id=p_database_id;
+$$;
+revoke all on function public.factory_get_project_database_oauth_tokens(uuid) from public,anon,authenticated;
+grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role;
