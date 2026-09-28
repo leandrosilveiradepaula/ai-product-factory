@@ -12,6 +12,32 @@ class Tests(unittest.TestCase):
   self.assertIn("incomplete",incomplete.source)
   self.assertEqual(RuntimeAuthResolver({"OPENAI_IDENTITY_PROVIDER_ID":"p","OPENAI_SERVICE_ACCOUNT_ID":"s","OPENAI_WIF_AUDIENCE":"aud"}).resolve_primary_api().kind,AuthKind.OPENAI_API_WIF)
 
+
+ def test_explicit_api_key_mode_ignores_complete_wif(self):
+  r=RuntimeAuthResolver({
+   "FACTORY_PRIMARY_AUTH_MODE":"api_key",
+   "OPENAI_API_KEY":"key",
+   "OPENAI_IDENTITY_PROVIDER_ID":"p",
+   "OPENAI_SERVICE_ACCOUNT_ID":"s",
+   "OPENAI_WIF_AUDIENCE":"aud",
+  })
+  self.assertEqual(r.resolve_primary_api().kind,AuthKind.OPENAI_API_KEY)
+
+ def test_explicit_wif_mode_never_falls_back_to_api_key(self):
+  r=RuntimeAuthResolver({
+   "FACTORY_PRIMARY_AUTH_MODE":"wif",
+   "OPENAI_API_KEY":"key",
+   "OPENAI_IDENTITY_PROVIDER_ID":"p",
+  })
+  auth=r.resolve_primary_api()
+  self.assertEqual(auth.kind,AuthKind.NONE)
+  self.assertFalse(auth.configured)
+
+ def test_invalid_primary_auth_mode_fails_closed(self):
+  auth=RuntimeAuthResolver({"FACTORY_PRIMARY_AUTH_MODE":"magic","OPENAI_API_KEY":"key"}).resolve_primary_api()
+  self.assertEqual(auth.kind,AuthKind.NONE)
+  self.assertFalse(auth.configured)
+
  def test_codex_wif_requires_both_official_variables(self):
   incomplete=RuntimeAuthResolver({"OPENAI_FEDERATION_RULE_ID":"idpm_x","CODEX_ACCESS_TOKEN":"fallback"}).resolve_codex()
   self.assertEqual(incomplete.kind,AuthKind.NONE)
