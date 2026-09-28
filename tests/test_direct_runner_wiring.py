@@ -13,7 +13,7 @@ class Tests(unittest.TestCase):
   self.assertEqual(out["status"],"blocked");queue.assert_not_called()
  def test_direct_empty_queue_does_not_construct_github(self):
   class Q:
-   def claim_next(self,w):return None
+   def claim_next(self,w,agent_key=None,run_id=None):return None
   env={"FACTORY_PRIMARY_MODEL_ENABLED":"true","FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
   health=type("H",(),{"known_cost":0,"unknown_cost_events":0})()
   reader=type("R",(),{"read":lambda self,**kwargs:health})()
