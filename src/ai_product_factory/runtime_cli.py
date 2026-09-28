@@ -244,7 +244,10 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    if "no eligible agent slot" not in str(exc):raise
    break
  matrix=scheduler.work_matrix(max_items)
- return {"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"matrix":matrix}
+ out={"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"matrix":matrix}
+ if routed:
+  out.update(routed[0])
+ return out
 
 def main()->int:
  p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
