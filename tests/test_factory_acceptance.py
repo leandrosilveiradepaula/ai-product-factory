@@ -234,6 +234,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928170600_factory_project_database_verification.sql",
             "20260928202000_factory_resource_limit_snapshots.sql",
             "20260928204500_factory_project_database_oauth_vault.sql",
+            "20260928212700_factory_agent_registry.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -628,3 +629,25 @@ def test_supabase_oauth_vault_backend_keeps_definers_private():
     assert "verified_at=null" not in migration
     assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
     assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
+
+
+    def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
+        migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
+        scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        planner=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+        self.assertIn("create table if not exists public.factory_agents",migration)
+        self.assertIn("max_concurrency",migration)
+        self.assertIn("factory_agent_scope_locks",migration)
+        self.assertIn("scope conflict with run",migration)
+        self.assertIn("factory_schedule_next_unassigned_run",migration)
+        self.assertIn("factory_claim_next_agent_direct_run",migration)
+        self.assertIn("factory_claim_next_agent_codex_run",migration)
+        self.assertIn("factory_recover_expired_agent_slots",migration)
+        self.assertIn("revoke all on public.factory_agents from public,anon,authenticated",migration)
+        self.assertIn("grant execute on function public.factory_schedule_run_agent",migration)
+        self.assertIn("required_capabilities",migration)
+        self.assertIn("scope_keys",migration)
+        self.assertIn("Do not assume a fixed number of agents",planner)
+        self.assertIn("SupabaseAgentScheduler().schedule_next()",runtime)
+        self.assertIn("recover_expired",scheduler)
