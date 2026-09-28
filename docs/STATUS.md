@@ -71,7 +71,7 @@ PR #269 added the conversational new-project path, ongoing-project reconcile-fir
 
 OpenAI API authentication and Codex workspace authentication are intentionally separate.
 
-The existing API key reached the OpenAI API but returned HTTP 429/quota, so the Factory does not use it for unattended paid work.
+The retained API key is now billing-ready. On 2026-09-28, after the user manually added US$ 5 of API Platform credit, workflow `OpenAI billing smoke once` run `36413373572` executed exactly one bounded GPT-5.6 Luna request and returned `FACTORY_SMOKE_OK`. Usage was 35 input + 9 output = 44 tokens, with estimated cost US$ 0.0000178 under a US$ 0.01 ceiling; the run, usage, provider reference and cost were persisted in the Control Plane. `FACTORY_PRIMARY_MODEL_ENABLED` remains false pending explicit operating-budget and per-run-reservation approval.
 
 Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. On 2026-09-27 the Infodive managed ChatGPT workspace Admin Portal was inspected directly in both current and legacy administration surfaces; the documented `Workload identity` section is not present. This confirms the external beta enablement is still missing. Issue #240 tracks the required OpenAI Support/admin action before the preflight can be exercised.
 

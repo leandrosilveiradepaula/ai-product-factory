@@ -23,8 +23,9 @@ Current known state:
   - exact mapping checks for issuer, audience, repository, `refs/heads/main`, and `openai-api`
   - restricted model request access for `/v1/responses`
 - the API WIF no-model preflight now runs during the temporary public Actions window. The real GitHub OIDC token is issued successfully, but OpenAI currently rejects the exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. The actual immutable GitHub subject is `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`; the OpenAI Platform mapping must be reconciled to these real claims before WIF is treated as ready;
-- the API Platform Billing screen currently shows `$0.00` credit remaining, so model execution remains disabled;
-- the existing `OPENAI_API_KEY` is retained temporarily until WIF preflight succeeds and must not be treated as a reason to enable paid execution.
+- the user manually added US$ 5 of API Platform credit on 2026-09-28;
+- bounded billing smoke run `36413373572` succeeded through `OPENAI_API_KEY` using GPT-5.6 Luna with `reasoning=none`, 32 max output tokens, exact output `FACTORY_SMOKE_OK`, 35 input tokens, 9 output tokens, and estimated cost US$ 0.0000178 under a US$ 0.01 ceiling; the evidence is persisted in the Control Plane;
+- the existing `OPENAI_API_KEY` is retained temporarily while WIF #250 remains unresolved; `FACTORY_PRIMARY_MODEL_ENABLED` stays false until the user explicitly approves the operating budget and per-run reservation.
 
 Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merely to poll readiness and do not add credits automatically.
 
