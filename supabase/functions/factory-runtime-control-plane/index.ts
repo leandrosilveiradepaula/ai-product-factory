@@ -8,8 +8,11 @@ const EXPECTED = {
   repository_id: "1387883686",
   repository_owner_id: "256917842",
   ref: "refs/heads/main",
-  workflow_ref: "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
 };
+const ALLOWED_WORKFLOW_REFS = new Set([
+  "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
+  "leandrosilveiradepaula/ai-product-factory/.github/workflows/control-plane-oidc-preflight.yml@refs/heads/main",
+]);
 
 function json(status:number, body:unknown) {
   return new Response(JSON.stringify(body), {status, headers:{"content-type":"application/json","cache-control":"no-store"}});
@@ -22,8 +25,9 @@ async function verifyGithub(req:Request) {
   for(const [key,expected] of Object.entries(EXPECTED)) {
     if(String(payload[key]??"")!==expected) throw new Error("GitHub OIDC claim mismatch: "+key);
   }
+  if(!ALLOWED_WORKFLOW_REFS.has(String(payload.workflow_ref??""))) throw new Error("GitHub OIDC workflow_ref not allowed");
   const event=String(payload.event_name??"");
-  if(!["schedule","workflow_dispatch"].includes(event)) throw new Error("GitHub OIDC event not allowed");
+  if(!["schedule","workflow_dispatch","push"].includes(event)) throw new Error("GitHub OIDC event not allowed");
   return payload;
 }
 
