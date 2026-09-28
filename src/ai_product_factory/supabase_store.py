@@ -16,6 +16,7 @@ from .control_plane import (
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
+_UNSET = object()
 
 
 def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, Any]:
@@ -274,7 +275,7 @@ class SupabaseControlPlaneStore:
         *,
         operation: str | None = None,
         usage_units: float | None = None,
-        estimated_cost: float | None = None,
+        estimated_cost: float | None | object = _UNSET,
         metadata: dict[str, Any] | None = None,
     ) -> ToolUsageRecord:
         payload: dict[str, Any] = {}
@@ -282,7 +283,7 @@ class SupabaseControlPlaneStore:
             payload["operation"] = operation
         if usage_units is not None:
             payload["usage_units"] = usage_units
-        if estimated_cost is not None:
+        if estimated_cost is not _UNSET:
             payload["estimated_cost"] = estimated_cost
         if metadata is not None:
             payload["metadata"] = metadata
