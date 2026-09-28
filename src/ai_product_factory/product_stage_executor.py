@@ -28,7 +28,7 @@ class ProductStageExecutor:
         prior={s:self.outputs[(item.run_id,s)] for s in ("discovery","specification") if (item.run_id,s) in self.outputs}
         objective=getattr(self.prompts,stage)
         context=json.dumps({"project_key":item.project_key,"intake":item.context,"prior_stages":prior},ensure_ascii=False,sort_keys=True)
-        result=self.executor.execute(ExecutionRoute.DIRECT,ModelRequest(task_id=item.task_id,objective=objective,context=context,constraints=("Return valid JSON only.","Do not invent unavailable business decisions.","Record assumptions explicitly.")))
+        result=self.executor.execute(ExecutionRoute.DIRECT,ModelRequest(task_id=item.task_id,objective=objective,context=context,run_id=item.run_id,constraints=("Return valid JSON only.","Do not invent unavailable business decisions.","Record assumptions explicitly.")))
         try: output=json.loads(result.output)
         except json.JSONDecodeError as exc: raise ValueError(f"{stage} returned invalid JSON") from exc
         if not isinstance(output,dict): raise ValueError(f"{stage} output must be a JSON object")
