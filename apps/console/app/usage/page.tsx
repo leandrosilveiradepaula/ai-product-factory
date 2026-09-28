@@ -4,7 +4,7 @@ import {EmptyState,PageHeader,SectionHeader,StatusPill} from "../ui";
 export default async function Usage(){
  const u=await getUsageOverview();
  return <>
-  <PageHeader eyebrow="Models & Usage" title="Modelos e uso" subtitle="Ledger de ferramentas, custo conhecido e uso real de Codex. Custo pago desconhecido bloqueia execução."/>
+  <PageHeader eyebrow="Modelos e uso" title="Modelos e uso" subtitle="Ledger de ferramentas, custo conhecido e uso real de Codex. Custo pago desconhecido bloqueia execução."/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Custo conhecido</span><strong>{u.knownCost.toFixed(4)}</strong></div>
    <div className="operationalStat"><span>Eventos</span><strong>{u.toolEvents}</strong></div>
