@@ -7,6 +7,7 @@ const required = [
   "FACTORY_VISUAL_EMAIL",
   "FACTORY_VISUAL_PASSWORD",
   "FACTORY_VISUAL_EVIDENCE_DIR",
+  "FACTORY_VISUAL_TARGET_COMMIT",
 ];
 for (const name of required) {
   if (!process.env[name]) throw new Error(`missing ${name}`);
@@ -17,7 +18,8 @@ const email = process.env.FACTORY_VISUAL_EMAIL;
 const password = process.env.FACTORY_VISUAL_PASSWORD;
 const outDir = process.env.FACTORY_VISUAL_EVIDENCE_DIR;
 const runId = process.env.GITHUB_RUN_ID || "local";
-const sourceCommit = process.env.GITHUB_SHA || "unknown";
+const targetCommit = process.env.FACTORY_VISUAL_TARGET_COMMIT;
+const workflowSourceCommit = process.env.GITHUB_SHA || "unknown";
 const consoleErrors = [];
 const pageErrors = [];
 
@@ -73,7 +75,9 @@ try {
   await fs.writeFile(path.join(outDir,"manifest.json"), JSON.stringify({
     status:"success",
     workflowRunId:runId,
-    sourceCommit,
+    targetCommit,
+    targetUrl:consoleUrl,
+    workflowSourceCommit,
     captured,
     consoleErrors,
     pageErrors,
