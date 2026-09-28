@@ -338,7 +338,7 @@ returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
  if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
- select r,a2.agent_key into v_run,v_agent_key
+ select r.* into v_run
  from public.factory_runs r
  join public.factory_tasks t on t.id=r.task_id
  join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
@@ -349,6 +349,12 @@ begin
  order by r.created_at
  for update of r skip locked limit 1;
  if v_run.id is null then return null;end if;
+ select a2.agent_key into v_agent_key
+ from public.factory_run_agent_assignments ra
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where ra.run_id=v_run.id and ra.status in ('assigned','claimed')
+ order by ra.assigned_at desc limit 1;
+ if v_agent_key is null then raise exception 'active agent assignment not found'; end if;
  select * into v_task from public.factory_tasks where id=v_run.task_id for update;
  select * into v_project from public.factory_projects where id=v_task.project_id;
  v_branch:='factory/'||v_agent_key||'/task-'||v_task.id::text;
