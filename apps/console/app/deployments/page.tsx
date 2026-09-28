@@ -9,7 +9,7 @@ export default async function Deployments(){
  const ready=rows.filter(x=>["ready","success","verified","released"].includes(x.status.toLowerCase())).length;
  const failed=rows.filter(x=>["failed","error"].includes(x.status.toLowerCase())).length;
  return <>
-  <PageHeader eyebrow="Deployments · Releases" title="Implantações" subtitle="Evidências duráveis de Preview, liberação e reversão registradas pelo Control Plane."/>
+  <PageHeader eyebrow="Implantações · Liberações" title="Implantações" subtitle="Evidências duráveis de Preview, liberação e reversão registradas pelo Control Plane."/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Previews</span><strong>{previews}</strong></div>
    <div className="operationalStat"><span>Produção</span><strong>{production}</strong></div>
