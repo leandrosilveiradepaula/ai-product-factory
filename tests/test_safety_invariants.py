@@ -27,7 +27,7 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("Detect Direct Control Plane readiness",direct)
   self.assertIn("Direct execution is inert: Control Plane credentials are not configured.",direct)
   self.assertIn("steps.readiness.outputs.control_plane == 'true'",direct)
-  process=direct.split("Process at most one Direct implementation task",1)[1]
+  process=direct.split("Process assigned Direct specialist task",1)[1]
   self.assertIn("steps.readiness.outputs.control_plane == 'true'",process)
 
  def test_api_key_primary_jobs_use_oidc_only_for_control_plane(self):
