@@ -73,5 +73,9 @@ class SupabaseAgentScheduler:
     def release(self,run_id:str,status:str="released")->None:
         self._rpc("factory_release_agent_slot",{"p_run_id":run_id,"p_status":status})
 
+    def release_scopes(self,run_id:str)->int:
+        result=self._rpc("factory_release_agent_scope_locks",{"p_run_id":run_id})
+        return int(result or 0)
+
     def recover_expired(self)->dict:
         return self._rpc("factory_recover_expired_agent_slots",{}) or {"released":0}
