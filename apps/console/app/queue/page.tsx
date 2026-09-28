@@ -7,7 +7,7 @@ export default async function Queue(){
  const high=items.filter(x=>x.complexity==="high").length;
  const waitingHuman=items.filter(x=>x.status.includes("human")||x.status.includes("release")).length;
  return <>
-  <PageHeader eyebrow="Work Queue" title="Fila de trabalho" subtitle="Trabalho executável aguardando distribuição, execução ou autoridade humana." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
+  <PageHeader eyebrow="Fila de trabalho" title="Fila de trabalho" subtitle="Trabalho executável aguardando distribuição, execução ou autoridade humana." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Total na fila</span><strong>{items.length}</strong></div>
    <div className="operationalStat"><span>Alta complexidade</span><strong>{high}</strong></div>
