@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse,json,os,socket
 from decimal import Decimal
 from .model_executor import ModelExecutor
+from .metered_provider import MeteredPrimaryProvider
 from .openai_provider import OpenAIResponsesProvider
 from .product_stage_executor import ProductStageExecutor
 from .runtime_auth import AuthKind,RuntimeAuthResolver
@@ -67,7 +68,7 @@ def build_handler():
  require_primary_runtime_enabled()
  auth=RuntimeAuthResolver().resolve()
  if auth.kind == AuthKind.OPENAI_API_KEY:
-  return ProductStageExecutor(ModelExecutor(primary=OpenAIResponsesProvider()))
+  return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
 
 def run_recovery_once(max_attempts:int=3)->dict:
@@ -91,7 +92,7 @@ def run_direct_once(worker_id:str)->dict:
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  item=SupabaseDirectRunQueue().claim_next(worker_id)
  if item is None:return {"claimed":False,"status":"empty"}
- producer=ModelImplementationProducer(ModelExecutor(primary=OpenAIResponsesProvider()))
+ producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
  github=GitHubRestAdapter(repository=item.repository)
  loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
