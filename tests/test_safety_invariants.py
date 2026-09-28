@@ -30,22 +30,25 @@ class SafetyInvariantTests(unittest.TestCase):
   process=direct.split("Process at most one Direct implementation task",1)[1]
   self.assertIn("steps.readiness.outputs.control_plane == 'true'",process)
 
- def test_api_key_primary_jobs_do_not_request_oidc(self):
+ def test_api_key_primary_jobs_use_oidc_only_for_control_plane(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   product=text.split("\n  product-stage:",1)[1].split("\n  ci-followup:",1)[0]
   direct=text.split("\n  direct:",1)[1].split("\n\n  codex:",1)[0]
-  self.assertIn("FACTORY_PRIMARY_AUTH_MODE: api_key",product)
-  self.assertIn("FACTORY_PRIMARY_AUTH_MODE: api_key",direct)
-  self.assertNotIn("id-token: write",product)
-  self.assertNotIn("id-token: write",direct)
+  for block in (product,direct):
+   self.assertIn("FACTORY_PRIMARY_AUTH_MODE: api_key",block)
+   self.assertIn("./.github/actions/control-plane-oidc",block)
+   self.assertNotIn("OPENAI_FEDERATION_RULE_ID",block)
+   self.assertNotIn("OPENAI_IDENTITY_TOKEN_FILE",block)
   codex=text.split("\n  codex:",1)[1].split("\n  codex-manual:",1)[0]
   self.assertIn("id-token: write",codex)
+  self.assertIn("OPENAI_FEDERATION_RULE_ID",codex)
 
- def test_control_plane_accepts_modern_or_legacy_server_secret(self):
+ def test_control_plane_actions_use_oidc_without_supabase_secrets(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
-  self.assertIn("SUPABASE_SECRET_KEY",text)
-  self.assertIn("SUPABASE_SERVICE_ROLE_KEY",text)
-  self.assertIn('[ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]',text)
+  self.assertNotIn("secrets.SUPABASE_SECRET_KEY",text)
+  self.assertNotIn("secrets.SUPABASE_SERVICE_ROLE_KEY",text)
+  self.assertNotIn("secrets.SUPABASE_URL",text)
+  self.assertGreaterEqual(text.count("./.github/actions/control-plane-oidc"),8)
  def test_alert_job_is_scheduled_and_deduplicated_sink_is_explicitly_enabled(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   alerts=text.split("\n  alerts:",1)[1]

@@ -441,6 +441,36 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("targetUrl:consoleUrl", script)
         self.assertIn("workflowSourceCommit", script)
 
+    def test_control_plane_oidc_broker_is_fail_closed_and_secretless(self):
+        workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+        action = (ROOT / ".github/actions/control-plane-oidc/action.yml").read_text()
+        broker = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        preflight = (ROOT / ".github/workflows/control-plane-oidc-preflight.yml").read_text()
+
+        self.assertNotIn("secrets.SUPABASE_URL", workflow)
+        self.assertNotIn("secrets.SUPABASE_SECRET_KEY", workflow)
+        self.assertNotIn("secrets.SUPABASE_SERVICE_ROLE_KEY", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("./.github/actions/control-plane-oidc", workflow)
+        self.assertIn("factory-runtime-control-plane", action)
+        self.assertIn("ACTIONS_ID_TOKEN_REQUEST_URL", action)
+        self.assertIn("ACTIONS_ID_TOKEN_REQUEST_TOKEN", action)
+
+        for claim in (
+            'repository: "leandrosilveiradepaula/ai-product-factory"',
+            'repository_id: "1387883686"',
+            'repository_owner_id: "256917842"',
+            'ref: "refs/heads/main"',
+            'audience:AUDIENCE',
+        ):
+            self.assertIn(claim, broker)
+        self.assertIn("ALLOWED_WORKFLOW_REFS", broker)
+        self.assertIn('resource.startsWith("factory_")', broker)
+        self.assertIn('resource.startsWith("rpc/factory_")', broker)
+        self.assertNotIn("/auth/v1/", broker)
+        self.assertIn("workflow_dispatch:", preflight)
+        self.assertIn("factory_projects?select=project_key", preflight)
+
     def test_vercel_deployments_are_bounded_to_console_branches(self):
         vercel = (ROOT / "apps/console/vercel.json").read_text()
         workflow = (ROOT / ".github/workflows/console.yml").read_text()
