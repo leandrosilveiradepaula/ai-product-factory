@@ -19,16 +19,26 @@ class RuntimeAuthResolver:
  def __init__(self,environ:dict[str,str]|None=None)->None:self.environ=environ if environ is not None else os.environ
 
  def resolve_primary_api(self)->RuntimeAuth:
+  mode=str(self.environ.get("FACTORY_PRIMARY_AUTH_MODE") or "auto").strip().lower()
+  if mode not in {"auto","api_key","wif"}:
+   return RuntimeAuth(AuthKind.NONE,f"invalid primary auth mode: {mode}",False)
   wif_values=(
    self.environ.get("OPENAI_IDENTITY_PROVIDER_ID"),
    self.environ.get("OPENAI_SERVICE_ACCOUNT_ID"),
    self.environ.get("OPENAI_WIF_AUDIENCE"),
   )
+  key=self.environ.get("OPENAI_API_KEY")
+  if mode=="api_key":
+   if key:return RuntimeAuth(AuthKind.OPENAI_API_KEY,"OPENAI_API_KEY",True)
+   return RuntimeAuth(AuthKind.NONE,"OPENAI_API_KEY is required by primary auth mode",False)
+  if mode=="wif":
+   if all(wif_values):return RuntimeAuth(AuthKind.OPENAI_API_WIF,"OpenAI API workload identity",True)
+   return RuntimeAuth(AuthKind.NONE,"complete OpenAI API workload identity is required by primary auth mode",False)
   if any(wif_values):
    if all(wif_values):
     return RuntimeAuth(AuthKind.OPENAI_API_WIF,"OpenAI API workload identity",True)
    return RuntimeAuth(AuthKind.NONE,"incomplete OpenAI API workload identity",False)
-  if self.environ.get("OPENAI_API_KEY"):
+  if key:
    return RuntimeAuth(AuthKind.OPENAI_API_KEY,"OPENAI_API_KEY",True)
   return RuntimeAuth(AuthKind.NONE,"none",False)
 
