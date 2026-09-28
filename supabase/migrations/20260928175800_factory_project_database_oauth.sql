@@ -13,7 +13,7 @@ grant select,insert,update,delete on table public.factory_project_database_oauth
 
 create or replace function public.factory_store_project_database_oauth(
  p_database_id uuid,p_access_token text,p_refresh_token text,p_token_type text,p_expires_at timestamptz
-) returns void language plpgsql security definer set search_path='' as $
+) returns void language plpgsql security definer set search_path='' as $$
 declare v_access uuid;v_refresh uuid;v_old public.factory_project_database_oauth%rowtype;
 begin
  if nullif(btrim(p_access_token),'') is null then raise exception 'access token required';end if;
