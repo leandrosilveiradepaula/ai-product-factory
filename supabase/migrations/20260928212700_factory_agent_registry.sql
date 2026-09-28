@@ -283,7 +283,6 @@ begin
  where r.status='queued' and r.execution_route='direct' and t.status='queued_execution'
    and (p_agent_key is null or a2.agent_key=p_agent_key)
    and (p_run_id is null or r.id=p_run_id)
-   and (p_run_id is null or r.id=p_run_id)
  order by r.created_at
  for update of r skip locked limit 1;
  if v_run.id is null then return null;end if;
@@ -317,6 +316,7 @@ begin
  join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
  where r.status='queued' and r.execution_route='codex' and t.status='queued_execution'
    and (p_agent_key is null or a2.agent_key=p_agent_key)
+   and (p_run_id is null or r.id=p_run_id)
  order by r.created_at
  for update of r skip locked limit 1;
  if v_run.id is null then return null;end if;
