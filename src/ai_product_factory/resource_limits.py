@@ -36,3 +36,12 @@ def summarize_limit(item:ResourceLimit)->dict:
   "percent":None if item.percent is None else float(item.percent.quantize(Decimal("0.1"))),
   "unit":item.unit,"quality":item.quality,"source":item.source,"window_key":item.window_key,
   "resets_at":item.resets_at,"status":item.status}
+
+
+def vercel_daily_deployments(*,count:int,limit:int=100,source:str="vercel-deployments-api",resets_at:str|None=None)->ResourceLimit:
+ if count<0:raise ValueError("count must be non-negative")
+ return ResourceLimit("vercel","team","deployments_daily",Decimal(count),Decimal(limit),"deployments","derived",source,"rolling_24h",resets_at)
+
+def github_actions_usage(*,used:Decimal|None,limit:Decimal|None,unit:str="minutes",source:str="github-billing-api",resets_at:str|None=None)->ResourceLimit:
+ quality="exact" if used is not None and limit is not None else "unknown"
+ return ResourceLimit("github","actions","actions_usage",used,limit,unit,quality,source,"billing_cycle",resets_at)
