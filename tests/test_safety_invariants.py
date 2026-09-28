@@ -17,9 +17,10 @@ class SafetyInvariantTests(unittest.TestCase):
   direct=text.split("\n  direct:",1)[1].split("\n\n  preview:",1)[0]
   self.assertIn("inputs.run_direct == true",direct)
   self.assertIn("github.event_name == 'schedule'",direct)
-  self.assertIn("vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true'",direct)
-  self.assertIn("vars.FACTORY_MODEL_BUDGET_USD != ''",direct)
-  self.assertIn("vars.FACTORY_MODEL_RESERVE_USD != ''",direct)
+  self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"',direct)
+  self.assertIn('FACTORY_PRIMARY_AUTH_MODE: api_key',direct)
+  self.assertIn('FACTORY_MODEL_BUDGET_USD: "4.00"',direct)
+  self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',direct)
  def test_control_plane_accepts_modern_or_legacy_server_secret(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn("SUPABASE_SECRET_KEY",text)
