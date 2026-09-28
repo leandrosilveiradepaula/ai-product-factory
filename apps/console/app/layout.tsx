@@ -14,7 +14,7 @@ export default function RootLayout({children}:{children:React.ReactNode}){
     <aside className="sidebar">
      <div className="brandRow"><Link href="/" className="brandBlock">
       <div className="brandMark">AI</div>
-      <div className="brandText"><strong>Product Factory</strong><span>PAINEL DE CONTROLE</span></div>
+      <div className="brandText"><strong>Fábrica de Produtos</strong><span>PAINEL DE CONTROLE</span></div>
      </Link><label htmlFor="sidebar-toggle" className="collapseButton" title="Recolher barra lateral">‹</label></div>
      <ConsoleNav/>
      <div className="sidebarFooter">
