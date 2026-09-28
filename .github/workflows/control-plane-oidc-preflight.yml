@@ -1,0 +1,38 @@
+name: Control Plane OIDC preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/control-plane-oidc-preflight.yml"
+      - ".github/actions/control-plane-oidc/action.yml"
+      - "supabase/functions/factory-runtime-control-plane/**"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Verify fail-closed Control Plane read
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $SUPABASE_SECRET_KEY"             "$SUPABASE_URL/rest/v1/factory_projects?select=project_key&order=project_key.asc&limit=5")"
+          BODY="$body" python - <<'PY'
+import json, os
+rows=json.loads(os.environ["BODY"])
+if not isinstance(rows,list):
+    raise SystemExit("Control Plane response is not a list")
+keys={str(row.get("project_key") or "") for row in rows}
+if "ai-product-factory" not in keys:
+    raise SystemExit("Expected Factory project is not readable through OIDC broker")
+print(json.dumps({"status":"ok","projects":sorted(keys)}))
+PY
