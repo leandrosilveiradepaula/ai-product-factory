@@ -613,3 +613,16 @@ def test_resource_limit_observability_is_fail_closed_and_secret_free():
     assert 'if p>=100:return "blocked"' in model
     assert 'if p>=90:return "critical"' in model
     assert 'if p>=70:return "attention"' in model
+
+
+def test_console_exposes_resource_limit_percentages_without_inventing_unknowns():
+    control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+    usage=(ROOT/"apps/console/app/usage/page.tsx").read_text()
+    assert "getResourceLimits" in control
+    assert "factory_resource_limit_snapshots" in control
+    assert "used==null||limit==null||limit<=0?null" in control
+    assert "Limites e quotas operacionais" in usage
+    assert 'x.percent==null?"—":x.percent.toFixed(1)+"%"' in usage
+    assert 'x.used==null||x.limit==null?"Indisponível"' in usage
+    assert "x.quality" in usage
+    assert "x.resetsAt" in usage
