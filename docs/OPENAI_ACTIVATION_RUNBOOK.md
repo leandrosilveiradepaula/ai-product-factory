@@ -1,6 +1,6 @@
 # OpenAI Activation Runbook
 
-Last reconciled: 2026-09-27.
+Last reconciled: 2026-09-28.
 
 This runbook deliberately separates **Codex workspace authentication** from **OpenAI API Platform authentication and billing**.
 
@@ -151,13 +151,14 @@ API WIF does **not** grant free API usage and does not reuse ChatGPT Business wo
 
 Current known state:
 
-- connected Platform target: organization `Personal`, project `Default project`;
-- a previous API-key request reached the API but returned HTTP 429/quota;
-- the available connector does not expose live API billing balance.
+- the user manually added US$ 5 of API Platform credit on 2026-09-28;
+- bounded billing smoke run `36413373572` succeeded with exact output `FACTORY_SMOKE_OK`, 44 total tokens and estimated cost US$ 0.0000178;
+- Primary is explicitly active through `FACTORY_PRIMARY_AUTH_MODE=api_key`;
+- the Factory budget is US$ 4.00 with a US$ 0.50 per-call/run reservation, leaving US$ 1.00 of the original funding outside the Factory budget;
+- the durable ledger pre-reserves cost before provider use and unknown paid cost blocks later paid execution;
+- API WIF #250 is now authentication hardening, not a blocker for the approved API-key path.
 
-Before enabling Primary execution, an API organization owner must verify API billing/quota directly in the API Platform billing settings.
-
-Do not add balance automatically.
+Do not add balance or enable auto-reload automatically.
 
 ### Primary activation order
 
@@ -182,9 +183,9 @@ Do not add balance automatically.
 
 ### API Platform
 
-- Billing/quota state cannot be read through the connected Platform tool.
-- A prior request returned quota/billing-related HTTP 429.
-- No additional paid request is justified until billing/quota is explicitly verified.
+- Primary API billing/quota has been proven by one bounded paid smoke and the API-key path is active.
+- API WIF token exchange remains blocked by the service-account mapping mismatch tracked in #250.
+- Do not repeat paid smoke calls merely to probe WIF readiness; the WIF preflight is explicitly no-model.
 
 ### Shared infrastructure
 
@@ -225,9 +226,10 @@ Activation status:
 - token exchange: currently blocked by `HTTP 401 / invalid_grant` with message `The provided service_account_id mapping does not match token attributes.`;
 - actual immutable GitHub subject observed: `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`;
 - administrator action required: reconcile the OpenAI Platform service-account mapping to the actual token attributes, then rerun the no-model preflight;
-- billing/model execution: independently blocked because API credit remaining is currently `$0.00`;
-- `FACTORY_PRIMARY_MODEL_ENABLED`: must remain false;
-- `OPENAI_API_KEY`: retain temporarily until WIF preflight succeeds, then review removal.
+- billing/model execution: operational through the approved API-key path after the successful bounded smoke;
+- `FACTORY_PRIMARY_MODEL_ENABLED=true` is active only in the budgeted/metered runtime;
+- `FACTORY_PRIMARY_AUTH_MODE=api_key` is explicit while #250 remains unresolved;
+- `OPENAI_API_KEY`: retain as the current approved runtime credential until WIF preflight succeeds, then review migration/removal.
 
 
 ### Temporary access-token path
@@ -245,3 +247,15 @@ Until Codex WIF is enabled for the Infodive workspace, the Factory may use the o
 9. Only then enable `FACTORY_CODEX_ENABLED=true`.
 
 Credential precedence is WIF > official access token. Access-token creation/revocation is a human credential action and is never automated by the Factory.
+
+
+## Retired paid shortcuts
+
+The historical `openai-runtime.yml`, `openai-runtime-execute.yml` and
+one-shot billing-smoke workflow were retired after activation. The
+`ai-product-factory openai-execute` CLI shortcut was also removed because it
+could call the provider without the durable Control Plane cost ledger.
+
+Use the normal Factory product/direct workers for paid operational execution.
+Use `openai-api-wif-preflight.yml` for WIF readiness because it performs no
+model call.
