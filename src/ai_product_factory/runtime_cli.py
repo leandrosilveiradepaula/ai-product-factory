@@ -178,7 +178,7 @@ def run_preview_once()->dict:
  readiness=verified_preview_readiness(project_cfg.mode)
  if not readiness.ready:return {"claimed":False,"status":"blocked","run_id":item.run_id,"missing":list(readiness.missing),"preview_mode":project_cfg.mode}
  if project_cfg.mode=="github":
-  provider=GitHubVercelPreviewAdapter(github_vercel_config_from_env(item.repository))
+  provider=GitHubVercelPreviewAdapter(github_vercel_config_from_env(item.repository,pull_request_number=item.pr_number))
  else:
   vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id or "",project_name=project_cfg.project_name or "",github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
   provider=VercelPreviewAdapter(vercel_cfg)
