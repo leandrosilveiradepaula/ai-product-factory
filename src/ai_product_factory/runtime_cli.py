@@ -73,7 +73,9 @@ def build_handler():
  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
 
 def run_recovery_once(max_attempts:int=3)->dict:
- return SupabaseRuntimeQueue().recover_expired(max_attempts)
+ runs=SupabaseRuntimeQueue().recover_expired(max_attempts)
+ agents=SupabaseAgentScheduler().recover_expired()
+ return {"runs":runs,"agents":agents}
 
 def run_product_once(worker_id:str)->dict:
  try:
