@@ -472,6 +472,16 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("issues: write", workflow)
         self.assertNotIn("pull-requests: write", workflow)
 
+    def test_console_exposes_database_readiness_without_secret_references(self):
+        detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        self.assertIn("getProjectDatabases",detail)
+        self.assertIn("Aguardando conexão",detail)
+        self.assertIn("Somente leitura",detail)
+        self.assertIn("factory_project_databases",control)
+        self.assertNotIn("credential_ref",control)
+        self.assertNotIn("credentialRef",detail)
+
     def test_project_database_capability_is_scoped_and_cost_gated(self):
         migration=(ROOT/"supabase/migrations/20260928170000_factory_project_database_registry.sql").read_text()
         adapter=(ROOT/"src/ai_product_factory/supabase_management.py").read_text()
