@@ -124,12 +124,12 @@ export async function getProjectOperations(projectId:string):Promise<ProjectOper
  ]);
  const read=async(r:any)=>r.ok?await r.json():[];const [tu,cu,ev,dp,gt,au,de]=await Promise.all([read(tools),read(codex),read(evals),read(deploys),read(gates),read(audit),read(decisions)]);
  const timeline:ProjectTimelineItem[]=[];
- runs.forEach((x:any)=>timeline.push({id:`run-${x.id}`,kind:"run",title:`Run · ${x.execution_route||"unrouted"}`,status:x.status,at:x.finished_at||x.created_at,detail:x.branch_name||null,cost:null,units:null,ref:x.candidate_commit||null}));
+ runs.forEach((x:any)=>timeline.push({id:`run-${x.id}`,kind:"run",title:`Execução · ${x.execution_route||"unrouted"}`,status:x.status,at:x.finished_at||x.created_at,detail:x.branch_name||null,cost:null,units:null,ref:x.candidate_commit||null}));
  tu.forEach((x:any)=>timeline.push({id:`tool-${x.id}`,kind:"tool",title:`${x.tool_family} · ${x.operation}`,status:null,at:x.created_at,detail:null,cost:x.estimated_cost==null?null:Number(x.estimated_cost),units:x.usage_units==null?null:Number(x.usage_units),ref:null}));
- cu.forEach((x:any)=>timeline.push({id:`codex-${x.id}`,kind:"codex",title:`Codex policy L${x.policy_level}`,status:Number(x.invocation_count)>0?"invoked":"not invoked",at:x.created_at,detail:JSON.stringify(x.reason||{}),cost:null,units:Number(x.invocation_count||0),ref:null}));
+ cu.forEach((x:any)=>timeline.push({id:`codex-${x.id}`,kind:"codex",title:`Política Codex N${x.policy_level}`,status:Number(x.invocation_count)>0?"invoked":"not invoked",at:x.created_at,detail:JSON.stringify(x.reason||{}),cost:null,units:Number(x.invocation_count||0),ref:null}));
  ev.forEach((x:any)=>timeline.push({id:`eval-${x.id}`,kind:"evaluation",title:x.eval_type,status:x.status,at:x.created_at,detail:x.score==null?null:`score ${x.score}`,cost:null,units:null,ref:x.baseline_ref||null}));
- dp.forEach((x:any)=>timeline.push({id:`deploy-${x.id}`,kind:"deployment",title:`Deployment · ${x.environment}`,status:x.status,at:x.deployed_at||x.created_at,detail:null,cost:null,units:null,ref:x.deployment_ref||null}));
- gt.forEach((x:any)=>timeline.push({id:`gate-${x.id}`,kind:"gate",title:`Gate · ${x.gate_type}`,status:x.status,at:x.resolved_at||x.requested_at,detail:x.resolved_by||null,cost:null,units:null,ref:null}));
+ dp.forEach((x:any)=>timeline.push({id:`deploy-${x.id}`,kind:"deployment",title:`Implantação · ${x.environment}`,status:x.status,at:x.deployed_at||x.created_at,detail:null,cost:null,units:null,ref:x.deployment_ref||null}));
+ gt.forEach((x:any)=>timeline.push({id:`gate-${x.id}`,kind:"gate",title:`Aprovação · ${x.gate_type}`,status:x.status,at:x.resolved_at||x.requested_at,detail:x.resolved_by||null,cost:null,units:null,ref:null}));
  au.forEach((x:any)=>timeline.push({id:`audit-${x.id}`,kind:"audit",title:x.event_type,status:null,at:x.created_at,detail:[x.actor_type,x.actor_ref].filter(Boolean).join(" · ")||null,cost:null,units:null,ref:null}));
  de.forEach((x:any)=>timeline.push({id:`decision-${x.id}`,kind:"decision",title:x.decision_type,status:null,at:x.created_at,detail:x.question||x.decided_by||null,cost:null,units:null,ref:null}));
  timeline.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));

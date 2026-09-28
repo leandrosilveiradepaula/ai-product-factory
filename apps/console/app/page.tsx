@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {getDashboard,getOperationsHealth,getUsageOverview} from "../lib/control-plane";
-import {ActionLink,EmptyState,MetricCard,PageHeader,SectionHeader,StatusPill} from "./ui";
+import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "./ui";
 
 export default async function Home(){
  const [d,health,usage]=await Promise.all([getDashboard(),getOperationsHealth(),getUsageOverview()]);
@@ -16,15 +16,15 @@ export default async function Home(){
    <MetricCard compact label="Projetos" value={d.projects.length} note="ativos no Painel de Controle"/>
    <MetricCard compact label="Execuções ativas" value={d.activeRuns} note="em execução ou fila"/>
    <MetricCard compact label="Aprovações humanas" value={d.pendingGates} note={d.pendingGates?"requerem decisão":"nenhum pendente"}/>
-   <MetricCard compact label="Atenção" value={attention} note="falhas, leases ou gates"/>
-   <MetricCard compact label="Custo conhecido" value={usage.knownCost.toFixed(4)} note="ledger acumulado"/>
+   <MetricCard compact label="Atenção" value={attention} note="falhas, reservas ou aprovações"/>
+   <MetricCard compact label="Custo conhecido" value={usage.knownCost.toFixed(4)} note="registro acumulado"/>
    <MetricCard compact label="Chamadas do Codex" value={d.codexCalls} note="invocações reais"/>
   </div>
   <div className="split section">
    <section>
     <SectionHeader title="Projetos" action={<ActionLink href="/projects" variant="ghostButton">Ver todos</ActionLink>}/>
     <div className="stack">
-     {d.projects.length===0?<EmptyState>Nenhum projeto registrado.</EmptyState>:d.projects.map(p=><Link href={"/projects/"+p.key} className="card projectCard" key={p.key}><div className="cardTop"><div><h3 className="cardTitle">{p.name}</h3><p className="cardMeta">{p.key}</p></div><StatusPill status={p.stage} tone="accent"/></div><div className="badgeLine" style={{marginTop:14}}><span className="status"><i className="statusDot"/>{p.status}</span><span className="muted">{new Date(p.updatedAt).toLocaleString("pt-BR")}</span></div></Link>)}
+     {d.projects.length===0?<EmptyState>Nenhum projeto registrado.</EmptyState>:d.projects.map(p=><Link href={"/projects/"+p.key} className="card projectCard" key={p.key}><div className="cardTop"><div><h3 className="cardTitle">{p.name}</h3><p className="cardMeta">{p.key}</p></div><StatusPill status={p.stage} tone="accent"/></div><div className="badgeLine" style={{marginTop:14}}><span className="status"><i className="statusDot"/>{humanizeStatus(p.status)}</span><span className="muted">{new Date(p.updatedAt).toLocaleString("pt-BR")}</span></div></Link>)}
     </div>
    </section>
    <aside>
@@ -37,7 +37,7 @@ export default async function Home(){
      <div className="valueRow"><span className="muted">Estado</span><StatusPill status={attention?"attention":"healthy"} label={attention?"atenção":"saudável"}/></div>
     </div>
     <div className="section"><SectionHeader title="Autonomia"/></div>
-    <div className="card"><div className="badgeLine"><StatusPill status="healthy" label="Determinístico primeiro"/><StatusPill status="policy" label="Provedores pagos falham de forma fechada"/><StatusPill status="policy" label="Produção exige autoridade humana"/></div><p className="muted" style={{marginBottom:0}}>A Factory segue fail-closed para providers pagos e preserva o gate humano de produção.</p></div>
+    <div className="card"><div className="badgeLine"><StatusPill status="healthy" label="Determinístico primeiro"/><StatusPill status="policy" label="Provedores pagos falham de forma fechada"/><StatusPill status="policy" label="Produção exige autoridade humana"/></div><p className="muted" style={{marginBottom:0}}>A Factory opera com bloqueio seguro para provedores pagos e preserva a aprovação humana de produção.</p></div>
    </aside>
   </div>
  </>;

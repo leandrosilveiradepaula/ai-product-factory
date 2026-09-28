@@ -28,7 +28,7 @@ export function MetricCard({label,value,note,compact=false}:{label:string;value:
 }
 
 const statusLabels:Record<string,string>={
-  active:"ativo",inactive:"inativo",healthy:"saudável",attention:"atenção",
+  active:"ativo",inactive:"inativo",healthy:"saudável",attention:"atenção",unknown:"desconhecido",
   failed:"falhou",failure:"falha",blocked:"bloqueado",rejected:"rejeitado",error:"erro",dead_letter:"fila de erro",
   awaiting:"aguardando",pending:"pendente",queued:"na fila",warning:"aviso",
   passed:"aprovado",success:"sucesso",succeeded:"concluído",complete:"concluído",completed:"concluído",
@@ -37,8 +37,8 @@ const statusLabels:Record<string,string>={
   discovery:"descoberta",specification:"especificação",implementation:"implementação",validation:"testes / avaliações",
   preview:"prévia",human_gate:"aprovação humana",release:"liberação",operations:"operação",
   created:"criado",dispatching:"distribuindo",queued_execution:"aguardando execução",
-  awaiting_human:"aguardando decisão humana",awaiting_release:"aguardando liberação",
-  direct:"direto",unrouted:"sem rota",operator:"operador",system:"sistema",human:"humano",
+  awaiting_human:"aguardando decisão humana",awaiting_release:"aguardando liberação",approved:"aprovado",cancelled:"cancelado",canceled:"cancelado",ci_pending:"CI pendente",ci_failed:"CI com falha",preview_ready:"prévia pronta",preparing_codex_manual:"preparando Codex manual",awaiting_codex_manual:"aguardando Codex manual",
+  direct:"direto",unrouted:"sem rota",operator:"operador",system:"sistema",human:"humano",run:"execução",tool:"ferramenta",evaluation:"avaliação",deployment:"implantação",gate:"aprovação",audit:"auditoria",decision:"decisão",invoked:"invocado","not invoked":"não invocado",production:"produção",
   greenfield:"novo produto",existing:"projeto em andamento",low:"baixa",medium:"média",high:"alta",
   policy:"política",codex:"Codex"
 };

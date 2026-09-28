@@ -10,9 +10,9 @@ async function start(formData:FormData){"use server";const intake=decode(String(
 
 export default async function Review({searchParams}:{searchParams:Promise<{intake?:string}>}){
  const p=await searchParams;const intake=decode(p.intake);
- if(!intake)return <><PageHeader eyebrow="Novo trabalho" title="Intake inválido" subtitle="O conteúdo de intake não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
+ if(!intake)return <><PageHeader eyebrow="Novo trabalho" title="Entrada inválida" subtitle="O conteúdo da entrada não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
  return <>
-  <PageHeader eyebrow="Revisar intake" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o bootstrap e abre o estágio de descoberta no Painel de Controle."}/>
+  <PageHeader eyebrow="Revisar entrada" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o ciclo inicial e abre o estágio de descoberta no Painel de Controle."}/>
   <div className="card" style={{maxWidth:860}}>
    <div className="detailGrid">
     <div className="detailItem"><span className="detailLabel">Modo</span><strong>{intake.mode==="greenfield"?"Novo produto":"Projeto em andamento"}</strong></div>
@@ -26,9 +26,9 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
    <div><span className="detailLabel">Integrações conhecidas</span><p className="muted">{intake.integrations||"Não informado"}</p></div>
    {intake.mode==="existing"?<><div className="detailGrid section"><div className="detailItem"><span className="detailLabel">Estágio informado</span><strong>{intake.reportedStage||"não informado"}</strong></div><div className="detailItem"><span className="detailLabel">Pendências conhecidas</span><strong>{intake.knownPending||"Não informadas"}</strong></div></div><div className="section"><span className="detailLabel">Restrições a preservar</span><p className="muted">{intake.constraints||"Não informadas"}</p></div></>:null}
    <div className="section"><span className="detailLabel">Anexos privados</span><p className="muted">{intake.attachmentCount?intake.attachmentCount+" arquivo(s) armazenado(s) e aguardando vínculo ao projeto.":"Nenhum anexo."}</p></div>
-   <div className="section"><span className="detailLabel">Referências</span>{intake.references?.length?<div className="stack">{intake.references.map((ref,i)=><div className="badgeLine" key={ref.value+i}><span className="pill accent">{ref.kind}</span><code>{ref.value}</code></div>)}</div>:<p className="muted">Not informed</p>}</div>
-   <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">{intake.mode==="existing"?"A Factory registra este briefing, reconcilia as evidências disponíveis do projeto e cria somente o trabalho que falta. O estágio informado é uma pista, não uma verdade presumida.":"A Factory registra este pedido como fonte do projeto, cria o bootstrap e entra em Discovery. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana."}</p></div>
+   <div className="section"><span className="detailLabel">Referências</span>{intake.references?.length?<div className="stack">{intake.references.map((ref,i)=><div className="badgeLine" key={ref.value+i}><span className="pill accent">{ref.kind}</span><code>{ref.value}</code></div>)}</div>:<p className="muted">Não informado</p>}</div>
+   <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">{intake.mode==="existing"?"A Factory registra este briefing, reconcilia as evidências disponíveis do projeto e cria somente o trabalho que falta. O estágio informado é uma pista, não uma verdade presumida.":"A Factory registra este pedido como fonte do projeto, cria o bootstrap e entra em Descoberta. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana."}</p></div>
   </div>
-  <div className="actions"><ActionLink href="/projects/new">Editar</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">{intake.mode==="existing"?"Importar e reconciliar":"Iniciar Discovery"}</Button></form></div>
+  <div className="actions"><ActionLink href="/projects/new">Editar</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">{intake.mode==="existing"?"Importar e reconciliar":"Iniciar Descoberta"}</Button></form></div>
  </>;
 }

@@ -21,13 +21,13 @@ begin
 
  if v_project_kind='existing' or coalesce(v_manifest->>'reconcile_first','false')='true' then
    v_external_key := 'project-reconciliation-v1';
-   v_title := 'Reconcile existing project before continuation';
-   v_description := 'Inspect available source-of-truth evidence, establish the current state, compare it with the continuation brief, and plan only the remaining gaps.';
+   v_title := 'Reconciliar projeto existente antes da continuidade';
+   v_description := 'Inspecionar as fontes de verdade disponíveis, registrar o estado atual, comparar com o briefing de continuidade e planejar somente as lacunas restantes.';
    v_stages := jsonb_build_array('reconciliation','gap_analysis','planning');
  else
    v_external_key := 'product-bootstrap-v1';
-   v_title := 'Bootstrap product discovery and planning';
-   v_description := 'Execute discovery, product specification and implementation planning from the approved intake.';
+   v_title := 'Preparar descoberta e planejamento do produto';
+   v_description := 'Executar descoberta, especificação do produto e planejamento da implementação a partir da entrada aprovada.';
    v_stages := jsonb_build_array('discovery','specification','planning');
  end if;
 
@@ -41,8 +41,8 @@ begin
  insert into public.factory_tasks(project_id,external_key,title,description,status,complexity,risk,acceptance_criteria,depends_on)
  values(v_project_id,v_external_key,v_title,v_description,'queued','medium','{}'::jsonb,
    case when v_external_key='project-reconciliation-v1'
-     then '["source-of-truth evidence is reconciled","current-state snapshot is durable","remaining gaps are explicit","existing work is preserved"]'::jsonb
-     else '["discovery context is structured","product specification is versioned","implementation plan is actionable"]'::jsonb end,
+     then '["evidencias das fontes de verdade reconciliadas","estado atual persistido","lacunas restantes explicitas","trabalho existente preservado"]'::jsonb
+     else '["contexto de descoberta estruturado","especificacao do produto versionada","plano de implementacao acionavel"]'::jsonb end,
    '[]'::jsonb) returning id into v_task_id;
 
  insert into public.factory_runs(task_id,status,execution_route,metadata)
