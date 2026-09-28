@@ -8,7 +8,7 @@ export default async function Home(){
  const recent=d.projects.slice(0,6);
  return <>
   <PageHeader
-   eyebrow="Factory Overview"
+   eyebrow="Visão geral da Factory"
    title="Visão geral operacional"
    subtitle="Estado atual da fábrica, filas, gates, custos e evidências do ciclo de entrega."
    actions={<><ActionLink href="/queue">Fila</ActionLink><ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink></>}
