@@ -33,4 +33,16 @@ class Tests(unittest.TestCase):
         with patch("urllib.request.urlopen",return_value=Response({"released":2})):
             self.assertEqual(self.scheduler().recover_expired(),{"released":2})
 
+    def test_direct_route_requires_write_and_primary_tools(self):
+        row=[{"agent_key":"development","role":"development","allowed_tools":["github_write","model_primary"],"model_policy":{"preferred":"primary"},"max_concurrency":3,"is_active":True}]
+        with patch("urllib.request.urlopen",return_value=Response(row)):
+            profile=self.scheduler().require_route_tools("development","direct")
+        self.assertEqual(profile.agent_key,"development")
+
+    def test_read_only_specialist_cannot_enter_write_worker(self):
+        row=[{"agent_key":"security","role":"security","allowed_tools":["github_read","model_primary"],"model_policy":{"preferred":"primary"},"max_concurrency":2,"is_active":True}]
+        with patch("urllib.request.urlopen",return_value=Response(row)):
+            with self.assertRaises(PermissionError):
+                self.scheduler().require_route_tools("security","direct")
+
 if __name__=="__main__": unittest.main()
