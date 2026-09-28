@@ -46,6 +46,7 @@ Scheduled Direct is enabled through the retained API key with a prepaid Factory 
 The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
 
 Verified production state:
+- production currently serves release commit `24fc055271c6` from the Figma fidelity release; later `main` commits are backend/docs-only and are intentionally skipped by the Console Vercel path guard;
 - Supabase Auth login is operational;
 - the bootstrap administrator exists as an active `admin` operator;
 - server-side Supabase access prefers `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
@@ -267,3 +268,27 @@ A fresh live reconciliation after the prepaid Primary activation confirmed:
 4. For projects with official Vercel↔GitHub integration, `mode: github` uses the workflow `GITHUB_TOKEN` and the manual Preview job self-hosts pinned Playwright/Chromium; no Vercel token or external browser service is required. `VERCEL_TOKEN` remains an API-mode fallback for other projects.
 5. Verified Preview and operational alerts are now scheduled bounded follow-ups; production still stops at the human merge gate.
 6. Supabase Auth leaked-password protection is currently reported disabled by the security advisor; enable it through the Supabase Auth dashboard when administrative hardening is performed.
+
+
+## Audit reconciliation - 2026-09-28
+
+A post-activation audit found and closed a paid-execution drift: historical
+manual OpenAI workflows and the `openai-execute` CLI could call the provider
+outside the durable Factory budget/ledger. Those shortcuts are retired; paid
+operational execution is restricted to the metered product/direct runtime.
+The API WIF preflight remains no-model.
+
+Live reconciliation during the audit:
+- repository `main` before this hardening pass: `41d666c597e1a9b35ef1d9358034106c0bd559d7`;
+- 19 Git migrations exactly match the 19 migrations registered in production Supabase;
+- 2 active projects, 0 open runs, 0 failed runs, 0 pending human gates, 0 Codex invocations, 1 active operator;
+- visual-evidence registry is empty after authenticated capture cleanup;
+- production `GET /api/health` is HTTP 200 and reports Console commit `24fc055271c6`;
+- Vercel reported no runtime errors in the six-hour audit window;
+- Supabase security advisor reports only the intentional RLS-without-public-policy informational findings plus the administrative Leaked Password Protection warning;
+- performance advisor reports only currently-unused indexes; no index is removed solely from this short observation window.
+
+The authenticated Figma correction remains separately pending in #309/#310
+because the required Vercel Preview hit the account build-rate limit. The
+Factory continues to fail closed rather than merging that Console candidate
+without exact Preview evidence.

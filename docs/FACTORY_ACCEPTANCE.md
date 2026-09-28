@@ -1,6 +1,6 @@
 # Factory Acceptance
 
-Last updated: 2026-09-27.
+Last updated: 2026-09-28.
 
 This document defines the executable completion gate for the AI Product Factory itself.
 
@@ -42,7 +42,7 @@ The Factory is internally complete when all of the following are true:
 
 These are **not missing implementation work**:
 
-- OpenAI primary-model API quota/billing must be administratively approved before `FACTORY_PRIMARY_MODEL_ENABLED=true`;
+- OpenAI API WIF mapping remains an optional authentication-hardening dependency (#250); Primary is already operational through the explicitly selected API-key path after billing smoke and is bounded by the durable cost ledger;
 - Codex managed-workspace Workload Identity Federation or official access-token auth is required only before `FACTORY_CODEX_ENABLED=true`; occasional Codex work can use the credential-free manual handoff path meanwhile;
 - cross-repository execution requires a real `FACTORY_GITHUB_TOKEN` with the minimum required repository permissions;
 - Supabase leaked-password protection remains an administrative hardening item.
@@ -71,3 +71,13 @@ The smoke exposed one real schema mismatch: multiple RPCs wrote `task_id` into `
 Production remains a human-authorized action. The user may provide standing authorization for merges, but the runtime itself still has no automatic merge capability. This preserves the architectural separation between implementation automation and production authority.
 
 The release observer records a merge that has already occurred and advances durable state to operations.
+
+
+## Post-activation paid-path invariant
+
+After Primary activation, every operational paid model call must traverse the
+metered runtime boundary. The acceptance suite rejects legacy manual
+`openai-execute` workflows/CLI entrypoints that bypass durable run identity,
+budget reservation and unknown-cost blocking. Historical one-shot billing smoke
+evidence remains in the Actions history and status documentation; it is not an
+ongoing execution path.
