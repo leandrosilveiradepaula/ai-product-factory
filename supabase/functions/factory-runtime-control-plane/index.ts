@@ -34,9 +34,13 @@ async function verifyGithub(req:Request) {
 function getSecretKey() {
   const modern=Deno.env.get("SUPABASE_SECRET_KEYS");
   if(modern) {
-    const parsed=JSON.parse(modern);
-    const key=String(parsed.default||"");
-    if(key) return key;
+    try {
+      const parsed=JSON.parse(modern);
+      const key=String(parsed.default||"");
+      if(key) return key;
+    } catch {
+      // Fall through to the legacy managed key. Never log key material.
+    }
   }
   const legacy=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
   if(!legacy) throw new Error("Supabase privileged key unavailable");
@@ -84,7 +88,8 @@ Deno.serve(async(req:Request)=>{
     responseHeaders.set("cache-control","no-store");
     return new Response(response.body,{status:response.status,headers:responseHeaders});
   } catch(error) {
-    console.error("factory runtime control-plane broker rejected request");
-    return json(403,{error:"forbidden",detail:error instanceof Error?error.message:"unknown"});
+    const detail=error instanceof Error?error.message:"unknown";
+    console.error("factory runtime control-plane broker rejected request:",detail);
+    return json(403,{error:"forbidden",detail});
   }
 });
