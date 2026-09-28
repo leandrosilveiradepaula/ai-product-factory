@@ -121,3 +121,18 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - Auth resolver: mecanismos oficiais apenas; API key para o modelo principal e WIF oficial para Codex, sem expor valores secretos.
 - Usage observability: provider/model/tokens/custo conhecido ou explicitamente desconhecido.
 - Greenfield offline: lifecycle completo low-risk validado com 0 chamadas externas; producao para corretamente em human gate.
+
+
+## Auditoria pos-ativacao - 2026-09-28
+
+- [x] Reconciliar 19 migrations Git x Supabase producao.
+- [x] Confirmar Control Plane sem runs abertos/falhos ou gates pendentes.
+- [x] Versionar o broker OIDC de evidencia visual e proteger seus claims no acceptance.
+- [x] Remover atalhos legados de chamada paga fora do ledger/budget.
+- [x] Corrigir documentacao que ainda sugeria merge automatico apos CI.
+- [x] Preservar API key como auth Primary explicita enquanto WIF #250 permanece hardening externo.
+- [ ] Concluir #309/#310 somente apos Vercel liberar Preview exato e a comparacao visual autenticada passar.
+- [ ] Habilitar Leaked Password Protection por acao administrativa.
+- [ ] Resolver API WIF #250 quando o mapping administrativo puder ser corrigido.
+- [ ] Resolver Codex auth #240 quando houver credencial oficial/enablement.
+- [ ] Retornar repositorio a private depois de encerrada a necessidade da janela publica.
