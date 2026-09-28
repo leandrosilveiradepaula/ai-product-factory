@@ -1,0 +1,31 @@
+name: Project Supabase access preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_ref:
+        description: Expected Supabase project ref
+        required: true
+        type: string
+      environment_name:
+        description: GitHub Environment holding the project-scoped credential
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify read-only project access
+        env:
+          FACTORY_PROJECT_SUPABASE_ACCESS_TOKEN: ${{ secrets.FACTORY_PROJECT_SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python scripts/verify_project_supabase.py --project-ref "${{ inputs.project_ref }}"
