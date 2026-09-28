@@ -60,7 +60,8 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;tasks:ProjectTaskSummary[]};
+export type ProjectStateSnapshot={id:string;runId:string|null;observedStage:string|null;summary:string;evidence:unknown[];gaps:unknown[];constraints:unknown[];sourceStatus:Record<string,unknown>;createdAt:string};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;objective:string|null;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
