@@ -188,10 +188,15 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true)) }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true)) }}
     needs: product-stage
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      direct_count: ${{ steps.dispatch.outputs.direct_count }}
+      codex_count: ${{ steps.dispatch.outputs.codex_count }}
+      direct_matrix: ${{ steps.dispatch.outputs.direct_matrix }}
+      codex_matrix: ${{ steps.dispatch.outputs.codex_matrix }}
     env:
       PYTHONPATH: src
     steps:
@@ -210,20 +215,40 @@ jobs:
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
             echo "Dispatch is inert: Control Plane credentials are not configured."
           fi
-      - name: Dispatch at most one planned task
-        if: ${{ steps.readiness.outputs.control_plane == 'true' }}
+      - name: Dispatch and build specialist matrix
+        id: dispatch
         shell: bash
         run: |
-          if [ -n "${{ inputs.project_key }}" ]; then
-            python -m ai_product_factory.runtime_cli --mode dispatch --project-key "${{ inputs.project_key }}"
+          set -euo pipefail
+          if [ "${{ steps.readiness.outputs.control_plane }}" != "true" ]; then
+            printf '%s\n' '{"claimed":false,"status":"blocked","matrix":{"direct":[],"codex":[]}}' > /tmp/factory-dispatch.json
+          elif [ -n "${{ inputs.project_key }}" ]; then
+            python -m ai_product_factory.runtime_cli --mode dispatch --max-items 6 --project-key "${{ inputs.project_key }}" > /tmp/factory-dispatch.json
           else
-            python -m ai_product_factory.runtime_cli --mode dispatch
+            python -m ai_product_factory.runtime_cli --mode dispatch --max-items 6 > /tmp/factory-dispatch.json
           fi
+          cat /tmp/factory-dispatch.json
+          python - <<'PY'
+          import json,os
+          data=json.load(open("/tmp/factory-dispatch.json"))
+          matrix=data.get("matrix") or {}
+          direct=list(matrix.get("direct") or [])
+          codex=list(matrix.get("codex") or [])
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              out.write("direct_count="+str(len(direct))+"\n")
+              out.write("codex_count="+str(len(codex))+"\n")
+              out.write("direct_matrix="+json.dumps({"include":direct},separators=(",",":"))+"\n")
+              out.write("codex_matrix="+json.dumps({"include":codex},separators=(",",":"))+"\n")
+          PY
 
   direct:
     environment: openai-api
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' }}
+    if: ${{ needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule') }}
     needs: dispatch
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.dispatch.outputs.direct_matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -288,16 +313,20 @@ jobs:
               exit 2
               ;;
           esac
-      - name: Process at most one Direct implementation task
+      - name: Process assigned Direct specialist task
         if: ${{ steps.readiness.outputs.control_plane == 'true' && env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"
+        run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}-${{ strategy.job-index }}" --agent-key "${{ matrix.agent_key }}" --run-id "${{ matrix.run_id }}"
 
 
   codex:
     environment: openai-codex
-    if: ${{ always() && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0' && vars.FACTORY_CODEX_ENABLED == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: dispatch
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.dispatch.outputs.codex_matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -388,7 +417,7 @@ jobs:
             done
             test -s "$OPENAI_IDENTITY_TOKEN_FILE"
           fi
-          python -m ai_product_factory.runtime_cli --mode codex --worker-id "gha-codex-${{ github.run_id }}"
+          python -m ai_product_factory.runtime_cli --mode codex --worker-id "gha-codex-${{ github.run_id }}-${{ strategy.job-index }}" --agent-key "${{ matrix.agent_key }}" --run-id "${{ matrix.run_id }}"
 
 
 
