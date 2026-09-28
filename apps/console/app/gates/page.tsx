@@ -19,7 +19,7 @@ async function resolveGate(formData:FormData){
 export default async function Gates(){
  const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");const resolved=gates.length-pending.length;
  return <>
-  <PageHeader eyebrow="Human Gates" title="Aprovações humanas" subtitle="Decisões que interrompem a automação por risco de produção, dados, acesso, custo ou requisito material."/>
+  <PageHeader eyebrow="Aprovações humanas" title="Aprovações humanas" subtitle="Decisões que interrompem a automação por risco de produção, dados, acesso, custo ou requisito material."/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Pendentes</span><strong>{pending.length}</strong></div>
    <div className="operationalStat"><span>Resolvidas</span><strong>{resolved}</strong></div>
