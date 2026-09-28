@@ -17,7 +17,7 @@ class Tests(unittest.TestCase):
   env={"FACTORY_PRIMARY_MODEL_ENABLED":"true","FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
   health=type("H",(),{"known_cost":0,"unknown_cost_events":0})()
   reader=type("R",(),{"read":lambda self,**kwargs:health})()
-  with patch.dict("os.environ",env,clear=True),patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=Resolver(AuthKind.OPENAI_API_KEY)),patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader",return_value=reader),patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider"),patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=Q()),patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as gh:
+  with patch.dict("os.environ",env,clear=True),patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=Resolver(AuthKind.OPENAI_API_KEY)),patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader",return_value=reader),patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider"),patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler,patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=Q()),patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as gh:
    out=run_direct_once("w")
   self.assertEqual(out["status"],"empty");gh.assert_not_called()
 if __name__=="__main__":unittest.main()
