@@ -49,9 +49,9 @@ function getSecretKey() {
 
 function allowedSuffix(url:URL) {
   const marker="/functions/v1/factory-runtime-control-plane";
+  let suffix=url.pathname;
   const index=url.pathname.indexOf(marker);
-  if(index<0) throw new Error("unexpected function path");
-  const suffix=url.pathname.slice(index+marker.length);
+  if(index>=0) suffix=url.pathname.slice(index+marker.length);
   if(!suffix.startsWith("/rest/v1/")) throw new Error("only PostgREST/RPC access is allowed");
   if(suffix.includes("..")) throw new Error("invalid path");
   const resource=suffix.slice("/rest/v1/".length);
