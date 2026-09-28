@@ -86,7 +86,7 @@ def run_product_once(worker_id:str)->dict:
  result=RuntimeWorker(queue=SupabaseRuntimeQueue(),handler=handler,worker_id=worker_id).run_once()
  return {"claimed":result is not None,"status":result.status.value if result else None,"error":result.error if result else None}
 
-def run_direct_once(worker_id:str,agent_key:str|None=None)->dict:
+def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
   auth=RuntimeAuthResolver().resolve_primary_api()
@@ -94,7 +94,7 @@ def run_direct_once(worker_id:str,agent_key:str|None=None)->dict:
   require_paid_runtime_budget()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  SupabaseAgentScheduler().schedule_next()
- item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key)
+ item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
  github=GitHubRestAdapter(repository=item.repository)
@@ -105,12 +105,12 @@ def run_direct_once(worker_id:str,agent_key:str|None=None)->dict:
  SupabaseAgentScheduler().release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
-def run_codex_once(worker_id:str,agent_key:str|None=None)->dict:
+def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_codex_runtime_enabled()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  SupabaseAgentScheduler().schedule_next()
- item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key)
+ item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  usage=SupabaseCodexUsageRecorder()
  producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
@@ -223,28 +223,33 @@ def run_alerts_once()->dict:
  results=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository)).publish_many(alerts)
  return {"status":"ok","published":sum(1 for result in results if result.created),"alerts":[{"code":result.code,"created":result.created,"issue_number":result.issue_number} for result in results]}
 
-def run_dispatch_once(project_key:str|None=None)->dict:
- dispatch=SupabaseBacklogDispatch()
- decision=dispatch.dispatch_next(project_key) if project_key else dispatch.dispatch_next_any()
- if decision is None:return {"claimed":False,"status":"empty"}
- assignment=SupabaseAgentScheduler().schedule_next()
- return {"claimed":True,"status":"routed","route":decision.execution.route.value,
-  "human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level,
-  "agent_key":assignment.agent_key if assignment else None,"agent_role":assignment.role if assignment else None}
+def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
+ dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
+ for _ in range(max(1,min(max_items,32))):
+  decision=dispatch.dispatch_next(project_key) if project_key else dispatch.dispatch_next_any()
+  if decision is None:break
+  routed.append({"route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level})
+  try:scheduler.schedule_next()
+  except RuntimeError as exc:
+   if "no eligible agent slot" not in str(exc):raise
+   break
+ matrix=scheduler.work_matrix(max_items)
+ return {"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"matrix":matrix}
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--mode",choices=("product","dispatch","direct","codex","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
  elif args.mode=="preview-probe":out=run_preview_probe_once()
  elif args.mode=="preview":out=run_preview_once()
  elif args.mode=="release":out=run_release_once()
  elif args.mode=="ci":out=run_ci_once()
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
- elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key)
- elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key)
- elif args.mode=="dispatch":out=run_dispatch_once(args.project_key)
+ elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
+ elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key,args.run_id)
+ elif args.mode=="dispatch":out=run_dispatch_once(args.project_key,args.max_items)
  else:out=run_product_once(args.worker_id)
  print(json.dumps(out));return 0 if not out.get("error") else 2
 if __name__=="__main__":raise SystemExit(main())
