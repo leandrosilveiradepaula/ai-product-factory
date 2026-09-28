@@ -74,6 +74,34 @@ class RuntimeCliTests(unittest.TestCase):
         github.assert_not_called()
         producer.assert_not_called()
 
+
+    def test_exact_direct_run_does_not_schedule_unrelated_work(self):
+        scheduler=MagicMock()
+        queue=MagicMock();queue.claim_next.return_value=None
+        auth=MagicMock();auth.resolve_primary_api.return_value=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
+        with patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=auth), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue):
+            out=run_direct_once("worker","development","run-1")
+        self.assertEqual(out,{"claimed":False,"status":"empty"})
+        scheduler.schedule_next.assert_not_called()
+        scheduler.require_route_tools.assert_called_once_with("development","direct")
+        queue.claim_next.assert_called_once_with("worker","development","run-1")
+
+    def test_exact_codex_run_does_not_schedule_unrelated_work(self):
+        scheduler=MagicMock()
+        queue=MagicMock();queue.claim_next.return_value=None
+        with patch("ai_product_factory.runtime_cli.require_codex_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue):
+            out=run_codex_once("worker","development","run-2")
+        self.assertEqual(out,{"claimed":False,"status":"empty"})
+        scheduler.schedule_next.assert_not_called()
+        scheduler.require_route_tools.assert_called_once_with("development","codex")
+        queue.claim_next.assert_called_once_with("worker","development","run-2")
+
     def test_runtime_fails_before_claim_when_auth_is_missing(self):
         with patch.dict("os.environ", {"FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
             with self.assertRaises(RuntimeError) as ctx:
