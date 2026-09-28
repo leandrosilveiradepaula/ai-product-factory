@@ -246,11 +246,17 @@ class OpenAIResponsesProvider(ModelProvider):
             for key, value in usage_raw.items()
             if isinstance(value, (int, float))
         }
+        details = usage_raw.get("input_tokens_details") if isinstance(usage_raw, dict) else None
+        if isinstance(details, dict):
+            cached = details.get("cached_tokens")
+            if isinstance(cached, (int, float)):
+                usage["cached_input_tokens"] = float(cached)
         return ModelResult(
             role=ModelRole.PRIMARY,
             output=output_text,
             provider_ref=data.get("id"),
             usage=usage,
+            model=model,
         )
 
     def execute(self, request_data: ModelRequest) -> ModelResult:
