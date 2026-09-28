@@ -1,0 +1,31 @@
+name: Configure Factory Control Plane OIDC
+description: Mint a short-lived GitHub OIDC credential for the Supabase Control Plane broker
+runs:
+  using: composite
+  steps:
+    - name: Mint Control Plane OIDC token
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+          echo "GitHub OIDC request context is unavailable." >&2
+          exit 2
+        fi
+        separator="?"
+        case "$ACTIONS_ID_TOKEN_REQUEST_URL" in
+          *\?*) separator="&" ;;
+        esac
+        response="$(curl --fail-with-body --silent --show-error           -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"           "${ACTIONS_ID_TOKEN_REQUEST_URL}${separator}audience=factory-runtime-control-plane")"
+        token="$(RESPONSE="$response" python - <<'PY'
+import json, os
+data=json.loads(os.environ["RESPONSE"])
+value=str(data.get("value") or "")
+if not value:
+    raise SystemExit("OIDC response missing token")
+print(value)
+PY
+        )"
+        echo "::add-mask::$token"
+        echo "SUPABASE_URL=https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-runtime-control-plane" >> "$GITHUB_ENV"
+        echo "SUPABASE_SECRET_KEY=$token" >> "$GITHUB_ENV"
+        echo "SUPABASE_SERVICE_ROLE_KEY=" >> "$GITHUB_ENV"
