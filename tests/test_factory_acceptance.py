@@ -485,6 +485,12 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("state!==expected",callback)
         self.assertIn("Conectar Supabase",detail)
         self.assertIn("vault.create_secret",migration)
+        self.assertIn("factory_get_project_database_oauth_tokens",migration)
+        self.assertIn("security definer set search_path=''",migration)
+        self.assertNotIn("as $\n",migration)
+        self.assertIn("project_id=eq.",(ROOT/"apps/console/app/api/integrations/supabase/connect/route.ts").read_text())
+        self.assertIn("project_id=eq.",callback)
+        self.assertIn("database binding is not awaiting access",(ROOT/"apps/console/app/api/integrations/supabase/connect/route.ts").read_text())
         self.assertIn("revoke all on table public.factory_project_database_oauth from public,anon,authenticated",migration)
 
     def test_console_exposes_database_readiness_without_secret_references(self):
