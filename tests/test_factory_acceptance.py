@@ -230,6 +230,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928043102_factory_project_state_snapshot_run_index.sql",
             "20260928145528_factory_authenticated_visual_evidence.sql",
             "20260928163442_factory_existing_project_runtime_stages.sql",
+            "20260928170000_factory_project_database_registry.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -469,6 +470,22 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("issues: write", workflow)
         self.assertNotIn("pull-requests: write", workflow)
+
+    def test_project_database_capability_is_scoped_and_cost_gated(self):
+        migration=(ROOT/"supabase/migrations/20260928170000_factory_project_database_registry.sql").read_text()
+        adapter=(ROOT/"src/ai_product_factory/supabase_management.py").read_text()
+        docs=(ROOT/"docs/PROJECT_DATABASES.md").read_text()
+
+        self.assertIn("factory_project_databases",migration)
+        self.assertIn("credential_ref",migration)
+        self.assertIn("never a credential value",migration)
+        self.assertIn("enable row level security",migration)
+        self.assertIn("revoke all on table public.factory_project_databases from public,anon,authenticated",migration)
+        self.assertIn("/database/query/read-only",adapter)
+        self.assertIn("explicit human cost approval",adapter)
+        self.assertIn("project-scoped integration",docs)
+        self.assertIn("pending_access",docs)
+        self.assertNotIn("SUPABASE_ACCESS_TOKEN=",docs)
 
     def test_control_plane_oidc_broker_is_fail_closed_and_secretless(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()

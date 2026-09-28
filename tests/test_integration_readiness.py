@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ai_product_factory.integration_readiness import browser_evidence_readiness, github_alerts_readiness, github_vercel_preview_readiness, verified_preview_readiness, vercel_preview_readiness
+from ai_product_factory.integration_readiness import browser_evidence_readiness, github_alerts_readiness, github_vercel_preview_readiness, verified_preview_readiness, vercel_preview_readiness, supabase_project_readiness, supabase_project_write_readiness, supabase_provision_readiness
 
 
 class IntegrationReadinessTests(unittest.TestCase):
@@ -77,6 +77,20 @@ class IntegrationReadinessTests(unittest.TestCase):
         with patch.dict("os.environ",env,clear=True):
             self.assertTrue(verified_preview_readiness().ready)
 
+    def test_project_supabase_readiness_is_explicit_and_read_first(self):
+        env={"FACTORY_PROJECT_SUPABASE_ENABLED":"true","FACTORY_PROJECT_SUPABASE_ACCESS_TOKEN":"x","FACTORY_PROJECT_SUPABASE_REF":"ref"}
+        with patch.dict("os.environ",env,clear=True):
+            self.assertTrue(supabase_project_readiness().ready)
+            self.assertFalse(supabase_project_write_readiness().ready)
+
+    def test_project_supabase_write_requires_separate_enable(self):
+        env={"FACTORY_PROJECT_SUPABASE_ENABLED":"true","FACTORY_PROJECT_SUPABASE_WRITE_ENABLED":"true","FACTORY_PROJECT_SUPABASE_ACCESS_TOKEN":"x","FACTORY_PROJECT_SUPABASE_REF":"ref"}
+        with patch.dict("os.environ",env,clear=True):
+            self.assertTrue(supabase_project_write_readiness().ready)
+
+    def test_supabase_provisioning_is_disabled_by_default(self):
+        with patch.dict("os.environ",{},clear=True):
+            self.assertFalse(supabase_provision_readiness().ready)
 
 if __name__ == "__main__":
     unittest.main()
