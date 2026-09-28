@@ -596,3 +596,19 @@ class FactoryAcceptanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_resource_limit_observability_is_fail_closed_and_secret_free():
+    migration=(ROOT/"supabase/migrations/20260928202000_factory_resource_limit_snapshots.sql").read_text()
+    model=(ROOT/"src/ai_product_factory/resource_limits.py").read_text()
+    assert "factory_resource_limit_snapshots" in migration
+    assert "enable row level security" in migration
+    assert "revoke all on public.factory_resource_limit_snapshots from public,anon,authenticated" in migration
+    assert "provider_blocked" in migration
+    assert "v_ratio>=0.9" in migration
+    assert "v_ratio>=0.7" in migration
+    assert "secret-like metadata is forbidden" in migration
+    assert "def percent" in model
+    assert 'if p>=100:return "blocked"' in model
+    assert 'if p>=90:return "critical"' in model
+    assert 'if p>=70:return "attention"' in model
