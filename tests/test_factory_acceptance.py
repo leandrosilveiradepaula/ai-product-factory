@@ -261,6 +261,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "apps/console/app/runs/page.tsx",
             "apps/console/app/runs/[id]/page.tsx",
             "apps/console/app/queue/page.tsx",
+            "apps/console/app/agents/page.tsx",
             "apps/console/app/gates/page.tsx",
             "apps/console/app/evals/page.tsx",
             "apps/console/app/deployments/page.tsx",
@@ -281,6 +282,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
+            "getFactoryAgents",
             "getHumanGates",
             "getEvaluations",
             "getDeployments",
@@ -576,6 +578,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             ROOT / "apps" / "console" / "app" / "projects" / "new" / "review" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "runs" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "queue" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "agents" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "gates" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "nav.tsx",
         ]
@@ -656,3 +659,19 @@ def test_agent_registry_is_configurable_scoped_and_fail_closed():
     assert "Do not assume a fixed number of agents" in planner
     assert 'scheduler.release(item.run_id,"blocked")' in runtime
     assert "recover_expired" in scheduler
+
+
+def test_console_agent_registry_is_server_side_and_operational():
+    page=(ROOT/"apps/console/app/agents/page.tsx").read_text()
+    control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+    nav=(ROOT/"apps/console/app/nav.tsx").read_text()
+    assert "getFactoryAgents" in page
+    assert "Agentes da Factory" in page
+    assert "slots" in page
+    assert "Locks de escopo" in page
+    assert "factory_agents" in control
+    assert "factory_run_agent_assignments" in control
+    assert "factory_agent_scope_locks" in control
+    assert "requireConsoleOperator()" in control
+    assert "credential" not in page.lower()
+    assert 'href:"/agents"' in nav
