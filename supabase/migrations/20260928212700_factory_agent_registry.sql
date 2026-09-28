@@ -24,7 +24,7 @@ grant select,insert,update,delete on public.factory_agents to service_role;
 
 create table if not exists public.factory_run_agent_assignments (
  id uuid primary key default gen_random_uuid(),
- run_id uuid not null unique references public.factory_runs(id) on delete cascade,
+ run_id uuid not null references public.factory_runs(id) on delete cascade,
  agent_id uuid not null references public.factory_agents(id) on delete restrict,
  status text not null default 'assigned' check (status in ('assigned','claimed','completed','released','blocked')),
  assigned_at timestamptz not null default now(),
@@ -37,6 +37,9 @@ revoke all on public.factory_run_agent_assignments from public,anon,authenticate
 grant select,insert,update,delete on public.factory_run_agent_assignments to service_role;
 create index if not exists idx_factory_run_agent_assignments_agent_status
  on public.factory_run_agent_assignments(agent_id,status);
+create unique index if not exists idx_factory_run_agent_assignments_active_run
+ on public.factory_run_agent_assignments(run_id)
+ where status in ('assigned','claimed');
 
 create table if not exists public.factory_agent_scope_locks (
  id uuid primary key default gen_random_uuid(),
@@ -54,6 +57,9 @@ revoke all on public.factory_agent_scope_locks from public,anon,authenticated;
 grant select,insert,update,delete on public.factory_agent_scope_locks to service_role;
 create index if not exists idx_factory_agent_scope_locks_active
  on public.factory_agent_scope_locks(project_id,scope_key,lease_expires_at)
+ where released_at is null;
+create unique index if not exists idx_factory_agent_scope_locks_active_run_scope
+ on public.factory_agent_scope_locks(run_id,scope_key)
  where released_at is null;
 
 create or replace function public.factory_claim_agent_slot(
@@ -98,11 +104,12 @@ begin
   from public.factory_agent_scope_locks l
   where l.project_id=v_project_id
     and l.released_at is null
+    and l.lease_expires_at > now()
     and l.run_id <> p_run_id
     and (
       l.scope_key=v_scope
-      or l.scope_key like v_scope || '/%'
-      or v_scope like l.scope_key || '/%'
+      or starts_with(l.scope_key,v_scope || '/')
+      or starts_with(v_scope,l.scope_key || '/')
     )
   limit 1;
   if found then raise exception 'scope conflict with run % on %',v_conflict.run_id,v_conflict.scope_key; end if;
@@ -202,6 +209,21 @@ begin
      select 1 from jsonb_array_elements_text(coalesce(p_required_capabilities,'[]'::jsonb)) r(value)
      where not (a.capabilities ? r.value)
    )
+   and not exists (
+     select 1
+     from jsonb_array_elements_text(coalesce(p_scope_keys,'[]'::jsonb)) s(value)
+     join public.factory_runs rr on rr.id=p_run_id
+     join public.factory_tasks tt on tt.id=rr.task_id
+     join public.factory_agent_scope_locks l on l.project_id=tt.project_id
+     where l.released_at is null
+       and l.lease_expires_at > now()
+       and l.run_id <> p_run_id
+       and (
+         l.scope_key=s.value
+         or starts_with(l.scope_key,s.value || '/')
+         or starts_with(s.value,l.scope_key || '/')
+       )
+   )
    and (
      select count(*) from public.factory_run_agent_assignments x
      where x.agent_id=a.id and x.status in ('assigned','claimed')
@@ -212,7 +234,7 @@ begin
  for update skip locked
  limit 1;
 
- if v_agent.id is null then raise exception 'no eligible agent slot'; end if;
+ if v_agent.id is null then return null; end if;
 
  v_assignment_id:=public.factory_claim_agent_slot(
    p_run_id,v_agent.agent_key,coalesce(p_scope_keys,'[]'::jsonb),p_lease_seconds
@@ -263,6 +285,7 @@ begin
    coalesce(v_task.scope_keys,'[]'::jsonb),
    900
  );
+ if v_result is null then return null; end if;
  insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
  values(v_task.project_id,v_task.id,v_run.id,'system','agent-scheduler','agent.assigned',v_result);
  return v_result || jsonb_build_object('run_id',v_run.id,'task_id',v_task.id);
@@ -419,7 +442,11 @@ begin
   update public.factory_agent_scope_locks l set released_at=now()
   from public.factory_runs r
   where l.run_id=r.id and l.agent_id=v_agent and l.released_at is null
-    and r.status in ('completed','failed','merged','released','cancelled');
+    and (
+      r.status in ('completed','failed','merged','released','cancelled')
+      or (r.lease_expires_at is not null and r.lease_expires_at <= now())
+      or l.lease_expires_at <= now()
+    );
   if not exists(select 1 from public.factory_run_agent_assignments where agent_id=v_agent and status in ('assigned','claimed')) then
    update public.factory_agents set health_status=case when is_active then 'idle' else 'disabled' end,updated_at=now() where id=v_agent;
   end if;
