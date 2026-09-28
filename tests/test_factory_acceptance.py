@@ -656,3 +656,22 @@ def test_agent_registry_is_configurable_scoped_and_fail_closed():
     assert "Do not assume a fixed number of agents" in planner
     assert 'scheduler.release(item.run_id,"blocked")' in runtime
     assert "recover_expired" in scheduler
+
+
+def test_specialist_workers_fan_out_from_control_plane_matrix():
+    workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+    runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+    assert "direct_matrix:" in workflow
+    assert "codex_matrix:" in workflow
+    assert "strategy:" in workflow
+    assert "matrix: ${{ fromJSON(needs.dispatch.outputs.direct_matrix) }}" in workflow
+    assert "matrix: ${{ fromJSON(needs.dispatch.outputs.codex_matrix) }}" in workflow
+    assert '--agent-key "${{ matrix.agent_key }}" --run-id "${{ matrix.run_id }}"' in workflow
+    assert "inputs.run_codex == true" in workflow
+    assert "if run_id is None:" in runtime
+    assert 'raise ValueError("agent_key is required when run_id is explicit")' in runtime
+    assert 'require_route_tools(agent_key,"direct")' in runtime
+    assert 'require_route_tools(agent_key,"codex")' in runtime
+    assert 'profile.require_tools("github_write","model_primary")' in scheduler
+    assert 'profile.require_tools("github_write","codex")' in scheduler
