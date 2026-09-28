@@ -6,16 +6,54 @@ from ai_product_factory.runtime_worker import WorkItem
 class Provider:
  def __init__(self):self.requests=[]
  def execute(self,request):
-  self.requests.append(request);stage=["discovery","specification","planning"][len(self.requests)-1]
-  return ModelResult(ModelRole.PRIMARY,json.dumps({"stage":stage,"assumptions":[]}),provider_ref=f"ref-{stage}",usage={"input_tokens":10})
+  self.requests.append(request)
+  return ModelResult(ModelRole.PRIMARY,json.dumps({"stage":"ok","assumptions":[]}),provider_ref=f"ref-{len(self.requests)}",usage={"input_tokens":10})
 
-def item():return WorkItem("r","t","p","demo",("discovery","specification","planning"),{"summary":"build x"})
+def item():
+ return WorkItem("r","t","p","demo",("discovery","specification","planning"),{"summary":"build x"})
+
+def existing_item():
+ return WorkItem(
+  "r-existing","t-existing","p-existing","crm-infodive",
+  ("reconciliation","gap_analysis","planning"),
+  {
+   "manifest":{"reconcile_first":True},
+   "intake_spec":{"summary":"verify existing CRM"},
+   "state_snapshot":{
+    "summary":"repository inspected read-only",
+    "evidence":[{"source":"github","head_sha":"abc"}],
+    "gaps":[],
+    "constraints":["read-only"],
+    "source_status":{"github_repository":"available"},
+   },
+  },
+ )
 
 def test_product_stages_use_primary_and_chain_prior_evidence():
  p=Provider();h=ProductStageExecutor(ModelExecutor(primary=p));i=item()
- d=h.execute(i,"discovery");s=h.execute(i,"specification");h.execute(i,"planning")
- assert d["_evidence"]["provider_ref"]=="ref-discovery";assert s["stage"]=="specification";assert len(p.requests)==3
+ d=h.execute(i,"discovery");h.execute(i,"specification");h.execute(i,"planning")
+ assert d["_evidence"]["provider_ref"]=="ref-1"
+ assert len(p.requests)==3
  assert '"discovery"' in p.requests[1].context
+
+def test_existing_project_reconciliation_uses_snapshot_and_chains_gap_analysis():
+ p=Provider();h=ProductStageExecutor(ModelExecutor(primary=p));i=existing_item()
+ h.execute(i,"reconciliation")
+ h.execute(i,"gap_analysis")
+ h.execute(i,"planning")
+ assert len(p.requests)==3
+ assert "state_snapshot" in p.requests[0].context
+ assert '"reconciliation"' in p.requests[1].context
+ assert '"gap_analysis"' in p.requests[2].context
+ assert "Do not claim tests" in p.requests[0].constraints[2]
+
+def test_reconciliation_fails_closed_without_durable_snapshot():
+ p=Provider();h=ProductStageExecutor(ModelExecutor(primary=p))
+ i=WorkItem("r","t","p","existing",("reconciliation",),{"manifest":{"reconcile_first":True}})
+ try:h.execute(i,"reconciliation")
+ except ValueError as exc:assert "durable state snapshot" in str(exc)
+ else:raise AssertionError("expected ValueError")
+ assert p.requests==[]
 
 def test_invalid_json_fails_closed():
  class Bad:
