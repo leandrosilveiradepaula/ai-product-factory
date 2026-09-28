@@ -8,7 +8,7 @@ export default async function Audit(){
  const system=rows.filter(x=>x.actorType==="system").length;
  const withRun=rows.filter(x=>x.runId).length;
  return <>
-  <PageHeader eyebrow="Audit Log" title="Log de auditoria" subtitle="Trilha cronológica e imutável de ações humanas, runtime, workers e decisões persistidas."/>
+  <PageHeader eyebrow="Log de auditoria" title="Log de auditoria" subtitle="Trilha cronológica e imutável de ações humanas, runtime, workers e decisões persistidas."/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Eventos</span><strong>{rows.length}</strong></div>
    <div className="operationalStat"><span>Humanos</span><strong>{human}</strong></div>
