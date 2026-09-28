@@ -9,7 +9,9 @@ export async function GET(request:Request){
  for(const n of ["factory_supa_oauth_state","factory_supa_oauth_verifier","factory_supa_oauth_project","factory_supa_oauth_database"])jar.delete(n);
  if(!code||!state||!expected||state!==expected||!verifier||!projectKey||!databaseId)return NextResponse.redirect(new URL("/projects?supabase=oauth_invalid",u.origin));
  const cfg=getSupabaseServerConfig();if(!cfg)return NextResponse.redirect(new URL("/projects/"+encodeURIComponent(projectKey)+"?supabase=control_plane_unavailable",u.origin));
- const lookup=await fetch(cfg.url+"/rest/v1/factory_project_databases?select=project_ref&id=eq."+encodeURIComponent(databaseId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ const projectLookup=await fetch(cfg.url+"/rest/v1/factory_projects?select=id&project_key=eq."+encodeURIComponent(projectKey)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!projectLookup.ok)return NextResponse.redirect(new URL("/projects/"+encodeURIComponent(projectKey)+"?supabase=project_lookup_failed",u.origin));const projects=await projectLookup.json();if(!projects.length)return NextResponse.redirect(new URL("/projects?supabase=project_missing",u.origin));
+ const lookup=await fetch(cfg.url+"/rest/v1/factory_project_databases?select=project_ref&id=eq."+encodeURIComponent(databaseId)+"&project_id=eq."+encodeURIComponent(String(projects[0].id))+"&limit=1",{headers:cfg.headers,cache:"no-store"});
  if(!lookup.ok)return NextResponse.redirect(new URL("/projects/"+encodeURIComponent(projectKey)+"?supabase=lookup_failed",u.origin));const rows=await lookup.json();const projectRef=rows[0]?.project_ref;
  if(!projectRef)return NextResponse.redirect(new URL("/projects/"+encodeURIComponent(projectKey)+"?supabase=project_ref_missing",u.origin));
  try{
