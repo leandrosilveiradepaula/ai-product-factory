@@ -16,6 +16,7 @@ permissions:
 jobs:
   capture:
     runs-on: ubuntu-latest
+    environment: openai-api
     timeout-minutes: 12
     env:
       FACTORY_CONSOLE_URL: "https://ai-product-factory-console.vercel.app"
