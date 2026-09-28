@@ -109,7 +109,7 @@ begin
  end loop;
 
  insert into public.factory_run_agent_assignments(run_id,agent_id,status,claimed_at)
- values(p_run_id,v_agent.id,'claimed',now()) returning id into v_assignment_id;
+ values(p_run_id,v_agent.id,'assigned',null) returning id into v_assignment_id;
 
  for v_scope in select value from jsonb_array_elements_text(coalesce(p_scope_keys,'[]'::jsonb))
  loop
@@ -439,3 +439,24 @@ begin
 end;$$;
 revoke all on function public.factory_release_agent_scope_locks(uuid) from public,anon,authenticated;
 grant execute on function public.factory_release_agent_scope_locks(uuid) to service_role;
+
+
+create or replace function public.factory_agent_work_matrix(p_limit integer default 12)
+returns jsonb language sql security invoker set search_path='' as $$
+ with work as (
+   select r.id run_id,r.execution_route,a.agent_key,a.role,ra.assigned_at
+   from public.factory_run_agent_assignments ra
+   join public.factory_runs r on r.id=ra.run_id
+   join public.factory_agents a on a.id=ra.agent_id
+   join public.factory_tasks t on t.id=r.task_id
+   where ra.status='assigned' and r.status='queued' and t.status='queued_execution' and a.is_active
+   order by ra.assigned_at
+   limit greatest(1,least(coalesce(p_limit,12),32))
+ )
+ select jsonb_build_object(
+   'direct',coalesce((select jsonb_agg(jsonb_build_object('run_id',run_id,'agent_key',agent_key,'role',role) order by assigned_at) from work where execution_route='direct'),'[]'::jsonb),
+   'codex',coalesce((select jsonb_agg(jsonb_build_object('run_id',run_id,'agent_key',agent_key,'role',role) order by assigned_at) from work where execution_route='codex'),'[]'::jsonb)
+ );
+$$;
+revoke all on function public.factory_agent_work_matrix(integer) from public,anon,authenticated;
+grant execute on function public.factory_agent_work_matrix(integer) to service_role;
