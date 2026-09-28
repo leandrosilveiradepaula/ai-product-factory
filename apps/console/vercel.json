@@ -4,7 +4,7 @@
     "deploymentEnabled": {
       "**": false,
       "main": true,
-      "console/**": true
+      "preview/**": true
     }
   },
   "ignoreCommand": "git diff --quiet HEAD^ HEAD ./"
