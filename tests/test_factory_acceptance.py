@@ -355,6 +355,23 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("CHATGPT_ACCESS_TOKEN", workflow)
         self.assertNotIn("CHATGPT_ACCESS_TOKEN", preflight)
 
+    def test_no_legacy_unmetered_paid_model_entrypoints(self):
+        workflows = ROOT / ".github/workflows"
+        for retired in (
+            "openai-runtime.yml",
+            "openai-runtime-execute.yml",
+            "openai-billing-smoke-once.yml",
+        ):
+            self.assertFalse((workflows / retired).exists(), retired)
+
+        cli = (ROOT / "src/ai_product_factory/cli.py").read_text()
+        self.assertNotIn('"openai-execute"', cli)
+
+        runtime = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
+        self.assertIn("MeteredPrimaryProvider", runtime)
+        self.assertIn("require_paid_runtime_budget", runtime)
+        self.assertIn('FACTORY_MODEL_RESERVE_USD', runtime)
+
     def test_api_wif_preflight_is_manual_and_non_model(self):
         workflow = (ROOT / ".github/workflows/openai-api-wif-preflight.yml").read_text()
         module = (ROOT / "src/ai_product_factory/openai_wif_preflight.py").read_text()
