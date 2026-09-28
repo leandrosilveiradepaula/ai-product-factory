@@ -10,26 +10,26 @@
   --font-size-md:12px;
   --font-size-body:13px;
   --font-size-subtitle:14px;
-  --font-size-title:30px;
+  --font-size-title:20px;
   --font-weight-medium:560;
   --font-weight-semibold:650;
   --font-weight-bold:700;
   --font-weight-display:760;
 
   /* Core palette. */
-  --color-canvas:#090b0f;
-  --color-canvas-top:#0b0e13;
-  --color-canvas-bottom:#080a0e;
-  --color-sidebar:#0b0e13;
-  --color-surface:#10141b;
-  --color-surface-raised:#141922;
-  --color-surface-hover:#121720;
-  --color-surface-strong:#171a29;
+  --color-canvas:#080b11;
+  --color-canvas-top:#0a0e15;
+  --color-canvas-bottom:#070a10;
+  --color-sidebar:#080b11;
+  --color-surface:#0f141d;
+  --color-surface-raised:#121925;
+  --color-surface-hover:#121927;
+  --color-surface-strong:#141d2c;
   --color-input:#0a0e13;
   --color-code:#090c11;
-  --color-border:#242b36;
-  --color-border-soft:#1a2029;
-  --color-border-control:#2a323e;
+  --color-border:#202a38;
+  --color-border-soft:#16202c;
+  --color-border-control:#293546;
   --color-border-strong:#3a4554;
 
   /* Text. */
@@ -52,10 +52,10 @@
   --color-brand-end:#6957ff;
   --color-brand-icon:#a99cff;
   --color-eyebrow:#766aff;
-  --color-card-start:#11161e;
-  --color-card-end:#0f131a;
-  --color-table:#0f1319;
-  --color-table-header:#11161e;
+  --color-card-start:#0f151f;
+  --color-card-end:#0d131c;
+  --color-table:#0b1119;
+  --color-table-header:#101722;
   --color-control-muted:#7f8a99;
   --color-control-subtle:#667283;
   --color-nav:#9ba5b4;
@@ -92,19 +92,19 @@
 
   /* Component geometry. */
   --radius-xs:7px;
-  --radius-sm:9px;
-  --radius-md:10px;
-  --radius-lg:13px;
+  --radius-sm:6px;
+  --radius-md:7px;
+  --radius-lg:8px;
   --radius-pill:999px;
-  --space-page-x:30px;
-  --space-page-y:30px;
-  --sidebar-width:244px;
-  --sidebar-width-collapsed:76px;
-  --topbar-height:64px;
+  --space-page-x:20px;
+  --space-page-y:18px;
+  --sidebar-width:210px;
+  --sidebar-width-collapsed:64px;
+  --topbar-height:50px;
 
   /* Effects. */
-  --shadow-card:0 12px 32px rgba(0,0,0,.12);
-  --shadow-accent:0 6px 18px rgba(102,83,255,.18);
+  --shadow-card:none;
+  --shadow-accent:0 3px 10px rgba(102,83,255,.14);
   --focus-ring:0 0 0 3px rgba(112,94,255,.1);
   --transition-fast:.15s ease;
 }
