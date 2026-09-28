@@ -31,10 +31,10 @@ class SupabaseCodexRunQueue:
         self.key = cfg.key
         self.headers = cfg.headers
 
-    def claim_next(self, worker_id: str, agent_key: str | None = None) -> CodexExecutionItem | None:
+    def claim_next(self, worker_id: str, agent_key: str | None = None, run_id: str | None = None) -> CodexExecutionItem | None:
         req = urllib.request.Request(
             f"{self.url}/rest/v1/rpc/factory_claim_next_agent_codex_run",
-            data=json.dumps({"p_worker_id": worker_id, "p_agent_key": agent_key}).encode(),
+            data=json.dumps({"p_worker_id": worker_id, "p_agent_key": agent_key, "p_run_id": run_id}).encode(),
             method="POST",
             headers={**self.headers, "Content-Type": "application/json"},
         )
