@@ -232,6 +232,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928163442_factory_existing_project_runtime_stages.sql",
             "20260928170000_factory_project_database_registry.sql",
             "20260928170600_factory_project_database_verification.sql",
+            "20260928175800_factory_project_database_oauth.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -471,6 +472,20 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("issues: write", workflow)
         self.assertNotIn("pull-requests: write", workflow)
+
+    def test_console_supabase_oauth_is_pkce_vaulted_and_read_only(self):
+        oauth=(ROOT/"apps/console/lib/supabase-oauth.ts").read_text()
+        callback=(ROOT/"apps/console/app/api/integrations/supabase/callback/route.ts").read_text()
+        detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
+        migration=(ROOT/"supabase/migrations/20260928175800_factory_project_database_oauth.sql").read_text()
+        self.assertIn("code_challenge_method",oauth)
+        self.assertIn('"S256"',oauth)
+        self.assertIn("/database/query/read-only",oauth)
+        self.assertNotIn("/database/query\"",oauth)
+        self.assertIn("state!==expected",callback)
+        self.assertIn("Conectar Supabase",detail)
+        self.assertIn("vault.create_secret",migration)
+        self.assertIn("revoke all on table public.factory_project_database_oauth from public,anon,authenticated",migration)
 
     def test_console_exposes_database_readiness_without_secret_references(self):
         detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
