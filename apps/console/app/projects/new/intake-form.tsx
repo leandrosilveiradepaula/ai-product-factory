@@ -2,21 +2,20 @@
 import {useActionState,useState} from "react";
 import {Button} from "../../ui";
 import {submitIntake,type IntakeState} from "./actions";
-
 const initial:IntakeState={errors:{}};
-
 export function IntakeForm(){
  const[state,action,pending]=useActionState(submitIntake,initial);
- const[mode,setMode]=useState<"greenfield"|"import">("greenfield");
- return <form action={action} className="form card">
-  <div className="mode"><button type="button" className={mode==="greenfield"?"selected":""} onClick={()=>setMode("greenfield")}>Novo produto</button><button type="button" className={mode==="import"?"selected":""} onClick={()=>setMode("import")}>Importar repositório</button></div>
+ const[mode,setMode]=useState<"greenfield"|"existing">("greenfield");
+ const existing=mode==="existing";
+ return <form action={action} className="form card intakeForm" encType="multipart/form-data">
+  <div className="mode"><button type="button" className={!existing?"selected":""} onClick={()=>setMode("greenfield")}>Novo produto</button><button type="button" className={existing?"selected":""} onClick={()=>setMode("existing")}>Projeto em andamento</button></div>
   <input type="hidden" name="mode" value={mode}/>
-  <label>Nome do produto<input name="name" placeholder="Ex.: Gestão de Propostas"/></label>{state.errors.name&&<small>{state.errors.name}</small>}
-  {mode==="import"&&<><label>Repositório GitHub<input name="repository" placeholder="owner/repository"/></label>{state.errors.repository&&<small>{state.errors.repository}</small>}</>}
-  <label>{mode==="greenfield"?"O que você quer construir?":"Qual é o objetivo atual do projeto?"}<textarea name="summary" rows={5} placeholder="Descreva o problema, resultado esperado e contexto."/></label>{state.errors.summary&&<small>{state.errors.summary}</small>}
-  <label>Quem vai usar?<textarea name="users" rows={2}/></label>
-  <label>O que é obrigatório?<textarea name="mustHave" rows={3}/></label>
-  <label>Integrações conhecidas<textarea name="integrations" rows={2} placeholder="GitHub, Supabase, Vercel..."/></label>
-  <Button variant="primary" disabled={pending}>{pending?"Preparando...":"Continuar para revisão"}</Button>
+  <div className="intakePrompt"><label>{existing?"Onde o projeto está e o que você quer finalizar ou mudar?":"O que você quer construir?"}<textarea name="summary" rows={9} autoFocus placeholder={existing?"Conte o estado atual, o que já funciona, o que falta e qual resultado você quer alcançar. A Factory vai reconciliar as evidências antes de continuar.":"Conte para a Factory como você contaria para uma equipe: qual problema quer resolver, para quem, o resultado esperado e qualquer contexto importante."}/></label>{state.errors.summary&&<small>{state.errors.summary}</small>}<p className="muted intakeHint">{existing?"O briefing orienta a continuidade, mas não substitui a reconciliação do código, documentação, CI e infraestrutura disponíveis.":"Você não precisa escolher stack, agentes ou modelos. A Factory usa este pedido como origem da Descoberta."}</p></div>
+  <div className="twoCol"><div><label>Nome do projeto<input name="name" placeholder="Ex.: Portal de Atendimento"/></label>{state.errors.name&&<small>{state.errors.name}</small>}</div>{existing?<div><label>Repositório GitHub <span className="muted">(se existir)</span><input name="repository" placeholder="owner/repository"/></label>{state.errors.repository&&<small>{state.errors.repository}</small>}</div>:<div><label>Quem vai usar?<input name="users" placeholder="Ex.: equipe comercial e clientes"/></label></div>}</div>
+  {existing?<><label>Em que estágio você acredita que ele está?<select name="reportedStage" defaultValue="unknown"><option value="unknown">Não sei / quero que a Factory descubra</option><option value="discovery">Descoberta</option><option value="specification">Especificação</option><option value="planning">Planejamento</option><option value="implementation">Implementação</option><option value="review">Revisão</option><option value="validation">Testes / Avaliações</option><option value="preview">Prévia</option><option value="operations">Já está em operação</option></select></label><label>Pendências que você já conhece <span className="muted">(opcional)</span><textarea name="knownPending" rows={3} placeholder="Ex.: autenticação incompleta, tela X pendente, CI quebrado..."/></label><label>O que não pode ser alterado? <span className="muted">(opcional)</span><textarea name="constraints" rows={3} placeholder="Regras de negócio, arquitetura, integrações ou decisões que precisam ser preservadas."/></label></>:<><label>Quem vai usar? <span className="muted">(opcional)</span><textarea name="users" rows={2}/></label><label>O que é obrigatório? <span className="muted">(opcional)</span><textarea name="mustHave" rows={3} placeholder="Regras, funcionalidades ou restrições que não podem faltar."/></label></>}
+  <label>Integrações já conhecidas <span className="muted">(opcional)</span><textarea name="integrations" rows={2} placeholder="Ex.: Supabase, SAP, n8n, Vercel..."/></label>
+  <label>Referências <span className="muted">(opcional)</span><textarea name="references" rows={3} placeholder={"Uma URL por linha. Pode incluir Figma, documentação, site de referência etc.\nhttps://www.figma.com/design/..."}/></label>
+  <div className="intakeAttachments"><strong>Anexos</strong><input name="attachments" type="file" multiple accept=".pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp"/><span className="muted">Até 10 arquivos, 10 MB cada. PDF, documentos Office, texto/CSV/JSON e imagens. O upload é privado e passa pelo servidor da Factory.</span>{state.errors.attachments&&<small>{state.errors.attachments}</small>}</div>
+  <Button variant="primary" disabled={pending}>{pending?(existing?"Preparando reconciliação...":"Preparando Descoberta..."):(existing?"Revisar e importar projeto":"Revisar e iniciar Descoberta")}</Button>
  </form>;
 }

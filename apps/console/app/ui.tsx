@@ -27,9 +27,30 @@ export function MetricCard({label,value,note,compact=false}:{label:string;value:
   </div>;
 }
 
+const statusLabels:Record<string,string>={
+  active:"ativo",inactive:"inativo",healthy:"saudável",attention:"atenção",unknown:"desconhecido",
+  failed:"falhou",failure:"falha",blocked:"bloqueado",rejected:"rejeitado",error:"erro",dead_letter:"fila de erro",
+  awaiting:"aguardando",pending:"pendente",queued:"na fila",warning:"aviso",
+  passed:"aprovado",success:"sucesso",succeeded:"concluído",complete:"concluído",completed:"concluído",
+  merged:"mesclado",released:"liberado",ready:"pronto",verified:"verificado",
+  running:"em execução",implementing:"implementando",planning:"planejamento",review:"revisão",
+  discovery:"descoberta",specification:"especificação",implementation:"implementação",validation:"testes / avaliações",
+  preview:"prévia",human_gate:"aprovação humana",release:"liberação",operations:"operação",
+  created:"criado",dispatching:"distribuindo",queued_execution:"aguardando execução",
+  awaiting_human:"aguardando decisão humana",awaiting_release:"aguardando liberação",approved:"aprovado",cancelled:"cancelado",canceled:"cancelado",ci_pending:"CI pendente",ci_failed:"CI com falha",preview_ready:"prévia pronta",preparing_codex_manual:"preparando Codex manual",awaiting_codex_manual:"aguardando Codex manual",
+  direct:"direto",unrouted:"sem rota",operator:"operador",system:"sistema",human:"humano",run:"execução",tool:"ferramenta",evaluation:"avaliação",deployment:"implantação",gate:"aprovação",audit:"auditoria",decision:"decisão",invoked:"invocado","not invoked":"não invocado",production:"produção",
+  greenfield:"novo produto",existing:"projeto em andamento",low:"baixa",medium:"média",high:"alta",
+  policy:"política",codex:"Codex"
+};
+
+export function humanizeStatus(status:string){
+  const key=status.toLowerCase();
+  return statusLabels[key]??status.replaceAll("_"," ");
+}
+
 export function StatusPill({status,label,tone}:{status:string;label?:ReactNode;tone?:StatusTone}){
   const resolved=tone??statusTone(status);
-  return <span className={resolved?"pill "+resolved:"pill"}>{label??status}</span>;
+  return <span className={resolved?"pill "+resolved:"pill"}>{label??humanizeStatus(status)}</span>;
 }
 
 export function SectionHeader({title,action}:{title:string;action?:ReactNode}){

@@ -3,7 +3,7 @@ export type Project={key:string;name:string;stage:string;status:string;updatedAt
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
 const demo:Dashboard={projects:[{key:"agente-sql-financeiro",name:"Agente SQL Financeiro",stage:"planning",status:"active",updatedAt:"pilot onboarded"}],activeRuns:0,pendingGates:0,codexCalls:0,modelCalls:0,failedRuns:0};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
-export async function createProjectIntake(input:{mode:"greenfield"|"import";name:string;summary:string;repository?:string;users?:string;mustHave?:string;integrations?:string}){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const projectKey=slugify(input.name);if(!projectKey)throw new Error("Unable to derive project key");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_create_project_intake`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_name:input.name,p_repository:input.repository||"",p_project_kind:input.mode,p_manifest:{source:"factory-console",autonomy:"default"},p_spec:{summary:input.summary,users:input.users||null,must_have:input.mustHave||null,integrations:input.integrations||null}}),cache:"no-store"});if(!response.ok){const body=await response.text();if(response.status===409||body.includes("duplicate key"))throw new Error("Já existe um projeto com esse nome/chave.");throw new Error("Não foi possível persistir o intake no Control Plane.");}const id=await response.json();return{projectId:String(id),projectKey};}
+export async function createProjectIntake(input:{mode:"greenfield"|"existing";name:string;summary:string;repository?:string;users?:string;mustHave?:string;integrations?:string;references?:{kind:"url"|"figma";value:string}[];reportedStage?:string;knownPending?:string;constraints?:string}){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const projectKey=slugify(input.name);if(!projectKey)throw new Error("Unable to derive project key");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_create_project_intake`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_name:input.name,p_repository:input.repository||"",p_project_kind:input.mode,p_manifest:{source:"factory-console",autonomy:"default",onboarding_mode:input.mode,references:input.references||[],reported_stage:input.reportedStage||null,reconcile_first:input.mode==="existing"},p_spec:{summary:input.summary,continuation_brief:input.mode==="existing"?input.summary:null,users:input.users||null,must_have:input.mustHave||null,integrations:input.integrations||null,references:input.references||[],reported_stage:input.reportedStage||null,known_pending:input.knownPending||null,constraints:input.constraints||null}}),cache:"no-store"});if(!response.ok){const body=await response.text();if(response.status===409||body.includes("duplicate key"))throw new Error("Já existe um projeto com esse nome/chave.");throw new Error("Não foi possível persistir o intake no Control Plane.");}const id=await response.json();return{projectId:String(id),projectKey};}
 
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
 
@@ -74,6 +74,25 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type ProjectStateSnapshot={id:string;runId:string|null;observedStage:string|null;summary:string;evidence:unknown[];gaps:unknown[];constraints:unknown[];sourceStatus:Record<string,unknown>;createdAt:string};
+export type ProjectStateContext={objective:string|null;snapshot:ProjectStateSnapshot|null};
+
+export async function getProjectStateContext(projectId:string):Promise<ProjectStateContext>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();if(!cfg)return{objective:null,snapshot:null};
+ const id=encodeURIComponent(projectId);
+ const [specResponse,snapshotResponse]=await Promise.all([
+  fetch(cfg.url+"/rest/v1/factory_product_specs?select=spec,version&project_id=eq."+id+"&order=version.desc&limit=1",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_project_state_snapshots?select=id,run_id,observed_stage,summary,evidence,gaps,constraints,source_status,created_at&project_id=eq."+id+"&order=created_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"})
+ ]);
+ const specs=specResponse.ok?await specResponse.json():[];const spec=specs[0]?.spec||{};
+ const snapshots=snapshotResponse.ok?await snapshotResponse.json():[];const x=snapshots[0];
+ return{
+  objective:typeof spec.summary==="string"?spec.summary:null,
+  snapshot:x?{id:String(x.id),runId:x.run_id?String(x.run_id):null,observedStage:x.observed_stage?String(x.observed_stage):null,summary:String(x.summary),evidence:Array.isArray(x.evidence)?x.evidence:[],gaps:Array.isArray(x.gaps)?x.gaps:[],constraints:Array.isArray(x.constraints)?x.constraints:[],sourceStatus:x.source_status&&typeof x.source_status==="object"?x.source_status:{},createdAt:String(x.created_at)}:null
+ };
+}
+
 export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){const operator=await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_resolve_human_gate`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_gate_id:gateId,p_resolution:resolution,p_resolved_by:operator.email||operator.userId,p_note:note||null}),cache:"no-store"});if(!response.ok)throw new Error("Unable to resolve human gate");return response.json();}
 
 
@@ -105,12 +124,12 @@ export async function getProjectOperations(projectId:string):Promise<ProjectOper
  ]);
  const read=async(r:any)=>r.ok?await r.json():[];const [tu,cu,ev,dp,gt,au,de]=await Promise.all([read(tools),read(codex),read(evals),read(deploys),read(gates),read(audit),read(decisions)]);
  const timeline:ProjectTimelineItem[]=[];
- runs.forEach((x:any)=>timeline.push({id:`run-${x.id}`,kind:"run",title:`Run · ${x.execution_route||"unrouted"}`,status:x.status,at:x.finished_at||x.created_at,detail:x.branch_name||null,cost:null,units:null,ref:x.candidate_commit||null}));
+ runs.forEach((x:any)=>timeline.push({id:`run-${x.id}`,kind:"run",title:`Execução · ${x.execution_route||"unrouted"}`,status:x.status,at:x.finished_at||x.created_at,detail:x.branch_name||null,cost:null,units:null,ref:x.candidate_commit||null}));
  tu.forEach((x:any)=>timeline.push({id:`tool-${x.id}`,kind:"tool",title:`${x.tool_family} · ${x.operation}`,status:null,at:x.created_at,detail:null,cost:x.estimated_cost==null?null:Number(x.estimated_cost),units:x.usage_units==null?null:Number(x.usage_units),ref:null}));
- cu.forEach((x:any)=>timeline.push({id:`codex-${x.id}`,kind:"codex",title:`Codex policy L${x.policy_level}`,status:Number(x.invocation_count)>0?"invoked":"not invoked",at:x.created_at,detail:JSON.stringify(x.reason||{}),cost:null,units:Number(x.invocation_count||0),ref:null}));
+ cu.forEach((x:any)=>timeline.push({id:`codex-${x.id}`,kind:"codex",title:`Política Codex N${x.policy_level}`,status:Number(x.invocation_count)>0?"invoked":"not invoked",at:x.created_at,detail:JSON.stringify(x.reason||{}),cost:null,units:Number(x.invocation_count||0),ref:null}));
  ev.forEach((x:any)=>timeline.push({id:`eval-${x.id}`,kind:"evaluation",title:x.eval_type,status:x.status,at:x.created_at,detail:x.score==null?null:`score ${x.score}`,cost:null,units:null,ref:x.baseline_ref||null}));
- dp.forEach((x:any)=>timeline.push({id:`deploy-${x.id}`,kind:"deployment",title:`Deployment · ${x.environment}`,status:x.status,at:x.deployed_at||x.created_at,detail:null,cost:null,units:null,ref:x.deployment_ref||null}));
- gt.forEach((x:any)=>timeline.push({id:`gate-${x.id}`,kind:"gate",title:`Gate · ${x.gate_type}`,status:x.status,at:x.resolved_at||x.requested_at,detail:x.resolved_by||null,cost:null,units:null,ref:null}));
+ dp.forEach((x:any)=>timeline.push({id:`deploy-${x.id}`,kind:"deployment",title:`Implantação · ${x.environment}`,status:x.status,at:x.deployed_at||x.created_at,detail:null,cost:null,units:null,ref:x.deployment_ref||null}));
+ gt.forEach((x:any)=>timeline.push({id:`gate-${x.id}`,kind:"gate",title:`Aprovação · ${x.gate_type}`,status:x.status,at:x.resolved_at||x.requested_at,detail:x.resolved_by||null,cost:null,units:null,ref:null}));
  au.forEach((x:any)=>timeline.push({id:`audit-${x.id}`,kind:"audit",title:x.event_type,status:null,at:x.created_at,detail:[x.actor_type,x.actor_ref].filter(Boolean).join(" · ")||null,cost:null,units:null,ref:null}));
  de.forEach((x:any)=>timeline.push({id:`decision-${x.id}`,kind:"decision",title:x.decision_type,status:null,at:x.created_at,detail:x.question||x.decided_by||null,cost:null,units:null,ref:null}));
  timeline.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));

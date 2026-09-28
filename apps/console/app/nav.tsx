@@ -4,26 +4,26 @@ import Link from "next/link";
 import {usePathname} from "next/navigation";
 
 const groups=[
-  {label:"Workspace",items:[
-    {href:"/",label:"Overview",icon:"◫"},
-    {href:"/projects",label:"Projects",icon:"◆"},
+  {label:"Espaço de trabalho",items:[
+    {href:"/",label:"Visão geral",icon:"◫"},
+    {href:"/projects",label:"Projetos",icon:"◆"},
   ]},
-  {label:"Execution",items:[
-    {href:"/runs",label:"Runs",icon:"▶"},
-    {href:"/queue",label:"Work Queue",icon:"≡"},
-    {href:"/gates",label:"Human Gates",icon:"◇"},
+  {label:"Execução",items:[
+    {href:"/runs",label:"Execuções",icon:"▶"},
+    {href:"/queue",label:"Fila de trabalho",icon:"≡"},
+    {href:"/gates",label:"Aprovações humanas",icon:"◇"},
   ]},
-  {label:"Quality",items:[
-    {href:"/evals",label:"Evals",icon:"✓"},
-    {href:"/deployments",label:"Deployments",icon:"↗"},
+  {label:"Qualidade",items:[
+    {href:"/evals",label:"Avaliações",icon:"✓"},
+    {href:"/deployments",label:"Implantações",icon:"↗"},
   ]},
-  {label:"Observability",items:[
-    {href:"/usage",label:"Models & Usage",icon:"◎"},
-    {href:"/audit",label:"Audit Log",icon:"≣"},
+  {label:"Observabilidade",items:[
+    {href:"/usage",label:"Modelos e uso",icon:"◎"},
+    {href:"/audit",label:"Log de auditoria",icon:"≣"},
   ]},
-  {label:"System",items:[
-    {href:"/configuration",label:"Configuration",icon:"⚙"},
-    {href:"/admin/operators",label:"Operators",icon:"◉"},
+  {label:"Sistema",items:[
+    {href:"/configuration",label:"Configuração",icon:"⚙"},
+    {href:"/admin/operators",label:"Operadores",icon:"◉"},
   ]},
 ];
 

@@ -224,6 +224,9 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927014211_reconcile_runtime_delivery_functions.sql",
             "20260927014826_add_factory_audit_task_id.sql",
             "20260927152310_manual_codex_handoff.sql",
+            "20260927193500_factory_existing_project_reconciliation.sql",
+            "20260927194500_factory_project_attachments.sql",
+            "20260927195500_factory_project_state_snapshots.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -253,6 +256,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getDashboard",
             "getProjectDetail",
             "getProjectOperations",
+            "getProjectStateContext",
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
@@ -275,6 +279,14 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", client_surface)
         self.assertNotIn("OPENAI_API_KEY", client_surface)
         self.assertNotIn("FACTORY_GITHUB_TOKEN", client_surface)
+        project_page = (ROOT / "apps/console/app/projects/[key]/page.tsx").read_text()
+        self.assertIn("Estado reconciliado", project_page)
+        self.assertIn("Lacunas restantes", project_page)
+        self.assertIn("Evidências confirmadas", project_page)
+        snapshot_migration = (ROOT / "supabase/migrations/20260927195500_factory_project_state_snapshots.sql").read_text()
+        self.assertIn("factory_project_state_snapshots", snapshot_migration)
+        self.assertIn("factory_record_project_state_snapshot", snapshot_migration)
+
 
         theme = (ROOT / "apps/console/app/theme.css").read_text()
         globals_css = (ROOT / "apps/console/app/globals.css").read_text()
@@ -387,6 +399,38 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("63-question", workflow)
         self.assertIn("63-question benchmark", codex)
 
+
+
+    def test_console_primary_ui_is_portuguese(self):
+        files = [
+            ROOT / "apps" / "console" / "app" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "[key]" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "new" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "projects" / "new" / "review" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "runs" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "queue" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "gates" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "nav.tsx",
+        ]
+        text = "\n".join(path.read_text(encoding="utf-8") for path in files)
+        forbidden = [
+            "Start a product",
+            "New Work",
+            "Project Detail",
+            "Operational timeline",
+            "Work Queue",
+            "Open tasks",
+            "Known cost",
+            "Review Intake",
+            "New product",
+            "Import repository",
+            "Will be created later",
+            "Known integrations",
+            "Start Factory",
+        ]
+        for phrase in forbidden:
+            self.assertNotIn(phrase, text)
 
 if __name__ == "__main__":
     unittest.main()
