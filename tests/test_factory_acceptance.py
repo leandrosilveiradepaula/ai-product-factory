@@ -232,6 +232,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928163442_factory_existing_project_runtime_stages.sql",
             "20260928170000_factory_project_database_registry.sql",
             "20260928170600_factory_project_database_verification.sql",
+            "20260928202000_factory_resource_limit_snapshots.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
