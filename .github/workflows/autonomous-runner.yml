@@ -55,9 +55,9 @@ jobs:
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       FACTORY_PRIMARY_AUTH_MODE: api_key
-      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
-      FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
-      FACTORY_MODEL_RESERVE_USD: ${{ vars.FACTORY_MODEL_RESERVE_USD }}
+      FACTORY_PRIMARY_MODEL_ENABLED: "true"
+      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_RESERVE_USD: "0.50"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -227,7 +227,7 @@ jobs:
 
   direct:
     environment: openai-api
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || (github.event_name == 'schedule' && vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && vars.FACTORY_MODEL_BUDGET_USD != '' && vars.FACTORY_MODEL_RESERVE_USD != '') }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' }}
     needs: dispatch
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -246,9 +246,9 @@ jobs:
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
-      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
-      FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
-      FACTORY_MODEL_RESERVE_USD: ${{ vars.FACTORY_MODEL_RESERVE_USD }}
+      FACTORY_PRIMARY_MODEL_ENABLED: "true"
+      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_RESERVE_USD: "0.50"
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
@@ -516,7 +516,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
-      FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
+      FACTORY_MODEL_BUDGET_USD: "4.00"
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
