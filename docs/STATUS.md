@@ -226,13 +226,13 @@ Figma MCP Starter calls remain exhausted, so no additional design-context compar
 The repository was made public by the owner on 2026-09-27 to temporarily recover GitHub-hosted Actions capacity without adding paid Actions budget. Before opening, the repository was audited for literal credentials; fork workflows were disabled, default workflow permissions were read-only, Vercel Git Fork Protection was confirmed enabled, and acceptance checks reject `pull_request_target`, PR secrets and PR OIDC.
 
 Current observed public-window state:
-- 0 forks observed at the latest check;
+- no fork attributable to this repository was confirmed by the available repository search during the latest reconciliation; generic GitHub repository search is not treated as authoritative fork metadata;
 - 0 open external pull requests observed at the latest check;
 - main CI/factory-acceptance green;
 - Console typecheck/build green;
 - exact historical redesign candidate CI recovered green;
-- paid model execution remains disabled;
-- Codex execution remains disabled;
+- Primary paid execution is enabled through explicit `api_key` mode under the prepaid US$ 4.00 Factory budget and US$ 0.50 reservation, with unknown paid cost remaining fail-closed;
+- Codex automatic execution remains disabled;
 - Agent SQL 63-question benchmark remains excluded.
 
 The repository must return to private after the remaining verification debt is closed or the temporary window is no longer needed.
@@ -246,6 +246,18 @@ The operational Console redesign was checked against the live Control Plane boun
 - 15 critical runtime/Console RPCs were checked and remain `SECURITY INVOKER`;
 - those RPCs deny `EXECUTE` to `anon` and `authenticated` and allow the server-side `service_role`;
 - the redesigned TSX client surface is covered by Factory acceptance assertions that privileged Supabase/OpenAI/GitHub secret names are not rendered into pages.
+
+## Reconciliation update - 2026-09-28 after API credit activation
+
+A fresh live reconciliation after the prepaid Primary activation confirmed:
+- Supabase project `fjplmxfcshhbmzgvyqlm` is `ACTIVE_HEALTHY`;
+- 2 active projects, 0 pending/active runs, 0 failed/dead-letter runs, 0 pending human gates, 0 Codex invocations and 1 active operator;
+- all 18 expected production migrations are registered, including ongoing-project reconciliation, private attachments and durable current-state snapshots;
+- the Supabase security advisor still reports only the intentional fail-closed RLS-without-public-policy findings plus the administrative `Leaked Password Protection Disabled` warning;
+- Console production remains deployment `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` at commit `98d81dee46c7`; `GET /api/health` returned HTTP 200 and the Vercel runtime-error view reported no errors in the six-hour verification window;
+- later main commits did not change `apps/console/**`, so their production builds were canceled by the intentional Vercel ignore-build policy; this does not replace the active Console production deployment;
+- Gmail search found no new OpenAI support response about Codex/WIF enablement or federation values;
+- issue #250 was reconciled so API WIF is explicitly treated as authentication hardening while `FACTORY_PRIMARY_AUTH_MODE=api_key` remains the operational mode.
 
 ## Next engineering blocks
 
