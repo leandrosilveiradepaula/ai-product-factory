@@ -92,7 +92,7 @@ class OpenAICostLedgerTests(unittest.TestCase):
         self.assertEqual(update["metadata"]["input_tokens"], 1000)
         self.assertEqual(update["metadata"]["cached_input_tokens"], 100)
 
-    def test_failed_provider_keeps_conservative_reservation(self):
+    def test_failed_provider_marks_cost_unknown(self):
         store = _Store()
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False):
             metered = MeteredPrimaryProvider(
@@ -105,7 +105,53 @@ class OpenAICostLedgerTests(unittest.TestCase):
                     ModelRequest(task_id="task", objective="x", context="", run_id="run-1")
                 )
         self.assertEqual(len(store.recorded), 1)
-        self.assertEqual(len(store.updated), 0)
+        self.assertEqual(len(store.updated), 1)
+        _, update = store.updated[0]
+        self.assertEqual(update["operation"], "model_call_cost_unknown")
+        self.assertIsNone(update["estimated_cost"])
+        self.assertEqual(update["metadata"]["status"], "cost_unknown")
+
+    def test_over_reserve_persists_actual_cost_before_failing(self):
+        store = _Store()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False):
+            metered = MeteredPrimaryProvider(
+                _Provider(),
+                store=store,
+                reserve_usd=Decimal("0.0001"),
+            )
+            with self.assertRaisesRegex(RuntimeError, "exceeded reserved cost"):
+                metered.execute(
+                    ModelRequest(task_id="task", objective="x", context="", run_id="run-1")
+                )
+        _, update = store.updated[0]
+        self.assertEqual(update["operation"], "model_call_over_reserve")
+        self.assertEqual(update["estimated_cost"], 0.000302)
+        self.assertEqual(update["metadata"]["status"], "over_reserve")
+
+    def test_missing_usage_marks_cost_unknown(self):
+        class MissingUsageProvider:
+            def execute(self, request):
+                return ModelResult(
+                    role=ModelRole.PRIMARY,
+                    output="ok",
+                    provider_ref="resp_missing",
+                    usage={},
+                    model="gpt-5.6-luna",
+                )
+        store = _Store()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False):
+            metered = MeteredPrimaryProvider(
+                MissingUsageProvider(),
+                store=store,
+                reserve_usd=Decimal("0.01"),
+            )
+            with self.assertRaisesRegex(RuntimeError, "cannot be priced safely"):
+                metered.execute(
+                    ModelRequest(task_id="task", objective="x", context="", run_id="run-1")
+                )
+        _, update = store.updated[0]
+        self.assertIsNone(update["estimated_cost"])
+        self.assertEqual(update["metadata"]["status"], "cost_unknown")
 
     def test_paid_request_requires_run_id(self):
         store = _Store()
