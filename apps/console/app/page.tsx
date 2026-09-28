@@ -13,7 +13,7 @@ export default async function Home(){
    actions={<><ActionLink href="/queue">Fila de trabalho</ActionLink><ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink></>}
   />
   <div className="kpiStrip">
-   <MetricCard compact label="Projetos" value={d.projects.length} note="ativos no Control Plane"/>
+   <MetricCard compact label="Projetos" value={d.projects.length} note="ativos no Painel de Controle"/>
    <MetricCard compact label="Execuções ativas" value={d.activeRuns} note="em execução ou fila"/>
    <MetricCard compact label="Aprovações humanas" value={d.pendingGates} note={d.pendingGates?"requerem decisão":"nenhum pendente"}/>
    <MetricCard compact label="Atenção" value={attention} note="falhas, leases ou gates"/>

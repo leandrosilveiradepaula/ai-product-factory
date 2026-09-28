@@ -12,7 +12,7 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
  const p=await searchParams;const intake=decode(p.intake);
  if(!intake)return <><PageHeader eyebrow="Novo trabalho" title="Intake inválido" subtitle="O conteúdo de intake não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
  return <>
-  <PageHeader eyebrow="Revisar intake" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o bootstrap e abre o estágio de discovery no Control Plane."}/>
+  <PageHeader eyebrow="Revisar intake" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o bootstrap e abre o estágio de descoberta no Painel de Controle."}/>
   <div className="card" style={{maxWidth:860}}>
    <div className="detailGrid">
     <div className="detailItem"><span className="detailLabel">Modo</span><strong>{intake.mode==="greenfield"?"Novo produto":"Projeto em andamento"}</strong></div>

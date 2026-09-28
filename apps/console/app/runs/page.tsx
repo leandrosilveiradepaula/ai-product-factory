@@ -7,7 +7,7 @@ function leaseText(value:string|null){if(!value)return "—";const d=new Date(va
 export default async function Runs(){
  const [runs,health]=await Promise.all([getRuns(),getOperationsHealth()]);
  return <>
-  <PageHeader eyebrow="Execução" title="Execuções" subtitle="Execuções, leases, tentativas, commits candidatos e incidentes do Control Plane." actions={<ActionLink href="/queue">Abrir fila de trabalho</ActionLink>}/>
+  <PageHeader eyebrow="Execução" title="Execuções" subtitle="Execuções, leases, tentativas, commits candidatos e incidentes do Painel de Controle." actions={<ActionLink href="/queue">Abrir fila de trabalho</ActionLink>}/>
   <div className="kpiStrip">
    <MetricCard compact label="Carregadas" value={runs.length}/>
    <MetricCard compact label="Na fila" value={health.queuedRuns}/>

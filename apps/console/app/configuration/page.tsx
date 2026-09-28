@@ -4,7 +4,7 @@ import {ActionLink,MetricCard,PageHeader,SectionHeader,StatusPill} from "../ui";
 export default async function Configuration(){
  const c=await getConsoleConfiguration();
  return <>
-  <PageHeader eyebrow="Sistema" title="Configuração" subtitle="Configuração operacional visível do Control Plane. Segredos e tokens nunca são expostos no Console."/>
+  <PageHeader eyebrow="Sistema" title="Configuração" subtitle="Configuração operacional visível do Painel de Controle. Segredos e tokens nunca são expostos no Console."/>
   <div className="grid compact">
    <MetricCard label="Painel de Controle" value={c.controlPlaneConfigured?"Pronto":"Ausente"} note="credenciais somente no servidor"/>
    <MetricCard label="Projetos" value={c.projects.length}/>
