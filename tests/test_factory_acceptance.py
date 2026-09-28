@@ -224,9 +224,10 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260927014211_reconcile_runtime_delivery_functions.sql",
             "20260927014826_add_factory_audit_task_id.sql",
             "20260927152310_manual_codex_handoff.sql",
-            "20260927193500_factory_existing_project_reconciliation.sql",
-            "20260927194500_factory_project_attachments.sql",
-            "20260927195500_factory_project_state_snapshots.sql",
+            "20260928042922_factory_existing_project_reconciliation.sql",
+            "20260928042939_factory_project_attachments.sql",
+            "20260928042946_factory_project_state_snapshots.sql",
+            "20260928043102_factory_project_state_snapshot_run_index.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -283,7 +284,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Estado reconciliado", project_page)
         self.assertIn("Lacunas restantes", project_page)
         self.assertIn("Evidências confirmadas", project_page)
-        snapshot_migration = (ROOT / "supabase/migrations/20260927195500_factory_project_state_snapshots.sql").read_text()
+        snapshot_migration = (ROOT / "supabase/migrations/20260928042946_factory_project_state_snapshots.sql").read_text()
         self.assertIn("factory_project_state_snapshots", snapshot_migration)
         self.assertIn("factory_record_project_state_snapshot", snapshot_migration)
 
