@@ -393,7 +393,7 @@ grant execute on function public.factory_persist_product_stage(uuid,text,jsonb) 
 
 create or replace function public.factory_recover_expired_agent_slots()
 returns jsonb language plpgsql security invoker set search_path='' as $$
-declare v_released integer:=0;v_agent uuid;
+declare v_released integer:=0;v_count integer:=0;v_agent uuid;
 begin
  for v_agent in
   select distinct a.agent_id
@@ -413,7 +413,8 @@ begin
       r.status in ('completed','failed','merged','released','cancelled')
       or (r.lease_expires_at is not null and r.lease_expires_at <= now())
     );
-  get diagnostics v_released=v_released + row_count;
+  get diagnostics v_count = row_count;
+  v_released:=v_released+v_count;
   update public.factory_agent_scope_locks l set released_at=now()
   from public.factory_runs r
   where l.run_id=r.id and l.agent_id=v_agent and l.released_at is null
