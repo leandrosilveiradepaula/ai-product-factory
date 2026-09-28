@@ -295,6 +295,49 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["status"],"merged")
         self.assertEqual(out["merge_sha"],"merge123")
         github.merge_pull_request.assert_not_called()
+    def test_direct_failure_releases_agent_assignment_and_scope(self):
+        item=SimpleNamespace(run_id="r",task_id="t",project_key="demo",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",human_gate_required=False)
+        scheduler=MagicMock()
+        queue=MagicMock();queue.claim_next.return_value=item
+        worker=MagicMock();worker.execute.side_effect=RuntimeError("implementation failed")
+        auth=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
+        with patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver") as resolver, \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.DirectExecutionWorker",return_value=worker), \
+             patch("ai_product_factory.runtime_cli.ModelImplementationProducer"), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop"), \
+             patch("ai_product_factory.runtime_cli.GitHubIssueMaterializer"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore"), \
+             patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"):
+            resolver.return_value.resolve_primary_api.return_value=auth
+            with self.assertRaisesRegex(RuntimeError,"implementation failed"):
+                run_direct_once("w")
+        scheduler.release.assert_called_once_with("r","blocked")
+
+    def test_codex_failure_releases_agent_assignment_and_scope(self):
+        item=SimpleNamespace(run_id="r",task_id="t",project_key="demo",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",codex_level=2,human_gate_required=False)
+        scheduler=MagicMock()
+        queue=MagicMock();queue.claim_next.return_value=item
+        worker=MagicMock();worker.execute.side_effect=RuntimeError("codex failed")
+        with patch("ai_product_factory.runtime_cli.require_codex_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.DirectExecutionWorker",return_value=worker), \
+             patch("ai_product_factory.runtime_cli.CodexCLIProducer"), \
+             patch("ai_product_factory.runtime_cli.SupabaseCodexUsageRecorder"), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop"), \
+             patch("ai_product_factory.runtime_cli.GitHubIssueMaterializer"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore"), \
+             patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"):
+            with self.assertRaisesRegex(RuntimeError,"codex failed"):
+                run_codex_once("w")
+        scheduler.release.assert_called_once_with("r","blocked")
+
     def test_alert_mode_is_blocked_without_explicit_enable_and_config(self):
         with patch.dict("os.environ", {}, clear=True):
             out=run_alerts_once()
