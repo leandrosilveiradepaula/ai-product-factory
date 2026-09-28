@@ -98,7 +98,6 @@ begin
   from public.factory_agent_scope_locks l
   where l.project_id=v_project_id
     and l.released_at is null
-    and l.lease_expires_at > now()
     and l.run_id <> p_run_id
     and (
       l.scope_key=v_scope
@@ -418,11 +417,7 @@ begin
   update public.factory_agent_scope_locks l set released_at=now()
   from public.factory_runs r
   where l.run_id=r.id and l.agent_id=v_agent and l.released_at is null
-    and (
-      r.status in ('completed','failed','merged','released','cancelled')
-      or l.lease_expires_at <= now()
-      or (r.lease_expires_at is not null and r.lease_expires_at <= now())
-    );
+    and r.status in ('completed','failed','merged','released','cancelled');
   if not exists(select 1 from public.factory_run_agent_assignments where agent_id=v_agent and status in ('assigned','claimed')) then
    update public.factory_agents set health_status=case when is_active then 'idle' else 'disabled' end,updated_at=now() where id=v_agent;
   end if;
@@ -431,3 +426,16 @@ begin
 end;$$;
 revoke all on function public.factory_recover_expired_agent_slots() from public,anon,authenticated;
 grant execute on function public.factory_recover_expired_agent_slots() to service_role;
+
+
+create or replace function public.factory_release_agent_scope_locks(p_run_id uuid)
+returns integer language plpgsql security invoker set search_path='' as $$
+declare v_count integer;
+begin
+ update public.factory_agent_scope_locks set released_at=now()
+ where run_id=p_run_id and released_at is null;
+ get diagnostics v_count = row_count;
+ return v_count;
+end;$$;
+revoke all on function public.factory_release_agent_scope_locks(uuid) from public,anon,authenticated;
+grant execute on function public.factory_release_agent_scope_locks(uuid) to service_role;
