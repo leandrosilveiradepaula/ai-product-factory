@@ -13,7 +13,7 @@ export default async function Configuration(){
      <div className="configRows">
       <div><span>Primary model</span><strong>API key explícita</strong><small>execução paga limitada por budget e ledger</small></div>
       <div><span>Codex</span><strong>desligado</strong><small>auth automática ainda depende de gate externo</small></div>
-      <div><span>Cross-repo</span><strong>credencial explícita</strong><small>falha fechada sem FACTORY_GITHUB_TOKEN</small></div>
+      <div><span>Cross-repo</span><strong>credencial explícita</strong><small>falha fechada sem credencial cross-repo explícita</small></div>
       <div><span>Release</span><strong>humano</strong><small>nenhuma capacidade de auto-merge</small></div>
      </div>
     </div>
