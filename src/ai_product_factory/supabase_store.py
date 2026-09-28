@@ -268,6 +268,38 @@ class SupabaseControlPlaneStore:
             estimated_cost=row.get("estimated_cost"), metadata=row.get("metadata") or {},
         )
 
+    def update_tool_usage(
+        self,
+        usage_id: str | int,
+        *,
+        operation: str | None = None,
+        usage_units: float | None = None,
+        estimated_cost: float | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ToolUsageRecord:
+        payload: dict[str, Any] = {}
+        if operation is not None:
+            payload["operation"] = operation
+        if usage_units is not None:
+            payload["usage_units"] = usage_units
+        if estimated_cost is not None:
+            payload["estimated_cost"] = estimated_cost
+        if metadata is not None:
+            payload["metadata"] = metadata
+        rows = self._call(
+            "PATCH",
+            "factory_tool_usage",
+            query={"id": f"eq.{usage_id}"},
+            payload=payload,
+            prefer="return=representation",
+        )
+        row = rows[0]
+        return ToolUsageRecord(
+            id=str(row["id"]), run_id=row["run_id"], tool_family=row["tool_family"],
+            operation=row.get("operation"), usage_units=row.get("usage_units"),
+            estimated_cost=row.get("estimated_cost"), metadata=row.get("metadata") or {},
+        )
+
     def record_codex_usage(
         self,
         *,
