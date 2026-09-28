@@ -546,18 +546,25 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", preflight)
         self.assertIn("factory_projects?select=project_key", preflight)
 
-    def test_vercel_deployments_are_bounded_to_console_branches(self):
+    def test_vercel_deployments_are_bounded_to_promoted_preview_candidates(self):
         vercel = (ROOT / "apps/console/vercel.json").read_text()
         workflow = (ROOT / ".github/workflows/console.yml").read_text()
+        promote = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
         operations = (ROOT / "docs/OPERATIONS.md").read_text()
 
         self.assertIn('"**": false', vercel)
         self.assertIn('"main": true', vercel)
-        self.assertIn('"console/**": true', vercel)
+        self.assertIn('"preview/**": true', vercel)
+        self.assertNotIn('"console/**": true', vercel)
         self.assertIn('"ignoreCommand"', vercel)
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)
         self.assertIn("console/*|ci/*|test/*|security/*)", workflow)
+        self.assertIn("preview/*)", workflow)
+        self.assertIn('"heads/preview/pr-"', promote)
+        self.assertIn("candidate SHA is not the exact PR head", promote)
+        self.assertIn('["test", "factory-acceptance", "validate"]', promote)
         self.assertIn("Vercel deployment budget policy", operations)
+        self.assertIn("Active policy:", operations)
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
