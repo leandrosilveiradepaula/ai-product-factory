@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/console-browser-evidence.yml"
+      - "scripts/verify_preview.mjs"
   workflow_dispatch:
     inputs:
       preview_url:
