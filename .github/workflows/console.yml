@@ -19,17 +19,17 @@ jobs:
       run:
         working-directory: apps/console
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Enforce Console branch convention
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
           case "${GITHUB_HEAD_REF}" in
-            console/*|ci/*|test/*) ;;
+            console/*|ci/*|test/*|security/*) ;;
             preview/*) echo "::error::preview/** refs are reserved for promoted release candidates."; exit 1 ;;
-            *) echo "::error::Console/config changes must use console/*, ci/*, or test/*; preview/** is reserved for final candidates."; exit 1 ;;
+            *) echo "::error::Console/config changes must use console/*, ci/*, test/*, or security/*; preview/** is reserved for final candidates."; exit 1 ;;
           esac
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: npm install
