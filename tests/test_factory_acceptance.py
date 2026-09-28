@@ -231,6 +231,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928145528_factory_authenticated_visual_evidence.sql",
             "20260928163442_factory_existing_project_runtime_stages.sql",
             "20260928170000_factory_project_database_registry.sql",
+            "20260928170600_factory_project_database_verification.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -486,6 +487,20 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("project-scoped integration",docs)
         self.assertIn("pending_access",docs)
         self.assertNotIn("SUPABASE_ACCESS_TOKEN=",docs)
+
+    def test_project_supabase_preflight_is_read_only_and_secret_bounded(self):
+        workflow=(ROOT/".github/workflows/project-supabase-preflight.yml").read_text()
+        script=(ROOT/"scripts/verify_project_supabase.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260928170600_factory_project_database_verification.sql").read_text()
+
+        self.assertIn("environment: ${{ inputs.environment_name }}",workflow)
+        self.assertIn("secrets.FACTORY_PROJECT_SUPABASE_ACCESS_TOKEN",workflow)
+        self.assertIn("read_only_query",script)
+        self.assertNotIn("write_query(",script)
+        self.assertIn("project_ref_mismatch",script)
+        self.assertIn("pending_access",migration)
+        self.assertIn("factory_record_project_database_verification",migration)
+
 
     def test_control_plane_oidc_broker_is_fail_closed_and_secretless(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
