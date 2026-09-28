@@ -94,7 +94,13 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
   require_paid_runtime_budget()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  scheduler=SupabaseAgentScheduler()
- scheduler.schedule_next()
+ if run_id is None:
+  assignment=scheduler.schedule_next()
+  if assignment is None:return {"claimed":False,"status":"empty"}
+  agent_key=assignment.agent_key
+ elif not agent_key:
+  raise ValueError("agent_key is required when run_id is explicit")
+ scheduler.require_route_tools(agent_key,"direct")
  item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
@@ -115,7 +121,13 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   require_codex_runtime_enabled()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  scheduler=SupabaseAgentScheduler()
- scheduler.schedule_next()
+ if run_id is None:
+  assignment=scheduler.schedule_next()
+  if assignment is None:return {"claimed":False,"status":"empty"}
+  agent_key=assignment.agent_key
+ elif not agent_key:
+  raise ValueError("agent_key is required when run_id is explicit")
+ scheduler.require_route_tools(agent_key,"codex")
  item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
