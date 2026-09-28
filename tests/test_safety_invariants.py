@@ -21,6 +21,15 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn('FACTORY_PRIMARY_AUTH_MODE: api_key',direct)
   self.assertIn('FACTORY_MODEL_BUDGET_USD: "4.00"',direct)
   self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',direct)
+ def test_direct_is_inert_without_control_plane_credentials(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  direct=text.split("\n  direct:",1)[1].split("\n\n  codex:",1)[0]
+  self.assertIn("Detect Direct Control Plane readiness",direct)
+  self.assertIn("Direct execution is inert: Control Plane credentials are not configured.",direct)
+  self.assertIn("steps.readiness.outputs.control_plane == 'true'",direct)
+  process=direct.split("Process at most one Direct implementation task",1)[1]
+  self.assertIn("steps.readiness.outputs.control_plane == 'true'",process)
+
  def test_api_key_primary_jobs_do_not_request_oidc(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   product=text.split("\n  product-stage:",1)[1].split("\n  ci-followup:",1)[0]

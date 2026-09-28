@@ -255,14 +255,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Detect Direct Control Plane readiness
+        id: readiness
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            echo "control_plane=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "control_plane=false" >> "$GITHUB_OUTPUT"
+            echo "Direct execution is inert: Control Plane credentials are not configured."
+          fi
       - name: Refuse Direct when paid primary model is not explicitly enabled
-        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED != 'true' }}
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && env.FACTORY_PRIMARY_MODEL_ENABLED != 'true' }}
         shell: bash
         run: |
           echo "Direct execution is fail-closed: set FACTORY_PRIMARY_MODEL_ENABLED=true only after primary auth/quota readiness is approved."
           exit 1
       - name: Validate Direct primary authentication
-        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: |
           case "$FACTORY_PRIMARY_AUTH_MODE" in
@@ -284,7 +294,7 @@ jobs:
               ;;
           esac
       - name: Process at most one Direct implementation task
-        if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode direct --worker-id "gha-direct-${{ github.run_id }}"
 
