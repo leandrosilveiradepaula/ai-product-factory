@@ -54,6 +54,7 @@ jobs:
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      FACTORY_PRIMARY_AUTH_MODE: api_key
       FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}
       FACTORY_MODEL_BUDGET_USD: ${{ vars.FACTORY_MODEL_BUDGET_USD }}
       FACTORY_MODEL_RESERVE_USD: ${{ vars.FACTORY_MODEL_RESERVE_USD }}
@@ -72,13 +73,26 @@ jobs:
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
           fi
           primary_auth=false
-          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
-            if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
-              primary_auth=true
-            fi
-          elif [ -n "$OPENAI_API_KEY" ]; then
-            primary_auth=true
-          fi
+          case "$FACTORY_PRIMARY_AUTH_MODE" in
+            api_key)
+              [ -n "$OPENAI_API_KEY" ] && primary_auth=true
+              ;;
+            wif)
+              if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+                primary_auth=true
+              fi
+              ;;
+            auto|"")
+              if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
+                if [ -n "$OPENAI_IDENTITY_PROVIDER_ID" ] && [ -n "$OPENAI_SERVICE_ACCOUNT_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+                  primary_auth=true
+                fi
+              elif [ -n "$OPENAI_API_KEY" ]; then
+                primary_auth=true
+              fi
+              ;;
+            *) primary_auth=false ;;
+          esac
           if [ "$FACTORY_PRIMARY_MODEL_ENABLED" = "true" ] \
              && [ "$primary_auth" = "true" ] \
              && [ -n "$FACTORY_MODEL_BUDGET_USD" ] && [ -n "$FACTORY_MODEL_RESERVE_USD" ]; then
@@ -252,15 +266,24 @@ jobs:
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash
         run: |
-          if [ -n "$OPENAI_IDENTITY_PROVIDER_ID$OPENAI_SERVICE_ACCOUNT_ID$OPENAI_WIF_AUDIENCE" ]; then
-            if [ -z "$OPENAI_IDENTITY_PROVIDER_ID" ] || [ -z "$OPENAI_SERVICE_ACCOUNT_ID" ] || [ -z "$OPENAI_WIF_AUDIENCE" ]; then
-              echo "OpenAI API workload identity is partially configured; refusing API-key fallback."
+          case "$FACTORY_PRIMARY_AUTH_MODE" in
+            api_key)
+              if [ -z "$OPENAI_API_KEY" ]; then
+                echo "Direct execution requires OPENAI_API_KEY in api_key mode."
+                exit 2
+              fi
+              ;;
+            wif)
+              if [ -z "$OPENAI_IDENTITY_PROVIDER_ID" ] || [ -z "$OPENAI_SERVICE_ACCOUNT_ID" ] || [ -z "$OPENAI_WIF_AUDIENCE" ]; then
+                echo "Direct execution requires complete OpenAI API WIF in wif mode."
+                exit 2
+              fi
+              ;;
+            *)
+              echo "Unsupported FACTORY_PRIMARY_AUTH_MODE=$FACTORY_PRIMARY_AUTH_MODE"
               exit 2
-            fi
-          elif [ -z "$OPENAI_API_KEY" ]; then
-            echo "Direct execution has no primary OpenAI authentication."
-            exit 2
-          fi
+              ;;
+          esac
       - name: Process at most one Direct implementation task
         if: ${{ env.FACTORY_PRIMARY_MODEL_ENABLED == 'true' }}
         shell: bash

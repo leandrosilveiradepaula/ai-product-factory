@@ -66,8 +66,8 @@ def require_codex_runtime_enabled()->None:
 
 def build_handler():
  require_primary_runtime_enabled()
- auth=RuntimeAuthResolver().resolve()
- if auth.kind == AuthKind.OPENAI_API_KEY:
+ auth=RuntimeAuthResolver().resolve_primary_api()
+ if auth.kind in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:
   return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
 
@@ -86,8 +86,8 @@ def run_product_once(worker_id:str)->dict:
 def run_direct_once(worker_id:str)->dict:
  try:
   require_primary_runtime_enabled()
-  auth=RuntimeAuthResolver().resolve()
-  if auth.kind != AuthKind.OPENAI_API_KEY:raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
+  auth=RuntimeAuthResolver().resolve_primary_api()
+  if auth.kind not in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
   require_paid_runtime_budget()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  item=SupabaseDirectRunQueue().claim_next(worker_id)

@@ -152,6 +152,33 @@ class OpenAIResponsesProviderTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 OpenAIResponsesProvider(transport=self.transport)
 
+    def test_explicit_api_key_mode_does_not_attempt_wif(self):
+        from unittest.mock import patch
+        env = {
+            "FACTORY_PRIMARY_AUTH_MODE": "api_key",
+            "OPENAI_API_KEY": "explicit-api-key",
+            "OPENAI_IDENTITY_PROVIDER_ID": "idp_test",
+            "OPENAI_SERVICE_ACCOUNT_ID": "svc_test",
+            "OPENAI_WIF_AUDIENCE": "aud",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            provider = OpenAIResponsesProvider(transport=self.transport)
+            provider.execute(self.request)
+        _, url, headers, _ = self.transport.calls[-1]
+        self.assertEqual(url, "https://api.openai.com/v1/responses")
+        self.assertEqual(headers["Authorization"], "Bearer explicit-api-key")
+
+    def test_explicit_wif_mode_requires_complete_wif_even_with_api_key(self):
+        from unittest.mock import patch
+        env = {
+            "FACTORY_PRIMARY_AUTH_MODE": "wif",
+            "OPENAI_API_KEY": "should-not-fallback",
+            "OPENAI_IDENTITY_PROVIDER_ID": "idp_test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(ValueError):
+                OpenAIResponsesProvider(transport=self.transport)
+
     def test_missing_output_text_fails_closed(self):
         def bad_transport(method, url, headers, body):
             return 200, {"id": "resp_test", "output": []}

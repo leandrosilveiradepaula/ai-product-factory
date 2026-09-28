@@ -180,8 +180,21 @@ class OpenAIResponsesProvider(ModelProvider):
             "OPENAI_SERVICE_ACCOUNT_ID": os.getenv("OPENAI_SERVICE_ACCOUNT_ID", "").strip(),
             "OPENAI_WIF_AUDIENCE": os.getenv("OPENAI_WIF_AUDIENCE", "").strip(),
         }
+        mode = os.getenv("FACTORY_PRIMARY_AUTH_MODE", "auto").strip().lower() or "auto"
+        if mode not in {"auto", "api_key", "wif"}:
+            raise ValueError(f"invalid FACTORY_PRIMARY_AUTH_MODE: {mode}")
         if access_token_provider is not None:
             self._access_token_provider = access_token_provider
+        elif mode == "api_key":
+            if not key:
+                raise ValueError("OPENAI_API_KEY is required by FACTORY_PRIMARY_AUTH_MODE=api_key")
+            self._access_token_provider = lambda: key
+        elif mode == "wif":
+            missing = [name for name, value in wif_values.items() if not value]
+            if missing:
+                raise ValueError("OpenAI API workload identity configuration is incomplete: " + ", ".join(missing))
+            wif = GitHubActionsOpenAIWorkloadIdentity.from_env(transport=self.transport)
+            self._access_token_provider = wif.get_access_token
         elif any(wif_values.values()):
             missing = [name for name, value in wif_values.items() if not value]
             if missing:
