@@ -9,6 +9,19 @@ from .supabase_server import resolve_supabase_server_config
 
 
 @dataclass(frozen=True)
+class AgentProfile:
+    agent_key:str
+    role:str
+    allowed_tools:tuple[str,...]
+    model_policy:dict
+    max_concurrency:int
+
+    def require_tools(self,*tools:str)->None:
+        missing=[tool for tool in tools if tool not in self.allowed_tools]
+        if missing:
+            raise PermissionError(f"agent {self.agent_key} is not allowed to use: {', '.join(missing)}")
+
+@dataclass(frozen=True)
 class AgentAssignment:
     assignment_id:str
     agent_id:str
@@ -25,6 +38,15 @@ class SupabaseAgentScheduler:
     def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
         cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key)
         self.url=cfg.url;self.headers=cfg.headers
+
+    def _get(self,path:str):
+        req=urllib.request.Request(f"{self.url}/rest/v1/{path}",method="GET",headers=self.headers)
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:
+                raw=response.read().decode()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
+        return [] if not raw else json.loads(raw)
 
     def _rpc(self,name:str,payload:dict):
         req=urllib.request.Request(
@@ -83,3 +105,28 @@ class SupabaseAgentScheduler:
 
     def recover_expired(self)->dict:
         return self._rpc("factory_recover_expired_agent_slots",{}) or {"released":0}
+
+
+    def profile(self,agent_key:str)->AgentProfile:
+        if not agent_key.strip():raise ValueError("agent_key is required")
+        rows=self._get("factory_agents?select=agent_key,role,allowed_tools,model_policy,max_concurrency,is_active&agent_key=eq."+agent_key+"&limit=1")
+        if not rows or not bool(rows[0].get("is_active")):
+            raise RuntimeError(f"active agent not found: {agent_key}")
+        row=rows[0]
+        return AgentProfile(
+            agent_key=str(row["agent_key"]),
+            role=str(row["role"]),
+            allowed_tools=tuple(str(x) for x in (row.get("allowed_tools") or [])),
+            model_policy=dict(row.get("model_policy") or {}),
+            max_concurrency=int(row.get("max_concurrency") or 1),
+        )
+
+    def require_route_tools(self,agent_key:str,route:str)->AgentProfile:
+        profile=self.profile(agent_key)
+        if route=="direct":
+            profile.require_tools("github_write","model_primary")
+        elif route=="codex":
+            profile.require_tools("github_write","codex")
+        else:
+            raise ValueError(f"unsupported execution route: {route}")
+        return profile
