@@ -423,6 +423,23 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn('SUPABASE_SERVICE_ROLE_KEY', workflow)
         self.assertNotIn('SUPABASE_SECRET_KEY', workflow)
 
+    def test_authenticated_visual_capture_is_manual_and_exact_target_bounded(self):
+        workflow = (ROOT / ".github/workflows/authenticated-visual-evidence.yml").read_text()
+        script = (ROOT / "scripts/capture_authenticated_console.mjs").read_text()
+
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("target_url:", workflow)
+        self.assertIn("target_commit:", workflow)
+        self.assertIn('target.hostname.endsWith(".vercel.app")', workflow)
+        self.assertIn('target.protocol !== "https:"', workflow)
+        self.assertIn("github.rest.repos.getCommit", workflow)
+        self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
+        self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", script)
+        self.assertIn("targetCommit", script)
+        self.assertIn("targetUrl:consoleUrl", script)
+        self.assertIn("workflowSourceCommit", script)
+
     def test_vercel_deployments_are_bounded_to_console_branches(self):
         vercel = (ROOT / "apps/console/vercel.json").read_text()
         workflow = (ROOT / ".github/workflows/console.yml").read_text()
