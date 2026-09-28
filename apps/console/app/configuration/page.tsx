@@ -4,7 +4,7 @@ import {ActionLink,PageHeader,SectionHeader,StatusPill} from "../ui";
 export default async function Configuration(){
  const c=await getConsoleConfiguration();
  return <>
-  <PageHeader eyebrow="Configuration · Governance" title="Configuração" subtitle="Configuração operacional visível. Segredos, tokens e credenciais privilegiadas nunca são exibidos no Console." actions={<ActionLink href="/admin/operators">Operadores</ActionLink>}/>
+  <PageHeader eyebrow="Configuração · Governança" title="Configuração" subtitle="Configuração operacional visível. Segredos, tokens e credenciais privilegiadas nunca são exibidos no Console." actions={<ActionLink href="/admin/operators">Operadores</ActionLink>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Control Plane</span><strong>{c.controlPlaneConfigured?"pronto":"ausente"}</strong></div>
    <div className="operationalStat"><span>Projetos</span><strong>{c.projects.length}</strong></div>
