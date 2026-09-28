@@ -31,26 +31,28 @@ class MeteredPrimaryProvider:
         reserve_usd: Decimal | None = None,
     ) -> None:
         self.provider = provider
-        self.store = store or SupabaseControlPlaneStore()
-        raw = os.getenv("FACTORY_MODEL_RESERVE_USD", "").strip()
-        self.reserve_usd = reserve_usd if reserve_usd is not None else (Decimal(raw) if raw else None)
-        if self.reserve_usd is None or self.reserve_usd <= 0:
-            raise ValueError("FACTORY_MODEL_RESERVE_USD must be a positive amount")
+        self.store = store
+        self.reserve_usd = reserve_usd
 
     def execute(self, request: ModelRequest) -> ModelResult:
         if not request.run_id:
             raise ValueError("paid primary request requires run_id for cost ledger")
+        store = self.store or SupabaseControlPlaneStore()
+        raw = os.getenv("FACTORY_MODEL_RESERVE_USD", "").strip()
+        reserve_usd = self.reserve_usd if self.reserve_usd is not None else (Decimal(raw) if raw else None)
+        if reserve_usd is None or reserve_usd <= 0:
+            raise ValueError("FACTORY_MODEL_RESERVE_USD must be a positive amount")
         auth = RuntimeAuthResolver().resolve_primary_api()
-        reservation = self.store.record_tool_usage(
+        reservation = store.record_tool_usage(
             run_id=request.run_id,
             tool_family="openai",
             operation="model_call_reserved",
             usage_units=0,
-            estimated_cost=float(self.reserve_usd),
+            estimated_cost=float(reserve_usd),
             metadata={
                 "status": "reserved",
                 "auth_kind": auth.kind.value,
-                "reserve_usd": str(self.reserve_usd),
+                "reserve_usd": str(reserve_usd),
             },
         )
         try:
@@ -63,13 +65,13 @@ class MeteredPrimaryProvider:
         if not result.model:
             raise RuntimeError("paid provider returned no model identity")
         cost = estimate_openai_text_cost_usd(model=result.model, usage=result.usage)
-        if cost > self.reserve_usd:
+        if cost > reserve_usd:
             raise RuntimeError(
-                f"actual provider cost exceeded reserved cost: {cost} > {self.reserve_usd}"
+                f"actual provider cost exceeded reserved cost: {cost} > {reserve_usd}"
             )
         usage = result.usage or {}
         total_tokens = float(usage.get("total_tokens", 0))
-        self.store.update_tool_usage(
+        store.update_tool_usage(
             reservation.id,
             operation="model_call",
             usage_units=total_tokens,
@@ -84,7 +86,7 @@ class MeteredPrimaryProvider:
                 "cached_input_tokens": int(usage.get("cached_input_tokens", 0)),
                 "output_tokens": int(usage.get("output_tokens", 0)),
                 "total_tokens": int(usage.get("total_tokens", 0)),
-                "reserve_usd": str(self.reserve_usd),
+                "reserve_usd": str(reserve_usd),
                 "actual_cost_usd": str(cost),
             },
         )
