@@ -31,10 +31,10 @@ class SupabaseCodexRunQueue:
         self.key = cfg.key
         self.headers = cfg.headers
 
-    def claim_next(self, worker_id: str) -> CodexExecutionItem | None:
+    def claim_next(self, worker_id: str, agent_key: str | None = None, run_id: str | None = None) -> CodexExecutionItem | None:
         req = urllib.request.Request(
-            f"{self.url}/rest/v1/rpc/factory_claim_next_codex_run",
-            data=json.dumps({"p_worker_id": worker_id}).encode(),
+            f"{self.url}/rest/v1/rpc/factory_claim_next_agent_codex_run",
+            data=json.dumps({"p_worker_id": worker_id, "p_agent_key": agent_key, "p_run_id": run_id}).encode(),
             method="POST",
             headers={**self.headers, "Content-Type": "application/json"},
         )
@@ -43,7 +43,7 @@ class SupabaseCodexRunQueue:
                 raw = response.read().decode()
         except urllib.error.HTTPError as exc:
             raise RuntimeError(
-                f"control-plane RPC failed: factory_claim_next_codex_run ({exc.code})"
+                f"control-plane RPC failed: factory_claim_next_agent_codex_run ({exc.code})"
             ) from exc
         if not raw:
             return None

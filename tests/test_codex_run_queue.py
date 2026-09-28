@@ -41,7 +41,7 @@ class CodexRunQueueTests(unittest.TestCase):
         self.assertEqual(item.codex_level, 2)
         self.assertIsNone(item.issue_number)
         request = call.call_args.args[0]
-        self.assertTrue(request.full_url.endswith("/rest/v1/rpc/factory_claim_next_codex_run"))
+        self.assertTrue(request.full_url.endswith("/rest/v1/rpc/factory_claim_next_agent_codex_run"))
         self.assertNotIn(b"secret", request.data)
 
     def test_empty_queue(self):

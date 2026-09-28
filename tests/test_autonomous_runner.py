@@ -17,7 +17,8 @@ class Tests(unittest.TestCase):
   with patch("ai_product_factory.runtime_cli.build_handler",side_effect=RuntimeError("missing")):
    self.assertEqual(run_product_once("w")["status"],"blocked")
  def test_dispatch_reports_route(self):
-  with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=Dispatch()):
-   out=run_dispatch_once("p")
+  scheduler=type("S",(),{"schedule_next":lambda self:None,"work_matrix":lambda self,limit:{"direct":[],"codex":[]}})()
+  with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=Dispatch()),patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
+   out=run_dispatch_once("p",max_items=1)
   self.assertEqual(out["route"],"direct");self.assertFalse(out["human_gate_required"])
 if __name__=="__main__":unittest.main()

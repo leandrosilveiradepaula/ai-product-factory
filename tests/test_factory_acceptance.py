@@ -234,6 +234,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928170600_factory_project_database_verification.sql",
             "20260928202000_factory_resource_limit_snapshots.sql",
             "20260928204500_factory_project_database_oauth_vault.sql",
+            "20260928212700_factory_agent_registry.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -628,3 +629,29 @@ def test_supabase_oauth_vault_backend_keeps_definers_private():
     assert "verified_at=null" not in migration
     assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
     assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
+
+
+def test_agent_registry_is_configurable_scoped_and_fail_closed():
+    migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
+    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+    runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+    planner=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+    assert "create table if not exists public.factory_agents" in migration
+    assert "max_concurrency" in migration
+    assert "factory_agent_scope_locks" in migration
+    assert "scope conflict with run" in migration
+    assert "factory_schedule_next_unassigned_run" in migration
+    assert "factory_claim_next_agent_direct_run" in migration
+    assert "factory_claim_next_agent_codex_run" in migration
+    assert "factory_recover_expired_agent_slots" in migration
+    assert "revoke all on public.factory_agents from public,anon,authenticated" in migration
+    assert "grant execute on function public.factory_schedule_run_agent" in migration
+    assert "idx_factory_run_agent_assignments_active_run" in migration
+    assert "lease_expires_at > now()" in migration
+    assert "starts_with(l.scope_key" in migration
+    assert "or l.lease_expires_at <= now()" in migration
+    assert "required_capabilities" in migration
+    assert "scope_keys" in migration
+    assert "Do not assume a fixed number of agents" in planner
+    assert 'scheduler.release(item.run_id,"blocked")' in runtime
+    assert "recover_expired" in scheduler
