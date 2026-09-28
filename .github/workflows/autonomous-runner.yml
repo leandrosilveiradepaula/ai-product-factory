@@ -32,6 +32,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: factory-autonomous-runner
@@ -43,6 +44,7 @@ jobs:
     environment: openai-api
     permissions:
       contents: read
+      id-token: write
     timeout-minutes: 8
     env:
       PYTHONPATH: src
@@ -59,6 +61,7 @@ jobs:
       FACTORY_MODEL_RESERVE_USD: "0.50"
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -125,6 +128,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      id-token: write
       issues: read
       pull-requests: read
       checks: read
@@ -137,6 +141,7 @@ jobs:
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -161,6 +166,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      id-token: write
       issues: write
       pull-requests: read
     env:
@@ -172,6 +178,7 @@ jobs:
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -201,6 +208,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -232,6 +240,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
       issues: write
       pull-requests: write
       checks: read
@@ -252,6 +261,7 @@ jobs:
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -407,6 +417,7 @@ jobs:
     timeout-minutes: 8
     permissions:
       contents: read
+      id-token: write
       issues: write
       pull-requests: read
     env:
@@ -420,6 +431,7 @@ jobs:
       FACTORY_CODEX_MANUAL_FALLBACK_ENABLED: ${{ vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -449,6 +461,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      id-token: write
       issues: read
       pull-requests: read
       checks: read
@@ -468,6 +481,7 @@ jobs:
       FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS: "120"
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -517,6 +531,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      id-token: write
       issues: write
     env:
       PYTHONPATH: src
@@ -530,6 +545,7 @@ jobs:
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
