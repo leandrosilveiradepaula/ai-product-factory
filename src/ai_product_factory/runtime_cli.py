@@ -102,6 +102,7 @@ def run_direct_once(worker_id:str,agent_key:str|None=None)->dict:
  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
  if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ SupabaseAgentScheduler().release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_codex_once(worker_id:str,agent_key:str|None=None)->dict:
@@ -119,6 +120,7 @@ def run_codex_once(worker_id:str,agent_key:str|None=None)->dict:
  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
  if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ SupabaseAgentScheduler().release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_health_once()->dict:
@@ -206,6 +208,7 @@ def run_release_once()->dict:
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  merge_sha=loop.observe_manual_merge(session)
  if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
+ SupabaseAgentScheduler().release_scopes(item.run_id)
  return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
 
 def run_alerts_once()->dict:
