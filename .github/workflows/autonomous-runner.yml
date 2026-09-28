@@ -43,7 +43,6 @@ jobs:
     environment: openai-api
     permissions:
       contents: read
-      id-token: write
     timeout-minutes: 8
     env:
       PYTHONPATH: src
@@ -236,7 +235,6 @@ jobs:
       issues: write
       pull-requests: write
       checks: read
-      id-token: write
     env:
       PYTHONPATH: src
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

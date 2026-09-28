@@ -21,6 +21,17 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn('FACTORY_PRIMARY_AUTH_MODE: api_key',direct)
   self.assertIn('FACTORY_MODEL_BUDGET_USD: "4.00"',direct)
   self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',direct)
+ def test_api_key_primary_jobs_do_not_request_oidc(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  product=text.split("\n  product-stage:",1)[1].split("\n  ci-followup:",1)[0]
+  direct=text.split("\n  direct:",1)[1].split("\n\n  codex:",1)[0]
+  self.assertIn("FACTORY_PRIMARY_AUTH_MODE: api_key",product)
+  self.assertIn("FACTORY_PRIMARY_AUTH_MODE: api_key",direct)
+  self.assertNotIn("id-token: write",product)
+  self.assertNotIn("id-token: write",direct)
+  codex=text.split("\n  codex:",1)[1].split("\n  codex-manual:",1)[0]
+  self.assertIn("id-token: write",codex)
+
  def test_control_plane_accepts_modern_or_legacy_server_secret(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn("SUPABASE_SECRET_KEY",text)
