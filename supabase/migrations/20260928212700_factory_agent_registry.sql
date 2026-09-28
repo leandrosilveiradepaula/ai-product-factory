@@ -267,7 +267,7 @@ end;$$;
 revoke all on function public.factory_schedule_next_unassigned_run() from public,anon,authenticated;
 grant execute on function public.factory_schedule_next_unassigned_run() to service_role;
 
-create or replace function public.factory_claim_next_direct_run(p_worker_id text,p_agent_key text default null)
+create or replace function public.factory_claim_next_agent_direct_run(p_worker_id text,p_agent_key text default null)
 returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
@@ -297,10 +297,10 @@ begin
   'issue_number',null,'title',v_task.title,'description',v_task.description,'branch',v_branch,'agent_key',v_agent_key,
   'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
 end;$$;
-revoke all on function public.factory_claim_next_direct_run(text,text) from public,anon,authenticated;
-grant execute on function public.factory_claim_next_direct_run(text,text) to service_role;
+revoke all on function public.factory_claim_next_agent_direct_run(text,text) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_agent_direct_run(text,text) to service_role;
 
-create or replace function public.factory_claim_next_codex_run(p_worker_id text,p_agent_key text default null)
+create or replace function public.factory_claim_next_agent_codex_run(p_worker_id text,p_agent_key text default null)
 returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
@@ -331,5 +331,5 @@ begin
   'codex_level',coalesce((v_run.metadata->>'codex_level')::int,1),
   'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
 end;$$;
-revoke all on function public.factory_claim_next_codex_run(text,text) from public,anon,authenticated;
-grant execute on function public.factory_claim_next_codex_run(text,text) to service_role;
+revoke all on function public.factory_claim_next_agent_codex_run(text,text) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_agent_codex_run(text,text) to service_role;
