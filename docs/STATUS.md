@@ -39,7 +39,7 @@ The runtime includes:
 - a bounded CI follow-up worker that resumes `ci_pending` Direct runs without model calls and moves green CI to `preview_ready`;
 - a bounded release follow-up worker that only observes a human PR merge, records the merge evidence, marks the run `merged`, and closes the issue after that human action.
 
-Scheduled Direct is wired but remains inert unless Primary is explicitly enabled and both model budget and per-run reservation are configured; runtime auth and the Control Plane cost ledger still fail closed before claim/provider use. Dispatch, CI follow-up, Preview follow-up, release observation, recovery, and operational alerts may run hourly without paid model access.
+Scheduled Direct is enabled through the retained API key with a prepaid Factory budget of US$ 4.00 and a US$ 0.50 per-call/run reservation. It remains bounded by queue availability, real Control Plane spend and unknown-cost fail-closed checks before provider use. Product Stage uses the same paid boundary. Dispatch, CI follow-up, Preview follow-up, release observation, recovery, and operational alerts may run hourly without paid model access.
 
 ## Console deployment
 
@@ -71,7 +71,7 @@ PR #269 added the conversational new-project path, ongoing-project reconcile-fir
 
 OpenAI API authentication and Codex workspace authentication are intentionally separate.
 
-The retained API key is now billing-ready. On 2026-09-28, after the user manually added US$ 5 of API Platform credit, workflow `OpenAI billing smoke once` run `36413373572` executed exactly one bounded GPT-5.6 Luna request and returned `FACTORY_SMOKE_OK`. Usage was 35 input + 9 output = 44 tokens, with estimated cost US$ 0.0000178 under a US$ 0.01 ceiling; the run, usage, provider reference and cost were persisted in the Control Plane. `FACTORY_PRIMARY_MODEL_ENABLED` remains false pending explicit operating-budget and per-run-reservation approval.
+The retained API key is billing-ready and is the explicit current Primary auth mode. On 2026-09-28, after the user manually added US$ 5 of API Platform credit, workflow `OpenAI billing smoke once` run `36413373572` executed exactly one bounded GPT-5.6 Luna request and returned `FACTORY_SMOKE_OK`. Usage was 35 input + 9 output = 44 tokens, with estimated cost US$ 0.0000178 under a US$ 0.01 ceiling; the run, usage, provider reference and cost were persisted in the Control Plane. Primary was then enabled with a US$ 4.00 Factory budget and US$ 0.50 reservation, leaving US$ 1.00 outside the Factory budget. Real paid calls pre-reserve ledger cost; successful calls replace that reservation with actual measured cost; unmeterable paid outcomes become unknown-cost events that block subsequent paid execution.
 
 Codex Workload Identity Federation support has been prepared for GitHub OIDC. A manual preflight workflow exists. On 2026-09-27 the Infodive managed ChatGPT workspace Admin Portal was inspected directly in both current and legacy administration surfaces; the documented `Workload identity` section is not present. This confirms the external beta enablement is still missing. Issue #240 tracks the required OpenAI Support/admin action before the preflight can be exercised.
 
@@ -202,7 +202,7 @@ GitHub:
 
 The no-model API WIF preflight is implemented and has executed on a real GitHub-hosted runner. GitHub OIDC issuance succeeds, but OpenAI currently rejects the token exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. The observed immutable subject is `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`. Issue #250 tracks the required OpenAI Platform mapping correction. No model endpoint was called.
 
-The API Platform Billing screen currently reports `$0.00` credit remaining. Therefore `FACTORY_PRIMARY_MODEL_ENABLED` remains false and no paid model smoke is authorized. No credits were added automatically.
+The user manually added US$ 5.00 of API Platform credit on 2026-09-28 with auto-reload left OFF. The bounded smoke succeeded and Primary was subsequently enabled via explicit API-key mode under a US$ 4.00 Factory budget with US$ 0.50 reservation. WIF issue #250 remains open as authentication hardening and does not override or silently replace the selected API-key path.
 
 ## Operational Console redesign
 
@@ -251,7 +251,7 @@ The operational Console redesign was checked against the live Control Plane boun
 
 1. Configure the cross-repository GitHub credential `FACTORY_GITHUB_TOKEN` before executing Direct/Codex work against repositories other than `ai-product-factory`.
 2. Configure the external managed-workspace values required by `docs/AUTH_ACTIVATION_READINESS.md`, validate Codex WIF preflight, and only then set `FACTORY_CODEX_ENABLED=true`.
-3. Validate Primary model quota/billing once administratively ready; keep `FACTORY_PRIMARY_MODEL_ENABLED` false until then.
+3. Monitor the active Primary budget/ledger; any unknown paid-cost event must remain a hard stop. WIF #250 can be completed later as authentication hardening without changing the current API-key operating mode until explicitly selected.
 4. For projects with official Vercel↔GitHub integration, `mode: github` uses the workflow `GITHUB_TOKEN` and the manual Preview job self-hosts pinned Playwright/Chromium; no Vercel token or external browser service is required. `VERCEL_TOKEN` remains an API-mode fallback for other projects.
 5. Verified Preview and operational alerts are now scheduled bounded follow-ups; production still stops at the human merge gate.
 6. Supabase Auth leaked-password protection is currently reported disabled by the security advisor; enable it through the Supabase Auth dashboard when administrative hardening is performed.

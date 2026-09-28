@@ -25,9 +25,11 @@ Current known state:
 - the API WIF no-model preflight now runs during the temporary public Actions window. The real GitHub OIDC token is issued successfully, but OpenAI currently rejects the exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. The actual immutable GitHub subject is `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`; the OpenAI Platform mapping must be reconciled to these real claims before WIF is treated as ready;
 - the user manually added US$ 5 of API Platform credit on 2026-09-28;
 - bounded billing smoke run `36413373572` succeeded through `OPENAI_API_KEY` using GPT-5.6 Luna with `reasoning=none`, 32 max output tokens, exact output `FACTORY_SMOKE_OK`, 35 input tokens, 9 output tokens, and estimated cost US$ 0.0000178 under a US$ 0.01 ceiling; the evidence is persisted in the Control Plane;
-- the existing `OPENAI_API_KEY` is retained temporarily while WIF #250 remains unresolved; `FACTORY_PRIMARY_MODEL_ENABLED` stays false until the user explicitly approves the operating budget and per-run reservation.
+- the existing `OPENAI_API_KEY` is the explicit current Primary auth mode while WIF #250 remains unresolved;
+- the user authorized ongoing use of the manually purchased API credit; `FACTORY_PRIMARY_MODEL_ENABLED=true` is active with a US$ 4.00 Factory budget and US$ 0.50 reservation, leaving US$ 1.00 of the original US$ 5.00 outside the Factory budget;
+- the paid ledger pre-reserves before provider use, records actual model/token/cached-token cost after success, records unmeterable paid outcomes with unknown cost, and the runtime blocks future paid execution when any unknown-cost event exists.
 
-Keep `FACTORY_PRIMARY_MODEL_ENABLED` unset/false. Do not repeat paid calls merely to poll readiness and do not add credits automatically.
+Do not repeat paid calls merely to poll readiness, do not add credits automatically, and do not enable auto-reload automatically. Changing the total budget or reservation remains an explicit cost decision.
 
 ChatGPT Business workspace credits are a separate balance and do not fund the API Platform. An OpenAI email dated 2026-09-04 reported the Infodive ChatGPT workspace out of credits at that time. The user has since confirmed that the workspace currently has credits. This historical email is not evidence of the current workspace balance and is not evidence of API Platform balance.
 
@@ -72,7 +74,7 @@ This is intentionally different from storing a human credential in GitHub. No Ch
 2. Run the relevant preflight once.
 3. Preserve the workflow evidence.
 4. Only then enable the corresponding execution adapter.
-5. Scheduled Direct remains disabled until Primary readiness is proven.
+5. Scheduled Direct is enabled only after Primary readiness is proven and remains bounded by the configured total budget, per-call/run reservation, real spend ledger, and queue availability.
 
 Production deployment remains independently human-gated.
 
