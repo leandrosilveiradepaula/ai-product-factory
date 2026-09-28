@@ -14,7 +14,7 @@ class ProductStagePrompts:
     specification: str = "Create an implementable product specification. Return JSON only with scope, user_flows, requirements, non_functional_requirements, acceptance_criteria, exclusions, assumptions."
     reconciliation: str = "Reconcile the existing project from the durable state snapshot and approved intake. Return JSON only with observed_stage, summary, evidence, gaps, constraints, source_status. Preserve confirmed work and do not claim repository checks that are absent from the supplied evidence."
     gap_analysis: str = "Compare the reconciled existing-project state with the continuation brief and constraints. Return JSON only with completed, gaps, risks, decisions_needed, recommended_next_work. Do not invent missing evidence or business decisions."
-    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, dependencies, test_strategy, release_strategy, risks."
+    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, dependencies, test_strategy, release_strategy, risks. Every task must include required_capabilities (array of semantic capabilities such as implementation, ui, security_review, tests, ci), scope_keys (array of repository scope roots it may modify), and may include preferred_agent_role only when a specific specialist role is materially required. Do not assume a fixed number of agents."
 
 
 class ProductStageExecutor:
