@@ -16,8 +16,8 @@ class ModelRole(StrEnum):
 class ModelRequest:
     task_id: str
     objective: str
-    run_id: str | None = None
     context: str
+    run_id: str | None = None
     acceptance_criteria: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
