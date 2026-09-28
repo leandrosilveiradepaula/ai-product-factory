@@ -235,6 +235,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928202000_factory_resource_limit_snapshots.sql",
             "20260928204500_factory_project_database_oauth_vault.sql",
             "20260928212700_factory_agent_registry.sql",
+            "20260928222200_factory_agent_scope_lock_agent_index.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
