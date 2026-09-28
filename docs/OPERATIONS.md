@@ -118,16 +118,21 @@ The response is intentionally minimal and contains only service status and a tru
 
 ## Vercel deployment budget policy
 
-The Console Vercel project must not create a deployment for every Factory branch. Automatic Git deployments are allowlisted in `apps/console/vercel.json`:
+The Console must not create a deployment for every implementation commit.
 
-- `main` may deploy production after the human merge gate;
-- branches under `console/**` may create Preview deployments;
-- every other branch is denied at the Git-deployment layer;
-- `ignoreCommand` remains a second path-based guard and skips the build when the Console working tree did not change.
+Target policy (PR #341):
+- `main` remains the production branch;
+- implementation branches such as `console/**` and `test/**` do not deploy automatically;
+- after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
+- only `preview/**` is allowed to create the final Preview candidate;
+- `ignoreCommand` remains a path-based second guard;
+- Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically.
 
-Any pull request that changes `apps/console/**` must therefore use a `console/<slug>` branch. The Console validation workflow enforces this convention. Backend, documentation, Codex, OpenAI/auth and other non-Console branches must not consume Vercel deployment quota.
+Until #341 is released, the repository is still operating under the previous Vercel Git policy. Do not describe the target policy as active before that release.
 
-This policy reduces unnecessary deployment creation; it does not remove Vercel account-level quotas. A real Console Preview still consumes a deployment and must be reserved for work that actually changes the Console.
+## Resource quota observability
+
+The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. Unknown provider usage remains unknown rather than estimated. Current Vercel daily deployment usage is measured as a derived rolling-window count from deployment API data; GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
 
 ## Preview applicability policy
 
