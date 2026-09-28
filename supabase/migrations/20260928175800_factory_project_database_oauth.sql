@@ -13,14 +13,14 @@ grant select,insert,update,delete on table public.factory_project_database_oauth
 
 create or replace function public.factory_store_project_database_oauth(
  p_database_id uuid,p_access_token text,p_refresh_token text,p_token_type text,p_expires_at timestamptz
-) returns void language plpgsql security definer set search_path='' as $$
+) returns void language plpgsql security definer set search_path='public','vault' as $
 declare v_access uuid;v_refresh uuid;v_old public.factory_project_database_oauth%rowtype;
 begin
  if nullif(btrim(p_access_token),'') is null then raise exception 'access token required';end if;
  select * into v_old from public.factory_project_database_oauth where database_id=p_database_id;
  if found then
-   perform vault.delete_secret(v_old.vault_access_secret_id);
-   if v_old.vault_refresh_secret_id is not null then perform vault.delete_secret(v_old.vault_refresh_secret_id);end if;
+   delete from vault.secrets where id=v_old.vault_access_secret_id;
+   if v_old.vault_refresh_secret_id is not null then delete from vault.secrets where id=v_old.vault_refresh_secret_id;end if;
  end if;
  v_access:=vault.create_secret(p_access_token,null,'Factory project Supabase OAuth access token');
  if nullif(btrim(coalesce(p_refresh_token,'')),'') is not null then
