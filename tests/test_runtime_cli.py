@@ -65,6 +65,7 @@ class RuntimeCliTests(unittest.TestCase):
             }
             queue=MagicMock();queue.claim_next.return_value=None
             with patch.dict("os.environ",env,clear=True), \
+                 patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler, \
                  patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue), \
                  patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
                  patch("ai_product_factory.runtime_cli.CodexCLIProducer") as producer:
@@ -181,7 +182,9 @@ class RuntimeCliTests(unittest.TestCase):
     def test_dispatch_without_project_uses_global_selector(self):
         dispatch=MagicMock()
         dispatch.dispatch_next_any.return_value=None
-        with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch):
+        scheduler=MagicMock();scheduler.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
             out=run_dispatch_once()
         self.assertEqual(out["status"],"empty")
         dispatch.dispatch_next_any.assert_called_once()
@@ -290,7 +293,8 @@ class RuntimeCliTests(unittest.TestCase):
         with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
-             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
             out=run_release_once()
         self.assertEqual(out["status"],"merged")
         self.assertEqual(out["merge_sha"],"merge123")
@@ -308,6 +312,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.DirectExecutionWorker",return_value=worker), \
              patch("ai_product_factory.runtime_cli.ModelImplementationProducer"), \
+             patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider"), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop"), \
              patch("ai_product_factory.runtime_cli.GitHubIssueMaterializer"), \
