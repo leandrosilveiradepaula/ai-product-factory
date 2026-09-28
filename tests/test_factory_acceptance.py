@@ -631,23 +631,27 @@ def test_supabase_oauth_vault_backend_keeps_definers_private():
     assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
 
 
-    def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
-        migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
-        scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
-        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
-        planner=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
-        self.assertIn("create table if not exists public.factory_agents",migration)
-        self.assertIn("max_concurrency",migration)
-        self.assertIn("factory_agent_scope_locks",migration)
-        self.assertIn("scope conflict with run",migration)
-        self.assertIn("factory_schedule_next_unassigned_run",migration)
-        self.assertIn("factory_claim_next_agent_direct_run",migration)
-        self.assertIn("factory_claim_next_agent_codex_run",migration)
-        self.assertIn("factory_recover_expired_agent_slots",migration)
-        self.assertIn("revoke all on public.factory_agents from public,anon,authenticated",migration)
-        self.assertIn("grant execute on function public.factory_schedule_run_agent",migration)
-        self.assertIn("required_capabilities",migration)
-        self.assertIn("scope_keys",migration)
-        self.assertIn("Do not assume a fixed number of agents",planner)
-        self.assertIn("SupabaseAgentScheduler().schedule_next()",runtime)
-        self.assertIn("recover_expired",scheduler)
+def test_agent_registry_is_configurable_scoped_and_fail_closed():
+    migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
+    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+    runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+    planner=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+    assert "create table if not exists public.factory_agents" in migration
+    assert "max_concurrency" in migration
+    assert "factory_agent_scope_locks" in migration
+    assert "scope conflict with run" in migration
+    assert "factory_schedule_next_unassigned_run" in migration
+    assert "factory_claim_next_agent_direct_run" in migration
+    assert "factory_claim_next_agent_codex_run" in migration
+    assert "factory_recover_expired_agent_slots" in migration
+    assert "revoke all on public.factory_agents from public,anon,authenticated" in migration
+    assert "grant execute on function public.factory_schedule_run_agent" in migration
+    assert "idx_factory_run_agent_assignments_active_run" in migration
+    assert "lease_expires_at > now()" in migration
+    assert "starts_with(l.scope_key" in migration
+    assert "or l.lease_expires_at <= now()" in migration
+    assert "required_capabilities" in migration
+    assert "scope_keys" in migration
+    assert "Do not assume a fixed number of agents" in planner
+    assert 'scheduler.release(item.run_id,"blocked")' in runtime
+    assert "recover_expired" in scheduler
