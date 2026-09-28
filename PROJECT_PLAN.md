@@ -95,11 +95,11 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Centralizar design tokens, tipografia, cores semanticas e primitivas reutilizaveis do Console.
 - [x] Validar CI/factory-acceptance no GitHub Actions: janela publica temporaria habilitou runners hospedados; `validate` run #1041 passou e o rerun exato do candidato do Console tambem passou.
 - [x] Validar build do Console por Preview exato Vercel do candidato `10f593d7d169d30fe5048eac9d98a94b8be1e151` (deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX`, `READY`).
-- [ ] Reexecutar browser/Playwright evidence do candidato exato; Actions voltou a executar durante a janela publica, mas a evidencia browser especifica ainda nao foi refeita.
+- [x] Validar browser/Playwright evidence em Preview exato protegido: GitHub OIDC Trusted Source foi configurado na Vercel e o Preview do PR #269 (`8f9f9e514e3c6a13784ce39ad1b9082c937edb9f`, deployment `dpl_5fjYFoLraW2aHo1SPSaSGZKoZUqn`) passou `page_load`, `http_status`, `body_visible`, `expected_text` e `console_clean` no run `36374705190`. O candidato historico `10f593...` permanece apenas como divida arquivistica; nao e a evidencia do release atual.
 
 ## Gate atual
 
-A Factory core esta funcionalmente implementada. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
+A Factory core esta funcionalmente implementada. O fluxo atual de Preview protegido esta verificado com Trusted Source GitHub Actions OIDC. O PR #269 conclui a entrada Novo produto / Projeto em andamento, anexos privados, reconciliacao, Current State Snapshot e interface pt-BR; suas migrations ainda nao foram aplicadas ao Supabase de producao e seu merge publica o Console, portanto ambos permanecem sob gate humano de producao. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
 
 O provider OpenAI Responses esta implementado. A OPENAI_API_KEY chegou corretamente ao runtime, mas a conta de API respondeu HTTP 429 por quota/billing separado.
 
