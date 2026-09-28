@@ -48,9 +48,6 @@ jobs:
     timeout-minutes: 8
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
@@ -134,9 +131,6 @@ jobs:
       checks: read
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
@@ -171,9 +165,6 @@ jobs:
       pull-requests: read
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
@@ -203,9 +194,6 @@ jobs:
     timeout-minutes: 5
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/control-plane-oidc
@@ -246,9 +234,6 @@ jobs:
       checks: read
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
@@ -320,9 +305,6 @@ jobs:
       id-token: write
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
       OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
@@ -334,6 +316,8 @@ jobs:
       FACTORY_CODEX_MAX_FILES: "20"
       FACTORY_CODEX_MAX_BYTES: "250000"
     steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/control-plane-oidc
       - name: Detect Codex runtime readiness
         id: readiness
         env:
@@ -363,8 +347,6 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Codex worker is inert: enable flag, complete official Codex auth, native repository credential, and Control Plane credentials are required. Cross-repository work still requires FACTORY_GITHUB_TOKEN at execution time."
           fi
-      - uses: actions/checkout@v4
-        if: ${{ steps.readiness.outputs.ready == 'true' }}
       - uses: actions/setup-python@v5
         if: ${{ steps.readiness.outputs.ready == 'true' }}
         with:
@@ -422,9 +404,6 @@ jobs:
       pull-requests: read
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
@@ -467,9 +446,6 @@ jobs:
       checks: read
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
       FACTORY_VERCEL_PREVIEW_ENABLED: "true"
@@ -535,9 +511,6 @@ jobs:
       issues: write
     env:
       PYTHONPATH: src
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
       FACTORY_MODEL_BUDGET_USD: "4.00"
