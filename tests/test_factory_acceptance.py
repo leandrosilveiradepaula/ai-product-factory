@@ -366,6 +366,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
 
         cli = (ROOT / "src/ai_product_factory/cli.py").read_text()
         self.assertNotIn('"openai-execute"', cli)
+        self.assertFalse((ROOT / "src/ai_product_factory/openai_billing_smoke.py").exists())
 
         runtime = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
         self.assertIn("MeteredPrimaryProvider", runtime)
