@@ -270,7 +270,7 @@ end;$$;
 revoke all on function public.factory_schedule_next_unassigned_run() from public,anon,authenticated;
 grant execute on function public.factory_schedule_next_unassigned_run() to service_role;
 
-create or replace function public.factory_claim_next_agent_direct_run(p_worker_id text,p_agent_key text default null)
+create or replace function public.factory_claim_next_agent_direct_run(p_worker_id text,p_agent_key text default null,p_run_id uuid default null)
 returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
@@ -282,6 +282,8 @@ begin
  join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
  where r.status='queued' and r.execution_route='direct' and t.status='queued_execution'
    and (p_agent_key is null or a2.agent_key=p_agent_key)
+   and (p_run_id is null or r.id=p_run_id)
+   and (p_run_id is null or r.id=p_run_id)
  order by r.created_at
  for update of r skip locked limit 1;
  if v_run.id is null then return null;end if;
@@ -300,10 +302,10 @@ begin
   'issue_number',null,'title',v_task.title,'description',v_task.description,'branch',v_branch,'agent_key',v_agent_key,
   'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
 end;$$;
-revoke all on function public.factory_claim_next_agent_direct_run(text,text) from public,anon,authenticated;
-grant execute on function public.factory_claim_next_agent_direct_run(text,text) to service_role;
+revoke all on function public.factory_claim_next_agent_direct_run(text,text,uuid) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_agent_direct_run(text,text,uuid) to service_role;
 
-create or replace function public.factory_claim_next_agent_codex_run(p_worker_id text,p_agent_key text default null)
+create or replace function public.factory_claim_next_agent_codex_run(p_worker_id text,p_agent_key text default null,p_run_id uuid default null)
 returns jsonb language plpgsql security invoker set search_path='' as $$
 declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_branch text;v_agent_key text;
 begin
@@ -334,8 +336,8 @@ begin
   'codex_level',coalesce((v_run.metadata->>'codex_level')::int,1),
   'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
 end;$$;
-revoke all on function public.factory_claim_next_agent_codex_run(text,text) from public,anon,authenticated;
-grant execute on function public.factory_claim_next_agent_codex_run(text,text) to service_role;
+revoke all on function public.factory_claim_next_agent_codex_run(text,text,uuid) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_agent_codex_run(text,text,uuid) to service_role;
 
 
 create or replace function public.factory_persist_product_stage(p_run_id uuid,p_stage text,p_output jsonb)
