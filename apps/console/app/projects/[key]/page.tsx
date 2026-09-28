@@ -1,5 +1,5 @@
 import {notFound} from "next/navigation";
-import {getProjectDetail,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
+import {getProjectDatabases,getProjectDetail,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
@@ -8,7 +8,7 @@ function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
 
 export default async function Project({params}:{params:Promise<{key:string}>}){
- const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const [ops,state]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id)]);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));
+ const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const [ops,state,databases]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id)]);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));
  return <>
   <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   <div className="lifecycleRail" aria-label="Ciclo do produto"><span className="lifecycleIdea done">Ideia</span>{stageLabels.map((label,i)=><span key={label} className={i<stages.indexOf(p.stage)?"done":i===stages.indexOf(p.stage)?"current":""}>{label}</span>)}</div>
@@ -31,6 +31,18 @@ export default async function Project({params}:{params:Promise<{key:string}>}){
     {Object.keys(state.snapshot.sourceStatus).length?<div><span className="detailLabel">Fontes reconciliadas</span><div className="valueList">{Object.entries(state.snapshot.sourceStatus).map(([source,value])=><div className="valueRow" key={source}><strong>{source}</strong><span className="muted">{display(value)}</span></div>)}</div></div>:null}
    </div>}
   </section>:null}
+  <section className="section"><SectionHeader title="Bancos de dados" action={<span className="muted">{databases.length} integração{databases.length===1?"":"ões"}</span>}/>
+   {databases.length===0?<EmptyState>Nenhum banco foi vinculado a este projeto. A Factory pode registrar um banco existente ou preparar o provisionamento de um novo banco, sujeito aos gates aplicáveis.</EmptyState>:<div className="table">
+    <div className="tableRow tableHeader"><span>Banco</span><span>Acesso</span><span>Estado</span><span>Verificação</span></div>
+    {databases.map(db=><div className="tableRow" key={db.id}>
+     <div><strong>{db.provider==="supabase"?"Supabase":db.provider}</strong><div className="muted mono">{db.projectRef||"project_ref pendente"} · {db.environment}</div></div>
+     <div><StatusPill status={db.permissionMode} label={db.permissionMode==="read"?"Somente leitura":db.permissionMode==="read_write"?"Leitura e escrita":"Não configurado"}/><div className="muted">{db.accessMode==="oauth"?"OAuth":db.accessMode==="management_api"?"Management API":"Conexão pendente"}</div></div>
+     <StatusPill status={db.status} label={db.status==="pending_access"?"Aguardando conexão":db.status==="ready_read"?"Leitura verificada":db.status==="ready_write"?"Escrita verificada":humanizeStatus(db.status)}/>
+     <span className="muted">{db.lastVerifiedAt?new Date(db.lastVerifiedAt).toLocaleString("pt-BR"):"Ainda não verificado"}</span>
+    </div>)}
+   </div>}
+   {databases.some(db=>db.status==="pending_access")?<div className="card" style={{marginTop:12}}><strong>Próxima ação</strong><p className="muted">Conecte o Supabase com acesso mínimo. A Factory valida a identidade do projeto e uma consulta somente leitura antes de considerar o banco pronto. Nenhuma credencial é exibida nesta tela.</p></div>:null}
+  </section>
   <section className="section"><SectionHeader title="Plano de trabalho" action={<span className="muted">{p.tasks.length} tarefas</span>}/><div className="table">
    <div className="tableRow tableHeader"><span>Tarefa</span><span>Complexidade</span><span>Estado</span><span>Chave</span></div>
    {p.tasks.length===0?<EmptyState>Nenhuma tarefa registrada.</EmptyState>:p.tasks.map(t=><div className="tableRow" key={t.id}><strong>{t.title}</strong><StatusPill status={t.complexity}/><StatusPill status={t.status}/><span className="muted mono">{t.externalKey||t.id.slice(0,8)}</span></div>)}
