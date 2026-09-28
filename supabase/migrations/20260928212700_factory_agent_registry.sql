@@ -174,3 +174,56 @@ on conflict(agent_key) do update set
  capabilities=excluded.capabilities,allowed_tools=excluded.allowed_tools,
  model_policy=excluded.model_policy,max_concurrency=excluded.max_concurrency,
  cost_budget_usd=excluded.cost_budget_usd,updated_at=now();
+
+
+create or replace function public.factory_schedule_run_agent(
+ p_run_id uuid,
+ p_preferred_role text default null,
+ p_required_capabilities jsonb default '[]'::jsonb,
+ p_scope_keys jsonb default '[]'::jsonb,
+ p_lease_seconds integer default 900
+) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare
+ v_agent public.factory_agents%rowtype;
+ v_cap text;
+ v_assignment_id uuid;
+begin
+ if jsonb_typeof(coalesce(p_required_capabilities,'[]'::jsonb)) <> 'array' then raise exception 'required capabilities must be an array'; end if;
+
+ select a.* into v_agent
+ from public.factory_agents a
+ where a.is_active=true
+   and (p_preferred_role is null or a.role=p_preferred_role or a.agent_key=p_preferred_role)
+   and not exists (
+     select 1 from jsonb_array_elements_text(coalesce(p_required_capabilities,'[]'::jsonb)) r(value)
+     where not (a.capabilities ? r.value)
+   )
+   and (
+     select count(*) from public.factory_run_agent_assignments x
+     where x.agent_id=a.id and x.status in ('assigned','claimed')
+   ) < a.max_concurrency
+ order by
+   case when a.agent_key=p_preferred_role then 0 when a.role=p_preferred_role then 1 else 2 end,
+   a.agent_key
+ for update skip locked
+ limit 1;
+
+ if v_agent.id is null then raise exception 'no eligible agent slot'; end if;
+
+ v_assignment_id:=public.factory_claim_agent_slot(
+   p_run_id,v_agent.agent_key,coalesce(p_scope_keys,'[]'::jsonb),p_lease_seconds
+ );
+
+ return jsonb_build_object(
+   'assignment_id',v_assignment_id,
+   'agent_id',v_agent.id,
+   'agent_key',v_agent.agent_key,
+   'role',v_agent.role,
+   'max_concurrency',v_agent.max_concurrency,
+   'model_policy',v_agent.model_policy,
+   'allowed_tools',v_agent.allowed_tools
+ );
+end;$$;
+revoke all on function public.factory_schedule_run_agent(uuid,text,jsonb,jsonb,integer) from public,anon,authenticated;
+grant execute on function public.factory_schedule_run_agent(uuid,text,jsonb,jsonb,integer) to service_role;
