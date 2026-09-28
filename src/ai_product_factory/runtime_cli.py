@@ -93,34 +93,44 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
   if auth.kind not in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
   require_paid_runtime_budget()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
- SupabaseAgentScheduler().schedule_next()
+ scheduler=SupabaseAgentScheduler()
+ scheduler.schedule_next()
  item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
- producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
- github=GitHubRestAdapter(repository=item.repository)
- loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
- materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
- session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
- if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
- SupabaseAgentScheduler().release(item.run_id,"completed")
+ try:
+  producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
+  github=GitHubRestAdapter(repository=item.repository)
+  loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
+  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
+  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
+  if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ except Exception:
+  scheduler.release(item.run_id,"blocked")
+  raise
+ scheduler.release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_codex_runtime_enabled()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
- SupabaseAgentScheduler().schedule_next()
+ scheduler=SupabaseAgentScheduler()
+ scheduler.schedule_next()
  item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
- usage=SupabaseCodexUsageRecorder()
- producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
- github=GitHubRestAdapter(repository=item.repository)
- store=SupabaseDeliveryStore()
- loop=AutonomousGitHubLoop(github,store)
- materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
- session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
- if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
- SupabaseAgentScheduler().release(item.run_id,"completed")
+ try:
+  usage=SupabaseCodexUsageRecorder()
+  producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
+  github=GitHubRestAdapter(repository=item.repository)
+  store=SupabaseDeliveryStore()
+  loop=AutonomousGitHubLoop(github,store)
+  materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
+  session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
+  if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
+ except Exception:
+  scheduler.release(item.run_id,"blocked")
+  raise
+ scheduler.release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_health_once()->dict:
