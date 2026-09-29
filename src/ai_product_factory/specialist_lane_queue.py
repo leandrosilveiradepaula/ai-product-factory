@@ -95,4 +95,8 @@ class SupabaseSpecialistLaneQueue:
             completed["repair"]=repair
             if repair.get("created"):
                 completed["run_status"]="repair_pending"
+        elif status=="passed" and item.role in {"security","qa"}:
+            completed["repair_recheck"]=self._rpc(
+                "factory_close_repairs_after_specialist_pass",{"p_job_id":item.job_id}
+            ) or {}
         return completed
