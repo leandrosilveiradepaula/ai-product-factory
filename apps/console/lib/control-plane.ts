@@ -271,7 +271,7 @@ export async function getConsoleConfiguration():Promise<ConsoleConfiguration>{
 export type ExecutionTeamPlan={
  id:string;version:number;status:string;createdAt:string;
  profilesSelected:number;plannedWorkerPeak:number;
- selectedAgents:{agent_key:string;role:string;workers_planned:number;max_concurrency:number;task_keys:string[];reasons:string[]}[];
+ selectedAgents:{agent_key:string;role:string;workers_planned:number;max_concurrency:number;execution_ready:boolean;task_keys:string[];reasons:string[]}[];
  excludedAgents:{agent_key:string;role:string;reason:string}[];
  waves:{wave:number;task_keys:string[];agent_load:Record<string,number>;parallel_workers:number}[];
  blockers:{code:string;task_key?:string;title?:string;dependency?:string}[];
