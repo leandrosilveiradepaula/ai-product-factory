@@ -1,0 +1,32 @@
+name: OIDC claims diagnostic
+
+on:
+  push:
+    branches: [ci/oidc-claims-diagnostic]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  standard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+            const keys = ['iss','aud','sub','repository','repository_id','repository_owner_id','ref','environment','workflow_ref','job_workflow_ref','event_name','sha'];
+            for (const key of keys) core.info(key + '=' + String(payload[key] ?? ''));
+  environment:
+    runs-on: ubuntu-latest
+    environment: openai-api
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+            const keys = ['iss','aud','sub','repository','repository_id','repository_owner_id','ref','environment','workflow_ref','job_workflow_ref','event_name','sha'];
+            for (const key of keys) core.info(key + '=' + String(payload[key] ?? ''));
