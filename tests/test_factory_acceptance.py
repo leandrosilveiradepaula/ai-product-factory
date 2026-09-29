@@ -250,6 +250,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929040000_factory_project_brain.sql",
             "20260929043000_factory_impact_analysis.sql",
             "20260929050000_factory_requirement_traceability.sql",
+            "20260929060000_factory_release_policy.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -824,3 +825,28 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn('evidence_type="github_ci"',runtime)
         self.assertIn('evidence_type="human_release"',runtime)
         self.assertNotIn("score",dod.lower())
+
+
+    def test_release_policy_is_source_controlled_auditable_and_cannot_auto_merge(self):
+        policy=(ROOT/"config/factory.release-policy.v1.json").read_text()
+        engine=(ROOT/"src/ai_product_factory/release_policy_engine.py").read_text()
+        intelligence=(ROOT/"src/ai_product_factory/release_intelligence.py").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929060000_factory_release_policy.sql").read_text()
+
+        self.assertIn('"auto_merge_allowed": false',policy)
+        self.assertIn('"human_release_required": true',policy)
+        self.assertIn("ready_for_human_release",engine)
+        self.assertIn("unknown paid cost blocks release readiness",engine)
+        self.assertIn("migration change requires verified rollback",engine)
+        self.assertIn("missing_nonhuman_dod",intelligence)
+        self.assertIn("release_policy_blocked",runtime)
+        self.assertIn("SupabaseReleasePolicyStore().mark_released",runtime)
+        self.assertIn("factory_policy_decisions",migration)
+        self.assertIn("factory_release_reports",migration)
+        self.assertIn("factory_get_release_facts",migration)
+        self.assertIn("factory_record_policy_decision",migration)
+        self.assertIn("factory_record_release_report",migration)
+        self.assertIn("security invoker",migration)
+        self.assertNotIn("merge_pull_request(",engine)
+        self.assertNotIn("merge_pull_request(",intelligence)
