@@ -130,6 +130,31 @@ class GitHubRestAdapter:
                    payload={"ref": f"refs/heads/{branch}", "sha": base_sha})
         return base_sha
 
+    def create_branch_at_sha(self, branch: str, sha: str) -> str:
+        if not sha.strip():
+            raise ValueError("sha is required")
+        self._call("POST", f"/repos/{self.repository}/git/refs",
+                   payload={"ref": f"refs/heads/{branch}", "sha": sha})
+        return sha
+
+    def ensure_branch_at_sha(self, branch: str, sha: str) -> str:
+        try:
+            current=self.get_branch_sha(branch)
+        except Exception:
+            try:
+                return self.create_branch_at_sha(branch,sha)
+            except Exception:
+                current=self.get_branch_sha(branch)
+        if current!=sha:
+            raise RuntimeError(f"branch {branch} does not match expected candidate SHA")
+        return current
+
+    def get_file_text(self, path: str, *, ref: str) -> str:
+        row=self._call("GET",f"/repos/{self.repository}/contents/{parse.quote(path,safe='/')}",query={"ref":ref})
+        if row.get("type")!="file" or row.get("encoding")!="base64":
+            raise RuntimeError(f"GitHub path is not a base64 file: {path}")
+        return base64.b64decode(str(row.get("content") or "").replace("\n","")).decode("utf-8")
+
     def commit_files(self, branch: str, files: dict[str, str], *, message: str) -> str:
         if not files:
             raise ValueError("files cannot be empty")
