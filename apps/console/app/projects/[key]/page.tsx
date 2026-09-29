@@ -57,7 +57,7 @@ export default async function Project({params}:{params:Promise<{key:string}>}){
     </div>
     <div className="threeCol">
      {teamPlan.selectedAgents.map(agent=><div className="card denseStack" key={agent.agent_key}>
-      <div className="panelHeading"><strong>{agent.role}</strong><StatusPill status="active" label={agent.workers_planned+" worker"+(agent.workers_planned===1?"":"s")}/></div>
+      <div className="panelHeading"><strong>{agent.role}</strong><StatusPill status={agent.execution_ready?"active":"blocked"} label={agent.execution_ready?agent.workers_planned+" worker"+(agent.workers_planned===1?"":"s"):"lane pendente"}/></div>
       <div className="muted mono">{agent.agent_key}</div>
       <div><span className="detailLabel">Tarefas</span><div className="badgeLine">{agent.task_keys.map(key=><code key={key}>{key}</code>)}</div></div>
       <div><span className="detailLabel">Por que foi escolhido</span><ul>{agent.reasons.map((reason,i)=><li key={i}>{reason}</li>)}</ul></div>
