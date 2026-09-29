@@ -8,6 +8,7 @@ from .execution_worker import DirectExecutionItem,ImplementationArtifact,Impleme
 from .github_rest import GitHubRestAdapter
 from .impact_engine import SupabaseImpactEngine
 from .work_unit_context import build_context_packet,enforce_write_scopes
+from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
 
 
 @dataclass(frozen=True)
@@ -22,8 +23,11 @@ class ChangeSetWorkResult:
 
 
 class ChangeSetBuilderWorker:
-    def __init__(self,*,github:GitHubRestAdapter,store:SupabaseChangeSetStore,producer:ImplementationProducer,impact_engine:SupabaseImpactEngine|None=None)->None:
+    def __init__(self,*,github:GitHubRestAdapter,store:SupabaseChangeSetStore,producer:ImplementationProducer,
+                 impact_engine:SupabaseImpactEngine|None=None,provenance:SupabaseProvenanceStore|None=None,
+                 execution_route:str="direct")->None:
         self.github=github;self.store=store;self.producer=producer;self.impact_engine=impact_engine or SupabaseImpactEngine()
+        self.provenance=provenance or SupabaseProvenanceStore();self.execution_route=execution_route
 
     def execute(self,item:DirectExecutionItem)->ChangeSetWorkResult:
         if item.human_gate_required:
@@ -45,6 +49,14 @@ class ChangeSetBuilderWorker:
             source=source,impact=impact.as_context(),base_commit=binding.base_commit,branch=item.branch,
         )
         self.store.record_context(run_id=item.run_id,packet_hash=packet.sha256,packet=packet.as_dict())
+        provenance=build_run_provenance(
+            run_id=item.run_id,project_key=item.project_key,route=self.execution_route,
+            agent_key=str(source.get("agent_key") or "") or None,context_packet=packet.as_dict(),
+            team_plan={"version":source.get("team_plan_version")} if source.get("team_plan_version") is not None else None,
+            project_manifest=source.get("project_manifest") if isinstance(source.get("project_manifest"),dict) else {},
+            candidate_commit=binding.base_commit,
+        )
+        self.provenance.record(run_id=item.run_id,snapshot=provenance)
         write_scopes=tuple(packet.payload["repository"]["write_scopes"])
         item=replace(
             item,impact_context=impact.as_context(),base_commit=binding.base_commit,
