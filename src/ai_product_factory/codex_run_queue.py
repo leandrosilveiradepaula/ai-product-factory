@@ -23,6 +23,7 @@ class CodexExecutionItem:
     change_set_id: str | None = None
     work_unit_id: str | None = None
     wave: int | None = None
+    base_commit: str | None = None
 
 
 class SupabaseCodexRunQueue:
