@@ -9,6 +9,7 @@ from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 class DirectExecutionItem:
  run_id:str;task_id:str;project_key:str;repository:str;issue_number:int|None;title:str;description:str;branch:str;human_gate_required:bool=False
  change_set_id:str|None=None;work_unit_id:str|None=None;wave:int|None=None;impact_context:dict|None=None;base_commit:str|None=None
+ context_packet:dict|None=None;write_scopes:tuple[str,...]=()
 
 @dataclass(frozen=True)
 class ImplementationArtifact:
