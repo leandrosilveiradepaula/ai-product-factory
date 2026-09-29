@@ -800,3 +800,8 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("factory_complete_change_set_integration",migration)
         self.assertNotIn("get diagnostics v_blocked=v_blocked+row_count",migration)
         self.assertIn("v_blocked_integrations",migration)
+        codex=(ROOT/"src/ai_product_factory/codex_cli_producer.py").read_text()
+        builder=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
+        self.assertIn("exact Change Set base commit fetch failed",codex)
+        self.assertIn('"checkout","--detach",base_commit',codex)
+        self.assertIn("base_commit=binding.base_commit",builder)
