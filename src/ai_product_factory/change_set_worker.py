@@ -39,7 +39,7 @@ class ChangeSetBuilderWorker:
         impact=self.impact_engine.analyze_run(
             project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
         )
-        item=replace(item,impact_context=impact.as_context())
+        item=replace(item,impact_context=impact.as_context(),base_commit=binding.base_commit)
         artifact=self.producer.produce(item)
         if not artifact.files:raise ValueError("implementation producer returned no files")
         output=self.github.commit_files(item.branch,artifact.files,message=artifact.commit_message)
