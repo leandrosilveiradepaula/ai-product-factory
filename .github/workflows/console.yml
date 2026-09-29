@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           case "${GITHUB_HEAD_REF}" in
-            console/*|ci/*|test/*|security/*|agents/*|intelligence/*|quality/*|policy/*|runtime/*|operations/*|observability/*) ;;
+            console/*|ci/*|test/*|security/*|agents/*|intelligence/*|quality/*|policy/*|runtime/*|operations/*|observability/*|audit/*) ;;
             preview/*) echo "::error::preview/** refs are reserved for promoted release candidates."; exit 1 ;;
             *) echo "::error::Console/config changes must use an approved technical branch namespace; preview/** is reserved for final candidates."; exit 1 ;;
           esac
