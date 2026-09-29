@@ -280,6 +280,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "apps/console/app/runs/page.tsx",
             "apps/console/app/runs/[id]/page.tsx",
             "apps/console/app/queue/page.tsx",
+            "apps/console/app/orchestration/page.tsx",
             "apps/console/app/gates/page.tsx",
             "apps/console/app/evals/page.tsx",
             "apps/console/app/deployments/page.tsx",
@@ -298,6 +299,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getProjectOperations",
             "getProjectStateContext",
             "getProjectExecutionTeamPlan",
+            "getOrchestrationOverview",
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
@@ -961,3 +963,28 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_console_orchestration_surface_is_observational_and_factual():
+    page=(ROOT/"apps/console/app/orchestration/page.tsx").read_text()
+    control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+    nav=(ROOT/"apps/console/app/nav.tsx").read_text()
+    assert "Orquestração" in nav
+    assert "getOrchestrationOverview" in control
+    for table in (
+        "factory_project_scheduling",
+        "factory_incidents",
+        "factory_repair_jobs",
+        "factory_replay_requests",
+        "factory_improvement_proposals",
+        "factory_release_reports",
+    ):
+        assert table in control
+    assert "Prontidão de release" in page
+    assert "fatos, não score subjetivo" in page
+    assert "sempre zero-effect" in page
+    assert "Aguardando merge humano de produção" in page
+    assert "merge_pull_request" not in page
+    assert "SUPABASE_SECRET_KEY" not in page
+    assert "SUPABASE_SERVICE_ROLE_KEY" not in page
