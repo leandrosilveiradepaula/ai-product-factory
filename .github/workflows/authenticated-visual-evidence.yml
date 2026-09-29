@@ -12,6 +12,12 @@ on:
         description: Exact repository commit represented by target_url (defaults to workflow SHA)
         required: false
         type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/authenticated-visual-target.json"
+      - ".github/workflows/authenticated-visual-evidence.yml"
+      - "scripts/capture_authenticated_console.mjs"
 
 permissions:
   contents: read
@@ -23,23 +29,54 @@ jobs:
     environment: openai-api
     timeout-minutes: 12
     env:
-      FACTORY_CONSOLE_URL: ${{ inputs.target_url || 'https://ai-product-factory-console.vercel.app' }}
-      FACTORY_VISUAL_TARGET_COMMIT: ${{ inputs.target_commit || github.sha }}
       FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
       - uses: actions/checkout@v7
+      - name: Resolve exact visual target
+        shell: bash
+        env:
+          DISPATCH_TARGET_URL: ${{ inputs.target_url || '' }}
+          DISPATCH_TARGET_COMMIT: ${{ inputs.target_commit || '' }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require("fs");
+          const targetFile=".github/authenticated-visual-target.json";
+          let target={};
+          if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch" && process.env.DISPATCH_TARGET_URL) {
+            target.preview_url=process.env.DISPATCH_TARGET_URL;
+            target.candidate_sha=process.env.DISPATCH_TARGET_COMMIT || process.env.GITHUB_SHA;
+            target.source="workflow_dispatch";
+          } else {
+            target=JSON.parse(fs.readFileSync(targetFile,"utf8"));
+            target.source="source_control";
+          }
+          if (typeof target.preview_url !== "string" || !target.preview_url) throw new Error("preview_url missing");
+          if (!/^[0-9a-f]{40}$/.test(String(target.candidate_sha||""))) throw new Error("candidate_sha must be exact 40-char SHA");
+          const url=new URL(target.preview_url);
+          if (url.protocol !== "https:" || !(url.hostname === "ai-product-factory-console.vercel.app" || url.hostname.endsWith(".vercel.app"))) {
+            throw new Error("visual target host not allowed");
+          }
+          if (url.username || url.password || url.search || url.hash) throw new Error("visual target must not contain credentials/query/fragment");
+          for (const value of Object.values(target)) {
+            if (typeof value === "string" && /(token|secret|password|apikey|authorization)/i.test(value)) throw new Error("secret-like target metadata forbidden");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            "FACTORY_CONSOLE_URL="+url.toString().replace(/\/$/,"")+"\n"+
+            "FACTORY_VISUAL_TARGET_COMMIT="+target.candidate_sha+"\n");
+          console.log("visual_target_source="+target.source);
+          console.log("visual_target_host="+url.hostname);
+          console.log("visual_target_commit="+target.candidate_sha);
+          NODE
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Validate exact visual target
         uses: actions/github-script@v7
-        env:
-          TARGET_URL: ${{ env.FACTORY_CONSOLE_URL }}
-          TARGET_COMMIT: ${{ env.FACTORY_VISUAL_TARGET_COMMIT }}
         with:
           script: |
-            const target = new URL(process.env.TARGET_URL);
+            const target = new URL(process.env.FACTORY_CONSOLE_URL);
             const production = "ai-product-factory-console.vercel.app";
             const allowedHost =
               target.hostname === production ||
@@ -52,20 +89,28 @@ jobs:
               core.setFailed("Visual target must not contain credentials, query, or fragment");
               return;
             }
-            if (!/^[0-9a-f]{40}$/.test(process.env.TARGET_COMMIT)) {
+            if (!/^[0-9a-f]{40}$/.test(process.env.FACTORY_VISUAL_TARGET_COMMIT)) {
               core.setFailed("target_commit must be an exact 40-character Git SHA");
               return;
             }
             await github.rest.repos.getCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: process.env.TARGET_COMMIT,
+              ref: process.env.FACTORY_VISUAL_TARGET_COMMIT,
             });
       - name: Install pinned Playwright browser
         shell: bash
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
           npx playwright install --with-deps chromium
+      - name: Mint short-lived Vercel Trusted Source OIDC token
+        id: vercel_oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token)
       - name: Mint provisioning GitHub OIDC token
         id: oidc_provision
         uses: actions/github-script@v7
@@ -106,6 +151,8 @@ jobs:
       - name: Capture authenticated Console
         id: capture_console
         shell: bash
+        env:
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
         run: node scripts/capture_authenticated_console.mjs
       - name: Encrypt visual evidence
         id: encrypt

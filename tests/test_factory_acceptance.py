@@ -443,22 +443,34 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn('SUPABASE_SERVICE_ROLE_KEY', workflow)
         self.assertNotIn('SUPABASE_SECRET_KEY', workflow)
 
-    def test_authenticated_visual_capture_is_manual_and_exact_target_bounded(self):
+    def test_authenticated_visual_capture_is_source_controlled_and_exact_target_bounded(self):
         workflow = (ROOT / ".github/workflows/authenticated-visual-evidence.yml").read_text()
         script = (ROOT / "scripts/capture_authenticated_console.mjs").read_text()
+        target = (ROOT / ".github/authenticated-visual-target.json").read_text()
 
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("\n  push:", workflow)
+        self.assertIn("branches: [main]", workflow)
+        self.assertIn('".github/authenticated-visual-target.json"', workflow)
+        self.assertIn("Resolve exact visual target", workflow)
         self.assertIn("target_url:", workflow)
         self.assertIn("target_commit:", workflow)
-        self.assertIn('target.hostname.endsWith(".vercel.app")', workflow)
-        self.assertIn('target.protocol !== "https:"', workflow)
+        self.assertIn('url.hostname.endsWith(".vercel.app")', workflow)
+        self.assertIn('url.protocol !== "https:"', workflow)
         self.assertIn("github.rest.repos.getCommit", workflow)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
+        self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN", workflow)
+        self.assertIn("x-vercel-trusted-oidc-idp-token", script)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", script)
+        self.assertIn('{name:"agents",path:"/agents"', script)
+        self.assertIn('{name:"orchestration",path:"/orchestration"', script)
         self.assertIn("targetCommit", script)
         self.assertIn("targetUrl:consoleUrl", script)
         self.assertIn("workflowSourceCommit", script)
+        self.assertIn("preview_url", target)
+        self.assertIn("candidate_sha", target)
+        for forbidden in ("VERCEL_TOKEN","SUPABASE_SECRET_KEY","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","FACTORY_GITHUB_TOKEN","password","secret"):
+            self.assertNotIn(forbidden,target)
 
     def test_crm_cross_repo_preflight_is_read_only_and_explicit(self):
         workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
