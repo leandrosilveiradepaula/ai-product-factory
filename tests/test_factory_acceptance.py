@@ -238,6 +238,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928222200_factory_agent_scope_lock_agent_index.sql",
             "20260929004500_factory_execution_team_plans.sql",
             "20260929012000_factory_execution_team_plan_serialization.sql",
+            "20260929012100_factory_execution_team_plan_serialization.sql",
             "20260929013000_factory_team_plan_dispatch_gate.sql",
         }
         self.assertEqual(migration_names, expected_history)
@@ -709,6 +710,9 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
     serialization=(ROOT/"supabase/migrations/20260929012000_factory_execution_team_plan_serialization.sql").read_text()
     assert "for update" in serialization
     assert "factory_projects" in serialization
+    serialization_reapply=(ROOT/"supabase/migrations/20260929012100_factory_execution_team_plan_serialization.sql").read_text()
+    assert "preserve durable history" in serialization_reapply
+    assert "factory_record_execution_team_plan" in serialization_reapply
     dispatch_gate=(ROOT/"supabase/migrations/20260929013000_factory_team_plan_dispatch_gate.sql").read_text()
     assert "factory_execution_team_plans" in dispatch_gate
     assert "v_team_status is distinct from 'ready'" in dispatch_gate
