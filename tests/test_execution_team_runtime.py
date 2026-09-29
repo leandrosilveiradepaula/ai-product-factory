@@ -20,6 +20,7 @@ class Provider:
                 "tasks":[{
                     "task_key":"ui",
                     "title":"Build UI",
+                    "acceptance_criteria":["Page renders the requested UI"],
                     "required_capabilities":["ui"],
                     "scope_keys":["apps/console"],
                     "depends_on":[],
@@ -77,11 +78,13 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             queue.record_stage(item,StageEvidence("planning","completed",output))
         urls=[entry.args[0].full_url for entry in call.call_args_list]
-        self.assertEqual(len(urls),4)
+        self.assertEqual(len(urls),6)
         self.assertTrue(urls[0].endswith("/rest/v1/rpc/factory_record_runtime_stage"))
         self.assertTrue(urls[1].endswith("/rest/v1/rpc/factory_persist_product_stage"))
-        self.assertTrue(urls[2].endswith("/rest/v1/rpc/factory_record_project_brain_snapshot"))
-        self.assertTrue(urls[3].endswith("/rest/v1/rpc/factory_record_execution_team_plan"))
+        self.assertTrue(urls[2].endswith("/rest/v1/rpc/factory_record_requirement_trace"))
+        self.assertTrue(urls[3].endswith("/rest/v1/rpc/factory_record_project_brain_snapshot"))
+        self.assertTrue(urls[4].endswith("/rest/v1/rpc/factory_record_execution_team_plan"))
+        self.assertTrue(urls[5].endswith("/rest/v1/rpc/factory_record_definition_of_done"))
 
 
 if __name__=="__main__":
