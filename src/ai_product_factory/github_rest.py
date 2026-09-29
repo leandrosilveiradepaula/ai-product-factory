@@ -185,6 +185,16 @@ class GitHubRestAdapter:
         rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
         return tuple(str(row["filename"]) for row in rows if row.get("filename"))
 
+    def get_pull_request_file_details(self, pr_number: int) -> tuple[dict[str, Any], ...]:
+        rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
+        return tuple({
+            "filename": str(row.get("filename") or ""),
+            "status": str(row.get("status") or ""),
+            "patch": str(row.get("patch") or ""),
+            "additions": int(row.get("additions") or 0),
+            "deletions": int(row.get("deletions") or 0),
+        } for row in rows if row.get("filename"))
+
 
     def get_ci_state(self, pr_number: int) -> CIState:
         pr = self.get_pull_request(pr_number)
