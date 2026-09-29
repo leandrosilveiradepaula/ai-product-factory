@@ -356,3 +356,44 @@ DoD is deliberately not a numeric score. Missing evidence remains explicit. Migr
 Branch `policy/378-release-policy` adds source-controlled release policy, durable policy decisions and factual release reports. The runtime evaluates the policy after Preview/browser evidence (or explicit Preview N/A) and before `awaiting_release`.
 
 The policy cannot grant auto-merge. Unknown paid cost, missing non-human DoD evidence and migration rollback without verified evidence block release readiness. A successful production decision remains only `ready_for_human_release`. Human merge is observed separately and is the only event that records `human_release`.
+
+
+## Release candidate consolidation - 2026-09-29
+
+The current cumulative release candidate is PR #396 on branch `audit/395-code-provenance`. It stacks the multi-agent and engineering-intelligence work without merging production. The Control Plane migrations for the stack have already been applied additively and verified server-side; source code remains staged until the human production gate.
+
+Implemented in the candidate:
+- deterministic Execution Team Plan and specialist Agent Registry scheduling;
+- independent Security/QA/Operations lanes;
+- adaptive concurrency and offline Team Planner evals;
+- Change Sets with one integrated release candidate;
+- Project Brain + deterministic Impact Engine;
+- Requirement Traceability + factual Definition of Done;
+- Policy-as-Code + Release Intelligence + rollback evidence;
+- secret-safe Context Packets, work-unit scope enforcement and max-3 repair loops;
+- Incident Mode + deterministic Portfolio Scheduler with P0 soft preemption only for new dispatches;
+- zero-effect Replay/Shadow + source-controlled improvement proposals;
+- Architecture Guardian v1 with explicit unknown scanner coverage;
+- CI collection guard that exposed and reconciled 30 previously invisible intended tests; the real suite now runs more than 465 tests;
+- PT-BR Orchestration Console for portfolio/incidents/repairs/release/replay visibility;
+- Execution Router v2 with impact/history/cost signals and separate Codex vs human-gate reasons;
+- non-sensitive Git commit provenance pointers for run/change-set/work-unit/agent/context hash;
+- exact-candidate Vercel Preview policy from #341, incorporated into the cumulative candidate without restoring obsolete CI conventions.
+
+Production invariants remain unchanged:
+- runtime has no merge capability;
+- production release is human-only;
+- no paid model call is introduced merely to route, replay, scan or choose a team;
+- Codex remains selective and separately gated;
+- Agent SQL 63-question benchmark remains excluded;
+- cross-repository execution still requires explicit `FACTORY_GITHUB_TOKEN`.
+
+Current release sequence for this candidate:
+1. required CI green on the exact PR head;
+2. measure Vercel rolling-window quota;
+3. promote one `preview/pr-396` ref to the exact green SHA;
+4. verify Vercel Preview SHA/ref and browser evidence;
+5. stop at the human production merge gate;
+6. after human merge, release observer records the merge and the new `main` is reconciled.
+
+External/admin items remain separate from this release: Codex WIF/official enablement (#240), API WIF hardening (#250), Supabase Leaked Password Protection administrative hardening, and cross-repo credential configuration where needed.
