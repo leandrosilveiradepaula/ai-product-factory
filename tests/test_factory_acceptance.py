@@ -251,6 +251,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929043000_factory_impact_analysis.sql",
             "20260929050000_factory_requirement_traceability.sql",
             "20260929060000_factory_release_policy.sql",
+            "20260929043000_factory_sandbox_context_repair.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -850,3 +851,37 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("security invoker",migration)
         self.assertNotIn("merge_pull_request(",engine)
         self.assertNotIn("merge_pull_request(",intelligence)
+
+
+
+def test_work_units_use_secret_safe_context_packets_and_bounded_repair_loops():
+    context=(ROOT/"src/ai_product_factory/work_unit_context.py").read_text()
+    worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
+    producer=(ROOT/"src/ai_product_factory/implementation_producer.py").read_text()
+    codex=(ROOT/"src/ai_product_factory/codex_cli_producer.py").read_text()
+    lanes=(ROOT/"src/ai_product_factory/specialist_lane_queue.py").read_text()
+    migration=(ROOT/"supabase/migrations/20260929043000_factory_sandbox_context_repair.sql").read_text()
+
+    for marker in (
+        "secret-bearing context field is forbidden",
+        "write_scopes",
+        "enforce_write_scopes",
+        "exact_base_required",
+        "secrets_in_context",
+    ):
+        assert marker in context
+    assert "build_context_packet" in worker
+    assert "record_context" in worker
+    assert "enforce_write_scopes" in worker
+    assert "Change Set implementation requires a durable context packet" in producer
+    assert "bounded Context Packet" in codex
+    assert "factory_enqueue_repair_from_specialist" in lanes
+    assert '"p_max_cycles":3' in lanes
+    assert "factory_close_repairs_after_specialist_pass" in lanes
+    assert "factory_work_unit_context_packets" in migration
+    assert "factory_repair_jobs" in migration
+    assert "cycle between 1 and 3" in migration
+    assert "repair max cycles must be between 1 and 3" in migration
+    assert "role_not_auto_repairable" in migration
+    assert "enable row level security" in migration
+    assert "security invoker" in migration
