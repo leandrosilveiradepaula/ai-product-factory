@@ -10,9 +10,9 @@
     "missing_nonhuman_definition_of_done": "block",
     "destructive_data_change": "human_gate",
     "expands_sensitive_access": "human_gate",
-    "new_paid_recurring_service": "human_gate",
     "material_requirement_change": "human_gate",
-    "production_change": "human_gate"
+    "production_change": "human_gate",
+    "new_paid_service": "human_gate"
   },
   "rollback": {
     "migration_change_requires_verified_rollback": true
