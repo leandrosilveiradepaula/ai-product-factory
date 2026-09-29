@@ -38,6 +38,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
+        if evidence.stage=="planning":
+            team_plan=evidence.output.get("_team_plan")
+            if isinstance(team_plan,dict):
+                self._rpc("factory_record_execution_team_plan",{"p_run_id":item.run_id,"p_plan":team_plan})
 
     def complete(self,item:WorkItem)->None:
         self._rpc("factory_finish_run",{"p_run_id":item.run_id,"p_status":"completed","p_error":None})

@@ -2,6 +2,7 @@ import json
 from ai_product_factory.model_executor import ModelExecutor,ModelResult,ModelRole
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_worker import WorkItem
+from ai_product_factory.agent_scheduler import AgentProfile
 
 class Provider:
  def __init__(self):self.requests=[]
@@ -68,3 +69,16 @@ def test_codex_is_not_used_for_bootstrap():
  class Codex:
   def execute(self,request):raise AssertionError("Codex must not be called")
  h=ProductStageExecutor(ModelExecutor(primary=primary,codex=Codex()));h.execute(item(),"discovery");assert len(primary.requests)==1
+
+
+def test_planning_derives_team_plan_without_extra_model_call():
+ p=Provider()
+ p.execute=lambda request: ModelResult(ModelRole.PRIMARY,json.dumps({
+  "tasks":[{"task_key":"ui","title":"Build UI","required_capabilities":["ui"],"scope_keys":["apps/console"],"depends_on":[]}]
+ }),provider_ref="ref-plan",usage={"input_tokens":10})
+ ui=AgentProfile("ui","ui",("ui","ux"),("github_write","model_primary"),{"preferred":"primary"},2,0.75,True)
+ h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(ui,))
+ out=h.execute(item(),"planning")
+ assert out["_team_plan"]["status"]=="ready"
+ assert out["_team_plan"]["selected_agents"][0]["agent_key"]=="ui"
+ assert len(p.requests)==1

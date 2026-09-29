@@ -69,7 +69,8 @@ def build_handler():
  require_primary_runtime_enabled()
  auth=RuntimeAuthResolver().resolve_primary_api()
  if auth.kind in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:
-  return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
+  profiles=SupabaseAgentScheduler().profiles()
+  return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())),team_profiles=profiles)
  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
 
 def run_recovery_once(max_attempts:int=3)->dict:

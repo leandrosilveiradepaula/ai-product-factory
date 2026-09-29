@@ -236,6 +236,10 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928204500_factory_project_database_oauth_vault.sql",
             "20260928212700_factory_agent_registry.sql",
             "20260928222200_factory_agent_scope_lock_agent_index.sql",
+            "20260929004500_factory_execution_team_plans.sql",
+            "20260929012000_factory_execution_team_plan_serialization.sql",
+            "20260929012100_factory_execution_team_plan_serialization.sql",
+            "20260929013000_factory_team_plan_dispatch_gate.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -278,6 +282,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getProjectDetail",
             "getProjectOperations",
             "getProjectStateContext",
+            "getProjectExecutionTeamPlan",
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
@@ -304,6 +309,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Estado reconciliado", project_page)
         self.assertIn("Lacunas restantes", project_page)
         self.assertIn("Evidências confirmadas", project_page)
+        self.assertIn("Equipe de execução", project_page)
+        self.assertIn("Pico de workers", project_page)
         snapshot_migration = (ROOT / "supabase/migrations/20260928042946_factory_project_state_snapshots.sql").read_text()
         self.assertIn("factory_project_state_snapshots", snapshot_migration)
         self.assertIn("factory_record_project_state_snapshot", snapshot_migration)
@@ -561,8 +568,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('preview/*) exit 1', vercel)
         self.assertIn('git diff --quiet HEAD^ HEAD ./', vercel)
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)
-        self.assertIn("console/*|ci/*|test/*|security/*)", workflow)
-        self.assertIn("preview/*)", workflow)
+        self.assertIn("console/*|ci/*|test/*|security/*|agents/*|release/*)", workflow)
         self.assertIn('"heads/preview/pr-"', promote)
         self.assertIn("candidate SHA is not the exact PR head", promote)
         self.assertIn('["test", "factory-acceptance", "validate"]', promote)
@@ -685,6 +691,41 @@ def test_specialist_workers_fan_out_from_control_plane_matrix():
     assert 'require_route_tools(agent_key,"codex")' in runtime
     assert 'profile.require_tools("github_write","model_primary")' in scheduler
     assert 'profile.require_tools("github_write","codex")' in scheduler
+
+
+
+def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
+    planner=(ROOT/"src/ai_product_factory/execution_team_planner.py").read_text()
+    executor=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+    queue=(ROOT/"src/ai_product_factory/supabase_runtime_queue.py").read_text()
+    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+    migration=(ROOT/"supabase/migrations/20260929004500_factory_execution_team_plans.sql").read_text()
+    assert "minimum-capability-cover-with-least-privilege" in planner
+    assert "planned_worker_peak" in planner
+    assert "waves" in planner
+    assert "scope" in planner
+    assert "specialist_review_recommended" in planner
+    assert "no_single_agent_covers_task" in planner
+    assert "build_execution_team_plan" in executor
+    assert "team_profiles" in executor
+    assert 'evidence.stage=="planning"' in queue
+    assert "factory_record_execution_team_plan" in queue
+    assert "def profiles" in scheduler
+    assert "factory_execution_team_plans" in migration
+    assert "enable row level security" in migration
+    assert "revoke all on public.factory_execution_team_plans from public,anon,authenticated" in migration
+    assert "team.plan.recorded" in migration
+    assert "security invoker" in migration
+    serialization=(ROOT/"supabase/migrations/20260929012000_factory_execution_team_plan_serialization.sql").read_text()
+    assert "for update" in serialization
+    assert "factory_projects" in serialization
+    serialization_reapply=(ROOT/"supabase/migrations/20260929012100_factory_execution_team_plan_serialization.sql").read_text()
+    assert "preserve durable history" in serialization_reapply
+    assert "factory_record_execution_team_plan" in serialization_reapply
+    dispatch_gate=(ROOT/"supabase/migrations/20260929013000_factory_team_plan_dispatch_gate.sql").read_text()
+    assert "factory_execution_team_plans" in dispatch_gate
+    assert "v_team_status is distinct from 'ready'" in dispatch_gate
+    assert "factory_dispatch_next_planned_task" in dispatch_gate
 
 
 def test_source_controlled_browser_evidence_target_is_exact_and_secret_free():

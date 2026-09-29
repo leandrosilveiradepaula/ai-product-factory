@@ -10,9 +10,12 @@ from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_
 
 class RuntimeCliTests(unittest.TestCase):
     def test_runtime_builds_primary_handler_for_api_key(self):
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
+        scheduler=MagicMock();scheduler.profiles.return_value=()
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
             handler = build_handler()
         self.assertIsInstance(handler, ProductStageExecutor)
+        scheduler.profiles.assert_called_once()
 
     def test_primary_runtime_flag_is_required_intrinsically(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY":"test"}, clear=True):

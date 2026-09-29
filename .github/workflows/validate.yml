@@ -2,7 +2,7 @@ name: validate
 
 on:
   push:
-    branches: [main, 'ci/**']
+    branches: [main, 'release/**', 'ci/**']
   pull_request:
     branches: [main]
 

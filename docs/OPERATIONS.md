@@ -52,6 +52,20 @@ For alternative runtimes or `mode: api`, configuration remains explicit: `FACTOR
 
 The Vercel adapters refuse non-Preview environments. The browser adapter receives the exact deployed URL through `FACTORY_PREVIEW_URL` and must return structured JSON evidence. The built-in Playwright verifier checks page load, HTTP status, visible non-empty body, and browser console/page errors.
 
+## Multi-agent team planning
+
+The engineering plan is semantic input, not the scheduler itself. Planning tasks must provide a stable `task_key`, `required_capabilities`, repository `scope_keys`, dependencies by task key, and an optional preferred specialist role only when materially required.
+
+After planning, the deterministic Execution Team Planner reads the live Agent Registry and produces a versioned team plan. It selects the minimum capability-covering/least-privileged specialists, calculates planned workers and dependency/scope-aware waves, records exclusions and blockers, and persists the decision in the Control Plane. It makes no extra paid model call.
+
+Agent `max_concurrency` is a ceiling, never a target. Work may share a wave only when dependencies are satisfied, agent capacity is available and write scopes do not overlap. Parent/child scopes conflict.
+
+A task must have one safe owner. Do not solve a cross-specialist task by granting a read-only reviewer write permission. Instead split implementation, security review, QA/eval or operations verification into independent work units/lanes. Until dedicated read-only specialist lanes exist, policy-required reviewer participation is recorded as advisory and fails closed rather than entering the generic Direct/Codex write worker.
+
+The target integration model is one Change Set per objective: parallel work units use isolated branches/workspaces and converge in dependency order into one controlled integration candidate. Security/QA then evaluate the candidate that will actually ship. Production still stops at the human merge gate.
+
+See `docs/MULTI_AGENT_ARCHITECTURE.md` for selection rules, context packets, adaptive concurrency, metrics and the implementation roadmap.
+
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
@@ -122,11 +136,11 @@ The Console must not create a deployment for every implementation commit.
 
 Active policy:
 - `main` remains the production branch;
-- implementation branches such as `console/**`, `test/**`, `ci/**` and `security/**` do not deploy automatically;
+- implementation branches such as `console/**`, `test/**`, `ci/**`, `security/**` and `agents/**` do not deploy automatically;
 - after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
 - only `preview/**` is allowed to create the final Preview candidate;
 - the promoted Preview ref points to the exact PR head commit; it does not create a different code commit;
-- `ignoreCommand` remains a path-based second guard;
+- `ignoreCommand` always builds promoted Preview refs and remains a path-based second guard for other refs;
 - Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically.
 
 ## Resource quota observability

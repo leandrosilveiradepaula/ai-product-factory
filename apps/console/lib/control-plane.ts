@@ -266,3 +266,31 @@ export async function getConsoleConfiguration():Promise<ConsoleConfiguration>{
  if(!response.ok)throw new Error("Unable to load configuration");
  const rows=await response.json();return{controlPlaneConfigured:true,projects:rows.map((x:any)=>({key:String(x.project_key),name:String(x.name),repository:x.repository?String(x.repository):null,kind:String(x.project_kind),stage:String(x.lifecycle_stage),active:Boolean(x.is_active),manifest:x.manifest}))};
 }
+
+
+export type ExecutionTeamPlan={
+ id:string;version:number;status:string;createdAt:string;
+ profilesSelected:number;plannedWorkerPeak:number;
+ selectedAgents:{agent_key:string;role:string;workers_planned:number;max_concurrency:number;execution_ready:boolean;task_keys:string[];reasons:string[]}[];
+ excludedAgents:{agent_key:string;role:string;reason:string}[];
+ waves:{wave:number;task_keys:string[];agent_load:Record<string,number>;parallel_workers:number}[];
+ blockers:{code:string;task_key?:string;title?:string;dependency?:string}[];
+ advisorySpecialistLanes:{role:string;code:string;reasons:string[];execution_ready:boolean;note:string}[];
+};
+
+export async function getProjectExecutionTeamPlan(projectId:string):Promise<ExecutionTeamPlan|null>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
+ const response=await fetch(cfg.url+"/rest/v1/factory_execution_team_plans?select=id,version,status,plan,created_at&project_id=eq."+encodeURIComponent(projectId)+"&status=neq.superseded&order=version.desc&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Não foi possível carregar o plano de equipe do projeto.");
+ const rows=await response.json();if(!rows.length)return null;
+ const row=rows[0];const plan=row.plan&&typeof row.plan==="object"?row.plan:{};
+ return{
+  id:String(row.id),version:Number(row.version||1),status:String(row.status),createdAt:String(row.created_at),
+  profilesSelected:Number(plan.profiles_selected||0),plannedWorkerPeak:Number(plan.planned_worker_peak||0),
+  selectedAgents:Array.isArray(plan.selected_agents)?plan.selected_agents:[],
+  excludedAgents:Array.isArray(plan.excluded_agents)?plan.excluded_agents:[],
+  waves:Array.isArray(plan.waves)?plan.waves:[],
+  blockers:Array.isArray(plan.blockers)?plan.blockers:[],
+  advisorySpecialistLanes:Array.isArray(plan.advisory_specialist_lanes)?plan.advisory_specialist_lanes:[],
+ };
+}
