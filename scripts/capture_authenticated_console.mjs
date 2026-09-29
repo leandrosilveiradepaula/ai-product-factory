@@ -26,9 +26,11 @@ const pageErrors = [];
 await fs.mkdir(outDir, {recursive:true});
 const browser = await chromium.launch({headless:true});
 try {
+  const trustedOidc=process.env.FACTORY_VERCEL_TRUSTED_OIDC_TOKEN;
   const context = await browser.newContext({
     viewport:{width:1296,height:900},
     deviceScaleFactor:1,
+    extraHTTPHeaders:trustedOidc?{"x-vercel-trusted-oidc-idp-token":trustedOidc}:{},
   });
   const page = await context.newPage();
   page.on("console", msg => {
