@@ -376,11 +376,19 @@ Still pending:
 
 ### Phase C — Change Set integration
 
-- durable change-set table;
-- per-work-unit isolated branches/workspaces;
-- integration branch;
-- deterministic dependency-order integration;
-- one final candidate PR.
+Implemented in #367:
+- one durable Change Set per ready Team Plan;
+- builder work units materialized by stable task key and execution wave;
+- immutable source SHA fixed by the first builder;
+- each work unit receives an isolated exact-base branch and produces no release PR;
+- completed units in a wave are integrated into one integration branch;
+- overlapping changed files and stale base commits fail closed;
+- later waves start from the previously integrated candidate;
+- builder and integrator recovery is bounded;
+- after the final wave, exactly one release-candidate PR is created;
+- the existing CI -> Specialist Lanes -> Preview -> human release pipeline validates the exact integrated candidate.
+
+The GitHub runtime adapter still has no merge capability.
 
 ### Phase D — adaptive scheduler
 
