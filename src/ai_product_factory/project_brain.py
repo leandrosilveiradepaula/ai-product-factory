@@ -83,10 +83,17 @@ def build_project_brain_graph(*,project_key:str,engineering_plan:dict,context:di
         add_edge(f"project-source-{_slug(str(source_name))}",project_node,key,"observed_from",source_refs=("state_snapshot",))
 
     evidence=state.get("evidence") if isinstance(state.get("evidence"),list) else []
+    allowed_evidence_keys=("source","head_sha","commit","ref","kind","status")
     for index,row in enumerate(evidence):
         key=f"evidence:{index+1}"
-        display=str(row)[:300]
-        add_node(key,"evidence",display,{},("state_snapshot",))
+        safe={}
+        if isinstance(row,dict):
+            for field in allowed_evidence_keys:
+                value=row.get(field)
+                if isinstance(value,(str,int,float,bool)) and str(value).strip():
+                    safe[field]=value
+        source=str(safe.get("source") or safe.get("kind") or "evidence")
+        add_node(key,"evidence",f"{source} evidence {index+1}",safe,("state_snapshot",))
         add_edge(f"project-evidence-{index+1}",project_node,key,"evidenced_by",source_refs=("state_snapshot",))
 
     architecture=engineering_plan.get("architecture")
