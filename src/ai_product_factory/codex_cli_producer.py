@@ -114,9 +114,30 @@ class CodexCLIProducer:
                 timeout=120,
                 check=False,
             )
-            askpass.unlink(missing_ok=True)
             if clone.returncode != 0:
+                askpass.unlink(missing_ok=True)
                 raise RuntimeError("isolated repository checkout failed")
+
+            base_commit=str(getattr(item,"base_commit",None) or "").strip()
+            if base_commit:
+                if not re.fullmatch(r"[0-9a-f]{40}",base_commit):
+                    askpass.unlink(missing_ok=True)
+                    raise ValueError("Change Set base commit must be an exact 40-character SHA")
+                fetch=self.runner(
+                    ["git","-c","core.hooksPath=/dev/null","fetch","--depth","1","origin",base_commit],
+                    cwd=str(checkout),env=clone_env,text=True,capture_output=True,timeout=120,check=False,
+                )
+                if fetch.returncode != 0:
+                    askpass.unlink(missing_ok=True)
+                    raise RuntimeError("exact Change Set base commit fetch failed")
+                checkout_base=self.runner(
+                    ["git","-c","core.hooksPath=/dev/null","checkout","--detach",base_commit],
+                    cwd=str(checkout),env=clone_env,text=True,capture_output=True,timeout=60,check=False,
+                )
+                if checkout_base.returncode != 0:
+                    askpass.unlink(missing_ok=True)
+                    raise RuntimeError("exact Change Set base commit checkout failed")
+            askpass.unlink(missing_ok=True)
 
             self._git(checkout, "remote", "remove", "origin")
             prompt = self._prompt(item)
@@ -256,4 +277,5 @@ class CodexCLIProducer:
             "Keep the change narrowly scoped and run only relevant local deterministic tests.\n\n"
             f"Task title: {item.title}\n"
             f"Task description:\n{item.description}\n"
+            f"Exact Change Set base commit: {getattr(item,'base_commit',None)}\n"
         )
