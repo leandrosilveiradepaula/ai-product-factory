@@ -39,11 +39,17 @@ def evaluate_security_lane(item:SpecialistLaneItem,github:GitHubRestAdapter)->Sp
     if pr.head_sha!=item.candidate_commit:
         return SpecialistLaneResult("blocked",({"code":"candidate_commit_mismatch","severity":"critical","message":"PR head changed during Security review"},),{"candidate_commit":item.candidate_commit})
     details=github.get_pull_request_file_details(item.pr_number)
-    patch=_patch_text(details)
     findings=[]
-    for code,pattern,severity in _FORBIDDEN_SECURITY_PATTERNS:
-        if pattern.search(patch):
-            findings.append({"code":code,"severity":severity,"message":f"deterministic Security invariant matched: {code}"})
+    for row in details:
+        filename=str(row.get("filename") or "")
+        patch=str(row.get("patch") or "")
+        for code,pattern,severity in _FORBIDDEN_SECURITY_PATTERNS:
+            if pattern.search(patch):
+                findings.append({
+                    "code":code,"severity":severity,
+                    "message":f"deterministic Security invariant matched: {code}",
+                    "path":filename,"scope_keys":[filename],
+                })
     sensitive=sorted({str(row.get("filename") or "") for row in details if any(part in str(row.get("filename") or "").lower() for part in _SENSITIVE_PATH_PARTS)})
     status="failed" if any(x["severity"] in {"critical","error"} for x in findings) else "passed"
     return SpecialistLaneResult(status,tuple(findings),{
@@ -60,9 +66,12 @@ def evaluate_qa_lane(item:SpecialistLaneItem,github:GitHubRestAdapter)->Speciali
     if pr.head_sha!=item.candidate_commit:
         return SpecialistLaneResult("blocked",({"code":"candidate_commit_mismatch","severity":"critical","message":"PR head changed during QA"},),{"candidate_commit":item.candidate_commit})
     ci=github.get_ci_state(item.pr_number)
-    if ci is not CIState.SUCCESS:
-        return SpecialistLaneResult("failed",({"code":"ci_not_green","severity":"error","message":f"candidate CI state is {ci.value}"},),{"candidate_commit":item.candidate_commit,"ci_state":ci.value})
     changed=github.get_pull_request_files(item.pr_number)
+    if ci is not CIState.SUCCESS:
+        return SpecialistLaneResult("failed",({
+            "code":"ci_not_green","severity":"error","message":f"candidate CI state is {ci.value}",
+            "scope_keys":list(changed),
+        },),{"candidate_commit":item.candidate_commit,"ci_state":ci.value,"changed_files":list(changed)})
     return SpecialistLaneResult("passed",(),{
         "candidate_commit":item.candidate_commit,"ci_state":ci.value,
         "changed_files":len(changed),"acceptance_criteria_count":len(item.acceptance_criteria),
