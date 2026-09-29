@@ -940,3 +940,32 @@ def test_replay_shadow_and_improvement_are_zero_effect_and_source_controlled():
     assert "canonical_hash" in module
     assert 'RELEASE_POLICY_VERSION="v1"' in module
     assert "self.provenance.record" in worker
+
+
+
+def test_architecture_guardian_is_deterministic_and_security_lane_primary():
+    guardian=(ROOT/"src/ai_product_factory/architecture_guardian.py").read_text()
+    lanes=(ROOT/"src/ai_product_factory/specialist_lanes.py").read_text()
+    for marker in (
+        "architecture_guardian_v1",
+        "openai_key",
+        "supabase_secret",
+        "github_token",
+        "client_service_role",
+        "pull_request_target",
+        "write_all_permissions",
+        "danger_full_access",
+        "disable_rls",
+        "permissive_public_grant",
+        "database_lineage",
+        "api_contracts",
+        "dependency_surfaces",
+        '"full_sast":False',
+        '"sbom_generation":False',
+        '"api_semantic_compatibility":False',
+        '"model_call":False',
+    ):
+        assert marker in guardian
+    assert "scan_pull_request_files" in lanes
+    assert 'report.evidence["blocking_findings"]' in lanes
+    assert "_FORBIDDEN_SECURITY_PATTERNS" not in lanes
