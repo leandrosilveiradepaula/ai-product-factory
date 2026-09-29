@@ -106,7 +106,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Persistencia versionada do Execution Team Plan e audit trail no Control Plane.
 - [x] Visualizacao da equipe planejada nos detalhes do projeto.
 - [x] Lanes independentes read-only para Security Review, QA/Evals e Operations, com SHA exato, lease/retry bounded, findings estruturados e gate antes do Preview.
-- [ ] Change Set com branches/workspaces por work unit e uma unica integration branch/candidato de release.
+- [x] Change Set com work units isoladas por onda, source SHA imutavel, integration branch, conflito de arquivos fail-closed e um unico PR candidato de release.
 - [ ] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela.
 - [x] Concurrency adaptativa v1 baseada em trabalho executavel, quota, custo conhecido, repair rate, first-pass yield e latencia de CI, com decisoes auditaveis.
 - [x] Corpus offline de evals do Team Planner cobrindo 10 classes de trabalho e penalizando overstaffing, under-staffing e papeis indevidos.
