@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 from ai_product_factory.models import (
@@ -644,7 +645,7 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         assert "factory_private.revoke_project_database_oauth" in migration
         assert "security invoker" in migration
         assert "last_verified_at=null" in migration
-        assert "verified_at=null" not in migration
+        assert re.search(r"(?<!last_)verified_at\\s*=\\s*null",migration,re.I) is None
         assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
         assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
 
