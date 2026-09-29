@@ -41,7 +41,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if evidence.stage=="planning":
             team_plan=evidence.output.get("_team_plan")
             if isinstance(team_plan,dict):
-                self._rpc("factory_record_execution_team_plan",{"p_run_id":item.run_id,"p_plan":team_plan})
+                recorded=self._rpc("factory_record_execution_team_plan",{"p_run_id":item.run_id,"p_plan":team_plan}) or {}
+                team_plan_id=recorded.get("id")
+                if team_plan_id and recorded.get("status")=="ready":
+                    self._rpc("factory_materialize_change_set",{"p_team_plan_id":team_plan_id})
 
     def complete(self,item:WorkItem)->None:
         self._rpc("factory_finish_run",{"p_run_id":item.run_id,"p_status":"completed","p_error":None})
