@@ -788,3 +788,13 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("enable row level security",migration)
         self.assertIn("security invoker",migration)
         self.assertNotIn("OPENAI_API_KEY",controller)
+
+
+    def test_change_set_source_identity_is_immutable(self):
+        migration=(ROOT/"supabase/migrations/20260929033000_factory_change_sets.sql").read_text()
+        self.assertIn("change-set source commit mismatch",migration)
+        self.assertIn("change-set integration branch mismatch",migration)
+        self.assertIn("factory_change_sets",migration)
+        self.assertIn("factory_change_set_work_units",migration)
+        self.assertIn("factory_claim_change_set_integration",migration)
+        self.assertIn("factory_complete_change_set_integration",migration)
