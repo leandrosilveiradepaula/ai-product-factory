@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/console-browser-evidence.yml"
+      - ".github/preview-target.json"
       - "scripts/verify_preview.mjs"
   workflow_dispatch:
     inputs:
@@ -46,10 +47,39 @@ jobs:
             const token = await core.getIDToken();
             core.setSecret(token);
             core.setOutput("token", token);
+      - name: Resolve exact Preview target
+        id: target
+        env:
+          INPUT_PREVIEW_URL: ${{ inputs.preview_url }}
+          INPUT_EXPECTED_TEXT: ${{ inputs.expected_text }}
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const path = ".github/preview-target.json";
+          const pushTarget = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, "utf8")) : {};
+          const previewUrl = process.env.INPUT_PREVIEW_URL || pushTarget.preview_url || "";
+          const expectedText = process.env.INPUT_EXPECTED_TEXT || pushTarget.expected_text || "Entrar na Factory";
+          const candidateSha = pushTarget.candidate_sha || "";
+          if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(previewUrl)) throw new Error("preview target must be an https vercel.app URL");
+          if (process.env.GITHUB_EVENT_NAME === "push" && !/^[0-9a-f]{40}$/.test(candidateSha)) throw new Error("push evidence target must include exact candidate_sha");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "preview_url=" + previewUrl + "\n");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "expected_text=" + expectedText.replace(/\r?\n/g, " ") + "\n");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "candidate_sha=" + candidateSha + "\n");
+          NODE
+      - name: Verify candidate commit exists
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE_SHA: ${{ steps.target.outputs.candidate_sha }}
+        with:
+          script: |
+            await github.rest.repos.getCommit({...context.repo, ref: process.env.CANDIDATE_SHA});
+            core.notice("Browser evidence target candidate: " + process.env.CANDIDATE_SHA);
       - name: Verify exact protected Preview
         env:
-          FACTORY_PREVIEW_URL: ${{ inputs.preview_url || 'https://ai-product-factory-console-fnr4yyuyr-leandros-projects-102e32ab.vercel.app' }}
-          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ inputs.expected_text || 'Entrar na Factory' }}
+          FACTORY_PREVIEW_URL: ${{ steps.target.outputs.preview_url }}
+          FACTORY_PREVIEW_EXPECTED_TEXT: ${{ steps.target.outputs.expected_text }}
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         shell: bash
         run: |

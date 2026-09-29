@@ -685,3 +685,18 @@ def test_specialist_workers_fan_out_from_control_plane_matrix():
     assert 'require_route_tools(agent_key,"codex")' in runtime
     assert 'profile.require_tools("github_write","model_primary")' in scheduler
     assert 'profile.require_tools("github_write","codex")' in scheduler
+
+
+def test_source_controlled_browser_evidence_target_is_exact_and_secret_free():
+    workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+    target=(ROOT/".github/preview-target.json").read_text()
+    assert '".github/preview-target.json"' in workflow
+    assert "candidate_sha" in workflow
+    assert "^[0-9a-f]{40}$" in workflow
+    assert "\\.vercel\\.app" in workflow
+    assert "repos.getCommit" in workflow
+    assert "FACTORY_VERCEL_TRUSTED_OIDC_TOKEN" in workflow
+    assert "preview_url" in target
+    assert "candidate_sha" in target
+    for forbidden in ("VERCEL_TOKEN","SUPABASE_SECRET_KEY","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","FACTORY_GITHUB_TOKEN"):
+        assert forbidden not in target
