@@ -10,7 +10,7 @@ class ReleasePolicyContext:
     production_change:bool=True
     destructive_data_change:bool=False
     expands_sensitive_access:bool=False
-    new_paid_recurring_service:bool=False
+    new_paid_service:bool=False
     material_requirement_change:bool=False
     unknown_paid_cost:bool=False
     missing_nonhuman_dod:tuple[str,...]=()
@@ -64,7 +64,7 @@ def evaluate_release_policy(policy:dict,context:ReleasePolicyContext)->ReleasePo
     for active,key,message in (
         (context.destructive_data_change,"destructive_data_change","destructive data change requires human gate"),
         (context.expands_sensitive_access,"expands_sensitive_access","sensitive access expansion requires human gate"),
-        (context.new_paid_recurring_service,"new_paid_recurring_service","new paid recurring service requires human gate"),
+        (context.new_paid_service,"new_paid_service","new paid service requires human gate"),
         (context.material_requirement_change,"material_requirement_change","material requirement change requires human gate"),
         (context.production_change,"production_change","production release requires human gate"),
     ):
