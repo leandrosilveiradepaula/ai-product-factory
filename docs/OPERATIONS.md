@@ -114,6 +114,18 @@ V1 inputs are runnable assigned work, latest provider quota pressure, unknown pa
 
 Each decision is stored in `factory_agent_concurrency_decisions` with the pressure snapshot and human-readable reasons. The controller does not mutate Agent Registry ceilings and makes no model call.
 
+## Requirement traceability and Definition of Done
+
+After planning is persisted, the runtime derives stable requirement keys from each task's acceptance criteria, links them to materialized tasks, and records a versioned Definition of Done.
+
+Evidence is factual:
+- `github_ci` comes from exact-candidate CI;
+- `security`, `qa` and `operations` come from independent specialist lanes;
+- `preview` and `browser_evidence` come from verified Preview;
+- `human_release` is recorded only when the release observer sees a human merge.
+
+Readiness contains explicit satisfied/missing checks; there is no release score. Checks without an implemented evidence provider remain missing rather than being guessed as passed.
+
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
