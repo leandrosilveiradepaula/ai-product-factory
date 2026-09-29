@@ -127,6 +127,10 @@ begin
      integration_branch=p_integration_branch,status='building',updated_at=now()
    where id=v_set.id;
    v_set.source_commit:=p_source_commit;v_set.candidate_commit:=p_source_commit;v_set.integration_branch:=p_integration_branch;
+ elsif v_set.source_commit<>p_source_commit then
+   raise exception 'change-set source commit mismatch';
+ elsif v_set.integration_branch<>p_integration_branch then
+   raise exception 'change-set integration branch mismatch';
  end if;
  if v_unit.wave<>v_set.current_wave then raise exception 'work unit is not in current wave'; end if;
  update public.factory_change_set_work_units
@@ -394,7 +398,7 @@ language plpgsql
 security invoker
 set search_path=''
 as $$
-declare v_requeued integer:=0;v_blocked integer:=0;v_integrators integer:=0;
+declare v_requeued integer:=0;v_blocked integer:=0;v_integrators integer:=0;v_blocked_integrations integer:=0;
 begin
  if p_max_attempts<1 or p_max_attempts>10 then raise exception 'invalid max attempts'; end if;
 
@@ -425,7 +429,8 @@ begin
  set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
      metadata=metadata||jsonb_build_object('blocker','integration_retry_exhausted')
  where status='integrating' and lease_expires_at<=now() and attempt_count>=p_max_attempts;
- get diagnostics v_blocked=v_blocked+row_count;
+ get diagnostics v_blocked_integrations=row_count;
+ v_blocked:=v_blocked+v_blocked_integrations;
 
  return jsonb_build_object('work_units_requeued',v_requeued,'integrations_requeued',v_integrators,'blocked',v_blocked);
 end;
