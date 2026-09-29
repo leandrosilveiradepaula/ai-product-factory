@@ -246,6 +246,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929013000_factory_team_plan_dispatch_gate.sql",
             "20260929023000_factory_specialist_lanes.sql",
             "20260929030000_factory_adaptive_concurrency.sql",
+            "20260929033000_factory_change_sets.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
