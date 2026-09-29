@@ -51,6 +51,9 @@ class ChangeSetIntegrator:
             change_set_id=item.change_set_id,candidate_commit=candidate,
             changed_files=tuple(sorted(files)),
         )
+        self.store.mark_repair_wave_integrated(
+            change_set_id=item.change_set_id,wave=item.current_wave,candidate_commit=candidate,
+        )
         status=str(completed.get("status") or "")
         pull_request=None
         if status=="review_ready":
