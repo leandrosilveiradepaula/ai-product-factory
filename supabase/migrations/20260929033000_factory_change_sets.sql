@@ -127,8 +127,6 @@ begin
      integration_branch=p_integration_branch,status='building',updated_at=now()
    where id=v_set.id;
    v_set.source_commit:=p_source_commit;v_set.candidate_commit:=p_source_commit;v_set.integration_branch:=p_integration_branch;
- elsif v_set.source_commit<>p_source_commit then
-   raise exception 'change-set source commit mismatch';
  end if;
  if v_unit.wave<>v_set.current_wave then raise exception 'work unit is not in current wave'; end if;
  update public.factory_change_set_work_units
