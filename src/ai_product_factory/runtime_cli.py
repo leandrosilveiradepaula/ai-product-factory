@@ -48,6 +48,8 @@ from .review_gate import EvalResult,evaluate_quality_gate
 from .specialist_lane_queue import SupabaseSpecialistLaneQueue
 from .specialist_lanes import evaluate_specialist_lane
 from .traceability_store import SupabaseTraceabilityStore
+from .release_intelligence import build_release_assessment,load_default_release_policy
+from .release_policy_store import SupabaseReleasePolicyStore
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -214,6 +216,22 @@ def run_specialist_once(role:str,worker_id:str)->dict:
   metadata={"source":"specialist_lane","role":role,"job_id":item.job_id,"findings_count":len(result.findings)}
  )
  return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,"run_status":completed.get("run_status"),"findings":list(result.findings)}
+
+def _assess_release_policy(*,run_id:str,candidate_commit:str,changed_files:tuple[str,...],risk:dict)->tuple[object,dict]:
+ policy_store=SupabaseReleasePolicyStore()
+ facts=policy_store.facts(run_id)
+ health=SupabaseOperationalHealthReader().read()
+ assessment=build_release_assessment(
+  policy=load_default_release_policy(),
+  candidate_commit=candidate_commit,
+  changed_files=changed_files,
+  risk=risk,
+  facts=facts,
+  unknown_paid_cost=health.unknown_cost_events>0,
+  known_cost=health.known_cost,
+ )
+ recorded=policy_store.record(run_id=run_id,assessment=assessment)
+ return assessment,recorded
 
 def run_preview_probe_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
