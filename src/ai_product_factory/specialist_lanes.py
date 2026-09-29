@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -10,6 +9,7 @@ from .operational_alerts import evaluate_operational_alerts
 from .preview_policy import evaluate_preview_applicability
 from .specialist_lane_queue import SpecialistLaneItem
 from .supabase_operational_health import SupabaseOperationalHealthReader
+from .architecture_guardian import scan_pull_request_files
 
 
 @dataclass(frozen=True)
@@ -19,45 +19,17 @@ class SpecialistLaneResult:
     evidence:dict
 
 
-_FORBIDDEN_SECURITY_PATTERNS=(
-    ("github_auto_merge",re.compile(r"merge_pull_request\s*\("),"critical"),
-    ("danger_full_access",re.compile(r"danger-full-access"),"critical"),
-    ("pull_request_target",re.compile(r"pull_request_target\s*:"),"critical"),
-    ("public_service_role",re.compile(r"NEXT_PUBLIC_[A-Z0-9_]*(?:SERVICE_ROLE|SECRET_KEY)"),"critical"),
-    ("security_definer",re.compile(r"security\s+definer",re.I),"error"),
-    ("permissive_public_grant",re.compile(r"grant\s+(?:all|select|insert|update|delete).*\s+to\s+(?:public|anon|authenticated)",re.I),"error"),
-)
-_SENSITIVE_PATH_PARTS=("auth","security","supabase/migrations",".github/workflows","vercel.json","package.json","lock")
-
-
-def _patch_text(rows:tuple[dict,...])->str:
-    return "\n".join(str(row.get("patch") or "") for row in rows)
-
-
 def evaluate_security_lane(item:SpecialistLaneItem,github:GitHubRestAdapter)->SpecialistLaneResult:
     pr=github.get_pull_request(item.pr_number)
     if pr.head_sha!=item.candidate_commit:
         return SpecialistLaneResult("blocked",({"code":"candidate_commit_mismatch","severity":"critical","message":"PR head changed during Security review"},),{"candidate_commit":item.candidate_commit})
     details=github.get_pull_request_file_details(item.pr_number)
-    findings=[]
-    for row in details:
-        filename=str(row.get("filename") or "")
-        patch=str(row.get("patch") or "")
-        for code,pattern,severity in _FORBIDDEN_SECURITY_PATTERNS:
-            if pattern.search(patch):
-                findings.append({
-                    "code":code,"severity":severity,
-                    "message":f"deterministic Security invariant matched: {code}",
-                    "path":filename,"scope_keys":[filename],
-                })
-    sensitive=sorted({str(row.get("filename") or "") for row in details if any(part in str(row.get("filename") or "").lower() for part in _SENSITIVE_PATH_PARTS)})
-    status="failed" if any(x["severity"] in {"critical","error"} for x in findings) else "passed"
-    return SpecialistLaneResult(status,tuple(findings),{
+    report=scan_pull_request_files(details)
+    status="failed" if report.evidence["blocking_findings"] else "passed"
+    return SpecialistLaneResult(status,report.findings,{
         "candidate_commit":item.candidate_commit,
         "files_reviewed":len(details),
-        "sensitive_paths":sensitive,
-        "checks":"deterministic_forbidden_pattern_scan",
-        "model_call":False,
+        **report.evidence,
     })
 
 
