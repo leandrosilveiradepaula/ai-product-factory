@@ -97,6 +97,20 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar build do Console por Preview exato Vercel do candidato `10f593d7d169d30fe5048eac9d98a94b8be1e151` (deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX`, `READY`).
 - [x] Validar browser/Playwright evidence em Preview exato protegido: GitHub OIDC Trusted Source foi configurado na Vercel e o candidato final pt-BR do PR #269 (`505c712864950d94638c874d8e267531fb544d62`, deployment `dpl_J9kneq8tf9bouJ3StBPyh4UNd7GX`) passou `page_load`, `http_status`, `body_visible`, `expected_text` e `console_clean` no run `36376673624`. O corpo observado confirmou a navegacao principal em portugues. O candidato historico `10f593...` permanece apenas como divida arquivistica; nao e a evidencia do release atual.
 
+
+### F8 - Orquestracao multiagente adaptativa
+- [x] Agent Registry configuravel com perfis, capabilities, ferramentas, budgets e concorrencia.
+- [x] Scheduler com assignments atomicos, scope locks e fan-out de workers especializados.
+- [x] Execution Team Plan deterministico derivado do engineering plan e do Agent Registry, sem chamada adicional de modelo.
+- [x] Selecao explicavel do menor conjunto de especialistas, workers planejados, ondas, exclusoes e blockers.
+- [x] Persistencia versionada do Execution Team Plan e audit trail no Control Plane.
+- [x] Visualizacao da equipe planejada nos detalhes do projeto.
+- [ ] Lanes independentes read-only para Security Review, QA/Evals e Operations.
+- [ ] Change Set com branches/workspaces por work unit e uma unica integration branch/candidato de release.
+- [ ] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela.
+- [ ] Concurrency adaptativa baseada em DAG, quota, budget e contention.
+- [ ] Corpus offline de evals do Team Planner com penalidade para overstaffing e falta de especialistas.
+
 ## Gate atual
 
 A Factory core esta funcionalmente implementada. O fluxo de Preview protegido esta verificado com Trusted Source GitHub Actions OIDC. O PR #269 foi liberado por autorizacao humana explicita em 2026-09-28 e mergeado em `98d81dee46c7ffc7ae4ae0662712fadcda3258b3`; o deployment de producao `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` chegou a `READY`, `GET /api/health` retornou HTTP 200 com o commit correto, a interface pt-BR foi observada em producao e a Vercel nao reportou erros de runtime na janela de verificacao. As migrations de anexos privados, reconciliacao e Current State Snapshot foram aplicadas e verificadas no Supabase de producao. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
