@@ -108,7 +108,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Lanes independentes read-only para Security Review, QA/Evals e Operations, com SHA exato, lease/retry bounded, findings estruturados e gate antes do Preview.
 - [ ] Change Set com branches/workspaces por work unit e uma unica integration branch/candidato de release.
 - [ ] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela.
-- [ ] Concurrency adaptativa baseada em DAG, quota, budget e contention.
+- [x] Concurrency adaptativa v1 baseada em trabalho executavel, quota, custo conhecido, repair rate, first-pass yield e latencia de CI, com decisoes auditaveis.
 - [x] Corpus offline de evals do Team Planner cobrindo 10 classes de trabalho e penalizando overstaffing, under-staffing e papeis indevidos.
 
 ## Gate atual
