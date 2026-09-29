@@ -736,6 +736,16 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("credential",page.lower())
         self.assertIn('href:"/agents"',nav)
 
+    def test_console_dependencies_are_locked_and_ci_is_deterministic(self):
+        package=(ROOT/"apps/console/package.json").read_text()
+        lock=(ROOT/"apps/console/package-lock.json").read_text()
+        workflow=(ROOT/".github/workflows/console.yml").read_text()
+        self.assertIn('"next": "15.5.26"',package)
+        self.assertIn('"next": "15.5.26"',lock)
+        self.assertIn('"lockfileVersion": 3',lock)
+        self.assertIn("- run: npm ci",workflow)
+        self.assertNotIn("- run: npm install",workflow)
+
     def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
         migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
         scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
