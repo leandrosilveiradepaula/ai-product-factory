@@ -15,6 +15,9 @@ from .codex_cli_producer import CodexCLIProducer
 from .codex_usage import SupabaseCodexUsageRecorder
 from .implementation_producer import ModelImplementationProducer
 from .execution_worker import DirectExecutionWorker
+from .change_set_store import SupabaseChangeSetStore
+from .change_set_worker import ChangeSetBuilderWorker
+from .change_set_integrator import ChangeSetIntegrator
 from .github_rest import GitHubRestAdapter
 from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 from .issue_materializer import GitHubIssueMaterializer
@@ -111,6 +114,10 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  try:
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
   github=GitHubRestAdapter(repository=item.repository)
+  if item.change_set_id:
+   result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer).execute(item)
+   scheduler.release(item.run_id,"completed")
+   return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
   materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
   session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
@@ -139,6 +146,10 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   usage=SupabaseCodexUsageRecorder()
   producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
   github=GitHubRestAdapter(repository=item.repository)
+  if item.change_set_id:
+   result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer).execute(item)
+   scheduler.release(item.run_id,"completed")
+   return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   store=SupabaseDeliveryStore()
   loop=AutonomousGitHubLoop(github,store)
   materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
@@ -149,6 +160,14 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   raise
  scheduler.release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
+
+def run_change_set_integration_once(worker_id:str)->dict:
+ store=SupabaseChangeSetStore()
+ item=store.claim_integration(worker_id)
+ if item is None:return {"claimed":False,"status":"empty"}
+ github=GitHubRestAdapter(repository=item.repository)
+ result=ChangeSetIntegrator(github=github,store=store).integrate(item)
+ return {"claimed":True,"status":result.status,"change_set_id":result.change_set_id,"wave":result.wave,"candidate_commit":result.candidate_commit,"pr_number":result.pull_request.number if result.pull_request else None}
 
 def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
@@ -279,7 +298,7 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","recovery","health","alerts","ci","specialist","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
  elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
@@ -294,6 +313,7 @@ def main()->int:
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
  elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key,args.run_id)
+ elif args.mode=="change-set-integration":out=run_change_set_integration_once(args.worker_id)
  elif args.mode=="dispatch":out=run_dispatch_once(args.project_key,args.max_items)
  else:out=run_product_once(args.worker_id)
  print(json.dumps(out));return 0 if not out.get("error") else 2
