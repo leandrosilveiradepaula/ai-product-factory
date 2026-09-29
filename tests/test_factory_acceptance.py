@@ -1023,3 +1023,25 @@ class RoutingV2AcceptanceTests(unittest.TestCase):
         self.assertIn("codex_reasons",migration)
         self.assertIn("security invoker",migration)
         self.assertNotIn("merge_pull_request(",policy)
+
+
+
+class CodeProvenanceAcceptanceTests(unittest.TestCase):
+    def test_factory_commits_carry_only_safe_provenance_pointers(self):
+        module=(ROOT/"src/ai_product_factory/commit_provenance.py").read_text()
+        worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
+        integrator=(ROOT/"src/ai_product_factory/change_set_integrator.py").read_text()
+        for marker in (
+            "Factory-Run",
+            "Factory-Change-Set",
+            "Factory-Work-Unit",
+            "Factory-Agent",
+            "Factory-Context-SHA256",
+        ):
+            self.assertIn(marker,worker)
+        self.assertIn("Factory-Change-Set",integrator)
+        self.assertIn("Factory-Wave",integrator)
+        self.assertIn("invalid provenance trailer value",module)
+        self.assertIn("64-character lowercase hex hash",module)
+        self.assertNotIn("context_packet",module)
+        self.assertNotIn("authorization",worker.lower())
