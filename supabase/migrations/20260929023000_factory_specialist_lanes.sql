@@ -106,6 +106,7 @@ begin
  select * into v_job
  from public.factory_specialist_lane_jobs
  where role=p_role
+   and attempt_count < 3
    and (
      status='queued'
      or (status='claimed' and lease_expires_at<=now())
@@ -197,3 +198,40 @@ end;
 $$;
 revoke all on function public.factory_complete_specialist_lane(uuid,text,jsonb,jsonb) from public,anon,authenticated;
 grant execute on function public.factory_complete_specialist_lane(uuid,text,jsonb,jsonb) to service_role;
+
+
+create or replace function public.factory_recover_specialist_lanes(p_max_attempts integer default 3)
+returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare v_requeued integer:=0;v_blocked integer:=0;
+begin
+ if p_max_attempts<1 or p_max_attempts>10 then raise exception 'invalid max attempts'; end if;
+
+ update public.factory_specialist_lane_jobs
+ set status='queued',lease_owner=null,lease_expires_at=null,updated_at=now()
+ where status='claimed' and lease_expires_at<=now() and attempt_count<p_max_attempts;
+ get diagnostics v_requeued=row_count;
+
+ update public.factory_specialist_lane_jobs
+ set status='blocked',lease_owner=null,lease_expires_at=null,completed_at=now(),updated_at=now(),
+     findings=case when findings='[]'::jsonb then jsonb_build_array(jsonb_build_object(
+       'code','specialist_retry_exhausted','severity','critical','message','specialist lane exhausted retry attempts'
+     )) else findings end
+ where status='claimed' and lease_expires_at<=now() and attempt_count>=p_max_attempts;
+ get diagnostics v_blocked=row_count;
+
+ update public.factory_runs r
+ set status='specialist_review_failed'
+ where exists(
+   select 1 from public.factory_specialist_lane_jobs j
+   where j.run_id=r.id and j.required and j.status='blocked'
+ );
+
+ return jsonb_build_object('requeued',v_requeued,'blocked',v_blocked);
+end;
+$$;
+revoke all on function public.factory_recover_specialist_lanes(integer) from public,anon,authenticated;
+grant execute on function public.factory_recover_specialist_lanes(integer) to service_role;
