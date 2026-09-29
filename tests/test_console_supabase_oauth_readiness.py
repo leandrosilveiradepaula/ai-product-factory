@@ -25,6 +25,14 @@ class ConsoleSupabaseOAuthReadinessTests(unittest.TestCase):
         self.assertNotIn("SUPABASE_OAUTH_CLIENT_SECRET", project)
         self.assertNotIn("process.env", project)
 
+    def test_oauth_rpc_accepts_no_content_and_records_binding_mode(self):
+        oauth = (ROOT / "apps/console/lib/supabase-oauth.ts").read_text()
+        self.assertIn("if(r.status===204)return null;", oauth)
+        self.assertIn("const text=await r.text();", oauth)
+        self.assertIn('JSON.stringify({access_mode:"oauth",permission_mode:"read"})', oauth)
+        self.assertIn('"Prefer":"return=minimal"', oauth)
+        self.assertIn('factory_record_project_database_verification', oauth)
+
 
 if __name__ == "__main__":
     unittest.main()
