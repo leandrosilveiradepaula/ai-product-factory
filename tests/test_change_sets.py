@@ -26,6 +26,7 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(result.output_commit,"out")
         github.ensure_branch_at_sha.assert_called_once_with("factory/cs/a","base")
         github.commit_files.assert_called_once()
+        self.assertEqual(producer.produce.call_args.args[0].base_commit,"base")
         self.assertFalse(github.create_pull_request.called)
         store.complete_work_unit.assert_called_once_with(
             run_id="run",output_commit="out",changed_files=("src/a.py",)
