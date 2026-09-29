@@ -61,6 +61,19 @@ class SupabaseChangeSetStore:
             integration_branch=str(data["integration_branch"]),wave=int(data["wave"]),
         )
 
+    def context_source(self,run_id:str)->dict:
+        data=self._rpc("factory_work_unit_context_source",{"p_run_id":run_id})
+        if not isinstance(data,dict):raise RuntimeError("work-unit context source returned no data")
+        return data
+
+    def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
+        return self._rpc("factory_record_work_unit_context",{
+            "p_run_id":run_id,"p_packet_hash":packet_hash,"p_packet":packet,
+        }) or {}
+
+    def set_repair_status(self,*,run_id:str,status:str)->dict:
+        return self._rpc("factory_set_repair_status",{"p_run_id":run_id,"p_status":status}) or {}
+
     def complete_work_unit(self,*,run_id:str,output_commit:str,changed_files:tuple[str,...])->dict:
         return self._rpc("factory_complete_change_set_work_unit",{
             "p_run_id":run_id,"p_output_commit":output_commit,"p_changed_files":list(changed_files),
@@ -80,6 +93,11 @@ class SupabaseChangeSetStore:
         return self._rpc("factory_complete_change_set_integration",{
             "p_change_set_id":change_set_id,"p_candidate_commit":candidate_commit,
             "p_changed_files":list(changed_files),
+        }) or {}
+
+    def mark_repair_wave_integrated(self,*,change_set_id:str,wave:int,candidate_commit:str)->dict:
+        return self._rpc("factory_mark_repair_wave_integrated",{
+            "p_change_set_id":change_set_id,"p_wave":wave,"p_candidate_commit":candidate_commit,
         }) or {}
 
     def prepare_release(self,*,change_set_id:str,issue_number:int,issue_url:str,pr_number:int,candidate_commit:str,branch:str)->dict:
