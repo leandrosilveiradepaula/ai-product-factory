@@ -362,11 +362,17 @@ Recovery must resume from durable state rather than asking models to reconstruct
 
 ### Phase B — dedicated read-only specialist lanes
 
-- Security review worker;
-- QA/eval worker;
-- Operations verification worker;
-- structured findings and repair-work generation;
-- no generic github_write grant to reviewers.
+Implemented in #366:
+- Security review worker over the exact candidate diff using deterministic security invariants;
+- QA worker requiring green checks for the exact candidate SHA;
+- Operations worker evaluating Preview applicability plus operational/cost health;
+- durable queue, leases, bounded retries, findings/evidence and audit trail;
+- Preview remains unavailable until all required specialist jobs pass;
+- no generic github_write grant to reviewers and no paid model call merely to perform review.
+
+Still pending:
+- bounded model fallback for genuinely ambiguous findings;
+- automatic repair-work generation from failed findings, implemented with Change Sets.
 
 ### Phase C — Change Set integration
 
