@@ -32,7 +32,9 @@ class ChangeSetTests(unittest.TestCase):
             run_id="run",output_commit="out",changed_files=("src/a.py",)
         )
         impact.analyze_run.assert_called_once()
-        self.assertEqual(producer.produce.call_args.args[0].impact_context["confidence"],"high")
+        produced=producer.produce.call_args.args[0]
+        self.assertEqual(produced.impact_context["confidence"],"high")
+        self.assertEqual(produced.base_commit,"base")
 
     def test_integrator_rejects_overlapping_files(self):
         github=MagicMock()
