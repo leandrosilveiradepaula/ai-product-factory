@@ -121,7 +121,7 @@ jobs:
 
 
   change-set-integration:
-    if: ${{ always() && needs.dispatch.result != 'failure' }}
+    if: ${{ always() && needs.direct.result != 'failure' && needs.codex.result != 'failure' }}
     needs: [direct, codex]
     runs-on: ubuntu-latest
     timeout-minutes: 8
