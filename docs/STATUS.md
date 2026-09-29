@@ -314,3 +314,17 @@ The planner does not grant reviewer profiles `github_write`, does not weaken pro
 The long-term target is a Change Set: parallel isolated builder work converges deterministically into one integration candidate, then independent Security/QA/Operations evaluate the exact integrated candidate before CI/Preview and the human production merge gate.
 
 Issue #363 / branch `agents/363-execution-team-plan` is not released yet. Console changes still require green CI, an exact verified Preview/browser evidence, and human production merge.
+
+
+## Specialist lanes - issue #366
+
+Branch `agents/366-specialist-lanes` implements executable read-only specialist lanes on top of the Execution Team Plan.
+
+After exact-candidate CI succeeds, the Factory enqueues only the Security/QA/Operations lanes required by the active Team Plan. Runs transition through `specialist_review_pending`; Preview is released only after every required lane passes. Any failed or blocked required lane moves the run to `specialist_review_failed`.
+
+This first implementation is deterministic-first and makes no additional paid model call:
+- Security scans the exact PR patch for critical Factory security invariants and validates candidate identity;
+- QA requires green GitHub checks for the exact candidate SHA;
+- Operations checks Preview applicability and Control Plane health/cost state, failing closed on critical or unknown paid-cost conditions.
+
+All three GitHub Actions jobs are read-only. Reviewers do not receive contents or pull-request write permissions. Leases are bounded and recoverable; exhausted retries become durable blockers.
