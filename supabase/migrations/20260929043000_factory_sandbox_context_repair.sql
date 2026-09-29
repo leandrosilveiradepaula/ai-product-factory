@@ -203,3 +203,47 @@ end;
 $$;
 revoke all on function public.factory_enqueue_repair_from_specialist(uuid,jsonb,integer) from public,anon,authenticated;
 grant execute on function public.factory_enqueue_repair_from_specialist(uuid,jsonb,integer) to service_role;
+
+
+create or replace function public.factory_set_repair_status(p_run_id uuid,p_status text)
+returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare v_id uuid;
+begin
+ if p_status not in ('running','integrated','passed','exhausted','blocked') then raise exception 'invalid repair status'; end if;
+ select r.id into v_id
+ from public.factory_repair_jobs r
+ join public.factory_change_set_work_units u on u.id=r.work_unit_id
+ where u.run_id=p_run_id order by r.created_at desc limit 1;
+ if v_id is null then return jsonb_build_object('updated',false); end if;
+ update public.factory_repair_jobs set status=p_status,updated_at=now() where id=v_id;
+ return jsonb_build_object('updated',true,'repair_job_id',v_id,'status',p_status);
+end;
+$$;
+revoke all on function public.factory_set_repair_status(uuid,text) from public,anon,authenticated;
+grant execute on function public.factory_set_repair_status(uuid,text) to service_role;
+
+create or replace function public.factory_mark_repair_wave_integrated(
+ p_change_set_id uuid,p_wave integer,p_candidate_commit text
+) returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare v_count integer:=0;
+begin
+ if p_wave<1 then raise exception 'invalid wave'; end if;
+ update public.factory_repair_jobs r
+ set status='integrated',candidate_commit=p_candidate_commit,updated_at=now()
+ from public.factory_change_set_work_units u
+ where r.work_unit_id=u.id and r.change_set_id=p_change_set_id and u.wave=p_wave
+   and r.status in ('queued','running');
+ get diagnostics v_count=row_count;
+ return jsonb_build_object('updated',v_count,'status','integrated','candidate_commit',p_candidate_commit);
+end;
+$$;
+revoke all on function public.factory_mark_repair_wave_integrated(uuid,integer,text) from public,anon,authenticated;
+grant execute on function public.factory_mark_repair_wave_integrated(uuid,integer,text) to service_role;
