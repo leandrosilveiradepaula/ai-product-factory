@@ -349,3 +349,10 @@ Both database additions are private, RLS-enabled, service-side only and additive
 Branch `quality/376-traceability-dod` adds deterministic requirement IDs, task links, requirement evidence, versioned Definition of Done and factual readiness. Planning now requires non-empty acceptance criteria per task. Delivery evidence is recorded from CI, specialist lanes, verified Preview/browser and observed human merge; no model is asked to invent proof.
 
 DoD is deliberately not a numeric score. Missing evidence remains explicit. Migration validation, rollback analysis and API contract checks can be compiled before their dedicated validators exist; those checks therefore remain visible as missing until the next policy/validator phase.
+
+
+## Policy-as-Code / Release Intelligence - issue #378
+
+Branch `policy/378-release-policy` adds source-controlled release policy, durable policy decisions and factual release reports. The runtime evaluates the policy after Preview/browser evidence (or explicit Preview N/A) and before `awaiting_release`.
+
+The policy cannot grant auto-merge. Unknown paid cost, missing non-human DoD evidence and migration rollback without verified evidence block release readiness. A successful production decision remains only `ready_for_human_release`. Human merge is observed separately and is the only event that records `human_release`.
