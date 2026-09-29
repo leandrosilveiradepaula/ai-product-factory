@@ -158,7 +158,8 @@ begin
  update public.factory_change_set_work_units
  set status='completed',output_commit=p_output_commit,changed_files=coalesce(p_changed_files,'[]'::jsonb),updated_at=now()
  where id=v_unit.id;
- update public.factory_runs set status='completed',candidate_commit=p_output_commit,finished_at=now() where id=p_run_id;
+ update public.factory_runs set status='completed',candidate_commit=p_output_commit,finished_at=now(),lease_owner=null,lease_expires_at=null where id=p_run_id;
+ update public.factory_tasks set status='work_unit_completed',updated_at=now() where id=v_unit.task_id;
  return jsonb_build_object('change_set_id',v_unit.change_set_id,'work_unit_id',v_unit.id,'status','completed');
 end;
 $$;
@@ -177,6 +178,7 @@ begin
  select s.* into v_set
  from public.factory_change_sets s
  where s.status in ('building','integrating')
+   and s.attempt_count < 3
    and (s.lease_expires_at is null or s.lease_expires_at<=now())
    and exists(select 1 from public.factory_change_set_work_units u where u.change_set_id=s.id and u.wave=s.current_wave)
    and not exists(select 1 from public.factory_change_set_work_units u where u.change_set_id=s.id and u.wave=s.current_wave and u.status<>'completed')
@@ -216,6 +218,11 @@ begin
  if v_set.status<>'integrating' then raise exception 'change set is not integrating'; end if;
  update public.factory_change_set_work_units set status='integrated',updated_at=now()
  where change_set_id=v_set.id and wave=v_set.current_wave and status='completed';
+ update public.factory_tasks t set status='integrated',updated_at=now()
+ where exists(
+   select 1 from public.factory_change_set_work_units u
+   where u.change_set_id=v_set.id and u.wave=v_set.current_wave and u.task_id=t.id and u.status='integrated'
+ );
  select min(wave) into v_next_wave from public.factory_change_set_work_units where change_set_id=v_set.id and status='pending';
  if v_next_wave is null then
    v_status:='review_ready';
@@ -381,3 +388,49 @@ end;
 $$;
 revoke all on function public.factory_prepare_change_set_release(uuid,integer,text,integer,text,text) from public,anon,authenticated;
 grant execute on function public.factory_prepare_change_set_release(uuid,integer,text,integer,text,text) to service_role;
+
+
+create or replace function public.factory_recover_change_sets(p_max_attempts integer default 3)
+returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare v_requeued integer:=0;v_blocked integer:=0;v_integrators integer:=0;
+begin
+ if p_max_attempts<1 or p_max_attempts>10 then raise exception 'invalid max attempts'; end if;
+
+ update public.factory_change_set_work_units u
+ set status='queued',updated_at=now()
+ from public.factory_runs r
+ where u.run_id=r.id and u.status='running' and r.status='queued';
+ get diagnostics v_requeued=row_count;
+
+ update public.factory_change_set_work_units u
+ set status='failed',updated_at=now()
+ from public.factory_runs r
+ where u.run_id=r.id and u.status in ('running','queued') and r.status='failed';
+
+ update public.factory_change_sets s
+ set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
+     metadata=metadata||jsonb_build_object('blocker','builder_retry_exhausted')
+ where s.status in ('planned','building','integrating')
+   and exists(select 1 from public.factory_change_set_work_units u where u.change_set_id=s.id and u.status in ('failed','blocked'));
+ get diagnostics v_blocked=row_count;
+
+ update public.factory_change_sets
+ set status='building',lease_owner=null,lease_expires_at=null,updated_at=now()
+ where status='integrating' and lease_expires_at<=now() and attempt_count<p_max_attempts;
+ get diagnostics v_integrators=row_count;
+
+ update public.factory_change_sets
+ set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
+     metadata=metadata||jsonb_build_object('blocker','integration_retry_exhausted')
+ where status='integrating' and lease_expires_at<=now() and attempt_count>=p_max_attempts;
+ get diagnostics v_blocked=v_blocked+row_count;
+
+ return jsonb_build_object('work_units_requeued',v_requeued,'integrations_requeued',v_integrators,'blocked',v_blocked);
+end;
+$$;
+revoke all on function public.factory_recover_change_sets(integer) from public,anon,authenticated;
+grant execute on function public.factory_recover_change_sets(integer) to service_role;
