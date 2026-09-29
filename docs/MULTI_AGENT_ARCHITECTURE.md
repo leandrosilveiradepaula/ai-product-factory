@@ -430,3 +430,12 @@ No paid benchmark runs are implicit.
 - giving reviewers write access merely to reuse the builder worker;
 - using Codex as the orchestrator;
 - hidden self-modification of routing or safety policy.
+
+
+## Requirement traceability and Definition of Done
+
+Planning tasks carry independently verifiable acceptance criteria. The Factory deterministically derives stable requirement keys and links each requirement to the materialized task. Requirement evidence is never inferred from code generation: only observed delivery evidence such as exact-candidate CI, independent QA/Security, verified Preview/browser evidence and observed human merge is persisted.
+
+The Definition of Done is a versioned list of explicit checks, phases, reasons and evidence types. It is not a model-generated score. Readiness is represented as satisfied and missing checks. Production human release remains a human-only evidence type.
+
+Migration validation, rollback analysis and API contract checks are compiled when applicable but remain visibly missing until a dedicated validator records evidence. The following Policy-as-Code phase will decide which available checks are hard runtime gates.
