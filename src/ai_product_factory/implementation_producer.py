@@ -10,7 +10,11 @@ class ModelImplementationProducer:
  def produce(self,item:DirectExecutionItem)->ImplementationArtifact:
   objective=("Implement the task as a minimal repository patch. Return JSON only with "
              "plan_markdown, files (object path->full text), commit_message, pr_title, pr_body.")
-  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps({"project_key":item.project_key,"repository":item.repository,"title":item.title,"description":item.description,"impact":getattr(item,"impact_context",None)},ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Keep the change narrowly scoped to the task."))
+  packet=getattr(item,"context_packet",None)
+  if getattr(item,"change_set_id",None) and not isinstance(packet,dict):
+   raise RuntimeError("Change Set implementation requires a durable context packet")
+  context=packet if isinstance(packet,dict) else {"project_key":item.project_key,"repository":item.repository,"title":item.title,"description":item.description,"impact":getattr(item,"impact_context",None)}
+  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task."))
   result=self.executor.execute(ExecutionRoute.DIRECT,request)
   try:data=json.loads(result.output)
   except json.JSONDecodeError as exc:raise ValueError("implementation producer returned invalid JSON") from exc
