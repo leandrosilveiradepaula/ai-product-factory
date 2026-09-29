@@ -202,15 +202,15 @@ The response is intentionally minimal and contains only service status and a tru
 
 The Console must not create a deployment for every implementation commit.
 
-Target policy (PR #341):
+Release-candidate policy in this branch:
 - `main` remains the production branch;
-- implementation branches such as `console/**` and `test/**` do not deploy automatically;
+- implementation branches do not deploy automatically;
 - after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
 - only `preview/**` is allowed to create the final Preview candidate;
-- `ignoreCommand` remains a path-based second guard;
-- Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically.
-
-Until #341 is released, the repository is still operating under the previous Vercel Git policy. Do not describe the target policy as active before that release.
+- the promoted Preview ref points to the exact PR head commit; it does not create a different code commit;
+- `ignoreCommand` always builds `preview/**` while remaining a path-based guard for `main`;
+- Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically;
+- this policy becomes the active production policy only after the human-gated release merge.
 
 ## Resource quota observability
 
