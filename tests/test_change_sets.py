@@ -30,7 +30,8 @@ class ChangeSetTests(unittest.TestCase):
             "run","task","demo","owner/repo",None,"A","desc","factory/cs/a",False,"cs","wu",1
         )
         impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{"confidence":"high","impacted_nodes":[],"unknowns":[]})
-        result=ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact).execute(item)
+        provenance=MagicMock()
+        result=ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=provenance).execute(item)
         self.assertEqual(result.output_commit,"out")
         github.ensure_branch_at_sha.assert_called_once_with("factory/cs/a","base")
         github.commit_files.assert_called_once()
@@ -45,6 +46,7 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(produced.write_scopes,("src/a.py",))
         self.assertEqual(produced.context_packet["work_unit"]["task_key"],"a")
         store.record_context.assert_called_once()
+        provenance.record.assert_called_once()
 
     def test_integrator_rejects_overlapping_files(self):
         github=MagicMock()
