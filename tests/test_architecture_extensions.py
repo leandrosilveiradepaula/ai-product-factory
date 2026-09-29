@@ -54,5 +54,27 @@ class ArchitectureExtensionAcceptanceTests(unittest.TestCase):
         self.assertIn("--specialist-role operations",region)
 
 
+    def test_project_brain_and_impact_are_private_provenanced_and_deterministic(self):
+        brain_migration=(ROOT/"supabase/migrations/20260929040000_factory_project_brain.sql").read_text()
+        impact_migration=(ROOT/"supabase/migrations/20260929043000_factory_impact_analysis.sql").read_text()
+        brain=(ROOT/"src/ai_product_factory/project_brain.py").read_text()
+        impact=(ROOT/"src/ai_product_factory/impact_engine.py").read_text()
+        queue=(ROOT/"src/ai_product_factory/supabase_runtime_queue.py").read_text()
+        self.assertIn("factory_project_brain_snapshots",brain_migration)
+        self.assertIn("factory_project_brain_nodes",brain_migration)
+        self.assertIn("factory_project_brain_edges",brain_migration)
+        self.assertGreaterEqual(brain_migration.count("enable row level security"),3)
+        self.assertIn("secret-like brain node attributes are forbidden",brain_migration)
+        self.assertIn("security invoker",brain_migration)
+        self.assertIn("factory_impact_analyses",impact_migration)
+        self.assertIn("factory_record_impact_analysis",impact_migration)
+        self.assertIn("enable row level security",impact_migration)
+        self.assertIn("confidence",impact)
+        self.assertIn("unknown",impact)
+        self.assertIn("factory_record_project_brain_snapshot",queue)
+        self.assertNotIn("OpenAIResponsesProvider",brain)
+        self.assertNotIn("OpenAIResponsesProvider",impact)
+
+
 if __name__=="__main__":
     unittest.main()
