@@ -44,5 +44,5 @@ jobs:
               fixAvailable:v.fixAvailable
             }));
           }
-NODE
+          NODE
           exit $code
