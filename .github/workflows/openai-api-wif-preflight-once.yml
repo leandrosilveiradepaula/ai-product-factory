@@ -1,5 +1,5 @@
 name: OpenAI API WIF preflight once
-# diagnostic-rerun: safe structured exchange errors
+# diagnostic-rerun: 2026-09-29 final API-WIF recheck
 
 on:
   push:
