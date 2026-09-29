@@ -1,3 +1,4 @@
+/* Authenticated Figma fidelity candidate; exact Preview evidence required before release. */
 :root{
   color-scheme:dark;
   --font-sans:Inter,"Segoe UI",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
@@ -94,9 +95,9 @@
   --radius-pill:2px;
   --space-page-x:8px;
   --space-page-y:8px;
-  --sidebar-width:256px;
+  --sidebar-width:228px;
   --sidebar-width-collapsed:72px;
-  --topbar-height:64px;
+  --topbar-height:62px;
 
   --shadow-card:none;
   --shadow-accent:none;
