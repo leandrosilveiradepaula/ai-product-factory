@@ -348,3 +348,17 @@ export async function getOrchestrationOverview():Promise<OrchestrationOverview>{
   releases:releases.map((x:any)=>{const p=nameFor(x.project_id);return{id:String(x.id),projectKey:p.key,projectName:p.name,runId:String(x.run_id),candidateCommit:String(x.candidate_commit),status:String(x.status),report:x.report&&typeof x.report==="object"?x.report:{},rollback:x.rollback&&typeof x.rollback==="object"?x.rollback:{},updatedAt:String(x.updated_at)}}),
  };
 }
+
+export type ResourceLimitRow={provider:string;resourceKey:string;metricKey:string;used:number|null;limit:number|null;percent:number|null;unit:string;windowKey:string|null;resetsAt:string|null;quality:string;source:string;status:string;observedAt:string};
+export async function getResourceLimits():Promise<ResourceLimitRow[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_resource_limit_snapshots?select=provider,resource_key,metric_key,used_value,limit_value,unit,window_key,resets_at,quality,source,status,observed_at&order=observed_at.desc&limit=200",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)return[];
+ const rows=await response.json();const seen=new Set<string>();const out:ResourceLimitRow[]=[];
+ for(const x of rows){const key=[x.provider,x.resource_key,x.metric_key].join("|");if(seen.has(key))continue;seen.add(key);
+  const used=x.used_value==null?null:Number(x.used_value),limit=x.limit_value==null?null:Number(x.limit_value);
+  out.push({provider:String(x.provider),resourceKey:String(x.resource_key),metricKey:String(x.metric_key),used,limit,percent:used==null||limit==null||limit<=0?null:(used/limit)*100,unit:String(x.unit),windowKey:x.window_key?String(x.window_key):null,resetsAt:x.resets_at?String(x.resets_at):null,quality:String(x.quality),source:String(x.source),status:String(x.status),observedAt:String(x.observed_at)});
+ }
+ return out;
+}
+
