@@ -6,7 +6,7 @@ on:
       - "ci/generate-console-lockfile"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lockfile:
@@ -28,6 +28,19 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm run build
+      - name: Commit generated lockfile to technical branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/console/package-lock.json
+          if git diff --cached --quiet; then
+            echo "lockfile already committed"
+          else
+            git commit -m "chore(console): add reproducible package lock"
+            git push origin HEAD:ci/generate-console-lockfile
+          fi
       - name: Upload lockfile
         uses: actions/upload-artifact@v4
         with:
