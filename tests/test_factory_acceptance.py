@@ -619,119 +619,110 @@ class FactoryAcceptanceTests(unittest.TestCase):
         for phrase in forbidden:
             self.assertNotIn(phrase, text)
 
-if __name__ == "__main__":
-    unittest.main()
+class ExtendedFactoryAcceptanceTests(unittest.TestCase):
+    def test_resource_limit_observability_is_fail_closed_and_secret_free(self):
+        migration=(ROOT/"supabase/migrations/20260928202000_factory_resource_limit_snapshots.sql").read_text()
+        model=(ROOT/"src/ai_product_factory/resource_limits.py").read_text()
+        assert "factory_resource_limit_snapshots" in migration
+        assert "enable row level security" in migration
+        assert "revoke all on public.factory_resource_limit_snapshots from public,anon,authenticated" in migration
+        assert "provider_blocked" in migration
+        assert "v_ratio>=0.9" in migration
+        assert "v_ratio>=0.7" in migration
+        assert "secret-like metadata is forbidden" in migration
+        assert "def percent" in model
+        assert 'if p>=100:return "blocked"' in model
+        assert 'if p>=90:return "critical"' in model
+        assert 'if p>=70:return "attention"' in model
 
+    def test_supabase_oauth_vault_backend_keeps_definers_private(self):
+        migration=(ROOT/"supabase/migrations/20260928204500_factory_project_database_oauth_vault.sql").read_text()
+        assert "create schema if not exists factory_private" in migration
+        assert "security definer" in migration
+        assert "factory_private.store_project_database_oauth" in migration
+        assert "factory_private.get_project_database_oauth_tokens" in migration
+        assert "factory_private.revoke_project_database_oauth" in migration
+        assert "security invoker" in migration
+        assert "last_verified_at=null" in migration
+        assert "verified_at=null" not in migration
+        assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
+        assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
 
-def test_resource_limit_observability_is_fail_closed_and_secret_free():
-    migration=(ROOT/"supabase/migrations/20260928202000_factory_resource_limit_snapshots.sql").read_text()
-    model=(ROOT/"src/ai_product_factory/resource_limits.py").read_text()
-    assert "factory_resource_limit_snapshots" in migration
-    assert "enable row level security" in migration
-    assert "revoke all on public.factory_resource_limit_snapshots from public,anon,authenticated" in migration
-    assert "provider_blocked" in migration
-    assert "v_ratio>=0.9" in migration
-    assert "v_ratio>=0.7" in migration
-    assert "secret-like metadata is forbidden" in migration
-    assert "def percent" in model
-    assert 'if p>=100:return "blocked"' in model
-    assert 'if p>=90:return "critical"' in model
-    assert 'if p>=70:return "attention"' in model
+    def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
+        migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
+        scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        planner=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+        assert "create table if not exists public.factory_agents" in migration
+        assert "max_concurrency" in migration
+        assert "factory_agent_scope_locks" in migration
+        assert "scope conflict with run" in migration
+        assert "factory_schedule_next_unassigned_run" in migration
+        assert "factory_claim_next_agent_direct_run" in migration
+        assert "factory_claim_next_agent_codex_run" in migration
+        assert "factory_recover_expired_agent_slots" in migration
+        assert "revoke all on public.factory_agents from public,anon,authenticated" in migration
+        assert "grant execute on function public.factory_schedule_run_agent" in migration
+        assert "idx_factory_run_agent_assignments_active_run" in migration
+        assert "lease_expires_at > now()" in migration
+        assert "starts_with(l.scope_key" in migration
+        assert "or l.lease_expires_at <= now()" in migration
+        assert "required_capabilities" in migration
+        assert "scope_keys" in migration
+        assert "Do not assume a fixed number of agents" in planner
+        assert 'scheduler.release(item.run_id,"blocked")' in runtime
+        assert "recover_expired" in scheduler
 
+    def test_specialist_workers_fan_out_from_control_plane_matrix(self):
+        workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+        assert "direct_matrix:" in workflow
+        assert "codex_matrix:" in workflow
+        assert "strategy:" in workflow
+        assert "matrix: ${{ fromJSON(needs.dispatch.outputs.direct_matrix) }}" in workflow
+        assert "matrix: ${{ fromJSON(needs.dispatch.outputs.codex_matrix) }}" in workflow
+        assert '--agent-key "${{ matrix.agent_key }}" --run-id "${{ matrix.run_id }}"' in workflow
+        assert "inputs.run_codex == true" in workflow
+        assert "if run_id is None:" in runtime
+        assert 'raise ValueError("agent_key is required when run_id is explicit")' in runtime
+        assert 'require_route_tools(agent_key,"direct")' in runtime
+        assert 'require_route_tools(agent_key,"codex")' in runtime
+        assert 'profile.require_tools("github_write","model_primary")' in scheduler
+        assert 'profile.require_tools("github_write","codex")' in scheduler
 
-def test_supabase_oauth_vault_backend_keeps_definers_private():
-    migration=(ROOT/"supabase/migrations/20260928204500_factory_project_database_oauth_vault.sql").read_text()
-    assert "create schema if not exists factory_private" in migration
-    assert "security definer" in migration
-    assert "factory_private.store_project_database_oauth" in migration
-    assert "factory_private.get_project_database_oauth_tokens" in migration
-    assert "factory_private.revoke_project_database_oauth" in migration
-    assert "security invoker" in migration
-    assert "last_verified_at=null" in migration
-    assert "verified_at=null" not in migration
-    assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
-    assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
-
-
-def test_agent_registry_is_configurable_scoped_and_fail_closed():
-    migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
-    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
-    runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
-    planner=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
-    assert "create table if not exists public.factory_agents" in migration
-    assert "max_concurrency" in migration
-    assert "factory_agent_scope_locks" in migration
-    assert "scope conflict with run" in migration
-    assert "factory_schedule_next_unassigned_run" in migration
-    assert "factory_claim_next_agent_direct_run" in migration
-    assert "factory_claim_next_agent_codex_run" in migration
-    assert "factory_recover_expired_agent_slots" in migration
-    assert "revoke all on public.factory_agents from public,anon,authenticated" in migration
-    assert "grant execute on function public.factory_schedule_run_agent" in migration
-    assert "idx_factory_run_agent_assignments_active_run" in migration
-    assert "lease_expires_at > now()" in migration
-    assert "starts_with(l.scope_key" in migration
-    assert "or l.lease_expires_at <= now()" in migration
-    assert "required_capabilities" in migration
-    assert "scope_keys" in migration
-    assert "Do not assume a fixed number of agents" in planner
-    assert 'scheduler.release(item.run_id,"blocked")' in runtime
-    assert "recover_expired" in scheduler
-
-
-def test_specialist_workers_fan_out_from_control_plane_matrix():
-    workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
-    runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
-    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
-    assert "direct_matrix:" in workflow
-    assert "codex_matrix:" in workflow
-    assert "strategy:" in workflow
-    assert "matrix: ${{ fromJSON(needs.dispatch.outputs.direct_matrix) }}" in workflow
-    assert "matrix: ${{ fromJSON(needs.dispatch.outputs.codex_matrix) }}" in workflow
-    assert '--agent-key "${{ matrix.agent_key }}" --run-id "${{ matrix.run_id }}"' in workflow
-    assert "inputs.run_codex == true" in workflow
-    assert "if run_id is None:" in runtime
-    assert 'raise ValueError("agent_key is required when run_id is explicit")' in runtime
-    assert 'require_route_tools(agent_key,"direct")' in runtime
-    assert 'require_route_tools(agent_key,"codex")' in runtime
-    assert 'profile.require_tools("github_write","model_primary")' in scheduler
-    assert 'profile.require_tools("github_write","codex")' in scheduler
-
-
-
-def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
-    planner=(ROOT/"src/ai_product_factory/execution_team_planner.py").read_text()
-    executor=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
-    queue=(ROOT/"src/ai_product_factory/supabase_runtime_queue.py").read_text()
-    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
-    migration=(ROOT/"supabase/migrations/20260929004500_factory_execution_team_plans.sql").read_text()
-    assert "minimum-capability-cover-with-least-privilege" in planner
-    assert "planned_worker_peak" in planner
-    assert "waves" in planner
-    assert "scope" in planner
-    assert "specialist_review_recommended" in planner
-    assert "no_single_agent_covers_task" in planner
-    assert "build_execution_team_plan" in executor
-    assert "team_profiles" in executor
-    assert 'evidence.stage=="planning"' in queue
-    assert "factory_record_execution_team_plan" in queue
-    assert "def profiles" in scheduler
-    assert "factory_execution_team_plans" in migration
-    assert "enable row level security" in migration
-    assert "revoke all on public.factory_execution_team_plans from public,anon,authenticated" in migration
-    assert "team.plan.recorded" in migration
-    assert "security invoker" in migration
-    serialization=(ROOT/"supabase/migrations/20260929012000_factory_execution_team_plan_serialization.sql").read_text()
-    assert "for update" in serialization
-    assert "factory_projects" in serialization
-    serialization_reapply=(ROOT/"supabase/migrations/20260929012100_factory_execution_team_plan_serialization.sql").read_text()
-    assert "preserve durable history" in serialization_reapply
-    assert "factory_record_execution_team_plan" in serialization_reapply
-    dispatch_gate=(ROOT/"supabase/migrations/20260929013000_factory_team_plan_dispatch_gate.sql").read_text()
-    assert "factory_execution_team_plans" in dispatch_gate
-    assert "v_team_status is distinct from 'ready'" in dispatch_gate
-    assert "factory_dispatch_next_planned_task" in dispatch_gate
-
+    def test_execution_team_plan_is_deterministic_versioned_and_least_privilege(self):
+        planner=(ROOT/"src/ai_product_factory/execution_team_planner.py").read_text()
+        executor=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+        queue=(ROOT/"src/ai_product_factory/supabase_runtime_queue.py").read_text()
+        scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929004500_factory_execution_team_plans.sql").read_text()
+        assert "minimum-capability-cover-with-least-privilege" in planner
+        assert "planned_worker_peak" in planner
+        assert "waves" in planner
+        assert "scope" in planner
+        assert "specialist_review_recommended" in planner
+        assert "no_single_agent_covers_task" in planner
+        assert "build_execution_team_plan" in executor
+        assert "team_profiles" in executor
+        assert 'evidence.stage=="planning"' in queue
+        assert "factory_record_execution_team_plan" in queue
+        assert "def profiles" in scheduler
+        assert "factory_execution_team_plans" in migration
+        assert "enable row level security" in migration
+        assert "revoke all on public.factory_execution_team_plans from public,anon,authenticated" in migration
+        assert "team.plan.recorded" in migration
+        assert "security invoker" in migration
+        serialization=(ROOT/"supabase/migrations/20260929012000_factory_execution_team_plan_serialization.sql").read_text()
+        assert "for update" in serialization
+        assert "factory_projects" in serialization
+        serialization_reapply=(ROOT/"supabase/migrations/20260929012100_factory_execution_team_plan_serialization.sql").read_text()
+        assert "preserve durable history" in serialization_reapply
+        assert "factory_record_execution_team_plan" in serialization_reapply
+        dispatch_gate=(ROOT/"supabase/migrations/20260929013000_factory_team_plan_dispatch_gate.sql").read_text()
+        assert "factory_execution_team_plans" in dispatch_gate
+        assert "v_team_status is distinct from 'ready'" in dispatch_gate
+        assert "factory_dispatch_next_planned_task" in dispatch_gate
 
     def test_specialist_lanes_are_read_only_fail_closed_and_precede_preview(self):
         workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
@@ -763,7 +754,6 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("model_call",evaluator)
         self.assertNotIn("merge_pull_request(",evaluator)
 
-
     def test_team_planner_has_offline_routing_eval_corpus(self):
         corpus=(ROOT/"evals/team_planner_cases.json").read_text()
         runner=(ROOT/"src/ai_product_factory/team_planner_eval.py").read_text()
@@ -777,7 +767,6 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("missing_required_roles",runner)
         self.assertIn("test_offline_corpus_passes_without_model_or_external_service",tests)
         self.assertNotIn("OpenAIResponsesProvider",runner)
-
 
     def test_adaptive_concurrency_is_auditable_and_fail_closed(self):
         policy=(ROOT/"src/ai_product_factory/adaptive_concurrency.py").read_text()
@@ -795,7 +784,6 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("enable row level security",migration)
         self.assertIn("security invoker",migration)
         self.assertNotIn("OPENAI_API_KEY",controller)
-
 
     def test_requirement_traceability_and_dod_are_factual_private_and_human_bounded(self):
         migration=(ROOT/"supabase/migrations/20260929050000_factory_requirement_traceability.sql").read_text()
@@ -829,7 +817,6 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn('evidence_type="human_release"',runtime)
         self.assertNotIn("score",dod.lower())
 
-
     def test_release_policy_is_source_controlled_auditable_and_cannot_auto_merge(self):
         policy=(ROOT/"config/factory.release-policy.v1.json").read_text()
         engine=(ROOT/"src/ai_product_factory/release_policy_engine.py").read_text()
@@ -854,128 +841,122 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertNotIn("merge_pull_request(",engine)
         self.assertNotIn("merge_pull_request(",intelligence)
 
+    def test_work_units_use_secret_safe_context_packets_and_bounded_repair_loops(self):
+        context=(ROOT/"src/ai_product_factory/work_unit_context.py").read_text()
+        worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
+        producer=(ROOT/"src/ai_product_factory/implementation_producer.py").read_text()
+        codex=(ROOT/"src/ai_product_factory/codex_cli_producer.py").read_text()
+        lanes=(ROOT/"src/ai_product_factory/specialist_lane_queue.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929043000_factory_sandbox_context_repair.sql").read_text()
+
+        for marker in (
+            "secret-bearing context field is forbidden",
+            "write_scopes",
+            "enforce_write_scopes",
+            "exact_base_required",
+            "secrets_in_context",
+        ):
+            assert marker in context
+        assert "build_context_packet" in worker
+        assert "record_context" in worker
+        assert "enforce_write_scopes" in worker
+        assert "Change Set implementation requires a durable context packet" in producer
+        assert "bounded Context Packet" in codex
+        assert "factory_enqueue_repair_from_specialist" in lanes
+        assert '"p_max_cycles":3' in lanes
+        assert "factory_close_repairs_after_specialist_pass" in lanes
+        assert "factory_work_unit_context_packets" in migration
+        assert "factory_repair_jobs" in migration
+        assert "cycle between 1 and 3" in migration
+        assert "repair max cycles must be between 1 and 3" in migration
+        assert "role_not_auto_repairable" in migration
+        assert "enable row level security" in migration
+        assert "security invoker" in migration
+
+    def test_incident_mode_and_portfolio_scheduler_preserve_safety_gates(self):
+        migration=(ROOT/"supabase/migrations/20260929070000_factory_incident_portfolio.sql").read_text()
+        portfolio=(ROOT/"src/ai_product_factory/portfolio_scheduler.py").read_text()
+        dispatch=(ROOT/"src/ai_product_factory/supabase_backlog_dispatch.py").read_text()
+        for marker in (
+            "factory_project_scheduling",
+            "factory_incidents",
+            "factory_portfolio_decisions",
+            "factory_open_incident",
+            "factory_transition_incident",
+            "factory_portfolio_candidates",
+            "factory_record_portfolio_decision",
+            "incident resolution requires full gates",
+            "enable row level security",
+            "security invoker",
+        ):
+            assert marker in migration
+        assert "soft_preemption_active" in portfolio
+        assert '"active_workers_cancelled":False' in portfolio
+        assert '"production_gates_bypassed":False' in portfolio
+        assert "SupabasePortfolioScheduler" in dispatch
+        assert "portfolio.candidates" in dispatch
+        assert "factory_tasks?select=project_id" not in dispatch
+
+    def test_replay_shadow_and_improvement_are_zero_effect_and_source_controlled(self):
+        module=(ROOT/"src/ai_product_factory/provenance_replay.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929080000_factory_replay_shadow_provenance.sql").read_text()
+        worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
+        for marker in (
+            "factory_run_provenance",
+            "factory_replay_requests",
+            "factory_shadow_decisions",
+            "factory_improvement_proposals",
+            "effect text not null default 'none' check (effect='none')",
+            "model_calls_allowed boolean not null default false",
+            "requires_source_control boolean not null default true",
+            "auto_apply boolean not null default false",
+            "factory_create_replay_request",
+            "factory_record_shadow_decision",
+            "factory_propose_improvement",
+            "enable row level security",
+            "security invoker",
+        ):
+            assert marker in migration
+        assert "build_run_provenance" in module
+        assert "canonical_hash" in module
+        assert 'RELEASE_POLICY_VERSION="v1"' in module
+        assert "self.provenance.record" in worker
+
+    def test_architecture_guardian_is_deterministic_and_security_lane_primary(self):
+        guardian=(ROOT/"src/ai_product_factory/architecture_guardian.py").read_text()
+        lanes=(ROOT/"src/ai_product_factory/specialist_lanes.py").read_text()
+        for marker in (
+            "architecture_guardian_v1",
+            "openai_key",
+            "supabase_secret",
+            "github_token",
+            "client_service_role",
+            "pull_request_target",
+            "write_all_permissions",
+            "danger_full_access",
+            "disable_rls",
+            "permissive_public_grant",
+            "database_lineage",
+            "api_contracts",
+            "dependency_surfaces",
+            '"full_sast":False',
+            '"sbom_generation":False',
+            '"api_semantic_compatibility":False',
+            '"model_call":False',
+        ):
+            assert marker in guardian
+        assert "scan_pull_request_files" in lanes
+        assert 'report.evidence["blocking_findings"]' in lanes
+        assert "_FORBIDDEN_SECURITY_PATTERNS" not in lanes
+
+    def test_unittest_collection_has_explicit_guard_against_function_style_tests(self):
+        workflow=(ROOT/".github/workflows/validate.yml").read_text()
+        guard=(ROOT/"scripts/check_test_collection.py").read_text()
+        assert "python scripts/check_test_collection.py" in workflow
+        assert "ast.parse" in guard
+        assert "TOTAL_UNCOLLECTED" in guard
+        assert "TEST_COLLECTION_GUARD_OK" in guard
 
 
-def test_work_units_use_secret_safe_context_packets_and_bounded_repair_loops():
-    context=(ROOT/"src/ai_product_factory/work_unit_context.py").read_text()
-    worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
-    producer=(ROOT/"src/ai_product_factory/implementation_producer.py").read_text()
-    codex=(ROOT/"src/ai_product_factory/codex_cli_producer.py").read_text()
-    lanes=(ROOT/"src/ai_product_factory/specialist_lane_queue.py").read_text()
-    migration=(ROOT/"supabase/migrations/20260929043000_factory_sandbox_context_repair.sql").read_text()
-
-    for marker in (
-        "secret-bearing context field is forbidden",
-        "write_scopes",
-        "enforce_write_scopes",
-        "exact_base_required",
-        "secrets_in_context",
-    ):
-        assert marker in context
-    assert "build_context_packet" in worker
-    assert "record_context" in worker
-    assert "enforce_write_scopes" in worker
-    assert "Change Set implementation requires a durable context packet" in producer
-    assert "bounded Context Packet" in codex
-    assert "factory_enqueue_repair_from_specialist" in lanes
-    assert '"p_max_cycles":3' in lanes
-    assert "factory_close_repairs_after_specialist_pass" in lanes
-    assert "factory_work_unit_context_packets" in migration
-    assert "factory_repair_jobs" in migration
-    assert "cycle between 1 and 3" in migration
-    assert "repair max cycles must be between 1 and 3" in migration
-    assert "role_not_auto_repairable" in migration
-    assert "enable row level security" in migration
-    assert "security invoker" in migration
-
-
-
-def test_incident_mode_and_portfolio_scheduler_preserve_safety_gates():
-    migration=(ROOT/"supabase/migrations/20260929070000_factory_incident_portfolio.sql").read_text()
-    portfolio=(ROOT/"src/ai_product_factory/portfolio_scheduler.py").read_text()
-    dispatch=(ROOT/"src/ai_product_factory/supabase_backlog_dispatch.py").read_text()
-    for marker in (
-        "factory_project_scheduling",
-        "factory_incidents",
-        "factory_portfolio_decisions",
-        "factory_open_incident",
-        "factory_transition_incident",
-        "factory_portfolio_candidates",
-        "factory_record_portfolio_decision",
-        "incident resolution requires full gates",
-        "enable row level security",
-        "security invoker",
-    ):
-        assert marker in migration
-    assert "soft_preemption_active" in portfolio
-    assert '"active_workers_cancelled":False' in portfolio
-    assert '"production_gates_bypassed":False' in portfolio
-    assert "SupabasePortfolioScheduler" in dispatch
-    assert "portfolio.candidates" in dispatch
-    assert "factory_tasks?select=project_id" not in dispatch
-
-
-
-def test_replay_shadow_and_improvement_are_zero_effect_and_source_controlled():
-    module=(ROOT/"src/ai_product_factory/provenance_replay.py").read_text()
-    migration=(ROOT/"supabase/migrations/20260929080000_factory_replay_shadow_provenance.sql").read_text()
-    worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
-    for marker in (
-        "factory_run_provenance",
-        "factory_replay_requests",
-        "factory_shadow_decisions",
-        "factory_improvement_proposals",
-        "effect text not null default 'none' check (effect='none')",
-        "model_calls_allowed boolean not null default false",
-        "requires_source_control boolean not null default true",
-        "auto_apply boolean not null default false",
-        "factory_create_replay_request",
-        "factory_record_shadow_decision",
-        "factory_propose_improvement",
-        "enable row level security",
-        "security invoker",
-    ):
-        assert marker in migration
-    assert "build_run_provenance" in module
-    assert "canonical_hash" in module
-    assert 'RELEASE_POLICY_VERSION="v1"' in module
-    assert "self.provenance.record" in worker
-
-
-
-def test_architecture_guardian_is_deterministic_and_security_lane_primary():
-    guardian=(ROOT/"src/ai_product_factory/architecture_guardian.py").read_text()
-    lanes=(ROOT/"src/ai_product_factory/specialist_lanes.py").read_text()
-    for marker in (
-        "architecture_guardian_v1",
-        "openai_key",
-        "supabase_secret",
-        "github_token",
-        "client_service_role",
-        "pull_request_target",
-        "write_all_permissions",
-        "danger_full_access",
-        "disable_rls",
-        "permissive_public_grant",
-        "database_lineage",
-        "api_contracts",
-        "dependency_surfaces",
-        '"full_sast":False',
-        '"sbom_generation":False',
-        '"api_semantic_compatibility":False',
-        '"model_call":False',
-    ):
-        assert marker in guardian
-    assert "scan_pull_request_files" in lanes
-    assert 'report.evidence["blocking_findings"]' in lanes
-    assert "_FORBIDDEN_SECURITY_PATTERNS" not in lanes
-
-
-
-def test_unittest_collection_has_explicit_guard_against_function_style_tests():
-    workflow=(ROOT/".github/workflows/validate.yml").read_text()
-    guard=(ROOT/"scripts/check_test_collection.py").read_text()
-    assert "python scripts/check_test_collection.py" in workflow
-    assert "ast.parse" in guard
-    assert "TOTAL_UNCOLLECTED" in guard
-    assert "TEST_COLLECTION_GUARD_OK" in guard
+if __name__ == "__main__":
+    unittest.main()
