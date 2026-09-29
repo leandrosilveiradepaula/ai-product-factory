@@ -245,6 +245,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929012100_factory_execution_team_plan_serialization.sql",
             "20260929013000_factory_team_plan_dispatch_gate.sql",
             "20260929023000_factory_specialist_lanes.sql",
+            "20260929030000_factory_adaptive_concurrency.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -768,3 +769,21 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("missing_required_roles",runner)
         self.assertIn("test_offline_corpus_passes_without_model_or_external_service",tests)
         self.assertNotIn("OpenAIResponsesProvider",runner)
+
+
+    def test_adaptive_concurrency_is_auditable_and_fail_closed(self):
+        policy=(ROOT/"src/ai_product_factory/adaptive_concurrency.py").read_text()
+        controller=(ROOT/"src/ai_product_factory/adaptive_agent_scheduler.py").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929030000_factory_adaptive_concurrency.sql").read_text()
+        self.assertIn("unknown paid cost blocks execution",policy)
+        self.assertIn('quota in {"blocked","critical"}',policy)
+        self.assertIn("recent conflict rate",policy)
+        self.assertIn("recent repair rate",policy)
+        self.assertIn("first-pass yield",policy)
+        self.assertIn("SupabaseAdaptiveConcurrencyController",runtime)
+        self.assertIn("factory_agent_concurrency_decisions",migration)
+        self.assertIn("factory_record_agent_concurrency_decision",migration)
+        self.assertIn("enable row level security",migration)
+        self.assertIn("security invoker",migration)
+        self.assertNotIn("OPENAI_API_KEY",controller)
