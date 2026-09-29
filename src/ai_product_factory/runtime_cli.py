@@ -83,7 +83,8 @@ def run_recovery_once(max_attempts:int=3)->dict:
  runs=SupabaseRuntimeQueue().recover_expired(max_attempts)
  agents=SupabaseAgentScheduler().recover_expired()
  specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
- return {"runs":runs,"agents":agents,"specialist_lanes":specialist_lanes}
+ change_sets=SupabaseChangeSetStore().recover_expired(max_attempts)
+ return {"runs":runs,"agents":agents,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
 
 def run_product_once(worker_id:str)->dict:
  try:
