@@ -798,3 +798,5 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("factory_change_set_work_units",migration)
         self.assertIn("factory_claim_change_set_integration",migration)
         self.assertIn("factory_complete_change_set_integration",migration)
+        self.assertNotIn("get diagnostics v_blocked=v_blocked+row_count",migration)
+        self.assertIn("v_blocked_integrations",migration)
