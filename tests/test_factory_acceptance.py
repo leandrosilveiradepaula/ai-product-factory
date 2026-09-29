@@ -236,6 +236,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928204500_factory_project_database_oauth_vault.sql",
             "20260928212700_factory_agent_registry.sql",
             "20260928222200_factory_agent_scope_lock_agent_index.sql",
+            "20260929004500_factory_execution_team_plans.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -675,3 +676,28 @@ def test_specialist_workers_fan_out_from_control_plane_matrix():
     assert 'require_route_tools(agent_key,"codex")' in runtime
     assert 'profile.require_tools("github_write","model_primary")' in scheduler
     assert 'profile.require_tools("github_write","codex")' in scheduler
+
+
+
+def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
+    planner=(ROOT/"src/ai_product_factory/execution_team_planner.py").read_text()
+    executor=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+    queue=(ROOT/"src/ai_product_factory/supabase_runtime_queue.py").read_text()
+    scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
+    migration=(ROOT/"supabase/migrations/20260929004500_factory_execution_team_plans.sql").read_text()
+    assert "minimum-capability-cover-with-least-privilege" in planner
+    assert "planned_worker_peak" in planner
+    assert "waves" in planner
+    assert "scope" in planner
+    assert "specialist_review_recommended" in planner
+    assert "no_single_agent_covers_task" in planner
+    assert "build_execution_team_plan" in executor
+    assert "team_profiles" in executor
+    assert 'evidence.stage=="planning"' in queue
+    assert "factory_record_execution_team_plan" in queue
+    assert "def profiles" in scheduler
+    assert "factory_execution_team_plans" in migration
+    assert "enable row level security" in migration
+    assert "revoke all on public.factory_execution_team_plans from public,anon,authenticated" in migration
+    assert "team.plan.recorded" in migration
+    assert "security invoker" in migration
