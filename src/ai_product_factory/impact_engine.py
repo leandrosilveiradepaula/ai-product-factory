@@ -103,6 +103,17 @@ class SupabaseImpactEngine:
             raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
         return None if not raw else json.loads(raw)
 
+    def analyze_run(self,*,project_key:str,task_id:str,run_id:str,change_set_id:str|None)->ImpactAnalysis:
+        units=self._get(
+            "factory_change_set_work_units?select=plan_task_key&run_id=eq."+quote(run_id)+"&limit=1"
+        )
+        if not units or not str(units[0].get("plan_task_key") or "").strip():
+            raise RuntimeError("Change Set work unit task key is unavailable for impact analysis")
+        return self.analyze_and_record(
+            project_key=project_key,task_key=str(units[0]["plan_task_key"]),
+            task_id=task_id,run_id=run_id,change_set_id=change_set_id,
+        )
+
     def analyze_and_record(self,*,project_key:str,task_key:str,task_id:str,run_id:str,change_set_id:str|None)->ImpactAnalysis:
         projects=self._get("factory_projects?select=id&project_key=eq."+quote(project_key)+"&is_active=eq.true&limit=1")
         if not projects:raise RuntimeError("active project not found for impact analysis")
