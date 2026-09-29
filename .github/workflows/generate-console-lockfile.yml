@@ -28,6 +28,24 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm run build
+      - name: Run dependency audit
+        working-directory: apps/console
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --json > npm-audit.json || true
+          node - <<'NODE'
+          const fs=require("fs");
+          const a=JSON.parse(fs.readFileSync("npm-audit.json","utf8"));
+          console.log(JSON.stringify({metadata:a.metadata,vulnerabilities:a.vulnerabilities},null,2));
+          NODE
+      - name: Upload dependency audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-npm-audit
+          path: apps/console/npm-audit.json
+          retention-days: 1
+          if-no-files-found: error
       - name: Commit generated lockfile to technical branch
         shell: bash
         run: |
