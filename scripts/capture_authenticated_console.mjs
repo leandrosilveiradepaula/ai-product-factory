@@ -22,6 +22,7 @@ const targetCommit = process.env.FACTORY_VISUAL_TARGET_COMMIT;
 const workflowSourceCommit = process.env.GITHUB_SHA || "unknown";
 const consoleErrors = [];
 const pageErrors = [];
+const badResponses = [];
 
 await fs.mkdir(outDir, {recursive:true});
 const browser = await chromium.launch({headless:true});
@@ -34,9 +35,14 @@ try {
   });
   const page = await context.newPage();
   page.on("console", msg => {
-    if (msg.type() === "error") consoleErrors.push(msg.text());
+    if (msg.type() === "error") consoleErrors.push({url:page.url(),text:msg.text()});
   });
-  page.on("pageerror", err => pageErrors.push(String(err)));
+  page.on("pageerror", err => pageErrors.push({url:page.url(),text:String(err),stack:err?.stack||null}));
+  page.on("response", response => {
+    if (response.status() >= 400) {
+      badResponses.push({pageUrl:page.url(),status:response.status(),url:response.url()});
+    }
+  });
 
   const login = await page.goto(`${consoleUrl}/login`, {waitUntil:"networkidle", timeout:60000});
   if (!login || login.status() >= 400) throw new Error(`login page status ${login?.status()}`);
@@ -114,7 +120,8 @@ try {
       consoleErrorCount:consoleErrors.length,
       pageErrorCount:pageErrors.length,
       consoleErrors:consoleErrors.slice(0,20),
-      pageErrors:pageErrors.slice(0,20)
+      pageErrors:pageErrors.slice(0,20),
+      badResponses:badResponses.slice(0,40)
     }));
     throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length}`);
   }
