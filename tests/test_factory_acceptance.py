@@ -255,6 +255,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929043000_factory_sandbox_context_repair.sql",
             "20260929070000_factory_incident_portfolio.sql",
             "20260929080000_factory_replay_shadow_provenance.sql",
+            "20260929090000_factory_routing_policy_v2.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -989,3 +990,36 @@ class OrchestrationConsoleAcceptanceTests(unittest.TestCase):
         self.assertNotIn("merge_pull_request",page)
         self.assertNotIn("SUPABASE_SECRET_KEY",page)
         self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY",page)
+
+
+
+class RoutingV2AcceptanceTests(unittest.TestCase):
+    def test_routing_v2_is_versioned_comparative_and_gate_independent(self):
+        policy=(ROOT/"src/ai_product_factory/codex_policy.py").read_text()
+        models=(ROOT/"src/ai_product_factory/models.py").read_text()
+        backlog=(ROOT/"src/ai_product_factory/backlog_dispatcher.py").read_text()
+        dispatch=(ROOT/"src/ai_product_factory/supabase_backlog_dispatch.py").read_text()
+        provenance=(ROOT/"src/ai_product_factory/provenance_replay.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929090000_factory_routing_policy_v2.sql").read_text()
+        for marker in (
+            "impacted_components",
+            "impact_unknowns",
+            "historical_repair_rate",
+            "historical_direct_first_pass",
+            "historical_codex_first_pass",
+            "historical_codex_cost_ratio",
+        ):
+            self.assertIn(marker,models)
+            self.assertIn(marker,backlog)
+        self.assertIn('policy_version="v2"',policy)
+        self.assertIn("Codex tem vantagem historica relevante de first-pass",policy)
+        self.assertIn("Direct tem vantagem historica relevante de first-pass",policy)
+        self.assertIn("custo historico do Codex e alto versus Direct",policy)
+        self.assertIn("factory_record_dispatch_decision_v2",dispatch)
+        self.assertIn("p_codex_reasons",dispatch)
+        self.assertIn("p_gate_reasons",dispatch)
+        self.assertIn('ROUTER_POLICY_VERSION="v2"',provenance)
+        self.assertIn("routing_policy_version",migration)
+        self.assertIn("codex_reasons",migration)
+        self.assertIn("security invoker",migration)
+        self.assertNotIn("merge_pull_request(",policy)
