@@ -391,10 +391,18 @@ Still pending:
 
 ### Phase E — routing evals and continuous improvement
 
-- offline Team Planner corpus;
-- regression thresholds;
-- compare routing-policy revisions before rollout;
-- no paid benchmark runs implicitly.
+Implemented in #369:
+- offline Team Planner corpus with 10 representative work classes;
+- required/forbidden role assertions and maximum worker-peak thresholds;
+- explicit overstaffing, under-staffing and wrong-role failures;
+- no model/provider/network dependency.
+
+Still pending:
+- planned-vs-actual production telemetry;
+- compare routing-policy revisions in Shadow Mode before rollout;
+- adaptive thresholds from observed outcomes.
+
+No paid benchmark runs are implicit.
 
 ## Non-goals
 
