@@ -1,11 +1,12 @@
 import {NextResponse} from "next/server";import {cookies} from "next/headers";
 import {requireConsoleAdmin} from "../../../../../lib/auth-server";
-import {createSupabaseOAuthRequest} from "../../../../../lib/supabase-oauth";
+import {createSupabaseOAuthRequest,isSupabaseOAuthConfigured} from "../../../../../lib/supabase-oauth";
 import {getSupabaseServerConfig} from "../../../../../lib/supabase-server";
 
 export async function GET(request:Request){
  await requireConsoleAdmin();const u=new URL(request.url);const projectKey=u.searchParams.get("project");const databaseId=u.searchParams.get("database");
  if(!projectKey||!databaseId)return NextResponse.json({error:"missing project/database"},{status:400});
+ if(!isSupabaseOAuthConfigured())return NextResponse.json({error:"supabase_oauth_not_configured"},{status:503});
  const cfg=getSupabaseServerConfig();if(!cfg)return NextResponse.json({error:"control plane unavailable"},{status:503});
  const projectLookup=await fetch(cfg.url+"/rest/v1/factory_projects?select=id,project_key&project_key=eq."+encodeURIComponent(projectKey)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
  if(!projectLookup.ok)return NextResponse.json({error:"project lookup failed"},{status:502});const projects=await projectLookup.json();if(!projects.length)return NextResponse.json({error:"project unavailable"},{status:404});
