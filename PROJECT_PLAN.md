@@ -109,7 +109,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [ ] Change Set com branches/workspaces por work unit e uma unica integration branch/candidato de release.
 - [ ] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela.
 - [ ] Concurrency adaptativa baseada em DAG, quota, budget e contention.
-- [ ] Corpus offline de evals do Team Planner com penalidade para overstaffing e falta de especialistas.
+- [x] Corpus offline de evals do Team Planner cobrindo 10 classes de trabalho e penalizando overstaffing, under-staffing e papeis indevidos.
 
 ## Gate atual
 
