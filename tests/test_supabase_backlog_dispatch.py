@@ -1,5 +1,6 @@
 import json,unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock,patch
 from ai_product_factory.models import ExecutionRoute
 from ai_product_factory.supabase_backlog_dispatch import SupabaseBacklogDispatch
 class Response:
@@ -18,22 +19,22 @@ class Tests(unittest.TestCase):
    d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret").dispatch_next("demo")
   self.assertIsNone(d);self.assertEqual(call.call_count,1)
 
- def test_global_dispatch_uses_oldest_active_project(self):
-  claimed={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","title":"small","description":"x","complexity":"low","risk":{},"metadata":{"estimated_files":1}}
-  responses=[
-   Response([{"project_id":"p"}]),
-   Response([{"project_key":"demo"}]),
-   Response(claimed),
-   Response(None),
-  ]
-  with patch("urllib.request.urlopen",side_effect=responses) as call:
-   d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret").dispatch_next_any()
-  self.assertEqual(d.task.project_key,"demo")
-  self.assertEqual(call.call_count,4)
+ def test_global_dispatch_uses_portfolio_order(self):
+  claimed={"run_id":"r","task_id":"t","project_id":"p","project_key":"incident-demo","title":"small","description":"x","complexity":"low","risk":{},"metadata":{"estimated_files":1}}
+  portfolio=MagicMock()
+  candidate=SimpleNamespace(project_key="incident-demo",soft_preemption_active=True)
+  portfolio.candidates.return_value=(candidate,)
+  with patch("urllib.request.urlopen",side_effect=[Response(claimed),Response(None)]) as call:
+   d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret",portfolio=portfolio).dispatch_next_any()
+  self.assertEqual(d.task.project_key,"incident-demo")
+  self.assertEqual(call.call_count,2)
+  portfolio.record.assert_called_once_with(candidate,(candidate,),outcome="dispatched")
 
- def test_global_dispatch_empty_is_read_only(self):
-  with patch("urllib.request.urlopen",return_value=Response([])) as call:
-   d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret").dispatch_next_any()
+ def test_global_dispatch_empty_records_portfolio_outcome_without_task_read(self):
+  portfolio=MagicMock();portfolio.candidates.return_value=()
+  with patch("urllib.request.urlopen") as call:
+   d=SupabaseBacklogDispatch(url="https://example.supabase.co",service_role_key="secret",portfolio=portfolio).dispatch_next_any()
   self.assertIsNone(d)
-  self.assertEqual(call.call_count,1)
+  call.assert_not_called()
+  portfolio.record.assert_called_once_with(None,(),outcome="empty_or_raced")
 if __name__=="__main__":unittest.main()
