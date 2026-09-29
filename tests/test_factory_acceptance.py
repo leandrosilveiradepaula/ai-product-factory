@@ -279,6 +279,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getProjectDetail",
             "getProjectOperations",
             "getProjectStateContext",
+            "getProjectExecutionTeamPlan",
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
@@ -305,6 +306,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Estado reconciliado", project_page)
         self.assertIn("Lacunas restantes", project_page)
         self.assertIn("Evidências confirmadas", project_page)
+        self.assertIn("Equipe de execução", project_page)
+        self.assertIn("Pico de workers", project_page)
         snapshot_migration = (ROOT / "supabase/migrations/20260928042946_factory_project_state_snapshots.sql").read_text()
         self.assertIn("factory_project_state_snapshots", snapshot_migration)
         self.assertIn("factory_record_project_state_snapshot", snapshot_migration)
