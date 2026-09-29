@@ -753,3 +753,18 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("evaluate_specialist_lane",runtime)
         self.assertIn("model_call",evaluator)
         self.assertNotIn("merge_pull_request(",evaluator)
+
+
+    def test_team_planner_has_offline_routing_eval_corpus(self):
+        corpus=(ROOT/"evals/team_planner_cases.json").read_text()
+        runner=(ROOT/"src/ai_product_factory/team_planner_eval.py").read_text()
+        tests=(ROOT/"tests/test_team_planner_eval.py").read_text()
+        self.assertIn('"ui-simple"',corpus)
+        self.assertIn('"auth-feature"',corpus)
+        self.assertIn('"full-stack"',corpus)
+        self.assertIn('"incident-triage"',corpus)
+        self.assertIn("overstaffed_worker_peak",runner)
+        self.assertIn("forbidden_roles_selected",runner)
+        self.assertIn("missing_required_roles",runner)
+        self.assertIn("test_offline_corpus_passes_without_model_or_external_service",tests)
+        self.assertNotIn("OpenAIResponsesProvider",runner)
