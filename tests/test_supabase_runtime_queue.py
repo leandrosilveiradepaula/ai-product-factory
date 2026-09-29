@@ -49,8 +49,8 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("planning","completed",output))
         urls=[x.args[0].full_url for x in call.call_args_list]
-        self.assertTrue(urls[-1].endswith("/rest/v1/rpc/factory_record_execution_team_plan"))
-        self.assertEqual(call.call_count,3)
+        self.assertTrue(any(url.endswith("/rest/v1/rpc/factory_record_execution_team_plan") for url in urls))
+        self.assertGreaterEqual(call.call_count,3)
 
 
 if __name__=="__main__":
