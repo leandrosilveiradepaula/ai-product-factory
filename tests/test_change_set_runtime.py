@@ -11,6 +11,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
         queue._rpc=MagicMock(side_effect=[
             None,
             None,
+            {"snapshot_id":"brain","version":1,"status":"current"},
             {"id":"team-plan","status":"ready"},
             {"change_set_id":"cs","builder_work_units":2,"status":"planned"},
         ])
@@ -21,6 +22,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
         self.assertEqual(names,[
             "factory_record_runtime_stage",
             "factory_persist_product_stage",
+            "factory_record_project_brain_snapshot",
             "factory_record_execution_team_plan",
             "factory_materialize_change_set",
         ])
@@ -28,7 +30,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
 
     def test_blocked_team_plan_does_not_materialize_change_set(self):
         queue=SupabaseRuntimeQueue.__new__(SupabaseRuntimeQueue)
-        queue._rpc=MagicMock(side_effect=[None,None,{"id":"team-plan","status":"blocked"}])
+        queue._rpc=MagicMock(side_effect=[None,None,{"snapshot_id":"brain","version":1,"status":"current"},{"id":"team-plan","status":"blocked"}])
         item=WorkItem("run","task","project","demo",(),{})
         queue.record_stage(item,StageEvidence("planning","completed",{"_team_plan":{"status":"blocked"}}))
         names=[call.args[0] for call in queue._rpc.call_args_list]
