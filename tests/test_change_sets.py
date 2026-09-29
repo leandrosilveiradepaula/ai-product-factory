@@ -15,6 +15,13 @@ class ChangeSetTests(unittest.TestCase):
         github.commit_files.return_value="out"
         store=MagicMock()
         store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"demo","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
+            "plan_task_key":"a","agent_key":"development","wave":1,
+            "task":{"title":"A","description":"desc","acceptance_criteria":[]},
+            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
         producer=MagicMock()
         producer.produce.return_value=ImplementationArtifact(
             "plan",{"src/a.py":"value=1"},"feat: a","unused title","unused body"
@@ -35,6 +42,9 @@ class ChangeSetTests(unittest.TestCase):
         produced=producer.produce.call_args.args[0]
         self.assertEqual(produced.impact_context["confidence"],"high")
         self.assertEqual(produced.base_commit,"base")
+        self.assertEqual(produced.write_scopes,("src/a.py",))
+        self.assertEqual(produced.context_packet["work_unit"]["task_key"],"a")
+        store.record_context.assert_called_once()
 
     def test_integrator_rejects_overlapping_files(self):
         github=MagicMock()
@@ -72,6 +82,9 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(result.pull_request.number,9)
         github.create_pull_request.assert_called_once()
         store.prepare_release.assert_called_once()
+        store.mark_repair_wave_integrated.assert_called_once_with(
+            change_set_id="cs12345678",wave=1,candidate_commit="integrated"
+        )
         self.assertEqual(store.prepare_release.call_args.kwargs["candidate_commit"],"integrated")
 
     def test_integrator_requires_each_unit_to_share_current_base(self):
