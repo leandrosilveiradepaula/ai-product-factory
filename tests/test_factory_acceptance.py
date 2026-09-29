@@ -678,6 +678,18 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
         assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
 
+    def test_console_exposes_resource_limit_percentages_without_inventing_unknowns(self):
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        usage=(ROOT/"apps/console/app/usage/page.tsx").read_text()
+        self.assertIn("getResourceLimits",control)
+        self.assertIn("factory_resource_limit_snapshots",control)
+        self.assertIn("used==null||limit==null||limit<=0?null",control)
+        self.assertIn("Limites e quotas operacionais",usage)
+        self.assertIn('x.percent==null?"—":x.percent.toFixed(1)+"%"',usage)
+        self.assertIn('x.used==null||x.limit==null?"Indisponível"',usage)
+        self.assertIn("x.quality",usage)
+        self.assertIn("x.resetsAt",usage)
+
     def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
         migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
         scheduler=(ROOT/"src/ai_product_factory/agent_scheduler.py").read_text()
