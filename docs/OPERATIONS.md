@@ -82,6 +82,14 @@ Lifecycle:
 
 Expired leases are requeued only below the retry ceiling; exhausted retries become `specialist_retry_exhausted` blockers. This version is deterministic-first and does not call a paid model merely to perform review.
 
+## Adaptive concurrency
+
+The Agent Registry `max_concurrency` is a hard ceiling, not a desired worker count. Before exposing a Direct/Codex matrix to GitHub Actions, the adaptive controller computes an effective concurrency per agent.
+
+V1 inputs are runnable assigned work, latest provider quota pressure, unknown paid cost, recent repair rate, first-pass CI yield and CI queue age. Unknown paid cost or critical/blocked quota yields zero workers. Attention/unknown quota and poor quality/queue signals reduce concurrency conservatively.
+
+Each decision is stored in `factory_agent_concurrency_decisions` with the pressure snapshot and human-readable reasons. The controller does not mutate Agent Registry ceilings and makes no model call.
+
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
