@@ -1,0 +1,48 @@
+name: Console dependency audit diagnostic
+
+on:
+  push:
+    branches: [ci/407-dependency-audit]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/console
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/console/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Audit runtime dependencies
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=moderate --json > audit.json
+          code=$?
+          node - <<'NODE'
+          const fs=require("fs");
+          const d=JSON.parse(fs.readFileSync("audit.json","utf8"));
+          console.log("audit_summary="+JSON.stringify(d.metadata?.vulnerabilities||{}));
+          for (const [name,v] of Object.entries(d.vulnerabilities||{})) {
+            console.log("audit_vulnerability="+JSON.stringify({
+              name,
+              severity:v.severity,
+              isDirect:v.isDirect,
+              via:(v.via||[]).map(x=>typeof x==="string"?x:{source:x.source,name:x.name,severity:x.severity,title:x.title,url:x.url,range:x.range}),
+              effects:v.effects,
+              range:v.range,
+              nodes:v.nodes,
+              fixAvailable:v.fixAvailable
+            }));
+          }
+NODE
+          exit $code
