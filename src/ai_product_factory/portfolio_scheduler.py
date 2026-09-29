@@ -50,20 +50,24 @@ class SupabasePortfolioScheduler:
             soft_preemption_active=bool(row.get("soft_preemption_active")),
         ) for row in data)
 
-    def select(self,limit:int=20)->PortfolioCandidate|None:
-        candidates=self.candidates(limit)
-        selected=candidates[0] if candidates else None
+    def record(self,selected:PortfolioCandidate|None,candidates:tuple[PortfolioCandidate,...],*,outcome:str)->None:
         reason={
             "policy":"incident-severity_then_priority_then_deadline_then_customer-impact",
             "soft_preemption":bool(selected.soft_preemption_active) if selected else False,
             "active_workers_cancelled":False,
             "production_gates_bypassed":False,
+            "outcome":outcome,
         }
         self._rpc("factory_record_portfolio_decision",{
             "p_selected_project_key":selected.project_key if selected else "",
             "p_candidates":[c.__dict__ for c in candidates],
             "p_reason":reason,
         })
+
+    def select(self,limit:int=20)->PortfolioCandidate|None:
+        candidates=self.candidates(limit)
+        selected=candidates[0] if candidates else None
+        self.record(selected,candidates,outcome="selected" if selected else "empty")
         return selected
 
 
