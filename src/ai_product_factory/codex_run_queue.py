@@ -20,6 +20,9 @@ class CodexExecutionItem:
     branch: str
     codex_level: int
     human_gate_required: bool = False
+    change_set_id: str | None = None
+    work_unit_id: str | None = None
+    wave: int | None = None
 
 
 class SupabaseCodexRunQueue:
@@ -61,4 +64,7 @@ class SupabaseCodexRunQueue:
             branch=data["branch"],
             codex_level=int(data.get("codex_level") or 1),
             human_gate_required=bool(data.get("human_gate_required", False)),
+            change_set_id=str(data["change_set_id"]) if data.get("change_set_id") else None,
+            work_unit_id=str(data["work_unit_id"]) if data.get("work_unit_id") else None,
+            wave=int(data["wave"]) if data.get("wave") is not None else None,
         )
