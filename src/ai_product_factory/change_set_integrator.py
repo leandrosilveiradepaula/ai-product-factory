@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from .change_set_store import ChangeSetIntegrationItem,SupabaseChangeSetStore
 from .github_rest import GitHubPullRequest,GitHubRestAdapter
+from .commit_provenance import provenance_commit_message
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,10 @@ class ChangeSetIntegrator:
             raise RuntimeError("integration produced no files")
         candidate=self.github.commit_files(
             item.integration_branch,files,
-            message=f"integrate(change-set): {item.change_set_id[:8]} wave {item.current_wave}",
+            message=provenance_commit_message(
+                f"integrate(change-set): {item.change_set_id[:8]} wave {item.current_wave}",
+                {"Factory-Change-Set":item.change_set_id,"Factory-Wave":str(item.current_wave)},
+            ),
         )
         completed=self.store.complete_integration(
             change_set_id=item.change_set_id,candidate_commit=candidate,
