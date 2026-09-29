@@ -271,3 +271,113 @@ end;
 $$;
 revoke all on function public.factory_dispatch_next_planned_task(text) from public,anon,authenticated;
 grant execute on function public.factory_dispatch_next_planned_task(text) to service_role;
+
+create or replace function public.factory_claim_next_agent_direct_run(p_worker_id text,p_agent_key text default null,p_run_id uuid default null)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_unit public.factory_change_set_work_units%rowtype;v_branch text;v_agent_key text;
+begin
+ if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
+ select r.* into v_run
+ from public.factory_runs r
+ join public.factory_tasks t on t.id=r.task_id
+ join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where r.status='queued' and r.execution_route='direct' and t.status='queued_execution'
+   and (p_agent_key is null or a2.agent_key=p_agent_key) and (p_run_id is null or r.id=p_run_id)
+ order by r.created_at for update of r skip locked limit 1;
+ if v_run.id is null then return null;end if;
+ select a2.agent_key into v_agent_key from public.factory_run_agent_assignments ra
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where ra.run_id=v_run.id and ra.status in ('assigned','claimed') order by ra.assigned_at desc limit 1;
+ if v_agent_key is null then raise exception 'active agent assignment not found'; end if;
+ select * into v_task from public.factory_tasks where id=v_run.task_id for update;
+ select * into v_project from public.factory_projects where id=v_task.project_id;
+ select * into v_unit from public.factory_change_set_work_units where run_id=v_run.id;
+ if v_unit.id is null then raise exception 'change-set work unit not found'; end if;
+ v_branch:='factory/cs-'||substr(v_unit.change_set_id::text,1,8)||'/'||regexp_replace(v_unit.plan_task_key,'[^a-zA-Z0-9_-]+','-','g');
+ update public.factory_runs set status='implementing',started_at=coalesce(started_at,now()),lease_owner=p_worker_id,
+  lease_expires_at=now()+interval '15 minutes',attempt_count=attempt_count+1,last_error=null,
+  metadata=metadata||jsonb_build_object('execution_worker_id',p_worker_id,'execution_claimed_at',now(),'agent_key',v_agent_key)
+ where id=v_run.id;
+ update public.factory_tasks set status='implementing',updated_at=now() where id=v_task.id;
+ update public.factory_run_agent_assignments set status='claimed',claimed_at=coalesce(claimed_at,now()) where run_id=v_run.id;
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_project.id,v_task.id,v_run.id,'agent',v_agent_key,'execution.direct.claimed',
+   jsonb_build_object('lease_minutes',15,'worker_id',p_worker_id,'change_set_id',v_unit.change_set_id,'work_unit_id',v_unit.id));
+ return jsonb_build_object('run_id',v_run.id,'task_id',v_task.id,'project_key',v_project.project_key,'repository',v_project.repository,
+  'issue_number',null,'title',v_task.title,'description',v_task.description,'branch',v_branch,'agent_key',v_agent_key,
+  'change_set_id',v_unit.change_set_id,'work_unit_id',v_unit.id,'wave',v_unit.wave,
+  'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
+end;$$;
+revoke all on function public.factory_claim_next_agent_direct_run(text,text,uuid) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_agent_direct_run(text,text,uuid) to service_role;
+
+create or replace function public.factory_claim_next_agent_codex_run(p_worker_id text,p_agent_key text default null,p_run_id uuid default null)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;v_project public.factory_projects%rowtype;v_unit public.factory_change_set_work_units%rowtype;v_branch text;v_agent_key text;
+begin
+ if nullif(btrim(p_worker_id),'') is null then raise exception 'worker_id is required';end if;
+ select r.* into v_run from public.factory_runs r
+ join public.factory_tasks t on t.id=r.task_id
+ join public.factory_run_agent_assignments ra on ra.run_id=r.id and ra.status in ('assigned','claimed')
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where r.status='queued' and r.execution_route='codex' and t.status='queued_execution'
+   and (p_agent_key is null or a2.agent_key=p_agent_key) and (p_run_id is null or r.id=p_run_id)
+ order by r.created_at for update of r skip locked limit 1;
+ if v_run.id is null then return null;end if;
+ select a2.agent_key into v_agent_key from public.factory_run_agent_assignments ra
+ join public.factory_agents a2 on a2.id=ra.agent_id and a2.is_active=true
+ where ra.run_id=v_run.id and ra.status in ('assigned','claimed') order by ra.assigned_at desc limit 1;
+ if v_agent_key is null then raise exception 'active agent assignment not found'; end if;
+ select * into v_task from public.factory_tasks where id=v_run.task_id for update;
+ select * into v_project from public.factory_projects where id=v_task.project_id;
+ select * into v_unit from public.factory_change_set_work_units where run_id=v_run.id;
+ if v_unit.id is null then raise exception 'change-set work unit not found'; end if;
+ v_branch:='factory/cs-'||substr(v_unit.change_set_id::text,1,8)||'/'||regexp_replace(v_unit.plan_task_key,'[^a-zA-Z0-9_-]+','-','g');
+ update public.factory_runs set status='implementing',started_at=coalesce(started_at,now()),lease_owner=p_worker_id,
+  lease_expires_at=now()+interval '15 minutes',attempt_count=attempt_count+1,last_error=null,
+  metadata=metadata||jsonb_build_object('execution_worker_id',p_worker_id,'execution_claimed_at',now(),'agent_key',v_agent_key)
+ where id=v_run.id;
+ update public.factory_tasks set status='implementing',updated_at=now() where id=v_task.id;
+ update public.factory_run_agent_assignments set status='claimed',claimed_at=coalesce(claimed_at,now()) where run_id=v_run.id;
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_project.id,v_task.id,v_run.id,'agent',v_agent_key,'execution.codex.claimed',
+   jsonb_build_object('lease_minutes',15,'worker_id',p_worker_id,'change_set_id',v_unit.change_set_id,'work_unit_id',v_unit.id));
+ return jsonb_build_object('run_id',v_run.id,'task_id',v_task.id,'project_key',v_project.project_key,'repository',v_project.repository,
+  'issue_number',null,'title',v_task.title,'description',v_task.description,'branch',v_branch,'agent_key',v_agent_key,
+  'change_set_id',v_unit.change_set_id,'work_unit_id',v_unit.id,'wave',v_unit.wave,
+  'codex_level',coalesce((v_run.metadata->>'codex_level')::int,1),
+  'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false));
+end;$$;
+revoke all on function public.factory_claim_next_agent_codex_run(text,text,uuid) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_agent_codex_run(text,text,uuid) to service_role;
+
+create or replace function public.factory_prepare_change_set_release(
+ p_change_set_id uuid,p_issue_number integer,p_issue_url text,p_pr_number integer,p_candidate_commit text,p_branch text
+) returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare v_set public.factory_change_sets%rowtype;v_run_id uuid;
+begin
+ if p_issue_number<1 or p_pr_number<1 then raise exception 'valid issue and PR numbers are required'; end if;
+ select * into v_set from public.factory_change_sets where id=p_change_set_id for update;
+ if not found then raise exception 'change set not found'; end if;
+ if v_set.status<>'review_ready' then raise exception 'change set is not review ready'; end if;
+ if v_set.candidate_commit is distinct from p_candidate_commit then raise exception 'release candidate mismatch'; end if;
+ insert into public.factory_runs(task_id,status,candidate_commit,branch_name,metadata)
+ values(v_set.root_task_id,'ci_pending',p_candidate_commit,p_branch,
+   jsonb_build_object('source','change-set','change_set_id',v_set.id,'github_issue',jsonb_build_object('number',p_issue_number,'url',p_issue_url),'human_gate_required',false))
+ returning id into v_run_id;
+ insert into public.factory_tool_usage(run_id,tool_family,operation,usage_units,estimated_cost,metadata)
+ values(v_run_id,'github','create_pr',1,0,jsonb_build_object('pr',p_pr_number,'head_sha',p_candidate_commit,'change_set_id',v_set.id));
+ update public.factory_change_sets set status='ci_pending',release_run_id=v_run_id,updated_at=now() where id=v_set.id;
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_set.project_id,v_set.root_task_id,v_run_id,'system','change-set-integrator','change_set.release_candidate.created',
+   jsonb_build_object('change_set_id',v_set.id,'pr',p_pr_number,'candidate_commit',p_candidate_commit,'branch',p_branch));
+ return jsonb_build_object('change_set_id',v_set.id,'release_run_id',v_run_id,'status','ci_pending');
+end;
+$$;
+revoke all on function public.factory_prepare_change_set_release(uuid,integer,text,integer,text,text) from public,anon,authenticated;
+grant execute on function public.factory_prepare_change_set_release(uuid,integer,text,integer,text,text) to service_role;
