@@ -266,3 +266,85 @@ export async function getConsoleConfiguration():Promise<ConsoleConfiguration>{
  if(!response.ok)throw new Error("Unable to load configuration");
  const rows=await response.json();return{controlPlaneConfigured:true,projects:rows.map((x:any)=>({key:String(x.project_key),name:String(x.name),repository:x.repository?String(x.repository):null,kind:String(x.project_kind),stage:String(x.lifecycle_stage),active:Boolean(x.is_active),manifest:x.manifest}))};
 }
+
+
+export type ExecutionTeamPlan={
+ id:string;version:number;status:string;createdAt:string;
+ profilesSelected:number;plannedWorkerPeak:number;
+ selectedAgents:{agent_key:string;role:string;workers_planned:number;max_concurrency:number;execution_ready:boolean;task_keys:string[];reasons:string[]}[];
+ excludedAgents:{agent_key:string;role:string;reason:string}[];
+ waves:{wave:number;task_keys:string[];agent_load:Record<string,number>;parallel_workers:number}[];
+ blockers:{code:string;task_key?:string;title?:string;dependency?:string}[];
+ advisorySpecialistLanes:{role:string;code:string;reasons:string[];execution_ready:boolean;note:string}[];
+};
+
+export async function getProjectExecutionTeamPlan(projectId:string):Promise<ExecutionTeamPlan|null>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
+ const response=await fetch(cfg.url+"/rest/v1/factory_execution_team_plans?select=id,version,status,plan,created_at&project_id=eq."+encodeURIComponent(projectId)+"&status=neq.superseded&order=version.desc&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Não foi possível carregar o plano de equipe do projeto.");
+ const rows=await response.json();if(!rows.length)return null;
+ const row=rows[0];const plan=row.plan&&typeof row.plan==="object"?row.plan:{};
+ return{
+  id:String(row.id),version:Number(row.version||1),status:String(row.status),createdAt:String(row.created_at),
+  profilesSelected:Number(plan.profiles_selected||0),plannedWorkerPeak:Number(plan.planned_worker_peak||0),
+  selectedAgents:Array.isArray(plan.selected_agents)?plan.selected_agents:[],
+  excludedAgents:Array.isArray(plan.excluded_agents)?plan.excluded_agents:[],
+  waves:Array.isArray(plan.waves)?plan.waves:[],
+  blockers:Array.isArray(plan.blockers)?plan.blockers:[],
+  advisorySpecialistLanes:Array.isArray(plan.advisory_specialist_lanes)?plan.advisory_specialist_lanes:[],
+ };
+}
+
+
+export type OrchestrationProject={
+ projectId:string;projectKey:string;projectName:string;priority:string;deadline:string|null;
+ customerImpact:number;maxActiveWorkers:number;paused:boolean;
+};
+export type OrchestrationIncident={id:string;projectKey:string;projectName:string;severity:string;status:string;title:string;summary:string;openedAt:string;updatedAt:string};
+export type OrchestrationRepair={id:string;projectKey:string;projectName:string;sourceRole:string;cycle:number;maxCycles:number;ownerAgentKey:string;candidateCommit:string;status:string;createdAt:string};
+export type OrchestrationReplay={id:string;sourceRunId:string;mode:string;status:string;effect:string;modelCallsAllowed:boolean;createdAt:string};
+export type OrchestrationProposal={id:string;proposalKey:string;status:string;requiresSourceControl:boolean;autoApply:boolean;createdAt:string};
+export type OrchestrationRelease={id:string;projectKey:string;projectName:string;runId:string;candidateCommit:string;status:string;report:Record<string,unknown>;rollback:Record<string,unknown>;updatedAt:string};
+export type OrchestrationOverview={
+ projects:OrchestrationProject[];incidents:OrchestrationIncident[];repairs:OrchestrationRepair[];
+ replays:OrchestrationReplay[];proposals:OrchestrationProposal[];releases:OrchestrationRelease[];
+};
+
+export async function getOrchestrationOverview():Promise<OrchestrationOverview>{
+ await requireConsoleOperator();const cfg=serverHeaders();
+ if(!cfg)return{projects:[],incidents:[],repairs:[],replays:[],proposals:[],releases:[]};
+ const [projectsResponse,schedulingResponse,incidentsResponse,repairsResponse,replaysResponse,proposalsResponse,releasesResponse]=await Promise.all([
+  fetch(cfg.url+"/rest/v1/factory_projects?select=id,project_key,name,is_active&is_active=eq.true&order=name.asc",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_project_scheduling?select=project_id,priority,deadline,customer_impact,max_active_workers,paused,updated_at",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_incidents?select=id,project_id,severity,status,title,summary,opened_at,updated_at&status=not.eq.resolved&order=opened_at.desc&limit=50",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_repair_jobs?select=id,project_id,source_role,cycle,max_cycles,owner_agent_key,candidate_commit,status,created_at&status=in.(queued,running,integrated,blocked,exhausted)&order=created_at.desc&limit=50",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_replay_requests?select=id,source_run_id,mode,status,effect,model_calls_allowed,created_at&order=created_at.desc&limit=30",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_improvement_proposals?select=id,proposal_key,status,requires_source_control,auto_apply,created_at&status=eq.proposed&order=created_at.desc&limit=30",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_release_reports?select=id,project_id,run_id,candidate_commit,status,report,rollback,updated_at&status=in.(blocked,ready_for_human_release)&order=updated_at.desc&limit=50",{headers:cfg.headers,cache:"no-store"}),
+ ]);
+ if(!projectsResponse.ok)throw new Error("Não foi possível carregar o portfólio da Factory.");
+ const rawProjects=await projectsResponse.json();
+ const projectMap=new Map<string,{key:string;name:string}>(rawProjects.map((x:any)=>[String(x.id),{key:String(x.project_key),name:String(x.name)}]));
+ const schedule=schedulingResponse.ok?await schedulingResponse.json():[];
+ const scheduleMap=new Map<string,any>(schedule.map((x:any)=>[String(x.project_id),x]));
+ const projectRows:OrchestrationProject[]=rawProjects.map((x:any)=>{
+  const s= scheduleMap.get(String(x.id))||{};
+  return{projectId:String(x.id),projectKey:String(x.project_key),projectName:String(x.name),priority:String(s.priority||"P2"),
+   deadline:s.deadline?String(s.deadline):null,customerImpact:Number(s.customer_impact??1),
+   maxActiveWorkers:Number(s.max_active_workers??4),paused:Boolean(s.paused)};
+ });
+ const nameFor=(projectId:unknown)=>projectMap.get(String(projectId))||{key:"unknown",name:"Projeto desconhecido"};
+ const incidents=incidentsResponse.ok?await incidentsResponse.json():[];
+ const repairs=repairsResponse.ok?await repairsResponse.json():[];
+ const replays=replaysResponse.ok?await replaysResponse.json():[];
+ const proposals=proposalsResponse.ok?await proposalsResponse.json():[];
+ const releases=releasesResponse.ok?await releasesResponse.json():[];
+ return{
+  projects:projectRows,
+  incidents:incidents.map((x:any)=>{const p=nameFor(x.project_id);return{id:String(x.id),projectKey:p.key,projectName:p.name,severity:String(x.severity),status:String(x.status),title:String(x.title),summary:String(x.summary),openedAt:String(x.opened_at),updatedAt:String(x.updated_at)}}),
+  repairs:repairs.map((x:any)=>{const p=nameFor(x.project_id);return{id:String(x.id),projectKey:p.key,projectName:p.name,sourceRole:String(x.source_role),cycle:Number(x.cycle),maxCycles:Number(x.max_cycles),ownerAgentKey:String(x.owner_agent_key),candidateCommit:String(x.candidate_commit),status:String(x.status),createdAt:String(x.created_at)}}),
+  replays:replays.map((x:any)=>({id:String(x.id),sourceRunId:String(x.source_run_id),mode:String(x.mode),status:String(x.status),effect:String(x.effect),modelCallsAllowed:Boolean(x.model_calls_allowed),createdAt:String(x.created_at)})),
+  proposals:proposals.map((x:any)=>({id:String(x.id),proposalKey:String(x.proposal_key),status:String(x.status),requiresSourceControl:Boolean(x.requires_source_control),autoApply:Boolean(x.auto_apply),createdAt:String(x.created_at)})),
+  releases:releases.map((x:any)=>{const p=nameFor(x.project_id);return{id:String(x.id),projectKey:p.key,projectName:p.name,runId:String(x.run_id),candidateCommit:String(x.candidate_commit),status:String(x.status),report:x.report&&typeof x.report==="object"?x.report:{},rollback:x.rollback&&typeof x.rollback==="object"?x.rollback:{},updatedAt:String(x.updated_at)}}),
+ };
+}

@@ -29,6 +29,26 @@ def _bool(data: dict, key: str) -> bool:
     return bool(data.get(key, False))
 
 
+def _nonnegative_int(data:dict,key:str)->int:
+    value=int(data.get(key,0) or 0)
+    if value<0:raise ValueError(f"{key} must be non-negative")
+    return value
+
+
+def _optional_rate(data:dict,key:str)->float|None:
+    if data.get(key) is None:return None
+    value=float(data[key])
+    if not 0<=value<=1:raise ValueError(f"{key} must be between 0 and 1")
+    return value
+
+
+def _optional_nonnegative(data:dict,key:str)->float|None:
+    if data.get(key) is None:return None
+    value=float(data[key])
+    if value<0:raise ValueError(f"{key} must be non-negative")
+    return value
+
+
 def profile_planned_task(task: PlannedTask) -> tuple[TaskProfile, RiskProfile]:
     meta=task.metadata or {}
     risk_data=task.risk or {}
@@ -42,6 +62,13 @@ def profile_planned_task(task: PlannedTask) -> tuple[TaskProfile, RiskProfile]:
         direct_tools_sufficient=not _bool(meta,"direct_tools_insufficient"),
         repetitive_mechanical_change=_bool(meta,"repetitive_mechanical_change"),
         user_requires_codex=_bool(meta,"user_requires_codex"),
+        impacted_components=_nonnegative_int(meta,"impacted_components"),
+        impact_unknowns=_nonnegative_int(meta,"impact_unknowns"),
+        historical_repair_rate=_optional_rate(meta,"historical_repair_rate"),
+        historical_conflict_rate=_optional_rate(meta,"historical_conflict_rate"),
+        historical_direct_first_pass=_optional_rate(meta,"historical_direct_first_pass"),
+        historical_codex_first_pass=_optional_rate(meta,"historical_codex_first_pass"),
+        historical_codex_cost_ratio=_optional_nonnegative(meta,"historical_codex_cost_ratio"),
     )
     risk=RiskProfile(
         production_change=_bool(risk_data,"production_change"),

@@ -9,6 +9,7 @@ const groups=[
     {href:"/projects",label:"Projetos",icon:"▱"},
     {href:"/runs",label:"Execuções",icon:"◉"},
     {href:"/queue",label:"Fila de trabalho",icon:"◇"},
+    {href:"/orchestration",label:"Orquestração",icon:"⌘"},
     {href:"/gates",label:"Aprovações humanas",icon:"♢"},
   ]},
   {label:"Qualidade e liberação",items:[

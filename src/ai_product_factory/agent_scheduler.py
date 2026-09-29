@@ -12,9 +12,12 @@ from .supabase_server import resolve_supabase_server_config
 class AgentProfile:
     agent_key:str
     role:str
+    capabilities:tuple[str,...]
     allowed_tools:tuple[str,...]
     model_policy:dict
     max_concurrency:int
+    cost_budget_usd:float|None=None
+    is_active:bool=True
 
     def require_tools(self,*tools:str)->None:
         missing=[tool for tool in tools if tool not in self.allowed_tools]
@@ -107,19 +110,30 @@ class SupabaseAgentScheduler:
         return self._rpc("factory_recover_expired_agent_slots",{}) or {"released":0}
 
 
-    def profile(self,agent_key:str)->AgentProfile:
-        if not agent_key.strip():raise ValueError("agent_key is required")
-        rows=self._get("factory_agents?select=agent_key,role,allowed_tools,model_policy,max_concurrency,is_active&agent_key=eq."+agent_key+"&limit=1")
-        if not rows or not bool(rows[0].get("is_active")):
-            raise RuntimeError(f"active agent not found: {agent_key}")
-        row=rows[0]
+    @staticmethod
+    def _profile(row:dict)->AgentProfile:
         return AgentProfile(
             agent_key=str(row["agent_key"]),
             role=str(row["role"]),
+            capabilities=tuple(str(x) for x in (row.get("capabilities") or [])),
             allowed_tools=tuple(str(x) for x in (row.get("allowed_tools") or [])),
             model_policy=dict(row.get("model_policy") or {}),
             max_concurrency=int(row.get("max_concurrency") or 1),
+            cost_budget_usd=float(row["cost_budget_usd"]) if row.get("cost_budget_usd") is not None else None,
+            is_active=bool(row.get("is_active",True)),
         )
+
+    def profiles(self,*,active_only:bool=True)->tuple[AgentProfile,...]:
+        suffix="&is_active=eq.true" if active_only else ""
+        rows=self._get("factory_agents?select=agent_key,role,capabilities,allowed_tools,model_policy,max_concurrency,cost_budget_usd,is_active&order=agent_key.asc"+suffix)
+        return tuple(self._profile(row) for row in rows)
+
+    def profile(self,agent_key:str)->AgentProfile:
+        if not agent_key.strip():raise ValueError("agent_key is required")
+        rows=self._get("factory_agents?select=agent_key,role,capabilities,allowed_tools,model_policy,max_concurrency,cost_budget_usd,is_active&agent_key=eq."+agent_key+"&limit=1")
+        if not rows or not bool(rows[0].get("is_active")):
+            raise RuntimeError(f"active agent not found: {agent_key}")
+        return self._profile(rows[0])
 
     def require_route_tools(self,agent_key:str,route:str)->AgentProfile:
         profile=self.profile(agent_key)

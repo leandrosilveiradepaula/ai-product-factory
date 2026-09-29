@@ -12,12 +12,14 @@ from .supabase_server import resolve_supabase_server_config
 @dataclass(frozen=True)
 class ReleaseFollowupItem:
     run_id: str
+    project_id: str
     project_key: str
     repository: str
     issue_number: int
     branch: str
     pr_number: int
     candidate_commit: str
+    risk: dict
 
 
 class SupabaseReleaseFollowupQueue:
@@ -51,7 +53,7 @@ class SupabaseReleaseFollowupQueue:
         if not candidate or not branch or issue_number < 1:
             raise RuntimeError("awaiting_release run is missing candidate, branch, or GitHub issue binding")
 
-        tasks=self._get(f"factory_tasks?select=project_id&id=eq.{quote(task_id)}&limit=1")
+        tasks=self._get(f"factory_tasks?select=project_id,risk&id=eq.{quote(task_id)}&limit=1")
         if not tasks:
             raise RuntimeError("awaiting_release run task was not found")
         project_id=str(tasks[0]["project_id"])
@@ -70,6 +72,7 @@ class SupabaseReleaseFollowupQueue:
 
         project=projects[0]
         return ReleaseFollowupItem(
-            run_id=run_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
+            run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
             issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
+            risk=tasks[0].get("risk") or {},
         )

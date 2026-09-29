@@ -119,8 +119,40 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
 
+
+  change-set-integration:
+    if: ${{ always() && needs.direct.result != 'failure' && needs.codex.result != 'failure' }}
+    needs: [direct, codex]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Integrate one completed Change Set wave
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            python -m ai_product_factory.runtime_cli --mode change-set-integration --worker-id "integrator-${{ github.run_id }}"
+          else
+            echo "Change Set integration is inert: Control Plane credentials are not configured."
+          fi
+
   ci-followup:
-    needs: product-stage
+    if: ${{ always() && needs.change-set-integration.result != 'failure' }}
+    needs: [product-stage, change-set-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -152,6 +184,91 @@ jobs:
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode ci
+
+
+  specialist-security:
+    needs: ci-followup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run at most one Security specialist review
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role security --worker-id "security-${{ github.run_id }}"
+          else
+            echo "Security specialist lane is inert: Control Plane credentials are not configured."
+          fi
+
+  specialist-qa:
+    needs: ci-followup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run at most one QA specialist review
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role qa --worker-id "qa-${{ github.run_id }}"
+          else
+            echo "QA specialist lane is inert: Control Plane credentials are not configured."
+          fi
+
+  specialist-operations:
+    needs: ci-followup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run at most one Operations specialist review
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role operations --worker-id "operations-${{ github.run_id }}"
+          else
+            echo "Operations specialist lane is inert: Control Plane credentials are not configured."
+          fi
 
 
   release-followup:
@@ -464,7 +581,7 @@ jobs:
 
   preview:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true) }}
-    needs: ci-followup
+    needs: [specialist-security, specialist-qa, specialist-operations]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
