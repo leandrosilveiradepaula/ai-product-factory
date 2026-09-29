@@ -238,12 +238,15 @@ class RuntimeCliTests(unittest.TestCase):
     def test_dispatch_without_project_uses_global_selector(self):
         dispatch=MagicMock()
         dispatch.dispatch_next_any.return_value=None
-        scheduler=MagicMock();scheduler.work_matrix.return_value={"direct":[],"codex":[]}
+        scheduler=MagicMock()
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[],"decisions":[]}
         with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
             out=run_dispatch_once()
         self.assertEqual(out["status"],"empty")
         dispatch.dispatch_next_any.assert_called_once()
+        adaptive.work_matrix.assert_called_once()
 
     def test_preview_mode_empty_queue_does_not_require_external_readiness(self):
         queue=MagicMock();queue.next_pending.return_value=None
