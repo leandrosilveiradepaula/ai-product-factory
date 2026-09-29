@@ -2,6 +2,12 @@ name: Authenticated Console visual evidence
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/authenticated-visual-target.json"
+      - ".github/workflows/authenticated-visual-evidence.yml"
+      - "scripts/capture_authenticated_console.mjs"
     inputs:
       target_url:
         description: Exact Console production or Vercel Preview URL to capture
@@ -23,12 +29,46 @@ jobs:
     environment: openai-api
     timeout-minutes: 12
     env:
-      FACTORY_CONSOLE_URL: ${{ inputs.target_url || 'https://ai-product-factory-console.vercel.app' }}
-      FACTORY_VISUAL_TARGET_COMMIT: ${{ inputs.target_commit || github.sha }}
       FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
       - uses: actions/checkout@v7
+      - name: Resolve exact visual target
+        shell: bash
+        env:
+          DISPATCH_TARGET_URL: ${{ inputs.target_url || '' }}
+          DISPATCH_TARGET_COMMIT: ${{ inputs.target_commit || '' }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require("fs");
+          const targetFile=".github/authenticated-visual-target.json";
+          let target={};
+          if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch" && process.env.DISPATCH_TARGET_URL) {
+            target.preview_url=process.env.DISPATCH_TARGET_URL;
+            target.candidate_sha=process.env.DISPATCH_TARGET_COMMIT || process.env.GITHUB_SHA;
+            target.source="workflow_dispatch";
+          } else {
+            target=JSON.parse(fs.readFileSync(targetFile,"utf8"));
+            target.source="source_control";
+          }
+          if (typeof target.preview_url !== "string" || !target.preview_url) throw new Error("preview_url missing");
+          if (!/^[0-9a-f]{40}$/.test(String(target.candidate_sha||""))) throw new Error("candidate_sha must be exact 40-char SHA");
+          const url=new URL(target.preview_url);
+          if (url.protocol !== "https:" || !(url.hostname === "ai-product-factory-console.vercel.app" || url.hostname.endsWith(".vercel.app"))) {
+            throw new Error("visual target host not allowed");
+          }
+          if (url.username || url.password || url.search || url.hash) throw new Error("visual target must not contain credentials/query/fragment");
+          for (const value of Object.values(target)) {
+            if (typeof value === "string" && /(token|secret|password|apikey|authorization)/i.test(value)) throw new Error("secret-like target metadata forbidden");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            "FACTORY_CONSOLE_URL="+url.toString().replace(/\/$/,"")+"\n"+
+            "FACTORY_VISUAL_TARGET_COMMIT="+target.candidate_sha+"\n");
+          console.log("visual_target_source="+target.source);
+          console.log("visual_target_host="+url.hostname);
+          console.log("visual_target_commit="+target.candidate_sha);
+          NODE
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
