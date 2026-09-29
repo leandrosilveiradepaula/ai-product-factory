@@ -45,13 +45,24 @@ export async function verifySupabaseProjectReadAccess(accessToken:string,project
 async function rpc(name:string,body:unknown){
  const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane is unavailable");
  const r=await fetch(cfg.url+"/rest/v1/rpc/"+name,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify(body),cache:"no-store"});
- if(!r.ok)throw new Error("Control Plane OAuth persistence failed");return r.json();
+ if(!r.ok)throw new Error("Control Plane OAuth persistence failed");
+ if(r.status===204)return null;
+ const text=await r.text();
+ return text?JSON.parse(text):null;
 }
 export async function storeSupabaseOAuth(databaseId:string,tokens:{access_token:string;refresh_token?:string;token_type?:string;expires_in?:number}){
  const expires=tokens.expires_in?new Date(Date.now()+tokens.expires_in*1000).toISOString():null;
  await rpc("factory_store_project_database_oauth",{p_database_id:databaseId,p_access_token:tokens.access_token,p_refresh_token:tokens.refresh_token||null,p_token_type:tokens.token_type||"bearer",p_expires_at:expires});
 }
 export async function recordSupabaseReadVerification(databaseId:string,projectRef:string){
+ const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane is unavailable");
+ const patch=await fetch(cfg.url+"/rest/v1/factory_project_databases?id=eq."+encodeURIComponent(databaseId),{
+  method:"PATCH",
+  headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},
+  body:JSON.stringify({access_mode:"oauth",permission_mode:"read"}),
+  cache:"no-store"
+ });
+ if(!patch.ok)throw new Error("Control Plane OAuth binding update failed");
  await rpc("factory_record_project_database_verification",{p_database_id:databaseId,p_verified_project_ref:projectRef,p_read_verified:true,p_write_verified:false,p_evidence:{method:"oauth_management_api",read_only_query:true}});
 }
 
