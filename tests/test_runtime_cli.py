@@ -272,6 +272,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
              patch("ai_product_factory.runtime_cli.VercelPreviewAdapter") as vercel:
             out=run_preview_once()
@@ -280,6 +281,22 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["reason"],"backend only")
         loop.finalize_preview_not_required.assert_called_once()
         vercel.assert_not_called()
+
+    def test_release_policy_block_prevents_awaiting_release_after_preview(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"required":False,"reason":"backend only"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc",risk={})
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("src/core.py",)
+        loop=MagicMock();loop.finalize_preview_not_required.return_value="awaiting_release"
+        decision=SimpleNamespace(blocked=True,reasons=("missing Definition of Done checks: qa",))
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=decision),{"report_id":"report"})), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_preview_once()
+        self.assertEqual(out["status"],"release_policy_blocked")
+        self.assertIn("qa",out["policy_reasons"][0])
+        loop.finalize_preview_not_required.assert_not_called()
 
     def test_preview_mode_wires_verified_preview_and_stops_at_release_gate(self):
         item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"team_id":"team","project_name":"web"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
@@ -304,6 +321,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_preview_once()
         self.assertEqual(out["status"],"awaiting_release")
@@ -335,6 +353,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_preview_once()
         self.assertEqual(out["status"],"awaiting_release")
@@ -357,18 +376,20 @@ class RuntimeCliTests(unittest.TestCase):
         pr=SimpleNamespace(number=9,head_sha="abc")
         github.get_issue.return_value=issue
         github.get_pull_request.return_value=pr
-        store=MagicMock();trace=MagicMock()
+        store=MagicMock();trace=MagicMock();policy=MagicMock()
         loop=MagicMock();loop.observe_manual_merge.return_value="merge123"
         with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
+             patch("ai_product_factory.runtime_cli.SupabaseReleasePolicyStore",return_value=policy), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
             out=run_release_once()
         self.assertEqual(out["status"],"merged")
         self.assertEqual(out["merge_sha"],"merge123")
         self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"human_release")
+        policy.mark_released.assert_called_once_with("r","merge123")
         github.merge_pull_request.assert_not_called()
     def test_direct_failure_releases_agent_assignment_and_scope(self):
         item=SimpleNamespace(run_id="r",task_id="t",project_key="demo",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",human_gate_required=False)
