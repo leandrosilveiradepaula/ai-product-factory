@@ -39,6 +39,7 @@ from .preview_flow import VerifiedPreviewCoordinator
 from .deployment import DeploymentRequest
 from .release_policy import ReleaseEnvironment
 from .agent_scheduler import SupabaseAgentScheduler
+from .adaptive_agent_scheduler import SupabaseAdaptiveConcurrencyController
 from .evidence import EvidenceBundle
 from .review_gate import EvalResult,evaluate_quality_gate
 from .specialist_lane_queue import SupabaseSpecialistLaneQueue
@@ -271,7 +272,7 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
   except RuntimeError as exc:
    if "no eligible agent slot" not in str(exc):raise
    break
- matrix=scheduler.work_matrix(max_items)
+ matrix=SupabaseAdaptiveConcurrencyController().work_matrix(max_items)
  out={"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"matrix":matrix}
  if routed:
   out.update(routed[0])
