@@ -147,7 +147,7 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   usage=SupabaseCodexUsageRecorder()
   producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
   github=GitHubRestAdapter(repository=item.repository)
-  if item.change_set_id:
+  if getattr(item,"change_set_id",None):
    result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer).execute(item)
    scheduler.release(item.run_id,"completed")
    return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
