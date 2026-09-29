@@ -4,13 +4,19 @@ import base64
 import json
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib import parse, request
+from urllib import error, parse, request
 
 from .github_loop import CIState
 from .github_auth import resolve_github_token
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
+
+
+class GitHubRequestError(RuntimeError):
+    def __init__(self,status:int)->None:
+        super().__init__(f"GitHub request failed with HTTP {status}")
+        self.status=status
 
 
 def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, Any]:
@@ -78,9 +84,12 @@ class GitHubRestAdapter:
     def _call(self, method: str, path: str, *, query: dict[str, str] | None = None, payload: Any = None) -> Any:
         suffix = "?" + parse.urlencode(query) if query else ""
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        status, data = self.transport(method, f"{self.api_url}{path}{suffix}", self._headers(), body)
+        try:
+            status, data = self.transport(method, f"{self.api_url}{path}{suffix}", self._headers(), body)
+        except error.HTTPError as exc:
+            raise GitHubRequestError(exc.code) from exc
         if status < 200 or status >= 300:
-            raise RuntimeError(f"GitHub request failed with HTTP {status}")
+            raise GitHubRequestError(status)
         return data
 
     def create_issue(self, *, title: str, body: str) -> GitHubIssue:
@@ -140,10 +149,14 @@ class GitHubRestAdapter:
     def ensure_branch_at_sha(self, branch: str, sha: str) -> str:
         try:
             current=self.get_branch_sha(branch)
-        except Exception:
+        except GitHubRequestError as exc:
+            if exc.status!=404:
+                raise
             try:
                 return self.create_branch_at_sha(branch,sha)
-            except Exception:
+            except GitHubRequestError as create_exc:
+                if create_exc.status not in {409,422}:
+                    raise
                 current=self.get_branch_sha(branch)
         if current!=sha:
             raise RuntimeError(f"branch {branch} does not match expected candidate SHA")
