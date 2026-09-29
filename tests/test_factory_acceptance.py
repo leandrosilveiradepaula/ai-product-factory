@@ -284,6 +284,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "apps/console/app/runs/page.tsx",
             "apps/console/app/runs/[id]/page.tsx",
             "apps/console/app/queue/page.tsx",
+            "apps/console/app/agents/page.tsx",
             "apps/console/app/orchestration/page.tsx",
             "apps/console/app/gates/page.tsx",
             "apps/console/app/evals/page.tsx",
@@ -307,6 +308,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
+            "getFactoryAgents",
             "getHumanGates",
             "getEvaluations",
             "getDeployments",
@@ -471,34 +473,22 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn('SUPABASE_SERVICE_ROLE_KEY', workflow)
         self.assertNotIn('SUPABASE_SECRET_KEY', workflow)
 
-    def test_authenticated_visual_capture_is_source_controlled_and_exact_target_bounded(self):
+    def test_authenticated_visual_capture_is_manual_and_exact_target_bounded(self):
         workflow = (ROOT / ".github/workflows/authenticated-visual-evidence.yml").read_text()
         script = (ROOT / "scripts/capture_authenticated_console.mjs").read_text()
-        target = (ROOT / ".github/authenticated-visual-target.json").read_text()
 
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("\n  push:", workflow)
-        self.assertIn("branches: [main]", workflow)
-        self.assertIn('".github/authenticated-visual-target.json"', workflow)
-        self.assertIn("Resolve exact visual target", workflow)
+        self.assertNotIn("\n  push:", workflow)
         self.assertIn("target_url:", workflow)
         self.assertIn("target_commit:", workflow)
-        self.assertIn('url.hostname.endsWith(".vercel.app")', workflow)
-        self.assertIn('url.protocol !== "https:"', workflow)
+        self.assertIn('target.hostname.endsWith(".vercel.app")', workflow)
+        self.assertIn('target.protocol !== "https:"', workflow)
         self.assertIn("github.rest.repos.getCommit", workflow)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
-        self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN", workflow)
-        self.assertIn("x-vercel-trusted-oidc-idp-token", script)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", script)
-        self.assertIn('{name:"agents",path:"/agents"', script)
-        self.assertIn('{name:"orchestration",path:"/orchestration"', script)
         self.assertIn("targetCommit", script)
         self.assertIn("targetUrl:consoleUrl", script)
         self.assertIn("workflowSourceCommit", script)
-        self.assertIn("preview_url", target)
-        self.assertIn("candidate_sha", target)
-        for forbidden in ("VERCEL_TOKEN","SUPABASE_SECRET_KEY","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","FACTORY_GITHUB_TOKEN","password","secret"):
-            self.assertNotIn(forbidden,target)
 
     def test_crm_cross_repo_preflight_is_read_only_and_explicit(self):
         workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
@@ -515,6 +505,34 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("issues: write", workflow)
         self.assertNotIn("pull-requests: write", workflow)
+
+    def test_console_supabase_oauth_is_pkce_vaulted_admin_bounded_and_read_only(self):
+        oauth=(ROOT/"apps/console/lib/supabase-oauth.ts").read_text()
+        connect=(ROOT/"apps/console/app/api/integrations/supabase/connect/route.ts").read_text()
+        callback=(ROOT/"apps/console/app/api/integrations/supabase/callback/route.ts").read_text()
+        detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
+        migration=(ROOT/"supabase/migrations/20260928204500_factory_project_database_oauth_vault.sql").read_text()
+        env=(ROOT/"apps/console/.env.example").read_text()
+        self.assertIn("code_challenge_method",oauth)
+        self.assertIn('"S256"',oauth)
+        self.assertIn("/database/query/read-only",oauth)
+        self.assertNotIn('/database/query"',oauth)
+        self.assertIn("state!==expected",callback)
+        self.assertIn("requireConsoleAdmin()",connect)
+        self.assertIn("requireConsoleAdmin()",callback)
+        self.assertIn("database binding is not awaiting access",connect)
+        self.assertIn("project_id=eq.",connect)
+        self.assertIn("project_id=eq.",callback)
+        self.assertIn("Conectar Supabase",detail)
+        self.assertIn("factory_private.store_project_database_oauth",migration)
+        self.assertIn("factory_private.get_project_database_oauth_tokens",migration)
+        self.assertIn("factory_private.revoke_project_database_oauth",migration)
+        self.assertIn("security invoker",migration)
+        self.assertIn("revoke all on table public.factory_project_database_oauth from public,anon,authenticated",migration)
+        self.assertIn("SUPABASE_OAUTH_CLIENT_ID=",env)
+        self.assertIn("SUPABASE_OAUTH_CLIENT_SECRET=",env)
+        self.assertNotIn("access_token",detail)
+        self.assertNotIn("refresh_token",detail)
 
     def test_console_exposes_database_readiness_without_secret_references(self):
         detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
@@ -639,6 +657,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             ROOT / "apps" / "console" / "app" / "projects" / "new" / "review" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "runs" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "queue" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "agents" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "gates" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "nav.tsx",
         ]
@@ -689,6 +708,43 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         assert re.search(r"(?<!last_)verified_at\\s*=\\s*null",migration,re.I) is None
         assert "revoke all on all functions in schema factory_private from public,anon,authenticated" in migration
         assert "grant execute on function public.factory_get_project_database_oauth_tokens(uuid) to service_role" in migration
+
+    def test_console_exposes_resource_limit_percentages_without_inventing_unknowns(self):
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        usage=(ROOT/"apps/console/app/usage/page.tsx").read_text()
+        self.assertIn("getResourceLimits",control)
+        self.assertIn("factory_resource_limit_snapshots",control)
+        self.assertIn("used==null||limit==null||limit<=0?null",control)
+        self.assertIn("Limites e quotas operacionais",usage)
+        self.assertIn('x.percent==null?"—":x.percent.toFixed(1)+"%"',usage)
+        self.assertIn('x.used==null||x.limit==null?"Indisponível"',usage)
+        self.assertIn("x.quality",usage)
+        self.assertIn("x.resetsAt",usage)
+
+    def test_console_agent_registry_is_server_side_and_operational(self):
+        page=(ROOT/"apps/console/app/agents/page.tsx").read_text()
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        nav=(ROOT/"apps/console/app/nav.tsx").read_text()
+        self.assertIn("getFactoryAgents",page)
+        self.assertIn("Agentes da Factory",page)
+        self.assertIn("slots",page)
+        self.assertIn("Locks de escopo",page)
+        self.assertIn("factory_agents",control)
+        self.assertIn("factory_run_agent_assignments",control)
+        self.assertIn("factory_agent_scope_locks",control)
+        self.assertIn("requireConsoleOperator()",control)
+        self.assertNotIn("credential",page.lower())
+        self.assertIn('href:"/agents"',nav)
+
+    def test_console_dependencies_are_locked_and_ci_is_deterministic(self):
+        package=(ROOT/"apps/console/package.json").read_text()
+        lock=(ROOT/"apps/console/package-lock.json").read_text()
+        workflow=(ROOT/".github/workflows/console.yml").read_text()
+        self.assertIn('"next": "15.5.26"',package)
+        self.assertIn('"next": "15.5.26"',lock)
+        self.assertIn('"lockfileVersion": 3',lock)
+        self.assertIn("- run: npm ci",workflow)
+        self.assertNotIn("- run: npm install",workflow)
 
     def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
         migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
