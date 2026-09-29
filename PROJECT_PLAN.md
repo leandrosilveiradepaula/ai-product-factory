@@ -107,7 +107,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Visualizacao da equipe planejada nos detalhes do projeto.
 - [x] Lanes independentes read-only para Security Review, QA/Evals e Operations, com SHA exato, lease/retry bounded, findings estruturados e gate antes do Preview.
 - [x] Change Set com work units isoladas por onda, source SHA imutavel, integration branch, conflito de arquivos fail-closed e um unico PR candidato de release.
-- [ ] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela.
+- [x] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela, com replay/provenance e base para comparacao shadow.
 - [x] Concurrency adaptativa v1 baseada em trabalho executavel, quota, custo conhecido, repair rate, first-pass yield e latencia de CI, com decisoes auditaveis.
 - [x] Corpus offline de evals do Team Planner cobrindo 10 classes de trabalho e penalizando overstaffing, under-staffing e papeis indevidos.
 
@@ -155,9 +155,19 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 ### F9 - Project Intelligence
 - [x] Project Brain v1 deterministico e versionado: tarefas, scopes, capabilities, componentes e fontes/evidencias com provenance.
 - [x] Impact Engine v1: blast radius por task_key/grafo, confidence/unknowns explicitos e evidencia duravel antes do builder.
-- [ ] Requirement Traceability e Definition of Done compilavel (#376).
-- [ ] Context Packets/sandboxes/repair loops (#377).
-- [ ] Policy-as-Code/Release Intelligence/rollback (#378).
-- [ ] Incident Mode/Portfolio Scheduler (#379).
-- [ ] Replay/Shadow/provenance completo/self-improvement (#380).
-- [ ] Architecture Guardian/scanners/lineage/API contracts (#381).
+- [x] Requirement Traceability e Definition of Done compilavel (#376).
+- [x] Context Packets/sandboxes/repair loops (#377).
+- [x] Policy-as-Code/Release Intelligence/rollback (#378).
+- [x] Incident Mode/Portfolio Scheduler (#379).
+- [x] Replay/Shadow/provenance completo/self-improvement controlado (#380).
+- [x] Architecture Guardian v1 com scanners determinísticos, lineage factual e API/dependency surfaces (#381).
+
+
+### F10 - Operacao, aprendizagem e rastreabilidade
+- [x] Test collection guard: nenhum teste `test_*` pode ficar invisivel ao `unittest discover`; 30 checks historicamente ocultos foram reconciliados e a suite real ultrapassa 465 testes.
+- [x] Console de Orquestracao em PT-BR para portfolio, incidentes, repairs, release readiness, Replay/Shadow e propostas de melhoria.
+- [x] Execution Router v2 baseado em impacto, unknowns, first-pass historico e custo comparativo, sem chamada extra de modelo.
+- [x] Proveniencia duravel de run e provenance pointers seguros nos commits/work units.
+- [x] Preview final por promocao de candidato exato: branches de implementacao nao geram Preview; somente `preview/**` pode construir o candidato final.
+- [ ] Validar o candidato cumulativo atual em Preview exato + browser evidence autenticada.
+- [ ] Merge humano do release cumulativo; apos o merge, observar release e reconciliar `main`.
