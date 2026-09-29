@@ -51,11 +51,23 @@ try {
   }
   await emailInput.fill(email);
   await passwordInput.fill(password);
-  await Promise.all([
-    page.waitForURL(url => !url.pathname.startsWith("/login"), {timeout:60000}),
-    page.getByRole("button", {name:"Entrar"}).click(),
-  ]);
-  await page.waitForLoadState("networkidle");
+  const submitResponsePromise=page.waitForResponse(response => {
+    try {
+      const url=new URL(response.url());
+      return response.request().method()==="POST" && url.pathname==="/login";
+    } catch {
+      return false;
+    }
+  }, {timeout:60000});
+  await page.getByRole("button", {name:"Entrar"}).click();
+  const submitResponse=await submitResponsePromise;
+  if (submitResponse.status() >= 400) throw new Error(`login submit status ${submitResponse.status()}`);
+  const landing=await page.goto(`${consoleUrl}/`, {waitUntil:"networkidle", timeout:60000});
+  if (!landing || landing.status() >= 400) throw new Error(`authenticated landing status ${landing?.status()}`);
+  if (new URL(page.url()).pathname.startsWith("/login")) {
+    const bodySample=(await page.locator("body").innerText().catch(()=>"")).replace(/\\s+/g," ").slice(0,500);
+    throw new Error(`authenticated landing redirected to login at ${page.url()} body=${bodySample}`);
+  }
 
   const routes = [
     {name:"overview",path:"/",width:1296},
