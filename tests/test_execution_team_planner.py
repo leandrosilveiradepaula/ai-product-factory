@@ -68,18 +68,19 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         self.assertEqual(out["status"],"ready")
         self.assertEqual([x["task_keys"] for x in out["waves"]],[["backend"],["integration"]])
 
-    def test_read_only_specialist_task_fails_closed_until_lane_exists(self):
+    def test_read_only_specialist_task_uses_dedicated_lane(self):
         plan={"tasks":[
             {"task_key":"backend","title":"Backend","required_capabilities":["implementation"],"scope_keys":["src/api"],"depends_on":[]},
             {"task_key":"tests","title":"Tests","required_capabilities":["tests"],"scope_keys":["tests"],"depends_on":["backend"]},
         ]}
         out=build_execution_team_plan(plan,AGENTS)
-        self.assertEqual(out["status"],"blocked")
+        self.assertEqual(out["status"],"ready")
         self.assertEqual(out["waves"][0]["task_keys"],["backend"])
         qa=next(x for x in out["selected_agents"] if x["agent_key"]=="qa")
-        self.assertFalse(qa["execution_ready"])
-        self.assertEqual(qa["workers_planned"],0)
-        self.assertTrue(any(x["code"]=="specialist_lane_unavailable" and x.get("agent_key")=="qa" for x in out["blockers"]))
+        self.assertTrue(qa["execution_ready"])
+        self.assertEqual(qa["execution_lane"],"specialist")
+        self.assertEqual(qa["workers_planned"],1)
+        self.assertEqual(out["blockers"],[])
 
     def test_impossible_single_owner_capability_mix_fails_closed(self):
         plan={"tasks":[{"task_key":"mixed","title":"Mixed","required_capabilities":["implementation","security_review"],"scope_keys":["src/auth"],"depends_on":[]}]}
@@ -93,7 +94,7 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         out=build_execution_team_plan(plan,AGENTS)
         advisory=next(x for x in out["advisory_specialist_lanes"] if x["role"]=="security")
         self.assertFalse(advisory["execution_ready"])
-        self.assertIn("non-writing specialist lane",advisory["note"])
+        self.assertIn("not represented as an explicit planned task",advisory["note"])
         self.assertEqual(out["selected_agents"][0]["agent_key"],"development")
 
     def test_unresolved_dependency_blocks_plan(self):
