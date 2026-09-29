@@ -7,6 +7,7 @@ from .change_set_store import ChangeSetBinding,SupabaseChangeSetStore
 from .execution_worker import DirectExecutionItem,ImplementationArtifact,ImplementationProducer
 from .github_rest import GitHubRestAdapter
 from .impact_engine import SupabaseImpactEngine
+from .work_unit_context import build_context_packet,enforce_write_scopes
 
 
 @dataclass(frozen=True)
@@ -39,9 +40,20 @@ class ChangeSetBuilderWorker:
         impact=self.impact_engine.analyze_run(
             project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
         )
-        item=replace(item,impact_context=impact.as_context(),base_commit=binding.base_commit)
+        source=self.store.context_source(item.run_id)
+        packet=build_context_packet(
+            source=source,impact=impact.as_context(),base_commit=binding.base_commit,branch=item.branch,
+        )
+        self.store.record_context(run_id=item.run_id,packet_hash=packet.sha256,packet=packet.as_dict())
+        write_scopes=tuple(packet.payload["repository"]["write_scopes"])
+        item=replace(
+            item,impact_context=impact.as_context(),base_commit=binding.base_commit,
+            context_packet=packet.as_dict(),write_scopes=write_scopes,
+        )
+        self.store.set_repair_status(run_id=item.run_id,status="running")
         artifact=self.producer.produce(item)
         if not artifact.files:raise ValueError("implementation producer returned no files")
+        enforce_write_scopes(artifact.files.keys(),write_scopes)
         output=self.github.commit_files(item.branch,artifact.files,message=artifact.commit_message)
         self.store.complete_work_unit(
             run_id=item.run_id,output_commit=output,changed_files=tuple(sorted(artifact.files)),
