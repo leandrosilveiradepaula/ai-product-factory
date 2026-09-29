@@ -271,6 +271,7 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .factoryActivityTable .tableRow{grid-template-columns:2fr .9fr .9fr .55fr .8fr}
 .recentActivity{padding:12px}
 .gateLayout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.7fr);gap:8px}
+.gateLayout>.denseStack>.emptyState{min-height:96px}
 .gateCard{padding:0;overflow:hidden}.gateCard.pending{border-top:3px solid #ffb4ab}
 .gateBanner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:#202530;border-bottom:1px solid #262a34}
 .gateContent{padding:12px}.gateContent h3{font-size:16px;margin:6px 0}.gateContent p{margin:0;line-height:1.5}
@@ -294,7 +295,7 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .logPanel{padding:10px;font-family:var(--font-mono);font-size:9px;line-height:1.65;color:#8daefb}
 .compactRow{font-size:10px}
 .panelHeading strong{font-size:12px}
-.denseStack{gap:8px}
+.denseStack{gap:8px;align-content:start}
 
 @media(max-width:1180px){
  .overviewStats{grid-template-columns:repeat(2,minmax(0,1fr))}
