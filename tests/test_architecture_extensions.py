@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class ArchitectureExtensionAcceptanceTests(unittest.TestCase):
     def test_change_set_pipeline_is_single_candidate_and_fail_closed(self):
-        migration=(ROOT/"supabase/migrations/20260929033000_factory_change_sets.sql").read_text()
+        migration=(ROOT/"supabase/migrations/20260929033251_factory_change_sets.sql").read_text()
         workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
         runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
         builder=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
@@ -36,7 +36,7 @@ class ArchitectureExtensionAcceptanceTests(unittest.TestCase):
 
     def test_adaptive_concurrency_guardrails_are_collected(self):
         policy=(ROOT/"src/ai_product_factory/adaptive_concurrency.py").read_text()
-        migration=(ROOT/"supabase/migrations/20260929030000_factory_adaptive_concurrency.sql").read_text()
+        migration=(ROOT/"supabase/migrations/20260929032833_factory_adaptive_concurrency.sql").read_text()
         self.assertIn("unknown paid cost blocks execution",policy)
         self.assertIn('quota in {"blocked","critical"}',policy)
         self.assertIn("factory_agent_concurrency_decisions",migration)
@@ -55,8 +55,8 @@ class ArchitectureExtensionAcceptanceTests(unittest.TestCase):
 
 
     def test_project_brain_and_impact_are_private_provenanced_and_deterministic(self):
-        brain_migration=(ROOT/"supabase/migrations/20260929040000_factory_project_brain.sql").read_text()
-        impact_migration=(ROOT/"supabase/migrations/20260929043000_factory_impact_analysis.sql").read_text()
+        brain_migration=(ROOT/"supabase/migrations/20260929033948_factory_project_brain.sql").read_text()
+        impact_migration=(ROOT/"supabase/migrations/20260929033953_factory_impact_analysis.sql").read_text()
         brain=(ROOT/"src/ai_product_factory/project_brain.py").read_text()
         impact=(ROOT/"src/ai_product_factory/impact_engine.py").read_text()
         queue=(ROOT/"src/ai_product_factory/supabase_runtime_queue.py").read_text()
