@@ -1,5 +1,7 @@
 name: CRM cross-repo credential preflight
 
+# Fresh-run marker: evaluate current openai-api environment secrets on every main change.
+
 on:
   workflow_dispatch:
     inputs:
