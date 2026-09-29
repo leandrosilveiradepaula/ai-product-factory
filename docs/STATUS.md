@@ -314,3 +314,10 @@ The planner does not grant reviewer profiles `github_write`, does not weaken pro
 The long-term target is a Change Set: parallel isolated builder work converges deterministically into one integration candidate, then independent Security/QA/Operations evaluate the exact integrated candidate before CI/Preview and the human production merge gate.
 
 Issue #363 / branch `agents/363-execution-team-plan` is not released yet. Console changes still require green CI, an exact verified Preview/browser evidence, and human production merge.
+
+
+## Reconciliation - 2026-09-29 exact Preview policy
+
+PR #341 was human-authorized and merged to `main` as `4c5c3bca5447d40128d629be18587056a9df3150`. The active Vercel policy now reserves deployments for exact promoted `preview/**` candidates and keeps implementation branches inert.
+
+PR #364 has been reconciled with that policy before release. Its next valid release evidence must come from the exact current PR head promoted to `preview/pr-364`; the earlier canceled Console branch deployment is not release evidence.
