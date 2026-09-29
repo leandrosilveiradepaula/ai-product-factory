@@ -75,6 +75,20 @@ try {
     throw new Error(`authenticated landing redirected to login at ${page.url()} body=${bodySample}`);
   }
 
+  // The visual quality gate covers the authenticated Console routes below.
+  // Keep protection/login bootstrap diagnostics as evidence, but do not mix
+  // Vercel Preview/Toolbar bootstrap errors into the application route gate.
+  // The landing route is captured again as the first gated route, so real
+  // application errors on "/" remain fail-closed.
+  const bootstrapDiagnostics = {
+    consoleErrors:[...consoleErrors],
+    pageErrors:[...pageErrors],
+    badResponses:[...badResponses],
+  };
+  consoleErrors.length=0;
+  pageErrors.length=0;
+  badResponses.length=0;
+
   const routes = [
     {name:"overview",path:"/",width:1296},
     {name:"human-gates",path:"/gates",width:1980},
@@ -110,8 +124,10 @@ try {
     targetUrl:consoleUrl,
     workflowSourceCommit,
     captured,
+    bootstrapDiagnostics,
     consoleErrors,
     pageErrors,
+    badResponses,
   }, null, 2));
 
   if (consoleErrors.length || pageErrors.length) {
@@ -126,7 +142,15 @@ try {
     throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length}`);
   }
 
-  console.log(JSON.stringify({status:"success",captured:captured.map(x=>x.name)}));
+  console.log(JSON.stringify({
+    status:"success",
+    captured:captured.map(x=>x.name),
+    bootstrapDiagnostics:{
+      consoleErrorCount:bootstrapDiagnostics.consoleErrors.length,
+      pageErrorCount:bootstrapDiagnostics.pageErrors.length,
+      badResponseCount:bootstrapDiagnostics.badResponses.length,
+    },
+  }));
 } finally {
   await browser.close();
 }
