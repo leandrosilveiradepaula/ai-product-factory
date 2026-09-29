@@ -41,6 +41,8 @@ from .release_policy import ReleaseEnvironment
 from .agent_scheduler import SupabaseAgentScheduler
 from .evidence import EvidenceBundle
 from .review_gate import EvalResult,evaluate_quality_gate
+from .specialist_lane_queue import SupabaseSpecialistLaneQueue
+from .specialist_lanes import evaluate_specialist_lane
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -76,7 +78,8 @@ def build_handler():
 def run_recovery_once(max_attempts:int=3)->dict:
  runs=SupabaseRuntimeQueue().recover_expired(max_attempts)
  agents=SupabaseAgentScheduler().recover_expired()
- return {"runs":runs,"agents":agents}
+ specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
+ return {"runs":runs,"agents":agents,"specialist_lanes":specialist_lanes}
 
 def run_product_once(worker_id:str)->dict:
  try:
@@ -163,12 +166,24 @@ def run_ci_once()->dict:
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
+ status=decision.action.value
  if decision.action.value=="preview_ready":
   quality=evaluate_quality_gate(evals=(EvalResult("github_ci",True,required=True),))
   if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
   store.record_evaluation(run_id=item.run_id,eval_type="quality_gate",status="success",baseline_ref=item.candidate_commit,result={"passed":True,"reasons":list(quality.reasons),"source":"github_ci"})
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
- return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
+  routed=SupabaseSpecialistLaneQueue().enqueue(item.run_id)
+  status=str(routed.get("status") or "specialist_review_pending")
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
+
+def run_specialist_once(role:str,worker_id:str)->dict:
+ queue=SupabaseSpecialistLaneQueue()
+ item=queue.claim(role,worker_id)
+ if item is None:return {"claimed":False,"status":"empty","role":role}
+ github=GitHubRestAdapter(repository=item.repository)
+ result=evaluate_specialist_lane(item,github)
+ completed=queue.complete(item,status=result.status,findings=list(result.findings),evidence=result.evidence)
+ return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,"run_status":completed.get("run_status"),"findings":list(result.findings)}
 
 def run_preview_probe_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
@@ -263,7 +278,7 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","recovery","health","alerts","ci","specialist","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
  elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
@@ -271,6 +286,9 @@ def main()->int:
  elif args.mode=="preview":out=run_preview_once()
  elif args.mode=="release":out=run_release_once()
  elif args.mode=="ci":out=run_ci_once()
+ elif args.mode=="specialist":
+  if not args.specialist_role:raise ValueError("--specialist-role is required for specialist mode")
+  out=run_specialist_once(args.specialist_role,args.worker_id)
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
