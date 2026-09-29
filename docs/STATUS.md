@@ -46,9 +46,9 @@ Scheduled Direct is enabled through the retained API key with a prepaid Factory 
 The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
 
 Verified production state:
-- current production release commit: `54f3ed0445ffda2c8d0974d0d5b5741065294108` from authorized PR #407, stacked after authorized PR #400 (`a07c9d96e8d1f64861e928c5c361f5b93f8c6d05`);
-- Vercel production deployment `dpl_EskSGj2T7Z6xjtN8KLNV2yAeeX19` is `READY`;
-- production `GET /api/health` returns HTTP 200 and reports truncated commit `54f3ed0445ff`;
+- current production release commit: `1301ad934838ca13699d4ca41e0092b74fe89755` from authorized PR #407, stacked after authorized PR #400 (`a07c9d96e8d1f64861e928c5c361f5b93f8c6d05`);
+- Vercel production deployment `dpl_27ZmHDyWDXXxr7TkUqmgGD3assPz` is `READY`;
+- production `GET /api/health` returns HTTP 200 and reports truncated commit `1301ad934838`;
 - post-merge validate + factory-acceptance run `36626997044` succeeded;
 - post-merge Console validation run `36626997056` succeeded with deterministic npm install, typecheck and build;
 - exact pre-release Preview `dpl_GB3pzQtX3QHS9Fw5Y9zd7AeRS3zH` for candidate `54b275fbafd7e035fdce983fb2bc976af8b08f64` reached `READY`;
@@ -56,6 +56,7 @@ Verified production state:
 - visual reconciliation against the preserved exported Figma reference `Esteira.zip` is complete and issue #309 is closed;
 - Vercel reported no runtime errors in the post-release observation window;
 - Supabase Auth login and server-side Control Plane access remain operational; backend access continues to prefer `SUPABASE_SECRET_KEY` with legacy service-role fallback only.
+- Supabase OAuth readiness is fail-closed in production: when OAuth client credentials are absent, the Console shows a blocked readiness state and the server route returns controlled HTTP 503 instead of raising an unhandled error. Activation still requires the external OAuth App credentials.
 
 ## Protected Preview / Console intake release
 
