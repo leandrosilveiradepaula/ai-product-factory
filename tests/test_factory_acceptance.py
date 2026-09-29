@@ -256,6 +256,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929070000_factory_incident_portfolio.sql",
             "20260929080000_factory_replay_shadow_provenance.sql",
             "20260929090000_factory_routing_policy_v2.sql",
+            "20260929100000_factory_fk_indexes.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
