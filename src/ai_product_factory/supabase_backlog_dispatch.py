@@ -3,10 +3,11 @@ from __future__ import annotations
 import json,os,urllib.error,urllib.request
 from .backlog_dispatcher import BacklogDispatcher,DispatchDecision,PlannedTask
 from .supabase_server import resolve_supabase_server_config
+from .portfolio_scheduler import SupabasePortfolioScheduler
 
 class SupabaseBacklogDispatch:
- def __init__(self,*,url:str|None=None,service_role_key:str|None=None,dispatcher:BacklogDispatcher|None=None)->None:
-  cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers;self.dispatcher=dispatcher or BacklogDispatcher()
+ def __init__(self,*,url:str|None=None,service_role_key:str|None=None,dispatcher:BacklogDispatcher|None=None,portfolio:SupabasePortfolioScheduler|None=None)->None:
+  cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers;self.dispatcher=dispatcher or BacklogDispatcher();self.portfolio=portfolio or SupabasePortfolioScheduler(url=cfg.url,service_role_key=service_role_key)
  def _get(self,path:str):
   req=urllib.request.Request(f"{self.url}/rest/v1/{path}",method="GET",headers=self.headers)
   try:
@@ -28,16 +29,11 @@ class SupabaseBacklogDispatch:
   return decision
 
  def dispatch_next_any(self)->DispatchDecision|None:
-  tasks=self._get("factory_tasks?select=project_id&status=eq.queued&external_key=like.plan-*&order=created_at.asc&limit=20")
-  seen:set[str]=set()
-  for row in tasks:
-   project_id=str(row.get("project_id") or "")
-   if not project_id or project_id in seen:continue
-   seen.add(project_id)
-   projects=self._get(f"factory_projects?select=project_key&id=eq.{project_id}&is_active=eq.true&limit=1")
-   if not projects:continue
-   project_key=str(projects[0].get("project_key") or "")
-   if not project_key:continue
-   decision=self.dispatch_next(project_key)
-   if decision is not None:return decision
+  candidates=self.portfolio.candidates(20)
+  for candidate in candidates:
+   decision=self.dispatch_next(candidate.project_key)
+   if decision is not None:
+    self.portfolio.record(candidate,candidates,outcome="dispatched")
+    return decision
+  self.portfolio.record(None,candidates,outcome="empty_or_raced")
   return None
