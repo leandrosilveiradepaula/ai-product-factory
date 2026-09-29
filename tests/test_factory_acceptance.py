@@ -252,6 +252,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929050000_factory_requirement_traceability.sql",
             "20260929060000_factory_release_policy.sql",
             "20260929043000_factory_sandbox_context_repair.sql",
+            "20260929070000_factory_incident_portfolio.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -885,3 +886,29 @@ def test_work_units_use_secret_safe_context_packets_and_bounded_repair_loops():
     assert "role_not_auto_repairable" in migration
     assert "enable row level security" in migration
     assert "security invoker" in migration
+
+
+
+def test_incident_mode_and_portfolio_scheduler_preserve_safety_gates():
+    migration=(ROOT/"supabase/migrations/20260929070000_factory_incident_portfolio.sql").read_text()
+    portfolio=(ROOT/"src/ai_product_factory/portfolio_scheduler.py").read_text()
+    dispatch=(ROOT/"src/ai_product_factory/supabase_backlog_dispatch.py").read_text()
+    for marker in (
+        "factory_project_scheduling",
+        "factory_incidents",
+        "factory_portfolio_decisions",
+        "factory_open_incident",
+        "factory_transition_incident",
+        "factory_portfolio_candidates",
+        "factory_record_portfolio_decision",
+        "incident resolution requires full gates",
+        "enable row level security",
+        "security invoker",
+    ):
+        assert marker in migration
+    assert "soft_preemption_active" in portfolio
+    assert '"active_workers_cancelled":False' in portfolio
+    assert '"production_gates_bypassed":False' in portfolio
+    assert "SupabasePortfolioScheduler" in dispatch
+    assert "portfolio.candidates" in dispatch
+    assert "factory_tasks?select=project_id" not in dispatch
