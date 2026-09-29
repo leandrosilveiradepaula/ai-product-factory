@@ -262,8 +262,16 @@ def run_preview_once()->dict:
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  if not applicability.required:
+  assessment,recorded=_assess_release_policy(
+   run_id=item.run_id,candidate_commit=item.candidate_commit,changed_files=changed_files,
+   risk=getattr(item,"risk",{}) or {},
+  )
+  if assessment.decision.blocked:
+   return {"claimed":True,"status":"release_policy_blocked","run_id":item.run_id,"pr_number":item.pr_number,
+    "preview_required":False,"reason":applicability.reason,"policy_reasons":list(assessment.decision.reasons)}
   status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
-  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":False,"reason":applicability.reason}
+  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
+   "preview_required":False,"reason":applicability.reason,"release_report_id":recorded.get("report_id")}
  try:
   project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
  except ValueError as exc:
@@ -279,7 +287,6 @@ def run_preview_once()->dict:
  browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
- status=loop.finalize_verified_preview(session,verified)
  trace=SupabaseTraceabilityStore()
  trace.record_delivery_evidence(
   run_id=item.run_id,evidence_type="preview",status="passed",evidence_ref=verified.deployment.deployment_ref,
@@ -289,7 +296,18 @@ def run_preview_once()->dict:
   run_id=item.run_id,evidence_type="browser_evidence",status="passed",evidence_ref=verified.deployment.deployment_ref,
   metadata={"candidate_commit":item.candidate_commit}
  )
- return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref}
+ assessment,recorded=_assess_release_policy(
+  run_id=item.run_id,candidate_commit=item.candidate_commit,changed_files=changed_files,
+  risk=getattr(item,"risk",{}) or {},
+ )
+ if assessment.decision.blocked:
+  return {"claimed":True,"status":"release_policy_blocked","run_id":item.run_id,"pr_number":item.pr_number,
+   "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
+   "policy_reasons":list(assessment.decision.reasons)}
+ status=loop.finalize_verified_preview(session,verified)
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
+  "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
+  "release_report_id":recorded.get("report_id")}
 
 def run_release_once()->dict:
  item=SupabaseReleaseFollowupQueue().next_pending()
@@ -307,6 +325,7 @@ def run_release_once()->dict:
   run_id=item.run_id,evidence_type="human_release",status="passed",evidence_ref=merge_sha,
   metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
  )
+ SupabaseReleasePolicyStore().mark_released(item.run_id,merge_sha)
  SupabaseAgentScheduler().release_scopes(item.run_id)
  return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
 
