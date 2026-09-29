@@ -56,7 +56,7 @@ Verified production state:
 - visual reconciliation against the preserved exported Figma reference `Esteira.zip` is complete and issue #309 is closed;
 - Vercel reported no runtime errors in the post-release observation window;
 - Supabase Auth login and server-side Control Plane access remain operational; backend access continues to prefer `SUPABASE_SECRET_KEY` with legacy service-role fallback only.
-- Supabase OAuth readiness is fail-closed in production: when OAuth client credentials are absent, the Console shows a blocked readiness state and the server route returns controlled HTTP 503 instead of raising an unhandled error. Activation still requires the external OAuth App credentials.
+- Supabase OAuth readiness is fail-closed in production: when OAuth client credentials are absent, the Console shows a blocked readiness state and the server route returns controlled HTTP 503 instead of raising an unhandled error. The OAuth App client ID and client secret are already present in Vercel; the remaining step is the first real read-only OAuth authorization.
 
 ## Protected Preview / Console intake release
 
@@ -302,3 +302,16 @@ item is the human production release plus post-release observation; no
 auto-merge is authorized. Trusted Source access issue #412 is completed.
 Dependency hardening #402 remains open for Next.js 15.5.27 revalidation when
 that upstream release is available.
+
+
+## Secret-presence audit on 2026-09-29
+
+- GitHub Actions repo/environment audit exposed presence only, never secret values.
+- `OPENAI_API_KEY` is present and the scheduled runner reports primary auth as `openai_api_key` with the paid-primary budget controls active.
+- `FACTORY_GITHUB_TOKEN` is absent in repository scope, `openai-api`, and `openai-codex`; CRM cross-repo remains blocked on that explicit credential.
+- `VERCEL_TOKEN` is absent, intentionally non-blocking for the Factory default GitHub/Vercel preview path.
+- Control Plane access does not require a persistent GitHub Supabase key: GitHub OIDC successfully mints the short-lived runtime credential.
+- Vercel Console environment has `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `FACTORY_BOOTSTRAP_ADMIN_EMAIL`, `SUPABASE_OAUTH_CLIENT_ID`, and `SUPABASE_OAUTH_CLIENT_SECRET` present. Legacy `SUPABASE_SERVICE_ROLE_KEY` is absent and not required.
+- Supabase Vault currently contains no stored secrets, which is expected before the first project OAuth authorization persists access/refresh tokens.
+- OpenAI API WIF identifiers/audience are present in `openai-api`; the API-WIF blocker is mapping validation, not a missing secret.
+- Codex workspace auth remains unconfigured: no federation rule/audience in `openai-codex` and no official access-token credential; Codex automatic execution remains fail-closed.
