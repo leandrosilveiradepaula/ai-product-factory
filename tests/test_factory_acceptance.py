@@ -249,6 +249,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929033000_factory_change_sets.sql",
             "20260929040000_factory_project_brain.sql",
             "20260929043000_factory_impact_analysis.sql",
+            "20260929050000_factory_requirement_traceability.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -790,3 +791,36 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
         self.assertIn("enable row level security",migration)
         self.assertIn("security invoker",migration)
         self.assertNotIn("OPENAI_API_KEY",controller)
+
+
+    def test_requirement_traceability_and_dod_are_factual_private_and_human_bounded(self):
+        migration=(ROOT/"supabase/migrations/20260929050000_factory_requirement_traceability.sql").read_text()
+        trace=(ROOT/"src/ai_product_factory/traceability.py").read_text()
+        dod=(ROOT/"src/ai_product_factory/definition_of_done.py").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        planning=(ROOT/"src/ai_product_factory/product_stage_executor.py").read_text()
+
+        for table in (
+            "factory_requirements",
+            "factory_requirement_task_links",
+            "factory_requirement_evidence",
+            "factory_definitions_of_done",
+            "factory_definition_of_done_evidence",
+        ):
+            self.assertIn(table,migration)
+        self.assertGreaterEqual(migration.count("enable row level security"),5)
+        self.assertIn("factory_record_requirement_trace",migration)
+        self.assertIn("factory_record_definition_of_done",migration)
+        self.assertIn("factory_record_delivery_evidence",migration)
+        self.assertIn("factory_get_definition_of_done_readiness",migration)
+        self.assertIn("security invoker",migration)
+        self.assertIn("secret-like evidence metadata is forbidden",migration)
+        self.assertIn("REQ-",trace)
+        self.assertIn("human_release",dod)
+        self.assertIn("production merge is always a human gate",dod)
+        self.assertIn("migration_validation",dod)
+        self.assertIn("rollback_analysis",dod)
+        self.assertIn("acceptance_criteria (non-empty array",planning)
+        self.assertIn('evidence_type="github_ci"',runtime)
+        self.assertIn('evidence_type="human_release"',runtime)
+        self.assertNotIn("score",dod.lower())
