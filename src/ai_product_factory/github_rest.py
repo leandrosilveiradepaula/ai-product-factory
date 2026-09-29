@@ -4,13 +4,19 @@ import base64
 import json
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib import parse, request
+from urllib import error, parse, request
 
 from .github_loop import CIState
 from .github_auth import resolve_github_token
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
+
+
+class GitHubRequestError(RuntimeError):
+    def __init__(self,status:int)->None:
+        super().__init__(f"GitHub request failed with HTTP {status}")
+        self.status=status
 
 
 def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, Any]:
@@ -78,9 +84,12 @@ class GitHubRestAdapter:
     def _call(self, method: str, path: str, *, query: dict[str, str] | None = None, payload: Any = None) -> Any:
         suffix = "?" + parse.urlencode(query) if query else ""
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        status, data = self.transport(method, f"{self.api_url}{path}{suffix}", self._headers(), body)
+        try:
+            status, data = self.transport(method, f"{self.api_url}{path}{suffix}", self._headers(), body)
+        except error.HTTPError as exc:
+            raise GitHubRequestError(exc.code) from exc
         if status < 200 or status >= 300:
-            raise RuntimeError(f"GitHub request failed with HTTP {status}")
+            raise GitHubRequestError(status)
         return data
 
     def create_issue(self, *, title: str, body: str) -> GitHubIssue:
@@ -129,6 +138,35 @@ class GitHubRestAdapter:
         self._call("POST", f"/repos/{self.repository}/git/refs",
                    payload={"ref": f"refs/heads/{branch}", "sha": base_sha})
         return base_sha
+
+    def create_branch_at_sha(self, branch: str, sha: str) -> str:
+        if not sha.strip():
+            raise ValueError("sha is required")
+        self._call("POST", f"/repos/{self.repository}/git/refs",
+                   payload={"ref": f"refs/heads/{branch}", "sha": sha})
+        return sha
+
+    def ensure_branch_at_sha(self, branch: str, sha: str) -> str:
+        try:
+            current=self.get_branch_sha(branch)
+        except GitHubRequestError as exc:
+            if exc.status!=404:
+                raise
+            try:
+                return self.create_branch_at_sha(branch,sha)
+            except GitHubRequestError as create_exc:
+                if create_exc.status not in {409,422}:
+                    raise
+                current=self.get_branch_sha(branch)
+        if current!=sha:
+            raise RuntimeError(f"branch {branch} does not match expected candidate SHA")
+        return current
+
+    def get_file_text(self, path: str, *, ref: str) -> str:
+        row=self._call("GET",f"/repos/{self.repository}/contents/{parse.quote(path,safe='/')}",query={"ref":ref})
+        if row.get("type")!="file" or row.get("encoding")!="base64":
+            raise RuntimeError(f"GitHub path is not a base64 file: {path}")
+        return base64.b64decode(str(row.get("content") or "").replace("\n","")).decode("utf-8")
 
     def commit_files(self, branch: str, files: dict[str, str], *, message: str) -> str:
         if not files:
@@ -184,6 +222,16 @@ class GitHubRestAdapter:
     def get_pull_request_files(self, pr_number: int) -> tuple[str, ...]:
         rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
         return tuple(str(row["filename"]) for row in rows if row.get("filename"))
+
+    def get_pull_request_file_details(self, pr_number: int) -> tuple[dict[str, Any], ...]:
+        rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
+        return tuple({
+            "filename": str(row.get("filename") or ""),
+            "status": str(row.get("status") or ""),
+            "patch": str(row.get("patch") or ""),
+            "additions": int(row.get("additions") or 0),
+            "deletions": int(row.get("deletions") or 0),
+        } for row in rows if row.get("filename"))
 
 
     def get_ci_state(self, pr_number: int) -> CIState:

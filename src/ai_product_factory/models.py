@@ -36,6 +36,13 @@ class TaskProfile:
     direct_tools_sufficient: bool = True
     repetitive_mechanical_change: bool = False
     user_requires_codex: bool = False
+    impacted_components: int = 0
+    impact_unknowns: int = 0
+    historical_repair_rate: float | None = None
+    historical_conflict_rate: float | None = None
+    historical_direct_first_pass: float | None = None
+    historical_codex_first_pass: float | None = None
+    historical_codex_cost_ratio: float | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +50,7 @@ class CodexDecision:
     level: int
     should_use: bool
     reasons: tuple[str, ...] = ()
+    policy_version: str = "v2"
 
 
 @dataclass(frozen=True)
