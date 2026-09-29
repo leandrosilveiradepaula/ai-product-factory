@@ -113,6 +113,8 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 
 ## Gate atual
 
+Em 2026-09-29 o release cumulativo multiagente/Console foi concluido com autorizacao humana explicita: PR #400 mergeado em `a07c9d96e8d1f64861e928c5c361f5b93f8c6d05` e PR #407 mergeado em `54f3ed0445ffda2c8d0974d0d5b5741065294108`. O deployment de producao do #407 `dpl_EskSGj2T7Z6xjtN8KLNV2yAeeX19` esta READY; `/api/health` respondeu HTTP 200 com `54f3ed0445ff`; validate, factory-acceptance, npm ci, typecheck e build pos-merge ficaram verdes; a Vercel nao registrou runtime errors na janela de observacao. A issue visual #309 foi encerrada. O hardening #402 permanece externo/pendente ate a publicacao real do Next.js 15.5.27.
+
 A Factory core esta funcionalmente implementada. O fluxo de Preview protegido esta verificado com Trusted Source GitHub Actions OIDC. O PR #269 foi liberado por autorizacao humana explicita em 2026-09-28 e mergeado em `98d81dee46c7ffc7ae4ae0662712fadcda3258b3`; o deployment de producao `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` chegou a `READY`, `GET /api/health` retornou HTTP 200 com o commit correto, a interface pt-BR foi observada em producao e a Vercel nao reportou erros de runtime na janela de verificacao. As migrations de anexos privados, reconciliacao e Current State Snapshot foram aplicadas e verificadas no Supabase de producao. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
 
 O provider OpenAI Responses esta implementado e ativo. Em 2026-09-28, apos o usuario adicionar US$ 5 de credito ao OpenAI API Platform, o caminho `OPENAI_API_KEY` passou em um smoke bounded real: GPT-5.6 Luna, `reasoning=none`, 35 tokens de entrada, 9 de saida, 44 totais, resposta exata `FACTORY_SMOKE_OK` e custo estimado de US$ 0.0000178, abaixo do teto de US$ 0.01. A evidencia foi persistida no Control Plane. O Primary foi entao ativado explicitamente via API key com budget Factory de US$ 4.00 e reserva de US$ 0.50 por chamada/run, deixando US$ 1.00 do saldo comprado fora do budget como margem. Cada chamada faz pre-reserva duravel, substitui pela medicao real em sucesso e transforma custo nao mensuravel em evento desconhecido que bloqueia novas chamadas.
@@ -145,7 +147,7 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Remover atalhos legados de chamada paga fora do ledger/budget.
 - [x] Corrigir documentacao que ainda sugeria merge automatico apos CI.
 - [x] Preservar API key como auth Primary explicita enquanto WIF #250 permanece hardening externo.
-- [ ] Concluir #309/#310 somente apos Vercel liberar Preview exato e a comparacao visual autenticada passar.
+- [x] Fechar #309 apos Preview exato, comparacao visual autenticada contra `Esteira.zip`, release #407 e observacao pos-release sem runtime errors.
 - [ ] Habilitar Leaked Password Protection por acao administrativa.
 - [ ] Resolver API WIF #250 quando o mapping administrativo puder ser corrigido.
 - [ ] Resolver Codex auth #240 quando houver credencial oficial/enablement.
@@ -169,5 +171,5 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Execution Router v2 baseado em impacto, unknowns, first-pass historico e custo comparativo, sem chamada extra de modelo.
 - [x] Proveniencia duravel de run e provenance pointers seguros nos commits/work units.
 - [x] Preview final por promocao de candidato exato: branches de implementacao nao geram Preview; somente `preview/**` pode construir o candidato final.
-- [ ] Validar o candidato cumulativo atual em Preview exato + browser evidence autenticada.
-- [ ] Merge humano do release cumulativo; apos o merge, observar release e reconciliar `main`.
+- [x] Validar o candidato cumulativo em Preview exato + browser evidence autenticada: PR #407 head `54b275fbafd7e035fdce983fb2bc976af8b08f64`, Preview `dpl_GB3pzQtX3QHS9Fw5Y9zd7AeRS3zH`, authenticated evidence run `36610828751`.
+- [x] Release cumulativo autorizado pelo usuario e mergeado em `54f3ed0445ffda2c8d0974d0d5b5741065294108`; producao `dpl_EskSGj2T7Z6xjtN8KLNV2yAeeX19` READY, health HTTP 200 no commit correto, CI pos-merge verde e zero runtime errors na janela de observacao.
