@@ -292,3 +292,25 @@ The authenticated Figma correction remains separately pending in #309/#310
 because the required Vercel Preview hit the account build-rate limit. The
 Factory continues to fail closed rather than merging that Console candidate
 without exact Preview evidence.
+
+
+## Multi-agent execution architecture - issue #363
+
+The Factory now has an implementation branch for the first phase of adaptive multi-agent orchestration. The architecture is documented in `docs/MULTI_AGENT_ARCHITECTURE.md`.
+
+The Product model remains responsible only for semantic engineering decomposition. The deterministic Execution Team Planner then combines the engineering plan with the live Agent Registry and derives, without another model call:
+
+- the minimum specialist profiles needed by currently planned work;
+- task ownership by capabilities and preferred role;
+- planned worker count per profile;
+- dependency/scope-aware execution waves;
+- peak planned parallelism;
+- excluded profiles and explicit reasons;
+- blockers when no single safe owner exists;
+- advisory Security/QA/Operations participation that remains fail-closed until dedicated non-writing lanes exist.
+
+The planner does not grant reviewer profiles `github_write`, does not weaken production gates, and does not make Codex the orchestrator. Current generic Direct/Codex write workers remain appropriate only for builder profiles such as Development/UI. Security, QA and Operations require dedicated lanes before their advisory participation becomes automatic execution.
+
+The long-term target is a Change Set: parallel isolated builder work converges deterministically into one integration candidate, then independent Security/QA/Operations evaluate the exact integrated candidate before CI/Preview and the human production merge gate.
+
+Issue #363 / branch `agents/363-execution-team-plan` is not released yet. Console changes still require green CI, an exact verified Preview/browser evidence, and human production merge.
