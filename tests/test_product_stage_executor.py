@@ -84,9 +84,12 @@ class ProductStageExecutorTests(unittest.TestCase):
 
     def test_planning_derives_team_plan_without_extra_model_call(self):
         p=Provider()
-        p.execute=lambda request: ModelResult(ModelRole.PRIMARY,json.dumps({
-            "tasks":[{"task_key":"ui","title":"Build UI","required_capabilities":["ui"],"scope_keys":["apps/console"],"depends_on":[]}]
-        }),provider_ref="ref-plan",usage={"input_tokens":10})
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{"task_key":"ui","title":"Build UI","required_capabilities":["ui"],"scope_keys":["apps/console"],"depends_on":[]}]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
         ui=AgentProfile("ui","ui",("ui","ux"),("github_write","model_primary"),{"preferred":"primary"},2,0.75,True)
         h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(ui,))
         out=h.execute(item(),"planning")
