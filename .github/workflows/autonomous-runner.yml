@@ -119,8 +119,40 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
 
+
+  change-set-integration:
+    if: ${{ always() && needs.dispatch.result != 'failure' }}
+    needs: [direct, codex]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Integrate one completed Change Set wave
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            python -m ai_product_factory.runtime_cli --mode change-set-integration --worker-id "integrator-${{ github.run_id }}"
+          else
+            echo "Change Set integration is inert: Control Plane credentials are not configured."
+          fi
+
   ci-followup:
-    needs: product-stage
+    if: ${{ always() && needs.change-set-integration.result != 'failure' }}
+    needs: [product-stage, change-set-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
