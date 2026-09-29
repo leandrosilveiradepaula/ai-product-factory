@@ -966,25 +966,26 @@ if __name__ == "__main__":
 
 
 
-def test_console_orchestration_surface_is_observational_and_factual():
-    page=(ROOT/"apps/console/app/orchestration/page.tsx").read_text()
-    control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
-    nav=(ROOT/"apps/console/app/nav.tsx").read_text()
-    assert "Orquestração" in nav
-    assert "getOrchestrationOverview" in control
-    for table in (
-        "factory_project_scheduling",
-        "factory_incidents",
-        "factory_repair_jobs",
-        "factory_replay_requests",
-        "factory_improvement_proposals",
-        "factory_release_reports",
-    ):
-        assert table in control
-    assert "Prontidão de release" in page
-    assert "fatos, não score subjetivo" in page
-    assert "sempre zero-effect" in page
-    assert "Aguardando merge humano de produção" in page
-    assert "merge_pull_request" not in page
-    assert "SUPABASE_SECRET_KEY" not in page
-    assert "SUPABASE_SERVICE_ROLE_KEY" not in page
+class OrchestrationConsoleAcceptanceTests(unittest.TestCase):
+    def test_console_orchestration_surface_is_observational_and_factual(self):
+        page=(ROOT/"apps/console/app/orchestration/page.tsx").read_text()
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        nav=(ROOT/"apps/console/app/nav.tsx").read_text()
+        self.assertIn("Orquestração",nav)
+        self.assertIn("getOrchestrationOverview",control)
+        for table in (
+            "factory_project_scheduling",
+            "factory_incidents",
+            "factory_repair_jobs",
+            "factory_replay_requests",
+            "factory_improvement_proposals",
+            "factory_release_reports",
+        ):
+            self.assertIn(table,control)
+        self.assertIn("Prontidão de release",page)
+        self.assertIn("fatos, não score subjetivo",page)
+        self.assertIn("sempre zero-effect",page)
+        self.assertIn("Aguardando merge humano de produção",page)
+        self.assertNotIn("merge_pull_request",page)
+        self.assertNotIn("SUPABASE_SECRET_KEY",page)
+        self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY",page)
