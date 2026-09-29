@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -145,6 +145,19 @@ class RuntimeCliTests(unittest.TestCase):
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 require_paid_runtime_budget(health_reader=reader)
+
+
+    def test_replay_mode_is_zero_effect_and_model_free(self):
+        store=MagicMock()
+        store.create_replay.return_value=SimpleNamespace(
+            replay_id="rp",source_run_id="run",mode="shadow",status="ready",
+            effect="none",model_calls_allowed=False,snapshot_hash="a"*64,
+        )
+        with patch("ai_product_factory.runtime_cli.SupabaseProvenanceStore",return_value=store):
+            out=run_replay_once("run","shadow")
+        self.assertEqual(out["effect"],"none")
+        self.assertFalse(out["model_calls_allowed"])
+        store.create_replay.assert_called_once_with("run","shadow")
 
     def test_health_is_side_effect_free_configuration_report(self):
         with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True):
