@@ -256,4 +256,5 @@ class CodexCLIProducer:
             "Keep the change narrowly scoped and run only relevant local deterministic tests.\n\n"
             f"Task title: {item.title}\n"
             f"Task description:\n{item.description}\n"
+            f"Impact analysis (factual context; unknowns must be preserved):\n{getattr(item,'impact_context',None)}\n"
         )
