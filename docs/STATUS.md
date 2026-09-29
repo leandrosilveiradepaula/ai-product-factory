@@ -342,3 +342,10 @@ The Change Set path is fail-closed on stale work-unit bases, duplicate changed-f
 Branch `intelligence/375-impact-engine` adds a versioned Project Brain and deterministic Impact Engine on top of the multi-agent/Change Set stack. Planning now persists a graph snapshot without an additional model call. Before a builder writes code, its exact work-unit task key is resolved against the current Brain and a durable blast-radius analysis is recorded. The impact packet is passed to Direct/Codex as factual context with explicit confidence and unknowns.
 
 Both database additions are private, RLS-enabled, service-side only and additive; they do not change production execution until the corresponding runtime code is released.
+
+
+## Requirement Traceability / DoD - issue #376
+
+Branch `quality/376-traceability-dod` adds deterministic requirement IDs, task links, requirement evidence, versioned Definition of Done and factual readiness. Planning now requires non-empty acceptance criteria per task. Delivery evidence is recorded from CI, specialist lanes, verified Preview/browser and observed human merge; no model is asked to invent proof.
+
+DoD is deliberately not a numeric score. Missing evidence remains explicit. Migration validation, rollback analysis and API contract checks can be compiled before their dedicated validators exist; those checks therefore remain visible as missing until the next policy/validator phase.
