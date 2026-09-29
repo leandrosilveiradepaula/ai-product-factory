@@ -1,0 +1,37 @@
+name: Generate Console lockfile
+
+on:
+  push:
+    branches:
+      - "ci/generate-console-lockfile"
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/console/package.json
+      - name: Generate reproducible lockfile
+        working-directory: apps/console
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm run build
+      - name: Upload lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-package-lock
+          path: apps/console/package-lock.json
+          retention-days: 1
+          if-no-files-found: error
