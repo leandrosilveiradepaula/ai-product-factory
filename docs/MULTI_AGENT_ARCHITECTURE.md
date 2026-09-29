@@ -384,10 +384,18 @@ Still pending:
 
 ### Phase D — adaptive scheduler
 
-- effective concurrency based on queue/quotas/conflict telemetry;
-- planned-vs-actual measurements;
-- critical-path telemetry;
-- bounded tuning proposals.
+Implemented in #368:
+- effective concurrency is a runtime ceiling, never a target;
+- bounded by runnable independent work and Agent Registry max_concurrency;
+- paid-cost unknown or critical/blocked quota fail closed to zero workers;
+- quota attention/unknown, repair rate, first-pass yield and CI queue pressure reduce parallelism;
+- every decision is persisted with pressure snapshot and reasons;
+- the GitHub Actions worker matrix is filtered before workers start.
+
+Still pending:
+- measured scope-conflict rate from Change Sets;
+- full planned-vs-actual critical-path telemetry;
+- Shadow Mode comparison before tuning-policy rollout.
 
 ### Phase E — routing evals and continuous improvement
 
