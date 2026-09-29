@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 from typing import Protocol
 
 from .change_set_store import ChangeSetBinding,SupabaseChangeSetStore
@@ -35,6 +35,7 @@ class ChangeSetBuilderWorker:
             integration_branch=integration_branch,work_branch=item.branch,
         )
         self.github.ensure_branch_at_sha(item.branch,binding.base_commit)
+        item=replace(item,base_commit=binding.base_commit)
         artifact=self.producer.produce(item)
         if not artifact.files:raise ValueError("implementation producer returned no files")
         output=self.github.commit_files(item.branch,artifact.files,message=artifact.commit_message)
