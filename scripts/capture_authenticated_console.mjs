@@ -40,8 +40,17 @@ try {
 
   const login = await page.goto(`${consoleUrl}/login`, {waitUntil:"networkidle", timeout:60000});
   if (!login || login.status() >= 400) throw new Error(`login page status ${login?.status()}`);
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
+  const emailInput=page.locator('input[name="email"]');
+  const passwordInput=page.locator('input[name="password"]');
+  try {
+    await emailInput.waitFor({state:"visible",timeout:60000});
+    await passwordInput.waitFor({state:"visible",timeout:60000});
+  } catch (error) {
+    const bodySample=(await page.locator("body").innerText().catch(()=>"")).replace(/\\s+/g," ").slice(0,500);
+    throw new Error(`login form unavailable at ${page.url()} title=${await page.title()} body=${bodySample}: ${error}`);
+  }
+  await emailInput.fill(email);
+  await passwordInput.fill(password);
   await Promise.all([
     page.waitForURL(url => !url.pathname.startsWith("/login"), {timeout:60000}),
     page.getByRole("button", {name:"Entrar"}).click(),
