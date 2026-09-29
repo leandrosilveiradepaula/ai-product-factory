@@ -66,6 +66,14 @@ The target integration model is one Change Set per objective: parallel work unit
 
 See `docs/MULTI_AGENT_ARCHITECTURE.md` for selection rules, context packets, adaptive concurrency, metrics and the implementation roadmap.
 
+## Project Brain and Impact Engine
+
+After Planning, the runtime builds a deterministic Project Brain snapshot from the engineering plan and any durable reconciliation snapshot already present in context. No additional model call is made.
+
+The Brain stores versioned nodes/edges with provenance for project, tasks, repository scopes, capabilities, components and observed sources/evidence. Direct public access remains denied by RLS; server-side service access is required.
+
+Before a Change Set builder generates code, the Impact Engine resolves the work-unit task key, loads the current Brain snapshot and traverses relevant dependency/scope/capability relations. The resulting impact packet contains confidence, seed nodes, impacted nodes and explicit unknowns. It is persisted and then passed as factual context to Direct/Codex. Missing knowledge is recorded as unknown rather than invented.
+
 ## Change Sets
 
 A ready Execution Team Plan materializes one Change Set. Only builder tasks become work units; Security, QA and Operations remain independent review lanes.
