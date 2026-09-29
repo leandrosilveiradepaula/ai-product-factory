@@ -47,6 +47,7 @@ from .evidence import EvidenceBundle
 from .review_gate import EvalResult,evaluate_quality_gate
 from .specialist_lane_queue import SupabaseSpecialistLaneQueue
 from .specialist_lanes import evaluate_specialist_lane
+from .traceability_store import SupabaseTraceabilityStore
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -193,6 +194,10 @@ def run_ci_once()->dict:
   if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
   store.record_evaluation(run_id=item.run_id,eval_type="quality_gate",status="success",baseline_ref=item.candidate_commit,result={"passed":True,"reasons":list(quality.reasons),"source":"github_ci"})
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
+  SupabaseTraceabilityStore().record_delivery_evidence(
+   run_id=item.run_id,evidence_type="github_ci",status="passed",evidence_ref=item.candidate_commit,
+   metadata={"source":"github_checks","pr_number":item.pr_number}
+  )
   routed=SupabaseSpecialistLaneQueue().enqueue(item.run_id)
   status=str(routed.get("status") or "specialist_review_pending")
  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
@@ -204,6 +209,10 @@ def run_specialist_once(role:str,worker_id:str)->dict:
  github=GitHubRestAdapter(repository=item.repository)
  result=evaluate_specialist_lane(item,github)
  completed=queue.complete(item,status=result.status,findings=list(result.findings),evidence=result.evidence)
+ SupabaseTraceabilityStore().record_delivery_evidence(
+  run_id=item.run_id,evidence_type=role,status=result.status,evidence_ref=item.candidate_commit,
+  metadata={"source":"specialist_lane","role":role,"job_id":item.job_id,"findings_count":len(result.findings)}
+ )
  return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,"run_status":completed.get("run_status"),"findings":list(result.findings)}
 
 def run_preview_probe_once()->dict:
@@ -253,6 +262,15 @@ def run_preview_once()->dict:
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
  status=loop.finalize_verified_preview(session,verified)
+ trace=SupabaseTraceabilityStore()
+ trace.record_delivery_evidence(
+  run_id=item.run_id,evidence_type="preview",status="passed",evidence_ref=verified.deployment.deployment_ref,
+  metadata={"candidate_commit":item.candidate_commit}
+ )
+ trace.record_delivery_evidence(
+  run_id=item.run_id,evidence_type="browser_evidence",status="passed",evidence_ref=verified.deployment.deployment_ref,
+  metadata={"candidate_commit":item.candidate_commit}
+ )
  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref}
 
 def run_release_once()->dict:
@@ -267,6 +285,10 @@ def run_release_once()->dict:
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  merge_sha=loop.observe_manual_merge(session)
  if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
+ SupabaseTraceabilityStore().record_delivery_evidence(
+  run_id=item.run_id,evidence_type="human_release",status="passed",evidence_ref=merge_sha,
+  metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
+ )
  SupabaseAgentScheduler().release_scopes(item.run_id)
  return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
 
