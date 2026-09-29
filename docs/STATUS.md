@@ -315,3 +315,12 @@ that upstream release is available.
 - Supabase Vault currently contains no stored secrets, which is expected before the first project OAuth authorization persists access/refresh tokens.
 - OpenAI API WIF identifiers/audience are present in `openai-api`; the API-WIF blocker is mapping validation, not a missing secret.
 - Codex workspace auth remains unconfigured: no federation rule/audience in `openai-codex` and no official access-token credential; Codex automatic execution remains fail-closed.
+
+
+## Supabase OAuth production initiation recheck
+
+- Vercel already has `SUPABASE_OAUTH_CLIENT_ID` and `SUPABASE_OAUTH_CLIENT_SECRET`.
+- The authenticated CRM project detail renders the `Conectar Supabase` action for database binding `5086d662-42eb-43a6-a8da-0da59cb39d75`, whose expected project ref `mpmhmjepmmpxbsmekldf` matches the CRM repository.
+- The official visual-evidence broker intentionally provisions role `operator`; the OAuth connect route requires `requireConsoleAdmin()`. An automated operator therefore cannot cross the admin gate, and the Factory did not weaken that boundary just for testing.
+- Audit run `36633088137` was cleaned/expired; normal authenticated evidence run `36633521570` subsequently passed and was recorded as `captured`; zero ephemeral visual operators remain.
+- The only remaining OAuth activation step is interactive admin consent in the production Console, followed by the built-in project identity and read-only database verification.
