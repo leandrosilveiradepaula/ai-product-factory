@@ -150,3 +150,14 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] Resolver API WIF #250 quando o mapping administrativo puder ser corrigido.
 - [ ] Resolver Codex auth #240 quando houver credencial oficial/enablement.
 - [ ] Retornar repositorio a private depois de encerrada a necessidade da janela publica.
+
+
+### F9 - Project Intelligence
+- [x] Project Brain v1 deterministico e versionado: tarefas, scopes, capabilities, componentes e fontes/evidencias com provenance.
+- [x] Impact Engine v1: blast radius por task_key/grafo, confidence/unknowns explicitos e evidencia duravel antes do builder.
+- [ ] Requirement Traceability e Definition of Done compilavel (#376).
+- [ ] Context Packets/sandboxes/repair loops (#377).
+- [ ] Policy-as-Code/Release Intelligence/rollback (#378).
+- [ ] Incident Mode/Portfolio Scheduler (#379).
+- [ ] Replay/Shadow/provenance completo/self-improvement (#380).
+- [ ] Architecture Guardian/scanners/lineage/API contracts (#381).
