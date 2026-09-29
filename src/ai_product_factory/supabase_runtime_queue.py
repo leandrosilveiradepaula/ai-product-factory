@@ -7,6 +7,8 @@ import urllib.request
 
 from .runtime_worker import RuntimeQueue, StageEvidence, WorkItem
 from .project_brain import build_project_brain_graph
+from .traceability import build_requirement_trace
+from .definition_of_done import compile_definition_of_done
 from .supabase_server import resolve_supabase_server_config
 
 
@@ -40,6 +42,14 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
         if evidence.stage=="planning":
+            trace=build_requirement_trace(evidence.output)
+            self._rpc("factory_record_requirement_trace",{
+                "p_project_id":item.project_id,
+                "p_source_run_id":item.run_id,
+                "p_source_ref":f"run:{item.run_id}:planning",
+                "p_requirements":list(trace.requirements),
+            })
+
             brain=build_project_brain_graph(project_key=item.project_key,engineering_plan=evidence.output,context=item.context)
             self._rpc("factory_record_project_brain_snapshot",{
                 "p_project_id":item.project_id,
@@ -48,12 +58,27 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 "p_nodes":list(brain.nodes),
                 "p_edges":list(brain.edges),
             })
+
+            change_set_id=None
             team_plan=evidence.output.get("_team_plan")
             if isinstance(team_plan,dict):
                 recorded=self._rpc("factory_record_execution_team_plan",{"p_run_id":item.run_id,"p_plan":team_plan}) or {}
                 team_plan_id=recorded.get("id")
                 if team_plan_id and recorded.get("status")=="ready":
-                    self._rpc("factory_materialize_change_set",{"p_team_plan_id":team_plan_id})
+                    materialized=self._rpc("factory_materialize_change_set",{"p_team_plan_id":team_plan_id}) or {}
+                    change_set_id=materialized.get("change_set_id")
+
+            dod=compile_definition_of_done(
+                engineering_plan=evidence.output,
+                manifest=item.context.get("manifest") if isinstance(item.context.get("manifest"),dict) else {},
+                requirement_count=trace.count,
+            )
+            self._rpc("factory_record_definition_of_done",{
+                "p_project_id":item.project_id,
+                "p_source_run_id":item.run_id,
+                "p_change_set_id":change_set_id,
+                "p_checks":dod.as_records(),
+            })
 
     def complete(self,item:WorkItem)->None:
         self._rpc("factory_finish_run",{"p_run_id":item.run_id,"p_status":"completed","p_error":None})
