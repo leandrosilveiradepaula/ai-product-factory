@@ -288,7 +288,14 @@ Live reconciliation during the audit:
 - Supabase security advisor reports only the intentional RLS-without-public-policy informational findings plus the administrative Leaked Password Protection warning;
 - performance advisor reports only currently-unused indexes; no index is removed solely from this short observation window.
 
-The authenticated Figma correction remains separately pending in #309/#310
-because the required Vercel Preview hit the account build-rate limit. The
-Factory continues to fail closed rather than merging that Console candidate
-without exact Preview evidence.
+The authenticated Figma correction in #309 is now visually complete on the
+current consolidated Console candidate. PR #407 head
+`711e50acc8c93f3f46fa729845e149b444e87d8a` has exact Vercel Preview
+`dpl_4svzTt3EPikybj24CnrjEUwVLaeN` in READY state and authenticated visual
+evidence run `36607077404` passed capture, encryption, upload and cleanup.
+The captured manifest records 11/11 routes with HTTP 200 and zero application
+console errors, page errors or bad responses. The remaining #309 acceptance
+item is the human production release plus post-release observation; no
+auto-merge is authorized. Trusted Source access issue #412 is completed.
+Dependency hardening #402 remains open for Next.js 15.5.27 revalidation when
+that upstream release is available.
