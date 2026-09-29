@@ -362,3 +362,68 @@ export async function getResourceLimits():Promise<ResourceLimitRow[]>{
  return out;
 }
 
+export type AgentRunSummary={runId:string;taskTitle:string;status:string;route:string|null};
+export type FactoryAgentSummary={
+ id:string;key:string;name:string;role:string;description:string;healthStatus:string;active:boolean;
+ capabilities:string[];allowedTools:string[];modelPolicy:Record<string,unknown>;
+ maxConcurrency:number;activeSlots:number;budgetUsd:number|null;knownCostUsd:number;
+ activeRuns:AgentRunSummary[];activeScopes:string[];
+};
+
+export async function getFactoryAgents():Promise<FactoryAgentSummary[]>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();if(!cfg)return[];
+ const agentsResponse=await fetch(cfg.url+"/rest/v1/factory_agents?select=id,agent_key,name,role,description,capabilities,allowed_tools,model_policy,max_concurrency,cost_budget_usd,is_active,health_status&order=agent_key.asc",{headers:cfg.headers,cache:"no-store"});
+ if(!agentsResponse.ok)throw new Error("Não foi possível carregar os agentes da Factory.");
+ const agents=await agentsResponse.json();
+ if(!agents.length)return[];
+
+ const agentIds=agents.map((x:any)=>String(x.id));
+ const assignmentsResponse=await fetch(cfg.url+"/rest/v1/factory_run_agent_assignments?select=agent_id,run_id,status,assigned_at&agent_id=in.("+agentIds.join(",")+")&order=assigned_at.desc",{headers:cfg.headers,cache:"no-store"});
+ const assignments=assignmentsResponse.ok?await assignmentsResponse.json():[];
+ const runIds=[...new Set(assignments.map((x:any)=>String(x.run_id)).filter(Boolean))];
+
+ let runs:any[]=[];let tasks:any[]=[];let usage:any[]=[];
+ if(runIds.length){
+  const runsResponse=await fetch(cfg.url+"/rest/v1/factory_runs?select=id,task_id,status,execution_route&id=in.("+runIds.join(",")+")",{headers:cfg.headers,cache:"no-store"});
+  runs=runsResponse.ok?await runsResponse.json():[];
+  const taskIds=[...new Set(runs.map((x:any)=>String(x.task_id)).filter(Boolean))];
+  if(taskIds.length){
+   const tasksResponse=await fetch(cfg.url+"/rest/v1/factory_tasks?select=id,title&id=in.("+taskIds.join(",")+")",{headers:cfg.headers,cache:"no-store"});
+   tasks=tasksResponse.ok?await tasksResponse.json():[];
+  }
+  const usageResponse=await fetch(cfg.url+"/rest/v1/factory_tool_usage?select=run_id,estimated_cost&run_id=in.("+runIds.join(",")+")",{headers:cfg.headers,cache:"no-store"});
+  usage=usageResponse.ok?await usageResponse.json():[];
+ }
+
+ const now=new Date().toISOString();
+ const locksResponse=await fetch(cfg.url+"/rest/v1/factory_agent_scope_locks?select=agent_id,scope_key,run_id,lease_expires_at&agent_id=in.("+agentIds.join(",")+")&released_at=is.null&lease_expires_at=gt."+encodeURIComponent(now),{headers:cfg.headers,cache:"no-store"});
+ const locks=locksResponse.ok?await locksResponse.json():[];
+ const runById=new Map(runs.map((x:any)=>[String(x.id),x]));
+ const taskById=new Map(tasks.map((x:any)=>[String(x.id),String(x.title)]));
+ const usageByRun=new Map<string,number>();
+ usage.forEach((x:any)=>usageByRun.set(String(x.run_id),(usageByRun.get(String(x.run_id))||0)+(x.estimated_cost==null?0:Number(x.estimated_cost))));
+
+ return agents.map((a:any)=>{
+  const agentAssignments=assignments.filter((x:any)=>String(x.agent_id)===String(a.id));
+  const activeAssignments=agentAssignments.filter((x:any)=>["assigned","claimed"].includes(String(x.status)));
+  const uniqueRunIds:string[]=[...new Set<string>(agentAssignments.map((x:any)=>String(x.run_id)))];
+  const activeRuns=activeAssignments.map((x:any)=>{
+   const run:any=runById.get(String(x.run_id))||{};
+   return {runId:String(x.run_id),taskTitle:taskById.get(String(run.task_id))||"Tarefa sem título",status:String(run.status||x.status),route:run.execution_route?String(run.execution_route):null};
+  });
+  const knownCostUsd=uniqueRunIds.reduce((sum:number,runId:string)=>sum+(usageByRun.get(runId)||0),0);
+  return {
+   id:String(a.id),key:String(a.agent_key),name:String(a.name),role:String(a.role),description:String(a.description||""),
+   healthStatus:String(a.health_status),active:Boolean(a.is_active),
+   capabilities:Array.isArray(a.capabilities)?a.capabilities.map(String):[],
+   allowedTools:Array.isArray(a.allowed_tools)?a.allowed_tools.map(String):[],
+   modelPolicy:a.model_policy&&typeof a.model_policy==="object"?a.model_policy:{},
+   maxConcurrency:Number(a.max_concurrency||1),activeSlots:activeAssignments.length,
+   budgetUsd:a.cost_budget_usd==null?null:Number(a.cost_budget_usd),knownCostUsd,
+   activeRuns,
+   activeScopes:locks.filter((x:any)=>String(x.agent_id)===String(a.id)).map((x:any)=>String(x.scope_key)),
+  } satisfies FactoryAgentSummary;
+ });
+}
+
