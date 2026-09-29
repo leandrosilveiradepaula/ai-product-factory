@@ -109,6 +109,9 @@ class FactoryAcceptanceTests(unittest.TestCase):
         for job in (
             "product-stage",
             "ci-followup",
+            "specialist-security",
+            "specialist-qa",
+            "specialist-operations",
             "release-followup",
             "dispatch",
             "direct",
@@ -127,6 +130,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "recovery",
             "product",
             "ci",
+            "specialist",
             "release",
             "dispatch",
             "direct",
@@ -240,6 +244,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929012000_factory_execution_team_plan_serialization.sql",
             "20260929012100_factory_execution_team_plan_serialization.sql",
             "20260929013000_factory_team_plan_dispatch_gate.sql",
+            "20260929023000_factory_specialist_lanes.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -717,3 +722,34 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
     assert "factory_execution_team_plans" in dispatch_gate
     assert "v_team_status is distinct from 'ready'" in dispatch_gate
     assert "factory_dispatch_next_planned_task" in dispatch_gate
+
+
+    def test_specialist_lanes_are_read_only_fail_closed_and_precede_preview(self):
+        workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+        runtime=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
+        migration=(ROOT/"supabase/migrations/20260929023000_factory_specialist_lanes.sql").read_text()
+        evaluator=(ROOT/"src/ai_product_factory/specialist_lanes.py").read_text()
+
+        for job in ("specialist-security","specialist-qa","specialist-operations"):
+            self.assertIn("\n  "+job+":",workflow)
+        self.assertIn("needs: [specialist-security, specialist-qa, specialist-operations]",workflow)
+        specialist_region=workflow[workflow.index("\n  specialist-security:"):workflow.index("\n  release-followup:")]
+        self.assertNotIn("contents: write",specialist_region)
+        self.assertNotIn("pull-requests: write",specialist_region)
+        self.assertIn("--mode specialist --specialist-role security",specialist_region)
+        self.assertIn("--mode specialist --specialist-role qa",specialist_region)
+        self.assertIn("--mode specialist --specialist-role operations",specialist_region)
+
+        self.assertIn("factory_specialist_lane_jobs",migration)
+        self.assertIn("factory_enqueue_specialist_lanes",migration)
+        self.assertIn("factory_claim_specialist_lane",migration)
+        self.assertIn("factory_complete_specialist_lane",migration)
+        self.assertIn("factory_recover_specialist_lanes",migration)
+        self.assertIn("enable row level security",migration)
+        self.assertIn("security invoker",migration)
+        self.assertIn("candidate_commit_mismatch",migration)
+        self.assertIn("specialist_retry_exhausted",migration)
+        self.assertIn("SupabaseSpecialistLaneQueue",runtime)
+        self.assertIn("evaluate_specialist_lane",runtime)
+        self.assertIn("model_call",evaluator)
+        self.assertNotIn("merge_pull_request(",evaluator)
