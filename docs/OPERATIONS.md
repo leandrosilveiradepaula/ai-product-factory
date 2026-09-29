@@ -126,6 +126,14 @@ Evidence is factual:
 
 Readiness contains explicit satisfied/missing checks; there is no release score. Checks without an implemented evidence provider remain missing rather than being guessed as passed.
 
+## Policy-as-Code and Release Intelligence
+
+The release policy is source-controlled in `config/factory.release-policy.v1.json`. It explicitly forbids automatic merge and requires human production release.
+
+After Preview evidence (or explicit Preview non-applicability), the runtime builds a factual release assessment from current DoD readiness, requirements/evidence, specialist evaluations, changed files, task risk, paid-cost health and rollback evidence. Missing non-human DoD checks, unknown paid cost, or an unverified migration rollback blocks transition to `awaiting_release` and persists `release_policy_blocked`.
+
+A successful automatic decision is only `ready_for_human_release`. The release observer marks the report `released` only after GitHub shows a human merge.
+
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
