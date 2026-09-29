@@ -84,7 +84,15 @@ class SupabaseSpecialistLaneQueue:
         )
 
     def complete(self,item:SpecialistLaneItem,*,status:str,findings:list[dict],evidence:dict)->dict:
-        return self._rpc("factory_complete_specialist_lane",{
+        completed=self._rpc("factory_complete_specialist_lane",{
             "p_job_id":item.job_id,"p_status":status,
             "p_findings":findings,"p_evidence":evidence,
         }) or {}
+        if status=="failed" and item.role in {"security","qa"}:
+            repair=self._rpc("factory_enqueue_repair_from_specialist",{
+                "p_job_id":item.job_id,"p_findings":findings,"p_max_cycles":3,
+            }) or {}
+            completed["repair"]=repair
+            if repair.get("created"):
+                completed["run_status"]="repair_pending"
+        return completed
