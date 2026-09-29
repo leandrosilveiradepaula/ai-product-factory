@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -195,6 +195,28 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(kwargs["baseline_ref"],"abc")
         self.assertEqual(kwargs["status"],"success")
 
+
+
+    def test_specialist_empty_queue_has_no_github_side_effect(self):
+        queue=MagicMock();queue.claim.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            out=run_specialist_once("security","worker")
+        self.assertEqual(out,{"claimed":False,"status":"empty","role":"security"})
+        github.assert_not_called()
+
+    def test_specialist_persists_deterministic_result(self):
+        item=SimpleNamespace(job_id="j",run_id="r",repository="owner/repo",role="qa")
+        queue=MagicMock();queue.claim.return_value=item;queue.complete.return_value={"run_status":"preview_ready"}
+        result=SimpleNamespace(status="passed",findings=(),evidence={"model_call":False})
+        with patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github_cls, \
+             patch("ai_product_factory.runtime_cli.evaluate_specialist_lane",return_value=result) as evaluate:
+            out=run_specialist_once("qa","worker")
+        self.assertEqual(out["status"],"passed")
+        self.assertEqual(out["run_status"],"preview_ready")
+        evaluate.assert_called_once()
+        queue.complete.assert_called_once_with(item,status="passed",findings=[],evidence={"model_call":False})
 
     def test_preview_probe_empty_has_no_github_side_effect(self):
         queue=MagicMock();queue.next_pending.return_value=None
