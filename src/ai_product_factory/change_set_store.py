@@ -46,6 +46,9 @@ class SupabaseChangeSetStore:
             raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
         return None if not raw else json.loads(raw)
 
+    def recover_expired(self,max_attempts:int=3)->dict:
+        return self._rpc("factory_recover_change_sets",{"p_max_attempts":max_attempts}) or {}
+
     def bind_source(self,*,run_id:str,source_commit:str,integration_branch:str,work_branch:str)->ChangeSetBinding:
         data=self._rpc("factory_bind_change_set_source",{
             "p_run_id":run_id,"p_source_commit":source_commit,
