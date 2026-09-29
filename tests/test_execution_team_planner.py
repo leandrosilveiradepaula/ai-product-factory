@@ -59,14 +59,27 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         self.assertEqual(len(out["waves"]),2)
         self.assertEqual(out["planned_worker_peak"],1)
 
-    def test_dependencies_create_execution_waves(self):
+    def test_builder_dependencies_create_execution_waves(self):
+        plan={"tasks":[
+            {"task_key":"backend","title":"Backend","required_capabilities":["implementation"],"scope_keys":["src/api"],"depends_on":[]},
+            {"task_key":"integration","title":"Integration","required_capabilities":["integration"],"scope_keys":["src/integration"],"depends_on":["backend"]},
+        ]}
+        out=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(out["status"],"ready")
+        self.assertEqual([x["task_keys"] for x in out["waves"]],[["backend"],["integration"]])
+
+    def test_read_only_specialist_task_fails_closed_until_lane_exists(self):
         plan={"tasks":[
             {"task_key":"backend","title":"Backend","required_capabilities":["implementation"],"scope_keys":["src/api"],"depends_on":[]},
             {"task_key":"tests","title":"Tests","required_capabilities":["tests"],"scope_keys":["tests"],"depends_on":["backend"]},
         ]}
         out=build_execution_team_plan(plan,AGENTS)
-        self.assertEqual([x["task_keys"] for x in out["waves"]],[["backend"],["tests"]])
-        self.assertEqual({x["agent_key"] for x in out["selected_agents"]},{"development","qa"})
+        self.assertEqual(out["status"],"blocked")
+        self.assertEqual(out["waves"][0]["task_keys"],["backend"])
+        qa=next(x for x in out["selected_agents"] if x["agent_key"]=="qa")
+        self.assertFalse(qa["execution_ready"])
+        self.assertEqual(qa["workers_planned"],0)
+        self.assertTrue(any(x["code"]=="specialist_lane_unavailable" and x.get("agent_key")=="qa" for x in out["blockers"]))
 
     def test_impossible_single_owner_capability_mix_fails_closed(self):
         plan={"tasks":[{"task_key":"mixed","title":"Mixed","required_capabilities":["implementation","security_review"],"scope_keys":["src/auth"],"depends_on":[]}]}
