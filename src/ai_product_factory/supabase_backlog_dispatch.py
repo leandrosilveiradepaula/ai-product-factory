@@ -25,7 +25,12 @@ class SupabaseBacklogDispatch:
   if data is None:return None
   task=PlannedTask(data["task_id"],data["project_key"],data["title"],data.get("description") or "",data.get("complexity") or "medium",data.get("risk") or {},data.get("metadata") or {})
   decision=self.dispatcher.decide(task);e=decision.execution
-  self._rpc("factory_record_dispatch_decision",{"p_run_id":data["run_id"],"p_route":e.route.value,"p_codex_level":e.codex.level,"p_codex_used":e.codex.should_use,"p_human_gate":e.human_gate_required,"p_gate_reasons":list(e.gate_reasons)})
+  self._rpc("factory_record_dispatch_decision_v2",{
+   "p_run_id":data["run_id"],"p_route":e.route.value,
+   "p_codex_level":e.codex.level,"p_codex_used":e.codex.should_use,
+   "p_codex_reasons":list(e.codex.reasons),"p_routing_policy_version":e.codex.policy_version,
+   "p_human_gate":e.human_gate_required,"p_gate_reasons":list(e.gate_reasons)
+  })
   return decision
 
  def dispatch_next_any(self)->DispatchDecision|None:
