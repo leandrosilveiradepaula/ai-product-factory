@@ -52,6 +52,9 @@ class SupabaseSpecialistLaneQueue:
     def enqueue(self,run_id:str)->dict:
         return self._rpc("factory_enqueue_specialist_lanes",{"p_run_id":run_id}) or {}
 
+    def recover_expired(self,max_attempts:int=3)->dict:
+        return self._rpc("factory_recover_specialist_lanes",{"p_max_attempts":max_attempts}) or {}
+
     def claim(self,role:str,worker_id:str)->SpecialistLaneItem|None:
         data=self._rpc("factory_claim_specialist_lane",{"p_role":role,"p_worker_id":worker_id,"p_lease_seconds":600})
         if data is None:return None
