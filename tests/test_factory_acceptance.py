@@ -244,8 +244,10 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929011251_factory_execution_team_plans.sql",
             "20260929011724_factory_execution_team_plan_serialization.sql",
             "20260929011745_factory_execution_team_plan_serialization.sql",
+            "20260929011847_factory_team_plan_dispatch_gate.sql",
             "20260929012059_factory_team_plan_dispatch_gate.sql",
             "20260929015617_factory_specialist_lanes.sql",
+            "20260929021253_factory_adaptive_concurrency.sql",
             "20260929032833_factory_adaptive_concurrency.sql",
             "20260929033251_factory_change_sets.sql",
             "20260929033948_factory_project_brain.sql",
@@ -745,8 +747,9 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         assert "for update" in serialization
         assert "factory_projects" in serialization
         serialization_reapply=(ROOT/"supabase/migrations/20260929011745_factory_execution_team_plan_serialization.sql").read_text()
-        assert "preserve durable history" in serialization_reapply
         assert "factory_record_execution_team_plan" in serialization_reapply
+        assert "for update" in serialization_reapply
+        assert "factory_projects" in serialization_reapply
         dispatch_gate=(ROOT/"supabase/migrations/20260929012059_factory_team_plan_dispatch_gate.sql").read_text()
         assert "factory_execution_team_plans" in dispatch_gate
         assert "v_team_status is distinct from 'ready'" in dispatch_gate
