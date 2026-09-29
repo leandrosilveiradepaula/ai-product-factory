@@ -1,6 +1,6 @@
 # Current status
 
-Last reconciled: 2026-09-28.
+Last reconciled: 2026-09-29.
 
 ## Operational foundation
 
@@ -46,14 +46,16 @@ Scheduled Direct is enabled through the retained API key with a prepaid Factory 
 The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
 
 Verified production state:
-- production currently serves release commit `24fc055271c6` from the Figma fidelity release; later `main` commits are backend/docs-only and are intentionally skipped by the Console Vercel path guard;
-- Supabase Auth login is operational;
-- the bootstrap administrator exists as an active `admin` operator;
-- server-side Supabase access prefers `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
-- the production health probe `GET /api/health` is public, returns HTTP 200, and exposes only service status plus a truncated deployment commit;
-- production deployment `dpl_9gokAMNCw8JnBY7jPNZ67LzcwiL9` for merge commit `96fb81c3eb6de66c955562a604d3460ad99a92ae` reached `READY`;
-- production health was verified after the redesign release: `GET /api/health` returned HTTP 200 with service `ai-product-factory-console` and commit `96fb81c3eb6d`;
-- unauthenticated production root returned the redesigned shell and login surface successfully; no runtime errors were reported by Vercel in the verification window.
+- current production release commit: `54f3ed0445ffda2c8d0974d0d5b5741065294108` from authorized PR #407, stacked after authorized PR #400 (`a07c9d96e8d1f64861e928c5c361f5b93f8c6d05`);
+- Vercel production deployment `dpl_EskSGj2T7Z6xjtN8KLNV2yAeeX19` is `READY`;
+- production `GET /api/health` returns HTTP 200 and reports truncated commit `54f3ed0445ff`;
+- post-merge validate + factory-acceptance run `36626997044` succeeded;
+- post-merge Console validation run `36626997056` succeeded with deterministic npm install, typecheck and build;
+- exact pre-release Preview `dpl_GB3pzQtX3QHS9Fw5Y9zd7AeRS3zH` for candidate `54b275fbafd7e035fdce983fb2bc976af8b08f64` reached `READY`;
+- authenticated visual evidence run `36610828751` succeeded with encrypted artifact upload and ephemeral-operator cleanup;
+- visual reconciliation against the preserved exported Figma reference `Esteira.zip` is complete and issue #309 is closed;
+- Vercel reported no runtime errors in the post-release observation window;
+- Supabase Auth login and server-side Control Plane access remain operational; backend access continues to prefer `SUPABASE_SECRET_KEY` with legacy service-role fallback only.
 
 ## Protected Preview / Console intake release
 
