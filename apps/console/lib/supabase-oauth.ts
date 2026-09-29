@@ -3,6 +3,11 @@ import {getSupabaseServerConfig} from "./supabase-server";
 
 export const SUPABASE_OAUTH_CALLBACK="https://ai-product-factory-console.vercel.app/api/integrations/supabase/callback";
 
+export function isSupabaseOAuthConfigured(){
+ const clientId=process.env.SUPABASE_OAUTH_CLIENT_ID?.trim();
+ const clientSecret=process.env.SUPABASE_OAUTH_CLIENT_SECRET?.trim();
+ return Boolean(clientId&&clientSecret);
+}
 function oauthConfig(){
  const clientId=process.env.SUPABASE_OAUTH_CLIENT_ID?.trim();
  const clientSecret=process.env.SUPABASE_OAUTH_CLIENT_SECRET?.trim();
