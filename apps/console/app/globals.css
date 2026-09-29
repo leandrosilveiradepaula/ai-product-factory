@@ -188,15 +188,15 @@ code{font-family:var(--font-mono);font-size:12px;color:var(--color-code-text);ov
 @media(max-width:1180px){.overviewGrid{grid-template-columns:1fr}.operationalStrip{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Exact visual reconciliation against the exported Figma frames in Esteira.zip. */
-:root{--font-sans:var(--font-inter),Inter,"Segoe UI",ui-sans-serif,system-ui,sans-serif}
+:root{--font-sans:var(--font-inter,Inter),"Segoe UI",ui-sans-serif,system-ui,sans-serif}
 html,body{background:var(--color-canvas)}
-body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spacing:-.006em}
+body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spacing:-.006em;font-family:var(--font-inter,Inter),"Segoe UI",ui-sans-serif,system-ui,sans-serif}
 .consoleShell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);background:var(--color-canvas)}
-.sidebar{background:var(--color-sidebar);padding:12px 12px 10px;border-right:1px solid #202530}
+.sidebar{background:var(--color-sidebar);padding:12px 10px 10px;border-right:1px solid #202530}
 .brandRow{display:block}
-.brandBlock{padding:6px 6px 12px;gap:10px}
-.brandMark{width:32px;height:32px;border-radius:6px;background:none;box-shadow:none;object-fit:cover;flex:0 0 32px}
-.brandBlock strong{font-size:14px;line-height:1.1;color:var(--color-text);font-weight:700}
+.brandBlock{padding:5px 6px 12px;gap:9px}
+.brandMark{width:30px;height:30px;border-radius:6px;background:none;box-shadow:none;object-fit:cover;flex:0 0 30px}
+.brandBlock strong{font-size:13px;line-height:1.1;color:var(--color-text);font-weight:700}
 .brandBlock span{font-size:9px;line-height:1.1;color:#adc6ff;letter-spacing:.12em;font-family:var(--font-mono);font-weight:700}
 .workspacePicker{height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;margin:0 0 16px;border-top:1px solid #202530;border-bottom:1px solid #202530;color:#c1c5d3;font-size:10px}
 .workspaceGlyph{color:#8d93a4;font-size:11px}
@@ -204,10 +204,10 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .navGroup{gap:7px}
 .navGroupLabel{padding:0 6px;color:#747b8c;font-size:9px;letter-spacing:.08em;font-family:var(--font-mono);font-weight:500}
 .navGroupItems{gap:2px}
-.navItem{padding:8px 7px;border-radius:2px;gap:10px;color:#c1c5d3;font-size:12px;font-weight:500}
+.navItem{padding:7px 7px;border-radius:2px;gap:9px;color:#c1c5d3;font-size:12px;font-weight:500}
 .navItem:hover{background:#202530;color:#fff}
 .navItem.active{background:#262a34;color:#fff;box-shadow:none}
-.navIcon{width:16px;color:#8d93a4;font-size:12px}
+.navIcon{width:16px;height:16px;color:#8d93a4;display:grid;place-items:center}.navIcon svg{width:15px;height:15px;display:block}
 .navItem.active .navIcon{color:#adc6ff}
 .sidebarFooter{display:grid;gap:9px;margin-top:auto;padding:12px 6px 0;border-top:1px solid #202530}
 .sidebarHealth{display:flex;align-items:center;gap:7px;color:#c1c5d3;font-size:10px}
@@ -223,10 +223,10 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .topbarDivider{width:1px;height:14px;background:#31353f}
 .topbarWork{display:inline-flex;align-items:center;height:34px;padding:0 12px;background:#4d8eff;color:#061b36;border:1px solid #6ca2ff;font-weight:700;font-size:11px}
 .healthDot{width:7px;height:7px;background:#54d8aa;box-shadow:none}
-.main{padding:8px 8px 32px;max-width:none;margin:0}
+.main{padding:12px 10px 32px;max-width:none;margin:0}
 .pageHeader{margin-bottom:12px;gap:16px;padding:0}
 .eyebrow{font-family:var(--font-mono);font-size:9px;letter-spacing:.06em;color:#8daefb}
-.title{font-size:23px;line-height:1.08;letter-spacing:-.035em;margin:5px 0 5px}
+.title{font-size:22px;line-height:1.08;letter-spacing:-.035em;margin:5px 0 5px}
 .subtitle{font-size:12px;line-height:1.45;max-width:760px;color:#9aa0b2}
 .toolbar{gap:6px}
 .card{padding:12px;background:#181b25;border:1px solid #202530;border-radius:3px}
@@ -243,7 +243,7 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .danger{background:#93000a;border-color:#b3261e;color:#fff}
 .metricCard,.metricCardCompact{min-height:72px}
 .metric{font-size:19px}
-.emptyState{padding:24px;border-radius:2px}
+.emptyState{padding:14px 16px;border-radius:2px;min-height:48px;display:grid;place-items:center}
 .detailGrid{gap:6px}
 .detailItem{padding:9px;border-radius:2px;background:#0f131c}
 .detailLabel{font-size:8px;letter-spacing:.06em}
@@ -335,3 +335,7 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .agentWorkTable .tableRow{grid-template-columns:1.15fr 1.8fr .7fr .8fr .65fr}
 @media(max-width:860px){.agentWorkTable .tableRow{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.agentWorkTable .tableRow{grid-template-columns:1fr}}
+.overviewControlBar{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:-4px 0 9px;flex-wrap:wrap}
+.overviewControl{display:inline-flex;align-items:center;gap:6px;height:29px;padding:0 9px;border:1px solid #262a34;background:#181b25;color:#a4aaba;font-size:9px;font-family:var(--font-mono)}
+.overviewControl strong{color:#dfe2ef;font-weight:600}
+.overviewControlLink:hover{border-color:#454b59;color:#fff}
