@@ -66,6 +66,22 @@ The target integration model is one Change Set per objective: parallel work unit
 
 See `docs/MULTI_AGENT_ARCHITECTURE.md` for selection rules, context packets, adaptive concurrency, metrics and the implementation roadmap.
 
+## Specialist review lanes
+
+After green CI, `factory_enqueue_specialist_lanes` reads the latest ready Execution Team Plan and creates only required Security, QA and Operations jobs for the exact candidate SHA.
+
+Lifecycle:
+
+1. CI persists quality-gate evidence.
+2. Required specialist jobs are queued and the run becomes `specialist_review_pending`.
+3. Each read-only worker claims at most one durable job with a bounded lease.
+4. Candidate SHA is revalidated before evaluation.
+5. Findings and evidence are persisted.
+6. Any failed or blocked required lane sets `specialist_review_failed`.
+7. When all required lanes pass, the run becomes `preview_ready`.
+
+Expired leases are requeued only below the retry ceiling; exhausted retries become `specialist_retry_exhausted` blockers. This version is deterministic-first and does not call a paid model merely to perform review.
+
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.
