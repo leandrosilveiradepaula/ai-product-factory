@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -278,5 +279,7 @@ class CodexCLIProducer:
             f"Task title: {item.title}\n"
             f"Task description:\n{item.description}\n"
             f"Exact Change Set base commit: {getattr(item,'base_commit',None)}\n"
-            f"Impact analysis (factual context; unknowns must be preserved):\n{getattr(item,'impact_context',None)}\n"
+            "Use only the following bounded Context Packet as task context. "
+            "Do not infer missing credentials, hidden state, or unrelated project history.\n"
+            f"{json.dumps(getattr(item,'context_packet',None),ensure_ascii=False,sort_keys=True)}\n"
         )
