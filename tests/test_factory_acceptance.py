@@ -284,6 +284,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "apps/console/app/runs/page.tsx",
             "apps/console/app/runs/[id]/page.tsx",
             "apps/console/app/queue/page.tsx",
+            "apps/console/app/agents/page.tsx",
             "apps/console/app/orchestration/page.tsx",
             "apps/console/app/gates/page.tsx",
             "apps/console/app/evals/page.tsx",
@@ -307,6 +308,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "getRuns",
             "getRunDetail",
             "getWorkQueue",
+            "getFactoryAgents",
             "getHumanGates",
             "getEvaluations",
             "getDeployments",
@@ -627,6 +629,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             ROOT / "apps" / "console" / "app" / "projects" / "new" / "review" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "runs" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "queue" / "page.tsx",
+            ROOT / "apps" / "console" / "app" / "agents" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "gates" / "page.tsx",
             ROOT / "apps" / "console" / "app" / "nav.tsx",
         ]
@@ -689,6 +692,21 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('x.used==null||x.limit==null?"Indisponível"',usage)
         self.assertIn("x.quality",usage)
         self.assertIn("x.resetsAt",usage)
+
+    def test_console_agent_registry_is_server_side_and_operational(self):
+        page=(ROOT/"apps/console/app/agents/page.tsx").read_text()
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        nav=(ROOT/"apps/console/app/nav.tsx").read_text()
+        self.assertIn("getFactoryAgents",page)
+        self.assertIn("Agentes da Factory",page)
+        self.assertIn("slots",page)
+        self.assertIn("Locks de escopo",page)
+        self.assertIn("factory_agents",control)
+        self.assertIn("factory_run_agent_assignments",control)
+        self.assertIn("factory_agent_scope_locks",control)
+        self.assertIn("requireConsoleOperator()",control)
+        self.assertNotIn("credential",page.lower())
+        self.assertIn('href:"/agents"',nav)
 
     def test_agent_registry_is_configurable_scoped_and_fail_closed(self):
         migration=(ROOT/"supabase/migrations/20260928212700_factory_agent_registry.sql").read_text()
