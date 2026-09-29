@@ -9,6 +9,7 @@ from .github_rest import GitHubRestAdapter
 from .impact_engine import SupabaseImpactEngine
 from .work_unit_context import build_context_packet,enforce_write_scopes
 from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
+from .commit_provenance import provenance_commit_message
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,14 @@ class ChangeSetBuilderWorker:
         artifact=self.producer.produce(item)
         if not artifact.files:raise ValueError("implementation producer returned no files")
         enforce_write_scopes(artifact.files.keys(),write_scopes)
-        output=self.github.commit_files(item.branch,artifact.files,message=artifact.commit_message)
+        commit_message=provenance_commit_message(artifact.commit_message,{
+            "Factory-Run":item.run_id,
+            "Factory-Change-Set":binding.change_set_id,
+            "Factory-Work-Unit":binding.work_unit_id,
+            "Factory-Agent":str(source.get("agent_key") or "unknown"),
+            "Factory-Context-SHA256":packet.sha256,
+        })
+        output=self.github.commit_files(item.branch,artifact.files,message=commit_message)
         self.store.complete_work_unit(
             run_id=item.run_id,output_commit=output,changed_files=tuple(sorted(artifact.files)),
         )
