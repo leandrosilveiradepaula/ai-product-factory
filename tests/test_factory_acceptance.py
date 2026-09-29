@@ -237,6 +237,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260928212700_factory_agent_registry.sql",
             "20260928222200_factory_agent_scope_lock_agent_index.sql",
             "20260929004500_factory_execution_team_plans.sql",
+            "20260929012000_factory_execution_team_plan_serialization.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -704,3 +705,6 @@ def test_execution_team_plan_is_deterministic_versioned_and_least_privilege():
     assert "revoke all on public.factory_execution_team_plans from public,anon,authenticated" in migration
     assert "team.plan.recorded" in migration
     assert "security invoker" in migration
+    serialization=(ROOT/"supabase/migrations/20260929012000_factory_execution_team_plan_serialization.sql").read_text()
+    assert "for update" in serialization
+    assert "factory_projects" in serialization
