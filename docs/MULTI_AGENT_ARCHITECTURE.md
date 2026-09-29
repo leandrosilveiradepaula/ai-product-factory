@@ -73,7 +73,8 @@ Outputs:
 - execution waves;
 - peak planned parallelism;
 - blockers;
-- advisory specialist lanes that are required by policy but do not yet have a safe executor.
+- advisory specialist lanes that are required by policy but do not yet have a safe executor;
+- explicit fail-closed blockers when a task is assigned to a specialist whose dedicated lane is not yet implemented.
 
 The selection policy is minimum-capability-cover-with-least-privilege.
 
