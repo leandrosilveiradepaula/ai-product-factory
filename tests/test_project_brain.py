@@ -37,6 +37,21 @@ class ProjectBrainTests(unittest.TestCase):
         evidence=next(x for x in graph.nodes if x["type"]=="evidence")
         self.assertEqual(evidence["source_refs"],["state_snapshot"])
 
+    def test_state_snapshot_evidence_drops_free_form_payload(self):
+        graph=build_project_brain_graph(
+            project_key="demo",
+            engineering_plan={"tasks":[]},
+            context={"state_snapshot":{"evidence":[{
+                "source":"github","head_sha":"abc","status":"verified",
+                "raw_payload":"SECRET_DO_NOT_PERSIST","token":"also-secret",
+            }]}}
+        )
+        node=next(x for x in graph.nodes if x["type"]=="evidence")
+        self.assertEqual(node["name"],"github evidence 1")
+        self.assertEqual(node["attributes"],{"source":"github","head_sha":"abc","status":"verified"})
+        self.assertNotIn("SECRET_DO_NOT_PERSIST",str(node))
+        self.assertNotIn("also-secret",str(node))
+
     def test_graph_is_stable_for_same_input(self):
         kwargs={"project_key":"demo","engineering_plan":{"tasks":[
             {"task_key":"a","title":"A","required_capabilities":["implementation"],"scope_keys":["src/a"],"depends_on":[]}
