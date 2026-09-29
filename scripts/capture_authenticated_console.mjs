@@ -117,6 +117,43 @@ try {
     captured.push({...route,status:response.status(),finalUrl:page.url(),documentSize:size});
   }
 
+  const oauthAudit = {projectKey:"crm-infodive",databaseId:"5086d662-42eb-43a6-a8da-0da59cb39d75"};
+  const projectResponse=await page.goto(`${consoleUrl}/projects/${encodeURIComponent(oauthAudit.projectKey)}`, {waitUntil:"networkidle",timeout:60000});
+  if(!projectResponse || projectResponse.status()>=400) throw new Error(`CRM project page returned ${projectResponse?.status()}`);
+  if(new URL(page.url()).pathname.startsWith("/login")) throw new Error("CRM project page redirected to login");
+  const connectLink=page.getByRole("link",{name:"Conectar Supabase"});
+  await connectLink.waitFor({state:"visible",timeout:30000});
+  const connectHref=await connectLink.getAttribute("href");
+  if(!connectHref || !connectHref.includes(oauthAudit.databaseId)) throw new Error("Supabase connect link missing expected database binding");
+  const oauthRequestPromise=page.waitForRequest(request=>{
+    try{
+      const u=new URL(request.url());
+      return u.origin==="https://api.supabase.com" && u.pathname==="/v1/oauth/authorize";
+    }catch{return false;}
+  },{timeout:60000});
+  void page.goto(`${consoleUrl}${connectHref}`,{waitUntil:"domcontentloaded",timeout:60000}).catch(()=>null);
+  const oauthRequest=await oauthRequestPromise;
+  const oauthUrl=new URL(oauthRequest.url());
+  const requiredOauthParams=["client_id","redirect_uri","response_type","state","code_challenge","code_challenge_method"];
+  for(const name of requiredOauthParams){
+    if(!oauthUrl.searchParams.get(name)) throw new Error(`Supabase OAuth authorize missing ${name}`);
+  }
+  if(oauthUrl.searchParams.get("response_type")!=="code") throw new Error("Supabase OAuth response_type mismatch");
+  if(oauthUrl.searchParams.get("code_challenge_method")!=="S256") throw new Error("Supabase OAuth PKCE method mismatch");
+  if(oauthUrl.searchParams.get("redirect_uri")!=="https://ai-product-factory-console.vercel.app/api/integrations/supabase/callback") throw new Error("Supabase OAuth callback mismatch");
+  await page.evaluate(()=>window.stop()).catch(()=>{});
+  const supabaseOauthInitiation={
+    projectKey:oauthAudit.projectKey,
+    databaseId:oauthAudit.databaseId,
+    authorizeOrigin:oauthUrl.origin,
+    authorizePath:oauthUrl.pathname,
+    responseType:oauthUrl.searchParams.get("response_type"),
+    pkce:oauthUrl.searchParams.get("code_challenge_method"),
+    callback:oauthUrl.searchParams.get("redirect_uri"),
+    statePresent:Boolean(oauthUrl.searchParams.get("state")),
+    challengePresent:Boolean(oauthUrl.searchParams.get("code_challenge")),
+  };
+
   await fs.writeFile(path.join(outDir,"manifest.json"), JSON.stringify({
     status:"success",
     workflowRunId:runId,
@@ -124,6 +161,7 @@ try {
     targetUrl:consoleUrl,
     workflowSourceCommit,
     captured,
+    supabaseOauthInitiation,
     bootstrapDiagnostics,
     consoleErrors,
     pageErrors,
@@ -145,6 +183,7 @@ try {
   console.log(JSON.stringify({
     status:"success",
     captured:captured.map(x=>x.name),
+    supabaseOauthInitiation,
     bootstrapDiagnostics:{
       consoleErrorCount:bootstrapDiagnostics.consoleErrors.length,
       pageErrorCount:bootstrapDiagnostics.pageErrors.length,
