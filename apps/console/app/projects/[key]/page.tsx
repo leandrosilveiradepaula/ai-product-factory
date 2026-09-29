@@ -1,5 +1,5 @@
 import {notFound} from "next/navigation";
-import {getProjectDatabases,getProjectDetail,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
+import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
@@ -8,7 +8,7 @@ function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
 
 export default async function Project({params}:{params:Promise<{key:string}>}){
- const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const [ops,state,databases]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id)]);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));
+ const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const [ops,state,databases,teamPlan]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id)]);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));
  return <>
   <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   <div className="lifecycleRail" aria-label="Ciclo do produto"><span className="lifecycleIdea done">Ideia</span>{stageLabels.map((label,i)=><span key={label} className={i<stages.indexOf(p.stage)?"done":i===stages.indexOf(p.stage)?"current":""}>{label}</span>)}</div>
@@ -47,6 +47,29 @@ export default async function Project({params}:{params:Promise<{key:string}>}){
    <div className="tableRow tableHeader"><span>Tarefa</span><span>Complexidade</span><span>Estado</span><span>Chave</span></div>
    {p.tasks.length===0?<EmptyState>Nenhuma tarefa registrada.</EmptyState>:p.tasks.map(t=><div className="tableRow" key={t.id}><strong>{t.title}</strong><StatusPill status={t.complexity}/><StatusPill status={t.status}/><span className="muted mono">{t.externalKey||t.id.slice(0,8)}</span></div>)}
   </div></section>
+  <section className="section"><SectionHeader title="Equipe de execução" action={teamPlan?<span className="muted">plano v{teamPlan.version} · {teamPlan.profilesSelected} perfil{teamPlan.profilesSelected===1?"":"is"} · pico {teamPlan.plannedWorkerPeak} worker{teamPlan.plannedWorkerPeak===1?"":"s"}</span>:undefined}/>
+   {!teamPlan?<EmptyState>A equipe será definida automaticamente quando o planejamento de engenharia for concluído.</EmptyState>:<div className="stack">
+    <div className="grid compact">
+     <MetricCard label="Perfis selecionados" value={teamPlan.profilesSelected} note="menor conjunto que cobre o plano"/>
+     <MetricCard label="Pico de workers" value={teamPlan.plannedWorkerPeak} note="paralelismo máximo planejado"/>
+     <MetricCard label="Ondas" value={teamPlan.waves.length} note="dependências e conflitos de escopo"/>
+     <MetricCard label="Estado do plano" value={teamPlan.status==="ready"?"Pronto":"Bloqueado"} note={"gerado em "+new Date(teamPlan.createdAt).toLocaleString("pt-BR")}/>
+    </div>
+    <div className="threeCol">
+     {teamPlan.selectedAgents.map(agent=><div className="card denseStack" key={agent.agent_key}>
+      <div className="panelHeading"><strong>{agent.role}</strong><StatusPill status="active" label={agent.workers_planned+" worker"+(agent.workers_planned===1?"":"s")}/></div>
+      <div className="muted mono">{agent.agent_key}</div>
+      <div><span className="detailLabel">Tarefas</span><div className="badgeLine">{agent.task_keys.map(key=><code key={key}>{key}</code>)}</div></div>
+      <div><span className="detailLabel">Por que foi escolhido</span><ul>{agent.reasons.map((reason,i)=><li key={i}>{reason}</li>)}</ul></div>
+      <div className="muted">capacidade máxima: {agent.max_concurrency}</div>
+     </div>)}
+    </div>
+    {teamPlan.waves.length?<div className="card"><span className="detailLabel">Ondas de execução</span><div className="timeline">{teamPlan.waves.map(wave=><div className="timelineItem" key={wave.wave}><div className="badgeLine"><StatusPill status="policy" label={"Onda "+wave.wave}/><strong>{wave.parallel_workers} worker{wave.parallel_workers===1?"":"s"} em paralelo</strong></div><div className="badgeLine">{wave.task_keys.map(key=><code key={key}>{key}</code>)}</div></div>)}</div></div>:null}
+    {teamPlan.advisorySpecialistLanes.length?<div className="card"><span className="detailLabel">Especialistas recomendados para fases independentes</span><p className="muted">Estas participações foram identificadas pela política, mas permanecem fail-closed até existir uma lane própria sem escrita para review/QA/operações.</p><div className="valueList">{teamPlan.advisorySpecialistLanes.map(item=><div className="valueRow" key={item.role}><strong>{item.role}</strong><span className="muted">{item.reasons.join(" · ")}</span></div>)}</div></div>:null}
+    {teamPlan.blockers.length?<div className="card"><span className="detailLabel">Bloqueios do plano</span><ul>{teamPlan.blockers.map((item,i)=><li key={i}><strong>{item.code}</strong>{item.task_key?" · "+item.task_key:""}{item.dependency?" · dependência "+item.dependency:""}</li>)}</ul></div>:null}
+    {teamPlan.excludedAgents.length?<div className="card"><span className="detailLabel">Perfis não usados neste trabalho</span><div className="valueList">{teamPlan.excludedAgents.map(item=><div className="valueRow" key={item.agent_key}><strong>{item.role}</strong><span className="muted">{item.reason}</span></div>)}</div></div>:null}
+   </div>}
+  </section>
   <section className="section"><SectionHeader title="Linha do tempo operacional" action={<span className="muted">{ops.timeline.length} eventos de evidência</span>}/>
    {ops.timeline.length===0?<EmptyState>Ainda não há evidências operacionais para este projeto.</EmptyState>:<div className="card"><div className="timeline">{ops.timeline.slice(0,40).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><StatusPill status={item.kind}/><strong>{item.title}</strong>{item.status?<StatusPill status={item.status}/>:null}</div><div className="timelineMeta"><span>{new Date(item.at).toLocaleString("pt-BR")}</span>{item.detail?<span>{item.detail}</span>:null}{item.cost!=null?<span>custo {item.cost}</span>:null}{item.ref?<code>{item.ref}</code>:null}</div></div>)}</div></div>}
   </section>
