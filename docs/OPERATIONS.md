@@ -66,6 +66,22 @@ The target integration model is one Change Set per objective: parallel work unit
 
 See `docs/MULTI_AGENT_ARCHITECTURE.md` for selection rules, context packets, adaptive concurrency, metrics and the implementation roadmap.
 
+## Change Sets
+
+A ready Execution Team Plan materializes one Change Set. Only builder tasks become work units; Security, QA and Operations remain independent review lanes.
+
+The first builder observes the repository `main` SHA and binds it as the immutable Change Set source. Every work unit in the current wave receives the current integrated candidate as its exact base. Work-unit branches do not create release pull requests.
+
+When all work units in a wave are complete, the Change Set integrator:
+
+1. verifies every work unit was based on the current candidate;
+2. rejects duplicate changed-file ownership across the wave;
+3. reads exact file contents from each output commit;
+4. commits the combined files once to the integration branch;
+5. advances to the next wave, or creates one final PR after the last wave.
+
+The final PR head SHA must equal the durable Change Set candidate. The existing CI, specialist review, Preview and human release pipeline then takes over. Integrator retries are bounded; exhausted builder/integration retries block the Change Set.
+
 ## Specialist review lanes
 
 After green CI, `factory_enqueue_specialist_lanes` reads the latest ready Execution Team Plan and creates only required Security, QA and Operations jobs for the exact candidate SHA.
