@@ -253,6 +253,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929060000_factory_release_policy.sql",
             "20260929043000_factory_sandbox_context_repair.sql",
             "20260929070000_factory_incident_portfolio.sql",
+            "20260929080000_factory_replay_shadow_provenance.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -912,3 +913,30 @@ def test_incident_mode_and_portfolio_scheduler_preserve_safety_gates():
     assert "SupabasePortfolioScheduler" in dispatch
     assert "portfolio.candidates" in dispatch
     assert "factory_tasks?select=project_id" not in dispatch
+
+
+
+def test_replay_shadow_and_improvement_are_zero_effect_and_source_controlled():
+    module=(ROOT/"src/ai_product_factory/provenance_replay.py").read_text()
+    migration=(ROOT/"supabase/migrations/20260929080000_factory_replay_shadow_provenance.sql").read_text()
+    worker=(ROOT/"src/ai_product_factory/change_set_worker.py").read_text()
+    for marker in (
+        "factory_run_provenance",
+        "factory_replay_requests",
+        "factory_shadow_decisions",
+        "factory_improvement_proposals",
+        "effect text not null default 'none' check (effect='none')",
+        "model_calls_allowed boolean not null default false",
+        "requires_source_control boolean not null default true",
+        "auto_apply boolean not null default false",
+        "factory_create_replay_request",
+        "factory_record_shadow_decision",
+        "factory_propose_improvement",
+        "enable row level security",
+        "security invoker",
+    ):
+        assert marker in migration
+    assert "build_run_provenance" in module
+    assert "canonical_hash" in module
+    assert 'RELEASE_POLICY_VERSION="v1"' in module
+    assert "self.provenance.record" in worker
