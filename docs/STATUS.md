@@ -335,3 +335,10 @@ All three GitHub Actions jobs are read-only. Reviewers do not receive contents o
 Branch `agents/367-change-sets` replaces the one-PR-per-builder release model with one durable Change Set per Team Plan. Builder workers produce isolated commits against the current wave candidate; a deterministic integrator rejects overlapping files and combines completed work into one integration branch. Only the final integrated candidate gets a release PR, after which the existing exact-candidate CI, Specialist Lanes, Preview and human production gate are reused.
 
 The Change Set path is fail-closed on stale work-unit bases, duplicate changed-file ownership, retry exhaustion and final PR/candidate SHA mismatch. The GitHub runtime adapter still exposes no merge operation.
+
+
+## Project Intelligence - issues #374 and #375
+
+Branch `intelligence/375-impact-engine` adds a versioned Project Brain and deterministic Impact Engine on top of the multi-agent/Change Set stack. Planning now persists a graph snapshot without an additional model call. Before a builder writes code, its exact work-unit task key is resolved against the current Brain and a durable blast-radius analysis is recorded. The impact packet is passed to Direct/Codex as factual context with explicit confidence and unknowns.
+
+Both database additions are private, RLS-enabled, service-side only and additive; they do not change production execution until the corresponding runtime code is released.
