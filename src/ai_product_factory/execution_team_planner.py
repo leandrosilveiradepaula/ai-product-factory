@@ -12,6 +12,7 @@ _SECURITY_CAPABILITIES={"security_review","auth","rls","secrets","supply_chain"}
 _QA_CAPABILITIES={"tests","evals","regression","quality_gate","browser_evidence"}
 _OPERATIONS_CAPABILITIES={"ci","deployments","quotas","costs","logs","health"}
 _GENERIC_BUILDER_ROLES={"development","ui"}
+_SPECIALIST_LANE_ROLES={"security","qa","operations"}
 
 
 def _string_list(value: object) -> tuple[str, ...]:
@@ -65,8 +66,12 @@ def _role_policy_expectations(tasks: list[dict]) -> dict[str, list[str]]:
     return dict(expectations)
 
 
-def _generic_worker_ready(agent: AgentProfile) -> bool:
-    return agent.role in _GENERIC_BUILDER_ROLES and "github_write" in set(agent.allowed_tools)
+def _execution_lane(agent: AgentProfile) -> str | None:
+    if agent.role in _GENERIC_BUILDER_ROLES and "github_write" in set(agent.allowed_tools):
+        return "builder"
+    if agent.role in _SPECIALIST_LANE_ROLES and "github_write" not in set(agent.allowed_tools):
+        return "specialist"
+    return None
 
 
 def _choose_agent(task: dict,agents: Sequence[AgentProfile]) -> tuple[AgentProfile|None,dict|None]:
@@ -134,15 +139,16 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
         else:
             row["agent_key"]=agent.agent_key
             row["agent_role"]=agent.role
-            row["execution_ready"]=_generic_worker_ready(agent)
+            row["execution_lane"]=_execution_lane(agent)
+            row["execution_ready"]=row["execution_lane"] is not None
             if not row["execution_ready"]:
                 blockers.append({
                     "task_key":key,
                     "title":title,
-                    "code":"specialist_lane_unavailable",
+                    "code":"execution_lane_unavailable",
                     "agent_key":agent.agent_key,
                     "role":agent.role,
-                    "note":"dedicated non-writing specialist lane is required before this task can execute",
+                    "note":"no safe execution lane exists for this specialist profile",
                 })
         normalized.append(row)
         for alias in {key,title,_slug(title)}:
@@ -166,7 +172,7 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
 
     waves:list[dict]=[]
     completed:set[str]=set()
-    remaining={row["task_key"] for row in normalized if row.get("agent_key") and row.get("execution_ready")}
+    remaining={row["task_key"] for row in normalized if row.get("agent_key") and row.get("execution_ready") and row.get("execution_lane")=="builder"}
     wave_number=1
     while remaining:
         ready=[by_key[key] for key in remaining if set(by_key[key]["depends_on"]).issubset(completed)]
@@ -207,10 +213,12 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
     for key in selected_keys:
         agent=next(a for a in active if a.agent_key==key)
         assigned=[row for row in normalized if row.get("agent_key")==key]
-        execution_ready=_generic_worker_ready(agent)
+        lane=_execution_lane(agent)
+        execution_ready=lane is not None
         selected.append({
             "agent_key":agent.agent_key,
             "role":agent.role,
+            "execution_lane":lane,
             "workers_planned":min(agent.max_concurrency,max(1,len(assigned))) if execution_ready else 0,
             "execution_ready":execution_ready,
             "max_concurrency":agent.max_concurrency,
@@ -229,7 +237,7 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
                 "code":"specialist_review_recommended",
                 "reasons":reasons,
                 "execution_ready":False,
-                "note":"requires a dedicated non-writing specialist lane before it can be auto-scheduled",
+                "note":"specialist review is recommended but was not represented as an explicit planned task",
             })
 
     excluded=[]
