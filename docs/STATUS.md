@@ -328,3 +328,10 @@ This first implementation is deterministic-first and makes no additional paid mo
 - Operations checks Preview applicability and Control Plane health/cost state, failing closed on critical or unknown paid-cost conditions.
 
 All three GitHub Actions jobs are read-only. Reviewers do not receive contents or pull-request write permissions. Leases are bounded and recoverable; exhausted retries become durable blockers.
+
+
+## Change Set integration - issue #367
+
+Branch `agents/367-change-sets` replaces the one-PR-per-builder release model with one durable Change Set per Team Plan. Builder workers produce isolated commits against the current wave candidate; a deterministic integrator rejects overlapping files and combines completed work into one integration branch. Only the final integrated candidate gets a release PR, after which the existing exact-candidate CI, Specialist Lanes, Preview and human production gate are reused.
+
+The Change Set path is fail-closed on stale work-unit bases, duplicate changed-file ownership, retry exhaustion and final PR/candidate SHA mismatch. The GitHub runtime adapter still exposes no merge operation.
