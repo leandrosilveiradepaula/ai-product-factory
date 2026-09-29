@@ -24,6 +24,7 @@ class CodexExecutionItem:
     work_unit_id: str | None = None
     wave: int | None = None
     impact_context: dict | None = None
+    base_commit: str | None = None
 
 
 class SupabaseCodexRunQueue:
