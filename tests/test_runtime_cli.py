@@ -180,12 +180,15 @@ class RuntimeCliTests(unittest.TestCase):
             action=SimpleNamespace(value="preview_ready"),
             ci_state=SimpleNamespace(value="success"),
         )
+        lanes=MagicMock();lanes.enqueue.return_value={"status":"specialist_review_pending","roles":["security","qa"]}
         with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=lanes), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_ci_once()
-        self.assertEqual(out["status"],"preview_ready")
+        self.assertEqual(out["status"],"specialist_review_pending")
+        lanes.enqueue.assert_called_once_with("r")
         store.record_evaluation.assert_called_once()
         kwargs=store.record_evaluation.call_args.kwargs
         self.assertEqual(kwargs["eval_type"],"quality_gate")
