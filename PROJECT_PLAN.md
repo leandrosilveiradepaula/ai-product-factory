@@ -97,6 +97,20 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar build do Console por Preview exato Vercel do candidato `10f593d7d169d30fe5048eac9d98a94b8be1e151` (deployment `dpl_CNFAo32v4DHzjCzgmx1xZUsKFkwX`, `READY`).
 - [x] Validar browser/Playwright evidence em Preview exato protegido: GitHub OIDC Trusted Source foi configurado na Vercel e o candidato final pt-BR do PR #269 (`505c712864950d94638c874d8e267531fb544d62`, deployment `dpl_J9kneq8tf9bouJ3StBPyh4UNd7GX`) passou `page_load`, `http_status`, `body_visible`, `expected_text` e `console_clean` no run `36376673624`. O corpo observado confirmou a navegacao principal em portugues. O candidato historico `10f593...` permanece apenas como divida arquivistica; nao e a evidencia do release atual.
 
+
+### F8 - Orquestracao multiagente adaptativa
+- [x] Agent Registry configuravel com perfis, capabilities, ferramentas, budgets e concorrencia.
+- [x] Scheduler com assignments atomicos, scope locks e fan-out de workers especializados.
+- [x] Execution Team Plan deterministico derivado do engineering plan e do Agent Registry, sem chamada adicional de modelo.
+- [x] Selecao explicavel do menor conjunto de especialistas, workers planejados, ondas, exclusoes e blockers.
+- [x] Persistencia versionada do Execution Team Plan e audit trail no Control Plane.
+- [x] Visualizacao da equipe planejada nos detalhes do projeto.
+- [x] Lanes independentes read-only para Security Review, QA/Evals e Operations, com SHA exato, lease/retry bounded, findings estruturados e gate antes do Preview.
+- [x] Change Set com work units isoladas por onda, source SHA imutavel, integration branch, conflito de arquivos fail-closed e um unico PR candidato de release.
+- [x] Telemetria planned-vs-actual, critical path, rework, conflitos e eficiencia paralela, com replay/provenance e base para comparacao shadow.
+- [x] Concurrency adaptativa v1 baseada em trabalho executavel, quota, custo conhecido, repair rate, first-pass yield e latencia de CI, com decisoes auditaveis.
+- [x] Corpus offline de evals do Team Planner cobrindo 10 classes de trabalho e penalizando overstaffing, under-staffing e papeis indevidos.
+
 ## Gate atual
 
 A Factory core esta funcionalmente implementada. O fluxo de Preview protegido esta verificado com Trusted Source GitHub Actions OIDC. O PR #269 foi liberado por autorizacao humana explicita em 2026-09-28 e mergeado em `98d81dee46c7ffc7ae4ae0662712fadcda3258b3`; o deployment de producao `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` chegou a `READY`, `GET /api/health` retornou HTTP 200 com o commit correto, a interface pt-BR foi observada em producao e a Vercel nao reportou erros de runtime na janela de verificacao. As migrations de anexos privados, reconciliacao e Current State Snapshot foram aplicadas e verificadas no Supabase de producao. O acceptance gate executavel e a matriz em `docs/FACTORY_ACCEPTANCE.md` definem o criterio objetivo de completude interna. O piloto Agente SQL nao faz parte do fechamento atual e esta explicitamente adiado.
@@ -136,3 +150,24 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] Resolver API WIF #250 quando o mapping administrativo puder ser corrigido.
 - [ ] Resolver Codex auth #240 quando houver credencial oficial/enablement.
 - [ ] Retornar repositorio a private depois de encerrada a necessidade da janela publica.
+
+
+### F9 - Project Intelligence
+- [x] Project Brain v1 deterministico e versionado: tarefas, scopes, capabilities, componentes e fontes/evidencias com provenance.
+- [x] Impact Engine v1: blast radius por task_key/grafo, confidence/unknowns explicitos e evidencia duravel antes do builder.
+- [x] Requirement Traceability e Definition of Done compilavel (#376).
+- [x] Context Packets/sandboxes/repair loops (#377).
+- [x] Policy-as-Code/Release Intelligence/rollback (#378).
+- [x] Incident Mode/Portfolio Scheduler (#379).
+- [x] Replay/Shadow/provenance completo/self-improvement controlado (#380).
+- [x] Architecture Guardian v1 com scanners determinísticos, lineage factual e API/dependency surfaces (#381).
+
+
+### F10 - Operacao, aprendizagem e rastreabilidade
+- [x] Test collection guard: nenhum teste `test_*` pode ficar invisivel ao `unittest discover`; 30 checks historicamente ocultos foram reconciliados e a suite real ultrapassa 465 testes.
+- [x] Console de Orquestracao em PT-BR para portfolio, incidentes, repairs, release readiness, Replay/Shadow e propostas de melhoria.
+- [x] Execution Router v2 baseado em impacto, unknowns, first-pass historico e custo comparativo, sem chamada extra de modelo.
+- [x] Proveniencia duravel de run e provenance pointers seguros nos commits/work units.
+- [x] Preview final por promocao de candidato exato: branches de implementacao nao geram Preview; somente `preview/**` pode construir o candidato final.
+- [ ] Validar o candidato cumulativo atual em Preview exato + browser evidence autenticada.
+- [ ] Merge humano do release cumulativo; apos o merge, observar release e reconciliar `main`.

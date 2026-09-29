@@ -292,3 +292,108 @@ The authenticated Figma correction remains separately pending in #309/#310
 because the required Vercel Preview hit the account build-rate limit. The
 Factory continues to fail closed rather than merging that Console candidate
 without exact Preview evidence.
+
+
+## Multi-agent execution architecture - issue #363
+
+The Factory now has an implementation branch for the first phase of adaptive multi-agent orchestration. The architecture is documented in `docs/MULTI_AGENT_ARCHITECTURE.md`.
+
+The Product model remains responsible only for semantic engineering decomposition. The deterministic Execution Team Planner then combines the engineering plan with the live Agent Registry and derives, without another model call:
+
+- the minimum specialist profiles needed by currently planned work;
+- task ownership by capabilities and preferred role;
+- planned worker count per profile;
+- dependency/scope-aware execution waves;
+- peak planned parallelism;
+- excluded profiles and explicit reasons;
+- blockers when no single safe owner exists;
+- advisory Security/QA/Operations participation that remains fail-closed until dedicated non-writing lanes exist.
+
+The planner does not grant reviewer profiles `github_write`, does not weaken production gates, and does not make Codex the orchestrator. Current generic Direct/Codex write workers remain appropriate only for builder profiles such as Development/UI. Security, QA and Operations require dedicated lanes before their advisory participation becomes automatic execution.
+
+The long-term target is a Change Set: parallel isolated builder work converges deterministically into one integration candidate, then independent Security/QA/Operations evaluate the exact integrated candidate before CI/Preview and the human production merge gate.
+
+Issue #363 / branch `agents/363-execution-team-plan` is not released yet. Console changes still require green CI, an exact verified Preview/browser evidence, and human production merge.
+
+
+## Specialist lanes - issue #366
+
+Branch `agents/366-specialist-lanes` implements executable read-only specialist lanes on top of the Execution Team Plan.
+
+After exact-candidate CI succeeds, the Factory enqueues only the Security/QA/Operations lanes required by the active Team Plan. Runs transition through `specialist_review_pending`; Preview is released only after every required lane passes. Any failed or blocked required lane moves the run to `specialist_review_failed`.
+
+This first implementation is deterministic-first and makes no additional paid model call:
+- Security scans the exact PR patch for critical Factory security invariants and validates candidate identity;
+- QA requires green GitHub checks for the exact candidate SHA;
+- Operations checks Preview applicability and Control Plane health/cost state, failing closed on critical or unknown paid-cost conditions.
+
+All three GitHub Actions jobs are read-only. Reviewers do not receive contents or pull-request write permissions. Leases are bounded and recoverable; exhausted retries become durable blockers.
+
+
+## Change Set integration - issue #367
+
+Branch `agents/367-change-sets` replaces the one-PR-per-builder release model with one durable Change Set per Team Plan. Builder workers produce isolated commits against the current wave candidate; a deterministic integrator rejects overlapping files and combines completed work into one integration branch. Only the final integrated candidate gets a release PR, after which the existing exact-candidate CI, Specialist Lanes, Preview and human production gate are reused.
+
+The Change Set path is fail-closed on stale work-unit bases, duplicate changed-file ownership, retry exhaustion and final PR/candidate SHA mismatch. The GitHub runtime adapter still exposes no merge operation.
+
+
+## Project Intelligence - issues #374 and #375
+
+Branch `intelligence/375-impact-engine` adds a versioned Project Brain and deterministic Impact Engine on top of the multi-agent/Change Set stack. Planning now persists a graph snapshot without an additional model call. Before a builder writes code, its exact work-unit task key is resolved against the current Brain and a durable blast-radius analysis is recorded. The impact packet is passed to Direct/Codex as factual context with explicit confidence and unknowns.
+
+Both database additions are private, RLS-enabled, service-side only and additive; they do not change production execution until the corresponding runtime code is released.
+
+
+## Requirement Traceability / DoD - issue #376
+
+Branch `quality/376-traceability-dod` adds deterministic requirement IDs, task links, requirement evidence, versioned Definition of Done and factual readiness. Planning now requires non-empty acceptance criteria per task. Delivery evidence is recorded from CI, specialist lanes, verified Preview/browser and observed human merge; no model is asked to invent proof.
+
+DoD is deliberately not a numeric score. Missing evidence remains explicit. Migration validation, rollback analysis and API contract checks can be compiled before their dedicated validators exist; those checks therefore remain visible as missing until the next policy/validator phase.
+
+
+## Policy-as-Code / Release Intelligence - issue #378
+
+Branch `policy/378-release-policy` adds source-controlled release policy, durable policy decisions and factual release reports. The runtime evaluates the policy after Preview/browser evidence (or explicit Preview N/A) and before `awaiting_release`.
+
+The policy cannot grant auto-merge. Unknown paid cost, missing non-human DoD evidence and migration rollback without verified evidence block release readiness. A successful production decision remains only `ready_for_human_release`. Human merge is observed separately and is the only event that records `human_release`.
+
+
+## Release candidate consolidation - 2026-09-29
+
+The current cumulative release candidate is PR #396 on branch `audit/395-code-provenance`. It stacks the multi-agent and engineering-intelligence work without merging production. The Control Plane migrations for the stack have already been applied additively and verified server-side; source code remains staged until the human production gate.
+
+Implemented in the candidate:
+- deterministic Execution Team Plan and specialist Agent Registry scheduling;
+- independent Security/QA/Operations lanes;
+- adaptive concurrency and offline Team Planner evals;
+- Change Sets with one integrated release candidate;
+- Project Brain + deterministic Impact Engine;
+- Requirement Traceability + factual Definition of Done;
+- Policy-as-Code + Release Intelligence + rollback evidence;
+- secret-safe Context Packets, work-unit scope enforcement and max-3 repair loops;
+- Incident Mode + deterministic Portfolio Scheduler with P0 soft preemption only for new dispatches;
+- zero-effect Replay/Shadow + source-controlled improvement proposals;
+- Architecture Guardian v1 with explicit unknown scanner coverage;
+- CI collection guard that exposed and reconciled 30 previously invisible intended tests; the real suite now runs more than 465 tests;
+- PT-BR Orchestration Console for portfolio/incidents/repairs/release/replay visibility;
+- Execution Router v2 with impact/history/cost signals and separate Codex vs human-gate reasons;
+- non-sensitive Git commit provenance pointers for run/change-set/work-unit/agent/context hash;
+- exact-candidate Vercel Preview policy from #341, incorporated into the cumulative candidate without restoring obsolete CI conventions.
+
+Production invariants remain unchanged:
+- runtime has no merge capability;
+- production release is human-only;
+- no paid model call is introduced merely to route, replay, scan or choose a team;
+- Codex remains selective and separately gated;
+- Agent SQL 63-question benchmark remains excluded;
+- cross-repository execution still requires explicit `FACTORY_GITHUB_TOKEN`.
+
+Current release sequence for this candidate:
+1. required CI green on the exact PR head;
+2. measure Vercel rolling-window quota;
+3. promote one `preview/pr-396` ref to the exact green SHA;
+4. verify Vercel Preview SHA/ref and browser evidence;
+5. stop at the human production merge gate;
+6. after human merge, release observer records the merge and the new `main` is reconciled.
+
+External/admin items remain separate from this release: Codex WIF/official enablement (#240), API WIF hardening (#250), Supabase Leaked Password Protection administrative hardening, and cross-repo credential configuration where needed.

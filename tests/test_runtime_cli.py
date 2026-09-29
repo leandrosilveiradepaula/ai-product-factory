@@ -5,14 +5,17 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once
 
 
 class RuntimeCliTests(unittest.TestCase):
     def test_runtime_builds_primary_handler_for_api_key(self):
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True):
+        scheduler=MagicMock();scheduler.profiles.return_value=()
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
             handler = build_handler()
         self.assertIsInstance(handler, ProductStageExecutor)
+        scheduler.profiles.assert_called_once()
 
     def test_primary_runtime_flag_is_required_intrinsically(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY":"test"}, clear=True):
@@ -143,6 +146,19 @@ class RuntimeCliTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 require_paid_runtime_budget(health_reader=reader)
 
+
+    def test_replay_mode_is_zero_effect_and_model_free(self):
+        store=MagicMock()
+        store.create_replay.return_value=SimpleNamespace(
+            replay_id="rp",source_run_id="run",mode="shadow",status="ready",
+            effect="none",model_calls_allowed=False,snapshot_hash="a"*64,
+        )
+        with patch("ai_product_factory.runtime_cli.SupabaseProvenanceStore",return_value=store):
+            out=run_replay_once("run","shadow")
+        self.assertEqual(out["effect"],"none")
+        self.assertFalse(out["model_calls_allowed"])
+        store.create_replay.assert_called_once_with("run","shadow")
+
     def test_health_is_side_effect_free_configuration_report(self):
         with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True):
             out=run_health_once()
@@ -177,18 +193,51 @@ class RuntimeCliTests(unittest.TestCase):
             action=SimpleNamespace(value="preview_ready"),
             ci_state=SimpleNamespace(value="success"),
         )
+        lanes=MagicMock();lanes.enqueue.return_value={"status":"specialist_review_pending","roles":["security","qa"]}
+        trace=MagicMock()
         with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=lanes), \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_ci_once()
-        self.assertEqual(out["status"],"preview_ready")
+        self.assertEqual(out["status"],"specialist_review_pending")
+        lanes.enqueue.assert_called_once_with("r")
+        trace.record_delivery_evidence.assert_called_once()
+        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"github_ci")
         store.record_evaluation.assert_called_once()
         kwargs=store.record_evaluation.call_args.kwargs
         self.assertEqual(kwargs["eval_type"],"quality_gate")
         self.assertEqual(kwargs["baseline_ref"],"abc")
         self.assertEqual(kwargs["status"],"success")
 
+
+
+    def test_specialist_empty_queue_has_no_github_side_effect(self):
+        queue=MagicMock();queue.claim.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            out=run_specialist_once("security","worker")
+        self.assertEqual(out,{"claimed":False,"status":"empty","role":"security"})
+        github.assert_not_called()
+
+    def test_specialist_persists_deterministic_result(self):
+        item=SimpleNamespace(job_id="j",run_id="r",repository="owner/repo",role="qa",candidate_commit="abc")
+        queue=MagicMock();queue.claim.return_value=item;queue.complete.return_value={"run_status":"preview_ready"}
+        result=SimpleNamespace(status="passed",findings=(),evidence={"model_call":False})
+        trace=MagicMock()
+        with patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github_cls, \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
+             patch("ai_product_factory.runtime_cli.evaluate_specialist_lane",return_value=result) as evaluate:
+            out=run_specialist_once("qa","worker")
+        self.assertEqual(out["status"],"passed")
+        self.assertEqual(out["run_status"],"preview_ready")
+        evaluate.assert_called_once()
+        queue.complete.assert_called_once_with(item,status="passed",findings=[],evidence={"model_call":False})
+        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"qa")
+        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_ref"],"abc")
 
     def test_preview_probe_empty_has_no_github_side_effect(self):
         queue=MagicMock();queue.next_pending.return_value=None
@@ -210,12 +259,15 @@ class RuntimeCliTests(unittest.TestCase):
     def test_dispatch_without_project_uses_global_selector(self):
         dispatch=MagicMock()
         dispatch.dispatch_next_any.return_value=None
-        scheduler=MagicMock();scheduler.work_matrix.return_value={"direct":[],"codex":[]}
+        scheduler=MagicMock()
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[],"decisions":[]}
         with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
             out=run_dispatch_once()
         self.assertEqual(out["status"],"empty")
         dispatch.dispatch_next_any.assert_called_once()
+        adaptive.work_matrix.assert_called_once()
 
     def test_preview_mode_empty_queue_does_not_require_external_readiness(self):
         queue=MagicMock();queue.next_pending.return_value=None
@@ -233,6 +285,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
              patch("ai_product_factory.runtime_cli.VercelPreviewAdapter") as vercel:
             out=run_preview_once()
@@ -241,6 +294,22 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["reason"],"backend only")
         loop.finalize_preview_not_required.assert_called_once()
         vercel.assert_not_called()
+
+    def test_release_policy_block_prevents_awaiting_release_after_preview(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"required":False,"reason":"backend only"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc",risk={})
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("src/core.py",)
+        loop=MagicMock();loop.finalize_preview_not_required.return_value="awaiting_release"
+        decision=SimpleNamespace(blocked=True,reasons=("missing Definition of Done checks: qa",))
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=decision),{"report_id":"report"})), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_preview_once()
+        self.assertEqual(out["status"],"release_policy_blocked")
+        self.assertIn("qa",out["policy_reasons"][0])
+        loop.finalize_preview_not_required.assert_not_called()
 
     def test_preview_mode_wires_verified_preview_and_stops_at_release_gate(self):
         item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"team_id":"team","project_name":"web"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
@@ -264,6 +333,8 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_preview_once()
         self.assertEqual(out["status"],"awaiting_release")
@@ -294,6 +365,8 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_preview_once()
         self.assertEqual(out["status"],"awaiting_release")
@@ -316,16 +389,20 @@ class RuntimeCliTests(unittest.TestCase):
         pr=SimpleNamespace(number=9,head_sha="abc")
         github.get_issue.return_value=issue
         github.get_pull_request.return_value=pr
-        store=MagicMock()
+        store=MagicMock();trace=MagicMock();policy=MagicMock()
         loop=MagicMock();loop.observe_manual_merge.return_value="merge123"
         with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
+             patch("ai_product_factory.runtime_cli.SupabaseReleasePolicyStore",return_value=policy), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
             out=run_release_once()
         self.assertEqual(out["status"],"merged")
         self.assertEqual(out["merge_sha"],"merge123")
+        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"human_release")
+        policy.mark_released.assert_called_once_with("r","merge123")
         github.merge_pull_request.assert_not_called()
     def test_direct_failure_releases_agent_assignment_and_scope(self):
         item=SimpleNamespace(run_id="r",task_id="t",project_key="demo",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",human_gate_required=False)

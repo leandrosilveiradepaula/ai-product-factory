@@ -114,6 +114,27 @@ class CodexCLIProducerTests(unittest.TestCase):
         self.assertEqual(artifact.files, {"src/feature.py": "VALUE = 1\n"})
         self.assertIn("Implement feature", artifact.pr_title)
 
+    def test_change_set_base_requires_exact_sha_before_codex_invocation(self):
+        calls=[]
+        def runner(command,**kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command,0,"","")
+        item=SimpleNamespace(
+            repository="owner/repo",title="Task",description="Desc",
+            base_commit="not-a-sha",impact_context={"confidence":"high"},
+        )
+        with tempfile.NamedTemporaryFile() as identity:
+            env={
+                "PATH":os.environ.get("PATH",""),"HOME":os.environ.get("HOME",""),
+                "FACTORY_CODEX_ENABLED":"true","OPENAI_FEDERATION_RULE_ID":"rule",
+                "OPENAI_IDENTITY_TOKEN_FILE":identity.name,"GITHUB_TOKEN":"managed-token",
+            }
+            with patch.dict("os.environ",env,clear=True), \
+                 patch("ai_product_factory.codex_cli_producer.resolve_github_token",return_value="managed-token"):
+                with self.assertRaisesRegex(ValueError,"exact 40-character SHA"):
+                    CodexCLIProducer(config=CodexCLIConfig(("codex","exec")),runner=runner).produce(item)
+        self.assertFalse(any(command and command[0]=="codex" for command in calls))
+
     def test_default_command_is_workspace_bounded_and_noninteractive(self):
         with patch.dict("os.environ", {}, clear=True):
             config = CodexCLIConfig.from_env()

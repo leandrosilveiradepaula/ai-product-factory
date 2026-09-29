@@ -15,6 +15,9 @@ from .codex_cli_producer import CodexCLIProducer
 from .codex_usage import SupabaseCodexUsageRecorder
 from .implementation_producer import ModelImplementationProducer
 from .execution_worker import DirectExecutionWorker
+from .change_set_store import SupabaseChangeSetStore
+from .change_set_worker import ChangeSetBuilderWorker
+from .change_set_integrator import ChangeSetIntegrator
 from .github_rest import GitHubRestAdapter
 from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 from .issue_materializer import GitHubIssueMaterializer
@@ -39,8 +42,15 @@ from .preview_flow import VerifiedPreviewCoordinator
 from .deployment import DeploymentRequest
 from .release_policy import ReleaseEnvironment
 from .agent_scheduler import SupabaseAgentScheduler
+from .adaptive_agent_scheduler import SupabaseAdaptiveConcurrencyController
 from .evidence import EvidenceBundle
 from .review_gate import EvalResult,evaluate_quality_gate
+from .specialist_lane_queue import SupabaseSpecialistLaneQueue
+from .specialist_lanes import evaluate_specialist_lane
+from .traceability_store import SupabaseTraceabilityStore
+from .release_intelligence import build_release_assessment,load_default_release_policy
+from .release_policy_store import SupabaseReleasePolicyStore
+from .provenance_replay import SupabaseProvenanceStore
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -69,13 +79,16 @@ def build_handler():
  require_primary_runtime_enabled()
  auth=RuntimeAuthResolver().resolve_primary_api()
  if auth.kind in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:
-  return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
+  profiles=SupabaseAgentScheduler().profiles()
+  return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())),team_profiles=profiles)
  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
 
 def run_recovery_once(max_attempts:int=3)->dict:
  runs=SupabaseRuntimeQueue().recover_expired(max_attempts)
  agents=SupabaseAgentScheduler().recover_expired()
- return {"runs":runs,"agents":agents}
+ specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
+ change_sets=SupabaseChangeSetStore().recover_expired(max_attempts)
+ return {"runs":runs,"agents":agents,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
 
 def run_product_once(worker_id:str)->dict:
  try:
@@ -106,6 +119,10 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  try:
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
   github=GitHubRestAdapter(repository=item.repository)
+  if getattr(item,"change_set_id",None):
+   result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="direct").execute(item)
+   scheduler.release(item.run_id,"completed")
+   return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
   materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
   session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
@@ -134,6 +151,10 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   usage=SupabaseCodexUsageRecorder()
   producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
   github=GitHubRestAdapter(repository=item.repository)
+  if getattr(item,"change_set_id",None):
+   result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="codex").execute(item)
+   scheduler.release(item.run_id,"completed")
+   return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   store=SupabaseDeliveryStore()
   loop=AutonomousGitHubLoop(github,store)
   materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
@@ -144,6 +165,14 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   raise
  scheduler.release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
+
+def run_change_set_integration_once(worker_id:str)->dict:
+ store=SupabaseChangeSetStore()
+ item=store.claim_integration(worker_id)
+ if item is None:return {"claimed":False,"status":"empty"}
+ github=GitHubRestAdapter(repository=item.repository)
+ result=ChangeSetIntegrator(github=github,store=store).integrate(item)
+ return {"claimed":True,"status":result.status,"change_set_id":result.change_set_id,"wave":result.wave,"candidate_commit":result.candidate_commit,"pr_number":result.pull_request.number if result.pull_request else None}
 
 def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
@@ -162,12 +191,50 @@ def run_ci_once()->dict:
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
+ status=decision.action.value
  if decision.action.value=="preview_ready":
   quality=evaluate_quality_gate(evals=(EvalResult("github_ci",True,required=True),))
   if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
   store.record_evaluation(run_id=item.run_id,eval_type="quality_gate",status="success",baseline_ref=item.candidate_commit,result={"passed":True,"reasons":list(quality.reasons),"source":"github_ci"})
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
- return {"claimed":True,"status":decision.action.value,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
+  SupabaseTraceabilityStore().record_delivery_evidence(
+   run_id=item.run_id,evidence_type="github_ci",status="passed",evidence_ref=item.candidate_commit,
+   metadata={"source":"github_checks","pr_number":item.pr_number}
+  )
+  routed=SupabaseSpecialistLaneQueue().enqueue(item.run_id)
+  status=str(routed.get("status") or "specialist_review_pending")
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
+
+def run_specialist_once(role:str,worker_id:str)->dict:
+ queue=SupabaseSpecialistLaneQueue()
+ item=queue.claim(role,worker_id)
+ if item is None:return {"claimed":False,"status":"empty","role":role}
+ github=GitHubRestAdapter(repository=item.repository)
+ result=evaluate_specialist_lane(item,github)
+ completed=queue.complete(item,status=result.status,findings=list(result.findings),evidence=result.evidence)
+ SupabaseTraceabilityStore().record_delivery_evidence(
+  run_id=item.run_id,evidence_type=role,status=result.status,evidence_ref=item.candidate_commit,
+  metadata={"source":"specialist_lane","role":role,"job_id":item.job_id,"findings_count":len(result.findings)}
+ )
+ return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,
+  "run_status":completed.get("run_status"),"findings":list(result.findings),
+  "repair":completed.get("repair"),"repair_recheck":completed.get("repair_recheck")}
+
+def _assess_release_policy(*,run_id:str,candidate_commit:str,changed_files:tuple[str,...],risk:dict)->tuple[object,dict]:
+ policy_store=SupabaseReleasePolicyStore()
+ facts=policy_store.facts(run_id)
+ health=SupabaseOperationalHealthReader().read()
+ assessment=build_release_assessment(
+  policy=load_default_release_policy(),
+  candidate_commit=candidate_commit,
+  changed_files=changed_files,
+  risk=risk,
+  facts=facts,
+  unknown_paid_cost=health.unknown_cost_events>0,
+  known_cost=health.known_cost,
+ )
+ recorded=policy_store.record(run_id=run_id,assessment=assessment)
+ return assessment,recorded
 
 def run_preview_probe_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
@@ -198,8 +265,16 @@ def run_preview_once()->dict:
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  if not applicability.required:
+  assessment,recorded=_assess_release_policy(
+   run_id=item.run_id,candidate_commit=item.candidate_commit,changed_files=changed_files,
+   risk=getattr(item,"risk",{}) or {},
+  )
+  if assessment.decision.blocked:
+   return {"claimed":True,"status":"release_policy_blocked","run_id":item.run_id,"pr_number":item.pr_number,
+    "preview_required":False,"reason":applicability.reason,"policy_reasons":list(assessment.decision.reasons)}
   status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
-  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":False,"reason":applicability.reason}
+  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
+   "preview_required":False,"reason":applicability.reason,"release_report_id":recorded.get("report_id")}
  try:
   project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
  except ValueError as exc:
@@ -215,8 +290,27 @@ def run_preview_once()->dict:
  browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
+ trace=SupabaseTraceabilityStore()
+ trace.record_delivery_evidence(
+  run_id=item.run_id,evidence_type="preview",status="passed",evidence_ref=verified.deployment.deployment_ref,
+  metadata={"candidate_commit":item.candidate_commit}
+ )
+ trace.record_delivery_evidence(
+  run_id=item.run_id,evidence_type="browser_evidence",status="passed",evidence_ref=verified.deployment.deployment_ref,
+  metadata={"candidate_commit":item.candidate_commit}
+ )
+ assessment,recorded=_assess_release_policy(
+  run_id=item.run_id,candidate_commit=item.candidate_commit,changed_files=changed_files,
+  risk=getattr(item,"risk",{}) or {},
+ )
+ if assessment.decision.blocked:
+  return {"claimed":True,"status":"release_policy_blocked","run_id":item.run_id,"pr_number":item.pr_number,
+   "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
+   "policy_reasons":list(assessment.decision.reasons)}
  status=loop.finalize_verified_preview(session,verified)
- return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref}
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
+  "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
+  "release_report_id":recorded.get("report_id")}
 
 def run_release_once()->dict:
  item=SupabaseReleaseFollowupQueue().next_pending()
@@ -230,8 +324,22 @@ def run_release_once()->dict:
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  merge_sha=loop.observe_manual_merge(session)
  if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
+ SupabaseTraceabilityStore().record_delivery_evidence(
+  run_id=item.run_id,evidence_type="human_release",status="passed",evidence_ref=merge_sha,
+  metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
+ )
+ SupabaseReleasePolicyStore().mark_released(item.run_id,merge_sha)
  SupabaseAgentScheduler().release_scopes(item.run_id)
  return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
+
+def run_replay_once(source_run_id:str,mode:str="offline")->dict:
+ if not source_run_id.strip():raise ValueError("source run id is required")
+ replay=SupabaseProvenanceStore().create_replay(source_run_id,mode)
+ return {
+  "status":replay.status,"replay_id":replay.replay_id,"source_run_id":replay.source_run_id,
+  "mode":replay.mode,"effect":replay.effect,"model_calls_allowed":replay.model_calls_allowed,
+  "snapshot_hash":replay.snapshot_hash,
+ }
 
 def run_alerts_once()->dict:
  readiness=github_alerts_readiness()
@@ -255,25 +363,32 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
   except RuntimeError as exc:
    if "no eligible agent slot" not in str(exc):raise
    break
- matrix=scheduler.work_matrix(max_items)
+ matrix=SupabaseAdaptiveConcurrencyController().work_matrix(max_items)
  out={"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"matrix":matrix}
  if routed:
   out.update(routed[0])
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","recovery","health","alerts","ci","release","preview","preview-probe"),default="product");p.add_argument("--project-key");p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","replay"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="replay":
+  if not args.source_run_id:raise ValueError("--source-run-id is required for replay mode")
+  out=run_replay_once(args.source_run_id,args.replay_mode)
  elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
  elif args.mode=="preview-probe":out=run_preview_probe_once()
  elif args.mode=="preview":out=run_preview_once()
  elif args.mode=="release":out=run_release_once()
  elif args.mode=="ci":out=run_ci_once()
+ elif args.mode=="specialist":
+  if not args.specialist_role:raise ValueError("--specialist-role is required for specialist mode")
+  out=run_specialist_once(args.specialist_role,args.worker_id)
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
  elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key,args.run_id)
+ elif args.mode=="change-set-integration":out=run_change_set_integration_once(args.worker_id)
  elif args.mode=="dispatch":out=run_dispatch_once(args.project_key,args.max_items)
  else:out=run_product_once(args.worker_id)
  print(json.dumps(out));return 0 if not out.get("error") else 2

@@ -1,0 +1,483 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "key": "ui-simple",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "ui",
+            "title": "Update button",
+            "required_capabilities": [
+              "ui"
+            ],
+            "scope_keys": [
+              "apps/console/app/page.tsx"
+            ],
+            "depends_on": []
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "ui"
+        ],
+        "forbidden_roles": [
+          "development",
+          "security",
+          "qa",
+          "operations"
+        ],
+        "max_worker_peak": 1,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "backend-api",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "api",
+            "title": "Add API endpoint",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              "src/api"
+            ],
+            "depends_on": []
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development"
+        ],
+        "forbidden_roles": [
+          "ui",
+          "security",
+          "qa",
+          "operations"
+        ],
+        "max_worker_peak": 1,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "auth-feature",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "auth",
+            "title": "Implement auth",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              "src/auth"
+            ],
+            "depends_on": [],
+            "risk": {
+              "expands_sensitive_access": true
+            }
+          },
+          {
+            "task_key": "security",
+            "title": "Review auth",
+            "required_capabilities": [
+              "security_review"
+            ],
+            "scope_keys": [
+              "src/auth"
+            ],
+            "depends_on": [
+              "auth"
+            ]
+          },
+          {
+            "task_key": "qa",
+            "title": "Test auth",
+            "required_capabilities": [
+              "tests"
+            ],
+            "scope_keys": [
+              "tests/auth"
+            ],
+            "depends_on": [
+              "security"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development",
+          "security",
+          "qa"
+        ],
+        "forbidden_roles": [
+          "ui",
+          "operations"
+        ],
+        "max_worker_peak": 1,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "migration",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "migration",
+            "title": "Create migration",
+            "required_capabilities": [
+              "migration_authoring"
+            ],
+            "scope_keys": [
+              "supabase/migrations"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "security",
+            "title": "Review RLS",
+            "required_capabilities": [
+              "rls"
+            ],
+            "scope_keys": [
+              "supabase/migrations"
+            ],
+            "depends_on": [
+              "migration"
+            ]
+          },
+          {
+            "task_key": "qa",
+            "title": "Regression",
+            "required_capabilities": [
+              "regression"
+            ],
+            "scope_keys": [
+              "tests"
+            ],
+            "depends_on": [
+              "security"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development",
+          "security",
+          "qa"
+        ],
+        "forbidden_roles": [
+          "ui"
+        ],
+        "max_worker_peak": 1,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "ci-change",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "impl",
+            "title": "Change workflow",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              ".github/workflows"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "ops",
+            "title": "Verify CI",
+            "required_capabilities": [
+              "ci"
+            ],
+            "scope_keys": [
+              ".github/workflows"
+            ],
+            "depends_on": [
+              "impl"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development",
+          "operations"
+        ],
+        "forbidden_roles": [
+          "ui"
+        ],
+        "max_worker_peak": 1,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "full-stack",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "api",
+            "title": "Backend",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              "src/api"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "ui",
+            "title": "Frontend",
+            "required_capabilities": [
+              "ui"
+            ],
+            "scope_keys": [
+              "apps/console"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "security",
+            "title": "Security",
+            "required_capabilities": [
+              "security_review"
+            ],
+            "scope_keys": [
+              "src/api"
+            ],
+            "depends_on": [
+              "api"
+            ]
+          },
+          {
+            "task_key": "qa",
+            "title": "QA",
+            "required_capabilities": [
+              "tests"
+            ],
+            "scope_keys": [
+              "tests"
+            ],
+            "depends_on": [
+              "api",
+              "ui"
+            ]
+          },
+          {
+            "task_key": "ops",
+            "title": "Deploy readiness",
+            "required_capabilities": [
+              "deployments"
+            ],
+            "scope_keys": [
+              "vercel.json"
+            ],
+            "depends_on": [
+              "qa",
+              "security"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development",
+          "ui",
+          "security",
+          "qa",
+          "operations"
+        ],
+        "forbidden_roles": [],
+        "max_worker_peak": 2,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "security-hardening",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "fix",
+            "title": "Harden permissions",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              "src/auth"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "security",
+            "title": "Review permissions",
+            "required_capabilities": [
+              "auth"
+            ],
+            "scope_keys": [
+              "src/auth"
+            ],
+            "depends_on": [
+              "fix"
+            ]
+          },
+          {
+            "task_key": "qa",
+            "title": "Regression",
+            "required_capabilities": [
+              "tests"
+            ],
+            "scope_keys": [
+              "tests/auth"
+            ],
+            "depends_on": [
+              "security"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development",
+          "security",
+          "qa"
+        ],
+        "forbidden_roles": [
+          "ui",
+          "operations"
+        ],
+        "max_worker_peak": 1,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "regression-only",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "qa",
+            "title": "Run regression",
+            "required_capabilities": [
+              "regression"
+            ],
+            "scope_keys": [
+              "tests"
+            ],
+            "depends_on": []
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "qa"
+        ],
+        "forbidden_roles": [
+          "development",
+          "ui",
+          "security",
+          "operations"
+        ],
+        "max_worker_peak": 0,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "incident-triage",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "ops",
+            "title": "Triage incident",
+            "required_capabilities": [
+              "logs",
+              "health"
+            ],
+            "scope_keys": [
+              "operations"
+            ],
+            "depends_on": []
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "operations"
+        ],
+        "forbidden_roles": [
+          "development",
+          "ui",
+          "security",
+          "qa"
+        ],
+        "max_worker_peak": 0,
+        "status": "ready"
+      }
+    },
+    {
+      "key": "broad-refactor",
+      "plan": {
+        "tasks": [
+          {
+            "task_key": "a",
+            "title": "Refactor A",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              "src/a"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "b",
+            "title": "Refactor B",
+            "required_capabilities": [
+              "implementation"
+            ],
+            "scope_keys": [
+              "src/b"
+            ],
+            "depends_on": []
+          },
+          {
+            "task_key": "qa",
+            "title": "Regression",
+            "required_capabilities": [
+              "quality_gate"
+            ],
+            "scope_keys": [
+              "tests"
+            ],
+            "depends_on": [
+              "a",
+              "b"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "required_roles": [
+          "development",
+          "qa"
+        ],
+        "forbidden_roles": [
+          "ui",
+          "security",
+          "operations"
+        ],
+        "max_worker_peak": 2,
+        "status": "ready"
+      }
+    }
+  ]
+}

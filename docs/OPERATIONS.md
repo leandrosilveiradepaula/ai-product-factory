@@ -52,6 +52,88 @@ For alternative runtimes or `mode: api`, configuration remains explicit: `FACTOR
 
 The Vercel adapters refuse non-Preview environments. The browser adapter receives the exact deployed URL through `FACTORY_PREVIEW_URL` and must return structured JSON evidence. The built-in Playwright verifier checks page load, HTTP status, visible non-empty body, and browser console/page errors.
 
+## Multi-agent team planning
+
+The engineering plan is semantic input, not the scheduler itself. Planning tasks must provide a stable `task_key`, `required_capabilities`, repository `scope_keys`, dependencies by task key, and an optional preferred specialist role only when materially required.
+
+After planning, the deterministic Execution Team Planner reads the live Agent Registry and produces a versioned team plan. It selects the minimum capability-covering/least-privileged specialists, calculates planned workers and dependency/scope-aware waves, records exclusions and blockers, and persists the decision in the Control Plane. It makes no extra paid model call.
+
+Agent `max_concurrency` is a ceiling, never a target. Work may share a wave only when dependencies are satisfied, agent capacity is available and write scopes do not overlap. Parent/child scopes conflict.
+
+A task must have one safe owner. Do not solve a cross-specialist task by granting a read-only reviewer write permission. Instead split implementation, security review, QA/eval or operations verification into independent work units/lanes. Until dedicated read-only specialist lanes exist, policy-required reviewer participation is recorded as advisory and fails closed rather than entering the generic Direct/Codex write worker.
+
+The target integration model is one Change Set per objective: parallel work units use isolated branches/workspaces and converge in dependency order into one controlled integration candidate. Security/QA then evaluate the candidate that will actually ship. Production still stops at the human merge gate.
+
+See `docs/MULTI_AGENT_ARCHITECTURE.md` for selection rules, context packets, adaptive concurrency, metrics and the implementation roadmap.
+
+## Project Brain and Impact Engine
+
+After Planning, the runtime builds a deterministic Project Brain snapshot from the engineering plan and any durable reconciliation snapshot already present in context. No additional model call is made.
+
+The Brain stores versioned nodes/edges with provenance for project, tasks, repository scopes, capabilities, components and observed sources/evidence. Direct public access remains denied by RLS; server-side service access is required.
+
+Before a Change Set builder generates code, the Impact Engine resolves the work-unit task key, loads the current Brain snapshot and traverses relevant dependency/scope/capability relations. The resulting impact packet contains confidence, seed nodes, impacted nodes and explicit unknowns. It is persisted and then passed as factual context to Direct/Codex. Missing knowledge is recorded as unknown rather than invented.
+
+## Change Sets
+
+A ready Execution Team Plan materializes one Change Set. Only builder tasks become work units; Security, QA and Operations remain independent review lanes.
+
+The first builder observes the repository `main` SHA and binds it as the immutable Change Set source. Every work unit in the current wave receives the current integrated candidate as its exact base. Work-unit branches do not create release pull requests.
+
+When all work units in a wave are complete, the Change Set integrator:
+
+1. verifies every work unit was based on the current candidate;
+2. rejects duplicate changed-file ownership across the wave;
+3. reads exact file contents from each output commit;
+4. commits the combined files once to the integration branch;
+5. advances to the next wave, or creates one final PR after the last wave.
+
+The final PR head SHA must equal the durable Change Set candidate. The existing CI, specialist review, Preview and human release pipeline then takes over. Integrator retries are bounded; exhausted builder/integration retries block the Change Set.
+
+## Specialist review lanes
+
+After green CI, `factory_enqueue_specialist_lanes` reads the latest ready Execution Team Plan and creates only required Security, QA and Operations jobs for the exact candidate SHA.
+
+Lifecycle:
+
+1. CI persists quality-gate evidence.
+2. Required specialist jobs are queued and the run becomes `specialist_review_pending`.
+3. Each read-only worker claims at most one durable job with a bounded lease.
+4. Candidate SHA is revalidated before evaluation.
+5. Findings and evidence are persisted.
+6. Any failed or blocked required lane sets `specialist_review_failed`.
+7. When all required lanes pass, the run becomes `preview_ready`.
+
+Expired leases are requeued only below the retry ceiling; exhausted retries become `specialist_retry_exhausted` blockers. This version is deterministic-first and does not call a paid model merely to perform review.
+
+## Adaptive concurrency
+
+The Agent Registry `max_concurrency` is a hard ceiling, not a desired worker count. Before exposing a Direct/Codex matrix to GitHub Actions, the adaptive controller computes an effective concurrency per agent.
+
+V1 inputs are runnable assigned work, latest provider quota pressure, unknown paid cost, recent repair rate, first-pass CI yield and CI queue age. Unknown paid cost or critical/blocked quota yields zero workers. Attention/unknown quota and poor quality/queue signals reduce concurrency conservatively.
+
+Each decision is stored in `factory_agent_concurrency_decisions` with the pressure snapshot and human-readable reasons. The controller does not mutate Agent Registry ceilings and makes no model call.
+
+## Requirement traceability and Definition of Done
+
+After planning is persisted, the runtime derives stable requirement keys from each task's acceptance criteria, links them to materialized tasks, and records a versioned Definition of Done.
+
+Evidence is factual:
+- `github_ci` comes from exact-candidate CI;
+- `security`, `qa` and `operations` come from independent specialist lanes;
+- `preview` and `browser_evidence` come from verified Preview;
+- `human_release` is recorded only when the release observer sees a human merge.
+
+Readiness contains explicit satisfied/missing checks; there is no release score. Checks without an implemented evidence provider remain missing rather than being guessed as passed.
+
+## Policy-as-Code and Release Intelligence
+
+The release policy is source-controlled in `config/factory.release-policy.v1.json`. It explicitly forbids automatic merge and requires human production release.
+
+After Preview evidence (or explicit Preview non-applicability), the runtime builds a factual release assessment from current DoD readiness, requirements/evidence, specialist evaluations, changed files, task risk, paid-cost health and rollback evidence. Missing non-human DoD checks, unknown paid cost, or an unverified migration rollback blocks transition to `awaiting_release` and persists `release_policy_blocked`.
+
+A successful automatic decision is only `ready_for_human_release`. The release observer marks the report `released` only after GitHub shows a human merge.
+
 ## Codex
 
 Codex is a selective executor, not the orchestrator. Scheduled Direct remains disabled until the independent primary-model readiness gate is proven. Codex workspace WIF requires the real managed-workspace federation rule and audience; never invent them.

@@ -2,7 +2,7 @@ name: validate
 
 on:
   push:
-    branches: [main, 'ci/**']
+    branches: [main, 'release/**', 'ci/**']
   pull_request:
     branches: [main]
 
@@ -21,6 +21,8 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m ai_product_factory.cli validate config/factory.example.json
+      - name: Test collection guard
+        run: python scripts/check_test_collection.py
       - name: Unit tests
         env:
           PYTHONPATH: src
