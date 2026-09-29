@@ -158,6 +158,9 @@ begin
  select count(*)+1 into v_cycle from public.factory_repair_jobs
  where change_set_id=v_set.id and source_role=v_job.role;
  if v_cycle>p_max_cycles then
+  update public.factory_change_sets
+  set status='blocked',metadata=metadata||jsonb_build_object('blocker','repair_cycles_exhausted','repair_source_role',v_job.role),updated_at=now()
+  where id=v_set.id;
   insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
   values(v_job.project_id,v_run.task_id,v_job.run_id,'system','repair-controller','repair.exhausted',
     jsonb_build_object('change_set_id',v_set.id,'source_role',v_job.role,'max_cycles',p_max_cycles));
@@ -169,6 +172,9 @@ begin
                when nullif(v_find->>'path','') is not null then jsonb_build_array(v_find->>'path')
                else coalesce(v_set.metadata->'integrated_files','[]'::jsonb) end;
  if jsonb_array_length(coalesce(v_scopes,'[]'::jsonb))=0 then
+   update public.factory_change_sets
+   set status='blocked',metadata=metadata||jsonb_build_object('blocker','repair_scope_unknown','repair_source_role',v_job.role),updated_at=now()
+   where id=v_set.id;
    return jsonb_build_object('created',false,'reason','repair_scope_unknown');
  end if;
  v_wave=v_set.current_wave+1;
