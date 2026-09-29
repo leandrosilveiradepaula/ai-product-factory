@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 
 from .runtime_worker import RuntimeQueue, StageEvidence, WorkItem
+from .project_brain import build_project_brain_graph
 from .supabase_server import resolve_supabase_server_config
 
 
@@ -39,6 +40,14 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
         if evidence.stage=="planning":
+            brain=build_project_brain_graph(project_key=item.project_key,engineering_plan=evidence.output,context=item.context)
+            self._rpc("factory_record_project_brain_snapshot",{
+                "p_project_id":item.project_id,
+                "p_source_ref":f"run:{item.run_id}:planning",
+                "p_summary":brain.summary,
+                "p_nodes":list(brain.nodes),
+                "p_edges":list(brain.edges),
+            })
             team_plan=evidence.output.get("_team_plan")
             if isinstance(team_plan,dict):
                 recorded=self._rpc("factory_record_execution_team_plan",{"p_run_id":item.run_id,"p_plan":team_plan}) or {}
