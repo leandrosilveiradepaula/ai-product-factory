@@ -1,6 +1,6 @@
 {
-  "preview_url": "https://ai-product-factory-console-8jjkb140z-leandros-projects-102e32ab.vercel.app",
-  "candidate_sha": "2c6b155499689e4e51491a7db7cfe2ed09e901da",
+  "preview_url": "https://ai-product-factory-console-feb3rrld1-leandros-projects-102e32ab.vercel.app",
+  "candidate_sha": "a3aa6c37ca506475f5de4855a688257f82ae5311",
   "expected_text": "Entrar na Factory",
-  "purpose": "PR #407 locked deterministic dependency candidate"
+  "purpose": "PR #400 current exact multi-agent release candidate"
 }
