@@ -969,3 +969,13 @@ def test_architecture_guardian_is_deterministic_and_security_lane_primary():
     assert "scan_pull_request_files" in lanes
     assert 'report.evidence["blocking_findings"]' in lanes
     assert "_FORBIDDEN_SECURITY_PATTERNS" not in lanes
+
+
+
+def test_unittest_collection_has_explicit_guard_against_function_style_tests():
+    workflow=(ROOT/".github/workflows/validate.yml").read_text()
+    guard=(ROOT/"scripts/check_test_collection.py").read_text()
+    assert "python scripts/check_test_collection.py" in workflow
+    assert "ast.parse" in guard
+    assert "TOTAL_UNCOLLECTED" in guard
+    assert "TEST_COLLECTION_GUARD_OK" in guard
