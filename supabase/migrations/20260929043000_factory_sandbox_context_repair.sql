@@ -247,3 +247,34 @@ end;
 $$;
 revoke all on function public.factory_mark_repair_wave_integrated(uuid,integer,text) from public,anon,authenticated;
 grant execute on function public.factory_mark_repair_wave_integrated(uuid,integer,text) to service_role;
+
+
+create or replace function public.factory_close_repairs_after_specialist_pass(p_job_id uuid)
+returns jsonb
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare v_job public.factory_specialist_lane_jobs%rowtype;v_run public.factory_runs%rowtype;v_change_set_id uuid;v_count integer:=0;
+begin
+ select * into v_job from public.factory_specialist_lane_jobs where id=p_job_id;
+ if not found then raise exception 'specialist job not found'; end if;
+ if v_job.status<>'passed' then return jsonb_build_object('updated',0,'reason','job_not_passed'); end if;
+ select * into v_run from public.factory_runs where id=v_job.run_id;
+ if coalesce(v_run.metadata->>'change_set_id','')='' then return jsonb_build_object('updated',0,'reason','no_change_set'); end if;
+ v_change_set_id=(v_run.metadata->>'change_set_id')::uuid;
+ update public.factory_repair_jobs
+ set status='passed',candidate_commit=v_job.candidate_commit,updated_at=now()
+ where change_set_id=v_change_set_id and source_role=v_job.role and status='integrated';
+ get diagnostics v_count=row_count;
+ if v_count>0 then
+  insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+  values(v_job.project_id,v_run.task_id,v_job.run_id,'agent',v_job.role,'repair.recheck.passed',
+    jsonb_build_object('change_set_id',v_change_set_id,'source_role',v_job.role,'passed_repairs',v_count,
+      'candidate_commit',v_job.candidate_commit));
+ end if;
+ return jsonb_build_object('updated',v_count,'status','passed','candidate_commit',v_job.candidate_commit);
+end;
+$$;
+revoke all on function public.factory_close_repairs_after_specialist_pass(uuid) from public,anon,authenticated;
+grant execute on function public.factory_close_repairs_after_specialist_pass(uuid) to service_role;
