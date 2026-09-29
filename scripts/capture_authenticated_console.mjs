@@ -109,6 +109,13 @@ try {
   }, null, 2));
 
   if (consoleErrors.length || pageErrors.length) {
+    console.error(JSON.stringify({
+      status:"browser_error_diagnostic",
+      consoleErrorCount:consoleErrors.length,
+      pageErrorCount:pageErrors.length,
+      consoleErrors:consoleErrors.slice(0,20),
+      pageErrors:pageErrors.slice(0,20)
+    }));
     throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length}`);
   }
 
