@@ -51,6 +51,8 @@ try {
     {name:"human-gates",path:"/gates",width:1980},
     {name:"run-detail",path:"/runs/93fd8cdc-f000-4a01-978e-463798628e4e",width:1296},
     {name:"work-queue",path:"/queue",width:1296},
+    {name:"agents",path:"/agents",width:1296},
+    {name:"orchestration",path:"/orchestration",width:1296},
     {name:"evals",path:"/evals",width:1296},
     {name:"deployments",path:"/deployments",width:1296},
     {name:"models-usage",path:"/usage",width:1296},
