@@ -35,6 +35,13 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(result.output_commit,"out")
         github.ensure_branch_at_sha.assert_called_once_with("factory/cs/a","base")
         github.commit_files.assert_called_once()
+        message=github.commit_files.call_args.kwargs["message"]
+        self.assertIn("Factory-Run: run",message)
+        self.assertIn("Factory-Change-Set: cs",message)
+        self.assertIn("Factory-Work-Unit: wu",message)
+        self.assertIn("Factory-Agent: development",message)
+        self.assertIn("Factory-Context-SHA256: ",message)
+        self.assertNotIn('"objective"',message)
         self.assertFalse(github.create_pull_request.called)
         store.complete_work_unit.assert_called_once_with(
             run_id="run",output_commit="out",changed_files=("src/a.py",)
@@ -83,6 +90,9 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(result.candidate_commit,"integrated")
         self.assertEqual(result.pull_request.number,9)
         github.create_pull_request.assert_called_once()
+        integration_message=github.commit_files.call_args.kwargs["message"]
+        self.assertIn("Factory-Change-Set: cs12345678",integration_message)
+        self.assertIn("Factory-Wave: 1",integration_message)
         store.prepare_release.assert_called_once()
         store.mark_repair_wave_integrated.assert_called_once_with(
             change_set_id="cs12345678",wave=1,candidate_commit="integrated"
