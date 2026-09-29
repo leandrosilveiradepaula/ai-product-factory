@@ -215,7 +215,9 @@ def run_specialist_once(role:str,worker_id:str)->dict:
   run_id=item.run_id,evidence_type=role,status=result.status,evidence_ref=item.candidate_commit,
   metadata={"source":"specialist_lane","role":role,"job_id":item.job_id,"findings_count":len(result.findings)}
  )
- return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,"run_status":completed.get("run_status"),"findings":list(result.findings)}
+ return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,
+  "run_status":completed.get("run_status"),"findings":list(result.findings),
+  "repair":completed.get("repair"),"repair_recheck":completed.get("repair_recheck")}
 
 def _assess_release_policy(*,run_id:str,candidate_commit:str,changed_files:tuple[str,...],risk:dict)->tuple[object,dict]:
  policy_store=SupabaseReleasePolicyStore()
