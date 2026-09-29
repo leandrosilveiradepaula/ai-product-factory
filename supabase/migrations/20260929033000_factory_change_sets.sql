@@ -398,7 +398,7 @@ language plpgsql
 security invoker
 set search_path=''
 as $$
-declare v_requeued integer:=0;v_blocked integer:=0;v_integrators integer:=0;
+declare v_requeued integer:=0;v_blocked integer:=0;v_integrators integer:=0;v_blocked_integrations integer:=0;
 begin
  if p_max_attempts<1 or p_max_attempts>10 then raise exception 'invalid max attempts'; end if;
 
@@ -429,7 +429,8 @@ begin
  set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
      metadata=metadata||jsonb_build_object('blocker','integration_retry_exhausted')
  where status='integrating' and lease_expires_at<=now() and attempt_count>=p_max_attempts;
- get diagnostics v_blocked=v_blocked+row_count;
+ get diagnostics v_blocked_integrations=row_count;
+ v_blocked:=v_blocked+v_blocked_integrations;
 
  return jsonb_build_object('work_units_requeued',v_requeued,'integrations_requeued',v_integrators,'blocked',v_blocked);
 end;
