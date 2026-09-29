@@ -459,6 +459,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('url.protocol !== "https:"', workflow)
         self.assertIn("github.rest.repos.getCommit", workflow)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
+        self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN", workflow)
+        self.assertIn("x-vercel-trusted-oidc-idp-token", script)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", script)
         self.assertIn('{name:"agents",path:"/agents"', script)
         self.assertIn('{name:"orchestration",path:"/orchestration"', script)
