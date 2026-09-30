@@ -55,6 +55,27 @@ class OpenAIResponsesProviderTests(unittest.TestCase):
         self.assertEqual(result.output, "result")
         self.assertEqual(result.usage["total_tokens"], 15.0)
 
+
+    def test_structured_output_schema_is_sent_via_responses_text_format(self):
+        schema={
+            "type":"object",
+            "properties":{"value":{"type":"string"}},
+            "required":["value"],
+            "additionalProperties":False,
+        }
+        request=ModelRequest(task_id="t1",objective="Implement",context="ctx",output_schema=schema)
+        self.provider.execute(request)
+        payload=self.transport.calls[-1][3]
+        self.assertEqual(payload["text"]["format"]["type"],"json_schema")
+        self.assertEqual(payload["text"]["format"]["name"],"factory_structured_output")
+        self.assertEqual(payload["text"]["format"]["schema"],schema)
+        self.assertTrue(payload["text"]["format"]["strict"])
+
+    def test_unstructured_request_does_not_send_text_format(self):
+        self.provider.execute(self.request)
+        payload=self.transport.calls[-1][3]
+        self.assertNotIn("text",payload)
+
     def test_api_key_is_only_in_authorization_header(self):
         self.provider.execute(self.request)
         _, _, headers, payload = self.transport.calls[-1]
