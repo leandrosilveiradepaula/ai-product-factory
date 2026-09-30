@@ -94,6 +94,9 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("supabaseMessages",detail)
         self.assertIn("verification_failed",detail)
         self.assertIn("Administrador necessário",detail)
+        projects=(APP/"projects"/"page.tsx").read_text()
+        self.assertIn("oauth_invalid",projects)
+        self.assertIn("project_missing",projects)
         self.assertTrue((APP/"api"/"integrations"/"supabase"/"connect"/"route.ts").exists())
         self.assertTrue((APP/"api"/"integrations"/"supabase"/"callback"/"route.ts").exists())
 
