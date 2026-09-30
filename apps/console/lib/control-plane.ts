@@ -1,7 +1,6 @@
 import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
-const demo:Dashboard={projects:[{key:"agente-sql-financeiro",name:"Agente SQL Financeiro",stage:"planning",status:"active",updatedAt:"pilot onboarded"}],activeRuns:0,pendingGates:0,codexCalls:0,modelCalls:0,failedRuns:0};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
 export async function createProjectIntake(input:{mode:"greenfield"|"existing";name:string;summary:string;repository?:string;users?:string;mustHave?:string;integrations?:string;references?:{kind:"url"|"figma";value:string}[];reportedStage?:string;knownPending?:string;constraints?:string}){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const projectKey=slugify(input.name);if(!projectKey)throw new Error("Unable to derive project key");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_create_project_intake`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_name:input.name,p_repository:input.repository||"",p_project_kind:input.mode,p_manifest:{source:"factory-console",autonomy:"default",onboarding_mode:input.mode,references:input.references||[],reported_stage:input.reportedStage||null,reconcile_first:input.mode==="existing"},p_spec:{summary:input.summary,continuation_brief:input.mode==="existing"?input.summary:null,users:input.users||null,must_have:input.mustHave||null,integrations:input.integrations||null,references:input.references||[],reported_stage:input.reportedStage||null,known_pending:input.knownPending||null,constraints:input.constraints||null}}),cache:"no-store"});if(!response.ok){const body=await response.text();if(response.status===409||body.includes("duplicate key"))throw new Error("Já existe um projeto com esse nome/chave.");throw new Error("Não foi possível persistir o intake no Control Plane.");}const id=await response.json();return{projectId:String(id),projectKey};}
 
@@ -10,7 +9,7 @@ export async function enqueueProjectBootstrap(projectKey:string){await requireCo
 export async function getDashboard():Promise<Dashboard>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();
- if(!cfg)return demo;
+ if(!cfg)throw new Error("Control Plane não configurado.");
  const {url,headers}=cfg;
  const [projects,runs,gates,codex,tools,failed]=await Promise.all([
   fetch(`${url}/rest/v1/factory_projects?select=project_key,name,lifecycle_stage,is_active,updated_at&order=updated_at.desc`,{headers,cache:"no-store"}),
