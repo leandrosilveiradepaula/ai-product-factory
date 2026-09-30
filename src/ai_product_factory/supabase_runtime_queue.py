@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 
 from .runtime_worker import RuntimeQueue, StageEvidence, WorkItem
+from .agent_scheduler import AgentProfile
 from .project_brain import build_project_brain_graph
 from .traceability import build_requirement_trace
 from .definition_of_done import compile_definition_of_done
