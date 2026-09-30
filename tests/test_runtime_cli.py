@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -146,6 +146,21 @@ class RuntimeCliTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 require_paid_runtime_budget(health_reader=reader)
 
+
+
+    def test_replan_mode_reuses_persisted_plan_without_model_call(self):
+        queue=MagicMock()
+        queue.rebuild_team_plan.return_value={"status":"ready","team_plan_id":"tp","change_set":{"change_set_id":"cs"}}
+        scheduler=MagicMock()
+        profiles=(SimpleNamespace(agent_key="development"),)
+        scheduler.profiles.return_value=profiles
+        with patch("ai_product_factory.runtime_cli.SupabaseRuntimeQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as provider:
+            out=run_replan_once("run-1")
+        self.assertEqual(out["status"],"ready")
+        queue.rebuild_team_plan.assert_called_once_with("run-1",profiles)
+        provider.assert_not_called()
 
     def test_replay_mode_is_zero_effect_and_model_free(self):
         store=MagicMock()
