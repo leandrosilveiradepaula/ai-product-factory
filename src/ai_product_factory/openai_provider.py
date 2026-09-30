@@ -226,6 +226,15 @@ class OpenAIResponsesProvider(ModelProvider):
             "max_output_tokens": self.policy.max_output_tokens,
             "store": False,
         }
+        if request_data.output_schema is not None:
+            payload["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "factory_structured_output",
+                    "schema": request_data.output_schema,
+                    "strict": True,
+                }
+            }
         status, data = self.transport(
             "POST",
             self.api_url,
