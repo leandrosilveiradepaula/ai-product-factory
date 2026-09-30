@@ -90,6 +90,16 @@ class ProductStageExecutor:
             raise ValueError(f"{stage} returned invalid JSON") from exc
         if not isinstance(output,dict):
             raise ValueError(f"{stage} output must be a JSON object")
+        if stage=="planning":
+            tasks=output.get("tasks")
+            if isinstance(tasks,list):
+                for task in tasks:
+                    if not isinstance(task,dict):
+                        continue
+                    task_key=str(task.get("task_key") or "").strip()
+                    title=str(task.get("title") or "").strip()
+                    if not title and task_key:
+                        task["title"]=task_key
         if stage=="planning" and self.team_profiles is not None:
             output["_team_plan"]=build_execution_team_plan(output,self.team_profiles)
         output["_evidence"]={"provider_ref":result.provider_ref,"role":result.role.value,"usage":result.usage or {}}
