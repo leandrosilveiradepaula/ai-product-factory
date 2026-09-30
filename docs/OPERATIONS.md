@@ -17,6 +17,12 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `release` | Observe one human PR merge | GitHub reads; issue close/evidence after merge | Hourly | Human merge must already exist |
 | `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
 
+## Merge autonomy
+
+The ChatGPT/operator layer may merge a PR directly after its applicable CI/quality gates are green **only when that merge cannot publish production**. It must use the verified head SHA and fail closed if the PR moved, became non-mergeable, or a human gate condition appeared.
+
+This does not grant merge capability to the Factory runtime, does not enable GitHub auto-merge, and does not change the production boundary. Any PR whose merge publishes production remains a human action.
+
 ## Required release sequence
 
 1. Implementation opens a PR; production is not touched.

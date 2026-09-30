@@ -41,6 +41,19 @@ Nunca executar automaticamente:
 - alteracoes sensiveis de autenticacao/permissao que ampliem acesso;
 - mudanca material de requisito de produto.
 
-## Regra de release
+## Regra de merge e release
 
-CI verde, quality gate e Preview verificado nao autorizam merge de producao. Quando o merge do PR publica `main`, a Factory deve parar em `awaiting_release`. O merge e humano; o release observer apenas registra uma acao humana ja concluida.
+O operador/orquestrador esta autorizado a executar diretamente merges de PRs elegiveis quando o merge **nao publica producao** e todos os gates aplicaveis estiverem verdes. Nesses casos nao e necessario pedir confirmacao humana a cada PR.
+
+Condicoes minimas para merge operacional autonomo:
+- CI e acceptance aplicaveis verdes;
+- PR mergeable e head SHA ainda igual ao SHA verificado;
+- nenhuma mudanca material de requisito;
+- nenhuma perda/destruicao de dados;
+- nenhuma ampliacao de acesso sensivel;
+- nenhuma criacao de servico pago recorrente;
+- o merge nao dispara release de producao.
+
+Isso e autorizacao do operador, nao capacidade do runtime. O adapter GitHub da Factory continua sem funcao de merge automatico e o recurso GitHub auto-merge nao deve ser habilitado como atalho.
+
+CI verde, quality gate e Preview verificado nao autorizam merge de producao. Quando o merge do PR publica producao, a Factory deve parar em `awaiting_release`. Esse merge e humano; o release observer apenas registra uma acao humana ja concluida.
