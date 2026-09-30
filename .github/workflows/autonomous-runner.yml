@@ -69,9 +69,9 @@ jobs:
       FACTORY_MODEL_BUDGET_USD: "4.00"
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Recover expired leases in the shared scheduler runner
@@ -123,9 +123,9 @@ jobs:
       FACTORY_MODEL_BUDGET_USD: "4.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect runtime readiness
@@ -202,9 +202,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Integrate one completed Change Set wave
@@ -232,9 +232,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Control Plane readiness
@@ -267,9 +267,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Run at most one Security specialist review
@@ -296,9 +296,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Run at most one QA specialist review
@@ -325,9 +325,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Run at most one Operations specialist review
@@ -355,9 +355,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Control Plane readiness
@@ -387,9 +387,9 @@ jobs:
     env:
       PYTHONPATH: src
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Control Plane readiness
@@ -457,9 +457,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Direct Control Plane readiness
@@ -532,7 +532,7 @@ jobs:
       FACTORY_CODEX_MAX_FILES: "20"
       FACTORY_CODEX_MAX_BYTES: "250000"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
       - name: Detect Codex runtime readiness
         id: readiness
@@ -563,11 +563,11 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Codex worker is inert: enable flag, complete official Codex auth, native repository credential, and Control Plane credentials are required. Cross-repository work still requires FACTORY_GITHUB_TOKEN at execution time."
           fi
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         if: ${{ steps.readiness.outputs.ready == 'true' }}
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: ${{ steps.readiness.outputs.ready == 'true' }}
         with:
           node-version: "22"
@@ -625,9 +625,9 @@ jobs:
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED }}
       FACTORY_CODEX_MANUAL_FALLBACK_ENABLED: ${{ vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Control Plane readiness
@@ -672,9 +672,9 @@ jobs:
       FACTORY_BROWSER_EVIDENCE_COMMAND_JSON: '["node","scripts/verify_preview.mjs"]'
       FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS: "120"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Control Plane readiness
@@ -701,7 +701,7 @@ jobs:
               out.write(f"work={'true' if data.get('claimed') else 'false'}\n")
               out.write(f"browser={'true' if data.get('preview_required') else 'false'}\n")
           PY
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: ${{ steps.preview_probe.outputs.browser == 'true' }}
         with:
           node-version: "22"
@@ -733,9 +733,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Detect Control Plane readiness
