@@ -65,14 +65,24 @@ class RuntimeWorker:
         if item is None:
             return None
         evidence: list[StageEvidence] = []
+        current_stage: str | None = None
         try:
             for stage in item.stages:
+                current_stage = stage
+                recorder = getattr(self.queue, "record_stage_event", None)
+                if callable(recorder):
+                    recorder(item, stage, "started")
                 output = self.handler.execute(item, stage)
                 ev = StageEvidence(stage=stage, status="completed", output=output)
                 self.queue.record_stage(item, ev)
                 evidence.append(ev)
+                current_stage = None
             self.queue.complete(item)
             return WorkResult(WorkStatus.COMPLETED, tuple(evidence))
         except Exception as exc:
+            if current_stage is not None:
+                recorder = getattr(self.queue, "record_stage_event", None)
+                if callable(recorder):
+                    recorder(item, current_stage, "failed")
             self.queue.fail(item, str(exc))
             return WorkResult(WorkStatus.FAILED, tuple(evidence), str(exc))
