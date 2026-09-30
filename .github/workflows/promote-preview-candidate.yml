@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Verify exact PR candidate and green required checks
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
@@ -42,7 +42,7 @@ jobs:
               if (!ok) return core.setFailed("required check is not green: " + name);
             }
       - name: Point one preview ref at the exact candidate SHA
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
