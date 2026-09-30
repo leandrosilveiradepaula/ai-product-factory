@@ -30,6 +30,26 @@ class ChangeSetBuilderWorker:
         self.github=github;self.store=store;self.producer=producer;self.impact_engine=impact_engine or SupabaseImpactEngine()
         self.provenance=provenance or SupabaseProvenanceStore();self.execution_route=execution_route
 
+    def _repository_snapshot(self,*,source:dict,base_commit:str)->dict[str,str]:
+        assignment=source.get("assignment") if isinstance(source.get("assignment"),dict) else {}
+        paths=assignment.get("context_paths") if isinstance(assignment.get("context_paths"),list) else []
+        if len(paths)>12:
+            raise ValueError("too many repository context paths")
+        snapshot={}
+        total=0
+        for raw in paths:
+            path=str(raw).strip().replace("\\","/").removeprefix("./")
+            if not path or path.startswith("/") or path.startswith("../") or "/../" in path:
+                raise ValueError("invalid repository context path")
+            text=self.github.get_file_text(path,ref=base_commit)
+            if len(text.encode("utf-8"))>32768:
+                raise ValueError("repository context file too large")
+            total+=len(text.encode("utf-8"))
+            if total>131072:
+                raise ValueError("repository context snapshot too large")
+            snapshot[path]=text
+        return snapshot
+
     def execute(self,item:DirectExecutionItem)->ChangeSetWorkResult:
         if item.human_gate_required:
             raise PermissionError("task requires human approval before implementation")
@@ -48,8 +68,10 @@ class ChangeSetBuilderWorker:
             project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
         )
         source=self.store.context_source(item.run_id)
+        snapshot=self._repository_snapshot(source=source,base_commit=binding.base_commit)
         packet=build_context_packet(
             source=source,impact=impact.as_context(),base_commit=binding.base_commit,branch=item.branch,
+            repository_snapshot=snapshot,
         )
         self.store.record_context(run_id=item.run_id,packet_hash=packet.sha256,packet=packet.as_dict())
         provenance=build_run_provenance(
