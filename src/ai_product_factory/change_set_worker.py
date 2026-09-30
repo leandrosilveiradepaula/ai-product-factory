@@ -7,7 +7,7 @@ from .change_set_store import ChangeSetBinding,SupabaseChangeSetStore
 from .execution_worker import DirectExecutionItem,ImplementationArtifact,ImplementationProducer
 from .github_rest import GitHubRestAdapter
 from .impact_engine import SupabaseImpactEngine
-from .work_unit_context import build_context_packet,enforce_write_scopes
+from .work_unit_context import build_context_packet,enforce_write_scopes,redact_repository_text
 from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
 from .commit_provenance import provenance_commit_message
 
@@ -41,7 +41,7 @@ class ChangeSetBuilderWorker:
             path=str(raw).strip().replace("\\","/").removeprefix("./")
             if not path or path.startswith("/") or path.startswith("../") or "/../" in path:
                 raise ValueError("invalid repository context path")
-            text=self.github.get_file_text(path,ref=base_commit)
+            text=redact_repository_text(self.github.get_file_text(path,ref=base_commit))
             if len(text.encode("utf-8"))>32768:
                 raise ValueError("repository context file too large")
             total+=len(text.encode("utf-8"))

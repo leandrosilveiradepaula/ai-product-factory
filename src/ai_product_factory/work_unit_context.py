@@ -42,6 +42,11 @@ def _sanitize(value:Any,path:str="root")->Any:
     return str(value)
 
 
+def redact_repository_text(value:str)->str:
+    redacted=_SECRET_VALUE.sub("[REDACTED_SECRET]",value)
+    return redacted.replace("sb_"+"secret_","[REDACTED_SUPABASE_SECRET_PREFIX]")
+
+
 def _normalize_scopes(scopes:Iterable[str])->tuple[str,...]:
     out=[]
     for raw in scopes:
