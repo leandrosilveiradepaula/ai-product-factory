@@ -14,6 +14,7 @@ class ChangeSetTests(unittest.TestCase):
         github.get_branch_sha.return_value="base"
         github.commit_files.return_value="out"
         store=MagicMock()
+        store.frozen_source_commit.return_value=None
         store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
         store.context_source.return_value={
             "project_key":"demo","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
@@ -54,6 +55,32 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(produced.context_packet["work_unit"]["task_key"],"a")
         store.record_context.assert_called_once()
         provenance.record.assert_called_once()
+
+
+    def test_builder_retry_uses_frozen_change_set_source_instead_of_new_main(self):
+        github=MagicMock()
+        github.get_branch_sha.return_value="new-main"
+        github.commit_files.return_value="out"
+        store=MagicMock()
+        store.frozen_source_commit.return_value="frozen-base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","frozen-base","frozen-base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"demo","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
+            "plan_task_key":"a","agent_key":"development","wave":1,
+            "task":{"title":"A","description":"desc","acceptance_criteria":[]},
+            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
+        producer=MagicMock()
+        producer.produce.return_value=ImplementationArtifact("plan",{"src/a.py":"value=1"},"feat: a","unused","unused")
+        item=DirectExecutionItem("run","task","demo","owner/repo",None,"A","desc","factory/cs/a",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{"confidence":"high","impacted_nodes":[],"unknowns":[]})
+        ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=MagicMock()).execute(item)
+        store.frozen_source_commit.assert_called_once_with("cs")
+        store.bind_source.assert_called_once_with(
+            run_id="run",source_commit="frozen-base",integration_branch="factory/change-set-cs",work_branch="factory/cs/a"
+        )
+        github.ensure_branch_at_sha.assert_called_once_with("factory/cs/a","frozen-base")
 
     def test_integrator_rejects_overlapping_files(self):
         github=MagicMock()
