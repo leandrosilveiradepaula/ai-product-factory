@@ -66,6 +66,8 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("existingCount+files.length>10",actions)
         self.assertIn('"/projects/new?intake="',review)
         self.assertIn('target="_blank"',review)
+        self.assertIn("normalizeIntake",review)
+        self.assertIn("validateIntake",review)
         self.assertIn("countProjectDraftFiles",attachments)
 
     def test_dashboard_never_falls_back_to_demo_data(self):
