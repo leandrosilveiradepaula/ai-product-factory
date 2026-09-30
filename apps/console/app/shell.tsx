@@ -6,7 +6,7 @@ import type {ReactNode} from "react";
 import {signOutAction} from "./auth-actions";
 import {ConsoleNav} from "./nav";
 
-export function ConsoleShell({children}:{children:ReactNode}){
+export function ConsoleShell({children,environmentLabel}:{children:ReactNode;environmentLabel:string}){
  const pathname=usePathname();
  const authOnly=pathname==="/login"||pathname==="/unauthorized";
  if(authOnly){
@@ -26,13 +26,13 @@ export function ConsoleShell({children}:{children:ReactNode}){
    <ConsoleNav/>
    <div className="sidebarFooter">
     <div className="sidebarHealth"><span>AI Product Factory</span></div>
-    <div className="sidebarFooterRow"><span className="envBadge">produção</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
+    <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
    </div>
   </aside>
   <div className="workspace">
    <header className="topbar">
     <div className="topbarTrail"><span>Control Plane</span><b>/</b><strong>Sessão ativa</strong></div>
-    <div className="topbarMeta"><span>Console</span><span className="topbarDivider"/><span>Produção</span><Link href="/projects/new" className="topbarWork">+ Novo trabalho</Link></div>
+    <div className="topbarMeta"><span>Console</span><span className="topbarDivider"/><span>{environmentLabel}</span><Link href="/projects/new" className="topbarWork">+ Novo trabalho</Link></div>
    </header>
    <main className="main">{children}</main>
   </div>
