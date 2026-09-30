@@ -71,5 +71,28 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertGreaterEqual(call.call_count,3)
 
 
+    def test_rebuild_team_plan_uses_persisted_engineering_plan_and_materializes_ready_change_set(self):
+        from ai_product_factory.agent_scheduler import AgentProfile
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        q._get=lambda path: (
+            [{"id":"run-1","task_id":"task-1"}] if path.startswith("factory_runs?")
+            else [{"id":"task-1","project_id":"project-1"}] if path.startswith("factory_tasks?")
+            else [{"id":"project-1","manifest":{"engineering_plan":{"tasks":[{"task_key":"api","title":"API","required_capabilities":["implementation"],"scope_keys":["src"],"depends_on":[]}]}}}]
+        )
+        calls=[]
+        def rpc(name,payload):
+            calls.append((name,payload))
+            if name=="factory_record_execution_team_plan":
+                return {"id":"tp-1","status":"ready"}
+            if name=="factory_materialize_change_set":
+                return {"change_set_id":"cs-1","builder_work_units":1,"status":"planned"}
+            raise AssertionError(name)
+        q._rpc=rpc
+        profile=AgentProfile("development","development",("implementation",),("github_write",),{"preferred":"primary"},1,1.0,True)
+        out=q.rebuild_team_plan("run-1",(profile,))
+        self.assertEqual(out["status"],"ready")
+        self.assertEqual(out["change_set"]["change_set_id"],"cs-1")
+        self.assertEqual([name for name,_ in calls],["factory_record_execution_team_plan","factory_materialize_change_set"])
+
 if __name__=="__main__":
     unittest.main()

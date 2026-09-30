@@ -334,6 +334,11 @@ def run_release_once()->dict:
  SupabaseAgentScheduler().release_scopes(item.run_id)
  return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
 
+def run_replan_once(source_run_id:str)->dict:
+ if not source_run_id.strip():raise ValueError("source run id is required")
+ profiles=SupabaseAgentScheduler().profiles()
+ return SupabaseRuntimeQueue().rebuild_team_plan(source_run_id,profiles)
+
 def run_replay_once(source_run_id:str,mode:str="offline")->dict:
  if not source_run_id.strip():raise ValueError("source run id is required")
  replay=SupabaseProvenanceStore().create_replay(source_run_id,mode)
@@ -372,7 +377,7 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","delivery-metrics","replay"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","delivery-metrics","replay","replan"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
  elif args.mode=="schedule-probe":out=SupabaseScheduleProbe().probe()
@@ -382,6 +387,9 @@ def main()->int:
  elif args.mode=="replay":
   if not args.source_run_id:raise ValueError("--source-run-id is required for replay mode")
   out=run_replay_once(args.source_run_id,args.replay_mode)
+ elif args.mode=="replan":
+  if not args.source_run_id:raise ValueError("--source-run-id is required for replan mode")
+  out=run_replan_once(args.source_run_id)
  elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
  elif args.mode=="preview-probe":out=run_preview_probe_once()
  elif args.mode=="preview":out=run_preview_once()

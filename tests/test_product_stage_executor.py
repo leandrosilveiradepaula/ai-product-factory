@@ -98,5 +98,27 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertEqual(len(p.requests),1)
 
 
+    def test_planning_context_exposes_only_active_registry_vocabulary(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{"task_key":"api","title":"Build API","required_capabilities":["implementation"],"scope_keys":["src"],"depends_on":[],"preferred_agent_role":"development"}]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        active=AgentProfile("development","development",("implementation","debug"),("github_write","model_primary"),{"preferred":"primary"},2,1.5,True)
+        inactive=AgentProfile("old","legacy",("implementation",),("github_write",),{"preferred":"primary"},1,0.1,False)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(active,inactive))
+        h.execute(item(),"planning")
+        payload=json.loads(p.requests[0].context)
+        self.assertEqual(payload["execution_registry"],[{
+            "agent_key":"development",
+            "role":"development",
+            "capabilities":["implementation","debug"],
+            "allowed_tools":["github_write","model_primary"],
+        }])
+        self.assertIn("canonical vocabulary",p.requests[0].constraints[4])
+        self.assertIn("Human approval/release is a gate",p.requests[0].constraints[5])
+
 if __name__=="__main__":
     unittest.main()

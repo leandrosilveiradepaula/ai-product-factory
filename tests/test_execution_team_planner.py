@@ -104,5 +104,32 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         self.assertTrue(any(x["code"]=="unresolved_dependency" for x in out["blockers"]))
 
 
+    def test_dogfood_style_aliases_map_to_canonical_registry_without_widening_tools(self):
+        plan={"tasks":[
+            {"task_key":"DISCOVER_PROBE_CONTRACT","title":"DISCOVER_PROBE_CONTRACT","required_capabilities":["repository_analysis","architecture"],"scope_keys":["."],"depends_on":[],"preferred_agent_role":"repository_archaeologist"},
+            {"task_key":"DEFINE_TELEMETRY_SCHEMA","title":"DEFINE_TELEMETRY_SCHEMA","required_capabilities":["implementation","database","supabase"],"scope_keys":["supabase"],"depends_on":["DISCOVER_PROBE_CONTRACT"],"preferred_agent_role":"backend_engineer"},
+            {"task_key":"IMPLEMENT_PROBE_TELEMETRY_WRITER","title":"IMPLEMENT_PROBE_TELEMETRY_WRITER","required_capabilities":["implementation","backend","supabase"],"scope_keys":["src"],"depends_on":["DEFINE_TELEMETRY_SCHEMA"],"preferred_agent_role":"backend_engineer"},
+            {"task_key":"ADD_TELEMETRY_TESTS","title":"ADD_TELEMETRY_TESTS","required_capabilities":["tests","implementation","database_testing"],"scope_keys":["tests"],"depends_on":["IMPLEMENT_PROBE_TELEMETRY_WRITER"],"preferred_agent_role":"test_engineer"},
+            {"task_key":"REVIEW_TELEMETRY_SECURITY","title":"REVIEW_TELEMETRY_SECURITY","required_capabilities":["security_review","supabase","oidc"],"scope_keys":["supabase"],"depends_on":["IMPLEMENT_PROBE_TELEMETRY_WRITER"],"preferred_agent_role":"security_engineer"},
+            {"task_key":"VALIDATE_CI_AND_MIGRATION","title":"VALIDATE_CI_AND_MIGRATION","required_capabilities":["ci","tests","supabase","release_engineering"],"scope_keys":[".github"],"depends_on":["ADD_TELEMETRY_TESTS","REVIEW_TELEMETRY_SECURITY"],"preferred_agent_role":"release_engineer"},
+            {"task_key":"HUMAN_PRODUCTION_RELEASE_GATE","title":"HUMAN_PRODUCTION_RELEASE_GATE","required_capabilities":["human_approval","release_management"],"scope_keys":[".github"],"depends_on":["VALIDATE_CI_AND_MIGRATION"],"preferred_agent_role":"release_manager"},
+        ]}
+        out=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(out["status"],"ready")
+        by_key={row["task_key"]:row for row in out["task_assignments"]}
+        self.assertEqual(by_key["DISCOVER_PROBE_CONTRACT"]["agent_key"],"development")
+        self.assertEqual(by_key["DEFINE_TELEMETRY_SCHEMA"]["agent_key"],"development")
+        self.assertEqual(by_key["IMPLEMENT_PROBE_TELEMETRY_WRITER"]["agent_key"],"development")
+        self.assertEqual(by_key["ADD_TELEMETRY_TESTS"]["agent_key"],"development")
+        self.assertEqual(by_key["REVIEW_TELEMETRY_SECURITY"]["agent_key"],"security")
+        self.assertEqual(by_key["REVIEW_TELEMETRY_SECURITY"]["execution_lane"],"specialist")
+        self.assertEqual(by_key["VALIDATE_CI_AND_MIGRATION"]["agent_key"],"operations")
+        self.assertEqual(by_key["VALIDATE_CI_AND_MIGRATION"]["execution_lane"],"specialist")
+        self.assertEqual(by_key["HUMAN_PRODUCTION_RELEASE_GATE"]["execution_lane"],"human_gate")
+        self.assertIsNone(by_key["HUMAN_PRODUCTION_RELEASE_GATE"]["agent_key"])
+        self.assertEqual(by_key["DEFINE_TELEMETRY_SCHEMA"]["source_preferred_agent_role"],"backend_engineer")
+        self.assertIn("supabase",by_key["DEFINE_TELEMETRY_SCHEMA"]["source_required_capabilities"])
+        self.assertTrue(all(row["agent_key"] in {"development","security","operations",None} for row in by_key.values()))
+
 if __name__=="__main__":
     unittest.main()

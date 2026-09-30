@@ -46,11 +46,23 @@ class ProductStageExecutor:
         order=("discovery","specification","reconciliation","gap_analysis")
         prior={s:self.outputs[(item.run_id,s)] for s in order if (item.run_id,s) in self.outputs}
         objective=getattr(self.prompts,stage)
+        registry=None
+        if stage=="planning" and self.team_profiles is not None:
+            registry=[
+                {
+                    "agent_key":profile.agent_key,
+                    "role":profile.role,
+                    "capabilities":list(profile.capabilities),
+                    "allowed_tools":list(profile.allowed_tools),
+                }
+                for profile in self.team_profiles if profile.is_active
+            ]
         context=json.dumps(
             {
                 "project_key":item.project_key,
                 "intake":item.context,
                 "prior_stages":prior,
+                "execution_registry":registry,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -67,6 +79,8 @@ class ProductStageExecutor:
                     "Do not invent unavailable business decisions.",
                     "Do not claim tests, repository inspection, deployment, or external validation unless supplied as evidence.",
                     "Record assumptions explicitly.",
+                    "For planning, use the supplied execution_registry as the canonical vocabulary for preferred_agent_role and required_capabilities; do not invent specialist roles when an existing role can own the task.",
+                    "Human approval/release is a gate, not an executable agent task.",
                 ),
             ),
         )

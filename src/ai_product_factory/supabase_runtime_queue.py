@@ -6,9 +6,11 @@ import urllib.error
 import urllib.request
 
 from .runtime_worker import RuntimeQueue, StageEvidence, WorkItem
+from .agent_scheduler import AgentProfile
 from .project_brain import build_project_brain_graph
 from .traceability import build_requirement_trace
 from .definition_of_done import compile_definition_of_done
+from .execution_team_planner import build_execution_team_plan
 from .supabase_server import resolve_supabase_server_config
 
 
@@ -20,6 +22,15 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         self.key=cfg.key
         self.headers=cfg.headers
 
+    def _get(self, path: str):
+        req=urllib.request.Request(f"{self.url}/rest/v1/{path}",method="GET",headers=self.headers)
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:
+                raw=response.read().decode()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
+        return [] if not raw else json.loads(raw)
+
     def _rpc(self, name: str, payload: dict):
         req=urllib.request.Request(f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json"})
         try:
@@ -28,6 +39,37 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
         return None if not raw else json.loads(raw)
+
+
+    def rebuild_team_plan(self,source_run_id:str,profiles:tuple[AgentProfile,...])->dict:
+        if not source_run_id.strip():
+            raise ValueError("source run id is required")
+        runs=self._get(
+            "factory_runs?select=id,task_id&id=eq."+source_run_id+"&limit=1"
+        )
+        if len(runs)!=1:
+            raise ValueError("source run not found")
+        tasks=self._get(
+            "factory_tasks?select=id,project_id&id=eq."+str(runs[0]["task_id"])+"&limit=1"
+        )
+        if len(tasks)!=1:
+            raise ValueError("source task not found")
+        projects=self._get(
+            "factory_projects?select=id,manifest&id=eq."+str(tasks[0]["project_id"])+"&limit=1"
+        )
+        if len(projects)!=1:
+            raise ValueError("source project not found")
+        manifest=projects[0].get("manifest")
+        engineering_plan=manifest.get("engineering_plan") if isinstance(manifest,dict) else None
+        if not isinstance(engineering_plan,dict) or not isinstance(engineering_plan.get("tasks"),list):
+            raise ValueError("persisted engineering plan is unavailable")
+        plan=build_execution_team_plan(engineering_plan,profiles)
+        recorded=self._rpc("factory_record_execution_team_plan",{"p_run_id":source_run_id,"p_plan":plan}) or {}
+        out={"status":recorded.get("status") or plan.get("status"),"team_plan_id":recorded.get("id"),"plan":plan}
+        if recorded.get("id") and recorded.get("status")=="ready":
+            materialized=self._rpc("factory_materialize_change_set",{"p_team_plan_id":recorded["id"]}) or {}
+            out["change_set"]=materialized
+        return out
 
     def recover_expired(self,max_attempts:int=3)->dict:
         data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
