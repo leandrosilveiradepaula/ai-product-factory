@@ -43,3 +43,35 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m unittest tests.test_factory_acceptance -v
+
+
+  pr-permission-probe:
+    if: ${{ github.ref == 'refs/heads/ci/pr-permission-probe-463' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_ACTIONS: "true"
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Create disposable PR through runtime adapter
+        shell: bash
+        run: |
+          python - <<'PY'
+          from ai_product_factory.github_rest import GitHubRestAdapter
+          gh = GitHubRestAdapter(repository="leandrosilveiradepaula/ai-product-factory")
+          pr = gh.create_pull_request(
+              title="test(ops): GitHub Actions PR permission probe",
+              body="Issue #463 permission probe. This PR is disposable and must not be merged.",
+              head="factory/pr-permission-probe",
+              base="main",
+          )
+          print({"number": pr.number, "head_sha": pr.head_sha, "url": pr.html_url})
+          PY
