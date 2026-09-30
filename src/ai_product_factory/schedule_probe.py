@@ -1,96 +1,70 @@
+"""Schedule work probing and durable, sanitized probe observations."""
+
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
-
-from .supabase_server import resolve_supabase_server_config
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 
-class SupabaseScheduleProbe:
-    """Read-only scheduler probe used to avoid starting idle GitHub-hosted runners."""
+_AUDIT_EVENT_TYPE = "schedule_probe.observed"
 
-    def __init__(self, *, url: str | None = None, secret_key: str | None = None, service_role_key: str | None = None) -> None:
-        cfg = resolve_supabase_server_config(url=url, secret_key=secret_key, service_role_key=service_role_key)
-        self.url = cfg.url
-        self.headers = cfg.headers
 
-    def _get(self, path: str) -> list[dict]:
-        req = urllib.request.Request(f"{self.url}/rest/v1/{path}", headers=self.headers, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=30) as response:
-                raw = response.read().decode()
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
-        return [] if not raw else json.loads(raw)
+def _normalized_work_classes(probe_flags: Mapping[str, bool]) -> list[str]:
+    """Return the stable work classes represented by positive probe flags.
 
-    def probe(self) -> dict:
-        runs = self._get(
-            "factory_runs?select=id,task_id,status,execution_route"
-            "&status=in.(created,queued,ci_pending,preview_ready,awaiting_release,awaiting_codex_manual)"
-            "&order=created_at.asc&limit=200"
-        )
-        tasks = self._get(
-            "factory_tasks?select=id,status"
-            "&status=in.(queued,queued_execution)&limit=200"
-        )
-        task_status = {str(row["id"]): str(row.get("status") or "") for row in tasks}
+    The probe flags are the source of truth for both routing and telemetry.  Do
+    not use work-item data here: an audit observation is intentionally only a
+    summary of the probe outcome.
+    """
 
-        product_work = any(
-            str(run.get("status")) in {"created", "queued"}
-            and task_status.get(str(run.get("task_id"))) == "queued"
-            for run in runs
-        )
-        codex_manual_work = any(
-            str(run.get("status")) == "awaiting_codex_manual"
-            or (
-                str(run.get("status")) == "queued"
-                and str(run.get("execution_route") or "") == "codex"
-                and task_status.get(str(run.get("task_id"))) == "queued_execution"
-            )
-            for run in runs
-        )
-
-        dispatch_work = bool(self._get(
-            "factory_change_set_work_units?select=id&status=eq.pending&limit=1"
-        ))
-        integration_work = bool(self._get(
-            "factory_change_sets?select=id&status=in.(building,integrating)&limit=1"
-        ))
-        lanes = self._get(
-            "factory_specialist_lane_jobs?select=role&status=eq.queued&limit=20"
-        )
-        specialist_roles = sorted({
-            str(row.get("role") or "")
-            for row in lanes
-            if str(row.get("role") or "") in {"security", "qa", "operations"}
-        })
-
-        out = {
-            "product_work": product_work,
-            "dispatch_work": dispatch_work,
-            "integration_work": integration_work,
-            "ci_work": any(str(run.get("status")) == "ci_pending" for run in runs),
-            "specialist_work": bool(specialist_roles),
-            "specialist_roles": specialist_roles,
-            "specialist_security_work": "security" in specialist_roles,
-            "specialist_qa_work": "qa" in specialist_roles,
-            "specialist_operations_work": "operations" in specialist_roles,
-            "preview_work": any(str(run.get("status")) == "preview_ready" for run in runs),
-            "release_work": any(str(run.get("status")) == "awaiting_release" for run in runs),
-            "codex_manual_work": codex_manual_work,
+    return sorted(
+        {
+            flag.strip().lower().replace("_", "-")
+            for flag, detected in probe_flags.items()
+            if detected and flag.strip()
         }
-        out["work_detected"] = any(
-            bool(out[key])
-            for key in (
-                "product_work",
-                "dispatch_work",
-                "integration_work",
-                "ci_work",
-                "specialist_work",
-                "preview_work",
-                "release_work",
-                "codex_manual_work",
-            )
-        )
-        return out
+    )
+
+
+def persist_schedule_probe_observation(
+    audit_events: Any,
+    *,
+    probe_flags: Mapping[str, bool],
+) -> None:
+    """Persist the sanitized result of a successfully completed schedule probe.
+
+    ``audit_events`` is the existing ``factory_audit_events`` table handle
+    (for example, ``supabase.table("factory_audit_events")``).  Deliberately
+    omit ``created_at`` so the ledger's database default remains the durable
+    observation timestamp.
+    """
+
+    work_classes = _normalized_work_classes(probe_flags)
+    payload = {
+        "work_detected": bool(work_classes),
+        "work_classes": work_classes,
+    }
+
+    audit_events.insert(
+        {
+            "event_type": _AUDIT_EVENT_TYPE,
+            "payload": payload,
+        }
+    ).execute()
+
+
+def record_successful_probe(
+    audit_events: Any,
+    probe_flags: Mapping[str, bool],
+) -> tuple[bool, Sequence[str]]:
+    """Record and return the existing probe summary used by schedule routing.
+
+    Schedule-probe callers should invoke this only after their existing probe
+    has completed successfully.  Returning the same summary keeps Codex
+    routing independent of persistence while ensuring the audit event is
+    durable before a successful observation is reported.
+    """
+
+    work_classes = _normalized_work_classes(probe_flags)
+    persist_schedule_probe_observation(audit_events, probe_flags=probe_flags)
+    return bool(work_classes), work_classes
