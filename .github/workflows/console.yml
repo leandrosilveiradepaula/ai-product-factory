@@ -5,11 +5,17 @@ on:
     paths:
       - "apps/console/**"
       - ".github/workflows/console.yml"
+      - "src/ai_product_factory/dependency_audit.py"
+      - "config/console_dependency_audit_exceptions.json"
+      - "tests/test_dependency_audit.py"
   pull_request:
     branches: [main]
     paths:
       - "apps/console/**"
       - ".github/workflows/console.yml"
+      - "src/ai_product_factory/dependency_audit.py"
+      - "config/console_dependency_audit_exceptions.json"
+      - "tests/test_dependency_audit.py"
 permissions:
   contents: read
 jobs:
@@ -32,6 +38,29 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
       - run: npm ci
+      - name: Capture production dependency audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=moderate --json > dependency-audit.json
+          status=$?
+          set -e
+          if [ "$status" -gt 1 ]; then
+            echo "::error::npm audit failed with operational exit code $status"
+            cat dependency-audit.json
+            exit "$status"
+          fi
+      - name: Enforce dependency audit policy
+        env:
+          PYTHONPATH: ../../src
+        run: >-
+          python -m ai_product_factory.dependency_audit
+          --audit dependency-audit.json
+          --lock package-lock.json
+          --policy ../../config/console_dependency_audit_exceptions.json
       - run: npm run typecheck
       - run: npm run build
