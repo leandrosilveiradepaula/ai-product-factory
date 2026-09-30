@@ -52,6 +52,7 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("redirect(next)",actions)
         self.assertIn('url.searchParams.set("next",path)',middleware)
         self.assertIn('value.startsWith("//")',actions)
+        self.assertIn('value.includes("\\\\")',actions)
 
     def test_intake_edit_preserves_values_and_draft_attachments(self):
         form=(APP/"projects"/"new"/"intake-form.tsx").read_text()
