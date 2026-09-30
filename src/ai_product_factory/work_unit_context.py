@@ -59,6 +59,8 @@ def path_is_within_scopes(path:str,scopes:Iterable[str])->bool:
     if not normalized or normalized.startswith("/") or normalized.startswith("../") or "/../" in normalized:
         return False
     for scope in _normalize_scopes(scopes):
+        if scope==".":
+            return True
         prefix=scope[:-3] if scope.endswith("/**") else scope
         prefix=prefix.rstrip("/")
         if normalized==prefix or normalized.startswith(prefix+"/"):
