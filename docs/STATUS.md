@@ -1,6 +1,18 @@
 # Current status
 
-Last reconciled: 2026-09-29.
+Last reconciled: 2026-09-30.
+
+## Reconciliation 2026-09-30
+
+- `main`: `406fe0023266152aab1cc3d2c45a610ba1e2595b` after the human merge of PR #423.
+- Vercel production deployment `dpl_HBaCU6Ep31NzkTgfJTEfXCeCCnmo` is READY; `/api/health` returns HTTP 200 with commit `406fe0023266`; no runtime errors were observed in the post-release window.
+- CRM Supabase OAuth is complete and remains fail-closed/read-only: project ref `mpmhmjepmmpxbsmekldf`, `status=ready_read`, `access_mode=oauth`, `permission_mode=read`. Issue #338 is closed.
+- Cross-repository CRM access is configured with explicit `FACTORY_GITHUB_TOKEN`; the read-only preflight passes while Actions can run. Issue #326 is closed.
+- The Factory repository is temporarily public again because the GitHub Free account exhausted 2,000/2,000 private-repository Actions minutes. After returning to public, `validate` attempt 3 and CRM preflight attempt 4 both passed. Issue #426 tracks the planned GitHub Pro upgrade and final private-repository revalidation.
+- The current scheduled autonomous runner opens multiple runners even when queues are empty; issue #427 tracks a deterministic schedule probe to reduce idle Actions consumption before/after the Pro upgrade.
+- Control Plane remains clean: 3 active projects, 0 open runs, 0 failed/dead-letter runs and 0 pending human gates.
+- Next.js 15.5.27 is still not published in npm as of this reconciliation; 15.5.26 remains the 15.5 backport tag. Issue #402 remains open.
+- OpenAI API WIF #250 and Codex workspace auth #240 remain external hardening/enablement items; the operational Primary path remains the bounded API-key path.
 
 ## Operational foundation
 
