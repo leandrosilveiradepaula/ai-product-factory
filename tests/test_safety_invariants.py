@@ -140,4 +140,13 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertNotIn("github.event_name == 'issue_comment'",codex)
   self.assertNotIn("github.event_name == 'issue_comment'",manual)
 
+ def test_runtime_control_plane_broker_limits_issue_comment_to_owner_actor(self):
+  source=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+  self.assertIn('"issue_comment"',source)
+  self.assertIn('event==="issue_comment"',source)
+  self.assertIn('payload.actor_id',source)
+  self.assertIn('EXPECTED.repository_owner_id',source)
+  self.assertIn('GitHub OIDC issue_comment actor not allowed',source)
+  self.assertIn('"schedule","workflow_dispatch","push","issue_comment"',source)
+
 if __name__=="__main__":unittest.main()

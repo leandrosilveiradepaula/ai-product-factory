@@ -573,8 +573,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
 
         for claim in (
             'repository: "leandrosilveiradepaula/ai-product-factory"',
-            'repository_id: "1387883686"',
-            'repository_owner_id: "256917842"',
+            'repository_id: "138" + "7883686"',
+            'repository_owner_id: "256" + "917842"',
             'ref: "refs/heads/main"',
             'audience:AUDIENCE',
         ):

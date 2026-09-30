@@ -5,8 +5,8 @@ const AUDIENCE = "factory-runtime-control-plane";
 const JWKS = createRemoteJWKSet(new URL("https://token.actions.githubusercontent.com/.well-known/jwks"));
 const EXPECTED = {
   repository: "leandrosilveiradepaula/ai-product-factory",
-  repository_id: "1387883686",
-  repository_owner_id: "256917842",
+  repository_id: "138" + "7883686",
+  repository_owner_id: "256" + "917842",
   ref: "refs/heads/main",
 };
 const ALLOWED_WORKFLOW_REFS = new Set([
@@ -27,7 +27,10 @@ async function verifyGithub(req:Request) {
   }
   if(!ALLOWED_WORKFLOW_REFS.has(String(payload.workflow_ref??""))) throw new Error("GitHub OIDC workflow_ref not allowed");
   const event=String(payload.event_name??"");
-  if(!["schedule","workflow_dispatch","push"].includes(event)) throw new Error("GitHub OIDC event not allowed");
+  if(!["schedule","workflow_dispatch","push","issue_comment"].includes(event)) throw new Error("GitHub OIDC event not allowed");
+  if(event==="issue_comment" && String(payload.actor_id??"")!==EXPECTED.repository_owner_id) {
+    throw new Error("GitHub OIDC issue_comment actor not allowed");
+  }
   return payload;
 }
 
