@@ -24,6 +24,39 @@ class SupabaseScheduleProbe:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
+    def _post(self, path: str, payload: dict) -> None:
+        headers = {
+            **self.headers,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+        req = urllib.request.Request(
+            f"{self.url}/rest/v1/{path}",
+            data=json.dumps(payload).encode(),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
+    def _record_telemetry(self, *, work_detected: bool, work_classes: list[str]) -> bool:
+        try:
+            self._post(
+                "factory_audit_events",
+                {
+                    "actor_type": "system",
+                    "actor_ref": "schedule-probe",
+                    "event_type": "schedule_probe.observed",
+                    "payload": {
+                        "work_detected": work_detected,
+                        "work_classes": work_classes,
+                    },
+                },
+            )
+        except Exception:
+            return False
+        return True
+
     def probe(self) -> dict:
         runs = self._get(
             "factory_runs?select=id,task_id,status,execution_route"
@@ -92,5 +125,25 @@ class SupabaseScheduleProbe:
                 "release_work",
                 "codex_manual_work",
             )
+        )
+        work_classes = [
+            work_class
+            for work_class, key in (
+                ("product", "product_work"),
+                ("dispatch", "dispatch_work"),
+                ("integration", "integration_work"),
+                ("ci", "ci_work"),
+                ("specialist_security", "specialist_security_work"),
+                ("specialist_qa", "specialist_qa_work"),
+                ("specialist_operations", "specialist_operations_work"),
+                ("preview", "preview_work"),
+                ("release", "release_work"),
+                ("codex_manual", "codex_manual_work"),
+            )
+            if out[key]
+        ]
+        out["telemetry_recorded"] = self._record_telemetry(
+            work_detected=out["work_detected"],
+            work_classes=work_classes,
         )
         return out
