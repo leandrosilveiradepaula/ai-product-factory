@@ -22,7 +22,7 @@ Current known state:
   - GitHub Environment `openai-api`
   - exact mapping checks for issuer, audience, repository, `refs/heads/main`, and `openai-api`
   - restricted model request access for `/v1/responses`
-- the API WIF no-model preflight now runs during the temporary public Actions window. The real GitHub OIDC token is issued successfully, but OpenAI currently rejects the exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. The actual immutable GitHub subject is `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`; the OpenAI Platform mapping must be reconciled to these real claims before WIF is treated as ready;
+- the API WIF no-model preflight issues a real GitHub OIDC token successfully, but OpenAI currently rejects the exchange with `HTTP 401 / invalid_grant` because the configured service-account mapping does not match the token attributes. Current OpenAI guidance recommends exact matching of raw GitHub claims such as `iss`, `aud`, `repository`, `ref`, `environment` and, when practical, `workflow_ref`. The Factory currently shares the `openai-api` GitHub Environment across the autonomous runner and multiple preflight jobs, so the compatible minimum mapping is exact `iss + aud + repository + ref + environment`; do not bind a single shared mapping to one exact `workflow_ref` unless the runtime is first split onto distinct service accounts/mappings. The observed customized GitHub `sub` remains useful evidence but is not required as the primary mapping key;
 - the user manually added US$ 5 of API Platform credit on 2026-09-28;
 - bounded billing smoke run `36413373572` succeeded through `OPENAI_API_KEY` using GPT-5.6 Luna with `reasoning=none`, 32 max output tokens, exact output `FACTORY_SMOKE_OK`, 35 input tokens, 9 output tokens, and estimated cost US$ 0.0000178 under a US$ 0.01 ceiling; the evidence is persisted in the Control Plane;
 - the existing `OPENAI_API_KEY` is the explicit current Primary auth mode while WIF #250 remains unresolved;
@@ -53,7 +53,7 @@ Ready only when one complete official path is configured and the corresponding p
 
 Do not invent the federation rule id or audience. Codex itself receives only `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`; `OPENAI_WIF_AUDIENCE` belongs to the token-issuance layer. If WIF is entirely absent, an official `CODEX_ACCESS_TOKEN` may be used instead. Any partial WIF configuration fails closed and must never fall back to the token.
 
-Current commercial/admin state: Codex WIF is still beta and requires workspace enablement by OpenAI Support. On 2026-09-27 the Infodive workspace Admin Portal was inspected directly; the documented `Workload identity` section is absent in both available admin surfaces, confirming that the workspace has not yet received the Codex WIF beta/admin capability. No support response with a federation rule or enablement confirmation has been found. Issue #240 tracks this external blocker. Separately, the Infodive ChatGPT Business workspace had a historical out-of-credits notice on 2026-09-04, but the user has confirmed the workspace currently has credits. Do not infer current credit state from that historical email. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key, browser cookie, scraped session, or unofficial ChatGPT token. The official `CODEX_ACCESS_TOKEN` is the only supported stored-token fallback.
+Current commercial/admin state: Codex WIF requires workspace enablement. On 2026-09-27 the Infodive workspace Admin Portal was inspected directly; the documented `Workload identity` section was absent in both available admin surfaces. OpenAI Support case 15851318 replied on 2026-09-30 and confirmed the supported architecture (GitHub OIDC, short-lived credentials, exact/restricted claims, mapped ChatGPT workspace user or service account), but the response explicitly described the setup as available only after WIF is enabled for the workspace and did not confirm enablement for Infodive. No real federation rule ID or accepted audience has been provided. Issue #240 tracks this external blocker. Separately, the Infodive ChatGPT Business workspace had a historical out-of-credits notice on 2026-09-04, but the user has confirmed the workspace currently has credits. Do not infer current credit state from that historical email. The preflight is intentionally manual and does not execute a Codex task. The runtime and Actions worker remain fail-closed when any required value is absent; missing WIF must not be worked around with an API key, browser cookie, scraped session, or unofficial ChatGPT token. The official `CODEX_ACCESS_TOKEN` is the only supported stored-token fallback.
 
 ## Manual Codex path while unattended auth is blocked
 
@@ -112,17 +112,23 @@ The Factory uses dedicated GitHub Environments so OpenAI workload identity can b
 
 Jobs that may call the Primary model run in GitHub Environment `openai-api`.
 
-Expected GitHub OIDC subject:
+Observed GitHub OIDC subject in the current repository configuration:
 
 `repo:leandrosilveiradepaula@256917842/ai-product-factory@1387883686:environment:openai-api`
 
-Recommended exact mapping checks in the OpenAI API Workload Identity Provider:
+OpenAI's current GitHub Actions guidance allows raw GitHub OIDC claims to be mapped directly. For the Factory's shared `openai-api` environment, the compatible exact mapping is:
 
+- `iss = https://token.actions.githubusercontent.com`
+- `aud = https://api.openai.com/v1`
 - `repository = leandrosilveiradepaula/ai-product-factory`
 - `ref = refs/heads/main`
 - `environment = openai-api`
 
-The provider audience must be the exact administrator-configured audience. The Factory does not invent or hardcode it.
+Do not require one exact `workflow_ref` on the current shared mapping because `openai-api` is intentionally used by the autonomous runner and multiple no-model/readiness preflights. If the design later splits those callers onto distinct OpenAI service accounts or providers, add exact `workflow_ref` restrictions per mapping.
+
+The observed customized `sub` may be added as an additional exact assertion only after confirming the admin mapping UI accepts that exact value. It is not necessary to replace the raw-claim checks above.
+
+The provider audience must be the exact administrator-configured audience. The current API Platform value is `https://api.openai.com/v1`; do not change it without a matching provider/workflow update.
 
 ### Codex workload identity
 
