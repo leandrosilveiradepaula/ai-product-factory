@@ -31,3 +31,14 @@ export async function finalizeProjectDraftFiles(draftId:string,projectId:string)
  const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_finalize_project_attachments`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_draft_id:draftId,p_operator_user_id:operator.userId,p_project_id:projectId})});
  if(!response.ok)throw new Error("Não foi possível vincular os anexos ao projeto.");return Number(await response.json());
 }
+
+
+export async function countProjectDraftFiles(draftId:string){
+ const operator=await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane unavailable");
+ const response=await fetch(
+  cfg.url+"/rest/v1/factory_project_attachments?select=id&draft_id=eq."+encodeURIComponent(draftId)+"&operator_user_id=eq."+encodeURIComponent(operator.userId)+"&project_id=is.null",
+  {headers:cfg.headers,cache:"no-store"}
+ );
+ if(!response.ok)throw new Error("Não foi possível consultar os anexos do rascunho.");
+ const rows=await response.json();return Array.isArray(rows)?rows.length:0;
+}
