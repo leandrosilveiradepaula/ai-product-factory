@@ -2,7 +2,7 @@ import {signInAction} from "../auth-actions";
 import {Button,PageHeader} from "../ui";
 
 function safeNext(value:string|undefined){
- if(!value||!value.startsWith("/")||value.startsWith("//"))return "/";
+ if(!value||!value.startsWith("/")||value.startsWith("//")||value.includes("\\"))return "/";
  return value;
 }
 
