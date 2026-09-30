@@ -146,7 +146,7 @@ def derive_delivery_metrics(
         for row in specialist_jobs
         if row.get("role")
     }))
-    actual_agent_count = len({f"builder:{x}" for x in builder_agents} | {f"specialist:{x}" for x in specialist_agents})
+    actual_agent_count = len(set(builder_agents) | set(specialist_agents))
 
     known_cost = Decimal("0")
     unknown_paid = 0
@@ -177,7 +177,7 @@ def derive_delivery_metrics(
     return DeliveryMetrics(
         source_run_id=str(source_run["id"]),
         project_key=project_key,
-        route=source_run.get("execution_route"),
+        route=source_run.get("execution_route") or (source_run.get("metadata") or {}).get("planned_execution_route"),
         queue_wait_seconds=queue_wait,
         delivery_seconds=_seconds(created_at, delivery_end),
         time_to_awaiting_release_seconds=_seconds(created_at, awaiting_at),
@@ -225,7 +225,7 @@ class SupabaseDeliveryMetricsReader:
     def read(self, source_run_id: str) -> DeliveryMetrics:
         rid = quote(source_run_id)
         source_rows = self._get(
-            "factory_runs?select=id,task_id,status,execution_route,created_at,started_at,finished_at"
+            "factory_runs?select=id,task_id,status,execution_route,metadata,created_at,started_at,finished_at"
             f"&id=eq.{rid}&limit=1"
         )
         if not source_rows:
