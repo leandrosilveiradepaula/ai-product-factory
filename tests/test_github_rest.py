@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest.mock import patch
 
 from ai_product_factory.github_loop import CIState
 from ai_product_factory.github_rest import GitHubRestAdapter
@@ -105,8 +106,9 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertFalse(hasattr(self.github, "merge_pull_request"))
 
     def test_missing_token_fails_fast(self):
-        with self.assertRaises(ValueError):
-            GitHubRestAdapter(repository="owner/repo", token="", transport=self.transport)
+        with patch.dict("os.environ",{},clear=True):
+            with self.assertRaises(ValueError):
+                GitHubRestAdapter(repository="owner/repo", token="", transport=self.transport)
 
 if __name__ == "__main__":
     unittest.main()
