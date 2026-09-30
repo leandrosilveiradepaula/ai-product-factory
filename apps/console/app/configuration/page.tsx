@@ -1,4 +1,5 @@
 import {getConsoleConfiguration} from "../../lib/control-plane";
+import {requireConsoleOperator} from "../../lib/auth-server";
 import {ActionLink,PageHeader,SectionHeader,StatusPill} from "../ui";
 
 function previewLabel(manifest:Record<string,unknown>){
@@ -9,11 +10,11 @@ function previewLabel(manifest:Record<string,unknown>){
 }
 
 export default async function Configuration(){
- const c=await getConsoleConfiguration();
+ const [c,operator]=await Promise.all([getConsoleConfiguration(),requireConsoleOperator()]);
  return <>
-  <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Estado operacional visível do Console. Segredos, tokens e credenciais privilegiadas nunca são renderizados." actions={<ActionLink href="/admin/operators">Operadores</ActionLink>}/>
+  <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Estado operacional visível do Console. Segredos, tokens e credenciais privilegiadas nunca são renderizados." actions={operator.role==="admin"?<ActionLink href="/admin/operators">Operadores</ActionLink>:<StatusPill status="active" label="perfil operador"/>}/>
   <nav className="configTabs" aria-label="Seções de configuração">
-   <a className="active" href="#governanca">Governança</a>
+   <a href="#governanca">Governança</a>
    <a href="#modelos">Modelos</a>
    <a href="#execucao">Execução</a>
    <a href="#preview">Preview</a>
