@@ -246,7 +246,8 @@ jobs:
 
 
   specialist-security:
-    needs: ci-followup
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_work == 'true' || needs.ci-followup.result == 'success') }}
+    needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -274,7 +275,8 @@ jobs:
           fi
 
   specialist-qa:
-    needs: ci-followup
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_work == 'true' || needs.ci-followup.result == 'success') }}
+    needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -302,7 +304,8 @@ jobs:
           fi
 
   specialist-operations:
-    needs: ci-followup
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_work == 'true' || needs.ci-followup.result == 'success') }}
+    needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
