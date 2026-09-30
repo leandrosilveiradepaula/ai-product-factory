@@ -184,3 +184,16 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - #427 passa a ser prioridade operacional: reduzir runners ociosos do autonomous runner por meio de probe deterministico read-only e server-side skip de jobs sem trabalho.
 - Depois do Pro/private, revalidar GitHub Actions, environments, Control Plane OIDC, CRM cross-repo e Vercel.
 - O primeiro trabalho funcional novo executado integralmente pela Factory continua como proxima prova end-to-end de produto; o benchmark de 63 perguntas do Agente SQL continua explicitamente postergado.
+
+
+## Atualizacao operacional - pos-dogfood 2026-09-30
+
+- [x] Dogfood real end-to-end #430 concluido: Direct grounded no repositorio real, Structured Outputs, Change Set multi-wave, CI, specialists, Preview N/A, `awaiting_release`, merge humano e release observer.
+- [x] Criacao de PR same-repo via GitHub Actions validada com `GITHUB_TOKEN` nativo; probe PR #465 fechado sem merge; auto-merge continua desabilitado.
+- [x] Retry nativo auditavel #443 concluido: RPC fail-closed + CLI `runtime --mode retry`, migration aplicada e historico do source run preservado.
+- [x] Alertas operacionais corrigidos para contar apenas falhas acionaveis; runs falhos historicos continuam preservados para auditoria.
+- [x] Schedule-probe com telemetria duravel `work_detected/work_classes` sem novo schema e sem alterar semantica de dispatch.
+- [ ] Codex WIF #240 continua externo: o suporte confirmou o desenho, mas ainda nao confirmou habilitacao do recurso no workspace Infodive nem forneceu federation rule/audience reais.
+- [ ] OpenAI API WIF #250 continua hardening externo; Primary permanece em API key enquanto o preflight WIF nao estiver verde.
+- [ ] Next.js #402 continua aguardando publicacao real de 15.5.27 no npm; nao usar beta/canary.
+- [ ] Repositorio privado/Actions #426 continua gate administrativo externo; nao comprar plano automaticamente.

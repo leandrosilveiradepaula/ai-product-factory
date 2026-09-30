@@ -16,6 +16,7 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `preview` | Deploy and verify one `preview_ready` run | Vercel Preview + browser/e2e + evidence writes | Hourly bounded + manual | Preview applicability/readiness + quality evidence |
 | `release` | Observe one human PR merge | GitHub reads; issue close/evidence after merge | Hourly | Human merge must already exist |
 | `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
+| `retry` | Create one fresh auditable run from a terminal failed run | Control Plane writes only | Manual | Source run must be `failed`; original run is immutable; explicit retry reason required |
 
 ## Merge autonomy
 
@@ -167,6 +168,16 @@ The flow is:
 The manual handoff never stores ChatGPT cookies, browser sessions, human tokens, `OPENAI_API_KEY` or `CODEX_ACCESS_TOKEN`. It does not increment the automated Codex invocation ledger because the invocation occurred outside the Factory. Lease recovery covers interrupted `preparing_codex_manual` claims.
 
 Setting `FACTORY_CODEX_MANUAL_FALLBACK_ENABLED=false` disables new manual handoffs. Existing `awaiting_codex_manual` runs may still be followed up. Once `FACTORY_CODEX_ENABLED=true` is safely activated, new queued Codex work is left to the automatic worker and the manual prepare step stops claiming work.
+
+## Failed-run retry
+
+Use `runtime --mode retry --source-run-id <uuid> --retry-reason "<reason>"` only after the root cause of a terminal failed run is understood and fixed.
+
+The retry path is model-free. The Control Plane RPC locks and validates the source run, refuses non-failed sources and duplicate retry-of the same source, creates a fresh queued run on the same task/source commit, strips transient worker/error metadata, persists `retry_of` / `retry_reason`, and records `run.retry_queued` audit evidence. The original failed run is never rewritten.
+
+Creating a retry does not bypass routing, model budget, unknown-cost checks, CI, specialist review, Preview policy or the human production-release gate. Do not use administrative SQL to recycle the original run now that the native retry path exists.
+
+Operational `failed_runs` alerts count only actionable failures: the run is `failed` and the task's current status is also `failed`. Historical failed runs remain queryable for audit but no longer keep an incident open after the task has recovered, integrated, completed or been explicitly blocked.
 
 ## Operational alerts
 
