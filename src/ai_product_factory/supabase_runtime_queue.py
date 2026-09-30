@@ -71,6 +71,18 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             out["change_set"]=materialized
         return out
 
+    def retry_failed_run(self,source_run_id:str,reason:str)->dict:
+        source_run_id=source_run_id.strip()
+        reason=reason.strip()
+        if not source_run_id:
+            raise ValueError("source run id is required")
+        if not reason:
+            raise ValueError("retry reason is required")
+        data=self._rpc("factory_retry_failed_run",{"p_source_run_id":source_run_id,"p_reason":reason})
+        if not isinstance(data,dict):
+            raise RuntimeError("retry RPC returned an invalid response")
+        return data
+
     def recover_expired(self,max_attempts:int=3)->dict:
         data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
         return data or {"requeued":0,"failed":0}
