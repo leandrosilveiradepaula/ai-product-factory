@@ -58,6 +58,17 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("inputs.run_alerts == true",alerts)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',probe)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',alerts)
+ def test_idle_schedule_does_not_start_manual_codex_from_empty_dispatch_outputs(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  manual=text.split("\n  codex-manual:",1)[1].split("\n  preview:",1)[0]
+  self.assertIn("needs.dispatch.outputs.codex_count != ''",manual)
+  self.assertIn("needs.dispatch.outputs.codex_count != '0'",manual)
+  self.assertIn("needs.schedule-probe.outputs.codex_manual_work == 'true'",manual)
+ def test_specialist_schedule_probe_is_role_specific(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  self.assertIn("needs.schedule-probe.outputs.specialist_security_work == 'true'",text)
+  self.assertIn("needs.schedule-probe.outputs.specialist_qa_work == 'true'",text)
+  self.assertIn("needs.schedule-probe.outputs.specialist_operations_work == 'true'",text)
  def test_release_followup_cannot_merge_or_write_code(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   release=text.split("\n  release-followup:",1)[1].split("\n  dispatch:",1)[0]
