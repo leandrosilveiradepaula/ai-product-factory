@@ -24,6 +24,27 @@ class GitHubAuthTests(unittest.TestCase):
         with patch.dict("os.environ",env,clear=True):
             self.assertEqual(resolve_github_token("owner/repo"),"native")
 
+
+    def test_same_repo_actions_prefers_native_over_cross_repo_factory_token(self):
+        env={
+            "GITHUB_ACTIONS":"true",
+            "GITHUB_REPOSITORY":"owner/factory",
+            "GITHUB_TOKEN":"native-write",
+            "FACTORY_GITHUB_TOKEN":"cross-repo-readonly",
+        }
+        with patch.dict("os.environ",env,clear=True):
+            self.assertEqual(resolve_github_token("owner/factory"),"native-write")
+
+    def test_same_repo_actions_fails_closed_without_native_even_if_factory_token_exists(self):
+        env={
+            "GITHUB_ACTIONS":"true",
+            "GITHUB_REPOSITORY":"owner/factory",
+            "FACTORY_GITHUB_TOKEN":"cross-repo-readonly",
+        }
+        with patch.dict("os.environ",env,clear=True):
+            with self.assertRaises(ValueError):
+                resolve_github_token("owner/factory")
+
     def test_native_actions_token_rejects_cross_repo(self):
         env={"GITHUB_ACTIONS":"true","GITHUB_REPOSITORY":"owner/factory","GITHUB_TOKEN":"native"}
         with patch.dict("os.environ",env,clear=True):
