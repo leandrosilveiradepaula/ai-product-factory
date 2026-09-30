@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Callable
 from urllib import parse, request
 
@@ -13,6 +12,7 @@ from .control_plane import (
     TaskRecord,
     ToolUsageRecord,
 )
+from .supabase_server import resolve_supabase_server_config
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
@@ -40,17 +40,18 @@ class SupabaseControlPlaneStore:
         secret_key: str | None = None,
         transport: Transport | None = None,
     ) -> None:
-        self.url = (url or os.environ.get("SUPABASE_URL", "")).rstrip("/")
-        self.secret_key = secret_key or os.environ.get("SUPABASE_SECRET_KEY", "")
-        if not self.url:
-            raise ValueError("SUPABASE_URL is required")
-        if not self.secret_key:
-            raise ValueError("SUPABASE_SECRET_KEY is required")
+        try:
+            cfg = resolve_supabase_server_config(url=url, secret_key=secret_key)
+        except RuntimeError as exc:
+            raise ValueError(str(exc)) from exc
+        self.url = cfg.url
+        self.secret_key = cfg.key
+        self.base_headers = cfg.headers
         self.transport = transport or _default_transport
 
     def _headers(self, *, prefer: str | None = None) -> dict[str, str]:
         headers = {
-            "apikey": self.secret_key,
+            **self.base_headers,
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
