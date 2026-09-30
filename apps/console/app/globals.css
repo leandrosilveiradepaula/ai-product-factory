@@ -340,3 +340,5 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .overviewControl{display:inline-flex;align-items:center;gap:6px;height:29px;padding:0 9px;border:1px solid #262a34;background:#181b25;color:#a4aaba;font-size:9px;font-family:var(--font-mono)}
 .overviewControl strong{color:#dfe2ef;font-weight:600}
 .overviewControlLink:hover{border-color:#454b59;color:#fff}
+
+.noticeCard{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px}.noticeCard.success{border-color:var(--color-pill-success-border)}.noticeCard.danger{border-color:var(--color-danger-border,#6b2d39)}
