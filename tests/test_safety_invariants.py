@@ -51,9 +51,12 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertGreaterEqual(text.count("./.github/actions/control-plane-oidc"),8)
  def test_alert_job_is_scheduled_and_deduplicated_sink_is_explicitly_enabled(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  probe=text.split("\n  schedule-probe:",1)[1].split("\n  product-stage:",1)[0]
   alerts=text.split("\n  alerts:",1)[1]
-  self.assertIn("github.event_name == 'schedule'",alerts)
+  self.assertIn("github.event_name == 'schedule'",probe)
+  self.assertIn("--mode alerts",probe)
   self.assertIn("inputs.run_alerts == true",alerts)
+  self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',probe)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',alerts)
  def test_release_followup_cannot_merge_or_write_code(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
