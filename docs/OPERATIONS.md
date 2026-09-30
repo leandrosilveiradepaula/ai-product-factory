@@ -183,6 +183,8 @@ Operational `failed_runs` alerts count only actionable failures: the run is `fai
 
 The scheduled alerts job explicitly enables the GitHub Issues sink for that job only. Alert issues are deduplicated by deterministic code. Non-billable GitHub/Supabase usage without cost data must not be treated as unknown paid spend.
 
+The GitHub Issues sink reconciles active and resolved conditions on every alerts cycle. Active codes remain open/deduplicated by their deterministic `<!-- factory-alert:<code> -->` marker. A known code that is no longer active is closed automatically only when an open issue contains that exact marker. Unknown markers, pull requests and ordinary issues are never closed by alert reconciliation.
+
 ## Supabase credentials
 
 Server-side code prefers `SUPABASE_SECRET_KEY` (`sb_secret_...`) and keeps `SUPABASE_SERVICE_ROLE_KEY` only as legacy fallback. Modern secret keys are sent as `apikey` only; they are not JWT bearer tokens.

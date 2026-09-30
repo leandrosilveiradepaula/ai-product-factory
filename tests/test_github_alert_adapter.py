@@ -17,6 +17,7 @@ class Client:
     def __init__(self):
         self.issues = []
         self.created = []
+        self.closed = []
 
     def find_open_issue_containing(self, marker):
         return next((issue for issue in self.issues if marker in issue.body), None)
@@ -26,6 +27,10 @@ class Client:
         self.issues.append(issue)
         self.created.append(issue)
         return issue
+
+    def close_issue(self, issue_number):
+        self.closed.append(issue_number)
+        self.issues = [issue for issue in self.issues if issue.number != issue_number]
 
 
 class Tests(unittest.TestCase):
@@ -48,6 +53,57 @@ class Tests(unittest.TestCase):
         self.assertFalse(second.created)
         self.assertEqual(len(client.created), 1)
         self.assertEqual(second.issue_number, first.issue_number)
+
+
+    def test_resolves_known_inactive_alert_issue(self):
+        client = Client()
+        client.issues.append(Issue(
+            52,
+            "[factory alert][warning] failed_runs",
+            "<!-- factory-alert:failed_runs -->\nold",
+            "https://github.example/issues/52",
+        ))
+        adapter = GitHubIssueAlertAdapter(client)
+        resolved = adapter.resolve_inactive(
+            active_codes=set(),
+            known_codes=("failed_runs","unknown_cost"),
+        )
+        self.assertEqual([52], client.closed)
+        self.assertEqual(1, len(resolved))
+        self.assertEqual("failed_runs", resolved[0].code)
+
+    def test_active_alert_is_never_closed(self):
+        client = Client()
+        client.issues.append(Issue(
+            53,
+            "[factory alert][warning] failed_runs",
+            "<!-- factory-alert:failed_runs -->\nactive",
+            "https://github.example/issues/53",
+        ))
+        adapter = GitHubIssueAlertAdapter(client)
+        resolved = adapter.resolve_inactive(
+            active_codes={"failed_runs"},
+            known_codes=("failed_runs",),
+        )
+        self.assertEqual((), resolved)
+        self.assertEqual([], client.closed)
+
+    def test_unknown_marker_is_untouched(self):
+        client = Client()
+        client.issues.append(Issue(
+            54,
+            "custom issue",
+            "<!-- factory-alert:custom_unknown -->\nkeep",
+            "https://github.example/issues/54",
+        ))
+        adapter = GitHubIssueAlertAdapter(client)
+        resolved = adapter.resolve_inactive(
+            active_codes=set(),
+            known_codes=("failed_runs","unknown_cost"),
+        )
+        self.assertEqual((), resolved)
+        self.assertEqual([], client.closed)
+        self.assertEqual(1, len(client.issues))
 
     def test_empty_batch_has_no_side_effect(self):
         client = Client()

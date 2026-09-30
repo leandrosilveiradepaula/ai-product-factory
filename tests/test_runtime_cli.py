@@ -484,6 +484,30 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["status"],"blocked")
         self.assertEqual(out["published"],0)
         self.assertIn("GITHUB_TOKEN",out["missing"])
+
+    def test_alert_mode_reconciles_resolved_issues_when_health_is_clean(self):
+        readiness=SimpleNamespace(ready=True,missing=())
+        reader=MagicMock()
+        reader.read.return_value=object()
+        adapter=MagicMock()
+        adapter.publish_many.return_value=()
+        adapter.resolve_inactive.return_value=(SimpleNamespace(code="failed_runs",issue_number=61),)
+        with patch.dict("os.environ", {"FACTORY_ALERTS_GITHUB_REPOSITORY":"owner/repo"}, clear=True), \
+             patch("ai_product_factory.runtime_cli.github_alerts_readiness",return_value=readiness), \
+             patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader",return_value=reader), \
+             patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=()), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.GitHubIssueAlertAdapter",return_value=adapter):
+            out=run_alerts_once()
+        self.assertEqual(out["status"],"ok")
+        self.assertEqual(out["published"],0)
+        self.assertEqual(out["resolved"],1)
+        self.assertEqual(out["resolutions"],[{"code":"failed_runs","issue_number":61}])
+        adapter.publish_many.assert_called_once_with(())
+        called=adapter.resolve_inactive.call_args.kwargs
+        self.assertEqual(called["active_codes"],set())
+        self.assertIn("failed_runs",called["known_codes"])
+
     def test_health_recognizes_modern_supabase_secret_key(self):
         env={"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SECRET_KEY":"sb_secret_modern"}
         with patch.dict("os.environ", env, clear=True):
