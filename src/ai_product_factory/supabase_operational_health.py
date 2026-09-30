@@ -34,7 +34,13 @@ class SupabaseOperationalHealthReader:
 
     def read(self, *, budget: Decimal | None = None, now: datetime | None = None) -> OperationalHealth:
         now=now or datetime.now(timezone.utc)
-        runs=self._get("factory_runs?select=status,attempt_count,last_error,lease_expires_at&order=created_at.desc&limit=200")
+        runs=self._get("factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at&order=created_at.desc&limit=200")
+        task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status")=="failed"})
+        task_status_by_id={}
+        if task_ids:
+            encoded=",".join(task_ids)
+            tasks=self._get(f"factory_tasks?select=id,status&id=in.({encoded})")
+            task_status_by_id={str(row.get("id")):str(row.get("status") or "") for row in tasks}
         usage=self._get("factory_tool_usage?select=tool_family,estimated_cost&order=created_at.desc&limit=1000")
         expired=0
         dead=0
@@ -45,7 +51,8 @@ class SupabaseOperationalHealthReader:
             if lease is not None and lease < now and status in {"running","implementing","preparing_codex_manual"}:
                 expired+=1
             if status == "failed":
-                failed+=1
+                if task_status_by_id.get(str(row.get("task_id") or ""))=="failed":
+                    failed+=1
                 if "maximum attempts" in str(row.get("last_error") or "").lower():
                     dead+=1
         known=Decimal("0")
