@@ -79,6 +79,31 @@ class SupabaseStoreTests(unittest.TestCase):
         self.assertEqual(headers["apikey"], "sb_secret_test")
         self.assertNotIn("Authorization", headers)
 
+
+    def test_oidc_broker_token_is_sent_as_bearer_and_apikey(self):
+        store = SupabaseControlPlaneStore(
+            url="https://example.supabase.co/functions/v1/factory-runtime-control-plane",
+            secret_key="github-oidc-jwt",
+            transport=self.transport,
+        )
+        store.get_project_by_key("demo")
+        _, _, headers, _ = self.transport.calls[-1]
+        self.assertEqual(headers["apikey"], "github-oidc-jwt")
+        self.assertEqual(headers["Authorization"], "Bearer github-oidc-jwt")
+
+    def test_legacy_service_role_fallback_uses_bearer(self):
+        from unittest.mock import patch
+        env={
+            "SUPABASE_URL":"https://example.supabase.co",
+            "SUPABASE_SERVICE_ROLE_KEY":"legacy-service-role",
+        }
+        with patch.dict("os.environ",env,clear=True):
+            store=SupabaseControlPlaneStore(transport=self.transport)
+        store.get_project_by_key("demo")
+        _, _, headers, _ = self.transport.calls[-1]
+        self.assertEqual(headers["apikey"], "legacy-service-role")
+        self.assertEqual(headers["Authorization"], "Bearer legacy-service-role")
+
     def test_create_project_and_get_project(self):
         created = self.store.create_project(
             project_key="demo", name="Demo", repository="owner/demo", project_kind="application"
