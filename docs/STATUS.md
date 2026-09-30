@@ -4,19 +4,24 @@ Last reconciled: 2026-09-30.
 
 ## Reconciliation 2026-09-30
 
-- `main`: `03995a1d484a178d9090b0b22230cc9d0fa97475` after the human merge of PR #442. The commits after the last Console code release are runtime/observability/test-metadata changes; the currently served Console production application remains the verified PR #440 release at `6353ff595338100d5c68ae4f984f5b4508ba259f`.
+- `main`: `9f85c1129986c247645fa8edad7578fb779732e9` after PR #467. The commits after the last Console code release are runtime/observability/test changes; the currently served Console production application remains the verified PR #440 release at `6353ff595338100d5c68ae4f984f5b4508ba259f`, and Vercel correctly cancels later production builds when `apps/console/**` is unchanged.
 - Vercel production deployment `dpl_CgQJ6zyubHBnteAgmsi8au4wKZQ5` is READY for Console commit `6353ff595338100d5c68ae4f984f5b4508ba259f`; Vercel reported no runtime errors in the verified post-release window.
 - Console interaction audit #433 is complete. Authenticated evidence run `36703504585` targeted the exact production commit `6353ff595338100d5c68ae4f984f5b4508ba259f`: all primary navigation routes returned HTTP 200, operator RBAC correctly redirected `/admin/operators` to `/unauthorized`, Novo Projeto -> Revisao -> Editar restored values without starting Discovery, CRM project detail loaded, and 390px mobile checks had no horizontal overflow.
 - Runtime ledger/OIDC fix #438 and end-to-end delivery metrics #432 are released on `main`. Paid-ledger access through the GitHub OIDC broker now sends Bearer authentication while modern `sb_secret_*` credentials remain apikey-only.
-- Dogfood #430 is active again. The original failed run `869083ae-956e-4e5e-8f38-6e91c4dfd548` is preserved with `HTTP 403`, attempt_count=1 and zero tool-usage rows. Retry run `bdead003-6ebf-4d49-bc6f-aa6778f8f686` is queued against current source commit with `retry_of` evidence, planned Direct route and Codex explicitly forbidden.
-- The paid ledger currently has known cumulative cost about US$ 0.0000178 and zero unknown paid-cost events. Factory budget remains US$ 4.00 with US$ 0.50 reservation per paid run/call.
-- Native retry for terminal failed runs is not yet a first-class runtime capability; issue #443 tracks an auditable fail-closed RPC/CLI so future retries do not require administrative SQL.
+- Dogfood #430 is complete. The Factory produced a real two-wave Direct change set for durable schedule-probe telemetry, reached green CI plus Security/QA/Operations review, recorded Preview as explicitly not applicable, stopped at `awaiting_release`, and the release observer recorded the human merge of PR #464 at `4fff56e258084e7461a15402e49b0168caee4ea7`. The issue is closed with durable release evidence.
+- The paid ledger currently has known cumulative cost US$ 0.3478338 and zero unknown paid-cost events. Factory budget remains US$ 4.00 with US$ 0.50 reservation per paid run/call.
+- Native retry for terminal failed runs is released. PR #466 added the fail-closed `factory_retry_failed_run` RPC, `runtime --mode retry`, immutable source-run history and durable `run.retry_queued` audit evidence; production migration `factory_retry_failed_run` is applied and issue #443 is closed.
 - CRM Supabase OAuth is complete and remains fail-closed/read-only: project ref `mpmhmjepmmpxbsmekldf`, `status=ready_read`, `access_mode=oauth`, `permission_mode=read`. Issue #338 is closed.
 - Cross-repository CRM access is configured with explicit `FACTORY_GITHUB_TOKEN`; read-only permissions remain intentionally scoped to `crm-infodive`. Issue #326 is closed.
 - The Factory repository remains temporarily public while issue #426 waits for the planned GitHub Pro upgrade and final private-repository revalidation. Do not purchase or change plan automatically.
-- Schedule-probe optimization from #427 is released; the real dogfood retry #430 is now the source of the remaining end-to-end telemetry evidence needed to close the measurement loop.
-- Next.js 15.5.27 is still not published in npm as of this reconciliation; 15.5.26 remains the 15.5 backport tag. Issue #402 remains open; do not use beta/canary.
+- Schedule-probe optimization #427 and durable telemetry #430 are released. The probe now records sanitized `work_detected` / `work_classes` observations in the existing audit store without creating a new schema or changing dispatch semantics.
+- Next.js 15.5.27 is still not published in npm as of the latest 2026-09-30 check; 15.5.26 remains the 15.5 backport tag. Issue #402 remains open; do not use beta/canary.
 - OpenAI API WIF #250 and Codex workspace auth #240 remain external hardening/enablement items; the operational Primary path remains the bounded API-key path.
+- GitHub Actions same-repository PR creation is now verified: issue #463 was closed after the runtime adapter created disposable PR #465 with the native `GITHUB_TOKEN`; the probe PR was closed without merge and repository `allow_auto_merge=false` remains unchanged.
+- Operational failed-run alerting now counts only actionable failures (failed run whose current task is still failed). After PR #467 the Control Plane has 6 historical failed runs, 0 actionable failed runs and 0 dead letters; issue #461 is closed.
+- Control Plane reconciliation: 3 active projects, 0 open runs, 0 actionable failed runs, 0 pending human gates, 13 Codex routing-decision rows but `sum(invocation_count)=0`, and known paid cost US$ 0.3478338.
+- OpenAI Support case 15851318 confirmed the supported Codex WIF model (GitHub OIDC, short-lived credentials, managed-workspace principal) but did not confirm that WIF is enabled for the Infodive ChatGPT Business workspace. Issue #240 therefore remains externally blocked; no federation rule ID or audience may be invented.
+
 
 ## Operational foundation
 
