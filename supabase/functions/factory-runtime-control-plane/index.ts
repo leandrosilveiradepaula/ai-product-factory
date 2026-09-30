@@ -27,7 +27,10 @@ async function verifyGithub(req:Request) {
   }
   if(!ALLOWED_WORKFLOW_REFS.has(String(payload.workflow_ref??""))) throw new Error("GitHub OIDC workflow_ref not allowed");
   const event=String(payload.event_name??"");
-  if(!["schedule","workflow_dispatch","push"].includes(event)) throw new Error("GitHub OIDC event not allowed");
+  if(!["schedule","workflow_dispatch","push","issue_comment"].includes(event)) throw new Error("GitHub OIDC event not allowed");
+  if(event==="issue_comment" && String(payload.actor_id??"")!==EXPECTED.repository_owner_id) {
+    throw new Error("GitHub OIDC issue_comment actor not allowed");
+  }
   return payload;
 }
 
