@@ -48,8 +48,24 @@ class ChangeSetBuilderWorker:
             project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
         )
         source=self.store.context_source(item.run_id)
+        assignment=source.get("assignment") if isinstance(source.get("assignment"),dict) else {}
+        declared_refs=assignment.get("reference_paths") if isinstance(assignment.get("reference_paths"),list) else []
+        reference_files={}
+        total_reference_bytes=0
+        if len(declared_refs)>12:
+            raise ValueError("work unit declares too many repository reference files")
+        for raw_path in declared_refs:
+            path=str(raw_path).strip().replace("\\","/").removeprefix("./")
+            if not path or path=="." or path.startswith("/") or path.startswith("../") or "/../" in path or "*" in path:
+                raise ValueError(f"invalid repository reference path: {raw_path}")
+            content=self.github.get_file_text(path,ref=binding.base_commit)
+            total_reference_bytes+=len(content.encode("utf-8"))
+            if total_reference_bytes>120000:
+                raise ValueError("repository reference files exceed context limit")
+            reference_files[path]=content
         packet=build_context_packet(
             source=source,impact=impact.as_context(),base_commit=binding.base_commit,branch=item.branch,
+            reference_files=reference_files,
         )
         self.store.record_context(run_id=item.run_id,packet_hash=packet.sha256,packet=packet.as_dict())
         provenance=build_run_provenance(
