@@ -82,6 +82,49 @@ class ChangeSetTests(unittest.TestCase):
         )
         github.ensure_branch_at_sha.assert_called_once_with("factory/cs/a","frozen-base")
 
+
+    def test_builder_loads_explicit_repository_context_paths_from_frozen_base(self):
+        github=MagicMock()
+        github.get_branch_sha.return_value="main"
+        github.get_file_text.return_value="probe = True\n"
+        github.commit_files.return_value="out"
+        store=MagicMock()
+        store.frozen_source_commit.return_value="base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"demo","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
+            "plan_task_key":"a","agent_key":"development","wave":1,
+            "task":{"title":"A","description":"desc","acceptance_criteria":[]},
+            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src"],"context_paths":["src/probe.py"],"required_capabilities":["implementation"],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
+        captured={}
+        class Producer:
+            def produce(self,item):
+                captured["packet"]=item.context_packet
+                return ImplementationArtifact("plan",{"src/a.py":"value=1"},"feat: a","t","b")
+        item=DirectExecutionItem("run","task","demo","owner/repo",None,"A","desc","factory/cs/a",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{"confidence":"high","impacted_nodes":[],"unknowns":[]})
+        ChangeSetBuilderWorker(github=github,store=store,producer=Producer(),impact_engine=impact,provenance=MagicMock()).execute(item)
+        github.get_file_text.assert_called_once_with("src/probe.py",ref="base")
+        self.assertEqual(captured["packet"]["repository_snapshot"]["src/probe.py"],"probe = True\n")
+
+    def test_builder_rejects_invalid_repository_context_path_before_model(self):
+        github=MagicMock();github.get_branch_sha.return_value="main"
+        store=MagicMock();store.frozen_source_commit.return_value="base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"demo","repository":"owner/repo","plan_task_key":"a","agent_key":"development","wave":1,
+            "task":{"title":"A"},"assignment":{"scope_keys":["src"],"context_paths":["../secret"],"required_capabilities":[],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
+        producer=MagicMock()
+        item=DirectExecutionItem("run","task","demo","owner/repo",None,"A","desc","factory/cs/a",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{})
+        with self.assertRaises(ValueError):
+            ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=MagicMock()).execute(item)
+        producer.produce.assert_not_called()
+
     def test_integrator_rejects_overlapping_files(self):
         github=MagicMock()
         store=MagicMock()
