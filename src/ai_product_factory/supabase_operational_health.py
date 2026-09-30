@@ -35,7 +35,7 @@ class SupabaseOperationalHealthReader:
     def read(self, *, budget: Decimal | None = None, now: datetime | None = None) -> OperationalHealth:
         now=now or datetime.now(timezone.utc)
         runs=self._get("factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at&order=created_at.desc&limit=200")
-        task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id")})
+        task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status")=="failed"})
         task_status_by_id={}
         if task_ids:
             encoded=",".join(task_ids)
