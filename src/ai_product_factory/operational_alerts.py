@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+OPERATIONAL_ALERT_CODES=("dead_letter","expired_lease","failed_runs","unknown_cost","budget_exhausted")
+
 @dataclass(frozen=True)
 class OperationalHealth:
  expired_leases:int=0
