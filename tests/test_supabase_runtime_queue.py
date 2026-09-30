@@ -33,6 +33,24 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             q.complete(item);q.fail(item,"x")
         self.assertEqual(call.call_count,4)
 
+    def test_stage_lifecycle_event_uses_existing_runtime_stage_rpc(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen",return_value=Response(None)) as call:
+            q.record_stage_event(item,"planning","started")
+        req=call.call_args.args[0]
+        self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_record_runtime_stage"))
+        body=json.loads(req.data.decode())
+        self.assertEqual(body["p_stage"],"planning")
+        self.assertEqual(body["p_status"],"started")
+        self.assertEqual(body["p_output"],{})
+
+    def test_stage_lifecycle_event_rejects_unknown_status(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with self.assertRaises(ValueError):
+            q.record_stage_event(item,"planning","mystery")
+
     def test_recovery_rpc_is_bounded_and_service_secret_not_in_body(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         with patch("urllib.request.urlopen",return_value=Response({"requeued":1,"failed":0})) as call:
