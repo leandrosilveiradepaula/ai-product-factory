@@ -15,6 +15,9 @@ jobs:
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      FACTORY_WIF_EXPECTED_REPOSITORY: leandrosilveiradepaula/ai-product-factory
+      FACTORY_WIF_EXPECTED_REF: refs/heads/main
+      FACTORY_WIF_EXPECTED_ENVIRONMENT: openai-api
       PYTHONPATH: src
     steps:
       - uses: actions/checkout@v7
