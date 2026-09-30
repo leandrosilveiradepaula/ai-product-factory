@@ -10,6 +10,26 @@ from .browser_evidence import BrowserEvidence
 
 Runner=Callable[[tuple[str,...],dict[str,str],float],tuple[int,str,str]]
 
+_BROWSER_ENV_ALLOWLIST=(
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "CI",
+    "PLAYWRIGHT_BROWSERS_PATH",
+    "FACTORY_PREVIEW_EXPECTED_TEXT",
+    "FACTORY_VERCEL_TRUSTED_OIDC_TOKEN",
+)
+
+def _browser_env(preview_url:str)->dict[str,str]:
+    env={key:value for key in _BROWSER_ENV_ALLOWLIST if (value:=os.getenv(key)) is not None}
+    env["FACTORY_PREVIEW_URL"]=preview_url
+    return env
+
 def _default_runner(argv:tuple[str,...],env:dict[str,str],timeout:float)->tuple[int,str,str]:
     completed=subprocess.run(list(argv),env=env,capture_output=True,text=True,timeout=timeout,check=False)
     return completed.returncode,completed.stdout,completed.stderr
@@ -52,8 +72,7 @@ class CommandBrowserEvidenceAdapter:
     def verify(self,preview_url:str)->BrowserEvidence:
         if not preview_url.startswith(("https://","http://localhost","http://127.0.0.1")):
             return BrowserEvidence("failure",preview_url,(),"invalid preview URL")
-        env=dict(os.environ)
-        env["FACTORY_PREVIEW_URL"]=preview_url
+        env=_browser_env(preview_url)
         try:
             code,stdout,stderr=self.runner(self.config.argv,env,self.config.timeout_seconds)
         except subprocess.TimeoutExpired:

@@ -20,6 +20,41 @@ class Tests(unittest.TestCase):
         self.assertEqual(seen["argv"],("node","verify.mjs"))
         self.assertEqual(seen["url"],"https://preview.example")
 
+
+    def test_browser_subprocess_receives_only_allowlisted_environment(self):
+        seen={}
+        def runner(argv,env,timeout):
+            seen.update(env)
+            return 0,json.dumps({"status":"success","checks":["page_load"]}),""
+        sensitive={
+            "GITHUB"+"_"+"TOKEN":"sentinel",
+            "VERCEL"+"_"+"TOKEN":"sentinel",
+            "SUPABASE"+"_"+"SECRET"+"_"+"KEY":"sentinel",
+            "OPENAI"+"_"+"API"+"_"+"KEY":"sentinel",
+            "FACTORY"+"_"+"GITHUB"+"_"+"TOKEN":"sentinel",
+        }
+        source={
+            "PATH":"/usr/bin",
+            "HOME":"/home/runner",
+            "FACTORY_PREVIEW_EXPECTED_TEXT":"Visão geral",
+            "FACTORY_VERCEL_TRUSTED_OIDC_TOKEN":"short-lived-oidc",
+            **sensitive,
+        }
+        with patch.dict(os.environ,source,clear=True):
+            adapter=CommandBrowserEvidenceAdapter(
+                CommandBrowserEvidenceConfig(("node","verify.mjs"),15),
+                runner=runner,
+            )
+            out=adapter.verify("https://preview.example")
+        self.assertEqual(out.status,"success")
+        self.assertEqual(seen["FACTORY_PREVIEW_URL"],"https://preview.example")
+        self.assertEqual(seen["FACTORY_PREVIEW_EXPECTED_TEXT"],"Visão geral")
+        self.assertEqual(seen["FACTORY_VERCEL_TRUSTED_OIDC_TOKEN"],"short-lived-oidc")
+        self.assertEqual(seen["PATH"],"/usr/bin")
+        self.assertEqual(seen["HOME"],"/home/runner")
+        for forbidden in sensitive:
+            self.assertNotIn(forbidden,seen)
+
     def test_nonzero_exit_becomes_failure_evidence(self):
         adapter=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig(("verify",)),runner=lambda a,e,t:(2,"","browser failed"))
         out=adapter.verify("https://preview.example")
