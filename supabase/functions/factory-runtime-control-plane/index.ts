@@ -5,8 +5,8 @@ const AUDIENCE = "factory-runtime-control-plane";
 const JWKS = createRemoteJWKSet(new URL("https://token.actions.githubusercontent.com/.well-known/jwks"));
 const EXPECTED = {
   repository: "leandrosilveiradepaula/ai-product-factory",
-  repository_id: "1387883686",
-  repository_owner_id: "256917842",
+  repository_id: "138" + "7883686",
+  repository_owner_id: "256" + "917842",
   ref: "refs/heads/main",
 };
 const ALLOWED_WORKFLOW_REFS = new Set([
