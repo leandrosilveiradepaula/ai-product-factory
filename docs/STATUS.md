@@ -4,14 +4,18 @@ Last reconciled: 2026-09-30.
 
 ## Reconciliation 2026-09-30
 
-- `main`: `406fe0023266152aab1cc3d2c45a610ba1e2595b` after the human merge of PR #423.
-- Vercel production deployment `dpl_HBaCU6Ep31NzkTgfJTEfXCeCCnmo` is READY; `/api/health` returns HTTP 200 with commit `406fe0023266`; no runtime errors were observed in the post-release window.
+- `main`: `03995a1d484a178d9090b0b22230cc9d0fa97475` after the human merge of PR #442. The commits after the last Console code release are runtime/observability/test-metadata changes; the currently served Console production application remains the verified PR #440 release at `6353ff595338100d5c68ae4f984f5b4508ba259f`.
+- Vercel production deployment `dpl_CgQJ6zyubHBnteAgmsi8au4wKZQ5` is READY for Console commit `6353ff595338100d5c68ae4f984f5b4508ba259f`; Vercel reported no runtime errors in the verified post-release window.
+- Console interaction audit #433 is complete. Authenticated evidence run `36703504585` targeted the exact production commit `6353ff595338100d5c68ae4f984f5b4508ba259f`: all primary navigation routes returned HTTP 200, operator RBAC correctly redirected `/admin/operators` to `/unauthorized`, Novo Projeto -> Revisao -> Editar restored values without starting Discovery, CRM project detail loaded, and 390px mobile checks had no horizontal overflow.
+- Runtime ledger/OIDC fix #438 and end-to-end delivery metrics #432 are released on `main`. Paid-ledger access through the GitHub OIDC broker now sends Bearer authentication while modern `sb_secret_*` credentials remain apikey-only.
+- Dogfood #430 is active again. The original failed run `869083ae-956e-4e5e-8f38-6e91c4dfd548` is preserved with `HTTP 403`, attempt_count=1 and zero tool-usage rows. Retry run `bdead003-6ebf-4d49-bc6f-aa6778f8f686` is queued against current source commit with `retry_of` evidence, planned Direct route and Codex explicitly forbidden.
+- The paid ledger currently has known cumulative cost about US$ 0.0000178 and zero unknown paid-cost events. Factory budget remains US$ 4.00 with US$ 0.50 reservation per paid run/call.
+- Native retry for terminal failed runs is not yet a first-class runtime capability; issue #443 tracks an auditable fail-closed RPC/CLI so future retries do not require administrative SQL.
 - CRM Supabase OAuth is complete and remains fail-closed/read-only: project ref `mpmhmjepmmpxbsmekldf`, `status=ready_read`, `access_mode=oauth`, `permission_mode=read`. Issue #338 is closed.
-- Cross-repository CRM access is configured with explicit `FACTORY_GITHUB_TOKEN`; the read-only preflight passes while Actions can run. Issue #326 is closed.
-- The Factory repository is temporarily public again because the GitHub Free account exhausted 2,000/2,000 private-repository Actions minutes. After returning to public, `validate` attempt 3 and CRM preflight attempt 4 both passed. Issue #426 tracks the planned GitHub Pro upgrade and final private-repository revalidation.
-- The current scheduled autonomous runner opens multiple runners even when queues are empty; issue #427 tracks a deterministic schedule probe to reduce idle Actions consumption before/after the Pro upgrade.
-- Control Plane remains clean: 3 active projects, 0 open runs, 0 failed/dead-letter runs and 0 pending human gates.
-- Next.js 15.5.27 is still not published in npm as of this reconciliation; 15.5.26 remains the 15.5 backport tag. Issue #402 remains open.
+- Cross-repository CRM access is configured with explicit `FACTORY_GITHUB_TOKEN`; read-only permissions remain intentionally scoped to `crm-infodive`. Issue #326 is closed.
+- The Factory repository remains temporarily public while issue #426 waits for the planned GitHub Pro upgrade and final private-repository revalidation. Do not purchase or change plan automatically.
+- Schedule-probe optimization from #427 is released; the real dogfood retry #430 is now the source of the remaining end-to-end telemetry evidence needed to close the measurement loop.
+- Next.js 15.5.27 is still not published in npm as of this reconciliation; 15.5.26 remains the 15.5 backport tag. Issue #402 remains open; do not use beta/canary.
 - OpenAI API WIF #250 and Codex workspace auth #240 remain external hardening/enablement items; the operational Primary path remains the bounded API-key path.
 
 ## Operational foundation
@@ -58,17 +62,16 @@ Scheduled Direct is enabled through the retained API key with a prepaid Factory 
 The Factory Console is deployed on Vercel at `https://ai-product-factory-console.vercel.app` and connected to the live Supabase Control Plane.
 
 Verified production state:
-- current production release commit: `1301ad934838ca13699d4ca41e0092b74fe89755` from authorized PR #407, stacked after authorized PR #400 (`a07c9d96e8d1f64861e928c5c361f5b93f8c6d05`);
-- Vercel production deployment `dpl_27ZmHDyWDXXxr7TkUqmgGD3assPz` is `READY`;
-- production `GET /api/health` returns HTTP 200 and reports truncated commit `1301ad934838`;
-- post-merge validate + factory-acceptance run `36626997044` succeeded;
-- post-merge Console validation run `36626997056` succeeded with deterministic npm install, typecheck and build;
-- exact pre-release Preview `dpl_GB3pzQtX3QHS9Fw5Y9zd7AeRS3zH` for candidate `54b275fbafd7e035fdce983fb2bc976af8b08f64` reached `READY`;
-- authenticated visual evidence run `36610828751` succeeded with encrypted artifact upload and ephemeral-operator cleanup;
-- visual reconciliation against the preserved exported Figma reference `Esteira.zip` is complete and issue #309 is closed;
-- Vercel reported no runtime errors in the post-release observation window;
-- Supabase Auth login and server-side Control Plane access remain operational; backend access continues to prefer `SUPABASE_SECRET_KEY` with legacy service-role fallback only.
-- Supabase OAuth readiness is fail-closed in production: when OAuth client credentials are absent, the Console shows a blocked readiness state and the server route returns controlled HTTP 503 instead of raising an unhandled error. The OAuth App client ID and client secret are already present in Vercel; the remaining step is the first real read-only OAuth authorization.
+- current served Console production commit: `6353ff595338100d5c68ae4f984f5b4508ba259f` from human-merged PR #440;
+- Vercel production deployment `dpl_CgQJ6zyubHBnteAgmsi8au4wKZQ5` is `READY`;
+- post-merge `validate` run `36700177302` and `Console validation` run `36700177080` succeeded for #440;
+- authenticated production interaction evidence run `36703504585` succeeded against exact target commit `6353ff595338100d5c68ae4f984f5b4508ba259f`;
+- the authenticated audit captured overview, projects, runs, new-project, gates, run detail, queue, agents, orchestration, evals, deployments, usage, audit and configuration;
+- all audited navigation routes returned HTTP 200; operator-only administration failed closed for the ephemeral operator; intake Review/Edit preserved values; CRM detail loaded; mobile widths remained 390px without horizontal overflow;
+- bootstrap diagnostics reported zero console errors, zero page errors and zero bad responses;
+- Vercel reported no runtime errors in the verification window;
+- Supabase Auth login and server-side Control Plane access remain operational; backend access continues to prefer `SUPABASE_SECRET_KEY` with legacy service-role fallback only;
+- `main` may be ahead of the served Console commit when later commits touch only runtime, docs, tests or evidence metadata and Vercel correctly skips/cancels unnecessary Console builds.
 
 ## Protected Preview / Console intake release
 
