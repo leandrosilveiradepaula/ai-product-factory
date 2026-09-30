@@ -62,5 +62,23 @@ class WorkUnitContextTests(unittest.TestCase):
         self.assertTrue(path_is_within_scopes("src/app.py",("src",)))
         self.assertFalse(path_is_within_scopes("docs/app.py",("src",)))
 
+
+    def test_reference_files_are_hashed_and_sanitized_with_context(self):
+        packet=build_context_packet(
+            source=self.source(),impact={},base_commit="a"*40,branch="factory/cs/api",
+            reference_files={"src/api.py":"def handler():\n    return 200\n"},
+        )
+        self.assertEqual(
+            packet.payload["repository"]["reference_files"]["src/api.py"],
+            "def handler():\n    return 200\n",
+        )
+
+    def test_secret_like_reference_file_is_rejected(self):
+        with self.assertRaisesRegex(ValueError,"secret-like"):
+            build_context_packet(
+                source=self.source(),impact={},base_commit="a"*40,branch="factory/cs/api",
+                reference_files={"src/api.py":"Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"},
+            )
+
 if __name__=="__main__":
     unittest.main()
