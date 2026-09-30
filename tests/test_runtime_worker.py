@@ -11,6 +11,11 @@ class Queue:
     def fail(self,item,error): self.events.append(("fail",item.run_id,error))
 
 
+class InstrumentedQueue(Queue):
+    def record_stage_event(self,item,stage,status):
+        self.events.append(("stage_event",stage,status))
+
+
 def item():
     return WorkItem("r1","t1","p1","demo",("discovery","specification","planning"),{"summary":"demo"})
 
@@ -27,6 +32,21 @@ class RuntimeWorkerTests(unittest.TestCase):
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
+
+    def test_worker_records_stage_lifecycle_when_queue_supports_it(self):
+        q=InstrumentedQueue(item())
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.COMPLETED)
+        starts=[x for x in q.events if x[0]=="stage_event" and x[2]=="started"]
+        self.assertEqual([x[1] for x in starts],["discovery","specification","planning"])
+
+    def test_worker_records_failed_stage_lifecycle_when_queue_supports_it(self):
+        bad=WorkItem("r2","t2","p2","demo",("unknown",),{})
+        q=InstrumentedQueue(bad)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn(("stage_event","unknown","started"),q.events)
+        self.assertIn(("stage_event","unknown","failed"),q.events)
 
     def test_worker_fails_closed_on_unknown_stage(self):
         bad=WorkItem("r2","t2","p2","demo",("unknown",),{})
