@@ -173,3 +173,14 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Preview final por promocao de candidato exato: branches de implementacao nao geram Preview; somente `preview/**` pode construir o candidato final.
 - [x] Validar o candidato cumulativo em Preview exato + browser evidence autenticada: PR #407 head `54b275fbafd7e035fdce983fb2bc976af8b08f64`, Preview `dpl_GB3pzQtX3QHS9Fw5Y9zd7AeRS3zH`, authenticated evidence run `36610828751`.
 - [x] Release cumulativo autorizado pelo usuario e mergeado em `54f3ed0445ffda2c8d0974d0d5b5741065294108`; producao `dpl_EskSGj2T7Z6xjtN8KLNV2yAeeX19` READY, health HTTP 200 no commit correto, CI pos-merge verde e zero runtime errors na janela de observacao.
+
+
+## Atualizacao operacional - 2026-09-30
+
+- PR #423 foi mergeado humanamente em `406fe0023266152aab1cc3d2c45a610ba1e2595b`; Vercel producao esta READY e o health reporta o commit correto.
+- OAuth Supabase do CRM e o preflight cross-repo read-only foram concluidos e verificados.
+- O repositorio voltou temporariamente a public porque a conta GitHub Free esgotou 2.000/2.000 minutos de Actions para repositorios privados; o usuario decidiu migrar para GitHub Pro no proximo ciclo e entao retornar a private.
+- Apos o retorno temporario a public, `validate`/factory-acceptance e CRM cross-repo preflight voltaram a passar, confirmando que o bloqueio era de capacidade/feature da conta e nao regressao da Factory.
+- #427 passa a ser prioridade operacional: reduzir runners ociosos do autonomous runner por meio de probe deterministico read-only e server-side skip de jobs sem trabalho.
+- Depois do Pro/private, revalidar GitHub Actions, environments, Control Plane OIDC, CRM cross-repo e Vercel.
+- O primeiro trabalho funcional novo executado integralmente pela Factory continua como proxima prova end-to-end de produto; o benchmark de 63 perguntas do Agente SQL continua explicitamente postergado.
