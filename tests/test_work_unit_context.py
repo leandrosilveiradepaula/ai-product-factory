@@ -1,6 +1,6 @@
 import unittest
 
-from ai_product_factory.work_unit_context import build_context_packet,enforce_write_scopes,path_is_within_scopes
+from ai_product_factory.work_unit_context import build_context_packet,enforce_write_scopes,path_is_within_scopes,redact_repository_text
 
 
 class WorkUnitContextTests(unittest.TestCase):
@@ -40,6 +40,15 @@ class WorkUnitContextTests(unittest.TestCase):
         source["repair"]={"token":"sk-proj-thismustneverentermodelcontext"}
         with self.assertRaisesRegex(ValueError,"secret-bearing"):
             build_context_packet(source=source,impact={},base_commit="a"*40,branch="factory/cs/api")
+
+
+    def test_repository_text_redacts_secret_values_and_sensitive_prefix_markers(self):
+        raw='prefix = "'+("sb_"+"secret_")+'"\nvalue = "'+("sk-proj-"+"abcdefghijklmnop")+'"\n'
+        redacted=redact_repository_text(raw)
+        self.assertNotIn("sb_"+"secret_",redacted)
+        self.assertNotIn("sk-proj-"+"abcdefghijklmnop",redacted)
+        self.assertIn("[REDACTED_SUPABASE_SECRET_PREFIX]",redacted)
+        self.assertIn("[REDACTED_SECRET]",redacted)
 
     def test_write_scope_enforcement_accepts_children_and_rejects_siblings(self):
         self.assertTrue(path_is_within_scopes("src/api/users.py",("src/api/**",)))
