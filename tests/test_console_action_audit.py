@@ -55,6 +55,15 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertNotIn("Factory saudável",shell)
         self.assertNotIn("<span>Online</span>",shell)
 
+    def test_shell_environment_label_is_not_hardcoded_to_production(self):
+        layout=(APP/"layout.tsx").read_text()
+        shell=(APP/"shell.tsx").read_text()
+        self.assertIn("process.env.VERCEL_ENV",layout)
+        self.assertIn('?"Produção":',layout)
+        self.assertIn('?"Preview":',layout)
+        self.assertIn("environmentLabel",shell)
+        self.assertNotIn('<span className="envBadge">produção</span>',shell)
+
     def test_login_preserves_validated_next_destination(self):
         login=(APP/"login"/"page.tsx").read_text()
         actions=(APP/"auth-actions.ts").read_text()
