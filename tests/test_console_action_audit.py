@@ -63,9 +63,16 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("safeNext",login)
         self.assertIn("safeNext",actions)
         self.assertIn("redirect(next)",actions)
-        self.assertIn('url.searchParams.set("next",path)',middleware)
+        self.assertIn('url.searchParams.set("next",path+request.nextUrl.search)',middleware)
         self.assertIn('value.startsWith("//")',actions)
         self.assertIn('value.includes("\\\\")',actions)
+
+    def test_auth_redirect_preserves_oauth_callback_query(self):
+        middleware=(ROOT/"apps"/"console"/"middleware.ts").read_text()
+        self.assertIn("path+request.nextUrl.search",middleware)
+        callback=(APP/"api"/"integrations"/"supabase"/"callback"/"route.ts").read_text()
+        self.assertIn('u.searchParams.get("code")',callback)
+        self.assertIn('u.searchParams.get("state")',callback)
 
     def test_intake_edit_preserves_values_and_draft_attachments(self):
         form=(APP/"projects"/"new"/"intake-form.tsx").read_text()
