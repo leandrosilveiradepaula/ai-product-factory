@@ -1,6 +1,6 @@
 {
-  "preview_url": "https://ai-product-factory-console-ns00oisee-leandros-projects-102e32ab.vercel.app",
+  "preview_url": "https://ai-product-factory-console-8kibfgwog-leandros-projects-102e32ab.vercel.app",
   "expected_text": "Entrar na Factory",
-  "candidate_sha": "41c58ea5f42177544c0ab57912140c63ed9a7adf",
-  "purpose": "PR #423 Supabase OAuth 204 callback fix exact Preview evidence"
+  "candidate_sha": "61ba91b5967db97617cadbddf00d7c541218c030",
+  "purpose": "PR #423 final rebased candidate exact Preview evidence"
 }
