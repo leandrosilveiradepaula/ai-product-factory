@@ -52,5 +52,15 @@ class WorkUnitContextTests(unittest.TestCase):
             enforce_write_scopes(("src/api/users.py",),())
 
 
+    def test_root_scope_allows_any_safe_relative_repository_path(self):
+        self.assertTrue(path_is_within_scopes("docs/schedule-probe-contract.md",("." ,)))
+        self.assertTrue(path_is_within_scopes(".github/workflows/test.yml",("." ,)))
+        self.assertFalse(path_is_within_scopes("../outside.txt",("." ,)))
+        self.assertFalse(path_is_within_scopes("/absolute.txt",("." ,)))
+
+    def test_non_root_scope_stays_prefix_bounded(self):
+        self.assertTrue(path_is_within_scopes("src/app.py",("src",)))
+        self.assertFalse(path_is_within_scopes("docs/app.py",("src",)))
+
 if __name__=="__main__":
     unittest.main()
