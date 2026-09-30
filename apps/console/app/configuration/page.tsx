@@ -2,8 +2,9 @@ import {getConsoleConfiguration} from "../../lib/control-plane";
 import {requireConsoleOperator} from "../../lib/auth-server";
 import {ActionLink,PageHeader,SectionHeader,StatusPill} from "../ui";
 
-function previewLabel(manifest:Record<string,unknown>){
- const preview=manifest.preview;
+function previewLabel(manifest:unknown){
+ if(!manifest||typeof manifest!=="object")return "política não informada";
+ const preview=(manifest as Record<string,unknown>).preview;
  if(!preview||typeof preview!=="object")return "política não informada";
  const mode=(preview as Record<string,unknown>).mode;
  return typeof mode==="string"?mode:"configurado";
