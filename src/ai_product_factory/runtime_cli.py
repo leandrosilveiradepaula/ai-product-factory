@@ -52,6 +52,7 @@ from .release_intelligence import build_release_assessment,load_default_release_
 from .release_policy_store import SupabaseReleasePolicyStore
 from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
+from .delivery_metrics import SupabaseDeliveryMetricsReader
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -371,10 +372,13 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","replay"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","delivery-metrics","replay"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
  elif args.mode=="schedule-probe":out=SupabaseScheduleProbe().probe()
+ elif args.mode=="delivery-metrics":
+  if not args.source_run_id:raise ValueError("--source-run-id is required for delivery-metrics mode")
+  out=SupabaseDeliveryMetricsReader().read(args.source_run_id).as_json()
  elif args.mode=="replay":
   if not args.source_run_id:raise ValueError("--source-run-id is required for replay mode")
   out=run_replay_once(args.source_run_id,args.replay_mode)
