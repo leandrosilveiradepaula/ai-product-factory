@@ -87,6 +87,10 @@ class ConsoleActionAuditTests(unittest.TestCase):
     def test_supabase_connect_visual_action_has_real_route_handlers(self):
         detail=(APP/"projects"/"[key]"/"page.tsx").read_text()
         self.assertIn("/api/integrations/supabase/connect",detail)
+        self.assertIn('operator.role==="admin"',detail)
+        self.assertIn("supabaseMessages",detail)
+        self.assertIn("verification_failed",detail)
+        self.assertIn("Administrador necessário",detail)
         self.assertTrue((APP/"api"/"integrations"/"supabase"/"connect"/"route.ts").exists())
         self.assertTrue((APP/"api"/"integrations"/"supabase"/"callback"/"route.ts").exists())
 
