@@ -775,7 +775,9 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
 
         for job in ("specialist-security","specialist-qa","specialist-operations"):
             self.assertIn("\n  "+job+":",workflow)
-        self.assertIn("needs: [specialist-security, specialist-qa, specialist-operations]",workflow)
+        preview_header=workflow[workflow.index("\n  preview:"):workflow.index("\n  alerts:")].split("runs-on:",1)[0]
+        for job in ("specialist-security","specialist-qa","specialist-operations"):
+            self.assertIn(job,preview_header)
         specialist_region=workflow[workflow.index("\n  specialist-security:"):workflow.index("\n  release-followup:")]
         self.assertNotIn("contents: write",specialist_region)
         self.assertNotIn("pull-requests: write",specialist_region)
