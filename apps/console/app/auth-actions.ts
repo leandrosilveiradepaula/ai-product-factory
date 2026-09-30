@@ -4,7 +4,7 @@ import {clearAuthCookies,setAuthCookies} from "../lib/auth-server";
 import {signInPassword} from "../lib/auth-api";
 
 function safeNext(value:string){
- if(!value.startsWith("/")||value.startsWith("//"))return "/";
+ if(!value.startsWith("/")||value.startsWith("//")||value.includes("\\"))return "/";
  return value;
 }
 
