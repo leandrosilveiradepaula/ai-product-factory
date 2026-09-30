@@ -342,3 +342,5 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .overviewControlLink:hover{border-color:#454b59;color:#fff}
 
 .noticeCard{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px}.noticeCard.success{border-color:var(--color-pill-success-border)}.noticeCard.danger{border-color:var(--color-danger-border,#6b2d39)}
+
+.authShell{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--color-canvas)}.authMain{width:min(100%,560px)}.authMain .pageHeader{margin-bottom:18px}.authMain .authForm{max-width:none}
