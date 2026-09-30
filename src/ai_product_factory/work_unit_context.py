@@ -77,7 +77,7 @@ def enforce_write_scopes(paths:Iterable[str],scopes:Iterable[str])->None:
         raise PermissionError("implementation attempted writes outside assigned scopes: "+", ".join(outside))
 
 
-def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:str)->ContextPacket:
+def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:str,reference_files:dict[str,str]|None=None)->ContextPacket:
     task=source.get("task") if isinstance(source.get("task"),dict) else {}
     assignment=source.get("assignment") if isinstance(source.get("assignment"),dict) else {}
     repair=source.get("repair") if isinstance(source.get("repair"),dict) else {}
@@ -102,6 +102,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
             "exact_base_commit":base_commit,
             "work_branch":branch,
             "write_scopes":scopes,
+            "reference_files":reference_files or {},
         },
         "sandbox":{
             "isolation":"work_unit_branch",
