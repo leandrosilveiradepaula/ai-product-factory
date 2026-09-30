@@ -36,9 +36,11 @@ class ChangeSetBuilderWorker:
         if not item.change_set_id or not item.work_unit_id:
             raise ValueError("Change Set identity is required")
         observed_main=self.github.get_branch_sha("main")
+        frozen_source=self.store.frozen_source_commit(item.change_set_id)
+        source_commit=frozen_source or observed_main
         integration_branch=f"factory/change-set-{item.change_set_id[:8]}"
         binding=self.store.bind_source(
-            run_id=item.run_id,source_commit=observed_main,
+            run_id=item.run_id,source_commit=source_commit,
             integration_branch=integration_branch,work_branch=item.branch,
         )
         self.github.ensure_branch_at_sha(item.branch,binding.base_commit)

@@ -35,6 +35,14 @@ class SupabaseChangeSetStore:
         cfg=resolve_supabase_server_config(url=url,secret_key=secret_key,service_role_key=service_role_key)
         self.url=cfg.url;self.headers=cfg.headers
 
+    def _get(self,path:str):
+        req=urllib.request.Request(f"{self.url}/rest/v1/{path}",method="GET",headers=self.headers)
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
+        return [] if not raw else json.loads(raw)
+
     def _rpc(self,name:str,payload:dict):
         req=urllib.request.Request(
             f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),
@@ -48,6 +56,15 @@ class SupabaseChangeSetStore:
 
     def recover_expired(self,max_attempts:int=3)->dict:
         return self._rpc("factory_recover_change_sets",{"p_max_attempts":max_attempts}) or {}
+
+    def frozen_source_commit(self,change_set_id:str)->str|None:
+        rows=self._get(
+            "factory_change_sets?select=source_commit&id=eq."+change_set_id+"&limit=1"
+        )
+        if not rows:
+            raise RuntimeError("change set not found")
+        value=rows[0].get("source_commit")
+        return str(value) if value else None
 
     def bind_source(self,*,run_id:str,source_commit:str,integration_branch:str,work_branch:str)->ChangeSetBinding:
         data=self._rpc("factory_bind_change_set_source",{
