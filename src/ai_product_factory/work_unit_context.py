@@ -77,7 +77,7 @@ def enforce_write_scopes(paths:Iterable[str],scopes:Iterable[str])->None:
         raise PermissionError("implementation attempted writes outside assigned scopes: "+", ".join(outside))
 
 
-def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:str)->ContextPacket:
+def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:str,repository_snapshot:dict[str,str]|None=None)->ContextPacket:
     task=source.get("task") if isinstance(source.get("task"),dict) else {}
     assignment=source.get("assignment") if isinstance(source.get("assignment"),dict) else {}
     repair=source.get("repair") if isinstance(source.get("repair"),dict) else {}
@@ -111,6 +111,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
             "github_credentials_in_model_context":False,
         },
         "impact":impact or {},
+        "repository_snapshot":repository_snapshot or {},
         "repair":repair,
         "constraints":source.get("constraints") if isinstance(source.get("constraints"),list) else [],
     }
