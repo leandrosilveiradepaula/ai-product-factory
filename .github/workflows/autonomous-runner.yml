@@ -39,7 +39,66 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  schedule-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    outputs:
+      product_work: ${{ steps.probe.outputs.product_work }}
+      dispatch_work: ${{ steps.probe.outputs.dispatch_work }}
+      integration_work: ${{ steps.probe.outputs.integration_work }}
+      ci_work: ${{ steps.probe.outputs.ci_work }}
+      specialist_work: ${{ steps.probe.outputs.specialist_work }}
+      preview_work: ${{ steps.probe.outputs.preview_work }}
+      release_work: ${{ steps.probe.outputs.release_work }}
+      codex_manual_work: ${{ steps.probe.outputs.codex_manual_work }}
+      work_detected: ${{ steps.probe.outputs.work_detected }}
+    env:
+      PYTHONPATH: src
+      FACTORY_GITHUB_ALERTS_ENABLED: "true"
+      FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
+      FACTORY_MODEL_BUDGET_USD: "4.00"
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Recover expired leases in the shared scheduler runner
+        if: ${{ github.event_name == 'schedule' }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
+      - name: Probe durable work queues without side effects
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_product_factory.runtime_cli --mode schedule-probe > /tmp/factory-schedule-probe.json
+          cat /tmp/factory-schedule-probe.json
+          python - <<'PY'
+          import json, os
+          data=json.load(open("/tmp/factory-schedule-probe.json"))
+          keys=(
+              "product_work","dispatch_work","integration_work","ci_work",
+              "specialist_work","preview_work","release_work",
+              "codex_manual_work","work_detected",
+          )
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              for key in keys:
+                  out.write(f"{key}={'true' if data.get(key) else 'false'}\n")
+          PY
+      - name: Evaluate operational alerts in the shared scheduler runner
+        if: ${{ github.event_name == 'schedule' }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode alerts
+
   product-stage:
+    needs: schedule-probe
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.product_work == 'true') }}
     runs-on: ubuntu-latest
     environment: openai-api
     permissions:
@@ -121,8 +180,8 @@ jobs:
 
 
   change-set-integration:
-    if: ${{ always() && needs.direct.result != 'failure' && needs.codex.result != 'failure' }}
-    needs: [direct, codex]
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.direct.result != 'failure' && needs.codex.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.integration_work == 'true' || needs.direct.result == 'success' || needs.codex.result == 'success') }}
+    needs: [schedule-probe, direct, codex]
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -151,8 +210,8 @@ jobs:
           fi
 
   ci-followup:
-    if: ${{ always() && needs.change-set-integration.result != 'failure' }}
-    needs: [product-stage, change-set-integration]
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.change-set-integration.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success') }}
+    needs: [schedule-probe, product-stage, change-set-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -272,7 +331,8 @@ jobs:
 
 
   release-followup:
-    needs: ci-followup
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.release_work == 'true') }}
+    needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -305,8 +365,8 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true)) }}
-    needs: product-stage
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.product-stage.result != 'failure' && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.schedule-probe.outputs.product_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    needs: [schedule-probe, product-stage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -539,8 +599,8 @@ jobs:
 
 
   codex-manual:
-    if: ${{ always() && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
-    needs: dispatch
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.codex_manual_work == 'true' || needs.dispatch.outputs.codex_count != '0')) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    needs: [schedule-probe, dispatch]
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -580,8 +640,8 @@ jobs:
         run: python -m ai_product_factory.manual_codex_handoff --mode followup
 
   preview:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true) }}
-    needs: [specialist-security, specialist-qa, specialist-operations]
+    if: ${{ always() && needs.schedule-probe.result == 'success' && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.preview_work == 'true' || needs.specialist-security.result == 'success' || needs.specialist-qa.result == 'success' || needs.specialist-operations.result == 'success')) || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true)) }}
+    needs: [schedule-probe, specialist-security, specialist-qa, specialist-operations]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -647,7 +707,7 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode preview
 
   alerts:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts == true) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_alerts == true }}
     needs: release-followup
     runs-on: ubuntu-latest
     timeout-minutes: 5
