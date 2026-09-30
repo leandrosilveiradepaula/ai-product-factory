@@ -52,6 +52,8 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertNotIn("ConsoleNav",auth_block)
         self.assertNotIn("Sessão ativa",auth_block)
         self.assertNotIn("Factory saudável",auth_block)
+        self.assertNotIn("Factory saudável",shell)
+        self.assertNotIn("<span>Online</span>",shell)
 
     def test_login_preserves_validated_next_destination(self):
         login=(APP/"login"/"page.tsx").read_text()
