@@ -149,4 +149,11 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn('GitHub OIDC issue_comment actor not allowed',source)
   self.assertIn('"schedule","workflow_dispatch","push","issue_comment"',source)
 
+ def test_direct_job_survives_skipped_product_stage_when_dispatch_succeeds(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  direct=text.split("\n  direct:",1)[1].split("\n\n  codex:",1)[0]
+  self.assertIn("always()",direct)
+  self.assertIn("needs.dispatch.result == 'success'",direct)
+  self.assertIn("github.event_name == 'issue_comment'",direct)
+
 if __name__=="__main__":unittest.main()

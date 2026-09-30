@@ -120,5 +120,19 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertIn("canonical vocabulary",p.requests[0].constraints[4])
         self.assertIn("Human approval/release is a gate",p.requests[0].constraints[5])
 
+    def test_planning_defaults_missing_title_from_task_key_before_team_plan(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{"task_key":"BUILD_API","required_capabilities":["implementation"],"scope_keys":["src"],"depends_on":[]}]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        out=h.execute(item(),"planning")
+        self.assertEqual(out["tasks"][0]["title"],"BUILD_API")
+        self.assertEqual(out["_team_plan"]["task_assignments"][0]["title"],"BUILD_API")
+
 if __name__=="__main__":
     unittest.main()

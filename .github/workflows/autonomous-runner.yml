@@ -430,7 +430,7 @@ jobs:
 
   direct:
     environment: openai-api
-    if: ${{ needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' || github.event_name == 'issue_comment') }}
+    if: ${{ always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' || github.event_name == 'issue_comment') }}
     needs: dispatch
     strategy:
       fail-fast: false
