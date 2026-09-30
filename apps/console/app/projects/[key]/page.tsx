@@ -1,6 +1,7 @@
 import {notFound} from "next/navigation";
 import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
+import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
@@ -8,10 +9,26 @@ const stageLabels=["Descoberta","Especificação","Plano","Implementação","Rev
 function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.round(((i+1)/stages.length)*100)}
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
 
-export default async function Project({params}:{params:Promise<{key:string}>}){
- const {key}=await params;const p=await getProjectDetail(key);if(!p)notFound();const [ops,state,databases,teamPlan]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id)]);const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
+const supabaseMessages:Record<string,{status:string;message:string}>={
+ connected:{status:"success",message:"Supabase conectado e acesso somente leitura verificado."},
+ oauth_invalid:{status:"failed",message:"A autorização do Supabase expirou ou não corresponde ao fluxo iniciado. Tente conectar novamente."},
+ control_plane_unavailable:{status:"failed",message:"O Control Plane não estava disponível para concluir a conexão."},
+ project_lookup_failed:{status:"failed",message:"Não foi possível localizar o projeto durante a conexão com o Supabase."},
+ project_missing:{status:"failed",message:"O projeto não foi encontrado durante a conexão com o Supabase."},
+ lookup_failed:{status:"failed",message:"Não foi possível localizar o vínculo de banco durante a conexão."},
+ project_ref_missing:{status:"failed",message:"O vínculo do Supabase não possui project_ref válido."},
+ verification_failed:{status:"failed",message:"A autorização retornou, mas a verificação do acesso não foi concluída. Nenhuma ampliação de permissão foi aplicada."},
+};
+
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string}>}){
+ const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
+ const p=await getProjectDetail(key);if(!p)notFound();
+ const [ops,state,databases,teamPlan]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id)]);
+ const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
+ const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  return <>
   <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
+  {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   <div className="lifecycleRail" aria-label="Ciclo do produto"><span className="lifecycleIdea done">Ideia</span>{stageLabels.map((label,i)=><span key={label} className={i<stages.indexOf(p.stage)?"done":i===stages.indexOf(p.stage)?"current":""}>{label}</span>)}</div>
   <div className="grid compact">
    <MetricCard label="Ciclo de vida" value={progress(p.stage)+"%"} note={<div className="progressTrack"><div className="progressFill" style={{width:progress(p.stage)+"%"}}/></div>}/>
@@ -42,7 +59,7 @@ export default async function Project({params}:{params:Promise<{key:string}>}){
      <span className="muted">{db.lastVerifiedAt?new Date(db.lastVerifiedAt).toLocaleString("pt-BR"):"Ainda não verificado"}</span>
     </div>)}
    </div>}
-   {databases.some(db=>db.status==="pending_access")?<div className="card" style={{marginTop:12}}><strong>Próxima ação</strong><p className="muted">Conecte o Supabase com acesso mínimo. A Factory valida a identidade do projeto e uma consulta somente leitura antes de considerar o banco pronto. Nenhuma credencial é exibida nesta tela.</p>{oauthReady?<div className="actions">{databases.filter(db=>db.status==="pending_access"&&db.provider==="supabase").map(db=><a className="primary linkButton" key={db.id} href={`/api/integrations/supabase/connect?project=${encodeURIComponent(p.key)}&database=${encodeURIComponent(db.id)}`}>Conectar Supabase</a>)}</div>:<div className="badgeLine"><StatusPill status="blocked" label="OAuth do Supabase não configurado"/><span className="muted">A Factory permanece fail-closed até o client ID e o client secret existirem no ambiente server-side.</span></div>}</div>:null}
+   {databases.some(db=>db.status==="pending_access")?<div className="card" style={{marginTop:12}}><strong>Próxima ação</strong><p className="muted">Conecte o Supabase com acesso mínimo. A Factory valida a identidade do projeto e uma consulta somente leitura antes de considerar o banco pronto. Nenhuma credencial é exibida nesta tela.</p>{oauthReady&&operator.role==="admin"?<div className="actions">{databases.filter(db=>db.status==="pending_access"&&db.provider==="supabase").map(db=><a className="primary linkButton" key={db.id} href={`/api/integrations/supabase/connect?project=${encodeURIComponent(p.key)}&database=${encodeURIComponent(db.id)}`}>Conectar Supabase</a>)}</div>:oauthReady?<div className="badgeLine"><StatusPill status="blocked" label="Administrador necessário"/><span className="muted">A conexão OAuth altera credenciais server-side e só pode ser iniciada por um administrador da Factory.</span></div>:<div className="badgeLine"><StatusPill status="blocked" label="OAuth do Supabase não configurado"/><span className="muted">A Factory permanece fail-closed até o client ID e o client secret existirem no ambiente server-side.</span></div>}</div>:null}
   </section>
   <section className="section"><SectionHeader title="Plano de trabalho" action={<span className="muted">{p.tasks.length} tarefas</span>}/><div className="table">
    <div className="tableRow tableHeader"><span>Tarefa</span><span>Complexidade</span><span>Estado</span><span>Chave</span></div>
