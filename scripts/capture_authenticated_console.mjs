@@ -149,7 +149,7 @@ try {
   }
 
   await page.goto(`${consoleUrl}/projects`, {waitUntil:"networkidle", timeout:60000});
-  const projectLink = page.locator('a[href^="/projects/"]').filter({hasNot:page.locator('[href="/projects/new"]')}).first();
+  const projectLink = page.locator('a[href^="/projects/"]:not([href="/projects/new"])').first();
   if (await projectLink.count()) {
     const href = await projectLink.getAttribute("href");
     if (href && href !== "/projects/new") {
