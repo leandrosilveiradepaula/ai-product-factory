@@ -34,7 +34,7 @@ class ModelImplementationProducer:
    "required":["plan_markdown","files","commit_message","pr_title","pr_body"],
    "additionalProperties":False,
   }
-  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task."),output_schema=schema)
+  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Treat repository.reference_files as authoritative repository evidence. Do not invent repository paths, architecture, tables, workflows, or APIs that conflict with those files.","If required repository evidence is absent, fail conservatively rather than fabricating it."),output_schema=schema)
   result=self.executor.execute(ExecutionRoute.DIRECT,request)
   try:data=json.loads(result.output)
   except json.JSONDecodeError as exc:raise ValueError("implementation producer returned invalid JSON") from exc
