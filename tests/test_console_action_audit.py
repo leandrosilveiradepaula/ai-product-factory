@@ -45,7 +45,7 @@ class ConsoleActionAuditTests(unittest.TestCase):
     def test_auth_pages_do_not_render_authenticated_console_shell(self):
         layout=(APP/"layout.tsx").read_text()
         shell=(APP/"shell.tsx").read_text()
-        self.assertIn("<ConsoleShell>{children}</ConsoleShell>",layout)
+        self.assertIn("<ConsoleShell environmentLabel={environmentLabel}>{children}</ConsoleShell>",layout)
         self.assertIn('pathname==="/login"',shell)
         self.assertIn('pathname==="/unauthorized"',shell)
         auth_block=shell.split("if(authOnly){",1)[1].split("return <div className=\"consoleShell\">",1)[0]
