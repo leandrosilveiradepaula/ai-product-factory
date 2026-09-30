@@ -25,14 +25,14 @@ export function ConsoleShell({children}:{children:ReactNode}){
    <div className="workspacePicker"><span className="workspaceGlyph">▦</span><span>Infodive / Autônomos</span></div>
    <ConsoleNav/>
    <div className="sidebarFooter">
-    <div className="sidebarHealth"><span className="healthDot"/><span>Factory saudável</span></div>
+    <div className="sidebarHealth"><span>AI Product Factory</span></div>
     <div className="sidebarFooterRow"><span className="envBadge">produção</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
    </div>
   </aside>
   <div className="workspace">
    <header className="topbar">
     <div className="topbarTrail"><span>Control Plane</span><b>/</b><strong>Sessão ativa</strong></div>
-    <div className="topbarMeta"><span className="healthDot"/><span>Online</span><span className="topbarDivider"/><span>Produção</span><Link href="/projects/new" className="topbarWork">+ Novo trabalho</Link></div>
+    <div className="topbarMeta"><span>Console</span><span className="topbarDivider"/><span>Produção</span><Link href="/projects/new" className="topbarWork">+ Novo trabalho</Link></div>
    </header>
    <main className="main">{children}</main>
   </div>
