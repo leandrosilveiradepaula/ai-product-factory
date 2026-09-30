@@ -21,6 +21,7 @@ class ModelRequest:
     acceptance_criteria: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
+    output_schema: dict | None = None
 
 
 @dataclass(frozen=True)
