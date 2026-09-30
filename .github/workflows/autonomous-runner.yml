@@ -1,6 +1,8 @@
 name: Factory autonomous runner
 
 on:
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       project_key:
@@ -40,6 +42,7 @@ concurrency:
 
 jobs:
   schedule-probe:
+    if: ${{ github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -372,7 +375,7 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.product-stage.result != 'failure' && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.schedule-probe.outputs.product_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.product-stage.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.schedule-probe.outputs.product_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
     needs: [schedule-probe, product-stage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -427,7 +430,7 @@ jobs:
 
   direct:
     environment: openai-api
-    if: ${{ needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule') }}
+    if: ${{ needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' || github.event_name == 'issue_comment') }}
     needs: dispatch
     strategy:
       fail-fast: false
@@ -647,7 +650,7 @@ jobs:
         run: python -m ai_product_factory.manual_codex_handoff --mode followup
 
   preview:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.preview_work == 'true' || needs.specialist-security.result == 'success' || needs.specialist-qa.result == 'success' || needs.specialist-operations.result == 'success')) || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true)) }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.preview_work == 'true' || needs.specialist-security.result == 'success' || needs.specialist-qa.result == 'success' || needs.specialist-operations.result == 'success')) || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true)) }}
     needs: [schedule-probe, specialist-security, specialist-qa, specialist-operations]
     runs-on: ubuntu-latest
     timeout-minutes: 10

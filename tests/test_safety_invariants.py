@@ -120,4 +120,24 @@ class SafetyInvariantTests(unittest.TestCase):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED',text)
   self.assertIn('FACTORY_PRIMARY_MODEL_ENABLED\" = \"true',text)
+ def test_owner_only_issue_comment_can_wake_autonomous_runner(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  self.assertIn("issue_comment:",text)
+  probe=text.split("\n  schedule-probe:",1)[1].split("\n  product-stage:",1)[0]
+  self.assertIn("github.event.comment.body == '/factory-wake'",probe)
+  self.assertIn("github.event.comment.author_association == 'OWNER'",probe)
+  dispatch=text.split("\n  dispatch:",1)[1].split("\n  direct:",1)[0]
+  direct=text.split("\n  direct:",1)[1].split("\n\n  codex:",1)[0]
+  preview=text.split("\n  preview:",1)[1].split("\n  alerts:",1)[0]
+  self.assertIn("github.event_name == 'issue_comment'",dispatch)
+  self.assertIn("github.event_name == 'issue_comment'",direct)
+  self.assertIn("github.event_name == 'issue_comment'",preview)
+
+ def test_owner_wake_never_enables_codex_paths(self):
+  text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  codex=text.split("\n  codex:",1)[1].split("\n\n  codex-manual:",1)[0]
+  manual=text.split("\n  codex-manual:",1)[1].split("\n  preview:",1)[0]
+  self.assertNotIn("github.event_name == 'issue_comment'",codex)
+  self.assertNotIn("github.event_name == 'issue_comment'",manual)
+
 if __name__=="__main__":unittest.main()
