@@ -51,6 +51,26 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             q.record_stage_event(item,"planning","mystery")
 
+
+    def test_retry_failed_run_uses_privileged_rpc_without_leaking_secret_in_body(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        payload={"source_run_id":"old","run_id":"new","status":"queued","task_status":"queued"}
+        with patch("urllib.request.urlopen",return_value=Response(payload)) as call:
+            out=q.retry_failed_run("old","operator retry after fix")
+        self.assertEqual(out["run_id"],"new")
+        req=call.call_args.args[0]
+        self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_retry_failed_run"))
+        body=json.loads(req.data.decode())
+        self.assertEqual(body,{"p_source_run_id":"old","p_reason":"operator retry after fix"})
+        self.assertNotIn(b"secret",req.data)
+
+    def test_retry_failed_run_requires_source_and_reason_before_rpc(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaises(ValueError):q.retry_failed_run("","reason")
+            with self.assertRaises(ValueError):q.retry_failed_run("old"," ")
+        call.assert_not_called()
+
     def test_recovery_rpc_is_bounded_and_service_secret_not_in_body(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         with patch("urllib.request.urlopen",return_value=Response({"requeued":1,"failed":0})) as call:

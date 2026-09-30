@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -147,6 +147,21 @@ class RuntimeCliTests(unittest.TestCase):
                 require_paid_runtime_budget(health_reader=reader)
 
 
+
+
+    def test_retry_mode_is_model_free_and_delegates_to_queue(self):
+        queue=MagicMock()
+        queue.retry_failed_run.return_value={"source_run_id":"old","run_id":"new","status":"queued"}
+        with patch("ai_product_factory.runtime_cli.SupabaseRuntimeQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as provider:
+            out=run_retry_once("old","fixed root cause")
+        self.assertEqual(out["run_id"],"new")
+        queue.retry_failed_run.assert_called_once_with("old","fixed root cause")
+        provider.assert_not_called()
+
+    def test_retry_mode_requires_source_and_reason(self):
+        with self.assertRaises(ValueError):run_retry_once("","reason")
+        with self.assertRaises(ValueError):run_retry_once("old"," ")
 
     def test_replan_mode_reuses_persisted_plan_without_model_call(self):
         queue=MagicMock()
