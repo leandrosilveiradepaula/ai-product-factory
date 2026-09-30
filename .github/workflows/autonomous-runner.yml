@@ -52,6 +52,9 @@ jobs:
       integration_work: ${{ steps.probe.outputs.integration_work }}
       ci_work: ${{ steps.probe.outputs.ci_work }}
       specialist_work: ${{ steps.probe.outputs.specialist_work }}
+      specialist_security_work: ${{ steps.probe.outputs.specialist_security_work }}
+      specialist_qa_work: ${{ steps.probe.outputs.specialist_qa_work }}
+      specialist_operations_work: ${{ steps.probe.outputs.specialist_operations_work }}
       preview_work: ${{ steps.probe.outputs.preview_work }}
       release_work: ${{ steps.probe.outputs.release_work }}
       codex_manual_work: ${{ steps.probe.outputs.codex_manual_work }}
@@ -84,7 +87,8 @@ jobs:
           data=json.load(open("/tmp/factory-schedule-probe.json"))
           keys=(
               "product_work","dispatch_work","integration_work","ci_work",
-              "specialist_work","preview_work","release_work",
+              "specialist_work","specialist_security_work","specialist_qa_work",
+              "specialist_operations_work","preview_work","release_work",
               "codex_manual_work","work_detected",
           )
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:
@@ -246,7 +250,7 @@ jobs:
 
 
   specialist-security:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_work == 'true' || needs.ci-followup.result == 'success') }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_security_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -275,7 +279,7 @@ jobs:
           fi
 
   specialist-qa:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_work == 'true' || needs.ci-followup.result == 'success') }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_qa_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -304,7 +308,7 @@ jobs:
           fi
 
   specialist-operations:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_work == 'true' || needs.ci-followup.result == 'success') }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_operations_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -602,7 +606,7 @@ jobs:
 
 
   codex-manual:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.codex_manual_work == 'true' || needs.dispatch.outputs.codex_count != '0')) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.codex_manual_work == 'true' || (needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0'))) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: [schedule-probe, dispatch]
     runs-on: ubuntu-latest
     timeout-minutes: 8
