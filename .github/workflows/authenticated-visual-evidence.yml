@@ -73,7 +73,7 @@ jobs:
         with:
           node-version: "22"
       - name: Validate exact visual target
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const target = new URL(process.env.FACTORY_CONSOLE_URL);
@@ -105,7 +105,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Mint short-lived Vercel Trusted Source OIDC token
         id: vercel_oidc
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const token = await core.getIDToken();
@@ -113,7 +113,7 @@ jobs:
             core.setOutput("token", token)
       - name: Mint provisioning GitHub OIDC token
         id: oidc_provision
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const token = await core.getIDToken("factory-visual-evidence");
@@ -167,7 +167,7 @@ jobs:
           rm -rf visual-evidence visual-evidence.tar.gz
       - name: Upload encrypted evidence
         id: upload
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ env.FACTORY_VISUAL_ARTIFACT }}
           path: visual-evidence.tar.gz.enc
@@ -176,7 +176,7 @@ jobs:
       - name: Mint cleanup GitHub OIDC token
         if: always()
         id: oidc_cleanup
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const token = await core.getIDToken("factory-visual-evidence");
