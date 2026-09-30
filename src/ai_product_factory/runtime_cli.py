@@ -25,7 +25,7 @@ from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
 from .cost_policy import require_cost_ceiling
 from .integration_readiness import github_alerts_readiness,github_vercel_preview_readiness,vercel_preview_readiness,verified_preview_readiness
-from .operational_alerts import evaluate_operational_alerts
+from .operational_alerts import OPERATIONAL_ALERT_CODES,evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
@@ -355,15 +355,22 @@ def run_replay_once(source_run_id:str,mode:str="offline")->dict:
 
 def run_alerts_once()->dict:
  readiness=github_alerts_readiness()
- if not readiness.ready:return {"status":"blocked","published":0,"missing":list(readiness.missing)}
+ if not readiness.ready:return {"status":"blocked","published":0,"resolved":0,"missing":list(readiness.missing)}
  budget_raw=os.getenv("FACTORY_MODEL_BUDGET_USD")
  budget=Decimal(budget_raw) if budget_raw else None
  health=SupabaseOperationalHealthReader().read(budget=budget)
  alerts=evaluate_operational_alerts(health)
- if not alerts:return {"status":"ok","published":0,"alerts":[]}
  repository=os.environ["FACTORY_ALERTS_GITHUB_REPOSITORY"]
- results=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository)).publish_many(alerts)
- return {"status":"ok","published":sum(1 for result in results if result.created),"alerts":[{"code":result.code,"created":result.created,"issue_number":result.issue_number} for result in results]}
+ adapter=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository))
+ results=adapter.publish_many(alerts)
+ resolved=adapter.resolve_inactive(active_codes={alert.code for alert in alerts},known_codes=OPERATIONAL_ALERT_CODES)
+ return {
+  "status":"ok",
+  "published":sum(1 for result in results if result.created),
+  "resolved":len(resolved),
+  "alerts":[{"code":result.code,"created":result.created,"issue_number":result.issue_number} for result in results],
+  "resolutions":[{"code":result.code,"issue_number":result.issue_number} for result in resolved],
+ }
 
 def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
