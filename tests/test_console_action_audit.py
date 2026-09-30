@@ -42,6 +42,17 @@ class ConsoleActionAuditTests(unittest.TestCase):
             self.assertIn(f'id="{target}"',text)
         self.assertNotIn('<div className="configTabs"><span',text)
 
+    def test_auth_pages_do_not_render_authenticated_console_shell(self):
+        layout=(APP/"layout.tsx").read_text()
+        shell=(APP/"shell.tsx").read_text()
+        self.assertIn("<ConsoleShell>{children}</ConsoleShell>",layout)
+        self.assertIn('pathname==="/login"',shell)
+        self.assertIn('pathname==="/unauthorized"',shell)
+        auth_block=shell.split("if(authOnly){",1)[1].split("return <div className=\"consoleShell\">",1)[0]
+        self.assertNotIn("ConsoleNav",auth_block)
+        self.assertNotIn("Sessão ativa",auth_block)
+        self.assertNotIn("Factory saudável",auth_block)
+
     def test_login_preserves_validated_next_destination(self):
         login=(APP/"login"/"page.tsx").read_text()
         actions=(APP/"auth-actions.ts").read_text()
