@@ -130,5 +130,17 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertTrue((APP/"api"/"integrations"/"supabase"/"callback"/"route.ts").exists())
 
 
+    def test_authenticated_visual_audit_covers_navigation_rbac_intake_and_mobile(self):
+        script=(ROOT/"scripts"/"capture_authenticated_console.mjs").read_text()
+        self.assertIn('nav.sidebarNav a',script)
+        self.assertIn('href === "/admin/operators"',script)
+        self.assertIn('finalPath !== "/unauthorized"',script)
+        self.assertIn('Revisar e iniciar Descoberta',script)
+        self.assertIn('getByRole("link", {name:"Editar"})',script)
+        self.assertIn('valuesRestored:true',script)
+        self.assertIn('width:390,height:844',script)
+        self.assertIn('mobile horizontal overflow',script)
+        self.assertIn('interactionEvidence',script)
+
 if __name__=="__main__":
     unittest.main()
