@@ -38,6 +38,13 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if data is None: return None
         return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}))
 
+    def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
+        if status not in {"started","failed"}:
+            raise ValueError("unsupported runtime stage event status")
+        self._rpc("factory_record_runtime_stage",{
+            "p_run_id":item.run_id,"p_stage":stage,"p_status":status,"p_output":{}
+        })
+
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
