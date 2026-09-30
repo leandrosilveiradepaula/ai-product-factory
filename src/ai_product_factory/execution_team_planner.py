@@ -13,6 +13,14 @@ _QA_CAPABILITIES={"tests","evals","regression","quality_gate","browser_evidence"
 _OPERATIONS_CAPABILITIES={"ci","deployments","quotas","costs","logs","health"}
 _GENERIC_BUILDER_ROLES={"development","ui"}
 _SPECIALIST_LANE_ROLES={"security","qa","operations"}
+_ROLE_ALIASES={
+    "repository_archaeologist":"development",
+    "backend_engineer":"development",
+    "test_engineer":"development",
+    "security_engineer":"security",
+    "release_engineer":"operations",
+    "release_manager":"human_gate",
+}
 
 
 def _string_list(value: object) -> tuple[str, ...]:
@@ -74,6 +82,39 @@ def _execution_lane(agent: AgentProfile) -> str | None:
     return None
 
 
+def _canonical_routing_task(task: dict) -> dict:
+    raw_preferred=str(task.get("preferred_agent_role") or "").strip()
+    preferred=_ROLE_ALIASES.get(raw_preferred,raw_preferred)
+    raw_caps=list(_string_list(task.get("required_capabilities")))
+    cap_aliases:dict[str,str]={}
+    if preferred=="development":
+        cap_aliases={
+            "repository_analysis":"debug",
+            "architecture":"integration",
+            "backend":"implementation",
+            "database":"migration_authoring",
+            "supabase":"migration_authoring",
+            "database_testing":"implementation",
+        }
+        if raw_preferred=="test_engineer":
+            cap_aliases["tests"]="implementation"
+    elif preferred=="security":
+        cap_aliases={"supabase":"rls","oidc":"auth"}
+    elif preferred=="operations":
+        cap_aliases={"release_engineering":"deployments","supabase":"deployments","tests":"ci"}
+    canonical_caps=[]
+    for cap in raw_caps:
+        mapped=cap_aliases.get(cap,cap)
+        if mapped not in canonical_caps:
+            canonical_caps.append(mapped)
+    out=dict(task)
+    out["preferred_agent_role"]=preferred
+    out["required_capabilities"]=canonical_caps
+    out["_source_preferred_agent_role"]=raw_preferred or None
+    out["_source_required_capabilities"]=raw_caps
+    return out
+
+
 def _choose_agent(task: dict,agents: Sequence[AgentProfile]) -> tuple[AgentProfile|None,dict|None]:
     required=set(_string_list(task.get("required_capabilities")))
     preferred=str(task.get("preferred_agent_role") or "").strip()
@@ -124,15 +165,29 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
     for index,task in enumerate(tasks):
         key=_task_key(task,index)
         title=str(task.get("title") or key)
+        routing_task=_canonical_routing_task(task)
         row={
             "task_key":key,
             "title":title,
-            "preferred_agent_role":str(task.get("preferred_agent_role") or "").strip() or None,
-            "required_capabilities":list(_string_list(task.get("required_capabilities"))),
+            "preferred_agent_role":routing_task.get("preferred_agent_role") or None,
+            "source_preferred_agent_role":routing_task.get("_source_preferred_agent_role"),
+            "required_capabilities":list(_string_list(routing_task.get("required_capabilities"))),
+            "source_required_capabilities":list(_string_list(task.get("required_capabilities"))),
             "scope_keys":list(_string_list(task.get("scope_keys"))),
             "depends_on_raw":list(_string_list(task.get("depends_on"))),
         }
-        agent,error=_choose_agent(task,active)
+        if routing_task.get("preferred_agent_role")=="human_gate" or "human_approval" in set(_string_list(task.get("required_capabilities"))):
+            row["agent_key"]=None
+            row["agent_role"]="human"
+            row["execution_lane"]="human_gate"
+            row["execution_ready"]=False
+            row["human_gate_required"]=True
+            normalized.append(row)
+            for alias in {key,title,_slug(title)}:
+                if alias:
+                    aliases[alias]=key
+            continue
+        agent,error=_choose_agent(routing_task,active)
         if error:
             blockers.append({"task_key":key,"title":title,**error})
             row["agent_key"]=None;row["agent_role"]=None;row["execution_ready"]=False
