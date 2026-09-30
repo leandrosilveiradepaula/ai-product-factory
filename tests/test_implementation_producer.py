@@ -38,4 +38,15 @@ class Tests(unittest.TestCase):
   self.assertFalse(schema["additionalProperties"])
   self.assertEqual(schema["properties"]["files"]["type"],"array")
   self.assertFalse(schema["properties"]["files"]["items"]["additionalProperties"])
+
+ def test_request_requires_repository_grounding_constraints(self):
+  class CapturingProvider:
+   def __init__(self):self.request=None
+   def execute(self,request):
+    self.request=request
+    data={"plan_markdown":"x","files":[{"path":"a","content":"b"}],"commit_message":"x","pr_title":"x","pr_body":"x"}
+    return ModelResult(ModelRole.PRIMARY,json.dumps(data),provider_ref="x")
+  p=CapturingProvider();ModelImplementationProducer(ModelExecutor(primary=p)).produce(item())
+  self.assertTrue(any("reference_files" in constraint and "authoritative" in constraint for constraint in p.request.constraints))
+  self.assertTrue(any("fail conservatively" in constraint for constraint in p.request.constraints))
 if __name__=="__main__":unittest.main()
