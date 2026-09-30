@@ -1,20 +1,5 @@
 {
   "schema_version": 1,
   "audit_level": "moderate",
-  "exceptions": [
-    {
-      "package": "next",
-      "installed_version": "15.5.26",
-      "max_severity": "high",
-      "expires_at": "2026-10-02T23:59:59Z",
-      "reason": "Temporary exception tracked by GitHub issue #402 while waiting for the scheduled Next.js 15.5.27 security backport."
-    },
-    {
-      "package": "postcss",
-      "installed_version": "8.4.31",
-      "max_severity": "high",
-      "expires_at": "2026-10-02T23:59:59Z",
-      "reason": "Transitive dependency pinned by Next.js 15.5.26; temporary exception tracked by GitHub issue #402 until the upstream security backport."
-    }
-  ]
+  "exceptions": []
 }
