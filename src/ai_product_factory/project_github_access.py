@@ -57,7 +57,7 @@ class SupabaseProjectGitHubAccessStore:
         else:
             access = self._get(
                 "factory_project_github_access?select=project_id,status,updated_at"
-                "&status=in.(unverified,blocked,partial,stale)&order=updated_at.asc&limit=20"
+                "&status=in.(unverified,stale)&order=updated_at.asc&limit=20"
             )
             if not access:
                 return None
