@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {revalidatePath} from "next/cache";
+import {redirect} from "next/navigation";
 import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
 import {mergeReadyReleaseFromConsole} from "../../lib/release-operator";
 import {applyPendingMigrationFromConsole} from "../../lib/migration-operator";
@@ -12,13 +13,27 @@ function reasonText(value:unknown){
  if(value&&typeof value==="object")return JSON.stringify(value);
  return value?String(value):"Sem motivo adicional";
 }
+function safeGateActionError(error:unknown){
+ const raw=error instanceof Error?error.message:"Não foi possível concluir a ação humana.";
+ return raw
+  .replace(/Bearer\s+\S+/gi,"Bearer [redacted]")
+  .replace(/(token|secret|api[_-]?key)\s*[=:]\s*\S+/gi,"$1=[redacted]")
+  .replace(/\s+/g," ")
+  .trim()
+  .slice(0,360)||"Não foi possível concluir a ação humana.";
+}
+function redirectGateError(error:unknown):never{
+ redirect("/gates?error="+encodeURIComponent(safeGateActionError(error)));
+}
 async function resolveGate(formData:FormData){
  "use server";
  const gateId=String(formData.get("gate_id")||"");
  const resolution=String(formData.get("resolution")||"");
  const note=String(formData.get("note")||"").trim();
  if(!gateId||!["approved","rejected"].includes(resolution))throw new Error("Resolução de aprovação inválida");
- await resolveHumanGate(gateId,resolution as "approved"|"rejected",note||undefined);
+ try{
+  await resolveHumanGate(gateId,resolution as "approved"|"rejected",note||undefined);
+ }catch(error){redirectGateError(error);}
  revalidatePath("/gates");revalidatePath("/runs");revalidatePath("/queue");
 }
 async function mergeRelease(formData:FormData){
@@ -26,7 +41,9 @@ async function mergeRelease(formData:FormData){
  const runId=String(formData.get("run_id")||"");
  const candidate=String(formData.get("candidate_commit")||"");
  if(!runId||!candidate)throw new Error("Release inválido.");
- await mergeReadyReleaseFromConsole(runId,candidate);
+ try{
+  await mergeReadyReleaseFromConsole(runId,candidate);
+ }catch(error){redirectGateError(error);}
  revalidatePath("/gates");revalidatePath("/runs");revalidatePath("/queue");revalidatePath("/deployments");
 }
 async function applyMigration(formData:FormData){
@@ -34,12 +51,17 @@ async function applyMigration(formData:FormData){
  const gateId=String(formData.get("gate_id")||"");
  const candidate=String(formData.get("candidate_commit")||"");
  if(!gateId||!candidate)throw new Error("Migration inválida.");
- await applyPendingMigrationFromConsole(gateId,candidate);
+ try{
+  await applyPendingMigrationFromConsole(gateId,candidate);
+ }catch(error){redirectGateError(error);}
  revalidatePath("/gates");revalidatePath("/runs");revalidatePath("/queue");revalidatePath("/projects");
 }
-export default async function Gates(){
+export default async function Gates({searchParams}:{searchParams:Promise<{error?:string}>}){
+ const params=await searchParams;
+ const actionError=typeof params.error==="string"?params.error.slice(0,360):null;
  const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");const resolved=gates.length-pending.length;
  return <>
+  {actionError?<div className="card" role="alert" aria-live="assertive"><strong>Não foi possível concluir a ação.</strong><div className="errorText">{actionError}</div><div className="muted">O gate continua pendente e nenhuma etapa seguinte foi liberada.</div></div>:null}
   <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pending.length?"attention":"healthy"} label={pending.length?pending.length+" críticas pendentes":"nenhuma pendência"}/>}/>
   <div className="operationalStrip">
    <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pending.length}</strong><small>ação humana</small></div>
