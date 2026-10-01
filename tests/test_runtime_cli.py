@@ -433,7 +433,7 @@ class RuntimeCliTests(unittest.TestCase):
         github.assert_not_called()
 
     def test_release_followup_observes_human_merge_without_merging(self):
-        item=SimpleNamespace(repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r")
+        item=SimpleNamespace(repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha=None)
         queue=MagicMock();queue.next_pending.return_value=item
         github=MagicMock()
         issue=SimpleNamespace(number=7)
@@ -459,6 +459,44 @@ class RuntimeCliTests(unittest.TestCase):
         policy.mark_released.assert_called_once_with("r","merge123")
         change_sets.finalize_released_run.assert_called_once_with("r","merge123")
         github.merge_pull_request.assert_not_called()
+
+    def test_release_followup_reconciles_console_merge_without_issue(self):
+        item=SimpleNamespace(repository="owner/repo",issue_number=None,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha="merge123")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        pr=SimpleNamespace(number=9,head_sha="abc",merged=True,merge_commit_sha="merge123")
+        github.get_pull_request.return_value=pr
+        store=MagicMock();trace=MagicMock();policy=MagicMock();change_sets=MagicMock()
+        store.finalize_console_human_release.return_value={"run_id":"r","task_id":"t","status":"merged","merge_sha":"merge123","idempotent":False}
+        change_sets.finalize_released_run.return_value={"matched":False,"status":"not_change_set"}
+        with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
+             patch("ai_product_factory.runtime_cli.SupabaseReleasePolicyStore",return_value=policy), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=change_sets), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
+            out=run_release_once()
+        self.assertEqual(out["status"],"merged")
+        self.assertEqual(out["merge_sha"],"merge123")
+        self.assertTrue(out["run"]["status"]=="merged")
+        store.finalize_console_human_release.assert_called_once_with("r",candidate_commit="abc",merge_sha="merge123")
+        github.get_issue.assert_not_called()
+        github.close_issue.assert_not_called()
+        policy.mark_released.assert_called_once_with("r","merge123")
+        scheduler.return_value.release_scopes.assert_called_once_with("r")
+
+    def test_release_followup_console_merge_fails_closed_on_sha_mismatch(self):
+        item=SimpleNamespace(repository="owner/repo",issue_number=None,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha="merge123")
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc",merged=True,merge_commit_sha="different")
+        with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as store:
+            with self.assertRaisesRegex(RuntimeError,"merge SHA"):
+                run_release_once()
+        store.return_value.finalize_console_human_release.assert_not_called()
     def test_direct_failure_releases_agent_assignment_and_scope(self):
         item=SimpleNamespace(run_id="r",task_id="t",project_key="demo",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",human_gate_required=False)
         scheduler=MagicMock()

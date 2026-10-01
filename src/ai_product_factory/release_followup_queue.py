@@ -15,11 +15,13 @@ class ReleaseFollowupItem:
     project_id: str
     project_key: str
     repository: str
-    issue_number: int
+    issue_number: int | None
     branch: str
     pr_number: int
     candidate_commit: str
     risk: dict
+    merge_sha: str | None = None
+    release_source: str = "delivery"
 
 
 class SupabaseReleaseFollowupQueue:
@@ -49,9 +51,9 @@ class SupabaseReleaseFollowupQueue:
         candidate=str(run.get("candidate_commit") or "")
         branch=str(run.get("branch_name") or "")
         issue_data=(run.get("metadata") or {}).get("github_issue") or {}
-        issue_number=int(issue_data.get("number") or 0)
-        if not candidate or not branch or issue_number < 1:
-            raise RuntimeError("awaiting_release run is missing candidate, branch, or GitHub issue binding")
+        issue_number=int(issue_data.get("number") or 0) or None
+        if not candidate or not branch:
+            raise RuntimeError("awaiting_release run is missing candidate or branch")
 
         tasks=self._get(f"factory_tasks?select=project_id,risk&id=eq.{quote(task_id)}&limit=1")
         if not tasks:
@@ -60,6 +62,27 @@ class SupabaseReleaseFollowupQueue:
         projects=self._get(f"factory_projects?select=project_key,repository&id=eq.{quote(project_id)}&limit=1")
         if not projects or not projects[0].get("repository"):
             raise RuntimeError("awaiting_release run project repository is not configured")
+
+        reports=self._get(
+            f"factory_release_reports?select=status,candidate_commit,report&run_id=eq.{quote(run_id)}&order=created_at.desc&limit=1"
+        )
+        if reports and str(reports[0].get("status") or "")=="released":
+            report=reports[0]
+            report_candidate=str(report.get("candidate_commit") or "")
+            payload=report.get("report") or {}
+            pr_number=int(payload.get("pr_number") or 0)
+            merge_sha=str(payload.get("merge_sha") or "")
+            if report_candidate!=candidate or pr_number<1 or not merge_sha:
+                raise RuntimeError("released report does not match run candidate or lacks merge evidence")
+            project=projects[0]
+            return ReleaseFollowupItem(
+                run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
+                issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
+                risk=tasks[0].get("risk") or {},merge_sha=merge_sha,release_source="console_report",
+            )
+
+        if issue_number is None:
+            raise RuntimeError("awaiting_release run without a released report requires GitHub issue binding")
 
         usage=self._get(f"factory_tool_usage?select=metadata,operation&run_id=eq.{quote(run_id)}&operation=in.(verified_preview_awaiting_human_merge,preview_not_required_awaiting_human_merge)&order=created_at.desc&limit=1")
         if not usage:

@@ -321,14 +321,29 @@ def run_release_once()->dict:
  item=SupabaseReleaseFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
- issue=github.get_issue(item.issue_number)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches verified release candidate")
  store=SupabaseDeliveryStore()
- loop=AutonomousGitHubLoop(github,store)
- session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
- merge_sha=loop.observe_manual_merge(session)
- if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
+ if item.merge_sha:
+  if not pr.merged or not pr.merge_commit_sha:
+   raise RuntimeError("released Console report points to a pull request that is not merged")
+  if pr.merge_commit_sha!=item.merge_sha:
+   raise RuntimeError("GitHub merge SHA does not match durable Console release report")
+  merged=store.finalize_console_human_release(
+   item.run_id,candidate_commit=item.candidate_commit,merge_sha=item.merge_sha,
+  )
+  if item.issue_number is not None:
+   github.close_issue(item.issue_number)
+  merge_sha=item.merge_sha
+ else:
+  if item.issue_number is None:
+   raise RuntimeError("legacy release followup requires GitHub issue binding")
+  issue=github.get_issue(item.issue_number)
+  loop=AutonomousGitHubLoop(github,store)
+  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
+  merge_sha=loop.observe_manual_merge(session)
+  if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
+  merged={"status":"merged","idempotent":False}
  SupabaseTraceabilityStore().record_delivery_evidence(
   run_id=item.run_id,evidence_type="human_release",status="passed",evidence_ref=merge_sha,
   metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
@@ -336,7 +351,7 @@ def run_release_once()->dict:
  SupabaseReleasePolicyStore().mark_released(item.run_id,merge_sha)
  change_set=SupabaseChangeSetStore().finalize_released_run(item.run_id,merge_sha)
  SupabaseAgentScheduler().release_scopes(item.run_id)
- return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,"change_set":change_set}
+ return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,"change_set":change_set,"run":merged}
 
 def run_retry_once(source_run_id:str,reason:str)->dict:
  if not source_run_id.strip():raise ValueError("source run id is required")
