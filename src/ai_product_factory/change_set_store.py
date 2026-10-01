@@ -4,6 +4,7 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
 
@@ -53,6 +54,18 @@ class SupabaseChangeSetStore:
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
         return None if not raw else json.loads(raw)
+
+    def _patch(self,path:str,payload:dict)->list[dict]:
+        req=urllib.request.Request(
+            f"{self.url}/rest/v1/{path}",data=json.dumps(payload).encode(),
+            headers={**self.headers,"Content-Type":"application/json","Prefer":"return=representation"},
+            method="PATCH",
+        )
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"control-plane update failed: {path} ({exc.code})") from exc
+        return [] if not raw else json.loads(raw)
 
     def recover_expired(self,max_attempts:int=3)->dict:
         return self._rpc("factory_recover_change_sets",{"p_max_attempts":max_attempts}) or {}
@@ -122,3 +135,34 @@ class SupabaseChangeSetStore:
             "p_change_set_id":change_set_id,"p_issue_number":issue_number,"p_issue_url":issue_url,
             "p_pr_number":pr_number,"p_candidate_commit":candidate_commit,"p_branch":branch,
         }) or {}
+
+    def finalize_released_run(self,run_id:str,merge_sha:str)->dict:
+        if not run_id.strip() or not merge_sha.strip():
+            raise ValueError("run id and merge sha are required")
+        rows=self._get(
+            "factory_change_sets?select=id,status,metadata,release_run_id"
+            "&release_run_id=eq."+quote(run_id)+"&limit=1"
+        )
+        if not rows:
+            return {"matched":False,"status":"not_change_set"}
+        row=rows[0]
+        change_set_id=str(row["id"])
+        status=str(row.get("status") or "")
+        if status=="completed":
+            return {"matched":True,"change_set_id":change_set_id,"status":"completed","idempotent":True}
+        if status!="ci_pending":
+            raise RuntimeError(f"released Change Set has incompatible status: {status or 'missing'}")
+        metadata=dict(row.get("metadata") or {})
+        metadata["release"]={"run_id":run_id,"merge_sha":merge_sha,"observed":True}
+        updated=self._patch(
+            "factory_change_sets?id=eq."+quote(change_set_id)+"&status=eq.ci_pending",
+            {"status":"completed","metadata":metadata},
+        )
+        if updated:
+            return {"matched":True,"change_set_id":change_set_id,"status":"completed","idempotent":False}
+        current=self._get(
+            "factory_change_sets?select=id,status&release_run_id=eq."+quote(run_id)+"&limit=1"
+        )
+        if current and str(current[0].get("status") or "")=="completed":
+            return {"matched":True,"change_set_id":change_set_id,"status":"completed","idempotent":True}
+        raise RuntimeError("Change Set release finalization lost its conditional update")
