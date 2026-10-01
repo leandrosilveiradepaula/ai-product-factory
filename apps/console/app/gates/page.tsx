@@ -2,7 +2,7 @@ import Link from "next/link";
 import {revalidatePath} from "next/cache";
 import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
 import {EmptyState,PageHeader,StatusPill} from "../ui";
-import {GateDecisionForm} from "./gate-decision-form";
+import {GateDecisionFields} from "./gate-decision-form";
 
 function reasonText(value:unknown){
  if(Array.isArray(value))return value.join(", ");
@@ -36,7 +36,7 @@ export default async function Gates(){
       <div><span className="detailLabel">Motivo</span><h3>{g.status==="pending"?"Decisão humana necessária":"Gate resolvido"}</h3><p className="muted">{reasonText(g.reasons)}</p></div>
       <div className="gateMeta"><div><span className="detailLabel">Projeto / tarefa</span><strong>{g.projectName||"Contexto histórico indisponível"}</strong>{g.taskTitle?<div className="muted">{g.taskTitle}</div>:null}{g.projectKey?<div><Link href={"/projects/"+g.projectKey}>Abrir projeto →</Link></div>:null}</div><div><span className="detailLabel">Execução</span><Link className="mono" href={"/runs/"+g.runId}>Abrir {g.runId.slice(0,12)} →</Link><div className="muted">solicitado em {new Date(g.requestedAt).toLocaleString("pt-BR")}</div></div></div>
      </div>
-     {g.status==="pending"?<GateDecisionForm gateId={g.id} action={resolveGate}/>:null}
+     {g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><GateDecisionFields/></form>:null}
     </article>)}
    </section>
    <aside className="denseStack">
