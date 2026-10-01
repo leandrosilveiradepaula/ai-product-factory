@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import migrationPolicy from "../../../config/factory.supabase-migration-policy.v1.json";
 import {requireConsoleAdmin} from "./auth-server";
 import {getSupabaseServerConfig} from "./supabase-server";
@@ -110,10 +111,14 @@ async function listMigrations(projectRef:string,token:string):Promise<Set<string
  return migrationNameSet(payload);
 }
 
-async function applyMigration(projectRef:string,token:string,migrationName:string,sql:string){
+function migrationIdempotencyKey(projectRef:string,candidateCommit:string,migrationName:string){
+ return createHash("sha256").update(`${projectRef}:${candidateCommit}:${migrationName}`,"utf8").digest("hex");
+}
+
+async function applyMigration(projectRef:string,token:string,migrationName:string,sql:string,idempotencyKey:string){
  const response=await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(projectRef)}/database/migrations`,{
   method:"POST",
-  headers:{Authorization:`Bearer ${token}`,Accept:"application/json","Content-Type":"application/json"},
+  headers:{Authorization:`Bearer ${token}`,Accept:"application/json","Content-Type":"application/json","Idempotency-Key":idempotencyKey},
   body:JSON.stringify({name:migrationName,query:sql}),
   cache:"no-store",
  });
@@ -227,6 +232,12 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
   throw error;
  }
 
+ await recordAudit({
+  projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
+  eventType:"human_migration.console_preflight_succeeded",
+  payload:{...auditBase,migration_history_checked:true,already_applied:appliedNames.has(migrationName)},
+ });
+
  if(appliedNames.has(migrationName)){
   await recordAudit({
    projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
@@ -237,7 +248,8 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  }
 
  try{
-  await applyMigration(configured.supabase_project_ref,managementToken,migrationName,sql);
+  const idempotencyKey=migrationIdempotencyKey(configured.supabase_project_ref,candidate,migrationName);
+  await applyMigration(configured.supabase_project_ref,managementToken,migrationName,sql,idempotencyKey);
   const after=await listMigrations(configured.supabase_project_ref,managementToken);
   if(!after.has(migrationName))throw new Error("Supabase aceitou a requisição, mas a migration não apareceu no histórico.");
  }catch(error){
