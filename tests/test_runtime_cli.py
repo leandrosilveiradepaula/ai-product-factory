@@ -462,14 +462,15 @@ class RuntimeCliTests(unittest.TestCase):
         github.assert_not_called()
 
     def test_release_followup_observes_human_merge_without_merging(self):
-        item=SimpleNamespace(repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha=None)
+        item=SimpleNamespace(project_id="p",repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha=None)
         queue=MagicMock();queue.next_pending.return_value=item
         github=MagicMock()
         issue=SimpleNamespace(number=7)
         pr=SimpleNamespace(number=9,head_sha="abc")
         github.get_issue.return_value=issue
         github.get_pull_request.return_value=pr
-        store=MagicMock();trace=MagicMock();policy=MagicMock();change_sets=MagicMock()
+        store=MagicMock();trace=MagicMock();policy=MagicMock();change_sets=MagicMock();project_state=MagicMock()
+        project_state.reconcile.return_value={"project_id":"p","lifecycle_stage":"operation","merge_sha":"merge123","idempotent":False}
         change_sets.finalize_released_run.return_value={"matched":True,"change_set_id":"cs","status":"completed","idempotent":False}
         loop=MagicMock();loop.observe_manual_merge.return_value="merge123"
         with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
@@ -479,6 +480,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
              patch("ai_product_factory.runtime_cli.SupabaseReleasePolicyStore",return_value=policy), \
              patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=change_sets), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectReleaseReconciler",return_value=project_state), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
             out=run_release_once()
         self.assertEqual(out["status"],"merged")
@@ -487,15 +489,17 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"human_release")
         policy.mark_released.assert_called_once_with("r","merge123")
         change_sets.finalize_released_run.assert_called_once_with("r","merge123")
+        project_state.reconcile.assert_called_once_with(project_id="p",run_id="r",merge_sha="merge123")
         github.merge_pull_request.assert_not_called()
 
     def test_release_followup_reconciles_console_merge_without_issue(self):
-        item=SimpleNamespace(repository="owner/repo",issue_number=None,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha="merge123")
+        item=SimpleNamespace(project_id="p",repository="owner/repo",issue_number=None,pr_number=9,candidate_commit="abc",branch="factory/t",run_id="r",merge_sha="merge123")
         queue=MagicMock();queue.next_pending.return_value=item
         github=MagicMock()
         pr=SimpleNamespace(number=9,head_sha="abc",merged=True,merge_commit_sha="merge123")
         github.get_pull_request.return_value=pr
-        store=MagicMock();trace=MagicMock();policy=MagicMock();change_sets=MagicMock()
+        store=MagicMock();trace=MagicMock();policy=MagicMock();change_sets=MagicMock();project_state=MagicMock()
+        project_state.reconcile.return_value={"project_id":"p","lifecycle_stage":"operation","merge_sha":"merge123","idempotent":False}
         store.finalize_console_human_release.return_value={"run_id":"r","task_id":"t","status":"merged","merge_sha":"merge123","idempotent":False}
         change_sets.finalize_released_run.return_value={"matched":False,"status":"not_change_set"}
         with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
@@ -504,6 +508,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
              patch("ai_product_factory.runtime_cli.SupabaseReleasePolicyStore",return_value=policy), \
              patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=change_sets), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectReleaseReconciler",return_value=project_state), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
             out=run_release_once()
         self.assertEqual(out["status"],"merged")
@@ -513,6 +518,7 @@ class RuntimeCliTests(unittest.TestCase):
         github.get_issue.assert_not_called()
         github.close_issue.assert_not_called()
         policy.mark_released.assert_called_once_with("r","merge123")
+        project_state.reconcile.assert_called_once_with(project_id="p",run_id="r",merge_sha="merge123")
         scheduler.return_value.release_scopes.assert_called_once_with("r")
 
     def test_release_followup_console_merge_fails_closed_on_sha_mismatch(self):
