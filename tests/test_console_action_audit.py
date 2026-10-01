@@ -111,6 +111,7 @@ class ConsoleActionAuditTests(unittest.TestCase):
         review=(APP/"projects"/"new"/"review"/"page.tsx").read_text()
         self.assertIn("<form action={resolveGate}",gates)
         self.assertIn("<form action={mergeRelease}",gates)
+        self.assertIn("<form action={applyMigration}",gates)
         self.assertIn('name="resolution" value="approved"',gates)
         self.assertIn('name="resolution" value="rejected"',gates)
         self.assertIn('name="candidate_commit"',gates)
