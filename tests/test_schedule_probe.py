@@ -13,6 +13,7 @@ class StubProbe(SupabaseScheduleProbe):
         pending_units=None,
         change_sets=None,
         lanes=None,
+        github_access=None,
         telemetry_error=None,
     ):
         self.rows = {
@@ -21,6 +22,7 @@ class StubProbe(SupabaseScheduleProbe):
             "factory_change_set_work_units": list(pending_units or []),
             "factory_change_sets": list(change_sets or []),
             "factory_specialist_lane_jobs": list(lanes or []),
+            "factory_project_github_access": list(github_access or []),
         }
         self.telemetry_posts = []
         self.telemetry_error = telemetry_error
@@ -62,6 +64,7 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
 
         self.assertFalse(out["work_detected"])
+        self.assertFalse(out["github_access_work"])
         self.assertFalse(out["product_work"])
         self.assertFalse(out["dispatch_work"])
         self.assertFalse(out["integration_work"])
@@ -127,6 +130,7 @@ class ScheduleProbeTests(unittest.TestCase):
 
     def test_individual_work_signals_record_normalized_work_classes(self):
         cases = {
+            "github_access": {"github_access": [{"project_id": "p1"}]},
             "product": {
                 "runs": [{"id": "r1", "task_id": "t1", "status": "created"}],
                 "tasks": [{"id": "t1", "status": "queued"}],
