@@ -261,6 +261,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20260929130616_factory_fk_indexes.sql",
             "20260930145500_factory_retry_failed_run.sql",
             "20261001134930_factory_human_gate_decision_mode.sql",
+            "20261001152200_factory_resume_after_human_decision.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
