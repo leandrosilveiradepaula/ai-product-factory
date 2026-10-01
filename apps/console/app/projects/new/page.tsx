@@ -9,7 +9,7 @@ function decode(raw:string|undefined):IntakeFormInitial|undefined{
 export default async function NewProject({searchParams}:{searchParams:Promise<{intake?:string}>}){
  const p=await searchParams;const initial=decode(p.intake);
  return <>
-  <PageHeader eyebrow="Novo trabalho" title="Iniciar ou importar projeto" subtitle="Comece uma ideia nova ou traga um projeto em andamento. A Factory inicia Descoberta ou reconcilia o estado real antes de continuar."/>
+  <PageHeader eyebrow="Novo projeto" title="Iniciar ou importar projeto" subtitle="Comece uma ideia nova ou traga um projeto em andamento. A Factory inicia Descoberta ou reconcilia o estado real antes de continuar."/>
   <div className="gettingStarted" aria-label="Etapas para iniciar um projeto">
    <div className="guideStep current"><span className="guideStepNumber">1</span><strong>Descreva o projeto</strong><p>Escolha novo produto ou projeto em andamento e conte o resultado que você quer alcançar.</p></div>
    <div className="guideStep"><span className="guideStepNumber">2</span><strong>Revise o briefing</strong><p>A Factory mostra um resumo antes de criar qualquer ciclo de trabalho.</p></div>
