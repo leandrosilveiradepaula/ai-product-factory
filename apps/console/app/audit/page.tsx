@@ -8,7 +8,7 @@ export default async function Audit(){
  const system=rows.filter(x=>x.actorType==="system").length;
  const withRun=rows.filter(x=>x.runId).length;
  return <>
-  <PageHeader eyebrow="Compliance · trilha durável" title="Log de auditoria" subtitle="Eventos do Control Plane vinculados a atores, projetos, execuções e decisões operacionais." actions={<StatusPill status="healthy" label="auditoria ativa"/>}/>
+  <PageHeader eyebrow="Compliance · trilha durável" title="Log de auditoria" subtitle="Trilha técnica para investigação, segurança e compliance. Normalmente você não precisa acompanhar esta tela durante o uso diário." actions={<StatusPill status="healthy" label="auditoria ativa"/>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Eventos carregados</span><strong>{rows.length}</strong><small>janela atual</small></div>
    <div className="operationalStat"><span>Ações humanas</span><strong>{human}</strong><small>operador / humano</small></div>
