@@ -217,6 +217,7 @@ jobs:
           fi
 
   ci-followup:
+    environment: openai-api
     if: ${{ always() && needs.schedule-probe.result == 'success' && needs.change-set-integration.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success') }}
     needs: [schedule-probe, product-stage, change-set-integration]
     runs-on: ubuntu-latest
@@ -253,6 +254,7 @@ jobs:
 
 
   specialist-security:
+    environment: openai-api
     if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_security_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
@@ -282,6 +284,7 @@ jobs:
           fi
 
   specialist-qa:
+    environment: openai-api
     if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_qa_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
@@ -311,6 +314,7 @@ jobs:
           fi
 
   specialist-operations:
+    environment: openai-api
     if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_operations_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
@@ -341,6 +345,7 @@ jobs:
 
 
   release-followup:
+    environment: openai-api
     if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.release_work == 'true') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
@@ -650,6 +655,7 @@ jobs:
         run: python -m ai_product_factory.manual_codex_handoff --mode followup
 
   preview:
+    environment: openai-api
     if: ${{ always() && needs.schedule-probe.result == 'success' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.preview_work == 'true' || needs.specialist-security.result == 'success' || needs.specialist-qa.result == 'success' || needs.specialist-operations.result == 'success')) || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true)) }}
     needs: [schedule-probe, specialist-security, specialist-qa, specialist-operations]
     runs-on: ubuntu-latest
