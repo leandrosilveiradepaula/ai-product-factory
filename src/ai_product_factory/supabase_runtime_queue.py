@@ -93,6 +93,12 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("decision resume RPC returned an invalid response")
         return data
 
+    def reconcile_terminal_descendants(self)->dict:
+        data=self._rpc("factory_reconcile_terminal_task_descendants",{})
+        if not isinstance(data,dict):
+            raise RuntimeError("terminal descendant reconciliation returned an invalid response")
+        return data
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         data=self._rpc("factory_claim_next_run",{"p_worker_id":worker_id})
         if data is None: return None
