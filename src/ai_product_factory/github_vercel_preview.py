@@ -81,9 +81,9 @@ class GitHubVercelPreviewAdapter:
         match=_VERCEL_HOST.search(haystack)
         return f"https://{match.group('host')}" if match else None
 
-    def _quota_blocked(self)->bool:
+    def _vercel_comments(self)->list[dict[str,Any]]:
         if self.config.pull_request_number is None:
-            return False
+            return []
         url=f"{self.config.api_url.rstrip('/')}/repos/{self.config.repository}/issues/{self.config.pull_request_number}/comments?per_page=100"
         req=urllib.request.Request(url,method="GET",headers={
             "Authorization":f"Bearer {self.config.token}",
@@ -94,19 +94,33 @@ class GitHubVercelPreviewAdapter:
             with urllib.request.urlopen(req,timeout=30) as response:
                 raw=response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"GitHub Vercel quota discovery failed ({exc.code})") from exc
-        for row in json.loads(raw) if raw else []:
-            login=str((row.get("user") or {}).get("login") or "").lower()
+            raise RuntimeError(f"GitHub Vercel comment discovery failed ({exc.code})") from exc
+        rows=json.loads(raw) if raw else []
+        return [row for row in rows if "vercel" in str((row.get("user") or {}).get("login") or "").lower()]
+
+    def _quota_blocked(self,comments:list[dict[str,Any]]|None=None)->bool:
+        for row in comments if comments is not None else self._vercel_comments():
             body=str(row.get("body") or "").lower()
-            if "vercel" in login and "api-deployments-free-per-day" in body:
+            if "api-deployments-free-per-day" in body:
                 return True
         return False
+
+    def _comment_preview_url(self,comments:list[dict[str,Any]])->str|None:
+        for row in reversed(comments):
+            body=str(row.get("body") or "")
+            if "ready" not in body.lower():
+                continue
+            match=_VERCEL_HOST.search(body)
+            if match:
+                return f"https://{match.group('host')}"
+        return None
 
     def deploy(self,request_:DeploymentRequest)->DeploymentResult:
         if request_.environment is not ReleaseEnvironment.PREVIEW:
             raise PermissionError("GitHubVercelPreviewAdapter refuses non-preview deployments")
         for attempt in range(self.config.poll_attempts):
-            if self._quota_blocked():
+            comments=self._vercel_comments()
+            if self._quota_blocked(comments):
                 return DeploymentResult(self.name,request_.environment,"blocked_quota","vercel-daily-deployment-quota",None)
             checks=[row for row in self._checks(request_.candidate_commit) if str((row.get("app") or {}).get("slug") or "").lower()=="vercel"]
             for row in checks:
@@ -122,9 +136,9 @@ class GitHubVercelPreviewAdapter:
 
             if not checks:
                 statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
+                preview_url=self._comment_preview_url(comments)
                 for row in statuses:
                     state=str(row.get("state") or "").lower()
-                    preview_url=self._preview_url(row)
                     if state=="success" and preview_url:
                         return DeploymentResult(self.name,request_.environment,"success",f"vercel-status-{row.get('id') or 'unknown'}",preview_url)
                 terminal=[row for row in statuses if str(row.get("state") or "").lower() in {"failure","error"}]
