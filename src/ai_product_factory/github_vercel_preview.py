@@ -46,25 +46,38 @@ class GitHubVercelPreviewAdapter:
         self.config=config
         self.sleeper=sleeper or time.sleep
 
-    def _checks(self,sha:str)->list[dict[str,Any]]:
-        url=f"{self.config.api_url.rstrip('/')}/repos/{self.config.repository}/commits/{sha}/check-runs?per_page=100"
+    def _get_json(self,url:str)->Any:
         req=urllib.request.Request(url,method="GET",headers={
             "Authorization":f"Bearer {self.config.token}",
             "Accept":"application/vnd.github+json",
             "X-GitHub-Api-Version":"2022-11-28",
         })
+        with urllib.request.urlopen(req,timeout=30) as response:
+            raw=response.read().decode("utf-8")
+        return json.loads(raw) if raw else {}
+
+    def _checks(self,sha:str)->list[dict[str,Any]]:
+        url=f"{self.config.api_url.rstrip('/')}/repos/{self.config.repository}/commits/{sha}/check-runs?per_page=100"
         try:
-            with urllib.request.urlopen(req,timeout=30) as response:
-                raw=response.read().decode("utf-8")
+            payload=self._get_json(url)
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"GitHub Vercel check discovery failed ({exc.code})") from exc
-        payload=json.loads(raw) if raw else {}
+            if exc.code!=403:
+                raise RuntimeError(f"GitHub Vercel check discovery failed ({exc.code})") from exc
+            return []
         return list(payload.get("check_runs") or [])
+
+    def _statuses(self,sha:str)->list[dict[str,Any]]:
+        url=f"{self.config.api_url.rstrip('/')}/repos/{self.config.repository}/commits/{sha}/status"
+        try:
+            payload=self._get_json(url)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"GitHub Vercel status discovery failed ({exc.code})") from exc
+        return list(payload.get("statuses") or [])
 
     @staticmethod
     def _preview_url(check:dict[str,Any])->str|None:
         output=check.get("output") or {}
-        haystack="\n".join(str(x or "") for x in (output.get("title"),output.get("summary"),output.get("text"),check.get("details_url")))
+        haystack="\n".join(str(x or "") for x in (output.get("title"),output.get("summary"),output.get("text"),check.get("details_url"),check.get("target_url")))
         match=_VERCEL_HOST.search(haystack)
         return f"https://{match.group('host')}" if match else None
 
@@ -106,6 +119,17 @@ class GitHubVercelPreviewAdapter:
             completed=[row for row in checks if str(row.get("status") or "").lower()=="completed"]
             if completed and all(str(row.get("conclusion") or "").lower() in {"failure","cancelled","canceled","timed_out","action_required"} for row in completed):
                 return DeploymentResult(self.name,request_.environment,"failure",str(completed[0].get("id") or "vercel-check"),None)
+
+            if not checks:
+                statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
+                for row in statuses:
+                    state=str(row.get("state") or "").lower()
+                    preview_url=self._preview_url(row)
+                    if state=="success" and preview_url:
+                        return DeploymentResult(self.name,request_.environment,"success",f"vercel-status-{row.get('id') or 'unknown'}",preview_url)
+                terminal=[row for row in statuses if str(row.get("state") or "").lower() in {"failure","error"}]
+                if terminal:
+                    return DeploymentResult(self.name,request_.environment,"failure",f"vercel-status-{terminal[0].get('id') or 'unknown'}",None)
             if attempt+1<self.config.poll_attempts:
                 self.sleeper(self.config.poll_interval_seconds)
         raise TimeoutError("Vercel GitHub Preview was not discoverable for the candidate commit")
