@@ -81,8 +81,16 @@ export async function mergeReadyReleaseFromConsole(runId:string,expectedCandidat
  const readiness=getReleaseMergeReadiness(repository);
  if(!readiness.enabled)throw new Error(readiness.reason||"Merge pelo Console indisponível.");
 
- const prNumber=Number(report.report?.pr_number);
- if(!Number.isInteger(prNumber)||prNumber<=0)throw new Error("Release report sem PR válido.");
+ let prNumber=Number(report.report?.pr_number);
+ if(!Number.isInteger(prNumber)||prNumber<=0){
+  const evidence=await controlPlaneJson(
+   "factory_tool_usage?select=operation,metadata,created_at&run_id=eq."+encodeURIComponent(runId)+
+   "&operation=in.(verified_preview_awaiting_human_merge,preview_not_required_awaiting_human_merge)&order=created_at.desc&limit=1"
+  ) as any[];
+  const latest=evidence[0];prNumber=Number(latest?.metadata?.pr);
+  const evidenceSha=String(latest?.metadata?.head_sha||"");
+  if(!Number.isInteger(prNumber)||prNumber<=0||evidenceSha!==candidate)throw new Error("Evidência durável do PR ausente ou divergente.");
+ }
  const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN as string;
  const method=configuredMergeMethod();
  const prResponse=await fetch(`https://api.github.com/repos/${repository}/pulls/${prNumber}`,{
