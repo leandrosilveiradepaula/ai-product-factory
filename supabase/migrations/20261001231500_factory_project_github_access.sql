@@ -37,7 +37,7 @@ returns trigger
 language plpgsql
 security invoker
 set search_path=''
-as $
+as $$
 begin
   if new.repository is not null and btrim(new.repository)<>'' then
     insert into public.factory_project_github_access(project_id,repository,auth_mode,status)
@@ -62,7 +62,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists trg_factory_seed_project_github_access on public.factory_projects;
 create trigger trg_factory_seed_project_github_access
