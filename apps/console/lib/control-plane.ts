@@ -89,6 +89,7 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
     }
    }
  }
+}
  return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source:x.source==="release_report"?"release_report":"human_gate",candidateCommit:x.candidate_commit?String(x.candidate_commit):null,actionUrl:x.action_url?String(x.action_url):null,actionLabel:x.action_label?String(x.action_label):null};});
 }
 
