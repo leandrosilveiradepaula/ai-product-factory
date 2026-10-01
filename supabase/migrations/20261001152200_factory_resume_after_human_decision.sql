@@ -14,6 +14,7 @@ declare
   v_risk jsonb;
   v_acceptance jsonb;
   v_task_id uuid;
+  v_was_created boolean;
   v_created integer := 0;
   v_existing integer := 0;
   v_blocked integer := 0;
@@ -43,12 +44,16 @@ begin
     v_complexity := coalesce(nullif(btrim(v_plan->>'complexity'),''),'medium');
     v_risk := coalesce(v_plan->'risk','{}'::jsonb);
     v_acceptance := coalesce(v_plan->'acceptance_criteria','[]'::jsonb);
+    v_was_created := false;
 
     if v_external_key is null
        or v_title is null
        or v_complexity not in ('low','medium','high')
        or jsonb_typeof(v_risk) <> 'object'
        or jsonb_typeof(v_acceptance) <> 'array'
+       or jsonb_typeof(coalesce(v_plan->'depends_on','[]'::jsonb)) <> 'array'
+       or jsonb_typeof(coalesce(v_plan->'required_capabilities','[]'::jsonb)) <> 'array'
+       or jsonb_typeof(coalesce(v_plan->'scope_keys','[]'::jsonb)) <> 'array'
     then
       update public.factory_runs
       set metadata = metadata || jsonb_build_object(
@@ -96,6 +101,7 @@ begin
         coalesce(v_plan->'scope_keys','[]'::jsonb)
       )
       returning id into v_task_id;
+      v_was_created := true;
       v_created := v_created + 1;
     else
       v_existing := v_existing + 1;
@@ -117,11 +123,7 @@ begin
       jsonb_build_object(
         'resume_task_id',v_task_id,
         'external_key',v_external_key,
-        'created',v_created > 0 and not exists(
-          select 1 from public.factory_audit_events a
-          where a.run_id=v_run.run_id
-            and a.event_type='decision.resume.materialized'
-        )
+        'created',v_was_created
       )
     );
   end loop;
