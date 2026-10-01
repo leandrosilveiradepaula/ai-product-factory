@@ -30,7 +30,7 @@ export async function getDashboard():Promise<Dashboard>{
  };
 }
 export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
-export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null};
 
 function serverHeaders(){return getSupabaseServerConfig();}
 
@@ -55,7 +55,27 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
  const response=await fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
  if(!response.ok)throw new Error("Unable to load human gates");
  const rows=await response.json();
- return rows.map((x:any)=>({id:x.id,runId:x.run_id,type:x.gate_type,status:x.status,reasons:x.reasons,requestedAt:x.requested_at}));
+ const runIds=[...new Set(rows.map((x:any)=>String(x.run_id||"")).filter(Boolean))];
+ const runMap=new Map<string,string>();const taskMap=new Map<string,{title:string;projectId:string}>();const projectMap=new Map<string,{key:string;name:string}>();
+ if(runIds.length){
+  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id&id=in.(${runIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(runsResponse.ok){
+   const runs=await runsResponse.json();runs.forEach((x:any)=>runMap.set(String(x.id),String(x.task_id||"")));
+   const taskIds=[...new Set(runs.map((x:any)=>String(x.task_id||"")).filter(Boolean))];
+   if(taskIds.length){
+    const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,project_id&id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+    if(tasksResponse.ok){
+     const tasks=await tasksResponse.json();tasks.forEach((x:any)=>taskMap.set(String(x.id),{title:String(x.title),projectId:String(x.project_id||"")}));
+     const projectIds=[...new Set(tasks.map((x:any)=>String(x.project_id||"")).filter(Boolean))];
+     if(projectIds.length){
+      const projectsResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+      if(projectsResponse.ok){const projects=await projectsResponse.json();projects.forEach((x:any)=>projectMap.set(String(x.id),{key:String(x.project_key),name:String(x.name)}));}
+     }
+    }
+   }
+  }
+ }
+ return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null};});
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
@@ -262,7 +282,7 @@ export async function getRunDetail(runId:string):Promise<RunDetail|null>{
  ]);
  const read=async(x:any)=>x.ok?await x.json():[];const [ev,dp,gt,au,tu,cu]=await Promise.all([read(evals),read(deployments),read(gates),read(audit),read(tools),read(codex)]);
  const context={taskTitle:String(t.title),projectKey:String(p.project_key),projectName:String(p.name)};
- return{id:String(r.id),taskId:String(r.task_id),status:String(r.status),route:r.execution_route?String(r.execution_route):null,candidateCommit:r.candidate_commit?String(r.candidate_commit):null,createdAt:String(r.created_at),taskTitle:String(t.title),attemptCount:Number(r.attempt_count||0),leaseOwner:r.lease_owner?String(r.lease_owner):null,leaseExpiresAt:r.lease_expires_at?String(r.lease_expires_at):null,lastError:r.last_error?String(r.last_error):null,projectKey:String(p.project_key),projectName:String(p.name),projectStage:String(p.lifecycle_stage),taskStatus:String(t.status),taskComplexity:String(t.complexity),branchName:r.branch_name?String(r.branch_name):null,metadata:r.metadata,evaluations:ev.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.eval_type),status:String(x.status),score:x.score==null?null:Number(x.score),baselineRef:x.baseline_ref?String(x.baseline_ref):null,createdAt:String(x.created_at),...context})),deployments:dp.map((x:any)=>({id:String(x.id),runId:String(x.run_id),environment:String(x.environment),status:String(x.status),deploymentRef:x.deployment_ref?String(x.deployment_ref):null,rollbackRef:x.rollback_ref?String(x.rollback_ref):null,deployedAt:x.deployed_at?String(x.deployed_at):null,createdAt:String(x.created_at),...context})),gates:gt.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at)})),audit:au.map((x:any)=>({id:String(x.id),eventType:String(x.event_type),actorType:String(x.actor_type),actorRef:x.actor_ref?String(x.actor_ref):null,createdAt:String(x.created_at),runId:x.run_id?String(x.run_id):null,taskId:x.task_id?String(x.task_id):null,projectKey:String(p.project_key),projectName:String(p.name),payload:x.payload})),toolUsage:tu.map((x:any)=>({id:String(x.id),family:String(x.tool_family),operation:x.operation?String(x.operation):null,units:x.usage_units==null?null:Number(x.usage_units),cost:x.estimated_cost==null?null:Number(x.estimated_cost),createdAt:String(x.created_at)})),codex:cu.map((x:any)=>({id:String(x.id),level:Number(x.policy_level||0),invocations:Number(x.invocation_count||0),createdAt:String(x.created_at)}))};
+ return{id:String(r.id),taskId:String(r.task_id),status:String(r.status),route:r.execution_route?String(r.execution_route):null,candidateCommit:r.candidate_commit?String(r.candidate_commit):null,createdAt:String(r.created_at),taskTitle:String(t.title),attemptCount:Number(r.attempt_count||0),leaseOwner:r.lease_owner?String(r.lease_owner):null,leaseExpiresAt:r.lease_expires_at?String(r.lease_expires_at):null,lastError:r.last_error?String(r.last_error):null,projectKey:String(p.project_key),projectName:String(p.name),projectStage:String(p.lifecycle_stage),taskStatus:String(t.status),taskComplexity:String(t.complexity),branchName:r.branch_name?String(r.branch_name):null,metadata:r.metadata,evaluations:ev.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.eval_type),status:String(x.status),score:x.score==null?null:Number(x.score),baselineRef:x.baseline_ref?String(x.baseline_ref):null,createdAt:String(x.created_at),...context})),deployments:dp.map((x:any)=>({id:String(x.id),runId:String(x.run_id),environment:String(x.environment),status:String(x.status),deploymentRef:x.deployment_ref?String(x.deployment_ref):null,rollbackRef:x.rollback_ref?String(x.rollback_ref):null,deployedAt:x.deployed_at?String(x.deployed_at):null,createdAt:String(x.created_at),...context})),gates:gt.map((x:any)=>({id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:String(t.title),projectKey:String(p.project_key),projectName:String(p.name)})),audit:au.map((x:any)=>({id:String(x.id),eventType:String(x.event_type),actorType:String(x.actor_type),actorRef:x.actor_ref?String(x.actor_ref):null,createdAt:String(x.created_at),runId:x.run_id?String(x.run_id):null,taskId:x.task_id?String(x.task_id):null,projectKey:String(p.project_key),projectName:String(p.name),payload:x.payload})),toolUsage:tu.map((x:any)=>({id:String(x.id),family:String(x.tool_family),operation:x.operation?String(x.operation):null,units:x.usage_units==null?null:Number(x.usage_units),cost:x.estimated_cost==null?null:Number(x.estimated_cost),createdAt:String(x.created_at)})),codex:cu.map((x:any)=>({id:String(x.id),level:Number(x.policy_level||0),invocations:Number(x.invocation_count||0),createdAt:String(x.created_at)}))};
 }
 
 export type ConsoleConfiguration={controlPlaneConfigured:boolean;projects:{key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;manifest:unknown}[]};

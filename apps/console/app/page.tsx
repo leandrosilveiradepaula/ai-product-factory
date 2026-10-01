@@ -66,9 +66,10 @@ export default async function Home(){
    {pending.length===0&&incidents.length===0?<EmptyState>Nenhum bloqueio, falha ou gate humano pendente.</EmptyState>:<div className="attentionGrid">
     {pending.slice(0,2).map(g=><article className="card attentionCard warning" key={g.id}>
      <div className="attentionBanner"><StatusPill status={g.type}/><span className="mono">gate {g.id.slice(0,8)}</span></div>
-     <h3>Aprovação humana pendente</h3>
+     <h3>{g.projectName?g.projectName+" precisa de uma decisão":"Aprovação humana pendente"}</h3>
+     {g.taskTitle?<p className="muted">{g.taskTitle}</p>:null}
      <p>{Array.isArray(g.reasons)?g.reasons.join(", "):String(g.reasons||"A decisão humana é necessária para continuar.")}</p>
-     <div className="attentionFooter"><span>execução {g.runId.slice(0,8)}</span><ActionLink href="/gates" variant="ghostButton">Abrir gate</ActionLink></div>
+     <div className="attentionFooter"><Link href={"/runs/"+g.runId}>execução {g.runId.slice(0,8)} →</Link><ActionLink href="/gates" variant="ghostButton">Revisar decisão</ActionLink></div>
     </article>)}
     {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
      <div className="attentionBanner"><StatusPill status={i.status}/><span className="mono">run {i.id.slice(0,8)}</span></div>
