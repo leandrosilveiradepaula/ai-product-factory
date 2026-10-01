@@ -1,4 +1,4 @@
-import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
+import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
