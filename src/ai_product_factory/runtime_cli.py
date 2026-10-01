@@ -202,9 +202,10 @@ def run_ci_once()->dict:
   if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
   store.record_evaluation(run_id=item.run_id,eval_type="quality_gate",status="success",baseline_ref=item.candidate_commit,result={"passed":True,"reasons":list(quality.reasons),"source":"github_ci"})
   store.record_audit_event(run_id=item.run_id,event_type="quality_gate.passed",payload={"candidate_commit":item.candidate_commit,"reasons":list(quality.reasons)},actor_ref="ci-followup")
+  ci_evidence_source=getattr(github,"last_ci_evidence_source",None) or "github_checks"
   SupabaseTraceabilityStore().record_delivery_evidence(
    run_id=item.run_id,evidence_type="github_ci",status="passed",evidence_ref=item.candidate_commit,
-   metadata={"source":"github_checks","pr_number":item.pr_number}
+   metadata={"source":ci_evidence_source,"pr_number":item.pr_number}
   )
   routed=SupabaseSpecialistLaneQueue().enqueue(item.run_id)
   status=str(routed.get("status") or "specialist_review_pending")
