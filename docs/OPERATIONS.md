@@ -24,7 +24,7 @@ The ChatGPT/operator layer may merge a PR directly after its applicable CI/quali
 
 This does not grant merge capability to the Factory runtime, does not enable GitHub auto-merge, and does not change the production boundary. Any PR whose merge publishes production remains a human action.
 
-Production operators may execute that human action from the authenticated Factory Console when the dedicated Console release path is activated. The Console path is intentionally separate from the Python runtime and GitHub adapter. It requires an admin session, `VERCEL_ENV=production`, `FACTORY_RELEASE_GITHUB_TOKEN`, and an explicit `FACTORY_RELEASE_GITHUB_REPOSITORIES` allowlist. The token stays server-side and is never exposed to browser code, workers, agents or generated repositories.
+Production operators may execute that human action from the authenticated Factory Console when the dedicated Console release path is activated. The Console path is intentionally separate from the Python runtime and GitHub adapter. It requires an admin session, `VERCEL_ENV=production`, `FACTORY_RELEASE_GITHUB_TOKEN`, and an explicit source-controlled repository allowlist in `config/factory.release-policy.v1.json`. The token stays server-side and is never exposed to browser code, workers, agents or generated repositories.
 
 ## Required release sequence
 
@@ -45,7 +45,7 @@ Activation requirements:
 - production Console only (`VERCEL_ENV=production`);
 - authenticated active Console operator with role `admin`;
 - dedicated `FACTORY_RELEASE_GITHUB_TOKEN` stored only in the production server environment;
-- explicit comma-separated `FACTORY_RELEASE_GITHUB_REPOSITORIES` allowlist;
+- explicit `operator_allowed_repositories` allowlist in `config/factory.release-policy.v1.json`;
 - source-controlled merge method from `config/factory.release-policy.v1.json`.
 
 Before the irreversible GitHub merge request, the Console must confirm:
@@ -59,7 +59,7 @@ Before the irreversible GitHub merge request, the Console must confirm:
 
 The Console records a durable pre-merge audit event before invoking GitHub. Success/failure evidence is also recorded when possible. A successful Console merge can mark the release report released immediately; the ordinary release observer remains responsible for idempotently reconciling the run/task/issue lifecycle.
 
-Missing token, non-production environment, non-admin operator, repository outside the allowlist, stale SHA, draft/closed/non-mergeable PR, or any Control Plane mismatch fails closed.
+Missing token, non-production environment, non-admin operator, repository outside the source-controlled allowlist, stale SHA, draft/closed/non-mergeable PR, or any Control Plane mismatch fails closed.
 
 ## Primary model activation
 
