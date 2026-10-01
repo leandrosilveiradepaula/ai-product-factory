@@ -2,7 +2,7 @@ import releasePolicy from "../../../config/factory.release-policy.v1.json";
 import {requireConsoleAdmin} from "./auth-server";
 import {getSupabaseServerConfig} from "./supabase-server";
 
-type ReleaseMergeReadiness={enabled:boolean;reason:string|null};
+export type ReleaseMergeReadiness={enabled:boolean;reason:string|null};
 type ReleaseMergeResult={merged:true;mergeSha:string;repository:string;prNumber:number;controlPlaneRecorded:boolean};
 
 const SHA_RE=/^[0-9a-f]{40}$/;
