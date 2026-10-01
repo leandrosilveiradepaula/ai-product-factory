@@ -423,6 +423,31 @@ class RuntimeCliTests(unittest.TestCase):
         loop.finalize_verified_preview.assert_called_once()
 
 
+    def test_browser_failure_marks_preview_run_failed(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc",risk={})
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("web/page.tsx",)
+        store=MagicMock()
+        coordinator=MagicMock();coordinator.execute.side_effect=ValueError("preview requires successful browser/e2e evidence")
+        env={
+            "FACTORY_VERCEL_PREVIEW_ENABLED":"true","GITHUB_TOKEN":"gh",
+            "FACTORY_BROWSER_EVIDENCE_ENABLED":"true","FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["verify"]',
+        }
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.GitHubVercelPreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.DurablePreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeploymentEvidenceStore"), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceConfig.from_env",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator):
+            with self.assertRaisesRegex(ValueError,"browser/e2e"):
+                run_preview_once()
+        store.fail_preview.assert_called_once_with("r",candidate_commit="abc",reason="preview requires successful browser/e2e evidence")
+
     def test_github_integrated_preview_needs_no_vercel_token(self):
         item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")
         queue=MagicMock();queue.next_pending.return_value=item
