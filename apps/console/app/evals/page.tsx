@@ -9,7 +9,7 @@ export default async function Evals(){
  const scored=rows.filter(x=>x.score!=null);
  const avg=scored.length?scored.reduce((s,x)=>s+(x.score||0),0)/scored.length:null;
  return <>
-  <PageHeader eyebrow="Qualidade · gates autônomos" title="Avaliações e testes" subtitle="Evidências de qualidade por candidato, com bloqueio fail-closed quando uma avaliação obrigatória falha." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas detectadas":"quality gate limpo"}/>}/>
+  <PageHeader eyebrow="Qualidade · evidências automáticas" title="Avaliações e testes" subtitle="Resultados de testes e avaliações usados pela Factory para decidir se um candidato pode avançar. Consulte principalmente quando houver uma falha." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas detectadas":"quality gate limpo"}/>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Avaliações</span><strong>{rows.length}</strong><small>registros duráveis</small></div>
    <div className="operationalStat"><span>Aprovadas</span><strong>{passed}</strong><small>evidências verdes</small></div>
@@ -34,7 +34,7 @@ export default async function Evals(){
 
    <aside className="denseStack">
     <div className="card">
-     <div className="panelHeading"><strong>Análise do gate</strong><StatusPill status={failed?"attention":"healthy"} label={failed?"atenção":"sem regressão crítica"}/></div>
+     <div className="panelHeading"><strong>Como interpretar</strong><StatusPill status={failed?"attention":"healthy"} label={failed?"atenção":"sem regressão crítica"}/></div>
      <div className="compactList">
       <div className="compactRow"><span className="muted">Mesmo commit candidato</span><span>obrigatório</span></div>
       <div className="compactRow"><span className="muted">Falha de avaliação</span><span>bloqueia</span></div>
