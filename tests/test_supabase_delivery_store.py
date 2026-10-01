@@ -23,4 +23,19 @@ class Tests(unittest.TestCase):
   self.assertTrue(req.full_url.endswith("/rpc/factory_finalize_console_human_release"))
   self.assertIn(b'"p_candidate_commit": "abc"',req.data)
   self.assertIn(b'"p_merge_sha": "m"',req.data)
+ def test_fail_preview_marks_run_and_task_and_audits(self):
+  responses=[
+   Response({"run_id":"r","task_id":"t","status":"failed","candidate_commit":"abc"}),
+   Response([{"id":"t","status":"failed"}]),
+   Response([{"id":1}]),
+  ]
+  with patch("urllib.request.urlopen",side_effect=responses) as call:
+   out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").fail_preview(
+    "r",candidate_commit="abc",reason="browser failed"
+   )
+  self.assertEqual(out.status,"failed")
+  self.assertIn("/rpc/factory_update_run_delivery_status",call.call_args_list[0].args[0].full_url)
+  self.assertIn("factory_tasks?id=eq.t",call.call_args_list[1].args[0].full_url)
+  self.assertIn("factory_audit_events",call.call_args_list[2].args[0].full_url)
+
 if __name__=="__main__":unittest.main()

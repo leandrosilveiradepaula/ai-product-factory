@@ -298,7 +298,12 @@ def run_preview_once()->dict:
  deployment=DurablePreviewAdapter(provider,SupabaseDeploymentEvidenceStore(),run_id=item.run_id)
  browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
- verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
+ try:
+  verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
+ except ValueError as exc:
+  if str(exc)=="preview requires successful browser/e2e evidence":
+   store.fail_preview(item.run_id,candidate_commit=item.candidate_commit,reason=str(exc))
+  raise
  trace=SupabaseTraceabilityStore()
  trace.record_delivery_evidence(
   run_id=item.run_id,evidence_type="preview",status="passed",evidence_ref=verified.deployment.deployment_ref,
