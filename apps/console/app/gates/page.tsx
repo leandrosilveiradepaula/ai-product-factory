@@ -2,6 +2,7 @@ import Link from "next/link";
 import {revalidatePath} from "next/cache";
 import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
 import {EmptyState,PageHeader,StatusPill} from "../ui";
+import {GateDecisionPending} from "./gate-decision-form";
 import {ConfirmSubmit} from "../confirm-submit";
 
 function reasonText(value:unknown){
@@ -36,7 +37,7 @@ export default async function Gates(){
       <div><span className="detailLabel">Motivo</span><h3>{g.status==="pending"?"Decisão humana necessária":"Gate resolvido"}</h3><p className="muted">{reasonText(g.reasons)}</p></div>
       <div className="gateMeta"><div><span className="detailLabel">Projeto / tarefa</span><strong>{g.projectName||"Contexto histórico indisponível"}</strong>{g.taskTitle?<div className="muted">{g.taskTitle}</div>:null}{g.projectKey?<div><Link href={"/projects/"+g.projectKey}>Abrir projeto →</Link></div>:null}</div><div><span className="detailLabel">Execução</span><Link className="mono" href={"/runs/"+g.runId}>Abrir {g.runId.slice(0,12)} →</Link><div className="muted">solicitado em {new Date(g.requestedAt).toLocaleString("pt-BR")}</div></div></div>
      </div>
-     {g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><input name="note" placeholder="Observação opcional da decisão"/><div className="gateActionBar"><ConfirmSubmit className="danger" name="resolution" value="rejected" confirmMessage="Rejeitar este gate e interromper esta continuação da Factory?">Rejeitar / interromper</ConfirmSubmit><ConfirmSubmit className="primary" name="resolution" value="approved" confirmMessage="Confirmar esta aprovação humana? A Factory poderá continuar a partir deste gate, respeitando os próximos gates aplicáveis.">Assinar e aprovar</ConfirmSubmit></div></form>:null}
+     {g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><GateDecisionPending><input name="note" placeholder="Observação opcional da decisão"/><div className="gateActionBar"><ConfirmSubmit className="danger" name="resolution" value="rejected" confirmMessage="Rejeitar este gate e interromper esta continuação da Factory?">Rejeitar / interromper</ConfirmSubmit><ConfirmSubmit className="primary" name="resolution" value="approved" confirmMessage="Confirmar esta aprovação humana? A Factory poderá continuar a partir deste gate, respeitando os próximos gates aplicáveis.">Assinar e aprovar</ConfirmSubmit></div></GateDecisionPending></form>:null}
     </article>)}
    </section>
    <aside className="denseStack">
