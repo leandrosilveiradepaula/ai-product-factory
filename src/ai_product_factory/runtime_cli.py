@@ -53,6 +53,7 @@ from .release_policy_store import SupabaseReleasePolicyStore
 from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
 from .delivery_metrics import SupabaseDeliveryMetricsReader
+from .project_release_reconciliation import SupabaseProjectReleaseReconciler
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -352,9 +353,12 @@ def run_release_once()->dict:
   metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
  )
  SupabaseReleasePolicyStore().mark_released(item.run_id,merge_sha)
+ project_state=SupabaseProjectReleaseReconciler().reconcile(
+  project_id=item.project_id,run_id=item.run_id,merge_sha=merge_sha
+ )
  change_set=SupabaseChangeSetStore().finalize_released_run(item.run_id,merge_sha)
  SupabaseAgentScheduler().release_scopes(item.run_id)
- return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,"change_set":change_set,"run":merged}
+ return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,"change_set":change_set,"project_state":project_state,"run":merged}
 
 def run_retry_once(source_run_id:str,reason:str)->dict:
  if not source_run_id.strip():raise ValueError("source run id is required")
