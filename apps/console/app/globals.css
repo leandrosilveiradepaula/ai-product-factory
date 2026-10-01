@@ -606,3 +606,27 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
  .topbar{min-height:44px;height:auto}
  .topbar .topbarWork{display:none}
 }
+
+
+/* Main content legibility: keep technical chrome compact, make operational reading comfortable (#509). */
+.main .subtitle{font-size:13px;line-height:1.55}
+.main .metricLabel{font-size:12px}
+.main .metricNote{font-size:12px;line-height:1.4}
+.main .tableRow{font-size:12px;line-height:1.4}
+.main .cardMeta{font-size:12px;line-height:1.45}
+.main .timelineMeta{font-size:12px;line-height:1.4}
+.main .valueRow{font-size:12px;line-height:1.4}
+.main .compactRow{font-size:12px;line-height:1.4}
+.main .intakeHint{font-size:12px;line-height:1.5}
+.main .operationalStat small{font-size:12px;line-height:1.4}
+.main .envCard p{font-size:12px;line-height:1.4}
+.main .usageBarMeta{font-size:12px}
+.main .usageBarMeta span{font-size:12px}
+.main .configRows span,.main .configRows strong{font-size:12px}
+.main .configRows small{font-size:11px;line-height:1.45}
+.main .overviewControl{font-size:11px}
+@media(max-width:700px){
+ .main .subtitle{font-size:13px}
+ .main .tableRow{font-size:12px}
+ .main .cardMeta,.main .timelineMeta,.main .metricNote{font-size:12px}
+}
