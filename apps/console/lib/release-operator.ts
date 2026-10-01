@@ -28,6 +28,21 @@ export function getReleaseMergeReadiness(repository:string|null):ReleaseMergeRea
  return{enabled:true,reason:null};
 }
 
+export async function getReleaseMergeReadinessForPr(repository:string|null,prNumber:number|null):Promise<ReleaseMergeReadiness>{
+ const base=getReleaseMergeReadiness(repository);
+ if(!base.enabled)return base;
+ if(!repository||!prNumber||!Number.isInteger(prNumber)||prNumber<=0)return{enabled:false,reason:"Evidência durável do PR não encontrada."};
+ const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN as string;
+ const response=await fetch(`https://api.github.com/repos/${repository}/pulls/${prNumber}`,{
+  headers:githubHeaders(token),cache:"no-store"
+ });
+ if(response.ok)return{enabled:true,reason:null};
+ if(response.status===404)return{enabled:false,reason:"A credencial dedicada de release não enxerga este repositório ou PR no GitHub."};
+ if(response.status===403)return{enabled:false,reason:"A credencial dedicada de release não possui permissão suficiente para ler este PR no GitHub."};
+ if(response.status===401)return{enabled:false,reason:"A credencial dedicada de release foi rejeitada pelo GitHub."};
+ return{enabled:false,reason:`Falha no preflight da credencial de release no GitHub (HTTP ${response.status}).`};
+}
+
 function githubHeaders(token:string){
  return{
   Accept:"application/vnd.github+json",
@@ -96,7 +111,12 @@ export async function mergeReadyReleaseFromConsole(runId:string,expectedCandidat
  const prResponse=await fetch(`https://api.github.com/repos/${repository}/pulls/${prNumber}`,{
   headers:githubHeaders(token),cache:"no-store"
  });
- if(!prResponse.ok)throw new Error("Não foi possível revalidar o PR no GitHub.");
+ if(!prResponse.ok){
+  if(prResponse.status===404)throw new Error("A credencial dedicada de release não enxerga este repositório ou PR no GitHub.");
+  if(prResponse.status===403)throw new Error("A credencial dedicada de release não possui permissão suficiente para ler este PR no GitHub.");
+  if(prResponse.status===401)throw new Error("A credencial dedicada de release foi rejeitada pelo GitHub.");
+  throw new Error(`Não foi possível revalidar o PR no GitHub (HTTP ${prResponse.status}).`);
+ }
  const pr=await prResponse.json();
  if(String(pr.state)!=="open")throw new Error("O PR não está aberto.");
  if(Boolean(pr.draft))throw new Error("PR draft não pode ser liberado.");
