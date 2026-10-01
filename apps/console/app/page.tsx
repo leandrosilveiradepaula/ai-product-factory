@@ -17,6 +17,24 @@ export default async function Home(){
    actions={<StatusPill status={blocked||pending.length?"attention":"healthy"} label={blocked||pending.length?"atenção necessária":"orquestrador online"}/>}
   />
 
+  <div className="gettingStarted" aria-label="Como usar a Factory">
+   <div className="guideStep">
+    <span className="guideStepNumber">1</span>
+    <strong>Crie ou importe um projeto</strong>
+    <p>Descreva o objetivo. Para projeto existente, informe o repositório e a Factory reconcilia o estado real antes de continuar.</p>
+   </div>
+   <div className="guideStep">
+    <span className="guideStepNumber">2</span>
+    <strong>A Factory trabalha e mostra o progresso</strong>
+    <p>Descoberta, planejamento, implementação, revisão e testes seguem automaticamente sempre que os gates permitirem.</p>
+   </div>
+   <div className="guideStep">
+    <span className="guideStepNumber">3</span>
+    <strong>Intervenha somente quando solicitado</strong>
+    <p>Use “Precisa de atenção” como sua caixa de entrada. Produção continua exigindo merge humano explícito.</p>
+   </div>
+  </div>
+
   <div className="overviewControlBar">
    <span className="overviewControl">Escopo <strong>{d.projects.length} projetos</strong></span>
    <span className="overviewControl">Atualização <strong>dados ao vivo</strong></span>
