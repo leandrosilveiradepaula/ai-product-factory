@@ -57,7 +57,7 @@ export default async function Orchestration(){
    <SectionHeader title="Incidentes ativos" action={<span className="muted">P0 faz preempção suave apenas de novos trabalhos</span>}/>
    {data.incidents.length===0?<EmptyState>Nenhum incidente ativo.</EmptyState>:<div className="stack">
     {data.incidents.map(i=><div className="card" key={i.id}>
-     <div className="cardTop"><div className="badgeLine"><StatusPill status={i.severity}/><StatusPill status={i.status}/><strong>{i.title}</strong></div><span className="muted">{i.projectName}</span></div>
+     <div className="cardTop"><div className="badgeLine"><StatusPill status={i.severity}/><StatusPill status={i.status}/><strong>{i.title}</strong></div><Link href={"/projects/"+i.projectKey} className="muted">Abrir {i.projectName} →</Link></div>
      <p>{i.summary}</p>
      <div className="twoCol"><div><span className="detailLabel">Por que está aqui</span><p className="muted">Incidente {i.severity} em {i.status}.</p></div><div><span className="detailLabel">Próxima ação</span><p>{incidentNext(i.status)}</p></div></div>
     </div>)}
@@ -69,7 +69,7 @@ export default async function Orchestration(){
    {data.repairs.length===0?<EmptyState>Nenhum reparo automático ativo.</EmptyState>:<div className="table">
     <div className="tableRow tableHeader"><span>Projeto / origem</span><span>Ciclo</span><span>Estado</span><span>Próxima ação</span></div>
     {data.repairs.map(r=><div className="tableRow" key={r.id}>
-     <div><strong>{r.projectName}</strong><div className="muted">{r.sourceRole} → {r.ownerAgentKey}</div></div>
+     <div><Link href={"/projects/"+r.projectKey}><strong>{r.projectName}</strong></Link><div className="muted">{r.sourceRole} → {r.ownerAgentKey}</div></div>
      <span>{r.cycle}/{r.maxCycles}</span>
      <StatusPill status={r.status}/>
      <span>{repairNext(r.status)}</span>
@@ -92,7 +92,7 @@ export default async function Orchestration(){
    <SectionHeader title="Reanálise e aprendizado" action={<span className="muted">sempre zero-effect</span>}/>
    <div className="twoCol">
     <div className="card"><span className="detailLabel">Replay / Shadow recentes</span>
-     {data.replays.length===0?<p className="muted">Nenhum replay registrado.</p>:<div className="valueList">{data.replays.slice(0,10).map(r=><div className="valueRow" key={r.id}><div><strong>{r.mode}</strong><div className="muted mono">run {r.sourceRunId.slice(0,8)}</div></div><span>{r.effect} · modelo {r.modelCallsAllowed?"permitido":"desativado"}</span></div>)}</div>}
+     {data.replays.length===0?<p className="muted">Nenhum replay registrado.</p>:<div className="valueList">{data.replays.slice(0,10).map(r=><div className="valueRow" key={r.id}><div><strong>{r.mode}</strong><div><Link href={"/runs/"+r.sourceRunId} className="muted mono">abrir execução {r.sourceRunId.slice(0,8)} →</Link></div></div><span>{r.effect} · modelo {r.modelCallsAllowed?"permitido":"desativado"}</span></div>)}</div>}
     </div>
     <div className="card"><span className="detailLabel">Propostas de melhoria</span>
      {data.proposals.length===0?<p className="muted">Nenhuma proposta pendente.</p>:<div className="valueList">{data.proposals.slice(0,10).map(p=><div className="valueRow" key={p.id}><strong>{p.proposalKey}</strong><span>{p.requiresSourceControl?"via source control":"sem source control"} · {p.autoApply?"auto":"não autoaplica"}</span></div>)}</div>}
