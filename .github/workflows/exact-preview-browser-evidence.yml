@@ -1,0 +1,90 @@
+name: Exact Preview browser evidence
+
+on:
+  push:
+    branches:
+      - "preview/**"
+
+permissions:
+  contents: read
+  checks: read
+  id-token: write
+
+jobs:
+  browser-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - name: Resolve exact Vercel Preview from GitHub checks
+        id: preview
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const sha = context.sha;
+            const hostPattern = /([A-Za-z0-9][A-Za-z0-9-]*\.vercel\.app)/;
+            for (let attempt = 0; attempt < 40; attempt++) {
+              const {data} = await github.rest.checks.listForRef({
+                ...context.repo,
+                ref: sha,
+                per_page: 100,
+              });
+              const vercel = data.check_runs.filter(c =>
+                String(c.app?.slug || "").toLowerCase() === "vercel"
+              );
+              for (const check of vercel) {
+                if (check.status !== "completed") continue;
+                const haystack = [
+                  check.output?.title,
+                  check.output?.summary,
+                  check.output?.text,
+                  check.details_url,
+                ].filter(Boolean).join("\n");
+                const match = haystack.match(hostPattern);
+                if (["success","neutral"].includes(String(check.conclusion)) && match) {
+                  core.setOutput("url", "https://" + match[1]);
+                  core.setOutput("candidate_sha", sha);
+                  core.notice("Exact Preview resolved for " + sha + ": " + match[1]);
+                  return;
+                }
+                if (["failure","cancelled","timed_out","action_required"].includes(String(check.conclusion))) {
+                  core.setFailed("Vercel Preview check failed for exact candidate " + sha);
+                  return;
+                }
+              }
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            core.setFailed("Vercel Preview was not discoverable for exact candidate " + sha);
+      - name: Install pinned Playwright browser
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Mint short-lived Vercel Trusted Source OIDC token
+        id: oidc
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+      - name: Verify exact protected Preview
+        env:
+          FACTORY_PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          FACTORY_PREVIEW_EXPECTED_TEXT: "Entrar na Factory"
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        shell: bash
+        run: |
+          result="$(node scripts/verify_preview.mjs)"
+          echo "$result"
+          RESULT="$result" node - <<'NODE'
+          const result = JSON.parse(process.env.RESULT);
+          const required = ["page_load", "http_status", "body_visible", "expected_text", "console_clean"];
+          if (result.status !== "success") throw new Error(result.detail || "browser evidence failed");
+          for (const check of required) {
+            if (!result.checks.includes(check)) throw new Error("missing browser evidence check: " + check);
+          }
+          NODE
