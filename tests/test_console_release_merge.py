@@ -5,6 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 MODULE=ROOT/"apps"/"console"/"lib"/"release-operator.ts"
 PAGE=ROOT/"apps"/"console"/"app"/"gates"/"page.tsx"
 POLICY=ROOT/"config"/"factory.release-policy.v1.json"
+PREVIEW_WORKFLOW=ROOT/".github"/"workflows"/"exact-preview-browser-evidence.yml"
 
 
 class ConsoleReleaseMergeTests(unittest.TestCase):
@@ -54,6 +55,16 @@ class ConsoleReleaseMergeTests(unittest.TestCase):
         self.assertIn('"auto_merge_allowed": false',text)
         self.assertIn('"human_console_merge_allowed": true',text)
         self.assertIn('"operator_merge_method": "squash"',text)
+
+    def test_exact_preview_branch_runs_browser_evidence(self):
+        text=PREVIEW_WORKFLOW.read_text()
+        self.assertIn('"preview/**"',text)
+        self.assertIn("checks.listForRef",text)
+        self.assertIn("context.sha",text)
+        self.assertIn("getIDToken()",text)
+        self.assertIn("scripts/verify_preview.mjs",text)
+        self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN",text)
+        self.assertNotIn("VERCEL_TOKEN",text)
 
 
 if __name__=="__main__":
