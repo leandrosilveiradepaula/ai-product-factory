@@ -1,6 +1,7 @@
 import {revalidatePath} from "next/cache";
 import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
 import {EmptyState,PageHeader,StatusPill} from "../ui";
+import {ConfirmSubmit} from "../confirm-submit";
 
 function reasonText(value:unknown){
  if(Array.isArray(value))return value.join(", ");
@@ -34,7 +35,7 @@ export default async function Gates(){
       <div><span className="detailLabel">Motivo</span><h3>{g.status==="pending"?"Decisão humana necessária":"Gate resolvido"}</h3><p className="muted">{reasonText(g.reasons)}</p></div>
       <div className="gateMeta"><div><span className="detailLabel">Execução</span><strong className="mono">{g.runId.slice(0,12)}</strong></div><div><span className="detailLabel">Solicitado</span><strong>{new Date(g.requestedAt).toLocaleString("pt-BR")}</strong></div></div>
      </div>
-     {g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><input name="note" placeholder="Observação opcional da decisão"/><div className="gateActionBar"><button className="danger" name="resolution" value="rejected">Rejeitar / interromper</button><button className="primary" name="resolution" value="approved">Assinar e aprovar</button></div></form>:null}
+     {g.status==="pending"?<form action={resolveGate} className="gateForm"><input type="hidden" name="gate_id" value={g.id}/><input name="note" placeholder="Observação opcional da decisão"/><div className="gateActionBar"><ConfirmSubmit className="danger" name="resolution" value="rejected" confirmMessage="Rejeitar este gate e interromper esta continuação da Factory?">Rejeitar / interromper</ConfirmSubmit><ConfirmSubmit className="primary" name="resolution" value="approved" confirmMessage="Confirmar esta aprovação humana? A Factory poderá continuar a partir deste gate, respeitando os próximos gates aplicáveis.">Assinar e aprovar</ConfirmSubmit></div></form>:null}
     </article>)}
    </section>
    <aside className="denseStack">
