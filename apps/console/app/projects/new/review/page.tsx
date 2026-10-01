@@ -10,9 +10,9 @@ async function start(formData:FormData){"use server";const intake=decode(String(
 
 export default async function Review({searchParams}:{searchParams:Promise<{intake?:string}>}){
  const p=await searchParams;const intake=decode(p.intake);
- if(!intake)return <><PageHeader eyebrow="Novo trabalho" title="Entrada inválida" subtitle="O conteúdo da entrada não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
+ if(!intake)return <><PageHeader eyebrow="Novo projeto" title="Entrada inválida" subtitle="O conteúdo da entrada não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
  return <>
-  <PageHeader eyebrow="Revisar entrada" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o ciclo inicial e abre o estágio de descoberta no Painel de Controle."}/>
+  <PageHeader eyebrow="Revisar entrada" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory registra o projeto, cria o ciclo inicial e começa a Descoberta automaticamente."}/>
   <div className="gettingStarted" aria-label="Etapas para iniciar um projeto">
    <div className="guideStep done"><span className="guideStepNumber">1</span><strong>Descreva o projeto</strong><p>Briefing recebido e preservado.</p></div>
    <div className="guideStep current"><span className="guideStepNumber">2</span><strong>Revise o briefing</strong><p>Confira o resumo abaixo. Você ainda pode editar antes de iniciar qualquer ciclo.</p></div>
@@ -34,6 +34,6 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
    <div className="section"><span className="detailLabel">Referências</span>{intake.references?.filter(ref=>/^https:\/\//i.test(ref.value)).length?<div className="stack">{intake.references.filter(ref=>/^https:\/\//i.test(ref.value)).map((ref,i)=><div className="badgeLine" key={ref.value+i}><span className="pill accent">{ref.kind}</span><a href={ref.value} target="_blank" rel="noreferrer">{ref.value}</a></div>)}</div>:<p className="muted">Não informado</p>}</div>
    <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">{intake.mode==="existing"?"A Factory registra este briefing, reconcilia as evidências disponíveis do projeto e cria somente o trabalho que falta. O estágio informado é uma pista, não uma verdade presumida.":"A Factory registra este pedido como fonte do projeto, prepara o ciclo inicial e entra em Descoberta. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana."}</p></div>
   </div>
-  <div className="actions"><ActionLink href={"/projects/new?intake="+encodeURIComponent(p.intake||"")}>Editar</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">{intake.mode==="existing"?"Importar e reconciliar":"Iniciar Descoberta"}</Button></form></div>
+  <div className="actions"><ActionLink href={"/projects/new?intake="+encodeURIComponent(p.intake||"")}>Editar</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">{intake.mode==="existing"?"Importar e iniciar reconciliação":"Criar projeto e iniciar Descoberta"}</Button></form></div>
  </>;
 }
