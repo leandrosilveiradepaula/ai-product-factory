@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once, run_recovery_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -148,6 +148,24 @@ class RuntimeCliTests(unittest.TestCase):
 
 
 
+
+    def test_recovery_resumes_decisions_without_model_calls(self):
+        queue=MagicMock()
+        queue.recover_expired.return_value={"requeued":0,"failed":0}
+        queue.resume_resolved_decisions.return_value={"created":1,"existing":0,"blocked":0}
+        agents=MagicMock();agents.recover_expired.return_value={"requeued":0}
+        lanes=MagicMock();lanes.recover_expired.return_value={"requeued":0}
+        change_sets=MagicMock();change_sets.recover_expired.return_value={"requeued":0}
+        with patch("ai_product_factory.runtime_cli.SupabaseRuntimeQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=agents), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=lanes), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=change_sets), \
+             patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as provider:
+            out=run_recovery_once(3)
+        self.assertEqual(out["decisions"]["created"],1)
+        queue.recover_expired.assert_called_once_with(3)
+        queue.resume_resolved_decisions.assert_called_once_with()
+        provider.assert_not_called()
 
     def test_retry_mode_is_model_free_and_delegates_to_queue(self):
         queue=MagicMock()
