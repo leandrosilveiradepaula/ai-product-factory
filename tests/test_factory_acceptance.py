@@ -157,10 +157,16 @@ class FactoryAcceptanceTests(unittest.TestCase):
     def test_production_merge_is_observed_not_executed_by_runtime(self):
         adapter = (ROOT / "src/ai_product_factory/github_rest.py").read_text()
         runtime = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
+        console_release = (ROOT / "apps/console/lib/release-operator.ts").read_text()
         self.assertNotIn("def merge_pull_request", adapter)
         self.assertNotIn("merge_pull_request(", runtime)
         self.assertIn("observe_manual_merge", runtime)
         self.assertIn('"awaiting_release"', runtime)
+        self.assertIn("requireConsoleAdmin()", console_release)
+        self.assertIn('process.env.VERCEL_ENV!=="production"', console_release)
+        self.assertIn("FACTORY_RELEASE_GITHUB_TOKEN", console_release)
+        self.assertIn("operator_allowed_repositories", (ROOT / "config/factory.release-policy.v1.json").read_text())
+        self.assertIn("human_release.console_merge_requested", console_release)
 
     def test_paid_and_codex_paths_remain_explicitly_fail_closed(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()

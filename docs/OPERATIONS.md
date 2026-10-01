@@ -24,6 +24,8 @@ The ChatGPT/operator layer may merge a PR directly after its applicable CI/quali
 
 This does not grant merge capability to the Factory runtime, does not enable GitHub auto-merge, and does not change the production boundary. Any PR whose merge publishes production remains a human action.
 
+Production operators may execute that human action from the authenticated Factory Console when the dedicated Console release path is activated. The Console path is intentionally separate from the Python runtime and GitHub adapter. It requires an admin session, `VERCEL_ENV=production`, `FACTORY_RELEASE_GITHUB_TOKEN`, and an explicit source-controlled repository allowlist in `config/factory.release-policy.v1.json`. The token stays server-side and is never exposed to browser code, workers, agents or generated repositories.
+
 ## Required release sequence
 
 1. Implementation opens a PR; production is not touched.
@@ -32,8 +34,32 @@ This does not grant merge capability to the Factory runtime, does not enable Git
 4. Preview applicability is evaluated from explicit project policy and the PR changed files. Missing policy fails closed to Preview required. `required=false` or a non-matching `required_paths` policy records durable `preview_not_required` evidence instead of fabricating a deployment.
 5. When Preview is required, it requires the same candidate commit, successful quality evidence, Preview deployment, and successful browser/e2e evidence for the exact Preview URL.
 6. The run moves to `awaiting_release`.
-7. A human reviews and merges the PR. The Factory never performs this production merge.
-8. The release observer sees the already-merged PR, records the merge SHA/audit evidence, marks the run `merged`, and closes the linked issue.
+7. A human reviews and merges the PR. The action may be performed in GitHub or by an admin clicking `Fazer merge em produção` in the production Console. The Console revalidates the exact candidate SHA and PR state before calling GitHub.
+8. The release observer sees the already-merged PR, records/reconciles the merge SHA and audit evidence, marks the run `merged`, and closes the linked issue.
+
+## Console human release action
+
+The optional Console release action is an operator control, not a runtime capability.
+
+Activation requirements:
+- production Console only (`VERCEL_ENV=production`);
+- authenticated active Console operator with role `admin`;
+- dedicated `FACTORY_RELEASE_GITHUB_TOKEN` stored only in the production server environment;
+- explicit `operator_allowed_repositories` allowlist in `config/factory.release-policy.v1.json`;
+- source-controlled merge method from `config/factory.release-policy.v1.json`.
+
+Before the irreversible GitHub merge request, the Console must confirm:
+- the Control Plane release report is exactly `ready_for_human_release`;
+- the run is `awaiting_release`;
+- the project repository is valid and allowlisted;
+- the PR number comes from the durable release report;
+- the PR is open, non-draft, targets `main`, and is not from a fork;
+- GitHub reports the PR mergeable;
+- PR head SHA exactly equals the durable candidate commit and the SHA submitted by the rendered form.
+
+The Console records a durable pre-merge audit event before invoking GitHub. Success/failure evidence is also recorded when possible. A successful Console merge can mark the release report released immediately; the ordinary release observer remains responsible for idempotently reconciling the run/task/issue lifecycle.
+
+Missing token, non-production environment, non-admin operator, repository outside the source-controlled allowlist, stale SHA, draft/closed/non-mergeable PR, or any Control Plane mismatch fails closed.
 
 ## Primary model activation
 

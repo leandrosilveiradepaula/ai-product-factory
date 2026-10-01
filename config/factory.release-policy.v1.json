@@ -3,7 +3,12 @@
   "version": 1,
   "production": {
     "human_release_required": true,
-    "auto_merge_allowed": false
+    "auto_merge_allowed": false,
+    "human_console_merge_allowed": true,
+    "operator_merge_method": "squash",
+    "operator_allowed_repositories": [
+      "leandrosilveiradepaula/ai-product-factory"
+    ]
   },
   "gates": {
     "unknown_paid_cost": "block",

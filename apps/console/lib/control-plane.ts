@@ -1,4 +1,4 @@
-import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";
+import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness} from "./release-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
@@ -30,7 +30,7 @@ export async function getDashboard():Promise<Dashboard>{
  };
 }
 export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
-export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null;actionUrl:string|null;actionLabel:string|null};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null;actionUrl:string|null;actionLabel:string|null;repository:string|null;prNumber:number|null;canMergeInConsole:boolean;mergeBlocker:string|null};
 
 function serverHeaders(){return getSupabaseServerConfig();}
 
@@ -50,7 +50,7 @@ export async function getRuns(limit=50):Promise<RunSummary[]>{
 }
 
 export async function getHumanGates(limit=50):Promise<GateSummary[]>{
- await requireConsoleOperator();
+ const operator=await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)return [];
  const [gatesResponse,releasesResponse]=await Promise.all([
   fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"}),
@@ -68,10 +68,22 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
    requested_at:x.created_at,source:"release_report",candidate_commit:x.candidate_commit,
    action_url:typeof x.report?.pr_url==="string"?x.report.pr_url:null,
    action_label:typeof x.report?.pr_number==="number"?`Abrir PR #${x.report.pr_number} no GitHub`:"Abrir PR no GitHub",
+   pr_number:Number.isInteger(x.report?.pr_number)?x.report.pr_number:null,
   })),
  ].sort((a:any,b:any)=>Date.parse(String(b.requested_at))-Date.parse(String(a.requested_at))).slice(0,limit);
  const runIds=[...new Set(rows.map((x:any)=>String(x.run_id||"")).filter(Boolean))];
- const runMap=new Map<string,string>();const taskMap=new Map<string,{title:string;projectId:string}>();const projectMap=new Map<string,{key:string;name:string}>();
+ const releaseEvidence=new Map<string,{prNumber:number|null;headSha:string|null}>();
+ if(runIds.length){
+  const evidenceResponse=await fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=run_id,operation,metadata,created_at&run_id=in.(${runIds.join(",")})&operation=in.(verified_preview_awaiting_human_merge,preview_not_required_awaiting_human_merge)&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
+  if(evidenceResponse.ok){
+   const evidence=await evidenceResponse.json();
+   for(const x of evidence){
+    const key=String(x.run_id||"");if(!key||releaseEvidence.has(key))continue;
+    const pr=Number(x.metadata?.pr);releaseEvidence.set(key,{prNumber:Number.isInteger(pr)&&pr>0?pr:null,headSha:x.metadata?.head_sha?String(x.metadata.head_sha):null});
+   }
+  }
+ }
+ const runMap=new Map<string,string>();const taskMap=new Map<string,{title:string;projectId:string}>();const projectMap=new Map<string,{key:string;name:string;repository:string|null}>();
  if(runIds.length){
   const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id&id=in.(${runIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
   if(runsResponse.ok){
@@ -83,14 +95,14 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
      const tasks=await tasksResponse.json();tasks.forEach((x:any)=>taskMap.set(String(x.id),{title:String(x.title),projectId:String(x.project_id||"")}));
      const projectIds=[...new Set(tasks.map((x:any)=>String(x.project_id||"")).filter(Boolean))];
      if(projectIds.length){
-      const projectsResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
-      if(projectsResponse.ok){const projects=await projectsResponse.json();projects.forEach((x:any)=>projectMap.set(String(x.id),{key:String(x.project_key),name:String(x.name)}));}
+      const projectsResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name,repository&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+      if(projectsResponse.ok){const projects=await projectsResponse.json();projects.forEach((x:any)=>projectMap.set(String(x.id),{key:String(x.project_key),name:String(x.name),repository:x.repository?String(x.repository):null}));}
      }
     }
    }
  }
 }
- return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source:x.source==="release_report"?"release_report":"human_gate",candidateCommit:x.candidate_commit?String(x.candidate_commit):null,actionUrl:x.action_url?String(x.action_url):null,actionLabel:x.action_label?String(x.action_label):null};});
+ return rows.map((x:any)=>{const runId=String(x.run_id);const task=taskMap.get(runMap.get(runId)||"");const project=task?projectMap.get(task.projectId):undefined;const source=x.source==="release_report"?"release_report":"human_gate";const evidence=releaseEvidence.get(runId);const reportPr=Number(x.pr_number);const prNumber=Number.isInteger(reportPr)&&reportPr>0?reportPr:(evidence?.prNumber||null);const repository=project?.repository||null;const actionUrl=x.action_url?String(x.action_url):(repository&&prNumber?`https://github.com/${repository}/pull/${prNumber}`:null);const actionLabel=prNumber?`Abrir PR #${prNumber} no GitHub`:(x.action_label?String(x.action_label):null);const candidate=x.candidate_commit?String(x.candidate_commit):null;const evidenceMismatch=source==="release_report"&&candidate&&evidence?.headSha&&evidence.headSha!==candidate;const readiness=source==="release_report"&&operator.role==="admin"&&!evidenceMismatch?getReleaseMergeReadiness(repository):{enabled:false,reason:evidenceMismatch?"Evidência de release não corresponde ao SHA candidato.":source==="release_report"?"Somente administradores podem executar merge de produção pelo Console.":null};return{id:String(x.id),runId,type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source,candidateCommit:candidate,actionUrl,actionLabel,repository,prNumber,canMergeInConsole:readiness.enabled&&Boolean(prNumber),mergeBlocker:prNumber?readiness.reason:"Evidência durável do PR não encontrada."};});
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
