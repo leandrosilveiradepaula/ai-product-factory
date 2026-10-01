@@ -5,9 +5,9 @@ export default async function Usage(){
  const [u,limits]=await Promise.all([getUsageOverview(),getResourceLimits()]);
  const maxEvents=Math.max(1,...u.byFamily.map(x=>x.events));
  return <>
-  <PageHeader eyebrow="Telemetria de LLM · governança de custo" title="Modelos e uso" subtitle="Ledger real de ferramentas e provedores. Custos pagos desconhecidos bloqueiam novas chamadas." actions={<StatusPill status={u.unknownPaidCostEvents?"blocked":"healthy"} label={u.unknownPaidCostEvents?"execução paga bloqueada":"budget operacional"}/>}/>
+  <PageHeader eyebrow="Governança · custos e modelos" title="Modelos e uso" subtitle="Acompanhe custos, limites e uso dos provedores. Esta é uma tela de governança, não uma etapa do desenvolvimento." actions={<StatusPill status={u.unknownPaidCostEvents?"blocked":"healthy"} label={u.unknownPaidCostEvents?"execução paga bloqueada":"budget operacional"}/>}/>
   <div className="operationalStrip">
-   <div className="operationalStat"><span>Custo conhecido</span><strong>{u.knownCost.toFixed(4)}</strong><small>ledger acumulado</small></div>
+   <div className="operationalStat"><span>Custo conhecido</span><strong>{u.knownCost.toFixed(4)}</strong><small>registro acumulado</small></div>
    <div className="operationalStat"><span>Eventos</span><strong>{u.toolEvents}</strong><small>ferramentas registradas</small></div>
    <div className="operationalStat"><span>Codex</span><strong>{u.codexInvocations}</strong><small>invocações reais</small></div>
    <div className="operationalStat danger"><span>Custo desconhecido</span><strong>{u.unknownPaidCostEvents}</strong><small>hard stop</small></div>
@@ -39,7 +39,7 @@ export default async function Usage(){
    </section>
    <aside className="denseStack">
     <div className="card">
-     <div className="panelHeading"><strong>Readiness</strong><StatusPill status={u.unknownPaidCostEvents?"blocked":"healthy"} label={u.unknownPaidCostEvents?"bloqueado":"operacional"}/></div>
+     <div className="panelHeading"><strong>Prontidão operacional</strong><StatusPill status={u.unknownPaidCostEvents?"blocked":"healthy"} label={u.unknownPaidCostEvents?"bloqueado":"operacional"}/></div>
      <div className="compactList">
       <div className="compactRow"><span>Primary</span><StatusPill status="active" label="API key ativa"/></div>
       <div className="compactRow"><span>Budget Factory</span><span className="muted">US$ 4,00</span></div>

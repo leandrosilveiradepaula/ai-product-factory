@@ -498,3 +498,17 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
   .main .overviewStats,.main .operationalStrip{grid-template-columns:1fr}
   .macroLifecycle{grid-template-columns:repeat(5,150px)}
 }
+
+
+/* Operator navigation guidance (#486). */
+.screenGuide{
+ display:flex;align-items:center;justify-content:space-between;gap:16px;
+ margin:0 0 18px;padding:12px 14px;border:1px solid #365890;background:#141d2d;
+}
+.screenGuide>div{display:grid;gap:3px}
+.screenGuide strong{font-size:12px;color:#adc6ff}
+.screenGuide span{font-size:13px;line-height:1.45;color:#c1c5d3}
+.screenGuide.advanced{border-color:#31353f;background:#14171f}
+.screenGuide.advanced strong{color:#9da3b5}
+.screenGuideLink{white-space:nowrap;font-size:12px;color:#adc6ff;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:700px){.screenGuide{align-items:flex-start;flex-direction:column}.screenGuideLink{white-space:normal}}

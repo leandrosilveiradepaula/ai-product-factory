@@ -19,9 +19,9 @@ async function resolveGate(formData:FormData){
 export default async function Gates(){
  const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");const resolved=gates.length-pending.length;
  return <>
-  <PageHeader eyebrow="Motor de política · execução determinística" title="Aprovações humanas e prontidão de liberação" subtitle="A Factory prepara evidências autonomamente e congela a execução quando produção, dados, acesso, custo ou requisito material exigem autoridade humana." actions={<StatusPill status={pending.length?"attention":"healthy"} label={pending.length?pending.length+" críticas pendentes":"nenhuma pendência"}/>}/>
+  <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pending.length?"attention":"healthy"} label={pending.length?pending.length+" críticas pendentes":"nenhuma pendência"}/>}/>
   <div className="operationalStrip">
-   <div className="operationalStat warning"><span>Aguardando assinatura</span><strong>{pending.length}</strong><small>ação humana</small></div>
+   <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pending.length}</strong><small>ação humana</small></div>
    <div className="operationalStat"><span>Resolvidas</span><strong>{resolved}</strong><small>histórico durável</small></div>
    <div className="operationalStat"><span>Política</span><strong>fail-closed</strong><small>sem bypass</small></div>
    <div className="operationalStat"><span>Produção</span><strong>humana</strong><small>merge nunca automático</small></div>
@@ -39,7 +39,7 @@ export default async function Gates(){
    </section>
    <aside className="denseStack">
     <div className="card">
-     <div className="panelHeading"><strong>Princípio de governança</strong><StatusPill status="active" label="vigente"/></div>
+     <div className="panelHeading"><strong>Quando você será chamado</strong><StatusPill status="active" label="vigente"/></div>
      <p className="muted">A Factory não possui caminho de auto-merge. Preview, CI e avaliações podem preparar a liberação, mas a promoção para produção depende de uma ação humana já realizada.</p>
      <div className="compactList">
       <div className="compactRow"><span>Liberação de produção</span><span className="muted">merge humano</span></div>

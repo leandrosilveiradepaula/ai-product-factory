@@ -9,7 +9,7 @@ export default async function Deployments(){
  const ready=rows.filter(x=>["ready","success","verified","released"].includes(x.status.toLowerCase())).length;
  const failed=rows.filter(x=>["failed","error"].includes(x.status.toLowerCase())).length;
  return <>
-  <PageHeader eyebrow="Liberação · ambientes" title="Implantações" subtitle="Evidências de Preview, produção e reversão registradas pelo Control Plane." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas observadas":"ambientes saudáveis"}/>}/>
+  <PageHeader eyebrow="Liberação · ambientes" title="Implantações" subtitle="Histórico de Prévia e produção registrado pela Factory. Use para confirmar qual versão foi implantada e se a verificação terminou." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas observadas":"ambientes saudáveis"}/>}/>
   <div className="deploymentEnvGrid">
    <div className="card envCard"><span className="detailLabel">Preview</span><strong>{previews}</strong><p className="muted">candidatos observados</p></div>
    <div className="card envCard"><span className="detailLabel">Produção</span><strong>{production}</strong><p className="muted">registros duráveis</p></div>
@@ -33,10 +33,10 @@ export default async function Deployments(){
    </section>
    <aside className="denseStack">
     <div className="card">
-     <div className="panelHeading"><strong>Política de promoção</strong><StatusPill status="active" label="vigente"/></div>
+     <div className="panelHeading"><strong>Como uma versão chega à produção</strong><StatusPill status="active" label="vigente"/></div>
      <div className="compactList">
       <div className="compactRow"><span>Preview exato</span><span className="muted">mesmo SHA</span></div>
-      <div className="compactRow"><span>Browser evidence</span><span className="muted">obrigatória</span></div>
+      <div className="compactRow"><span>Verificação no navegador</span><span className="muted">obrigatória</span></div>
       <div className="compactRow"><span>Merge em main</span><span className="muted">humano</span></div>
       <div className="compactRow"><span>Observer de release</span><span className="muted">somente leitura</span></div>
      </div>

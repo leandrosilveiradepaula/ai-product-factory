@@ -28,9 +28,9 @@ export default async function Agents(){
 
  return <>
   <PageHeader
-   eyebrow="Orquestração multi-especialista · Control Plane"
+   eyebrow="Diagnóstico · especialistas da Factory"
    title="Agentes da Factory"
-   subtitle="Especialistas independentes com contexto, capacidades, ferramentas, concorrência e orçamento próprios. Agente é uma unidade operacional; modelo é apenas uma das ferramentas que ele pode usar."
+   subtitle="Mostra os especialistas que a Factory pode acionar automaticamente. Você não precisa escolher agentes manualmente para conduzir um projeto."
    actions={<StatusPill status={working?"running":"healthy"} label={working?working+" especialistas em trabalho":"registry saudável"}/>}
   />
 
