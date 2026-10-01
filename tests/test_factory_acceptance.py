@@ -179,9 +179,13 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "release-followup",
         )
         for job in jobs:
-            start = workflow.index(f"\n  {job}:")
-            next_job = workflow.find("\n  ", start + 4)
-            block = workflow[start: next_job if next_job != -1 else len(workflow)]
+            match = re.search(
+                rf"\\n  {re.escape(job)}:\\n(?P<body>.*?)(?=\\n  [A-Za-z0-9_-]+:|\\Z)",
+                workflow,
+                re.S,
+            )
+            self.assertIsNotNone(match, job)
+            block = match.group("body")
             self.assertIn("environment: openai-api", block, job)
             self.assertIn("FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}", block, job)
 
