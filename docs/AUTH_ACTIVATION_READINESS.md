@@ -93,6 +93,19 @@ The manual job supplies `FACTORY_VERCEL_PREVIEW_ENABLED=true`, `FACTORY_BROWSER_
 
 For `mode: api` or non-GitHub execution environments, Vercel/browser credentials and commands remain explicit external configuration. Preview execution remains manual-only and no Preview adapter can target production.
 
+## Supabase Management migration credential
+
+The optional Console migration action is independently gated from ordinary Control Plane access.
+
+Ready only when:
+- a Supabase Management API token is scoped to the Factory production project whenever scoped PATs are available;
+- the token has only the permission needed to list/apply database migrations;
+- it is stored as `FACTORY_SUPABASE_MANAGEMENT_TOKEN` in the Vercel production environment only;
+- the source-controlled project allowlist matches `fjplmxfcshhbmzgvyqlm`;
+- one bounded preflight/list operation succeeds without applying a migration.
+
+Do not substitute `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`: those are Data API/database service credentials, not Management API credentials. Do not expose the Management token to the browser or runtime agents. If Supabase does not expose the official migrations endpoint to the account/project, the Console must remain fail-closed rather than falling back to generic SQL execution.
+
 ## Operational GitHub alerts
 
 Ready only when all of these are true:
