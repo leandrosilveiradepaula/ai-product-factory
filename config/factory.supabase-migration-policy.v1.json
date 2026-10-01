@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "enabled": true,
+  "required_checks": [
+    "test",
+    "factory-acceptance"
+  ],
+  "max_migration_bytes": 1048576,
+  "projects": {
+    "ai-product-factory": {
+      "repository": "leandrosilveiradepaula/ai-product-factory",
+      "supabase_project_ref": "fjplmxfcshhbmzgvyqlm",
+      "migration_path_prefix": "supabase/migrations/"
+    }
+  }
+}

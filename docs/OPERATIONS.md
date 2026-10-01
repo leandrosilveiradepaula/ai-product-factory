@@ -61,6 +61,23 @@ The Console records a durable pre-merge audit event before invoking GitHub. Succ
 
 Missing token, non-production environment, non-admin operator, repository outside the source-controlled allowlist, stale SHA, draft/closed/non-mergeable PR, or any Control Plane mismatch fails closed.
 
+## Console human migration action
+
+Production database migrations may be applied from the authenticated Factory Console only as an explicit human action on a pending durable gate whose metadata declares `requested_action=apply_control_plane_migration`.
+
+Activation requirements:
+- production Console only;
+- active Console admin;
+- dedicated `FACTORY_SUPABASE_MANAGEMENT_TOKEN` stored only in the Vercel production server environment;
+- existing `FACTORY_RELEASE_GITHUB_TOKEN` for read/revalidation of the exact PR and migration file;
+- project/repository/ref allowlist in `config/factory.supabase-migration-policy.v1.json`.
+
+Before applying, the Console revalidates pending gate/run/task state, exact candidate SHA, open non-draft PR targeting `main`, required green checks, the strict `supabase/migrations/<timestamp>_<name>.sql` path, migration name/file consistency, bounded file size, and the source-controlled Supabase project ref. SQL is fetched from GitHub at the exact candidate SHA; the browser cannot submit arbitrary SQL.
+
+The Console uses the Supabase Management API migrations endpoint. It lists migration history first for idempotency, applies only when absent, verifies the migration appears afterward, records requested/succeeded/failed audit events, and resolves the human gate only after success. If the account does not expose the official migrations endpoint, the action fails closed; do not fall back to a generic SQL endpoint.
+
+The Management token is never exposed to browser code, Python runtime workers, agents or generated repositories. There is no scheduled/automatic migration apply path.
+
 ## Primary model activation
 
 `product` and `direct` are fail-closed inside the Python runtime itself. They require all of:
