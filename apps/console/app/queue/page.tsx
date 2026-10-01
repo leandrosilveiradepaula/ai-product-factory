@@ -9,7 +9,7 @@ export default async function Queue(){
  const executing=items.filter(x=>["running","implementing"].includes(x.status)).length;
  const queued=items.filter(x=>["queued","queued_execution","dispatching"].includes(x.status)).length;
  return <>
-  <PageHeader eyebrow="Backlog ativo · despacho autônomo" title="Fila de trabalho" subtitle="Priorização, despacho e estado operacional do backlog executável da Factory." actions={<ActionLink href="/projects/new" variant="primary">+ Novo trabalho</ActionLink>}/>
+  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Fila interna que a Factory administra automaticamente. Consulte quando quiser entender o que está esperando, executando ou bloqueado." actions={<ActionLink href="/projects/new" variant="primary">+ Novo trabalho</ActionLink>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Total na fila</span><strong>{items.length}</strong><small>backlog carregado</small></div>
    <div className="operationalStat"><span>Em execução</span><strong>{executing}</strong><small>workers ativos</small></div>
@@ -33,7 +33,7 @@ export default async function Queue(){
 
   <div className="overviewGrid section">
    <div className="card">
-    <div className="panelHeading"><strong>Status de execução</strong><StatusPill status="active" label="política ativa"/></div>
+    <div className="panelHeading"><strong>Como a Factory escolhe a execução</strong><StatusPill status="active" label="política ativa"/></div>
     <div className="compactList">
      <div className="compactRow"><span>Ferramenta determinística</span><span className="muted">preferida</span></div>
      <div className="compactRow"><span>Executor direto</span><span className="muted">padrão com IA</span></div>
