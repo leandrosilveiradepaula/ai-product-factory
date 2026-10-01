@@ -168,6 +168,23 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("operator_allowed_repositories", (ROOT / "config/factory.release-policy.v1.json").read_text())
         self.assertIn("human_release.console_merge_requested", console_release)
 
+    def test_cross_repo_followups_bind_environment_secret_scope(self):
+        workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+        jobs = (
+            "ci-followup",
+            "specialist-security",
+            "specialist-qa",
+            "specialist-operations",
+            "preview",
+            "release-followup",
+        )
+        for job in jobs:
+            start = workflow.index(f"\n  {job}:")
+            next_job = workflow.find("\n  ", start + 4)
+            block = workflow[start: next_job if next_job != -1 else len(workflow)]
+            self.assertIn("environment: openai-api", block, job)
+            self.assertIn("FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}", block, job)
+
     def test_paid_and_codex_paths_remain_explicitly_fail_closed(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         runtime = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
