@@ -13,6 +13,11 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
  if(!intake)return <><PageHeader eyebrow="Novo trabalho" title="Entrada inválida" subtitle="O conteúdo da entrada não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
  return <>
   <PageHeader eyebrow="Revisar entrada" title={intake.name} subtitle={intake.mode==="existing"?"A Factory vai registrar o briefing e iniciar uma reconciliação antes de decidir de onde continuar.":"Ao iniciar, a Factory persiste o produto, cria o ciclo inicial e abre o estágio de descoberta no Painel de Controle."}/>
+  <div className="gettingStarted" aria-label="Etapas para iniciar um projeto">
+   <div className="guideStep done"><span className="guideStepNumber">1</span><strong>Descreva o projeto</strong><p>Briefing recebido e preservado.</p></div>
+   <div className="guideStep current"><span className="guideStepNumber">2</span><strong>Revise o briefing</strong><p>Confira o resumo abaixo. Você ainda pode editar antes de iniciar qualquer ciclo.</p></div>
+   <div className="guideStep"><span className="guideStepNumber">3</span><strong>Acompanhe a execução</strong><p>Depois de iniciar, a Factory assume o fluxo e só pede sua intervenção quando necessário.</p></div>
+  </div>
   <div className="card" style={{maxWidth:860}}>
    <div className="detailGrid">
     <div className="detailItem"><span className="detailLabel">Modo</span><strong>{intake.mode==="greenfield"?"Novo produto":"Projeto em andamento"}</strong></div>
