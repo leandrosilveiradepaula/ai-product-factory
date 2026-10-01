@@ -32,7 +32,7 @@ export default async function Orchestration(){
  const ready=data.releases.filter(x=>x.status==="ready_for_human_release");
  return <>
   <PageHeader eyebrow="Orquestração adaptativa" title="Operação da Factory"
-   subtitle="Portfólio, incidentes, repairs, replay e prontidão de release explicados a partir do estado real do Control Plane."/>
+   subtitle="Visão técnica do motor da Factory: prioridades, incidentes, ciclos de reparo, reexecuções de análise e prontidão para liberação."/>
   <div className="grid compact">
    <MetricCard label="Projetos no portfólio" value={data.projects.length} note={data.projects.filter(x=>x.paused).length+" pausados"}/>
    <MetricCard label="Incidentes ativos" value={data.incidents.length} note={urgent.length+" P0/P1"}/>
@@ -41,7 +41,7 @@ export default async function Orchestration(){
   </div>
 
   <section className="section">
-   <SectionHeader title="Portfólio e prioridade" action={<span className="muted">novos dispatches respeitam esta ordem</span>}/>
+   <SectionHeader title="Portfólio e prioridade" action={<span className="muted">novos trabalhos respeitam esta ordem</span>}/>
    {data.projects.length===0?<EmptyState>Nenhum projeto ativo.</EmptyState>:<div className="table">
     <div className="tableRow tableHeader"><span>Projeto</span><span>Prioridade</span><span>Prazo / impacto</span><span>Capacidade</span></div>
     {data.projects.map(p=><Link href={"/projects/"+p.projectKey} className="tableRow" key={p.projectId}>
@@ -65,7 +65,7 @@ export default async function Orchestration(){
   </section>
 
   <section className="section">
-   <SectionHeader title="Repair loops" action={<span className="muted">Security/QA continuam independentes</span>}/>
+   <SectionHeader title="Ciclos automáticos de reparo" action={<span className="muted">Security/QA continuam independentes</span>}/>
    {data.repairs.length===0?<EmptyState>Nenhum reparo automático ativo.</EmptyState>:<div className="table">
     <div className="tableRow tableHeader"><span>Projeto / origem</span><span>Ciclo</span><span>Estado</span><span>Próxima ação</span></div>
     {data.repairs.map(r=><div className="tableRow" key={r.id}>
@@ -89,7 +89,7 @@ export default async function Orchestration(){
   </section>
 
   <section className="section">
-   <SectionHeader title="Replay e aprendizado" action={<span className="muted">sempre zero-effect</span>}/>
+   <SectionHeader title="Reanálise e aprendizado" action={<span className="muted">sempre zero-effect</span>}/>
    <div className="twoCol">
     <div className="card"><span className="detailLabel">Replay / Shadow recentes</span>
      {data.replays.length===0?<p className="muted">Nenhum replay registrado.</p>:<div className="valueList">{data.replays.slice(0,10).map(r=><div className="valueRow" key={r.id}><div><strong>{r.mode}</strong><div className="muted mono">run {r.sourceRunId.slice(0,8)}</div></div><span>{r.effect} · modelo {r.modelCallsAllowed?"permitido":"desativado"}</span></div>)}</div>}
