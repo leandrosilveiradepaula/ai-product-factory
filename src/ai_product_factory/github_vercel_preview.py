@@ -45,6 +45,7 @@ class GitHubVercelPreviewAdapter:
         config.validate()
         self.config=config
         self.sleeper=sleeper or time.sleep
+        self.checks_forbidden=False
 
     def _get_json(self,url:str)->Any:
         req=urllib.request.Request(url,method="GET",headers={
@@ -63,7 +64,9 @@ class GitHubVercelPreviewAdapter:
         except urllib.error.HTTPError as exc:
             if exc.code!=403:
                 raise RuntimeError(f"GitHub Vercel check discovery failed ({exc.code})") from exc
+            self.checks_forbidden=True
             return []
+        self.checks_forbidden=False
         return list(payload.get("check_runs") or [])
 
     def _statuses(self,sha:str)->list[dict[str,Any]]:
@@ -134,7 +137,7 @@ class GitHubVercelPreviewAdapter:
             if completed and all(str(row.get("conclusion") or "").lower() in {"failure","cancelled","canceled","timed_out","action_required"} for row in completed):
                 return DeploymentResult(self.name,request_.environment,"failure",str(completed[0].get("id") or "vercel-check"),None)
 
-            if not checks:
+            if self.checks_forbidden:
                 statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
                 preview_url=self._comment_preview_url(comments)
                 for row in statuses:
