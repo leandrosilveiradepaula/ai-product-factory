@@ -43,11 +43,21 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
     </Link>
    </div>
    <div className="workspacePicker"><span className="workspaceGlyph">▦</span><span>Infodive / Autônomos</span></div>
-   <ConsoleNav/>
-   <div className="sidebarFooter">
-    <div className="sidebarHealth"><span>AI Product Factory</span></div>
-    <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
+   <div className="desktopSidebarContent">
+    <ConsoleNav/>
+    <div className="sidebarFooter">
+     <div className="sidebarHealth"><span>AI Product Factory</span></div>
+     <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
+    </div>
    </div>
+   <details className="mobileNav">
+    <summary><span>Menu</span><span className="mobileNavHint">{context.area} / {context.screen}</span></summary>
+    <div className="mobileNavBody">
+     <Link href="/projects/new" className="mobileNewProject">+ Novo projeto</Link>
+     <ConsoleNav/>
+     <div className="mobileNavFooter"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
+    </div>
+   </details>
   </aside>
   <div className="workspace">
    <header className="topbar">
