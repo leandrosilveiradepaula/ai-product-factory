@@ -54,6 +54,18 @@ For repositories outside the Factory repository, the runtime must not assume tha
 
 The fine-grained fallback requires repository permissions that expose Actions read and Commit statuses read. Do not widen a token to classic `repo` merely to recover the Checks API. Project onboarding/readiness should verify the capabilities actually available to the selected credential.
 
+## Console release credential preflight
+
+The production Console uses `FACTORY_RELEASE_GITHUB_TOKEN` only for the explicit human merge path. Before rendering **Fazer merge em produção**, the Console performs a safe GET of the exact pull request using that dedicated credential.
+
+- HTTP 404 is treated as the credential not seeing the repository or PR.
+- HTTP 403 is treated as insufficient read permission.
+- HTTP 401 is treated as a rejected/invalid credential.
+- No mutation is performed by this preflight.
+- The actual merge still happens only after the human confirmation click.
+- For a fine-grained PAT, GitHub's merge endpoint requires repository `Contents: write`; reading the PR also requires the token to include the target repository and appropriate pull-request read access.
+- The release credential remains separate from runtime delivery credentials and is never exposed to generated code, agents, or the browser.
+
 ## Required release sequence
 
 1. Implementation opens a PR; production is not touched.
