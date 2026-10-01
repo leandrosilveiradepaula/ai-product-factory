@@ -150,15 +150,22 @@ export type OperationsHealth={expiredLeases:number;deadLetterRuns:number;failedR
 export async function getOperationsHealth():Promise<OperationsHealth>{
  await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{expiredLeases:0,deadLetterRuns:0,failedRuns:0,queuedRuns:0,knownCost:0,unknownCostEvents:0,incidents:[]};
  const [runsResponse,usageResponse]=await Promise.all([
-  fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200`,{headers:cfg.headers,cache:"no-store"}),
   fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=tool_family,estimated_cost,created_at&order=created_at.desc&limit=1000`,{headers:cfg.headers,cache:"no-store"})
  ]);
  if(!runsResponse.ok)throw new Error("Unable to load operational health");
  const runs=await runsResponse.json();const usage=usageResponse.ok?await usageResponse.json():[];const now=Date.now();
+ const failedTaskIds=[...new Set(runs.filter((x:any)=>x.status==="failed"&&x.task_id).map((x:any)=>String(x.task_id)))];
+ const failedTaskStatus=new Map<string,string>();
+ if(failedTaskIds.length){
+  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,status&id=in.(${failedTaskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(tasksResponse.ok){const tasks=await tasksResponse.json();tasks.forEach((x:any)=>failedTaskStatus.set(String(x.id),String(x.status||"")));}
+ }
  const expired=(x:any)=>x.lease_expires_at&&Date.parse(x.lease_expires_at)<now&&["running","implementing"].includes(x.status);
- const dead=(x:any)=>x.status==="failed"&&String(x.last_error||"").includes("maximum attempts");
- const incidents=runs.filter((x:any)=>expired(x)||dead(x)||x.status==="failed").map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
- const paidFamilies=new Set(["model","openai","llm","paid_provider"]);return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter((x:any)=>x.status==="failed").length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,incidents};
+ const dead=(x:any)=>x.status==="failed"&&String(x.last_error||"").toLowerCase().includes("maximum attempts");
+ const actionableFailed=(x:any)=>x.status==="failed"&&failedTaskStatus.get(String(x.task_id||""))==="failed";
+ const incidents=runs.filter((x:any)=>expired(x)||dead(x)||actionableFailed(x)).map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
+ const paidFamilies=new Set(["model","openai","llm","paid_provider"]);return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter(actionableFailed).length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,incidents};
 }
 
 
