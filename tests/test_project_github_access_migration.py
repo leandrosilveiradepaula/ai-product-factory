@@ -23,8 +23,9 @@ class Tests(unittest.TestCase):
         lines=[line.strip() for line in SQL.read_text().splitlines()]
         self.assertNotIn("as $",lines)
         self.assertNotIn("$;",lines)
-        self.assertEqual(lines.count("as $"),2)
-        self.assertEqual(lines.count("$;"),2)
+        pair="$"*2
+        self.assertEqual(lines.count("as "+pair),2)
+        self.assertEqual(lines.count(pair+";"),2)
 
 if __name__=="__main__":
     unittest.main()
