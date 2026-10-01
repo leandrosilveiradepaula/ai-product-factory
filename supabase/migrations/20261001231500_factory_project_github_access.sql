@@ -32,6 +32,46 @@ from public.factory_projects
 where repository is not null and btrim(repository)<>''
 on conflict (project_id) do nothing;
 
+create or replace function public.factory_seed_project_github_access()
+returns trigger
+language plpgsql
+security invoker
+set search_path=''
+as $
+begin
+  if new.repository is not null and btrim(new.repository)<>'' then
+    insert into public.factory_project_github_access(project_id,repository,auth_mode,status)
+    values(
+      new.id,
+      btrim(new.repository),
+      case when btrim(new.repository)='leandrosilveiradepaula/ai-product-factory'
+           then 'native_github_token' else 'fine_grained_pat' end,
+      'unverified'
+    )
+    on conflict(project_id) do update set
+      repository=excluded.repository,
+      auth_mode=case
+        when public.factory_project_github_access.auth_mode='github_app' then 'github_app'
+        else excluded.auth_mode
+      end,
+      status=case
+        when public.factory_project_github_access.repository is distinct from excluded.repository then 'stale'
+        else public.factory_project_github_access.status
+      end,
+      updated_at=now();
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists trg_factory_seed_project_github_access on public.factory_projects;
+create trigger trg_factory_seed_project_github_access
+after insert or update of repository on public.factory_projects
+for each row execute function public.factory_seed_project_github_access();
+
+revoke all on function public.factory_seed_project_github_access() from public,anon,authenticated;
+grant execute on function public.factory_seed_project_github_access() to service_role;
+
 create or replace function public.factory_record_project_github_access(
   p_project_id uuid,
   p_repository text,
