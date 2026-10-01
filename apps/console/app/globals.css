@@ -630,3 +630,22 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
  .main .tableRow{font-size:12px}
  .main .cardMeta,.main .timelineMeta,.main .metricNote{font-size:12px}
 }
+
+
+/* Accessible interaction states (#511). */
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{
+ outline:2px solid #8daefb;
+ outline-offset:3px;
+}
+.main .projectCard:focus-visible,.main .guideStepLink:focus-visible,.main .operationalStatLink:focus-visible{
+ outline:2px solid #8daefb;
+ outline-offset:3px;
+}
+.projectTechnicalDetails>summary:focus-visible,.overviewActivityDetails>summary:focus-visible,.technicalDetails>summary:focus-visible,.mobileNav>summary:focus-visible{
+ outline:2px solid #8daefb;
+ outline-offset:-2px;
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+ .projectCard:hover,.projectCard:focus-visible,.guideStepLink:hover,.guideStepLink:focus-visible,.operationalStatLink:hover,.operationalStatLink:focus-visible{transform:none}
+}
