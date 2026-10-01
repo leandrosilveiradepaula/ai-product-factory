@@ -9,9 +9,9 @@ import {ConsoleNav} from "./nav";
 type RouteContext={area:string;screen:string;purpose:string;advanced?:boolean};
 function routeContext(pathname:string):RouteContext{
  if(pathname==="/")return{area:"Operação",screen:"Visão geral",purpose:"Comece aqui. Veja se existe alguma ação sua e acompanhe o estado geral da Factory."};
- if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo trabalho",purpose:"Use para criar um produto novo ou importar um projeto que já está em andamento."};
+ if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo projeto",purpose:"Use para criar um produto novo ou importar um projeto que já está em andamento."};
  if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Detalhes do projeto",purpose:"Esta é a tela principal de acompanhamento de um projeto. Veja a etapa atual e a próxima ação."};
- if(pathname==="/projects")return{area:"Projetos",screen:"Portfólio",purpose:"Use para escolher qual projeto acompanhar ou para iniciar um novo trabalho."};
+ if(pathname==="/projects")return{area:"Projetos",screen:"Portfólio",purpose:"Use para escolher qual projeto acompanhar ou para iniciar um novo projeto."};
  if(pathname.startsWith("/gates"))return{area:"Operação",screen:"Aprovações humanas",purpose:"Caixa de entrada das decisões que realmente precisam de você. Se estiver vazia, não há ação humana pendente."};
  if(pathname.startsWith("/runs"))return{area:"Diagnóstico",screen:"Execuções",purpose:"Tela avançada para inspecionar como uma tarefa foi executada. Não é uma etapa obrigatória do fluxo.",advanced:true};
  if(pathname.startsWith("/queue"))return{area:"Diagnóstico",screen:"Fila de trabalho",purpose:"Tela avançada para observar backlog, despacho e trabalhos em execução. A Factory gerencia esta fila automaticamente.",advanced:true};
@@ -52,7 +52,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   <div className="workspace">
    <header className="topbar">
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
-    <div className="topbarMeta"><span>Console</span><span className="topbarDivider"/><span>{environmentLabel}</span><Link href="/projects/new" className="topbarWork">+ Novo trabalho</Link></div>
+    <div className="topbarMeta"><span>Console</span><span className="topbarDivider"/><span>{environmentLabel}</span><Link href="/projects/new" className="topbarWork">+ Novo projeto</Link></div>
    </header>
    <main className="main">
     <div className={context.advanced?"screenGuide advanced":"screenGuide"}>

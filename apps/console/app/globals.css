@@ -512,3 +512,33 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .screenGuide.advanced strong{color:#9da3b5}
 .screenGuideLink{white-space:nowrap;font-size:12px;color:#adc6ff;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:700px){.screenGuide{align-items:flex-start;flex-direction:column}.screenGuideLink{white-space:normal}}
+
+
+/* Actionable information architecture (#490). */
+.screenGuide{padding:9px 12px;margin-bottom:16px}
+.screenGuide>div{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.screenGuide strong{font-size:11px}
+.screenGuide span{font-size:12px}
+.guideStepLink{cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}
+.guideStepLink:hover,.guideStepLink:focus-visible{border-color:#4d8eff;background:#1b2332;outline:none;transform:translateY(-1px)}
+.cardAction{display:block;margin-top:10px;color:#8daefb;font-size:12px;font-weight:700}
+.operationalStatLink{cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}
+.operationalStatLink:hover,.operationalStatLink:focus-visible{border-color:#4d8eff;background:#1c2230;outline:none;transform:translateY(-1px)}
+.technicalDetails{margin-top:10px;border:1px solid #262a34;background:#11151e}
+.technicalDetails summary{cursor:pointer;padding:10px 12px;color:#9da3b5;font-size:12px;font-weight:650;user-select:none}
+.technicalDetails summary:hover{color:#dfe2ef}
+.technicalStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;border-top:1px solid #262a34;background:#262a34}
+.technicalStats a{display:grid;gap:4px;padding:12px;background:#151923;transition:background .15s ease}
+.technicalStats a:hover,.technicalStats a:focus-visible{background:#1d2432;outline:none}
+.technicalStats span{font-size:10px;color:#7b8293;text-transform:uppercase;letter-spacing:.05em}
+.technicalStats strong{font-size:18px;color:#dfe2ef}
+.technicalStats small{font-size:11px;color:#8d93a4}
+.projectCard{position:relative;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}
+.projectCard:hover,.projectCard:focus-visible{border-color:#4d8eff;background:#1c2230;outline:none;transform:translateY(-1px)}
+.projectStageLabel{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0 7px;font-size:12px}
+.projectStageLabel span{color:#8d93a4}
+.projectStageLabel strong{color:#dfe2ef}
+.projectCardFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:2px}
+.projectCardFooter .cardAction{margin-top:0;white-space:nowrap}
+@media(max-width:900px){.technicalStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.screenGuide>div{display:grid;gap:3px}.projectCardFooter{align-items:flex-start;flex-direction:column}.technicalStats{grid-template-columns:1fr}}
