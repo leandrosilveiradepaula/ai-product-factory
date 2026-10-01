@@ -180,7 +180,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         )
         for job in jobs:
             match = re.search(
-                rf"\\n  {re.escape(job)}:\\n(?P<body>.*?)(?=\\n  [A-Za-z0-9_-]+:|\\Z)",
+                rf"\n  {re.escape(job)}:\n(?P<body>.*?)(?=\n  [A-Za-z0-9_-]+:|\Z)",
                 workflow,
                 re.S,
             )
