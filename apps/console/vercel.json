@@ -7,5 +7,5 @@
       "preview/**": true
     }
   },
-  "ignoreCommand": "case \"$VERCEL_GIT_COMMIT_REF\" in preview/*) exit 1 ;; *) git diff --quiet HEAD^ HEAD ./ ;; esac"
+  "ignoreCommand": "case \"$VERCEL_GIT_COMMIT_REF\" in preview/*) exit 1 ;; *) git diff --quiet HEAD^ HEAD ./ ../../config/factory.release-policy.v1.json ;; esac"
 }
