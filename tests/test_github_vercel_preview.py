@@ -59,38 +59,49 @@ class Tests(unittest.TestCase):
             out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
         self.assertEqual(out.status,"success")
 
-    def test_falls_back_to_vercel_commit_status_when_checks_are_forbidden(self):
+    def test_falls_back_to_status_and_vercel_comment_when_checks_are_forbidden(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=2,poll_interval_seconds=0,pull_request_number=42)
+        comments=Response([{
+            "user":{"login":"vercel[bot]"},
+            "body":"| Deployment | Actions |\n| [Ready](https://vercel.com/team/project/deployments/demo-abc) | [Preview](https://demo-abc.vercel.app) |",
+        }])
         status=Response({"statuses":[{
             "id":77,"context":"Vercel","state":"success",
             "target_url":"https://vercel.com/team/project/deployments/demo-abc",
             "description":"Deployment has completed",
         }]})
         def fake_urlopen(req,timeout=30):
+            if "/issues/42/comments" in req.full_url:
+                return comments
             if "/check-runs" in req.full_url:
                 raise urllib.error.HTTPError(req.full_url,403,"forbidden",None,None)
             if req.full_url.endswith("/status"):
                 return status
             raise AssertionError(req.full_url)
         with patch("urllib.request.urlopen",side_effect=fake_urlopen):
-            out=GitHubVercelPreviewAdapter(self.config(),sleeper=lambda _:None).deploy(request())
+            out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
         self.assertEqual(out.status,"success")
         self.assertEqual(out.preview_url,"https://demo-abc.vercel.app")
         self.assertEqual(out.deployment_ref,"vercel-status-77")
 
     def test_vercel_commit_status_failure_is_terminal(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0,pull_request_number=42)
+        comments=Response([{"user":{"login":"vercel[bot]"},"body":"Deployment failed"}])
         status=Response({"statuses":[{
             "id":78,"context":"Vercel","state":"failure",
             "target_url":"https://vercel.com/team/project/deployments/demo-failed",
             "description":"Deployment failed",
         }]})
         def fake_urlopen(req,timeout=30):
+            if "/issues/42/comments" in req.full_url:
+                return comments
             if "/check-runs" in req.full_url:
                 raise urllib.error.HTTPError(req.full_url,403,"forbidden",None,None)
             if req.full_url.endswith("/status"):
                 return status
             raise AssertionError(req.full_url)
         with patch("urllib.request.urlopen",side_effect=fake_urlopen):
-            out=GitHubVercelPreviewAdapter(self.config(),sleeper=lambda _:None).deploy(request())
+            out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
         self.assertEqual(out.status,"failure")
         self.assertEqual(out.deployment_ref,"vercel-status-78")
 
