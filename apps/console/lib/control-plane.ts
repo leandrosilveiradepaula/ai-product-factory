@@ -192,15 +192,26 @@ export async function getOperationsHealth():Promise<OperationsHealth>{
 export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string};
 export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
  await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
- const response=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ const response=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,parent_task_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
  if(!response.ok)throw new Error("Unable to load work queue");
- const rows=await response.json();const projectIds=[...new Set(rows.map((x:any)=>String(x.project_id)).filter(Boolean))];
+ const rows=await response.json();
+ const parentIds=[...new Set(rows.map((x:any)=>String(x.parent_task_id||"")).filter(Boolean))];
+ const completedParents=new Set<string>();
+ if(parentIds.length){
+  const parentsResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,status&id=in.(${parentIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(parentsResponse.ok){
+   const parents=await parentsResponse.json();
+   parents.filter((x:any)=>String(x.status)==="completed").forEach((x:any)=>completedParents.add(String(x.id)));
+  }
+ }
+ const activeRows=rows.filter((x:any)=>!x.parent_task_id||!completedParents.has(String(x.parent_task_id)));
+ const projectIds=[...new Set(activeRows.map((x:any)=>String(x.project_id)).filter(Boolean))];
  let projects=new Map<string,{key:string;name:string}>();
  if(projectIds.length){
   const p=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
   if(p.ok){const values=await p.json();projects=new Map(values.map((x:any)=>[String(x.id),{key:String(x.project_key),name:String(x.name)}]));}
  }
- return rows.map((x:any)=>{const p=projects.get(String(x.project_id));return{id:String(x.id),title:String(x.title),status:String(x.status),complexity:String(x.complexity),externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),projectKey:p?.key||"unknown",projectName:p?.name||"Unknown project"};});
+ return activeRows.map((x:any)=>{const p=projects.get(String(x.project_id));return{id:String(x.id),title:String(x.title),status:String(x.status),complexity:String(x.complexity),externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),projectKey:p?.key||"unknown",projectName:p?.name||"Unknown project"};});
 }
 
 export type EvaluationRow={id:string;runId:string;type:string;status:string;score:number|null;baselineRef:string|null;createdAt:string;taskTitle:string;projectKey:string;projectName:string};
