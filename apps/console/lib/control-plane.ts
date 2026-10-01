@@ -30,7 +30,7 @@ export async function getDashboard():Promise<Dashboard>{
  };
 }
 export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
-export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null};
 
 function serverHeaders(){return getSupabaseServerConfig();}
 
@@ -52,9 +52,22 @@ export async function getRuns(limit=50):Promise<RunSummary[]>{
 export async function getHumanGates(limit=50):Promise<GateSummary[]>{
  await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)return [];
- const response=await fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
- if(!response.ok)throw new Error("Unable to load human gates");
- const rows=await response.json();
+ const [gatesResponse,releasesResponse]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_release_reports?select=id,run_id,status,candidate_commit,report,created_at&status=eq.ready_for_human_release&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"})
+ ]);
+ if(!gatesResponse.ok)throw new Error("Unable to load human gates");
+ if(!releasesResponse.ok)throw new Error("Unable to load release gates");
+ const gateRows=await gatesResponse.json();
+ const releaseRows=await releasesResponse.json();
+ const rows=[
+  ...gateRows.map((x:any)=>({...x,source:"human_gate",candidate_commit:null})),
+  ...releaseRows.map((x:any)=>({
+   id:`release:${x.id}`,run_id:x.run_id,gate_type:"production_release",status:"pending",
+   reasons:["Liberação de produção pronta; o merge deve ser realizado por uma pessoa no GitHub."],
+   requested_at:x.created_at,source:"release_report",candidate_commit:x.candidate_commit,
+  })),
+ ].sort((a:any,b:any)=>Date.parse(String(b.requested_at))-Date.parse(String(a.requested_at))).slice(0,limit);
  const runIds=[...new Set(rows.map((x:any)=>String(x.run_id||"")).filter(Boolean))];
  const runMap=new Map<string,string>();const taskMap=new Map<string,{title:string;projectId:string}>();const projectMap=new Map<string,{key:string;name:string}>();
  if(runIds.length){
@@ -73,9 +86,8 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
      }
     }
    }
-  }
  }
- return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null};});
+ return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source:x.source==="release_report"?"release_report":"human_gate",candidateCommit:x.candidate_commit?String(x.candidate_commit):null};});
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
