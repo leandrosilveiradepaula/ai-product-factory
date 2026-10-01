@@ -39,7 +39,7 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         text=MODULE.read_text()
         checks=text.index("/check-runs")
         contents=text.index("/contents/")
-        apply_call=text.index("/database/migrations",text.index("async function applyMigration"))
+        apply_call=text.index("await applyMigration(configured.supabase_project_ref")
         self.assertLess(checks,contents)
         self.assertLess(contents,apply_call)
         self.assertIn("required_checks",POLICY.read_text())
