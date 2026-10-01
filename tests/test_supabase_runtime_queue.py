@@ -91,6 +91,18 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertNotIn(b"secret",req.data)
 
 
+    def test_terminal_descendant_reconciliation_uses_dedicated_rpc(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        payload={"completed_children":2,"cancelled_children":3,"superseded_change_sets":1}
+        with patch("urllib.request.urlopen",return_value=Response(payload)) as call:
+            out=q.reconcile_terminal_descendants()
+        self.assertEqual(out,payload)
+        req=call.call_args.args[0]
+        self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_reconcile_terminal_task_descendants"))
+        self.assertEqual(json.loads(req.data.decode()),{})
+        self.assertNotIn(b"secret",req.data)
+
+
     def test_planning_stage_persists_execution_team_plan(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{})

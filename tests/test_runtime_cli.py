@@ -153,6 +153,7 @@ class RuntimeCliTests(unittest.TestCase):
         queue=MagicMock()
         queue.recover_expired.return_value={"requeued":0,"failed":0}
         queue.resume_resolved_decisions.return_value={"created":1,"existing":0,"blocked":0}
+        queue.reconcile_terminal_descendants.return_value={"completed_children":1,"cancelled_children":2,"superseded_change_sets":1}
         agents=MagicMock();agents.recover_expired.return_value={"requeued":0}
         lanes=MagicMock();lanes.recover_expired.return_value={"requeued":0}
         change_sets=MagicMock();change_sets.recover_expired.return_value={"requeued":0}
@@ -163,8 +164,10 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as provider:
             out=run_recovery_once(3)
         self.assertEqual(out["decisions"]["created"],1)
+        self.assertEqual(out["descendants"]["cancelled_children"],2)
         queue.recover_expired.assert_called_once_with(3)
         queue.resume_resolved_decisions.assert_called_once_with()
+        queue.reconcile_terminal_descendants.assert_called_once_with()
         provider.assert_not_called()
 
     def test_retry_mode_is_model_free_and_delegates_to_queue(self):
