@@ -331,8 +331,9 @@ def run_release_once()->dict:
   metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
  )
  SupabaseReleasePolicyStore().mark_released(item.run_id,merge_sha)
+ change_set=SupabaseChangeSetStore().finalize_released_run(item.run_id,merge_sha)
  SupabaseAgentScheduler().release_scopes(item.run_id)
- return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha}
+ return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,"change_set":change_set}
 
 def run_retry_once(source_run_id:str,reason:str)->dict:
  if not source_run_id.strip():raise ValueError("source run id is required")
