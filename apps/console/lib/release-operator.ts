@@ -72,10 +72,8 @@ export async function mergeReadyReleaseFromConsole(runId:string,expectedCandidat
  if(candidate!==expectedCandidate)throw new Error("O candidato mudou desde a abertura da tela. Atualize antes de continuar.");
 
  const [runs,projects]=await Promise.all([
-  controlPlaneJson("factory_runs?select=id,task_id,status&run_id=eq."+encodeURIComponent(runId)+"&limit=1").catch(async()=>{
-   return controlPlaneJson("factory_runs?select=id,task_id,status&id=eq."+encodeURIComponent(runId)+"&limit=1");
-  }),
-  controlPlaneJson("factory_projects?select=id,repository&" + "id=eq."+encodeURIComponent(String(report.project_id))+"&limit=1"),
+  controlPlaneJson("factory_runs?select=id,task_id,status&id=eq."+encodeURIComponent(runId)+"&limit=1"),
+  controlPlaneJson("factory_projects?select=id,repository&id=eq."+encodeURIComponent(String(report.project_id))+"&limit=1"),
  ]) as [any[],any[]];
  const run=runs[0];const project=projects[0];
  if(!run||String(run.status)!=="awaiting_release")throw new Error("A execução não está em awaiting_release.");
