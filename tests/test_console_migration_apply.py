@@ -25,8 +25,11 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
             "metadata.decision_only!==true",
             "metadata.automatic_apply!==false",
             "candidate!==expectedCandidate",
-            'String(pr.state)!=="open"',
+            'prState==="open"',
+            'prState==="closed"',
             "Boolean(pr.draft)",
+            "prMerged",
+            "merge_commit_sha",
             'String(pr.base?.ref)!=="main"',
             "String(pr.head?.sha)!==candidate",
             "MIGRATION_PATH_RE",
@@ -34,6 +37,14 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
             "/contents/",
         ):
             self.assertIn(marker,text)
+
+    def test_merged_pr_recovery_is_fail_closed_for_closed_unmerged_prs(self):
+        text=MODULE.read_text()
+        self.assertIn('if(!prMerged||!String(pr.merge_commit_sha||"").match(SHA_RE))',text)
+        self.assertIn('throw new Error("PR da migration foi fechado sem merge.")',text)
+        self.assertIn('String(pr.head?.sha)!==candidate',text)
+        self.assertIn('pr_state:prState',text)
+        self.assertIn('pr_merged:prMerged',text)
 
     def test_checks_are_revalidated_before_fetching_and_applying_sql(self):
         text=MODULE.read_text()

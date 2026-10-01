@@ -182,7 +182,15 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  });
  if(!prResponse.ok)throw new Error("Não foi possível revalidar o PR da migration.");
  const pr=await prResponse.json();
- if(String(pr.state)!=="open"||Boolean(pr.draft))throw new Error("PR da migration não está aberto e pronto.");
+ const prState=String(pr.state||"");
+ const prMerged=Boolean(pr.merged_at)||Boolean(pr.merged);
+ if(prState==="open"){
+  if(Boolean(pr.draft))throw new Error("PR da migration ainda está em draft.");
+ }else if(prState==="closed"){
+  if(!prMerged||!String(pr.merge_commit_sha||"").match(SHA_RE))throw new Error("PR da migration foi fechado sem merge.");
+ }else{
+  throw new Error("Estado do PR da migration não é elegível.");
+ }
  if(String(pr.base?.ref)!=="main"||String(pr.base?.repo?.full_name)!==repository)throw new Error("Base do PR da migration é divergente.");
  if(String(pr.head?.repo?.full_name)!==repository)throw new Error("Migration de fork não é permitida.");
  if(String(pr.head?.sha)!==candidate)throw new Error("SHA do PR diverge do candidato validado.");
@@ -211,6 +219,7 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  const actorRef=operator.email||operator.userId;
  const auditBase={
   repository,pr_number:prNumber,candidate_commit:candidate,
+  pr_state:prState,pr_merged:prMerged,merge_commit_sha:prMerged?String(pr.merge_commit_sha||""):null,
   migration_name:migrationName,migration_file:migrationFile,
   supabase_project_ref:configured.supabase_project_ref,
  };
