@@ -419,7 +419,8 @@ class RuntimeCliTests(unittest.TestCase):
         pr=SimpleNamespace(number=9,head_sha="abc")
         github.get_issue.return_value=issue
         github.get_pull_request.return_value=pr
-        store=MagicMock();trace=MagicMock();policy=MagicMock()
+        store=MagicMock();trace=MagicMock();policy=MagicMock();change_sets=MagicMock()
+        change_sets.finalize_released_run.return_value={"matched":True,"change_set_id":"cs","status":"completed","idempotent":False}
         loop=MagicMock();loop.observe_manual_merge.return_value="merge123"
         with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
@@ -427,12 +428,15 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
              patch("ai_product_factory.runtime_cli.SupabaseReleasePolicyStore",return_value=policy), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=change_sets), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler:
             out=run_release_once()
         self.assertEqual(out["status"],"merged")
         self.assertEqual(out["merge_sha"],"merge123")
+        self.assertEqual(out["change_set"]["status"],"completed")
         self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"human_release")
         policy.mark_released.assert_called_once_with("r","merge123")
+        change_sets.finalize_released_run.assert_called_once_with("r","merge123")
         github.merge_pull_request.assert_not_called()
     def test_direct_failure_releases_agent_assignment_and_scope(self):
         item=SimpleNamespace(run_id="r",task_id="t",project_key="demo",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",human_gate_required=False)

@@ -30,7 +30,7 @@ export async function getDashboard():Promise<Dashboard>{
  };
 }
 export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
-export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null;actionUrl:string|null;actionLabel:string|null};
 
 function serverHeaders(){return getSupabaseServerConfig();}
 
@@ -52,9 +52,24 @@ export async function getRuns(limit=50):Promise<RunSummary[]>{
 export async function getHumanGates(limit=50):Promise<GateSummary[]>{
  await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)return [];
- const response=await fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
- if(!response.ok)throw new Error("Unable to load human gates");
- const rows=await response.json();
+ const [gatesResponse,releasesResponse]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_release_reports?select=id,run_id,status,candidate_commit,report,created_at&status=eq.ready_for_human_release&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"})
+ ]);
+ if(!gatesResponse.ok)throw new Error("Unable to load human gates");
+ if(!releasesResponse.ok)throw new Error("Unable to load release gates");
+ const gateRows=await gatesResponse.json();
+ const releaseRows=await releasesResponse.json();
+ const rows=[
+  ...gateRows.map((x:any)=>({...x,source:"human_gate",candidate_commit:null})),
+  ...releaseRows.map((x:any)=>({
+   id:`release:${x.id}`,run_id:x.run_id,gate_type:"production_release",status:"pending",
+   reasons:["Liberação de produção pronta; o merge deve ser realizado por uma pessoa no GitHub."],
+   requested_at:x.created_at,source:"release_report",candidate_commit:x.candidate_commit,
+   action_url:typeof x.report?.pr_url==="string"?x.report.pr_url:null,
+   action_label:typeof x.report?.pr_number==="number"?`Abrir PR #${x.report.pr_number} no GitHub`:"Abrir PR no GitHub",
+  })),
+ ].sort((a:any,b:any)=>Date.parse(String(b.requested_at))-Date.parse(String(a.requested_at))).slice(0,limit);
  const runIds=[...new Set(rows.map((x:any)=>String(x.run_id||"")).filter(Boolean))];
  const runMap=new Map<string,string>();const taskMap=new Map<string,{title:string;projectId:string}>();const projectMap=new Map<string,{key:string;name:string}>();
  if(runIds.length){
@@ -73,9 +88,9 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
      }
     }
    }
-  }
  }
- return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null};});
+}
+ return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source:x.source==="release_report"?"release_report":"human_gate",candidateCommit:x.candidate_commit?String(x.candidate_commit):null,actionUrl:x.action_url?String(x.action_url):null,actionLabel:x.action_label?String(x.action_label):null};});
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
@@ -192,15 +207,26 @@ export async function getOperationsHealth():Promise<OperationsHealth>{
 export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string};
 export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
  await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
- const response=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
+ const response=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,parent_task_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
  if(!response.ok)throw new Error("Unable to load work queue");
- const rows=await response.json();const projectIds=[...new Set(rows.map((x:any)=>String(x.project_id)).filter(Boolean))];
+ const rows=await response.json();
+ const parentIds=[...new Set(rows.map((x:any)=>String(x.parent_task_id||"")).filter(Boolean))];
+ const completedParents=new Set<string>();
+ if(parentIds.length){
+  const parentsResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,status&id=in.(${parentIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  if(parentsResponse.ok){
+   const parents=await parentsResponse.json();
+   parents.filter((x:any)=>String(x.status)==="completed").forEach((x:any)=>completedParents.add(String(x.id)));
+  }
+ }
+ const activeRows=rows.filter((x:any)=>!x.parent_task_id||!completedParents.has(String(x.parent_task_id)));
+ const projectIds=[...new Set(activeRows.map((x:any)=>String(x.project_id)).filter(Boolean))];
  let projects=new Map<string,{key:string;name:string}>();
  if(projectIds.length){
   const p=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
   if(p.ok){const values=await p.json();projects=new Map(values.map((x:any)=>[String(x.id),{key:String(x.project_key),name:String(x.name)}]));}
  }
- return rows.map((x:any)=>{const p=projects.get(String(x.project_id));return{id:String(x.id),title:String(x.title),status:String(x.status),complexity:String(x.complexity),externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),projectKey:p?.key||"unknown",projectName:p?.name||"Unknown project"};});
+ return activeRows.map((x:any)=>{const p=projects.get(String(x.project_id));return{id:String(x.id),title:String(x.title),status:String(x.status),complexity:String(x.complexity),externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),projectKey:p?.key||"unknown",projectName:p?.name||"Unknown project"};});
 }
 
 export type EvaluationRow={id:string;runId:string;type:string;status:string;score:number|null;baselineRef:string|null;createdAt:string;taskTitle:string;projectKey:string;projectName:string};
