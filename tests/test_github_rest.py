@@ -10,6 +10,9 @@ class FakeGitHubTransport:
     def __init__(self):
         self.calls = []
         self.check_runs = [{"name": "test", "status": "completed", "conclusion": "success", "details_url": "https://example/check", "output": {}}]
+        self.check_runs_forbidden = False
+        self.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"success","html_url":"https://example/actions/1"}]
+        self.commit_statuses = [{"context":"Vercel","state":"success","target_url":"https://preview.example","description":"Deployment completed"}]
 
     def __call__(self, method, url, headers, body):
         payload = json.loads(body.decode()) if body else None
@@ -41,7 +44,13 @@ class FakeGitHubTransport:
         if "/pulls/9" in url and method == "GET":
             return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "codex/refactor", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main"}}
         if "/check-runs" in url and method == "GET":
+            if self.check_runs_forbidden:
+                return 403, {"message": "forbidden"}
             return 200, {"check_runs": self.check_runs}
+        if "/actions/runs?" in url and method == "GET":
+            return 200, {"workflow_runs": self.workflow_runs}
+        if "/commits/commit1/status" in url and method == "GET":
+            return 200, {"statuses": self.commit_statuses}
         if "/issues/5" in url and method == "PATCH":
             return 200, {"number": 5, "state": "closed"}
         return 500, {"message": "unexpected"}
@@ -88,6 +97,26 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
         self.transport.check_runs = [{"status": "completed", "conclusion": "failure"}]
         self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+
+    def test_fine_grained_ci_fallback_uses_actions_and_commit_statuses(self):
+        self.transport.check_runs_forbidden = True
+        self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
+        self.assertEqual(self.github.last_ci_evidence_source, "github_actions_statuses")
+        urls=[call[1] for call in self.transport.calls]
+        self.assertTrue(any("/actions/runs?" in url for url in urls))
+        self.assertTrue(any("/commits/commit1/status" in url for url in urls))
+
+    def test_fine_grained_ci_fallback_is_fail_closed_without_workflow_evidence(self):
+        self.transport.check_runs_forbidden = True
+        self.transport.workflow_runs = []
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+
+    def test_fine_grained_ci_fallback_reports_workflow_failure(self):
+        self.transport.check_runs_forbidden = True
+        self.transport.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"failure","html_url":"https://example/actions/1"}]
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+        failures=self.github.get_failed_checks(9)
+        self.assertEqual(failures[0].name,"CRM validation")
 
     def test_failed_checks_are_structured(self):
         self.transport.check_runs = [{

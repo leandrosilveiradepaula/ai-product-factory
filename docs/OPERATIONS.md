@@ -26,6 +26,18 @@ This does not grant merge capability to the Factory runtime, does not enable Git
 
 Production operators may execute that human action from the authenticated Factory Console when the dedicated Console release path is activated. The Console path is intentionally separate from the Python runtime and GitHub adapter. It requires an admin session, `VERCEL_ENV=production`, `FACTORY_RELEASE_GITHUB_TOKEN`, and an explicit source-controlled repository allowlist in `config/factory.release-policy.v1.json`. The token stays server-side and is never exposed to browser code, workers, agents or generated repositories.
 
+## Cross-repo CI evidence with fine-grained tokens
+
+For repositories outside the Factory repository, the runtime must not assume that the GitHub Checks API is available to a fine-grained personal access token. The preferred evidence order is:
+
+1. use check-runs when the credential can read them;
+2. on HTTP 403 from check-runs, fall back to GitHub Actions workflow runs plus Commit Statuses for the exact candidate SHA;
+3. require at least one workflow run for the candidate SHA before treating CI as successful;
+4. treat workflow failure or failing/error commit status as CI failure;
+5. treat running workflows, non-terminal statuses, missing workflow evidence, or missing fallback capability as pending/blocked rather than success.
+
+The fine-grained fallback requires repository permissions that expose Actions read and Commit statuses read. Do not widen a token to classic `repo` merely to recover the Checks API. Project onboarding/readiness should verify the capabilities actually available to the selected credential.
+
 ## Required release sequence
 
 1. Implementation opens a PR; production is not touched.

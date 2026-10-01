@@ -19,6 +19,12 @@ class GitHubRequestError(RuntimeError):
         self.status=status
 
 
+class GitHubCapabilityError(RuntimeError):
+    def __init__(self,capability:str,detail:str)->None:
+        super().__init__(detail)
+        self.capability=capability
+
+
 def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, Any]:
     req = request.Request(url, data=body, headers=headers, method=method)
     with request.urlopen(req, timeout=30) as response:
@@ -72,6 +78,7 @@ class GitHubRestAdapter:
         self.token = resolve_github_token(repository, explicit_token=token)
         self.api_url = api_url.rstrip("/")
         self.transport = transport or _default_transport
+        self.last_ci_evidence_source: str | None = None
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -234,10 +241,67 @@ class GitHubRestAdapter:
         } for row in rows if row.get("filename"))
 
 
+    def _fine_grained_ci_evidence(self, head_sha: str) -> tuple[list[dict], list[dict]]:
+        try:
+            workflow_payload = self._call(
+                "GET",
+                f"/repos/{self.repository}/actions/runs",
+                query={"head_sha": head_sha, "per_page": "100"},
+            )
+            status_payload = self._call(
+                "GET",
+                f"/repos/{self.repository}/commits/{head_sha}/status",
+            )
+        except GitHubRequestError as exc:
+            if exc.status in {403, 404}:
+                raise GitHubCapabilityError(
+                    "ci_evidence",
+                    "GitHub CI evidence is unavailable: check-runs are not accessible and the "
+                    "fine-grained fallback requires Actions: read plus Commit statuses: read",
+                ) from exc
+            raise
+        workflows = workflow_payload.get("workflow_runs", []) if isinstance(workflow_payload, dict) else []
+        statuses = status_payload.get("statuses", []) if isinstance(status_payload, dict) else []
+        return list(workflows), list(statuses)
+
+    @staticmethod
+    def _ci_state_from_fine_grained_evidence(workflows: list[dict], statuses: list[dict]) -> CIState:
+        if not workflows:
+            return CIState.PENDING
+        passing = {"success", "neutral", "skipped"}
+        if any(str(run.get("status") or "") != "completed" for run in workflows):
+            return CIState.PENDING
+        if any(str(run.get("conclusion") or "") not in passing for run in workflows):
+            return CIState.FAILURE
+        status_states = {str(item.get("state") or "") for item in statuses}
+        if status_states & {"error", "failure"}:
+            return CIState.FAILURE
+        if status_states and status_states - {"success"}:
+            return CIState.PENDING
+        return CIState.SUCCESS
+
+    def _check_runs_or_fine_grained_evidence(self, head_sha: str) -> tuple[str, list[dict], list[dict]]:
+        try:
+            checks = self._call(
+                "GET",
+                f"/repos/{self.repository}/commits/{head_sha}/check-runs",
+                query={"per_page": "100"},
+            ).get("check_runs", [])
+        except GitHubRequestError as exc:
+            if exc.status != 403:
+                raise
+            workflows, statuses = self._fine_grained_ci_evidence(head_sha)
+            self.last_ci_evidence_source = "github_actions_statuses"
+            return self.last_ci_evidence_source, workflows, statuses
+        self.last_ci_evidence_source = "github_checks"
+        return self.last_ci_evidence_source, list(checks), []
+
     def get_ci_state(self, pr_number: int) -> CIState:
         pr = self.get_pull_request(pr_number)
-        checks = self._call("GET", f"/repos/{self.repository}/commits/{pr.head_sha}/check-runs",
-                            query={"per_page": "100"}).get("check_runs", [])
+        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha)
+        if source == "github_actions_statuses":
+            return self._ci_state_from_fine_grained_evidence(primary, statuses)
+        checks = primary
         if not checks or any(check.get("status") != "completed" for check in checks):
             return CIState.PENDING
         passing = {"success", "neutral", "skipped"}
@@ -247,14 +311,36 @@ class GitHubRestAdapter:
 
     def get_failed_checks(self, pr_number: int) -> tuple[GitHubCheckFailure, ...]:
         pr = self.get_pull_request(pr_number)
-        checks = self._call(
-            "GET",
-            f"/repos/{self.repository}/commits/{pr.head_sha}/check-runs",
-            query={"per_page": "100"},
-        ).get("check_runs", [])
+        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha)
         passing = {"success", "neutral", "skipped"}
         failures = []
-        for check in checks:
+        if source == "github_actions_statuses":
+            for run in primary:
+                conclusion = str(run.get("conclusion") or "")
+                if str(run.get("status") or "") != "completed" or conclusion in passing:
+                    continue
+                failures.append(
+                    GitHubCheckFailure(
+                        name=str(run.get("name") or "github-actions"),
+                        conclusion=conclusion or "failure",
+                        details_url=run.get("html_url"),
+                        summary=f"GitHub Actions workflow concluded {conclusion or 'failure'}",
+                    )
+                )
+            for status in statuses:
+                state = str(status.get("state") or "")
+                if state not in {"error", "failure"}:
+                    continue
+                failures.append(
+                    GitHubCheckFailure(
+                        name=str(status.get("context") or "commit-status"),
+                        conclusion=state,
+                        details_url=status.get("target_url"),
+                        summary=status.get("description"),
+                    )
+                )
+            return tuple(failures)
+        for check in primary:
             if check.get("status") != "completed" or check.get("conclusion") in passing:
                 continue
             output = check.get("output") or {}

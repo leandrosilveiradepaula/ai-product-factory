@@ -229,6 +229,34 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out,{"claimed":False,"status":"empty"})
         github.assert_not_called()
 
+    def test_green_ci_persists_fine_grained_evidence_source(self):
+        item=SimpleNamespace(
+            repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",
+            branch="factory/t",run_id="r",human_gate_required=False,
+        )
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        github.last_ci_evidence_source="github_actions_statuses"
+        github.get_issue.return_value=SimpleNamespace(number=7)
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        store=MagicMock()
+        loop=MagicMock()
+        loop.evaluate.return_value=SimpleNamespace(
+            action=SimpleNamespace(value="preview_ready"),
+            ci_state=SimpleNamespace(value="success"),
+        )
+        lanes=MagicMock();lanes.enqueue.return_value={"status":"specialist_review_pending","roles":["security","qa"]}
+        trace=MagicMock()
+        with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=lanes), \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=trace), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_ci_once()
+        self.assertEqual(out["status"],"specialist_review_pending")
+        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["metadata"]["source"],"github_actions_statuses")
+
     def test_green_ci_persists_quality_gate_evidence(self):
         item=SimpleNamespace(
             repository="owner/repo",issue_number=7,pr_number=9,candidate_commit="abc",
@@ -257,6 +285,7 @@ class RuntimeCliTests(unittest.TestCase):
         lanes.enqueue.assert_called_once_with("r")
         trace.record_delivery_evidence.assert_called_once()
         self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"github_ci")
+        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["metadata"]["source"],"github_checks")
         store.record_evaluation.assert_called_once()
         kwargs=store.record_evaluation.call_args.kwargs
         self.assertEqual(kwargs["eval_type"],"quality_gate")
