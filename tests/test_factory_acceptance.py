@@ -165,7 +165,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("requireConsoleAdmin()", console_release)
         self.assertIn('process.env.VERCEL_ENV!=="production"', console_release)
         self.assertIn("FACTORY_RELEASE_GITHUB_TOKEN", console_release)
-        self.assertIn("FACTORY_RELEASE_GITHUB_REPOSITORIES", console_release)
+        self.assertIn("operator_allowed_repositories", (ROOT / "config/factory.release-policy.v1.json").read_text())
         self.assertIn("human_release.console_merge_requested", console_release)
 
     def test_paid_and_codex_paths_remain_explicitly_fail_closed(self):
