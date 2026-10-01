@@ -61,9 +61,10 @@ class ConsoleReleaseMergeTests(unittest.TestCase):
         self.assertIn('"preview/**"',text)
         self.assertIn("checks.listForRef",text)
         self.assertIn("context.sha",text)
-        self.assertIn("getIDToken()",text)
-        self.assertIn("scripts/verify_preview.mjs",text)
-        self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN",text)
+        self.assertIn("createWorkflowDispatch",text)
+        self.assertIn("console-browser-evidence.yml",text)
+        self.assertIn('ref: "main"',text)
+        self.assertIn("CANDIDATE_SHA",text)
         self.assertNotIn("VERCEL_TOKEN",text)
 
 
