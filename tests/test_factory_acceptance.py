@@ -291,6 +291,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261001152200_factory_resume_after_human_decision.sql",
             "20261001165031_factory_reconcile_terminal_task_descendants.sql",
             "20261001191500_factory_finalize_console_human_release.sql",
+            "20261001231500_factory_project_github_access.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
