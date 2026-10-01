@@ -11,9 +11,9 @@ export default async function Home(){
  const incidents=health.incidents.slice(0,2);
  return <>
   <PageHeader
-   eyebrow="Control Plane · sessão ativa"
-   title="Visão geral da Factory"
-   subtitle="Plano de controle autônomo de desenvolvimento, com evidências duráveis, execução determinística primeiro e autoridade humana na produção."
+   eyebrow="Operação da Factory"
+   title="O que está acontecendo agora"
+   subtitle="Acompanhe seus projetos e intervenha somente quando houver uma decisão ou problema que realmente precise de você."
    actions={<StatusPill status={blocked||pending.length?"attention":"healthy"} label={blocked||pending.length?"atenção necessária":"orquestrador online"}/>}
   />
 
@@ -80,8 +80,11 @@ export default async function Home(){
    </div>}
   </section>
 
+  <details className="overviewActivityDetails">
+   <summary><span><strong>Atividade técnica recente</strong><small>Execuções e auditoria para investigação. Não exige acompanhamento no uso normal.</small></span><span className="muted">${recentRuns.length} execuções · ${recentAudit.length} eventos</span></summary>
+   <div className="overviewActivityBody">
   <section className="section">
-   <SectionHeader title="Atividade da Factory" action={<ActionLink href="/runs" variant="ghostButton">Todas as execuções</ActionLink>}/>
+   <SectionHeader title="Execuções recentes" action={<ActionLink href="/runs" variant="ghostButton">Todas as execuções</ActionLink>}/>
    <div className="table factoryActivityTable">
     <div className="tableRow tableHeader"><span>Tarefa / execução</span><span>Rota</span><span>Estado</span><span>Tentativas</span><span>Commit</span></div>
     {recentRuns.length===0?<EmptyState>Nenhuma execução registrada.</EmptyState>:recentRuns.map(r=><Link className="tableRow" href={"/runs/"+r.id} key={r.id}>
@@ -100,5 +103,7 @@ export default async function Home(){
     {recentAudit.map(x=><div className="timelineItem" key={x.id}><div className="badgeLine"><StatusPill status={x.actorType}/><strong>{x.eventType}</strong></div><div className="timelineMeta"><span>{new Date(x.createdAt).toLocaleString("pt-BR")}</span>{x.projectName?<span>{x.projectName}</span>:null}{x.runId?<Link href={"/runs/"+x.runId} className="mono">execução {x.runId.slice(0,8)}</Link>:null}</div></div>)}
    </div></div>}
   </section>
+   </div>
+  </details>
  </>;
 }
