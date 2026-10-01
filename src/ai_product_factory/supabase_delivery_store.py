@@ -20,6 +20,10 @@ class SupabaseDeliveryStore:
  def update_run_status(self,run_id:str,status:str,*,candidate_commit:str|None=None)->DurableRunRecord:
   d=self._rpc("factory_update_run_delivery_status",{"p_run_id":run_id,"p_status":status,"p_candidate_commit":candidate_commit})
   return DurableRunRecord(d["run_id"],d["task_id"],d["status"],d.get("candidate_commit"))
+ def finalize_console_human_release(self,run_id:str,*,candidate_commit:str,merge_sha:str)->dict:
+  return self._rpc("factory_finalize_console_human_release",{
+   "p_run_id":run_id,"p_candidate_commit":candidate_commit,"p_merge_sha":merge_sha,
+  }) or {}
  def record_tool_usage(self,*,run_id:str,tool_family:str,operation:str|None=None,usage_units:float|None=None,estimated_cost:float|None=None,metadata:dict|None=None):
   return self._rpc("factory_record_delivery_tool_usage",{"p_run_id":run_id,"p_tool_family":tool_family,"p_operation":operation,"p_usage_units":usage_units,"p_estimated_cost":estimated_cost,"p_metadata":metadata or {}})
  def _insert(self,table:str,payload:dict):
