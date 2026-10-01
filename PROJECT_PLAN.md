@@ -197,3 +197,16 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] OpenAI API WIF #250 continua hardening externo; Primary permanece em API key enquanto o preflight WIF nao estiver verde.
 - [ ] Next.js #402 continua aguardando publicacao real de 15.5.27 no npm; nao usar beta/canary.
 - [ ] Repositorio privado/Actions #426 continua gate administrativo externo; nao comprar plano automaticamente.
+
+
+## Atualizacao operacional - 2026-10-01
+
+- [x] Sequencia de UX operacional consolidada ate o PR #514 e guarda-chuva #483 encerrada com evidencia de CI, producao, health e ausencia de erros de runtime.
+- [x] `main` reconciliada em `582322059cf564a454c8e7c9cdfda262bbe2459a`, sem PRs abertos no checkpoint.
+- [x] GitHub Actions confirmado saudavel no estado publico atual: `validate` e `Console validation` verdes no commit atual.
+- [x] Control Plane reconciliado: 3 projetos ativos, 0 runs abertos, 0 falhas acionaveis, 0 gates pendentes, 0 invocacoes Codex e custo conhecido acumulado de US$ 0.3478338.
+- [x] Console producao confirmado no deployment `dpl_59HGsseu5UdcXFZip4dPFW7VeMgc`, `READY`, health HTTP 200 no commit atual e zero runtime errors na janela verificada.
+- [ ] #426 passa a representar somente o gate administrativo de retorno a private/GitHub Pro e sua revalidacao; nao e falha ativa de Actions enquanto o repositorio estiver public.
+- [ ] #240, #250 e #474 continuam dependencias externas/administrativas e nao devem ser contornadas com valores inventados, ampliacao de acesso ou enfraquecimento de gates.
+- [ ] Leaked Password Protection do Supabase continua hardening administrativo externo; os avisos RLS sem policy publica permanecem intencionais.
+- [x] Production merge continua exclusivamente humano; runtime sem auto-merge e `allow_auto_merge=false`.
