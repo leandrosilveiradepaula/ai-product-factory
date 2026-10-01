@@ -109,7 +109,7 @@ class SupabaseScheduleProbe:
 
         github_access_work = bool(self._get_optional(
             "factory_project_github_access?select=project_id"
-            "&status=in.(unverified,blocked,partial,stale)&limit=1"
+            "&status=in.(unverified,stale)&limit=1"
         ))
 
         out = {
