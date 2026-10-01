@@ -54,6 +54,8 @@ from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
 from .delivery_metrics import SupabaseDeliveryMetricsReader
 from .project_release_reconciliation import SupabaseProjectReleaseReconciler
+from .project_github_access import SupabaseProjectGitHubAccessStore
+from .github_capability_preflight import run_project_github_preflight
 
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
@@ -123,6 +125,8 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
+  if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
+   SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
   github=GitHubRestAdapter(repository=item.repository)
   if getattr(item,"change_set_id",None):
@@ -154,6 +158,8 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
  item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
+  if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
+   SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   usage=SupabaseCodexUsageRecorder()
   producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
   github=GitHubRestAdapter(repository=item.repository)
@@ -420,9 +426,10 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","github-preflight","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="github-preflight":out=run_project_github_preflight(args.project_key)
  elif args.mode=="schedule-probe":out=SupabaseScheduleProbe().probe()
  elif args.mode=="delivery-metrics":
   if not args.source_run_id:raise ValueError("--source-run-id is required for delivery-metrics mode")
