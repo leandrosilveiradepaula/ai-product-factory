@@ -51,6 +51,15 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertIn("migrationNameSet",text)
         self.assertIn("alreadyApplied:true",text)
 
+    def test_preflight_is_audited_and_post_is_idempotent(self):
+        text=MODULE.read_text()
+        self.assertIn("human_migration.console_preflight_succeeded",text)
+        self.assertIn('"Idempotency-Key":idempotencyKey',text)
+        self.assertIn('createHash("sha256")',text)
+        preflight=text.index("human_migration.console_preflight_succeeded")
+        apply_call=text.index("await applyMigration(configured.supabase_project_ref")
+        self.assertLess(preflight,apply_call)
+
     def test_apply_is_audited_and_only_then_gate_is_resolved(self):
         text=MODULE.read_text()
         requested=text.index("human_migration.console_apply_requested")
