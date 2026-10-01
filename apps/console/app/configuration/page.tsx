@@ -13,7 +13,7 @@ function previewLabel(manifest:unknown){
 export default async function Configuration(){
  const [c,operator]=await Promise.all([getConsoleConfiguration(),requireConsoleOperator()]);
  return <>
-  <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Estado operacional visível do Console. Segredos, tokens e credenciais privilegiadas nunca são renderizados." actions={operator.role==="admin"?<ActionLink href="/admin/operators">Operadores</ActionLink>:<StatusPill status="active" label="perfil operador"/>}/>
+  <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Políticas e estado administrativo da Factory. Use para governança e diagnóstico; projetos são conduzidos pelas telas de Projeto e Aprovações." actions={operator.role==="admin"?<ActionLink href="/admin/operators">Operadores</ActionLink>:<StatusPill status="active" label="perfil operador"/>}/>
   <nav className="configTabs" aria-label="Seções de configuração">
    <a href="#governanca">Governança</a>
    <a href="#modelos">Modelos</a>
