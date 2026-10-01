@@ -9,8 +9,8 @@ const SHA_RE=/^[0-9a-f]{40}$/;
 const REPO_RE=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 function allowedRepositories(){
- return new Set((process.env.FACTORY_RELEASE_GITHUB_REPOSITORIES||"")
-  .split(",").map(x=>x.trim()).filter(Boolean));
+ const configured=(releasePolicy as any).production?.operator_allowed_repositories;
+ return new Set(Array.isArray(configured)?configured.map((x:unknown)=>String(x).trim()).filter(Boolean):[]);
 }
 
 function configuredMergeMethod(){
