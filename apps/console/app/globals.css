@@ -542,3 +542,15 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .projectCardFooter .cardAction{margin-top:0;white-space:nowrap}
 @media(max-width:900px){.technicalStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.screenGuide>div{display:grid;gap:3px}.projectCardFooter{align-items:flex-start;flex-direction:column}.technicalStats{grid-template-columns:1fr}}
+
+
+/* Project page: operator-first information hierarchy (#499). */
+.projectPrimaryMetrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.projectTechnicalDetails{margin-top:22px;border:1px solid #262a34;background:#11151e}
+.projectTechnicalDetails>summary{display:flex;align-items:center;justify-content:space-between;gap:20px;cursor:pointer;padding:15px 16px;list-style-position:inside;user-select:none}
+.projectTechnicalDetails>summary:hover{background:#171c26}
+.projectTechnicalDetails>summary>span:first-child{display:grid;gap:4px}
+.projectTechnicalDetails>summary strong{font-size:14px;color:#e1e4ef}
+.projectTechnicalDetails>summary small{font-size:12px;color:#8d93a4;font-weight:400}
+.projectTechnicalBody{padding:0 16px 16px;border-top:1px solid #262a34}
+@media(max-width:900px){.projectPrimaryMetrics{grid-template-columns:1fr}.projectTechnicalDetails>summary{align-items:flex-start;flex-direction:column;gap:6px}}
