@@ -554,3 +554,14 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .projectTechnicalDetails>summary small{font-size:12px;color:#8d93a4;font-weight:400}
 .projectTechnicalBody{padding:0 16px 16px;border-top:1px solid #262a34}
 @media(max-width:900px){.projectPrimaryMetrics{grid-template-columns:1fr}.projectTechnicalDetails>summary{align-items:flex-start;flex-direction:column;gap:6px}}
+
+
+/* Overview: daily operation first (#501). */
+.overviewActivityDetails{margin-top:22px;border:1px solid #262a34;background:#11151e}
+.overviewActivityDetails>summary{display:flex;align-items:center;justify-content:space-between;gap:20px;cursor:pointer;padding:15px 16px;list-style-position:inside;user-select:none}
+.overviewActivityDetails>summary:hover{background:#171c26}
+.overviewActivityDetails>summary>span:first-child{display:grid;gap:4px}
+.overviewActivityDetails>summary strong{font-size:14px;color:#e1e4ef}
+.overviewActivityDetails>summary small{font-size:12px;color:#8d93a4;font-weight:400}
+.overviewActivityBody{padding:0 16px 16px;border-top:1px solid #262a34}
+@media(max-width:700px){.overviewActivityDetails>summary{align-items:flex-start;flex-direction:column;gap:6px}}
