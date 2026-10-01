@@ -8,17 +8,14 @@ on:
 permissions:
   contents: read
   checks: read
-  id-token: write
+  actions: write
 
 jobs:
   browser-evidence:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: "22"
       - name: Resolve exact Vercel Preview from GitHub checks
         id: preview
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -58,33 +55,46 @@ jobs:
               await new Promise(resolve => setTimeout(resolve, 5000));
             }
             core.setFailed("Vercel Preview was not discoverable for exact candidate " + sha);
-      - name: Install pinned Playwright browser
-        shell: bash
-        run: |
-          npm install --no-save --no-package-lock playwright@1.63.0
-          npx playwright install --with-deps chromium
-      - name: Mint short-lived Vercel Trusted Source OIDC token
-        id: oidc
+      - name: Dispatch trusted main browser verifier and wait
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          CANDIDATE_SHA: ${{ steps.preview.outputs.candidate_sha }}
         with:
           script: |
-            const token = await core.getIDToken();
-            core.setSecret(token);
-            core.setOutput("token", token);
-      - name: Verify exact protected Preview
-        env:
-          FACTORY_PREVIEW_URL: ${{ steps.preview.outputs.url }}
-          FACTORY_PREVIEW_EXPECTED_TEXT: "Entrar na Factory"
-          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
-        shell: bash
-        run: |
-          result="$(node scripts/verify_preview.mjs)"
-          echo "$result"
-          RESULT="$result" node - <<'NODE'
-          const result = JSON.parse(process.env.RESULT);
-          const required = ["page_load", "http_status", "body_visible", "expected_text", "console_clean"];
-          if (result.status !== "success") throw new Error(result.detail || "browser evidence failed");
-          for (const check of required) {
-            if (!result.checks.includes(check)) throw new Error("missing browser evidence check: " + check);
-          }
-          NODE
+            const workflowId = "console-browser-evidence.yml";
+            const started = Date.now();
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: workflowId,
+              ref: "main",
+              inputs: {
+                preview_url: process.env.PREVIEW_URL,
+                expected_text: "Entrar na Factory",
+              },
+            });
+            core.notice("Dispatched trusted main browser verifier for candidate " + process.env.CANDIDATE_SHA);
+            let selected = null;
+            for (let attempt = 0; attempt < 90; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const {data} = await github.rest.actions.listWorkflowRuns({
+                ...context.repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: "main",
+                per_page: 20,
+              });
+              selected = data.workflow_runs.find(run =>
+                Date.parse(run.created_at) >= started - 5000 &&
+                run.event === "workflow_dispatch" &&
+                run.head_branch === "main"
+              ) || null;
+              if (!selected) continue;
+              if (selected.status !== "completed") continue;
+              core.notice("Trusted browser verifier run: " + selected.html_url);
+              if (selected.conclusion !== "success") {
+                core.setFailed("Trusted browser verifier failed: " + selected.html_url);
+              }
+              return;
+            }
+            core.setFailed("Timed out waiting for trusted main browser verifier");
