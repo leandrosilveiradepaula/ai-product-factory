@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json,os,urllib.error,urllib.request
 from dataclasses import dataclass
+from urllib.parse import quote
 from .supabase_server import resolve_supabase_server_config
 
 @dataclass(frozen=True)
@@ -26,6 +27,22 @@ class SupabaseDeliveryStore:
   }) or {}
  def record_tool_usage(self,*,run_id:str,tool_family:str,operation:str|None=None,usage_units:float|None=None,estimated_cost:float|None=None,metadata:dict|None=None):
   return self._rpc("factory_record_delivery_tool_usage",{"p_run_id":run_id,"p_tool_family":tool_family,"p_operation":operation,"p_usage_units":usage_units,"p_estimated_cost":estimated_cost,"p_metadata":metadata or {}})
+ def _patch(self,table:str,query:str,payload:dict):
+  req=urllib.request.Request(f"{self.url}/rest/v1/{table}?{query}",data=json.dumps(payload).encode(),method="PATCH",headers={**self.headers,"Content-Type":"application/json","Prefer":"return=representation"})
+  try:
+   with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
+  except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane patch failed: {table} ({exc.code})") from exc
+  return None if not raw else json.loads(raw)
+ def fail_preview(self,run_id:str,*,candidate_commit:str,reason:str)->DurableRunRecord:
+  if not reason.strip():raise ValueError("preview failure reason is required")
+  record=self.update_run_status(run_id,"failed",candidate_commit=candidate_commit)
+  self._patch("factory_tasks",f"id=eq.{quote(record.task_id)}",{"status":"failed"})
+  self.record_audit_event(
+   run_id=run_id,event_type="preview.failed",
+   payload={"candidate_commit":candidate_commit,"reason":reason[:1000]},
+   actor_ref="preview-followup"
+  )
+  return record
  def _insert(self,table:str,payload:dict):
   req=urllib.request.Request(f"{self.url}/rest/v1/{table}",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json","Prefer":"return=representation"})
   try:
