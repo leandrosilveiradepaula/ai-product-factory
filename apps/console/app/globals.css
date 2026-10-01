@@ -565,3 +565,21 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .overviewActivityDetails>summary small{font-size:12px;color:#8d93a4;font-weight:400}
 .overviewActivityBody{padding:0 16px 16px;border-top:1px solid #262a34}
 @media(max-width:700px){.overviewActivityDetails>summary{align-items:flex-start;flex-direction:column;gap:6px}}
+
+
+/* Mobile operator pass: projects + human decisions (#505). */
+@media(max-width:700px){
+ .main .projectCards{grid-template-columns:1fr;gap:12px}
+ .main .projectCard{padding:16px}
+ .main .projectCard .cardTop{gap:10px}
+ .main .projectStageLabel{margin-top:14px}
+ .main .projectCardFooter{gap:8px}
+ .main .projectCardFooter .cardAction{display:block;width:100%;padding-top:8px;border-top:1px solid #262a34}
+ .main .gateLayout{grid-template-columns:1fr}
+ .main .gateCard{padding:16px}
+ .main .gateBanner{align-items:flex-start;flex-direction:column;gap:8px}
+ .main .gateMeta{grid-template-columns:1fr;gap:14px}
+ .main .gateForm input{min-height:44px}
+ .main .gateActionBar{display:grid;grid-template-columns:1fr;gap:9px}
+ .main .gateActionBar button{width:100%;min-height:46px}
+}
