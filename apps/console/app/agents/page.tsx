@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {getFactoryAgents} from "../../lib/control-plane";
 import {EmptyState,PageHeader,SectionHeader,StatusPill} from "../ui";
 
@@ -81,7 +82,7 @@ export default async function Agents(){
      <span>{run.taskTitle}</span>
      <StatusPill status={run.route||"unrouted"}/>
      <StatusPill status={run.status}/>
-     <code>{run.runId.slice(0,8)}</code>
+     <Link href={"/runs/"+run.runId} className="mono">Abrir {run.runId.slice(0,8)} →</Link>
     </div>))}
    </div>
   </section>
