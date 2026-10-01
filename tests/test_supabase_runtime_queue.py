@@ -80,6 +80,17 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_recover_expired_runs"))
         self.assertNotIn(b"secret",req.data)
 
+    def test_decision_resume_recovery_uses_dedicated_rpc(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen",return_value=Response({"created":1,"existing":0,"blocked":0})) as call:
+            out=q.resume_resolved_decisions()
+        self.assertEqual(out,{"created":1,"existing":0,"blocked":0})
+        req=call.call_args.args[0]
+        self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_resume_resolved_decisions"))
+        self.assertEqual(json.loads(req.data.decode()),{})
+        self.assertNotIn(b"secret",req.data)
+
+
     def test_planning_stage_persists_execution_team_plan(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{})
