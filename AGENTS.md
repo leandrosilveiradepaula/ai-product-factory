@@ -56,4 +56,6 @@ Condicoes minimas para merge operacional autonomo:
 
 Isso e autorizacao do operador, nao capacidade do runtime. O adapter GitHub da Factory continua sem funcao de merge automatico e o recurso GitHub auto-merge nao deve ser habilitado como atalho.
 
-CI verde, quality gate e Preview verificado nao autorizam merge de producao. Quando o merge do PR publica producao, a Factory deve parar em `awaiting_release`. Esse merge e humano; o release observer apenas registra uma acao humana ja concluida.
+CI verde, quality gate e Preview verificado nao autorizam merge de producao. Quando o merge do PR publica producao, a Factory deve parar em `awaiting_release`. Esse merge continua sendo uma acao humana explicita.
+
+A acao humana pode acontecer no GitHub ou, quando o Console de producao estiver explicitamente ativado com credencial dedicada e allowlist, pelo botao administrativo de merge do proprio Console. Isso nao e auto-merge: nao existe scheduler, agente, runtime Python ou adapter capaz de acionar esse caminho. O Console revalida release report, PR aberto, branch base, repository allowlist e SHA candidato exato antes de chamar o GitHub. O release observer continua reconciliando uma acao humana ja realizada.
