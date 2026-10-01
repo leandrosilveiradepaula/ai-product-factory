@@ -9,7 +9,7 @@ export default async function Queue(){
  const executing=items.filter(x=>["running","implementing"].includes(x.status)).length;
  const queued=items.filter(x=>["queued","queued_execution","dispatching"].includes(x.status)).length;
  return <>
-  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Fila interna que a Factory administra automaticamente. Consulte quando quiser entender o que está esperando, executando ou bloqueado." actions={<ActionLink href="/projects/new" variant="primary">+ Novo trabalho</ActionLink>}/>
+  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Fila interna que a Factory administra automaticamente. Consulte quando quiser entender o que está esperando, executando ou bloqueado." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Total na fila</span><strong>{items.length}</strong><small>backlog carregado</small></div>
    <div className="operationalStat"><span>Em execução</span><strong>{executing}</strong><small>workers ativos</small></div>
