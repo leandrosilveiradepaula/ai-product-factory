@@ -1,6 +1,19 @@
 # Current status
 
-Last reconciled: 2026-09-30.
+Last reconciled: 2026-10-01.
+
+## Reconciliation 2026-10-01
+
+- `main`: `582322059cf564a454c8e7c9cdfda262bbe2459a` after human merge of PR #514.
+- No open pull requests were present at reconciliation time.
+- GitHub Actions is healthy while the repository remains public: `validate` run `36859817890` and `Console validation` run `36859817834` both succeeded on the current `main`. Issue #426 is therefore not an active Actions incident; it remains the administrative revalidation gate for the future GitHub Pro/private transition.
+- Console production deployment `dpl_59HGsseu5UdcXFZip4dPFW7VeMgc` is `READY` for the exact current `main`; `GET /api/health` returned HTTP 200 with commit `582322059cf5`, and Vercel reported zero runtime errors in the checked six-hour window.
+- Control Plane project `fjplmxfcshhbmzgvyqlm` is `ACTIVE_HEALTHY`: 3 active projects, 0 open runs, 0 actionable failed runs, 0 pending human gates, 13 Codex routing rows with 0 actual Codex invocations, 1 active Console operator, and known cumulative tool/model cost US$ 0.3478338.
+- Supabase security advisor still reports the intentional fail-closed `RLS Enabled No Policy` findings plus the external administrative `Leaked Password Protection Disabled` warning. Do not add permissive public policies.
+- UX umbrella #483 is completed and closed. The delivered sequence #491/#492/#494/#496/#498/#500/#502/#504/#506/#508/#510/#512/#514 materially satisfies the guided-flow, legibility, mobile, accessibility and gate-feedback acceptance criteria. Do not reopen the umbrella for cosmetic iteration without a concrete regression.
+- Issues #512, #513 and #514 are closed/merged/released and must not be revisited in the normal work loop.
+- External/admin blockers remain #240 (Codex workspace WIF enablement/real federation values), #250 (OpenAI API WIF mapping), #474 (main protection/ruleset), #426 (private-repository revalidation after plan change), and the Supabase leaked-password hardening control.
+- Production merge remains human-gated. The Factory runtime still has no automatic merge capability and repository `allow_auto_merge=false`.
 
 ## Reconciliation 2026-09-30
 
