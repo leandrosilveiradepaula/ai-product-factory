@@ -575,10 +575,32 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop"), \
              patch("ai_product_factory.runtime_cli.GitHubIssueMaterializer"), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore"), \
-             patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"):
+             patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"):
             resolver.return_value.resolve_primary_api.return_value=auth
             with self.assertRaisesRegex(RuntimeError,"implementation failed"):
                 run_direct_once("w")
+        scheduler.release.assert_called_once_with("r","blocked")
+
+    def test_cross_repo_direct_fails_closed_before_github_write_when_capability_is_missing(self):
+        item=SimpleNamespace(run_id="r",task_id="t",project_key="crm",repository="owner/repo",issue_number=None,title="x",description="",branch="factory/development/task-t",human_gate_required=False)
+        scheduler=MagicMock()
+        queue=MagicMock();queue.claim_next.return_value=item
+        access=MagicMock();access.require_capabilities.side_effect=PermissionError("GitHub capabilities are not ready")
+        auth=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"factory/own"},clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver") as resolver, \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore",return_value=access), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            resolver.return_value.resolve_primary_api.return_value=auth
+            with self.assertRaisesRegex(PermissionError,"not ready"):
+                run_direct_once("w")
+        access.require_capabilities.assert_called_once_with("crm",("contents_write","issues_write","pull_requests_write"))
+        github.assert_not_called()
         scheduler.release.assert_called_once_with("r","blocked")
 
     def test_codex_failure_releases_agent_assignment_and_scope(self):
@@ -596,7 +618,8 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop"), \
              patch("ai_product_factory.runtime_cli.GitHubIssueMaterializer"), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore"), \
-             patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"):
+             patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"):
             with self.assertRaisesRegex(RuntimeError,"codex failed"):
                 run_codex_once("w")
         scheduler.release.assert_called_once_with("r","blocked")

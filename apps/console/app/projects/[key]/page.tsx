@@ -1,5 +1,6 @@
 import {notFound} from "next/navigation";
-import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectOperations,getProjectStateContext} from "../../../lib/control-plane";
+import {revalidatePath} from "next/cache";
+import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
@@ -39,10 +40,32 @@ const supabaseMessages:Record<string,{status:string;message:string}>={
  verification_failed:{status:"failed",message:"A autorização retornou, mas a verificação do acesso não foi concluída. Nenhuma ampliação de permissão foi aplicada."},
 };
 
+const githubCapabilityLabels:Record<string,string>={
+ metadata_read:"Repositório conectado",
+ contents_read:"Leitura do código",
+ contents_write:"Criar branch / commit",
+ issues_read:"Issues · leitura",
+ issues_write:"Issues · escrita",
+ pull_requests_read:"Pull Requests · leitura",
+ pull_requests_write:"Pull Requests · escrita",
+ actions_read:"Actions / logs",
+ commit_statuses_read:"Commit Statuses",
+ ci_evidence_read:"Checks / evidência de CI",
+};
+function githubCapabilityLabel(status:string){return status==="verified"?"Verificado":status==="missing"?"Permissão faltando":status==="unverified"?"Ainda não verificado":humanizeStatus(status)}
+async function requestGitHubRecheck(formData:FormData){
+ "use server";
+ const projectId=String(formData.get("project_id")||"");
+ const projectKey=String(formData.get("project_key")||"");
+ if(!projectId||!projectKey)throw new Error("Projeto inválido para revalidação GitHub.");
+ await requestProjectGitHubRecheck(projectId);
+ revalidatePath("/projects/"+projectKey);
+}
+
 export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id)]);
+ const [ops,state,databases,teamPlan,githubAccess]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
@@ -70,6 +93,22 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" no total"}/>
    <MetricCard label="Evidências" value={ops.evaluations+ops.deployments} note={ops.evaluations+" avaliações · "+ops.deployments+" implantações"}/>
   </div>
+  {githubAccess?<section className="section" id="github-access"><SectionHeader title="GitHub · acesso do projeto" action={<div className="badgeLine"><StatusPill status={githubAccess.status} label={githubAccess.status==="ready"?"Pronto":githubAccess.status==="partial"?"Parcial":githubAccess.status==="blocked"?"Bloqueado":"Aguardando verificação"}/><span className="muted">{githubAccess.lastVerifiedAt?"verificado em "+new Date(githubAccess.lastVerifiedAt).toLocaleString("pt-BR"):"sem preflight registrado"}</span></div>}/>
+   <div className="card denseStack">
+    <div className="panelHeading"><div><strong>{githubAccess.repository}</strong><div className="muted">Autenticação operacional: {githubAccess.authMode==="github_app"?"GitHub App":githubAccess.authMode==="native_github_token"?"token nativo do workflow":"token fine-grained"}</div></div><StatusPill status={githubAccess.status}/></div>
+    <div className="table">
+     <div className="tableRow tableHeader"><span>Capacidade</span><span>Necessária</span><span>Estado</span><span>Ação</span></div>
+     {githubAccess.capabilities.map(cap=><div className="tableRow" key={cap.key}><strong>{githubCapabilityLabels[cap.key]||cap.key}</strong><span>{cap.required?"Sim":"Não"}</span><StatusPill status={cap.status} label={githubCapabilityLabel(cap.status)}/><span className="muted">{cap.status==="verified"?"nenhuma":cap.status==="missing"?"corrigir permissão":"revalidar acesso"}</span></div>)}
+     <div className="tableRow"><strong>Release humano</strong><span>Separado</span><StatusPill status={githubAccess.releaseHuman.enabled?"verified":"blocked"} label={githubAccess.releaseHuman.enabled?"Habilitado":"Bloqueado"}/><span className="muted">{githubAccess.releaseHuman.reason||"merge somente por ação humana explícita"}</span></div>
+    </div>
+    {githubAccess.lastError?<div className="errorText">{githubAccess.lastError}</div>:null}
+    <div className="actions">
+     <a className="linkButton" href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noreferrer">Corrigir acesso no GitHub</a>
+     {operator.role==="admin"?<form action={requestGitHubRecheck}><input type="hidden" name="project_id" value={p.id}/><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="primary linkButton">Verificar novamente</button></form>:null}
+    </div>
+    <p className="muted" style={{margin:0}}>A Factory só executa uma etapa quando as capacidades exigidas por aquela etapa estão comprovadas. Permissões de escrita não são testadas por mutações artificiais; permanecem fail-closed até haver credencial apropriada, preferencialmente uma GitHub App.</p>
+   </div>
+  </section>:null}
   {state.objective?<section className="section"><SectionHeader title="Objetivo atual"/><div className="card"><p style={{margin:0}}>{state.objective}</p></div></section>:null}
   {p.kind==="existing"?<section className="section"><SectionHeader title="Estado reconciliado" action={state.snapshot?<span className="muted">atualizado em {new Date(state.snapshot.createdAt).toLocaleString("pt-BR")}</span>:undefined}/>
    {!state.snapshot?<EmptyState>A reconciliação ainda não foi concluída. A Factory vai registrar aqui o estado real confirmado, as evidências e o trabalho que ainda falta.</EmptyState>:<div className="card stack">

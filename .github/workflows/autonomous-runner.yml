@@ -50,6 +50,7 @@ jobs:
       id-token: write
       issues: write
     outputs:
+      github_access_work: ${{ steps.probe.outputs.github_access_work }}
       product_work: ${{ steps.probe.outputs.product_work }}
       dispatch_work: ${{ steps.probe.outputs.dispatch_work }}
       integration_work: ${{ steps.probe.outputs.integration_work }}
@@ -89,7 +90,7 @@ jobs:
           import json, os
           data=json.load(open("/tmp/factory-schedule-probe.json"))
           keys=(
-              "product_work","dispatch_work","integration_work","ci_work",
+              "github_access_work","product_work","dispatch_work","integration_work","ci_work",
               "specialist_work","specialist_security_work","specialist_qa_work",
               "specialist_operations_work","preview_work","release_work",
               "codex_manual_work","work_detected",
@@ -102,6 +103,43 @@ jobs:
         if: ${{ github.event_name == 'schedule' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode alerts
+
+  github-access-preflight:
+    environment: openai-api
+    needs: schedule-probe
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.github_access_work == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      issues: read
+      pull-requests: read
+      actions: read
+      statuses: read
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Verify one project GitHub capability contract
+        shell: bash
+        run: |
+          if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
+            if [ -n "${{ inputs.project_key }}" ]; then
+              python -m ai_product_factory.runtime_cli --mode github-preflight --project-key "${{ inputs.project_key }}"
+            else
+              python -m ai_product_factory.runtime_cli --mode github-preflight
+            fi
+          else
+            echo "GitHub capability preflight is inert: Control Plane credentials are not configured."
+          fi
 
   product-stage:
     needs: schedule-probe
@@ -380,8 +418,8 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.product-stage.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.schedule-probe.outputs.product_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
-    needs: [schedule-probe, product-stage]
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.schedule-probe.outputs.product_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    needs: [schedule-probe, github-access-preflight, product-stage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:

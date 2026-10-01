@@ -120,6 +120,40 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type ProjectGitHubCapability={key:string;status:string;required:boolean};
+export type ProjectGitHubAccess={
+ repository:string;authMode:string;status:string;lastVerifiedAt:string|null;lastError:string|null;
+ capabilities:ProjectGitHubCapability[];releaseHuman:{enabled:boolean;reason:string|null};
+};
+const githubCapabilityKeys=["metadata_read","contents_read","contents_write","issues_read","issues_write","pull_requests_read","pull_requests_write","actions_read","commit_statuses_read","ci_evidence_read"] as const;
+export async function getProjectGitHubAccess(projectId:string,repository:string|null):Promise<ProjectGitHubAccess|null>{
+ await requireConsoleOperator();if(!repository)return null;
+ const cfg=serverHeaders();if(!cfg)return null;
+ const response=await fetch(cfg.url+"/rest/v1/factory_project_github_access?select=repository,auth_mode,status,required_capabilities,observed_capabilities,last_verified_at,last_error&project_id=eq."+encodeURIComponent(projectId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ let row:any=null;
+ if(response.ok){const rows=await response.json();row=rows[0]||null;}
+ const required=row?.required_capabilities&&typeof row.required_capabilities==="object"?row.required_capabilities:{};
+ const observed=row?.observed_capabilities&&typeof row.observed_capabilities==="object"?row.observed_capabilities:{};
+ const readiness=getReleaseMergeReadiness(repository);
+ return{
+  repository,
+  authMode:String(row?.auth_mode||"fine_grained_pat"),
+  status:String(row?.status||"unverified"),
+  lastVerifiedAt:row?.last_verified_at?String(row.last_verified_at):null,
+  lastError:row?.last_error?String(row.last_error):null,
+  capabilities:githubCapabilityKeys.map(key=>({key,status:String(observed[key]||"unverified"),required:Boolean(required[key]??true)})),
+  releaseHuman:{enabled:readiness.enabled,reason:readiness.reason},
+ };
+}
+
+export async function requestProjectGitHubRecheck(projectId:string){
+ await requireConsoleAdmin();const cfg=serverHeaders();if(!cfg)throw new Error("Control Plane não configurado.");
+ const response=await fetch(cfg.url+"/rest/v1/factory_project_github_access?project_id=eq."+encodeURIComponent(projectId),{method:"PATCH",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({status:"stale",updated_at:new Date().toISOString()}),cache:"no-store"});
+ if(!response.ok)throw new Error("Não foi possível solicitar nova verificação do GitHub.");
+ const audit=await fetch(cfg.url+"/rest/v1/factory_audit_events",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({project_id:projectId,actor_type:"human",actor_ref:"console-admin",event_type:"project.github_access.recheck_requested",payload:{source:"console"}}),cache:"no-store"});
+ if(!audit.ok)throw new Error("A nova verificação foi marcada, mas a auditoria não pôde ser registrada.");
+}
+
 export type ProjectDatabaseBinding={id:string;provider:string;environment:string;projectRef:string|null;organizationRef:string|null;region:string|null;accessMode:string;permissionMode:string;status:string;isExisting:boolean;lastVerifiedAt:string|null};
 
 export async function getProjectDatabases(projectId:string):Promise<ProjectDatabaseBinding[]>{

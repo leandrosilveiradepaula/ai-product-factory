@@ -7,6 +7,7 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | Mode | Purpose | External side effects | Default scheduling | Main gate |
 | --- | --- | --- | --- | --- |
 | `health` | Report configuration/readiness only | None | Hourly runner | None |
+| `github-preflight` | Verify per-project GitHub capabilities with safe read probes | GitHub reads + Control Plane readiness evidence | Hourly when stale/blocked + manual | No synthetic write probes; missing capability stays fail-closed |
 | `recovery` | Requeue expired leases or fail exhausted runs | Control Plane writes | Hourly runner | Bounded attempts |
 | `product` | Execute one product-stage run | Model call + Control Plane writes | Hourly only when ready | Primary enable + auth + budget |
 | `dispatch` | Route one planned task | Control Plane writes | Hourly bounded + manual | Optional project key |
@@ -25,6 +26,21 @@ The ChatGPT/operator layer may merge a PR directly after its applicable CI/quali
 This does not grant merge capability to the Factory runtime, does not enable GitHub auto-merge, and does not change the production boundary. Any PR whose merge publishes production remains a human action.
 
 Production operators may execute that human action from the authenticated Factory Console when the dedicated Console release path is activated. The Console path is intentionally separate from the Python runtime and GitHub adapter. It requires an admin session, `VERCEL_ENV=production`, `FACTORY_RELEASE_GITHUB_TOKEN`, and an explicit source-controlled repository allowlist in `config/factory.release-policy.v1.json`. The token stays server-side and is never exposed to browser code, workers, agents or generated repositories.
+
+## Per-project GitHub capability preflight
+
+Every repository-backed project has a durable GitHub access record. The scheduler may run `github-preflight` before dispatch, using the repository-aware runtime credential.
+
+The preflight:
+- performs only safe GET requests;
+- verifies repository metadata, contents, Issues, Pull Requests, Actions and Commit Statuses;
+- treats Checks as optional when Actions + Commit Statuses provide equivalent CI evidence;
+- never creates a fake branch, commit, issue or PR merely to test write access;
+- preserves cross-repository write capabilities as unverified until they are backed by an explicitly approved credential;
+- blocks Direct/Codex cross-repository writes unless `contents_write`, `issues_write` and `pull_requests_write` are durably verified;
+- stores only non-secret readiness metadata in the Control Plane.
+
+The Console shows this contract on each project. An admin can mark the record stale with **Verificar novamente**; the autonomous runner then re-runs the safe preflight. **Corrigir acesso no GitHub** remains an external consent step in Phase 1. The target architecture is a Factory-owned GitHub App with short-lived installation tokens; PAT expansion must never happen silently.
 
 ## Cross-repo CI evidence with fine-grained tokens
 

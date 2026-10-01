@@ -24,6 +24,14 @@ class SupabaseScheduleProbe:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
+    def _get_optional(self, path: str) -> list[dict]:
+        try:
+            return self._get(path)
+        except RuntimeError as exc:
+            if "(404)" in str(exc):
+                return []
+            raise
+
     def _post(self, path: str, payload: dict) -> None:
         headers = {
             **self.headers,
@@ -99,7 +107,13 @@ class SupabaseScheduleProbe:
             if str(row.get("role") or "") in {"security", "qa", "operations"}
         })
 
+        github_access_work = bool(self._get_optional(
+            "factory_project_github_access?select=project_id"
+            "&status=in.(unverified,stale)&limit=1"
+        ))
+
         out = {
+            "github_access_work": github_access_work,
             "product_work": product_work,
             "dispatch_work": dispatch_work,
             "integration_work": integration_work,
@@ -116,6 +130,7 @@ class SupabaseScheduleProbe:
         out["work_detected"] = any(
             bool(out[key])
             for key in (
+                "github_access_work",
                 "product_work",
                 "dispatch_work",
                 "integration_work",
@@ -129,6 +144,7 @@ class SupabaseScheduleProbe:
         work_classes = [
             work_class
             for work_class, key in (
+                ("github_access", "github_access_work"),
                 ("product", "product_work"),
                 ("dispatch", "dispatch_work"),
                 ("integration", "integration_work"),
