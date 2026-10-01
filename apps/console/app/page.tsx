@@ -18,21 +18,24 @@ export default async function Home(){
   />
 
   <div className="gettingStarted" aria-label="Como usar a Factory">
-   <div className="guideStep">
+   <Link className="guideStep guideStepLink" href="/projects/new">
     <span className="guideStepNumber">1</span>
     <strong>Crie ou importe um projeto</strong>
     <p>Descreva o objetivo. Para projeto existente, informe o repositório e a Factory reconcilia o estado real antes de continuar.</p>
-   </div>
-   <div className="guideStep">
+    <span className="cardAction">Novo projeto →</span>
+   </Link>
+   <Link className="guideStep guideStepLink" href="/projects">
     <span className="guideStepNumber">2</span>
     <strong>A Factory trabalha e mostra o progresso</strong>
     <p>Descoberta, planejamento, implementação, revisão e testes seguem automaticamente sempre que os gates permitirem.</p>
-   </div>
-   <div className="guideStep">
+    <span className="cardAction">Ver projetos →</span>
+   </Link>
+   <Link className="guideStep guideStepLink" href="/gates">
     <span className="guideStepNumber">3</span>
     <strong>Intervenha somente quando solicitado</strong>
     <p>Use “Precisa de atenção” como sua caixa de entrada. Produção continua exigindo merge humano explícito.</p>
-   </div>
+    <span className="cardAction">Ver aprovações →</span>
+   </Link>
   </div>
 
   <div className="overviewControlBar">
@@ -42,15 +45,21 @@ export default async function Home(){
   </div>
 
   <div className="overviewStats">
-   <div className="operationalStat"><span>Projetos ativos</span><strong>{d.projects.length}</strong><small>{d.projects.filter(p=>p.status==="active").length} ativos</small></div>
-   <div className="operationalStat"><span>Execuções ativas</span><strong>{d.activeRuns}</strong><small>{health.queuedRuns} na fila</small></div>
-   <div className="operationalStat warning"><span>Aguardando humano</span><strong>{d.pendingGates}</strong><small>gates pendentes</small></div>
-   <div className="operationalStat danger"><span>Falhas / bloqueios</span><strong>{blocked}</strong><small>{health.expiredLeases} leases expirados</small></div>
-   <div className="operationalStat"><span>Eventos de ferramenta</span><strong>{usage.toolEvents}</strong><small>ledger operacional</small></div>
-   <div className="operationalStat"><span>Custo conhecido</span><strong>{usage.knownCost.toFixed(4)}</strong><small>custo acumulado</small></div>
-   <div className="operationalStat"><span>Codex real</span><strong>{d.codexCalls}</strong><small>invocações registradas</small></div>
-   <div className="operationalStat"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>pago · fail-closed</small></div>
+   <Link className="operationalStat operationalStatLink" href="/projects"><span>Projetos ativos</span><strong>{d.projects.length}</strong><small>{d.projects.filter(p=>p.status==="active").length} ativos · abrir portfólio →</small></Link>
+   <Link className="operationalStat operationalStatLink" href="/runs"><span>Execuções ativas</span><strong>{d.activeRuns}</strong><small>{health.queuedRuns} na fila · inspecionar →</small></Link>
+   <Link className="operationalStat operationalStatLink warning" href="/gates"><span>Aguardando humano</span><strong>{d.pendingGates}</strong><small>decisões pendentes · abrir →</small></Link>
+   <Link className="operationalStat operationalStatLink danger" href="/runs"><span>Falhas / bloqueios</span><strong>{blocked}</strong><small>{health.expiredLeases} execuções travadas · inspecionar →</small></Link>
   </div>
+
+  <details className="technicalDetails">
+   <summary>Detalhes técnicos da operação</summary>
+   <div className="technicalStats">
+    <Link href="/audit"><span>Eventos de ferramenta</span><strong>{usage.toolEvents}</strong><small>registro operacional</small></Link>
+    <Link href="/usage"><span>Custo conhecido</span><strong>{usage.knownCost.toFixed(4)}</strong><small>custo acumulado</small></Link>
+    <Link href="/usage"><span>Codex real</span><strong>{d.codexCalls}</strong><small>invocações registradas</small></Link>
+    <Link href="/usage"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>pago · bloqueia novas chamadas</small></Link>
+   </div>
+  </details>
 
   <section className="section">
    <SectionHeader title="Precisa de atenção" action={<span className="muted">{pending.length+incidents.length} itens observados</span>}/>
