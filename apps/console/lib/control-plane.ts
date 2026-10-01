@@ -30,7 +30,7 @@ export async function getDashboard():Promise<Dashboard>{
  };
 }
 export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
-export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null;actionUrl:string|null;actionLabel:string|null};
 
 function serverHeaders(){return getSupabaseServerConfig();}
 
@@ -66,6 +66,8 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
    id:`release:${x.id}`,run_id:x.run_id,gate_type:"production_release",status:"pending",
    reasons:["Liberação de produção pronta; o merge deve ser realizado por uma pessoa no GitHub."],
    requested_at:x.created_at,source:"release_report",candidate_commit:x.candidate_commit,
+   action_url:typeof x.report?.pr_url==="string"?x.report.pr_url:null,
+   action_label:typeof x.report?.pr_number==="number"?`Abrir PR #${x.report.pr_number} no GitHub`:"Abrir PR no GitHub",
   })),
  ].sort((a:any,b:any)=>Date.parse(String(b.requested_at))-Date.parse(String(a.requested_at))).slice(0,limit);
  const runIds=[...new Set(rows.map((x:any)=>String(x.run_id||"")).filter(Boolean))];
@@ -87,7 +89,7 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
     }
    }
  }
- return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source:x.source==="release_report"?"release_report":"human_gate",candidateCommit:x.candidate_commit?String(x.candidate_commit):null};});
+ return rows.map((x:any)=>{const task=taskMap.get(runMap.get(String(x.run_id))||"");const project=task?projectMap.get(task.projectId):undefined;return{id:String(x.id),runId:String(x.run_id),type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source:x.source==="release_report"?"release_report":"human_gate",candidateCommit:x.candidate_commit?String(x.candidate_commit):null,actionUrl:x.action_url?String(x.action_url):null,actionLabel:x.action_label?String(x.action_label):null};});
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
