@@ -14,7 +14,7 @@ class ConsoleReleaseMergeTests(unittest.TestCase):
         self.assertIn("requireConsoleAdmin()",text)
         self.assertIn('process.env.VERCEL_ENV!=="production"',text)
         self.assertIn("FACTORY_RELEASE_GITHUB_TOKEN",text)
-        self.assertIn("FACTORY_RELEASE_GITHUB_REPOSITORIES",text)
+        self.assertIn("operator_allowed_repositories",POLICY.read_text())
         self.assertNotIn("GITHUB_TOKEN",text.replace("FACTORY_RELEASE_GITHUB_TOKEN",""))
 
     def test_merge_revalidates_durable_release_and_exact_pr_sha(self):
@@ -55,6 +55,8 @@ class ConsoleReleaseMergeTests(unittest.TestCase):
         self.assertIn('"auto_merge_allowed": false',text)
         self.assertIn('"human_console_merge_allowed": true',text)
         self.assertIn('"operator_merge_method": "squash"',text)
+        self.assertIn('"operator_allowed_repositories"',text)
+        self.assertIn('"leandrosilveiradepaula/ai-product-factory"',text)
 
     def test_exact_preview_branch_runs_browser_evidence(self):
         text=PREVIEW_WORKFLOW.read_text()
