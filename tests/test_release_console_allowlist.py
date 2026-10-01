@@ -4,6 +4,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 POLICY=ROOT/"config/factory.release-policy.v1.json"
+VERCEL=ROOT/"apps/console/vercel.json"
 
 class Tests(unittest.TestCase):
     def test_console_release_allowlist_includes_factory_and_crm(self):
@@ -14,6 +15,11 @@ class Tests(unittest.TestCase):
         allowed=set(production["operator_allowed_repositories"])
         self.assertIn("leandrosilveiradepaula/ai-product-factory",allowed)
         self.assertIn("leandrosilveiradepaula/crm-infodive",allowed)
+
+    def test_console_rebuilds_when_release_policy_changes(self):
+        cfg=json.loads(VERCEL.read_text())
+        ignore=cfg["ignoreCommand"]
+        self.assertIn("../../config/factory.release-policy.v1.json",ignore)
 
 if __name__=="__main__":
     unittest.main()
