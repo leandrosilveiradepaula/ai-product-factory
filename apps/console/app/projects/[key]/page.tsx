@@ -6,8 +6,27 @@ import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
 const stageLabels=["Descoberta","Especificação","Plano","Implementação","Revisão","Testes / Avaliações","Prévia","Aprovação","Liberação","Operação"];
+const macroStages=[
+ {label:"Entender",detail:"Descoberta e especificação",members:["discovery","specification"]},
+ {label:"Planejar",detail:"Plano técnico e backlog",members:["planning"]},
+ {label:"Construir",detail:"Implementação e revisão",members:["implementation","review"]},
+ {label:"Validar",detail:"Testes, avaliações e prévia",members:["validation","preview"]},
+ {label:"Liberar",detail:"Aprovação, release e operação",members:["human_gate","release","operations"]},
+];
 function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.round(((i+1)/stages.length)*100)}
+function macroStageIndex(stage:string){const i=macroStages.findIndex(item=>item.members.includes(stage));return i<0?0:i}
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
+function nextAction(stage:string,hasPendingDatabase:boolean,activeTasks:number){
+ if(hasPendingDatabase)return {title:"Conectar o banco de dados",body:"A Factory está aguardando a conexão mínima necessária para reconciliar e executar o trabalho com evidência real.",href:"#databases",label:"Ver banco de dados"};
+ if(stage==="human_gate")return {title:"Tomar a decisão pendente",body:"A automação chegou a um gate humano. Revise o motivo e decida antes de a Factory continuar.",href:"/gates",label:"Abrir aprovações"};
+ if(stage==="release")return {title:"Revisar e fazer o merge de produção",body:"Os gates automáticos terminaram. Produção continua dependendo de um merge humano explícito.",href:"/deployments",label:"Ver release"};
+ if(stage==="operations")return {title:"Acompanhar a operação",body:"O projeto já está em operação. Use as evidências e implantações para acompanhar saúde e novos trabalhos.",href:"/deployments",label:"Ver implantações"};
+ if(activeTasks===0)return {title:"Nenhuma ação necessária agora",body:"Não há tarefas abertas neste projeto. Acompanhe novas evidências ou inicie um novo trabalho quando necessário.",href:"/projects",label:"Voltar aos projetos"};
+ if(["discovery","specification"].includes(stage))return {title:"Acompanhar entendimento do produto",body:"A Factory está transformando o objetivo em requisitos e especificação. Você só precisa agir se aparecer uma decisão em “Precisa de atenção”.",href:"/gates",label:"Ver decisões"};
+ if(stage==="planning")return {title:"Aguardar o plano de execução",body:"A Factory está decompondo o trabalho, escolhendo agentes e organizando dependências. Nenhuma escolha técnica manual é necessária.",href:"/queue",label:"Ver fila"};
+ if(["implementation","review"].includes(stage))return {title:"Acompanhar construção e revisão",body:"A execução está com os agentes e revisores. Use a fila para acompanhar o trabalho sem interferir no roteamento.",href:"/queue",label:"Ver fila"};
+ return {title:"Acompanhar validação e prévia",body:"A Factory está validando qualidade e preparando evidências antes do gate humano de produção.",href:"/runs",label:"Ver execuções"};
+}
 
 const supabaseMessages:Record<string,{status:string;message:string}>={
  connected:{status:"success",message:"Supabase conectado e acesso somente leitura verificado."},
@@ -25,11 +44,27 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const p=await getProjectDetail(key);if(!p)notFound();
  const [ops,state,databases,teamPlan]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
+ const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
+ const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
+ const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  return <>
   <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
-  <div className="lifecycleRail" aria-label="Ciclo do produto"><span className="lifecycleIdea done">Ideia</span>{stageLabels.map((label,i)=><span key={label} className={i<stages.indexOf(p.stage)?"done":i===stages.indexOf(p.stage)?"current":""}>{label}</span>)}</div>
+  <div className="projectOrientation">
+   <div>
+    <div className="macroLifecycle" aria-label="Ciclo do produto em cinco macroetapas">
+     {macroStages.map((item,i)=><div className={"macroStage "+(i<currentMacro?"done":i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail}</small></div>)}
+    </div>
+    <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>
+   </div>
+   <aside className="nextActionCard" aria-label="Próxima ação">
+    <span className="detailLabel">O que você precisa fazer agora</span>
+    <h2>{action.title}</h2>
+    <p>{action.body}</p>
+    <div className="actions"><ActionLink href={action.href} variant="primary">{action.label}</ActionLink></div>
+   </aside>
+  </div>
   <div className="grid compact">
    <MetricCard label="Ciclo de vida" value={progress(p.stage)+"%"} note={<div className="progressTrack"><div className="progressFill" style={{width:progress(p.stage)+"%"}}/></div>}/>
    <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" no total"}/>
@@ -49,7 +84,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     {Object.keys(state.snapshot.sourceStatus).length?<div><span className="detailLabel">Fontes reconciliadas</span><div className="valueList">{Object.entries(state.snapshot.sourceStatus).map(([source,value])=><div className="valueRow" key={source}><strong>{source}</strong><span className="muted">{display(value)}</span></div>)}</div></div>:null}
    </div>}
   </section>:null}
-  <section className="section"><SectionHeader title="Bancos de dados" action={<span className="muted">{databases.length} integração{databases.length===1?"":"ões"}</span>}/>
+  <section className="section" id="databases"><SectionHeader title="Bancos de dados" action={<span className="muted">{databases.length} integração{databases.length===1?"":"ões"}</span>}/>
    {databases.length===0?<EmptyState>Nenhum banco foi vinculado a este projeto. A Factory pode registrar um banco existente ou preparar o provisionamento de um novo banco, sujeito aos gates aplicáveis.</EmptyState>:<div className="table">
     <div className="tableRow tableHeader"><span>Banco</span><span>Acesso</span><span>Estado</span><span>Verificação</span></div>
     {databases.map(db=><div className="tableRow" key={db.id}>
