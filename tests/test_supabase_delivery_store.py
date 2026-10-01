@@ -15,4 +15,12 @@ class Tests(unittest.TestCase):
   with patch("urllib.request.urlopen",return_value=Response(9)) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_tool_usage(run_id="r",tool_family="github",operation="commit",estimated_cost=0)
   self.assertEqual(out,9);self.assertTrue(call.call_args.args[0].full_url.endswith("/rpc/factory_record_delivery_tool_usage"))
+ def test_console_release_finalization_uses_bounded_rpc(self):
+  with patch("urllib.request.urlopen",return_value=Response({"run_id":"r","task_id":"t","status":"merged","merge_sha":"m","idempotent":False})) as call:
+   out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").finalize_console_human_release("r",candidate_commit="abc",merge_sha="m")
+  self.assertEqual(out["status"],"merged")
+  req=call.call_args.args[0]
+  self.assertTrue(req.full_url.endswith("/rpc/factory_finalize_console_human_release"))
+  self.assertIn(b'"p_candidate_commit": "abc"',req.data)
+  self.assertIn(b'"p_merge_sha": "m"',req.data)
 if __name__=="__main__":unittest.main()
