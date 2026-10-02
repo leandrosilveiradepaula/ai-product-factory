@@ -62,7 +62,7 @@ def recent_successful_promotions(
     cutoff = now.astimezone(timezone.utc) - timedelta(hours=24)
     url = (
         f"https://api.github.com/repos/{repository}/actions/workflows/"
-        "promote-preview-candidate.yml/runs?event=workflow_dispatch&per_page=100"
+        "promote-preview-candidate.yml/runs?per_page=100"
     )
     payload = request_json(
         "GET",
