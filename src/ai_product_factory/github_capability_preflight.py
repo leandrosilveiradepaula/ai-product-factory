@@ -16,12 +16,15 @@ READ_CAPABILITIES = (
     "commit_statuses_read",
     "ci_evidence_read",
 )
+OPTIONAL_CAPABILITIES = (
+    "checks_read",
+)
 WRITE_CAPABILITIES = (
     "contents_write",
     "issues_write",
     "pull_requests_write",
 )
-ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
+ALL_CAPABILITIES = READ_CAPABILITIES + OPTIONAL_CAPABILITIES + WRITE_CAPABILITIES
 
 
 @dataclass(frozen=True)
@@ -113,6 +116,7 @@ class GitHubCapabilityPreflight:
                     f"/repos/{item.repository}/commits/{sha}/check-runs",
                     query={"per_page": "1"},
                 )
+                observed["checks_read"] = checks_state
                 evidence["checks_read"] = checks_state
                 evidence["checks_http_status"] = 200 if checks_state == "verified" else checks_status
             else:
@@ -141,7 +145,8 @@ class GitHubCapabilityPreflight:
                     observed[name] = "unverified"
             evidence["write_capabilities_source"] = "not_safely_probeable_without_mutation"
 
-        required = {name: True for name in ALL_CAPABILITIES}
+        required = {name: True for name in READ_CAPABILITIES + WRITE_CAPABILITIES}
+        required.update({name: False for name in OPTIONAL_CAPABILITIES})
         missing_read = [name for name in READ_CAPABILITIES if observed.get(name) != "verified"]
         missing_write = [name for name in WRITE_CAPABILITIES if observed.get(name) != "verified"]
 
@@ -184,6 +189,7 @@ def run_project_github_preflight(project_key: str | None = None) -> dict:
         "source": "safe_read_probe",
         "write_probe_mutation_performed": False,
         "checks_optional_when_actions_and_statuses_are_verified": True,
+        "checks_read": result.observed_capabilities.get("checks_read"),
     }
     store.record(
         item,
