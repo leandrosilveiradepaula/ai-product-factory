@@ -48,6 +48,19 @@ class Tests(unittest.TestCase):
         self.assertEqual(item.merge_sha,"merge123")
         self.assertEqual(item.release_source,"console_report")
 
+    def test_released_console_report_falls_back_to_run_metadata_pr_number(self):
+        rows=[
+            [{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"pr_number":14}}],
+            [{"project_id":"p"}],
+            [{"project_key":"demo","repository":"owner/repo"}],
+            [{"status":"released","candidate_commit":"abc","report":{"merge_sha":"merge123"}}],
+        ]
+        with patch("urllib.request.urlopen",side_effect=[Response(x) for x in rows]):
+            item=SupabaseReleaseFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x").next_pending()
+        self.assertEqual(item.pr_number,14)
+        self.assertEqual(item.merge_sha,"merge123")
+        self.assertEqual(item.release_source,"console_report")
+
     def test_released_report_must_match_candidate(self):
         rows=[
             [{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{}}],
