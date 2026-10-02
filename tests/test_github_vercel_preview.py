@@ -36,9 +36,18 @@ class Tests(unittest.TestCase):
         self.assertEqual(out.deployment_ref,"41")
 
     def test_ignores_non_vercel_checks_and_polls(self):
-        first=Response({"check_runs":[{"id":1,"status":"completed","conclusion":"success","app":{"slug":"github-actions"}}]})
-        second=Response({"check_runs":[{"id":2,"status":"completed","conclusion":"success","app":{"slug":"vercel"},"output":{"summary":"demo.vercel.app"}}]})
-        with patch("urllib.request.urlopen",side_effect=[first,second]):
+        first_checks=Response({"check_runs":[{"id":1,"status":"completed","conclusion":"success","app":{"slug":"github-actions"}}]})
+        second_checks=Response({"check_runs":[{"id":2,"status":"completed","conclusion":"success","app":{"slug":"vercel"},"output":{"summary":"demo.vercel.app"}}]})
+        empty_status=Response({"statuses":[]})
+        calls={"checks":0}
+        def fake_urlopen(req,timeout=30):
+            if "/check-runs" in req.full_url:
+                calls["checks"]+=1
+                return first_checks if calls["checks"]==1 else second_checks
+            if req.full_url.endswith("/status"):
+                return empty_status
+            raise AssertionError(req.full_url)
+        with patch("urllib.request.urlopen",side_effect=fake_urlopen):
             out=GitHubVercelPreviewAdapter(self.config(),sleeper=lambda _:None).deploy(request())
         self.assertEqual(out.preview_url,"https://demo.vercel.app")
 
