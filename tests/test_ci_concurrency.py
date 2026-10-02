@@ -25,6 +25,12 @@ class CiConcurrencyTests(unittest.TestCase):
         self.assertIn('cache: "npm"', workflow)
         self.assertIn('cache-dependency-path: "apps/console/package-lock.json"', workflow)
 
+    def test_preview_promoter_skips_superseded_candidates_without_failure(self):
+        workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
+        self.assertIn('promotion_action", "stale"', workflow)
+        self.assertIn("skipping obsolete Preview work", workflow)
+        self.assertIn("steps.verify.outputs.promotion_action != 'stale'", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
