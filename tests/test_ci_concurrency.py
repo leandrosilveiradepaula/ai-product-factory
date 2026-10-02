@@ -15,6 +15,11 @@ class CiConcurrencyTests(unittest.TestCase):
             self.assertIn("github.event.pull_request.number || github.ref", workflow)
             self.assertIn("cancel-in-progress: true", workflow)
 
+    def test_preview_promoter_cancels_stale_source_branch_runs(self):
+        workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
+        self.assertIn("github.event.workflow_run.head_branch", workflow)
+        self.assertIn("cancel-in-progress: true", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
