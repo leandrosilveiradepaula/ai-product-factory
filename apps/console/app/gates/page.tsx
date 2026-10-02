@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
-import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
+import {getGitHubAppInstallActions,getHumanGates,resolveHumanGate} from "../../lib/control-plane";
 import {mergeReadyReleaseFromConsole} from "../../lib/release-operator";
 import {applyPendingMigrationFromConsole} from "../../lib/migration-operator";
 import {getGitHubAppStatus} from "../../lib/github-app";
@@ -61,7 +61,7 @@ async function applyMigration(formData:FormData){
 export default async function Gates({searchParams}:{searchParams:Promise<{error?:string}>}){
  const params=await searchParams;
  const actionError=typeof params.error==="string"?params.error.slice(0,360):null;
- const [gates,githubApp]=await Promise.all([getHumanGates(),getGitHubAppStatus()]);const pending=gates.filter(g=>g.status==="pending");const githubAppActionPending=!githubApp.configured;const pendingCount=pending.length+(githubAppActionPending?1:0);const resolved=gates.length-pending.length;
+ const [gates,githubApp,githubInstallActions]=await Promise.all([getHumanGates(),getGitHubAppStatus(),getGitHubAppInstallActions()]);const pending=gates.filter(g=>g.status==="pending");const githubAppActionPending=!githubApp.configured;const installActions=githubApp.configured?githubInstallActions:[];const pendingCount=pending.length+(githubAppActionPending?1:0)+installActions.length;const resolved=gates.length-pending.length;
  return <>
   {actionError?<GateActionErrorBanner message={actionError}/>:null}
   <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" críticas pendentes":"nenhuma pendência"}/>}/>
@@ -81,6 +81,14 @@ export default async function Gates({searchParams}:{searchParams:Promise<{error?
      </div>
      <div className="gateForm"><GateDecisionPending><div className="gatePendingStatus" role="status">Esta ação só é considerada concluída depois que o GitHub retornar um callback válido e a configuração server-side for persistida.</div><div className="gateActionBar"><a className="primary linkButton" href="/api/integrations/github-app/register?return_to=gates">Registrar GitHub App</a></div></GateDecisionPending></div>
     </article>:null}
+    {installActions.map(action=><article className="card gateCard pending" key={"github-app-install-"+action.projectKey}>
+     <div className="gateBanner"><div className="badgeLine"><StatusPill status="pending"/><StatusPill status="sensitive_access"/></div><span className="muted mono">AÇÃO · github-app-install</span></div>
+     <div className="gateContent">
+      <div><span className="detailLabel">Motivo</span><h3>Instalar GitHub App em {action.projectName}</h3><p className="muted">O projeto ainda depende de acesso cross-repo. A instalação exige teu consentimento no GitHub e a Factory só confiará no acesso depois de uma verificação server-side com token temporário.</p></div>
+      <div className="gateMeta"><div><span className="detailLabel">Repositório</span><strong>{action.repository}</strong><div className="muted">estado atual: {action.authMode} · {action.status}</div></div></div>
+     </div>
+     <div className="gateForm"><GateDecisionPending><div className="gatePendingStatus" role="status">No GitHub, seleciona somente o repositório deste projeto. Não amplie para outros repositórios nesta etapa.</div><div className="gateActionBar"><a className="primary linkButton" href={"https://github.com/apps/"+githubApp.app_slug+"/installations/new"} target="_blank" rel="noreferrer">Instalar no GitHub</a><a className="linkButton" href={"/api/integrations/github-app/verify?project="+encodeURIComponent(action.projectKey)}>Verificar instalação</a></div></GateDecisionPending></div>
+    </article>)}
     {gates.length===0?<EmptyState><span className="status"><i className="statusDot"/>Nenhuma aprovação humana registrada.</span></EmptyState>:gates.map(g=><article className={g.status==="pending"?"card gateCard pending":"card gateCard"} key={g.id}>
      <div className="gateBanner"><div className="badgeLine"><StatusPill status={g.status}/><StatusPill status={g.type}/></div><span className="muted mono">GATE · {g.id.slice(0,12)}</span></div>
      <div className="gateContent">
