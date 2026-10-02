@@ -38,11 +38,11 @@ class FakeGitHubTransport:
         if "/git/refs/heads/" in url and method == "PATCH":
             return 200, {"object": {"sha": payload["sha"]}}
         if url.endswith("/pulls") and method == "POST":
-            return 201, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "feat/x", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main"}}
+            return 201, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "feat/x", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main", "sha": "base123"}}
         if "/pulls/9/files" in url and method == "GET":
             return 200, [{"filename":"apps/console/app/page.tsx"},{"filename":"src/core.py"}]
         if "/pulls/9" in url and method == "GET":
-            return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "codex/refactor", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main"}}
+            return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "codex/refactor", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main", "sha": "base123"}}
         if "/check-runs" in url and method == "GET":
             if self.check_runs_forbidden:
                 return 403, {"message": "forbidden"}
@@ -72,6 +72,7 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(pr.number, 9)
         self.assertEqual(pr.head_ref, "codex/refactor")
         self.assertEqual(pr.base_ref, "main")
+        self.assertEqual(pr.base_sha, "base123")
         self.assertEqual(pr.head_repository, "owner/repo")
 
     def test_token_is_only_in_authorization_header(self):

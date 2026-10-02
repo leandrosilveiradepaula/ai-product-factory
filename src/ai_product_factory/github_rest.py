@@ -50,6 +50,7 @@ class GitHubPullRequest:
     state: str = "open"
     head_ref: str | None = None
     base_ref: str | None = None
+    base_sha: str | None = None
     head_repository: str | None = None
 
 
@@ -209,6 +210,7 @@ class GitHubRestAdapter:
             state=str(row.get("state") or "open"),
             head_ref=row.get("head",{}).get("ref"),
             base_ref=row.get("base",{}).get("ref"),
+            base_sha=row.get("base",{}).get("sha"),
             head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
         )
 
@@ -223,6 +225,7 @@ class GitHubRestAdapter:
             state=str(row.get("state") or "open"),
             head_ref=row.get("head",{}).get("ref"),
             base_ref=row.get("base",{}).get("ref"),
+            base_sha=row.get("base",{}).get("sha"),
             head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
         )
 
