@@ -327,6 +327,23 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["preview_required"])
         github.assert_not_called()
 
+    def test_preview_probe_blocks_stale_pr_base_before_preview_work(self):
+        item=SimpleNamespace(
+            run_id="r",repository="owner/repo",manifest={"preview":{"required":True}},
+            pr_number=9,candidate_commit="abc"
+        )
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        github.get_pull_request.return_value=SimpleNamespace(
+            head_sha="abc",base_ref="main",base_sha="old-main"
+        )
+        github.get_branch_sha.return_value="new-main"
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github):
+            with self.assertRaisesRegex(RuntimeError,"PR base is stale"):
+                run_preview_probe_once()
+        github.get_pull_request_files.assert_not_called()
+
     def test_preview_probe_reports_non_applicable_without_external_readiness(self):
         item=SimpleNamespace(run_id="r",repository="owner/repo",manifest={"preview":{"required":False,"reason":"backend only"}},pr_number=9,candidate_commit="abc")
         queue=MagicMock();queue.next_pending.return_value=item
