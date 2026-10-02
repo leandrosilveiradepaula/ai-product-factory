@@ -58,10 +58,12 @@ jobs:
             if (!/^[0-9a-f]{40}$/.test(baseSha || "")) return core.setFailed("verified PR base SHA is missing");
             try {
               await github.rest.git.getRef({...context.repo, ref});
+              await github.rest.git.deleteRef({...context.repo, ref});
+              core.notice("Removed prior refs/" + ref + " so this promotion starts from the PR base again.");
             } catch (error) {
               if (error.status !== 404) throw error;
-              await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha: baseSha});
-              core.notice("Seeded refs/" + ref + " at PR base " + baseSha + " so the next ref update carries the full PR diff to Git integrations.");
             }
+            await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha: baseSha});
+            core.notice("Seeded refs/" + ref + " at PR base " + baseSha + " so the next ref update carries the full PR diff to Git integrations.");
             await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
             core.notice("Preview ref refs/" + ref + " now points to exact candidate " + sha);
