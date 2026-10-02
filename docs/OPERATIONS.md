@@ -315,19 +315,19 @@ Active policy:
 - implementation branches such as `console/**`, `test/**`, `ci/**` and `security/**` do not deploy automatically;
 - after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
 - only `preview/**` is allowed to create the final Preview candidate;
-- if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it and does not request another deployment;
-- before changing a Preview ref, the workflow reads the latest durable `vercel/team/deployments_daily` snapshot through the existing GitHub OIDC Control Plane broker;
-- quota policy is fail-closed: below 70% normal; 70-84% attention; 85-94% protection mode (only this explicit final-candidate promotion remains eligible); 95% or more blocks new Preview promotion;
-- a missing, unknown or older-than-eight-hours quota snapshot blocks new Preview promotion instead of guessing capacity;
-- reuse and quota-block decisions are persisted as `factory_audit_events`;
-- the workflow never calls Vercel CLI or the Vercel deployment API; deployment creation remains the Git integration's responsibility;
+- if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it before any budget check and does not request another deployment;
+- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five successful promotion workflows per rolling 24 hours;
+- when read-only `VERCEL_TOKEN` and `FACTORY_VERCEL_TEAM_ID` are configured, the same guard prefers the shared Vercel rolling-24h deployment count and applies the 70/85/95% thresholds;
+- a Vercel API read failure falls back to the bounded GitHub budget instead of blocking all development or bypassing protection;
+- the workflow never calls Vercel CLI or a Vercel deployment-creation API; deployment creation remains the Git integration's responsibility;
+- promotion evidence is retained in the GitHub Actions run summary; normal Control Plane reconciliation remains responsible for project lifecycle evidence;
 - exact browser evidence waits for the Vercel commit status to reach success before using a Vercel check URL; early Preview Comments checks are not sufficient readiness evidence;
 - `ignoreCommand` remains a path-based second guard;
-- Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically.
+- Vercel `api-deployments-free-per-day` remains an external quota: do not retry deployments or buy capacity automatically.
 
 ## Resource quota observability
 
-The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. Unknown provider usage remains unknown rather than estimated. Current Vercel daily deployment usage is measured as a derived rolling-window count from deployment API data. The collector runs every six hours; the promotion guard accepts snapshots up to eight hours old to tolerate normal scheduler delay without allowing unbounded staleness. GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
+The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. The optional Vercel collector runs every six hours only when its read-only provider credentials are already configured; missing credentials skip that collector cleanly. Preview safety does not depend on those credentials because the GitHub-local promotion budget remains active. GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
 
 ## Preview applicability policy
 
