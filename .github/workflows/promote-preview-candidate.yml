@@ -23,10 +23,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Verify exact PR candidate and green required checks
+        id: verify
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          BASE_SHA: ${{ steps.verify.outputs.base_sha }}
         with:
           script: |
             const prNumber = Number(process.env.PR_NUMBER);
@@ -36,6 +38,8 @@ jobs:
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
             if (pr.state !== "open") return core.setFailed("PR must be open");
             if (pr.head.sha !== sha) return core.setFailed("candidate SHA is not the exact PR head");
+            if (!/^[0-9a-f]{40}$/.test(String(pr.base.sha || ""))) return core.setFailed("PR base SHA is unavailable");
+            core.setOutput("base_sha", pr.base.sha);
             const {data: checks} = await github.rest.checks.listForRef({...context.repo, ref: sha, per_page: 100});
             for (const name of ["test", "factory-acceptance", "validate"]) {
               const ok = checks.check_runs.some(c => c.name === name && c.status === "completed" && c.conclusion === "success");
@@ -50,11 +54,14 @@ jobs:
           script: |
             const ref = "heads/preview/pr-" + Number(process.env.PR_NUMBER);
             const sha = process.env.CANDIDATE_SHA;
+            const baseSha = process.env.BASE_SHA;
+            if (!/^[0-9a-f]{40}$/.test(baseSha || "")) return core.setFailed("verified PR base SHA is missing");
             try {
               await github.rest.git.getRef({...context.repo, ref});
-              await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
             } catch (error) {
               if (error.status !== 404) throw error;
-              await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha});
+              await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha: baseSha});
+              core.notice("Seeded refs/" + ref + " at PR base " + baseSha + " so the next ref update carries the full PR diff to Git integrations.");
             }
-            core.notice("Preview ref refs/" + ref + " now points to " + sha);
+            await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
+            core.notice("Preview ref refs/" + ref + " now points to exact candidate " + sha);
