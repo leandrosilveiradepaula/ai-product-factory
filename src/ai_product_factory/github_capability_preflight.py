@@ -71,6 +71,9 @@ class GitHubCapabilityPreflight:
     def run(self, item: ProjectGitHubAccessItem) -> GitHubCapabilityPreflightResult:
         observed = {name: str(item.observed_capabilities.get(name) or "unverified") for name in ALL_CAPABILITIES}
         evidence: dict[str, object] = {}
+        sha = ""
+        status_payload: dict = {}
+        checks_payload: dict = {}
 
         metadata_state, metadata, metadata_status = self._safe_get(f"/repos/{item.repository}")
         observed["metadata_read"] = metadata_state
@@ -112,8 +115,6 @@ class GitHubCapabilityPreflight:
             )
             evidence["default_branch_ref_http_status"] = 200 if sha_state == "verified" else ref_status
             sha = str(((ref or {}).get("object") or {}).get("sha") or "")
-            status_payload = {}
-            checks_payload = {}
             if sha:
                 state, status_payload, status = self._safe_get(f"/repos/{item.repository}/commits/{sha}/status")
                 observed["commit_statuses_read"] = state
