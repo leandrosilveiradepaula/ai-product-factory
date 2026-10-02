@@ -16,6 +16,7 @@ class ProjectGitHubAccessItem:
     repository: str
     auth_mode: str
     observed_capabilities: dict
+    manifest: dict | None = None
 
 
 class SupabaseProjectGitHubAccessStore:
@@ -50,7 +51,7 @@ class SupabaseProjectGitHubAccessStore:
     def next_pending(self, project_key: str | None = None) -> ProjectGitHubAccessItem | None:
         if project_key:
             projects = self._get(
-                "factory_projects?select=id,project_key,repository,is_active"
+                "factory_projects?select=id,project_key,repository,is_active,manifest"
                 f"&project_key=eq.{quote(project_key)}&is_active=eq.true&limit=1"
             )
             candidates = projects
@@ -63,7 +64,7 @@ class SupabaseProjectGitHubAccessStore:
                 return None
             ids = ",".join(str(row["project_id"]) for row in access)
             candidates = self._get(
-                "factory_projects?select=id,project_key,repository,is_active"
+                "factory_projects?select=id,project_key,repository,is_active,manifest"
                 f"&id=in.({ids})&is_active=eq.true&limit=20"
             )
             order = {str(row["project_id"]): index for index, row in enumerate(access)}
@@ -83,6 +84,7 @@ class SupabaseProjectGitHubAccessStore:
                 repository=repository,
                 auth_mode=str(row.get("auth_mode") or "fine_grained_pat"),
                 observed_capabilities=dict(row.get("observed_capabilities") or {}),
+                manifest=dict(project.get("manifest") or {}),
             )
         return None
 
@@ -112,6 +114,16 @@ class SupabaseProjectGitHubAccessStore:
                 "p_evidence": evidence,
                 "p_installation_id": installation_id,
                 "p_repository_id": repository_id,
+            },
+        )
+
+    def record_preview_policy(self, item: ProjectGitHubAccessItem, *, policy: dict, evidence: dict) -> dict:
+        return self._rpc(
+            "factory_record_project_preview_policy",
+            {
+                "p_project_id": item.project_id,
+                "p_policy": policy,
+                "p_evidence": evidence,
             },
         )
 
