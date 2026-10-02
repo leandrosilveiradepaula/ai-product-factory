@@ -355,6 +355,7 @@ Active policy:
 - a Vercel API read failure falls back to the bounded GitHub budget instead of blocking all development or bypassing protection;
 - the workflow never calls Vercel CLI or a Vercel deployment-creation API; deployment creation remains the Git integration's responsibility;
 - promotion evidence is retained in the GitHub Actions run summary; normal Control Plane reconciliation remains responsible for project lifecycle evidence;
+- ref updates performed by the native `GITHUB_TOKEN` do not recursively start push workflows, so the promoter explicitly dispatches `Exact Preview browser evidence` for the exact candidate and waits for the candidate-scoped `Factory Preview browser evidence` commit status; `evidence/preview/**` is a non-deploying recovery trigger, while only `preview/**` can request Vercel deployment;
 - exact browser evidence waits for the Vercel commit status to reach success before using a Vercel check URL; early Preview Comments checks are not sufficient readiness evidence;
 - `ignoreCommand` remains a path-based second guard;
 - Vercel `api-deployments-free-per-day` remains an external quota: do not retry deployments or buy capacity automatically.
