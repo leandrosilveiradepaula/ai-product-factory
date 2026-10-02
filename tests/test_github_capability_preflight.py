@@ -50,6 +50,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(out.observed_capabilities["actions_read"],"verified")
         self.assertEqual(out.observed_capabilities["commit_statuses_read"],"verified")
         self.assertEqual(out.observed_capabilities["ci_evidence_read"],"verified")
+        self.assertEqual(out.observed_capabilities["checks_read"],"missing")
+        self.assertFalse(out.required_capabilities["checks_read"])
         self.assertEqual(out.observed_capabilities["contents_write"],"unverified")
         self.assertIn("write capabilities",out.error)
 
@@ -67,6 +69,7 @@ class Tests(unittest.TestCase):
         with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/repo"},clear=True):
             out=GitHubCapabilityPreflight(github).run(item())
         self.assertEqual(out.auth_mode,"native_github_token")
+        self.assertEqual(out.observed_capabilities["checks_read"],"verified")
         self.assertEqual(out.status,"ready")
         self.assertEqual(out.observed_capabilities["contents_write"],"verified")
         self.assertIsNone(out.error)
