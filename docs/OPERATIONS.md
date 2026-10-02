@@ -42,6 +42,24 @@ The preflight:
 
 The Console shows this contract on each project. An admin can mark the record stale with **Verificar novamente**; the autonomous runner then re-runs the safe preflight. **Corrigir acesso no GitHub** remains an external consent step in Phase 1. The target architecture is a Factory-owned GitHub App with short-lived installation tokens; PAT expansion must never happen silently.
 
+## Factory-owned GitHub App onboarding
+
+The Console contains an inert-by-default GitHub App onboarding path. Registration and installation remain explicit human GitHub actions.
+
+Registration uses GitHub's App Manifest flow from an authenticated Factory admin session. The temporary manifest code is exchanged server-side. The returned PEM, client secret and webhook secret are written directly to Supabase Vault; only non-secret App metadata is stored in the public Factory schema. These values are never rendered to the browser.
+
+For a project, **Verificar GitHub App neste projeto**:
+- authenticates as the registered App with a short-lived App JWT;
+- asks GitHub for the installation associated with the exact `owner/repo`;
+- mints a one-hour installation token constrained to that repository and to the source-controlled delivery permission set;
+- verifies repository/contents/issues/pulls/actions/status/check evidence;
+- infers write readiness from the granted installation permissions without performing synthetic write mutations;
+- persists only `installation_id`, `repository_id`, capability evidence and `auth_mode=github_app`; the installation token is never persisted.
+
+The source-controlled App permission set is limited to Actions read, Checks read, Contents write, Issues write, Pull Requests write and Commit Statuses read. Installing the App or changing repository access is a human GitHub consent action. Until an installation verifies successfully, the existing fine-grained PAT path remains an explicit fallback and cross-repository write stages stay fail-closed.
+
+This phase does not yet switch the autonomous Python runtime to GitHub App tokens. Runtime replacement of `FACTORY_GITHUB_TOKEN` is a separate Phase 3 change after a real App installation is verified.
+
 ## Preview policy during existing-project onboarding
 
 Imported projects must have an explicit Preview policy before Preview execution. The GitHub capability preflight may persist the safe positive case automatically when read-only GitHub evidence proves an existing Vercel integration on the repository default branch.
