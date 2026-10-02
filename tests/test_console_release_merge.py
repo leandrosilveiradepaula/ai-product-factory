@@ -17,6 +17,14 @@ class ConsoleReleaseMergeTests(unittest.TestCase):
         self.assertIn("operator_allowed_repositories",POLICY.read_text())
         self.assertNotIn("GITHUB_TOKEN",text.replace("FACTORY_RELEASE_GITHUB_TOKEN",""))
 
+    def test_release_readiness_preflights_dedicated_credential(self):
+        text=MODULE.read_text()
+        self.assertIn("getReleaseMergeReadinessForPr",text)
+        self.assertIn("response.status===404",text)
+        self.assertIn("response.status===403",text)
+        self.assertIn("response.status===401",text)
+        self.assertIn("credencial dedicada de release",text.lower())
+
     def test_merge_revalidates_durable_release_and_exact_pr_sha(self):
         text=MODULE.read_text()
         for marker in (
