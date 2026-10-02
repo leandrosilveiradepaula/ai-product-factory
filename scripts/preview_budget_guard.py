@@ -7,8 +7,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from urllib import parse, request
 
-from scripts.collect_vercel_usage import list_team_deployments
-from scripts.vercel_preview_guard import evaluate_quota
+if __package__:
+    from scripts.collect_vercel_usage import list_team_deployments
+    from scripts.vercel_preview_guard import evaluate_quota
+else:
+    from collect_vercel_usage import list_team_deployments
+    from vercel_preview_guard import evaluate_quota
 
 LOCAL_DAILY_LIMIT = 5
 JsonRequest = Callable[[str, str, dict[str, str], dict[str, Any] | None], Any]
@@ -58,7 +62,7 @@ def recent_successful_promotions(
     cutoff = now.astimezone(timezone.utc) - timedelta(hours=24)
     url = (
         f"https://api.github.com/repos/{repository}/actions/workflows/"
-        "promote-preview-candidate.yml/runs?event=workflow_dispatch&per_page=100"
+        "promote-preview-candidate.yml/runs?per_page=100"
     )
     payload = request_json(
         "GET",

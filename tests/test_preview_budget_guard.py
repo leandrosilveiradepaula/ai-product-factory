@@ -20,7 +20,8 @@ class PreviewBudgetGuardTests(unittest.TestCase):
 
     def test_recent_successful_promotions_only_counts_last_24h(self):
         def transport(method, url, headers, payload):
-            self.assertIn("promote-preview-candidate.yml/runs", url)
+            self.assertIn("promote-preview-candidate.yml/runs?per_page=100", url)
+            self.assertNotIn("event=workflow_dispatch", url)
             return {
                 "workflow_runs": [
                     {
