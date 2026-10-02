@@ -13,10 +13,10 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: write
   pull-requests: read
   checks: read
-  id-token: write
 
 concurrency:
   group: vercel-preview-candidate-${{ inputs.pr_number }}
@@ -28,22 +28,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
-      - name: Verify Vercel deployment quota before promotion
-        env:
-          PR_NUMBER: ${{ inputs.pr_number }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-        run: |
-          python scripts/vercel_preview_guard.py quota \
-            --project-key ai-product-factory \
-            --candidate-sha "$CANDIDATE_SHA" \
-            --pr-number "$PR_NUMBER"
-
-      - name: Verify exact PR candidate and green required checks
+      - name: Verify exact PR candidate, green checks and reuse opportunity
+        id: verify
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
@@ -63,7 +53,30 @@ jobs:
               if (!ok) return core.setFailed("required check is not green: " + name);
             }
 
+            const ref = "heads/preview/pr-" + prNumber;
+            try {
+              const {data: current} = await github.rest.git.getRef({...context.repo, ref});
+              if (current.object.sha === sha) {
+                core.setOutput("needs_promotion", "false");
+                core.setOutput("promotion_action", "reused");
+                core.notice("Preview ref already points to this exact candidate; no new deployment was requested.");
+                return;
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            core.setOutput("needs_promotion", "true");
+
+      - name: Enforce bounded Preview deployment budget
+        if: steps.verify.outputs.needs_promotion == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
+        run: python scripts/preview_budget_guard.py
+
       - name: Create or update one preview ref to the exact candidate
+        if: steps.verify.outputs.needs_promotion == 'true'
         id: promote
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
@@ -74,12 +87,7 @@ jobs:
             const ref = "heads/preview/pr-" + Number(process.env.PR_NUMBER);
             const sha = process.env.CANDIDATE_SHA;
             try {
-              const {data: current} = await github.rest.git.getRef({...context.repo, ref});
-              if (current.object.sha === sha) {
-                core.setOutput("promotion_action", "reused");
-                core.notice("Preview ref already points to this exact candidate; no new deployment was requested.");
-                return;
-              }
+              await github.rest.git.getRef({...context.repo, ref});
               await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
               core.setOutput("promotion_action", "updated");
               core.notice("Updated refs/" + ref + " directly to exact candidate " + sha + ".");
@@ -90,14 +98,19 @@ jobs:
               core.notice("Created refs/" + ref + " directly at exact candidate " + sha + ".");
             }
 
-      - name: Record durable Preview promotion evidence
+      - name: Record durable Preview promotion summary
+        if: always() && !cancelled()
         env:
+          VERIFY_ACTION: ${{ steps.verify.outputs.promotion_action }}
+          PROMOTE_ACTION: ${{ steps.promote.outputs.promotion_action }}
           PR_NUMBER: ${{ inputs.pr_number }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-          PROMOTION_ACTION: ${{ steps.promote.outputs.promotion_action }}
         run: |
-          python scripts/vercel_preview_guard.py record \
-            --project-key ai-product-factory \
-            --candidate-sha "$CANDIDATE_SHA" \
-            --pr-number "$PR_NUMBER" \
-            --action "$PROMOTION_ACTION"
+          action="${PROMOTE_ACTION:-${VERIFY_ACTION:-unknown}}"
+          {
+            echo "### Preview promotion"
+            echo "- PR: #$PR_NUMBER"
+            echo "- candidate: `$CANDIDATE_SHA`"
+            echo "- action: `$action`"
+            echo "- deploy path: GitHub ref -> Vercel Git integration"
+          } >> "$GITHUB_STEP_SUMMARY"
