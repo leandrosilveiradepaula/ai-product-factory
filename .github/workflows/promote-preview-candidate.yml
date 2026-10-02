@@ -73,7 +73,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
-        run: python scripts/preview_budget_guard.py
+        run: python -m scripts.preview_budget_guard
 
       - name: Create or update one preview ref to the exact candidate
         if: steps.verify.outputs.needs_promotion == 'true'
@@ -108,9 +108,9 @@ jobs:
         run: |
           action="${PROMOTE_ACTION:-${VERIFY_ACTION:-unknown}}"
           {
-            echo "### Preview promotion"
-            echo "- PR: #$PR_NUMBER"
-            echo "- candidate: `$CANDIDATE_SHA`"
-            echo "- action: `$action`"
-            echo "- deploy path: GitHub ref -> Vercel Git integration"
+            printf '%s\n' "### Preview promotion"
+            printf '%s\n' "- PR: #$PR_NUMBER"
+            printf '%s\n' "- candidate: $CANDIDATE_SHA"
+            printf '%s\n' "- action: $action"
+            printf '%s\n' "- deploy path: GitHub ref -> Vercel Git integration"
           } >> "$GITHUB_STEP_SUMMARY"
