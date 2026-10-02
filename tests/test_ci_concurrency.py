@@ -20,6 +20,11 @@ class CiConcurrencyTests(unittest.TestCase):
         self.assertIn("github.event.workflow_run.head_branch", workflow)
         self.assertIn("cancel-in-progress: true", workflow)
 
+    def test_console_validation_uses_dependency_cache(self):
+        workflow = (ROOT / ".github/workflows/console.yml").read_text()
+        self.assertIn('cache: "npm"', workflow)
+        self.assertIn('cache-dependency-path: "apps/console/package-lock.json"', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
