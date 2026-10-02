@@ -7,9 +7,11 @@ from ai_product_factory.project_github_access import ProjectGitHubAccessItem
 
 
 class Transport:
-    def __init__(self, *, actions_status=200, checks_status=403):
+    def __init__(self, *, actions_status=200, checks_status=403, statuses=None, checks=None):
         self.actions_status=actions_status
         self.checks_status=checks_status
+        self.statuses=[] if statuses is None else statuses
+        self.checks=[] if checks is None else checks
 
     def __call__(self, method, url, headers, body):
         if url.endswith("/repos/owner/repo"):
@@ -25,9 +27,9 @@ class Transport:
         if "/git/ref/heads/main" in url:
             return 200, {"object":{"sha":"abc"}}
         if "/commits/abc/status" in url:
-            return 200, {"statuses":[]}
+            return 200, {"statuses":self.statuses}
         if "/commits/abc/check-runs?" in url:
-            return self.checks_status, {"check_runs":[]}
+            return self.checks_status, {"check_runs":self.checks}
         raise AssertionError(url)
 
 
@@ -54,6 +56,21 @@ class Tests(unittest.TestCase):
         self.assertFalse(out.required_capabilities["checks_read"])
         self.assertEqual(out.observed_capabilities["contents_write"],"unverified")
         self.assertIn("write capabilities",out.error)
+
+    def test_preflight_detects_verified_vercel_github_integration(self):
+        transport=Transport(
+            statuses=[{
+                "id":77,
+                "context":"Vercel",
+                "state":"success",
+                "target_url":"https://vercel.com/team/project/deployment",
+            }],
+        )
+        github=GitHubRestAdapter(repository="owner/repo",token="token",transport=transport)
+        with patch.dict("os.environ",{},clear=True):
+            out=GitHubCapabilityPreflight(github).run(item())
+        self.assertEqual(out.preview_policy,{"provider":"vercel","mode":"github","required":True})
+        self.assertEqual(out.preview_evidence["source"],"github_vercel_integration")
 
     def test_missing_required_read_capability_blocks(self):
         github=GitHubRestAdapter(repository="owner/repo",token="token",transport=Transport(actions_status=403))
