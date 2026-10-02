@@ -70,7 +70,9 @@ class SupabaseReleaseFollowupQueue:
             report=reports[0]
             report_candidate=str(report.get("candidate_commit") or "")
             payload=report.get("report") or {}
-            pr_number=int(payload.get("pr_number") or 0)
+            report_pr_number=int(payload.get("pr_number") or 0)
+            metadata_pr_number=int((run.get("metadata") or {}).get("pr_number") or 0)
+            pr_number=report_pr_number or metadata_pr_number
             merge_sha=str(payload.get("merge_sha") or "")
             if report_candidate!=candidate or pr_number<1 or not merge_sha:
                 raise RuntimeError("released report does not match run candidate or lacks merge evidence")
