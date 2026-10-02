@@ -1,0 +1,24 @@
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class GitHubAppBrokerBindingTests(unittest.TestCase):
+    def test_edge_broker_revalidates_exact_repository_before_returning_token(self):
+        edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn('"https://api.github.com/repositories/"+repositoryId', edge)
+        self.assertIn("github_app_repository_binding_mismatch", edge)
+        self.assertIn("repositoryBody?.full_name", edge)
+        self.assertIn("repository_ids:[repositoryId]", edge)
+        self.assertIn("token_persisted:false", edge)
+
+    def test_python_runtime_rejects_broker_binding_or_persistence_drift(self):
+        runtime = (ROOT / "src/ai_product_factory/github_app_runtime.py").read_text()
+        self.assertIn("broker returned a different installation", runtime)
+        self.assertIn("broker returned a different repository", runtime)
+        self.assertIn("token persistence contract was not proven", runtime)
+
+
+if __name__ == "__main__":
+    unittest.main()
