@@ -42,6 +42,22 @@ The preflight:
 
 The Console shows this contract on each project. An admin can mark the record stale with **Verificar novamente**; the autonomous runner then re-runs the safe preflight. **Corrigir acesso no GitHub** remains an external consent step in Phase 1. The target architecture is a Factory-owned GitHub App with short-lived installation tokens; PAT expansion must never happen silently.
 
+## Preview policy during existing-project onboarding
+
+Imported projects must have an explicit Preview policy before Preview execution. The GitHub capability preflight may persist the safe positive case automatically when read-only GitHub evidence proves an existing Vercel integration on the repository default branch.
+
+Automatic onboarding is deliberately narrow:
+
+- a Vercel commit status with a `vercel.com` target or a check-run owned by the Vercel GitHub App is accepted as integration evidence;
+- the persisted policy is only `{"provider":"vercel","mode":"github","required":true}`;
+- an existing explicit `manifest.preview` policy is never overwritten;
+- absence of Vercel evidence never becomes `required=false`;
+- no Vercel team/project identifiers are invented;
+- the evidence stores only normalized signal metadata, not raw GitHub payloads;
+- the persistence RPC is service-role only and audited as `project.preview_policy.verified`.
+
+If no explicit policy or verified integration exists, Preview remains fail-closed and the Console shows the policy as pending. Re-run the GitHub project preflight after correcting repository access or integration.
+
 ## Cross-repo Vercel Preview evidence
 
 For `preview.mode=github`, generic CI evidence can remain valid with Actions + Commit Statuses when the fine-grained token cannot read Checks. Preview URL discovery has a stricter requirement: the Factory needs either a successful Vercel check-run that exposes a `.vercel.app` URL or a successful Vercel commit status plus a Vercel bot comment that exposes a **Ready** preview URL.
