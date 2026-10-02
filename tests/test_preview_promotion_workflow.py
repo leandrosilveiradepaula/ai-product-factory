@@ -43,6 +43,15 @@ class PreviewPromotionWorkflowTests(unittest.TestCase):
         self.assertIn("Factory Preview browser evidence", exact)
         self.assertIn("statuses: write", exact)
 
+    def test_initial_preview_ref_is_seeded_then_advanced_to_candidate(self):
+        workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
+        self.assertIn("github.rest.git.getCommit", workflow)
+        self.assertIn('commit.parents?.[0]?.sha', workflow)
+        self.assertIn('github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha: seedSha})', workflow)
+        self.assertIn("github.rest.git.updateRef({...context.repo, ref, sha, force: true})", workflow)
+        self.assertIn('promotion_action", "created_then_updated"', workflow)
+        self.assertNotIn('createRef({...context.repo, ref: "refs/" + ref, sha})', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
