@@ -315,14 +315,19 @@ Active policy:
 - implementation branches such as `console/**`, `test/**`, `ci/**` and `security/**` do not deploy automatically;
 - after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
 - only `preview/**` is allowed to create the final Preview candidate;
-- the promoted Preview ref is reset to the PR base and then advanced to the exact PR head, so Git integrations observe the complete candidate diff while the final ref still identifies the exact candidate commit;
+- if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it and does not request another deployment;
+- before changing a Preview ref, the workflow reads the latest durable `vercel/team/deployments_daily` snapshot through the existing GitHub OIDC Control Plane broker;
+- quota policy is fail-closed: below 70% normal; 70-84% attention; 85-94% protection mode (only this explicit final-candidate promotion remains eligible); 95% or more blocks new Preview promotion;
+- a missing, unknown or older-than-eight-hours quota snapshot blocks new Preview promotion instead of guessing capacity;
+- reuse and quota-block decisions are persisted as `factory_audit_events`;
+- the workflow never calls Vercel CLI or the Vercel deployment API; deployment creation remains the Git integration's responsibility;
 - exact browser evidence waits for the Vercel commit status to reach success before using a Vercel check URL; early Preview Comments checks are not sufficient readiness evidence;
 - `ignoreCommand` remains a path-based second guard;
 - Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically.
 
 ## Resource quota observability
 
-The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. Unknown provider usage remains unknown rather than estimated. Current Vercel daily deployment usage is measured as a derived rolling-window count from deployment API data; GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
+The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. Unknown provider usage remains unknown rather than estimated. Current Vercel daily deployment usage is measured as a derived rolling-window count from deployment API data. The collector runs every six hours; the promotion guard accepts snapshots up to eight hours old to tolerate normal scheduler delay without allowing unbounded staleness. GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
 
 ## Preview applicability policy
 
