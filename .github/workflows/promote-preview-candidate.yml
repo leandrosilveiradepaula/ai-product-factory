@@ -16,6 +16,7 @@ permissions:
   contents: write
   pull-requests: read
   checks: read
+  id-token: write
 
 concurrency:
   group: vercel-preview-candidate-${{ inputs.pr_number }}
@@ -26,6 +27,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Verify Vercel deployment quota before promotion
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          python scripts/vercel_preview_guard.py quota \
+            --project-key ai-product-factory \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --pr-number "$PR_NUMBER"
+
       - name: Verify exact PR candidate and green required checks
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
@@ -45,7 +62,9 @@ jobs:
               const ok = checks.check_runs.some(c => c.name === name && c.status === "completed" && c.conclusion === "success");
               if (!ok) return core.setFailed("required check is not green: " + name);
             }
+
       - name: Create or update one preview ref to the exact candidate
+        id: promote
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
@@ -57,13 +76,28 @@ jobs:
             try {
               const {data: current} = await github.rest.git.getRef({...context.repo, ref});
               if (current.object.sha === sha) {
+                core.setOutput("promotion_action", "reused");
                 core.notice("Preview ref already points to this exact candidate; no new deployment was requested.");
                 return;
               }
               await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
+              core.setOutput("promotion_action", "updated");
               core.notice("Updated refs/" + ref + " directly to exact candidate " + sha + ".");
             } catch (error) {
               if (error.status !== 404) throw error;
               await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha});
+              core.setOutput("promotion_action", "created");
               core.notice("Created refs/" + ref + " directly at exact candidate " + sha + ".");
             }
+
+      - name: Record durable Preview promotion evidence
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PROMOTION_ACTION: ${{ steps.promote.outputs.promotion_action }}
+        run: |
+          python scripts/vercel_preview_guard.py record \
+            --project-key ai-product-factory \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --pr-number "$PR_NUMBER" \
+            --action "$PROMOTION_ACTION"
