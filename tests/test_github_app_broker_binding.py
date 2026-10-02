@@ -19,6 +19,13 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertIn("broker returned a different repository", runtime)
         self.assertIn("token persistence contract was not proven", runtime)
 
+    def test_token_mint_is_restricted_to_autonomous_runner_identity(self):
+        edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn("github_app_token_workflow_not_allowed", edge)
+        self.assertIn("github_app_token_event_not_allowed", edge)
+        self.assertIn(".github/workflows/autonomous-runner.yml@refs/heads/main", edge)
+        self.assertIn('["schedule","workflow_dispatch","issue_comment"]', edge)
+
 
 if __name__ == "__main__":
     unittest.main()
