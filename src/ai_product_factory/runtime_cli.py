@@ -251,12 +251,25 @@ def _assess_release_policy(*,run_id:str,candidate_commit:str,changed_files:tuple
  recorded=policy_store.record(run_id=run_id,assessment=assessment)
  return assessment,recorded
 
+def _require_current_preview_base(github:GitHubRestAdapter,pr)->None:
+ base_ref=str(getattr(pr,"base_ref",None) or "")
+ base_sha=str(getattr(pr,"base_sha",None) or "")
+ if not base_ref or not base_sha:
+  return
+ current_base_sha=github.get_branch_sha(base_ref)
+ if current_base_sha!=base_sha:
+  raise RuntimeError(
+   f"GitHub PR base is stale: {base_ref} moved from {base_sha} to {current_base_sha}. "
+   "Update the PR branch and rerun CI before Preview."
+  )
+
 def run_preview_probe_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty","preview_required":False}
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
+ _require_current_preview_base(github,pr)
  changed_files=github.get_pull_request_files(item.pr_number)
  applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
  if not applicability.required:
