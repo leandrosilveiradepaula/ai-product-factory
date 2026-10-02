@@ -1,6 +1,18 @@
 # Current status
 
-Last reconciled: 2026-10-01.
+Last reconciled: 2026-10-02.
+
+## Reconciliation 2026-10-02
+
+- Functional `main` before this documentation-only reconciliation is `e28344721ffdab56b8e3f7f7945e81994de94dda`, after PR #568. The post-merge `validate` run `36951643651` succeeded.
+- CRM `main` is `7a290b2f6fe2c8fea56aad87a93fd4f257ae034e` after the human merge of PR #16. Vercel production deployment `dpl_DYzDzLZvnk1nVaqqb2hxbgWRJABm` is `READY` for that exact SHA, and the CRM project reported no runtime errors in the checked one-hour window.
+- CRM dogfood releases #14 and #16 are fully reconciled in the Control Plane: both runs are `merged`, both tasks are `completed`, there are 0 open runs, 0 actionable failed runs and 0 pending human gates.
+- The release-finalization defect found by CRM #14 is closed. The human migration gate applied `factory_finalize_console_human_release_ci_pending` in production; Supabase recorded it as version `20261002012937`. The active function accepts `ci_pending` only while preserving released report, exact candidate SHA and exact merge SHA checks. PR #568 reconciled the corresponding migration file/tests into Git; stale PR #562 was closed as superseded and issue #561 was closed completed.
+- CRM #16 also exposed two Preview gaps that were fixed in the Factory: PR #565 makes missing Checks/Ready-URL evidence explicit instead of a generic timeout, and PR #567 blocks Preview when the PR base SHA is stale. Both were merged before the final CRM #16 release.
+- Factory Console production remains healthy on the latest Console-affecting commit `c84d33ffb21f78184100b1156f9242e8eb0238f5`; deployment `dpl_DoKePYim2hDLqKvqmJuVR9Vc1RnH` is `READY`, and `/api/health` returned HTTP 200 with commit `c84d33ffb21f`. Later main-only runtime/docs changes were correctly canceled/skipped by the Console ignore-build policy. No Factory Console runtime errors were found in the checked one-hour window.
+- Supabase security advisor remains unchanged in substance: intentional fail-closed `RLS Enabled No Policy` findings plus the external administrative `Leaked Password Protection Disabled` warning. Do not add permissive public policies.
+- External/admin blockers remain #240 (Codex workspace WIF enablement/real federation values), #250 (OpenAI API WIF mapping), #474 (main protection/ruleset), #426 (private-repository revalidation after plan change), and the Supabase leaked-password hardening control.
+- Production merge remains human-gated. The Factory runtime still has no automatic merge capability and repository auto-merge must remain disabled.
 
 ## Reconciliation 2026-10-01
 
