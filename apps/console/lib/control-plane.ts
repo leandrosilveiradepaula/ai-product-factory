@@ -135,6 +135,29 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type GitHubAppInstallAction={projectKey:string;projectName:string;repository:string;authMode:string;status:string};
+
+export async function getGitHubAppInstallActions():Promise<GitHubAppInstallAction[]>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();if(!cfg)return[];
+ const response=await fetch(cfg.url+"/rest/v1/factory_project_github_access?select=project_id,repository,auth_mode,status&status=neq.ready",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)return[];
+ const rows=await response.json();
+ const projectIds=[...new Set(rows.map((x:any)=>String(x.project_id||"")).filter(Boolean))];
+ if(!projectIds.length)return[];
+ const projectsResponse=await fetch(cfg.url+"/rest/v1/factory_projects?select=id,project_key,name,repository,is_active&id=in.("+projectIds.join(",")+")",{headers:cfg.headers,cache:"no-store"});
+ if(!projectsResponse.ok)return[];
+ const projects=await projectsResponse.json();
+ const projectMap=new Map(projects.filter((x:any)=>x.is_active).map((x:any)=>[String(x.id),x]));
+ return rows.flatMap((row:any)=>{
+  const project:any=projectMap.get(String(row.project_id||""));
+  if(!project||project.project_key==="ai-product-factory")return[];
+  const repository=String(project.repository||row.repository||"");
+  if(!repository)return[];
+  return[{projectKey:String(project.project_key),projectName:String(project.name),repository,authMode:String(row.auth_mode||"fine_grained_pat"),status:String(row.status||"unverified")}];
+ });
+}
+
 export type ProjectGitHubCapability={key:string;status:string;required:boolean};
 export type ProjectGitHubAccess={
  repository:string;authMode:string;status:string;lastVerifiedAt:string|null;lastError:string|null;
