@@ -118,18 +118,21 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
 }
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;tasks:ProjectTaskSummary[]};
+export type ProjectPreviewPolicy={provider:string|null;mode:string|null;required:boolean|null;reason:string|null;evidenceSource:string|null;evidenceCommit:string|null};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)return null;
- const projectResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name,repository,project_kind,lifecycle_stage,is_active,updated_at&project_key=eq.${encodeURIComponent(projectKey)}&limit=1`,{headers:cfg.headers,cache:"no-store"});
+ const projectResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name,repository,project_kind,lifecycle_stage,is_active,updated_at,manifest&project_key=eq.${encodeURIComponent(projectKey)}&limit=1`,{headers:cfg.headers,cache:"no-store"});
  if(!projectResponse.ok)throw new Error("Unable to load project");
  const projects=await projectResponse.json();if(!projects.length)return null;
  const p=projects[0];
  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
  const tasks=tasksResponse.ok?await tasksResponse.json():[];
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ const preview=p.manifest?.preview&&typeof p.manifest.preview==="object"?p.manifest.preview:null;
+ const evidence=preview?.evidence&&typeof preview.evidence==="object"?preview.evidence:null;
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export type ProjectGitHubCapability={key:string;status:string;required:boolean};
@@ -137,7 +140,7 @@ export type ProjectGitHubAccess={
  repository:string;authMode:string;status:string;lastVerifiedAt:string|null;lastError:string|null;
  capabilities:ProjectGitHubCapability[];releaseHuman:{enabled:boolean;reason:string|null};
 };
-const githubCapabilityKeys=["metadata_read","contents_read","contents_write","issues_read","issues_write","pull_requests_read","pull_requests_write","actions_read","commit_statuses_read","ci_evidence_read"] as const;
+const githubCapabilityKeys=["metadata_read","contents_read","contents_write","issues_read","issues_write","pull_requests_read","pull_requests_write","actions_read","commit_statuses_read","checks_read","ci_evidence_read"] as const;
 export async function getProjectGitHubAccess(projectId:string,repository:string|null):Promise<ProjectGitHubAccess|null>{
  await requireConsoleOperator();if(!repository)return null;
  const cfg=serverHeaders();if(!cfg)return null;

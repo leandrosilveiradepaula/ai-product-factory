@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from .github_rest import GitHubRequestError, GitHubRestAdapter
 from .project_github_access import ProjectGitHubAccessItem, SupabaseProjectGitHubAccessStore
+from .preview_onboarding import detect_github_vercel_preview_policy
 
 
 READ_CAPABILITIES = (
@@ -37,6 +38,8 @@ class GitHubCapabilityPreflightResult:
     observed_capabilities: dict
     repository_id: int | None
     error: str | None
+    preview_policy: dict | None = None
+    preview_evidence: dict | None = None
 
     def as_json(self) -> dict:
         return {
@@ -48,6 +51,8 @@ class GitHubCapabilityPreflightResult:
             "observed_capabilities": self.observed_capabilities,
             "repository_id": self.repository_id,
             "error": self.error,
+            "preview_policy": self.preview_policy,
+            "preview_evidence": self.preview_evidence,
         }
 
 
@@ -66,6 +71,9 @@ class GitHubCapabilityPreflight:
     def run(self, item: ProjectGitHubAccessItem) -> GitHubCapabilityPreflightResult:
         observed = {name: str(item.observed_capabilities.get(name) or "unverified") for name in ALL_CAPABILITIES}
         evidence: dict[str, object] = {}
+        sha = ""
+        status_payload: dict = {}
+        checks_payload: dict = {}
 
         metadata_state, metadata, metadata_status = self._safe_get(f"/repos/{item.repository}")
         observed["metadata_read"] = metadata_state
@@ -108,13 +116,13 @@ class GitHubCapabilityPreflight:
             evidence["default_branch_ref_http_status"] = 200 if sha_state == "verified" else ref_status
             sha = str(((ref or {}).get("object") or {}).get("sha") or "")
             if sha:
-                state, _, status = self._safe_get(f"/repos/{item.repository}/commits/{sha}/status")
+                state, status_payload, status = self._safe_get(f"/repos/{item.repository}/commits/{sha}/status")
                 observed["commit_statuses_read"] = state
                 evidence["commit_statuses_http_status"] = 200 if state == "verified" else status
 
-                checks_state, _, checks_status = self._safe_get(
+                checks_state, checks_payload, checks_status = self._safe_get(
                     f"/repos/{item.repository}/commits/{sha}/check-runs",
-                    query={"per_page": "1"},
+                    query={"per_page": "100"},
                 )
                 observed["checks_read"] = checks_state
                 evidence["checks_read"] = checks_state
@@ -167,6 +175,15 @@ class GitHubCapabilityPreflight:
         evidence["default_branch"] = default_branch
         evidence["missing_read"] = missing_read
         evidence["missing_write"] = missing_write
+        statuses=list((status_payload or {}).get("statuses", [])) if isinstance(status_payload,dict) else []
+        checks=list((checks_payload or {}).get("check_runs", [])) if isinstance(checks_payload,dict) else []
+        preview=detect_github_vercel_preview_policy(
+            manifest=item.manifest or {},
+            default_branch=default_branch,
+            commit_sha=sha if metadata_state=="verified" else "",
+            statuses=statuses,
+            checks=checks,
+        )
         return GitHubCapabilityPreflightResult(
             project_key=item.project_key,
             repository=item.repository,
@@ -176,6 +193,8 @@ class GitHubCapabilityPreflight:
             observed_capabilities=observed,
             repository_id=repository_id,
             error=error,
+            preview_policy=preview.policy,
+            preview_evidence=preview.evidence,
         )
 
 
@@ -201,4 +220,11 @@ def run_project_github_preflight(project_key: str | None = None) -> dict:
         evidence=evidence,
         repository_id=result.repository_id,
     )
-    return {"claimed": True, **result.as_json()}
+    preview_record=None
+    if result.preview_policy is not None:
+        preview_record=store.record_preview_policy(
+            item,
+            policy=result.preview_policy,
+            evidence=result.preview_evidence or {},
+        )
+    return {"claimed": True, **result.as_json(), "preview_record": preview_record}

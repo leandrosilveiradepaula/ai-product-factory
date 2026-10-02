@@ -72,6 +72,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
+ const previewPolicy=p.previewPolicy;
+ const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
  return <>
   <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
@@ -94,6 +96,20 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" no total"}/>
    <MetricCard label="Evidências" value={ops.evaluations+ops.deployments} note={ops.evaluations+" avaliações · "+ops.deployments+" implantações"}/>
   </div>
+  <section className="section" id="preview-policy"><SectionHeader title="Prévia · política do projeto" action={<StatusPill status={previewPolicy?.required===false?"not_applicable":previewConfigured?"verified":"blocked"} label={previewPolicy?.required===false?"Não aplicável":previewConfigured?"Configurada":"Pendente"}/>}/>
+   <div className="card denseStack">
+    {previewConfigured?<><div className="detailGrid">
+     <div className="detailItem"><span className="detailLabel">Provedor</span><strong>{previewPolicy?.provider==="vercel"?"Vercel":previewPolicy?.provider||"Definido por política"}</strong></div>
+     <div className="detailItem"><span className="detailLabel">Modo</span><strong>{previewPolicy?.required===false?"Preview não requerido":previewPolicy?.mode==="github"?"Integração GitHub":previewPolicy?.mode||"Política por caminhos"}</strong></div>
+    </div>
+    <p className="muted" style={{margin:0}}>{previewPolicy?.required===false?(previewPolicy.reason||"A política explícita deste projeto declara Preview não aplicável."):"A Factory só considera a Prévia pronta quando a política explícita e as evidências do candidato forem verificadas."}</p>
+    {previewPolicy?.evidenceSource?<div className="badgeLine"><span className="pill accent">Evidência</span><span className="muted">{previewPolicy.evidenceSource}{previewPolicy.evidenceCommit?" · "+previewPolicy.evidenceCommit.slice(0,12):""}</span></div>:null}</>:<>
+     <div className="badgeLine"><StatusPill status="blocked" label="Fail-closed"/><strong>Nenhuma política explícita de Preview foi verificada.</strong></div>
+     <p className="muted" style={{margin:0}}>Projetos importados não caem silenciosamente no modo Vercel API e a Factory nunca presume que Preview é dispensável. O preflight do GitHub pode confirmar uma integração Vercel existente e registrar automaticamente o modo GitHub; sem evidência, a etapa permanece bloqueada.</p>
+     <div className="actions"><a className="linkButton" href="#github-access">Ver acesso GitHub e revalidar</a></div>
+    </>}
+   </div>
+  </section>
   {githubAccess?<section className="section" id="github-access"><SectionHeader title="GitHub · acesso do projeto" action={<div className="badgeLine"><StatusPill status={githubAccess.status} label={githubAccess.status==="ready"?"Pronto":githubAccess.status==="partial"?"Parcial":githubAccess.status==="blocked"?"Bloqueado":"Aguardando verificação"}/><span className="muted">{githubAccess.lastVerifiedAt?"verificado em "+new Date(githubAccess.lastVerifiedAt).toLocaleString("pt-BR"):"sem preflight registrado"}</span></div>}/>
    <div className="card denseStack">
     <div className="panelHeading"><div><strong>{githubAccess.repository}</strong><div className="muted">Autenticação operacional: {githubAccess.authMode==="github_app"?"GitHub App":githubAccess.authMode==="native_github_token"?"token nativo do workflow":"token fine-grained"}</div></div><StatusPill status={githubAccess.status}/></div>
