@@ -31,6 +31,11 @@ class CiConcurrencyTests(unittest.TestCase):
         self.assertIn("skipping obsolete Preview work", workflow)
         self.assertIn("steps.verify.outputs.promotion_action != 'stale'", workflow)
 
+    def test_validate_does_not_double_run_on_ci_branch_pushes(self):
+        workflow = (ROOT / ".github/workflows/validate.yml").read_text()
+        self.assertIn("branches: [main, 'release/**']", workflow)
+        self.assertNotIn("'ci/**'", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
