@@ -194,9 +194,15 @@ jobs:
               core.notice("Updated refs/" + ref + " directly to exact candidate " + sha + ".");
             } catch (error) {
               if (error.status !== 404) throw error;
-              await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha});
-              core.setOutput("promotion_action", "created");
-              core.notice("Created refs/" + ref + " directly at exact candidate " + sha + ".");
+              const {data: commit} = await github.rest.git.getCommit({...context.repo, commit_sha: sha});
+              const seedSha = String(commit.parents?.[0]?.sha || "");
+              if (!/^[0-9a-f]{40}$/.test(seedSha)) {
+                return core.setFailed("candidate commit has no valid parent for initial Preview ref seeding");
+              }
+              await github.rest.git.createRef({...context.repo, ref: "refs/" + ref, sha: seedSha});
+              await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
+              core.setOutput("promotion_action", "created_then_updated");
+              core.notice("Created refs/" + ref + " at candidate parent " + seedSha + " and advanced it to exact candidate " + sha + ".");
             }
 
       - name: Ensure exact Preview browser evidence

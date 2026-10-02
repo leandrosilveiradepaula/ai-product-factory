@@ -349,6 +349,7 @@ Active policy:
 - implementation branches such as `console/**`, `test/**`, `ci/**` and `security/**` do not deploy automatically;
 - after `Console validation` completes successfully for a PR that actually changes `apps/console/**`, the trusted default-branch promotion workflow automatically revalidates the exact PR head plus `test`, `factory-acceptance` and `validate` before moving `preview/pr-<n>` to that SHA; manual `workflow_dispatch` remains an explicit fallback;
 - only `preview/**` is allowed to create the final Preview candidate;
+- when `preview/pr-<n>` does not exist yet, the promoter seeds it at the candidate parent and immediately advances the same ref to the exact candidate; this produces a real ref update for the Vercel Git integration while the branch-creation event itself remains non-authoritative;
 - if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it before any budget check and does not request another deployment;
 - Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five actual preview-ref promotions per rolling 24 hours; no-op/stale promoter runs do not consume this budget, and a run counts whenever its ref-update step succeeded even if a later step failed;
 - when read-only `VERCEL_TOKEN` and `FACTORY_VERCEL_TEAM_ID` are configured, the same guard prefers the shared Vercel rolling-24h deployment count and applies the 70/85/95% thresholds;
