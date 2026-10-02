@@ -29,6 +29,28 @@ class Tests(unittest.TestCase):
         self.assertEqual(item.pr_number,9)
         self.assertEqual(item.candidate_commit,"abc")
 
+    def test_operator_reconciled_dogfood_can_use_metadata_pr_number(self):
+        run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"source":"operator_reconciled_dogfood","pr_number":16,"github_issue":{"number":15}}}]
+        task=[{"project_id":"p"}]
+        project=[{"project_key":"crm","repository":"owner/crm"}]
+        usage=[]
+        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(usage)]):
+            q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+            item=q.next_pending()
+        self.assertEqual(item.pr_number,16)
+        self.assertEqual(item.candidate_commit,"abc")
+        self.assertEqual(item.issue_number,15)
+
+    def test_operator_reconciled_dogfood_still_requires_pr_number(self):
+        run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"source":"operator_reconciled_dogfood","github_issue":{"number":15}}}]
+        task=[{"project_id":"p"}]
+        project=[{"project_key":"crm","repository":"owner/crm"}]
+        usage=[]
+        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(usage)]):
+            q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+            with self.assertRaisesRegex(RuntimeError,"missing PR number"):
+                q.next_pending()
+
     def test_pr_evidence_must_match_candidate(self):
         run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"github_issue":{"number":7}}}]
         task=[{"project_id":"p"}]
