@@ -84,6 +84,29 @@ class Tests(unittest.TestCase):
         self.assertEqual(out.preview_url,"https://demo-abc.vercel.app")
         self.assertEqual(out.deployment_ref,"vercel-status-77")
 
+    def test_success_status_without_ready_url_is_actionable(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0,pull_request_number=42)
+        comments=Response([{
+            "user":{"login":"vercel[bot]"},
+            "body":"| Deployment | Updated |\n| [Canceled](https://vercel.com/team/project/deployments/old) | now |",
+        }])
+        status=Response({"statuses":[{
+            "id":79,"context":"Vercel","state":"success",
+            "target_url":"https://vercel.com/team/project/deployments/final",
+            "description":"Deployment has completed",
+        }]})
+        def fake_urlopen(req,timeout=30):
+            if "/issues/42/comments" in req.full_url:
+                return comments
+            if "/check-runs" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url,403,"forbidden",None,None)
+            if req.full_url.endswith("/status"):
+                return status
+            raise AssertionError(req.full_url)
+        with patch("urllib.request.urlopen",side_effect=fake_urlopen):
+            with self.assertRaisesRegex(RuntimeError,"no Ready preview URL"):
+                GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
+
     def test_vercel_commit_status_failure_is_terminal(self):
         cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0,pull_request_number=42)
         comments=Response([{"user":{"login":"vercel[bot]"},"body":"Deployment failed"}])
