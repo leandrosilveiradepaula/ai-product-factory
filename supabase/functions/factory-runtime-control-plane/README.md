@@ -40,6 +40,6 @@ The broker reuses the already-verified project access record and only proceeds w
 It reads the App private key from Vault through the privileged RPC, signs the short-lived
 App JWT inside the Edge Function, and asks GitHub for an installation token restricted to
 that exact repository ID and the reviewed permission set. The private key and App JWT are
-never returned to GitHub Actions. The response contains only the short-lived installation
+never returned to GitHub Actions. Token minting is accepted only from the exact trusted `autonomous-runner.yml@refs/heads/main` identity and runtime events (`schedule`, `workflow_dispatch`, `issue_comment`); the general OIDC preflight workflow cannot mint GitHub installation tokens. The broker also re-reads the repository with the minted token and confirms the exact repository ID/full name before returning it. The response contains only the short-lived installation
 token plus non-secret expiry/ID metadata, and no token is persisted by the Factory.
 
