@@ -380,3 +380,6 @@ GitHub Actions `GITHUB_TOKEN` is treated as repository-scoped. Inside Actions it
 Cross-repository issue/branch/PR/CI/Preview operations require `FACTORY_GITHUB_TOKEN`. The runtime never falls back to the current repository token for a different repository. Configure that secret only in the Factory execution environment and never expose it to generated code or browser clients.
 
 Minimum target-repository permissions depend on the operation: contents read/write, issues read/write, pull requests read/write, and checks read for full Direct delivery. Follow-up readers can use narrower permissions when separate credentials are used.
+
+
+GitHub App cross-repo onboarding: after registration, `/gates` derives installation actions for active cross-repository projects whose access is not yet `github_app/ready`. Installation remains an explicit human action in GitHub, should be limited to the intended repository, and is not trusted until the Factory verifies it server-side with a short-lived installation token.
