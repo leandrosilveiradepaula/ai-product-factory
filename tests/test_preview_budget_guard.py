@@ -18,38 +18,56 @@ class PreviewBudgetGuardTests(unittest.TestCase):
         self.assertFalse(blocked["allowed"])
         self.assertEqual(blocked["state"], "blocked_local_budget")
 
-    def test_recent_successful_promotions_only_counts_last_24h(self):
+    def test_recent_successful_promotions_only_counts_real_ref_updates(self):
         def transport(method, url, headers, payload):
-            self.assertIn("promote-preview-candidate.yml/runs?per_page=100", url)
-            self.assertNotIn("event=workflow_dispatch", url)
-            return {
-                "workflow_runs": [
-                    {
-                        "id": 1,
-                        "status": "completed",
-                        "conclusion": "success",
-                        "created_at": (NOW - timedelta(hours=2)).isoformat(),
-                    },
-                    {
-                        "id": 2,
-                        "status": "completed",
-                        "conclusion": "failure",
-                        "created_at": (NOW - timedelta(hours=2)).isoformat(),
-                    },
-                    {
-                        "id": 3,
-                        "status": "completed",
-                        "conclusion": "success",
-                        "created_at": (NOW - timedelta(hours=25)).isoformat(),
-                    },
-                    {
-                        "id": 99,
-                        "status": "completed",
-                        "conclusion": "success",
-                        "created_at": (NOW - timedelta(hours=1)).isoformat(),
-                    },
-                ]
-            }
+            if "promote-preview-candidate.yml/runs" in url:
+                return {
+                    "workflow_runs": [
+                        {
+                            "id": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "created_at": (NOW - timedelta(hours=2)).isoformat(),
+                        },
+                        {
+                            "id": 2,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "created_at": (NOW - timedelta(hours=2)).isoformat(),
+                        },
+                        {
+                            "id": 3,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "created_at": (NOW - timedelta(hours=25)).isoformat(),
+                        },
+                        {
+                            "id": 99,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "created_at": (NOW - timedelta(hours=1)).isoformat(),
+                        },
+                    ]
+                }
+            if "/actions/runs/1/jobs" in url:
+                return {
+                    "jobs": [{
+                        "steps": [{
+                            "name": "Create or update one preview ref to the exact candidate",
+                            "conclusion": "skipped",
+                        }]
+                    }]
+                }
+            if "/actions/runs/2/jobs" in url:
+                return {
+                    "jobs": [{
+                        "steps": [{
+                            "name": "Create or update one preview ref to the exact candidate",
+                            "conclusion": "success",
+                        }]
+                    }]
+                }
+            raise AssertionError(url)
 
         count = recent_successful_promotions(
             token="github-token",
@@ -59,6 +77,7 @@ class PreviewBudgetGuardTests(unittest.TestCase):
             request_json=transport,
         )
         self.assertEqual(count, 1)
+
 
     def test_missing_vercel_credentials_uses_bounded_github_fallback(self):
         def transport(method, url, headers, payload):
