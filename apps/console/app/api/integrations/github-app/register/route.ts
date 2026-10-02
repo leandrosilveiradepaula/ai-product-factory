@@ -12,6 +12,7 @@ export async function GET(request:Request){
   const url=new URL(request.url);
   const organization=url.searchParams.get("organization");
   const gateId=url.searchParams.get("gate");
+  const returnTo=url.searchParams.get("return_to");
   const flow=createGitHubAppManifestFlow(url.origin,organization);
   const jar=await cookies();
   jar.set("factory_github_app_manifest_state",flow.state,{
@@ -23,6 +24,15 @@ export async function GET(request:Request){
   });
   if(gateId&&/^[0-9a-f-]{36}$/i.test(gateId)){
     jar.set("factory_github_app_gate",gateId,{
+      httpOnly:true,
+      secure:process.env.NODE_ENV==="production",
+      sameSite:"lax",
+      path:"/api/integrations/github-app",
+      maxAge:600,
+    });
+  }
+  if(returnTo==="gates"){
+    jar.set("factory_github_app_return_to","gates",{
       httpOnly:true,
       secure:process.env.NODE_ENV==="production",
       sameSite:"lax",

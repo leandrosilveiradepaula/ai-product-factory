@@ -4,6 +4,7 @@ import {redirect} from "next/navigation";
 import {getHumanGates,resolveHumanGate} from "../../lib/control-plane";
 import {mergeReadyReleaseFromConsole} from "../../lib/release-operator";
 import {applyPendingMigrationFromConsole} from "../../lib/migration-operator";
+import {getGitHubAppStatus} from "../../lib/github-app";
 import {EmptyState,PageHeader,StatusPill} from "../ui";
 import {GateDecisionPending} from "./gate-decision-form";
 import {GateActionErrorBanner} from "./gate-action-error-banner";
@@ -60,18 +61,26 @@ async function applyMigration(formData:FormData){
 export default async function Gates({searchParams}:{searchParams:Promise<{error?:string}>}){
  const params=await searchParams;
  const actionError=typeof params.error==="string"?params.error.slice(0,360):null;
- const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");const resolved=gates.length-pending.length;
+ const [gates,githubApp]=await Promise.all([getHumanGates(),getGitHubAppStatus()]);const pending=gates.filter(g=>g.status==="pending");const githubAppActionPending=!githubApp.configured;const pendingCount=pending.length+(githubAppActionPending?1:0);const resolved=gates.length-pending.length;
  return <>
   {actionError?<GateActionErrorBanner message={actionError}/>:null}
-  <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pending.length?"attention":"healthy"} label={pending.length?pending.length+" críticas pendentes":"nenhuma pendência"}/>}/>
+  <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" críticas pendentes":"nenhuma pendência"}/>}/>
   <div className="operationalStrip">
-   <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pending.length}</strong><small>ação humana</small></div>
+   <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pendingCount}</strong><small>ação humana</small></div>
    <div className="operationalStat"><span>Resolvidas</span><strong>{resolved}</strong><small>histórico durável</small></div>
    <div className="operationalStat"><span>Política</span><strong>fail-closed</strong><small>sem bypass</small></div>
    <div className="operationalStat"><span>Produção</span><strong>humana</strong><small>merge nunca automático</small></div>
   </div>
   <div className="gateLayout">
    <section className="denseStack">
+    {githubAppActionPending?<article className="card gateCard pending">
+     <div className="gateBanner"><div className="badgeLine"><StatusPill status="pending"/><StatusPill status="sensitive_access"/></div><span className="muted mono">AÇÃO · github-app</span></div>
+     <div className="gateContent">
+      <div><span className="detailLabel">Motivo</span><h3>Registrar GitHub App da Factory</h3><p className="muted">A Factory precisa do teu consentimento no GitHub para criar a identidade da App. O registro armazena os segredos somente no Supabase Vault e não instala a App em nenhum repositório.</p></div>
+      <div className="gateMeta"><div><span className="detailLabel">Escopo</span><strong>Acesso sensível</strong><div className="muted">registro da App; instalação e seleção de repositórios continuam separadas</div></div></div>
+     </div>
+     <div className="gateForm"><GateDecisionPending><div className="gatePendingStatus" role="status">Esta ação só é considerada concluída depois que o GitHub retornar um callback válido e a configuração server-side for persistida.</div><div className="gateActionBar"><a className="primary linkButton" href="/api/integrations/github-app/register?return_to=gates">Registrar GitHub App</a></div></GateDecisionPending></div>
+    </article>:null}
     {gates.length===0?<EmptyState><span className="status"><i className="statusDot"/>Nenhuma aprovação humana registrada.</span></EmptyState>:gates.map(g=><article className={g.status==="pending"?"card gateCard pending":"card gateCard"} key={g.id}>
      <div className="gateBanner"><div className="badgeLine"><StatusPill status={g.status}/><StatusPill status={g.type}/></div><span className="muted mono">GATE · {g.id.slice(0,12)}</span></div>
      <div className="gateContent">
