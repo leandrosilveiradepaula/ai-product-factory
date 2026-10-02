@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: vercel-preview-candidate-${{ inputs.pr_number || github.event.workflow_run.head_branch || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   promote-preview-ref:
