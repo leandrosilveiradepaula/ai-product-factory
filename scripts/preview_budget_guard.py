@@ -79,15 +79,37 @@ def recent_successful_promotions(
     for row in rows:
         if not isinstance(row, dict):
             continue
-        if str(row.get("id") or "") == str(current_run_id):
-            continue
-        if row.get("status") != "completed" or row.get("conclusion") != "success":
+        run_id = str(row.get("id") or "")
+        if not run_id or run_id == str(current_run_id):
             continue
         created_raw = str(row.get("created_at") or "")
         if not created_raw:
             continue
         created = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
-        if created >= cutoff:
+        if created < cutoff:
+            continue
+
+        jobs_url = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
+        jobs_payload = request_json(
+            "GET",
+            jobs_url,
+            {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            None,
+        )
+        jobs = jobs_payload.get("jobs", []) if isinstance(jobs_payload, dict) else []
+        promoted = any(
+            isinstance(step, dict)
+            and step.get("name") == "Create or update one preview ref to the exact candidate"
+            and step.get("conclusion") == "success"
+            for job in jobs
+            if isinstance(job, dict)
+            for step in (job.get("steps") or [])
+        )
+        if promoted:
             count += 1
     return count
 
