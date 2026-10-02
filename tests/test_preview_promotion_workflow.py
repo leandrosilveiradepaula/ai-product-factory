@@ -22,6 +22,15 @@ class PreviewPromotionWorkflowTests(unittest.TestCase):
         self.assertIn("from collect_vercel_usage import list_team_deployments", guard)
         self.assertIn("from vercel_preview_guard import evaluate_quota", guard)
 
+    def test_console_validation_can_auto_promote_only_console_changes(self):
+        workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
+        self.assertIn('workflow_run:', workflow)
+        self.assertIn('workflows: ["Console validation"]', workflow)
+        self.assertIn('github.event.workflow_run.event == \'pull_request\'', workflow)
+        self.assertIn('startsWith("apps/console/")', workflow)
+        self.assertIn('promotion_action", "not_applicable"', workflow)
+        self.assertIn('github.event_name == \'workflow_dispatch\'', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
