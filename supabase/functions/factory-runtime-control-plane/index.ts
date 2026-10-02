@@ -167,6 +167,21 @@ async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:
   const token=String(tokenBody?.token||"");
   if(!token) throw new Error("GitHub installation token response was incomplete");
 
+  const repositoryResponse=await fetch(
+    "https://api.github.com/repositories/"+repositoryId,
+    {
+      headers:{
+        Accept:"application/vnd.github+json",
+        Authorization:"Bearer "+token,
+        "X-GitHub-Api-Version":GITHUB_API_VERSION,
+      },
+    },
+  );
+  const repositoryBody=await readJson(repositoryResponse,"GitHub installation repository binding") as Record<string,unknown>|null;
+  if(Number(repositoryBody?.id||0)!==repositoryId || String(repositoryBody?.full_name||"").toLowerCase()!==repository.toLowerCase()) {
+    return json(409,{error:"github_app_repository_binding_mismatch"});
+  }
+
   return json(200,{
     token,
     expires_at:tokenBody?.expires_at||null,
