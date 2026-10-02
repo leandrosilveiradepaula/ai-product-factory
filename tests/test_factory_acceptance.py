@@ -640,6 +640,11 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('"heads/preview/pr-"', promote)
         self.assertIn("candidate SHA is not the exact PR head", promote)
         self.assertIn('["test", "factory-acceptance", "validate"]', promote)
+        self.assertIn('core.setOutput("base_sha", pr.base.sha)', promote)
+        self.assertIn('git.createRef({...context.repo, ref: "refs/" + ref, sha: baseSha})', promote)
+        self.assertIn('git.updateRef({...context.repo, ref, sha, force: true})', promote)
+        exact_preview = (ROOT / ".github/workflows/exact-preview-browser-evidence.yml").read_text()
+        self.assertIn("github.event.created == false", exact_preview)
         self.assertIn("Vercel deployment budget policy", operations)
         self.assertIn("Active policy:", operations)
 
