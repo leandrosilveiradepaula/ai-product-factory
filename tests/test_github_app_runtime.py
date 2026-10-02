@@ -99,6 +99,40 @@ class GitHubAppRuntimeTests(unittest.TestCase):
             self.assertIsNone(resolve_github_app_installation_token("owner/target", transport=transport))
         self.assertFalse(called)
 
+    def test_broker_binding_mismatch_is_rejected(self):
+        class MismatchTransport(FakeTransport):
+            def __call__(self, method, url, headers, body):
+                status, payload = super().__call__(method, url, headers, body)
+                if url.endswith("/github-app/token") and status == 200:
+                    payload = dict(payload)
+                    payload["repository_id"] = 9999
+                return status, payload
+
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
+            "SUPABASE_SECRET_KEY": "oidc-token",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(PermissionError):
+                resolve_github_app_installation_token("owner/target", transport=MismatchTransport())
+
+    def test_broker_must_prove_token_is_not_persisted(self):
+        class PersistenceTransport(FakeTransport):
+            def __call__(self, method, url, headers, body):
+                status, payload = super().__call__(method, url, headers, body)
+                if url.endswith("/github-app/token") and status == 200:
+                    payload = dict(payload)
+                    payload["token_persisted"] = True
+                return status, payload
+
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
+            "SUPABASE_SECRET_KEY": "oidc-token",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(PermissionError):
+                resolve_github_app_installation_token("owner/target", transport=PersistenceTransport())
+
 
 if __name__ == "__main__":
     unittest.main()
