@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   browser-evidence:
+    if: ${{ github.event.created == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
