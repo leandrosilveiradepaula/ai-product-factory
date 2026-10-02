@@ -178,7 +178,7 @@ class GitHubCapabilityPreflight:
         statuses=list((status_payload or {}).get("statuses", [])) if isinstance(status_payload,dict) else []
         checks=list((checks_payload or {}).get("check_runs", [])) if isinstance(checks_payload,dict) else []
         preview=detect_github_vercel_preview_policy(
-            manifest=item.manifest,
+            manifest=item.manifest or {},
             default_branch=default_branch,
             commit_sha=sha if metadata_state=="verified" else "",
             statuses=statuses,
