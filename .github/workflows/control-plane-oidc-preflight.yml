@@ -44,10 +44,24 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/control-plane-oidc
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - name: Detect optional Vercel usage credentials
+        id: readiness
+        shell: bash
+        run: |
+          if [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${FACTORY_VERCEL_TEAM_ID:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel usage collection is optional and skipped because its read-only credentials are not configured."
+          fi
+      - if: steps.readiness.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - if: steps.readiness.outputs.enabled == 'true'
+        uses: ./.github/actions/control-plane-oidc
+      - if: steps.readiness.outputs.enabled == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Record rolling 24 hour Vercel deployment usage
+        if: steps.readiness.outputs.enabled == 'true'
         run: python scripts/collect_vercel_usage.py
