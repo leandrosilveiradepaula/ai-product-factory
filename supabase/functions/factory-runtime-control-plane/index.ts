@@ -193,13 +193,20 @@ async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:
 
 Deno.serve(async(req:Request)=>{
   try {
-    await verifyGithub(req);
+    const identity=await verifyGithub(req);
     const requestUrl=new URL(req.url);
     const supabaseUrl=(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"");
     if(!supabaseUrl) throw new Error("SUPABASE_URL unavailable");
     const key=getSecretKey();
 
     if(requestUrl.pathname.endsWith("/github-app/token")) {
+      const workflowRef=String(identity.workflow_ref||"");
+      const eventName=String(identity.event_name||"");
+      const autonomousRef="leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main";
+      if(workflowRef!==autonomousRef) return json(403,{error:"github_app_token_workflow_not_allowed"});
+      if(!["schedule","workflow_dispatch","issue_comment"].includes(eventName)) {
+        return json(403,{error:"github_app_token_event_not_allowed"});
+      }
       return await mintGithubInstallationToken(req,supabaseUrl,key);
     }
 
