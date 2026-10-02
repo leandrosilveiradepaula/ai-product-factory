@@ -31,3 +31,15 @@ need a Supabase secret in GitHub.
 
 The dedicated preflight workflow performs a read-only `factory_projects`
 query and never calls a model.
+
+## GitHub App installation token broker
+
+The trusted autonomous runner may call `POST /github-app/token` with only an exact `owner/repo`.
+The broker reuses the already-verified project access record and only proceeds when
+`auth_mode=github_app`, `status=ready`, and both installation/repository IDs are present.
+It reads the App private key from Vault through the privileged RPC, signs the short-lived
+App JWT inside the Edge Function, and asks GitHub for an installation token restricted to
+that exact repository ID and the reviewed permission set. The private key and App JWT are
+never returned to GitHub Actions. The response contains only the short-lived installation
+token plus non-secret expiry/ID metadata, and no token is persisted by the Factory.
+
