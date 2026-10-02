@@ -6,6 +6,7 @@ import {mergeReadyReleaseFromConsole} from "../../lib/release-operator";
 import {applyPendingMigrationFromConsole} from "../../lib/migration-operator";
 import {EmptyState,PageHeader,StatusPill} from "../ui";
 import {GateDecisionPending} from "./gate-decision-form";
+import {GateActionErrorBanner} from "./gate-action-error-banner";
 import {ConfirmSubmit} from "../confirm-submit";
 
 function reasonText(value:unknown){
@@ -61,7 +62,7 @@ export default async function Gates({searchParams}:{searchParams:Promise<{error?
  const actionError=typeof params.error==="string"?params.error.slice(0,360):null;
  const gates=await getHumanGates();const pending=gates.filter(g=>g.status==="pending");const resolved=gates.length-pending.length;
  return <>
-  {actionError?<div className="card" role="alert" aria-live="assertive"><strong>Não foi possível concluir a ação.</strong><div className="errorText">{actionError}</div><div className="muted">O gate continua pendente e nenhuma etapa seguinte foi liberada.</div></div>:null}
+  {actionError?<GateActionErrorBanner message={actionError}/>:null}
   <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pending.length?"attention":"healthy"} label={pending.length?pending.length+" críticas pendentes":"nenhuma pendência"}/>}/>
   <div className="operationalStrip">
    <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pending.length}</strong><small>ação humana</small></div>
