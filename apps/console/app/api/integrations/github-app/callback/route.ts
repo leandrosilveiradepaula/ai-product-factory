@@ -11,8 +11,10 @@ export async function GET(request:Request){
   const jar=await cookies();
   const expected=jar.get("factory_github_app_manifest_state")?.value;
   const gateId=jar.get("factory_github_app_gate")?.value;
+  const returnTo=jar.get("factory_github_app_return_to")?.value;
   jar.delete("factory_github_app_manifest_state");
   jar.delete("factory_github_app_gate");
+  jar.delete("factory_github_app_return_to");
   if(!code||!state||!expected||state!==expected){
     return NextResponse.redirect(new URL("/projects?github_app=manifest_invalid",url.origin));
   }
@@ -20,7 +22,7 @@ export async function GET(request:Request){
     const app=await convertGitHubAppManifest(code);
     await storeGitHubAppConversion(app);
     if(gateId)await resolveGitHubAppRegistrationGate(gateId,operator.email||operator.userId);
-    return NextResponse.redirect(new URL(gateId?"/gates":"/projects?github_app=registered",url.origin));
+    return NextResponse.redirect(new URL(gateId||returnTo==="gates"?"/gates?github_app=registered":"/projects?github_app=registered",url.origin));
   }catch{
     return NextResponse.redirect(new URL("/projects?github_app=registration_failed",url.origin));
   }
