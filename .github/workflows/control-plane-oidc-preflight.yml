@@ -2,6 +2,8 @@ name: Control Plane OIDC preflight
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "13 */6 * * *"
   push:
     branches:
       - main
@@ -33,3 +35,19 @@ jobs:
             exit 1
           fi
           BODY="$body" python -c 'import json,os; rows=json.loads(os.environ["BODY"]); assert isinstance(rows,list), "Control Plane response is not a list"; keys={str(r.get("project_key") or "") for r in rows}; assert "ai-product-factory" in keys, "Expected Factory project is not readable through OIDC broker"; print(json.dumps({"status":"ok","projects":sorted(keys)}))'
+
+  vercel-quota:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Record rolling 24 hour Vercel deployment usage
+        run: python scripts/collect_vercel_usage.py
