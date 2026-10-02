@@ -168,6 +168,18 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("operator_allowed_repositories", (ROOT / "config/factory.release-policy.v1.json").read_text())
         self.assertIn("human_release.console_merge_requested", console_release)
 
+    def test_cross_repo_github_app_runtime_is_repository_scoped_and_fail_closed(self):
+        auth=(ROOT/"src/ai_product_factory/github_auth.py").read_text()
+        app=(ROOT/"src/ai_product_factory/github_app_runtime.py").read_text()
+        operations=(ROOT/"docs/OPERATIONS.md").read_text()
+        self.assertIn("resolve_github_app_installation_token",auth)
+        self.assertIn('"repository_ids": [repository_id]',app)
+        self.assertIn("factory_get_github_app_credentials",app)
+        self.assertIn("GitHub App access is not ready for this repository",app)
+        self.assertIn("openssl",app)
+        self.assertNotIn("installation token persisted",app.lower())
+        self.assertIn("never silently falls back to the PAT",operations)
+
     def test_cross_repo_followups_bind_environment_secret_scope(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         jobs = (

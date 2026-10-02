@@ -60,6 +60,46 @@ class GitHubAuthTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 resolve_github_token("owner/repo")
 
+    def test_cross_repo_prefers_verified_github_app_token_over_pat(self):
+        env={
+            "GITHUB_ACTIONS":"true",
+            "GITHUB_REPOSITORY":"owner/factory",
+            "GITHUB_TOKEN":"native",
+            "FACTORY_GITHUB_TOKEN":"legacy-pat",
+        }
+        with patch.dict("os.environ",env,clear=True), patch(
+            "ai_product_factory.github_auth.resolve_github_app_installation_token",
+            return_value="ghs_app_token",
+        ):
+            self.assertEqual(resolve_github_token("owner/target"),"ghs_app_token")
+
+    def test_cross_repo_falls_back_to_pat_when_project_has_not_migrated_to_app(self):
+        env={
+            "GITHUB_ACTIONS":"true",
+            "GITHUB_REPOSITORY":"owner/factory",
+            "GITHUB_TOKEN":"native",
+            "FACTORY_GITHUB_TOKEN":"legacy-pat",
+        }
+        with patch.dict("os.environ",env,clear=True), patch(
+            "ai_product_factory.github_auth.resolve_github_app_installation_token",
+            return_value=None,
+        ):
+            self.assertEqual(resolve_github_token("owner/target"),"legacy-pat")
+
+    def test_cross_repo_does_not_bypass_blocked_github_app_with_pat(self):
+        env={
+            "GITHUB_ACTIONS":"true",
+            "GITHUB_REPOSITORY":"owner/factory",
+            "GITHUB_TOKEN":"native",
+            "FACTORY_GITHUB_TOKEN":"legacy-pat",
+        }
+        with patch.dict("os.environ",env,clear=True), patch(
+            "ai_product_factory.github_auth.resolve_github_app_installation_token",
+            side_effect=PermissionError("app blocked"),
+        ):
+            with self.assertRaises(PermissionError):
+                resolve_github_token("owner/target")
+
 
 if __name__=="__main__":
     unittest.main()

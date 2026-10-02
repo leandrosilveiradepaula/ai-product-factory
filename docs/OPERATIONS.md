@@ -58,7 +58,7 @@ For a project, **Verificar GitHub App neste projeto**:
 
 The source-controlled App permission set is limited to Actions read, Checks read, Contents write, Issues write, Pull Requests write and Commit Statuses read. Installing the App or changing repository access is a human GitHub consent action. Until an installation verifies successfully, the existing fine-grained PAT path remains an explicit fallback and cross-repository write stages stay fail-closed.
 
-This phase does not yet switch the autonomous Python runtime to GitHub App tokens. Runtime replacement of `FACTORY_GITHUB_TOKEN` is a separate Phase 3 change after a real App installation is verified.
+The Python runtime supports Phase 3 repository-scoped GitHub App credentials without broadening access. For cross-repository work, it first checks the durable project access record. Only `auth_mode=github_app` with `status=ready`, a verified `installation_id` and the exact `repository_id` may mint a short-lived installation token. The private PEM is read server-side from Vault only for JWT signing, the token is restricted to that one repository ID and the reviewed permission set, and neither value is persisted or logged. Same-repository Actions work continues to use the native `GITHUB_TOKEN`. Projects that have not migrated to the App may still use the explicit `FACTORY_GITHUB_TOKEN` fallback; once a project is marked `github_app`, a blocked/incomplete App installation fails closed and never silently falls back to the PAT.
 
 ## Preview policy during existing-project onboarding
 
