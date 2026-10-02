@@ -50,6 +50,7 @@ const githubCapabilityLabels:Record<string,string>={
  pull_requests_write:"Pull Requests · escrita",
  actions_read:"Actions / logs",
  commit_statuses_read:"Commit Statuses",
+ checks_read:"Checks API · leitura",
  ci_evidence_read:"Checks / evidência de CI",
 };
 function githubCapabilityLabel(status:string){return status==="verified"?"Verificado":status==="missing"?"Permissão faltando":status==="unverified"?"Ainda não verificado":humanizeStatus(status)}
