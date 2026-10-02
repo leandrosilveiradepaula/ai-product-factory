@@ -350,11 +350,12 @@ Active policy:
 - after `Console validation` completes successfully for a PR that actually changes `apps/console/**`, the trusted default-branch promotion workflow automatically revalidates the exact PR head plus `test`, `factory-acceptance` and `validate` before moving `preview/pr-<n>` to that SHA; manual `workflow_dispatch` remains an explicit fallback;
 - only `preview/**` is allowed to create the final Preview candidate;
 - if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it before any budget check and does not request another deployment;
-- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five successful promotion-workflow runs per rolling 24 hours, counting both automatic and manual triggers conservatively;
+- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five actual preview-ref promotions per rolling 24 hours; no-op/stale promoter runs do not consume this budget, and a run counts whenever its ref-update step succeeded even if a later step failed;
 - when read-only `VERCEL_TOKEN` and `FACTORY_VERCEL_TEAM_ID` are configured, the same guard prefers the shared Vercel rolling-24h deployment count and applies the 70/85/95% thresholds;
 - a Vercel API read failure falls back to the bounded GitHub budget instead of blocking all development or bypassing protection;
 - the workflow never calls Vercel CLI or a Vercel deployment-creation API; deployment creation remains the Git integration's responsibility;
 - promotion evidence is retained in the GitHub Actions run summary; normal Control Plane reconciliation remains responsible for project lifecycle evidence;
+- ref updates performed by the native `GITHUB_TOKEN` do not recursively start push workflows, so the promoter explicitly dispatches `Exact Preview browser evidence` for the exact candidate and waits for the candidate-scoped `Factory Preview browser evidence` commit status; `evidence/preview/**` is a non-deploying recovery trigger, while only `preview/**` can request Vercel deployment;
 - exact browser evidence waits for the Vercel commit status to reach success before using a Vercel check URL; early Preview Comments checks are not sufficient readiness evidence;
 - `ignoreCommand` remains a path-based second guard;
 - Vercel `api-deployments-free-per-day` remains an external quota: do not retry deployments or buy capacity automatically.

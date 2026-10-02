@@ -16,7 +16,7 @@ on:
     types: [completed]
 
 permissions:
-  actions: read
+  actions: write
   contents: write
   pull-requests: read
   checks: read
@@ -37,7 +37,7 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -199,6 +199,59 @@ jobs:
               core.notice("Created refs/" + ref + " directly at exact candidate " + sha + ".");
             }
 
+      - name: Ensure exact Preview browser evidence
+        if: steps.resolve.outputs.applicable == 'true'
+        id: browser
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
+        with:
+          script: |
+            const sha = process.env.CANDIDATE_SHA;
+            const contextName = "Factory Preview browser evidence";
+            const current = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha, per_page: 100});
+            const alreadyGreen = (current.data.statuses || []).some(s =>
+              s.context === contextName && s.state === "success"
+            );
+            if (alreadyGreen) {
+              core.setOutput("browser_action", "reused");
+              core.notice("Exact Preview browser evidence already succeeded for " + sha + ".");
+              return;
+            }
+
+            const started = Date.now();
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: "exact-preview-browser-evidence.yml",
+              ref: "main",
+              inputs: {candidate_sha: sha},
+            });
+            core.notice("Dispatched exact Preview browser evidence for " + sha + ".");
+
+            for (let attempt = 0; attempt < 120; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const {data} = await github.rest.repos.getCombinedStatusForRef({
+                ...context.repo,
+                ref: sha,
+                per_page: 100,
+              });
+              const status = (data.statuses || []).find(s =>
+                s.context === contextName &&
+                Date.parse(s.updated_at || 0) >= started - 5000
+              );
+              if (!status) continue;
+              if (status.state === "success") {
+                core.setOutput("browser_action", "verified");
+                core.notice("Exact Preview browser evidence succeeded for " + sha + ".");
+                return;
+              }
+              if (["failure","error"].includes(status.state)) {
+                core.setFailed("Exact Preview browser evidence failed for " + sha + ".");
+                return;
+              }
+            }
+            core.setFailed("Timed out waiting for exact Preview browser evidence for " + sha + ".");
+
       - name: Record durable Preview promotion summary
         if: always() && !cancelled()
         env:
@@ -208,6 +261,7 @@ jobs:
           PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
           CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
           PROMOTION_SOURCE: ${{ steps.resolve.outputs.source }}
+          BROWSER_ACTION: ${{ steps.browser.outputs.browser_action }}
         run: |
           action="${PROMOTE_ACTION:-${VERIFY_ACTION:-${RESOLVE_ACTION:-unknown}}}"
           {
@@ -216,5 +270,6 @@ jobs:
             printf '%s\n' "- candidate: ${CANDIDATE_SHA:-n/a}"
             printf '%s\n' "- source: ${PROMOTION_SOURCE:-n/a}"
             printf '%s\n' "- action: $action"
+            printf '%s\n' "- browser evidence: ${BROWSER_ACTION:-n/a}"
             printf '%s\n' "- deploy path: GitHub ref -> Vercel Git integration"
           } >> "$GITHUB_STEP_SUMMARY"
