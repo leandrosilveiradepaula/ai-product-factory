@@ -115,4 +115,10 @@ def resolve_github_app_installation_token(
     token = str((token_response or {}).get("token") or "")
     if not token:
         raise RuntimeError("GitHub installation token was not issued")
+    if int((token_response or {}).get("installation_id") or 0) != int(row.get("installation_id") or 0):
+        raise PermissionError("GitHub installation token broker returned a different installation")
+    if int((token_response or {}).get("repository_id") or 0) != int(row.get("repository_id") or 0):
+        raise PermissionError("GitHub installation token broker returned a different repository")
+    if (token_response or {}).get("token_persisted") is not False:
+        raise PermissionError("GitHub installation token persistence contract was not proven")
     return token
