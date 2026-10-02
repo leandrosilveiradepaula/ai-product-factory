@@ -2,6 +2,7 @@ import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
+import {getGitHubAppStatus} from "../../../lib/github-app";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
@@ -40,6 +41,16 @@ const supabaseMessages:Record<string,{status:string;message:string}>={
  verification_failed:{status:"failed",message:"A autorização retornou, mas a verificação do acesso não foi concluída. Nenhuma ampliação de permissão foi aplicada."},
 };
 
+const githubAppMessages:Record<string,{status:string;message:string}>={
+ registered:{status:"success",message:"GitHub App da Factory registrada. Agora instale a App no repositório desejado e verifique o acesso."},
+ installed:{status:"attention",message:"O GitHub informou uma instalação/atualização. A Factory ainda valida a instalação pelo próprio GitHub antes de confiar nela."},
+ verified:{status:"success",message:"GitHub App verificada para este projeto com token temporário e capacidades mínimas."},
+ blocked:{status:"failed",message:"A GitHub App foi encontrada, mas não possui todas as capacidades mínimas exigidas para este projeto."},
+ manifest_invalid:{status:"failed",message:"O retorno do registro da GitHub App não corresponde ao fluxo iniciado. Nenhum segredo foi salvo."},
+ registration_failed:{status:"failed",message:"Não foi possível concluir o registro da GitHub App. Nenhum segredo foi exposto ao navegador."},
+ verification_failed:{status:"failed",message:"Não foi possível verificar a instalação da GitHub App para este projeto."},
+};
+
 const githubCapabilityLabels:Record<string,string>={
  metadata_read:"Repositório conectado",
  contents_read:"Leitura do código",
@@ -63,20 +74,22 @@ async function requestGitHubRecheck(formData:FormData){
  revalidatePath("/projects/"+projectKey);
 }
 
-export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string}>}){
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository)]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus()]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
+ const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
  return <>
   <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
+  {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
   <div className="projectOrientation">
    <div>
     <div className="macroLifecycle" aria-label="Ciclo do produto em cinco macroetapas">
@@ -120,10 +133,14 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     </div>
     {githubAccess.lastError?<div className="errorText">{githubAccess.lastError}</div>:null}
     <div className="actions">
-     <a className="linkButton" href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noreferrer">Corrigir acesso no GitHub</a>
-     {operator.role==="admin"?<form action={requestGitHubRecheck}><input type="hidden" name="project_id" value={p.id}/><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="primary linkButton">Verificar novamente</button></form>:null}
+     {operator.role==="admin"&&!githubAppStatus.configured?<a className="primary linkButton" href="/api/integrations/github-app/register">Registrar GitHub App da Factory</a>:null}
+     {operator.role==="admin"&&githubAppStatus.configured&&githubAppStatus.app_slug?<a className="linkButton" href={"https://github.com/apps/"+githubAppStatus.app_slug+"/installations/new"} target="_blank" rel="noreferrer">Instalar / ajustar GitHub App</a>:null}
+     {operator.role==="admin"&&githubAppStatus.configured?<a className="primary linkButton" href={"/api/integrations/github-app/verify?project="+encodeURIComponent(p.key)}>Verificar GitHub App neste projeto</a>:null}
+     <a className="linkButton" href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noreferrer">Fallback: token fine-grained</a>
+     {operator.role==="admin"?<form action={requestGitHubRecheck}><input type="hidden" name="project_id" value={p.id}/><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reexecutar preflight</button></form>:null}
     </div>
-    <p className="muted" style={{margin:0}}>A Factory só executa uma etapa quando as capacidades exigidas por aquela etapa estão comprovadas. Permissões de escrita não são testadas por mutações artificiais; permanecem fail-closed até haver credencial apropriada, preferencialmente uma GitHub App.</p>
+    <div className="badgeLine"><StatusPill status={githubAppStatus.configured?"verified":"unverified"} label={githubAppStatus.configured?"GitHub App registrada":"GitHub App ainda não registrada"}/>{githubAppStatus.app_slug?<span className="muted">@{githubAppStatus.app_slug}</span>:null}</div>
+    <p className="muted" style={{margin:0}}>A Factory só executa uma etapa quando as capacidades exigidas por aquela etapa estão comprovadas. A GitHub App usa tokens temporários, limitados ao repositório; a chave privada fica server-side no Vault e nunca é enviada ao navegador. Instalar ou ampliar acesso continua sendo uma ação humana no GitHub.</p>
    </div>
   </section>:null}
   {state.objective?<section className="section"><SectionHeader title="Objetivo atual"/><div className="card"><p style={{margin:0}}>{state.objective}</p></div></section>:null}
