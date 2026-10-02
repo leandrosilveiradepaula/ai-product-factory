@@ -210,3 +210,15 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] #240, #250 e #474 continuam dependencias externas/administrativas e nao devem ser contornadas com valores inventados, ampliacao de acesso ou enfraquecimento de gates.
 - [ ] Leaked Password Protection do Supabase continua hardening administrativo externo; os avisos RLS sem policy publica permanecem intencionais.
 - [x] Production merge continua exclusivamente humano; runtime sem auto-merge e `allow_auto_merge=false`.
+
+## Atualizacao operacional - 2026-10-02 GitHub App e Preview
+
+- [x] GitHub App oficial da Factory registrada via Manifest flow, com PEM/client secret armazenados somente no Supabase Vault.
+- [x] Registro da App aparece como acao humana real no Console; nenhum repositorio recebe acesso silenciosamente.
+- [x] Preview promotion automatico corrigido e validado: novo ref e semeado no parent e avancado ao SHA exato para disparar uma unica promocao observavel pela integracao GitHub/Vercel.
+- [x] PR #595 preparado para centralizar em `/gates` a instalacao/verificacao da App por projeto; candidato exato esta com CI, Preview e browser evidence verdes e aguarda exclusivamente merge humano de producao.
+- [x] Fase 3 do runtime preparada no PR #599: token de instalacao efemero e restrito ao repository_id verificado, sem persistencia de PEM/token e sem fallback silencioso quando um projeto ja migrou para `github_app`.
+- [ ] Instalar e verificar a GitHub App no CRM Infodive por consentimento humano explicito.
+- [ ] Depois da verificacao real do CRM, liberar a Fase 3 do runtime e comprovar um ciclo cross-repo sem `FACTORY_GITHUB_TOKEN`.
+- [ ] Avaliar separadamente a instalacao no Agente SQL; nao ampliar acesso junto com o CRM.
+
