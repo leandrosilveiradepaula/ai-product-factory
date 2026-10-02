@@ -35,12 +35,12 @@ class Tests(unittest.TestCase):
             out=SupabaseProjectReleaseReconciler(url="https://example.test",secret_key="secret").reconcile(
                 project_id="p1",run_id="r1",merge_sha="merge1"
             )
-        self.assertEqual(out["lifecycle_stage"],"operation")
+        self.assertEqual(out["lifecycle_stage"],"operations")
         patch_call=next(x for x in calls if x[0]=="PATCH")
         payload=json.loads(patch_call[2])
-        self.assertEqual(payload["lifecycle_stage"],"operation")
+        self.assertEqual(payload["lifecycle_stage"],"operations")
         self.assertEqual(payload["manifest"]["head_sha"],"merge1")
-        self.assertEqual(payload["manifest"]["reported_stage"],"operation")
+        self.assertEqual(payload["manifest"]["reported_stage"],"operations")
         self.assertNotIn("autonomy",payload["manifest"])
         self.assertNotIn("current_task",payload["manifest"])
         self.assertNotIn("current_scope",payload["manifest"]["runtime_readiness"])
@@ -51,10 +51,10 @@ class Tests(unittest.TestCase):
     def test_is_idempotent_for_same_release(self):
         project={
             "id":"p1",
-            "lifecycle_stage":"operation",
+            "lifecycle_stage":"operations",
             "manifest":{
                 "head_sha":"merge1",
-                "reported_stage":"operation",
+                "reported_stage":"operations",
                 "last_release":{"run_id":"r1","merge_sha":"merge1","source":"observed_human_merge"},
             },
         }
