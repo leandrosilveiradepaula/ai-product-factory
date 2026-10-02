@@ -16,7 +16,7 @@ _STAGE_RANK={
     "review":4,
     "validation":5,
     "release":6,
-    "operation":7,
+    "operations":7,
 }
 
 
@@ -45,12 +45,12 @@ class SupabaseProjectReleaseReconciler:
             raise RuntimeError("project not found")
         project=rows[0]
         current_stage=str(project.get("lifecycle_stage") or "")
-        target_stage="operation" if _STAGE_RANK.get(current_stage,-1) < _STAGE_RANK["operation"] else current_stage
+        target_stage="operations" if _STAGE_RANK.get(current_stage,-1) < _STAGE_RANK["operations"] else current_stage
 
         manifest=dict(project.get("manifest") or {})
         already=(manifest.get("last_release") or {}).get("merge_sha")==merge_sha and target_stage==current_stage
         manifest["head_sha"]=merge_sha
-        manifest["reported_stage"]="operation"
+        manifest["reported_stage"]="operations"
         manifest.pop("current_task",None)
         if manifest.get("autonomy")=="read_only_verification":
             manifest.pop("autonomy",None)
@@ -73,7 +73,7 @@ class SupabaseProjectReleaseReconciler:
                 {
                     "project_id":project_id,
                     "run_id":run_id,
-                    "observed_stage":"operation",
+                    "observed_stage":"operations",
                     "summary":"Release humano observado; estado do projeto reconciliado com a entrega real.",
                     "evidence":[{"type":"human_release","merge_sha":merge_sha}],
                     "gaps":[],
