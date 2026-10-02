@@ -121,6 +121,7 @@ class GitHubVercelPreviewAdapter:
     def deploy(self,request_:DeploymentRequest)->DeploymentResult:
         if request_.environment is not ReleaseEnvironment.PREVIEW:
             raise PermissionError("GitHubVercelPreviewAdapter refuses non-preview deployments")
+        vercel_status_succeeded_without_url=False
         for attempt in range(self.config.poll_attempts):
             comments=self._vercel_comments()
             if self._quota_blocked(comments):
@@ -137,18 +138,24 @@ class GitHubVercelPreviewAdapter:
             if completed and all(str(row.get("conclusion") or "").lower() in {"failure","cancelled","canceled","timed_out","action_required"} for row in completed):
                 return DeploymentResult(self.name,request_.environment,"failure",str(completed[0].get("id") or "vercel-check"),None)
 
-            if self.checks_forbidden:
-                statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
-                preview_url=self._comment_preview_url(comments)
-                for row in statuses:
-                    state=str(row.get("state") or "").lower()
-                    if state=="success" and preview_url:
-                        return DeploymentResult(self.name,request_.environment,"success",f"vercel-status-{row.get('id') or 'unknown'}",preview_url)
-                terminal=[row for row in statuses if str(row.get("state") or "").lower() in {"failure","error"}]
-                if terminal:
-                    return DeploymentResult(self.name,request_.environment,"failure",f"vercel-status-{terminal[0].get('id') or 'unknown'}",None)
+            statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
+            preview_url=self._comment_preview_url(comments)
+            for row in statuses:
+                state=str(row.get("state") or "").lower()
+                if state=="success" and preview_url:
+                    return DeploymentResult(self.name,request_.environment,"success",f"vercel-status-{row.get('id') or 'unknown'}",preview_url)
+                if state=="success" and not preview_url:
+                    vercel_status_succeeded_without_url=True
+            terminal=[row for row in statuses if str(row.get("state") or "").lower() in {"failure","error"}]
+            if terminal:
+                return DeploymentResult(self.name,request_.environment,"failure",f"vercel-status-{terminal[0].get('id') or 'unknown'}",None)
             if attempt+1<self.config.poll_attempts:
                 self.sleeper(self.config.poll_interval_seconds)
+        if vercel_status_succeeded_without_url:
+            raise RuntimeError(
+                "Vercel commit status succeeded, but no Ready preview URL was discoverable. "
+                "Grant GitHub Checks read for this repository or ensure the Vercel bot publishes a Ready preview URL."
+            )
         raise TimeoutError("Vercel GitHub Preview was not discoverable for the candidate commit")
 
 
