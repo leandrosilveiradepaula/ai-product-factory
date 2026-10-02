@@ -41,6 +41,16 @@ Nunca executar automaticamente:
 - alteracoes sensiveis de autenticacao/permissao que ampliem acesso;
 - mudanca material de requisito de produto.
 
+## Disciplina de commits e consumo de CI
+
+Para reduzir GitHub Actions e Vercel sem reduzir cobertura:
+
+- agrupe alteracoes relacionadas em um unico commit antes de atualizar uma branch remota quando a ferramenta suportar tree/commit atomico;
+- nao publique um commit intermediario por arquivo apenas para montar a mesma mudanca;
+- quando commits sucessivos forem inevitaveis, mantenha apenas o head mais recente como candidato e deixe CI/Preview cancelar ou ignorar trabalho obsoleto;
+- abra/atualize PR somente quando existir um candidato coerente; evite churn de head que dispare validacoes e Previews sem valor;
+- nunca contorne o budget de Preview para compensar excesso de commits; corrija a origem do churn.
+
 ## Regra de merge e release
 
 O operador/orquestrador esta autorizado a executar diretamente merges de PRs elegiveis quando o merge **nao publica producao** e todos os gates aplicaveis estiverem verdes. Nesses casos nao e necessario pedir confirmacao humana a cada PR.
