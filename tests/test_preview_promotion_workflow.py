@@ -11,7 +11,7 @@ class PreviewPromotionWorkflowTests(unittest.TestCase):
 
     def test_summary_does_not_use_shell_command_substitution(self):
         workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
-        self.assertIn("printf '%s\\n' \"- candidate: $CANDIDATE_SHA\"", workflow)
+        self.assertIn("printf '%s\\n' \"- candidate: ${CANDIDATE_SHA:-n/a}\"", workflow)
         self.assertIn("printf '%s\\n' \"- action: $action\"", workflow)
         self.assertNotIn('echo "- candidate: `$CANDIDATE_SHA`"', workflow)
         self.assertNotIn('echo "- action: `$action`"', workflow)
