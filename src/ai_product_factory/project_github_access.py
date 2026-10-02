@@ -16,7 +16,7 @@ class ProjectGitHubAccessItem:
     repository: str
     auth_mode: str
     observed_capabilities: dict
-    manifest: dict
+    manifest: dict | None = None
 
 
 class SupabaseProjectGitHubAccessStore:
