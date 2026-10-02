@@ -42,6 +42,12 @@ The preflight:
 
 The Console shows this contract on each project. An admin can mark the record stale with **Verificar novamente**; the autonomous runner then re-runs the safe preflight. **Corrigir acesso no GitHub** remains an external consent step in Phase 1. The target architecture is a Factory-owned GitHub App with short-lived installation tokens; PAT expansion must never happen silently.
 
+## Cross-repo Vercel Preview evidence
+
+For `preview.mode=github`, generic CI evidence can remain valid with Actions + Commit Statuses when the fine-grained token cannot read Checks. Preview URL discovery has a stricter requirement: the Factory needs either a successful Vercel check-run that exposes a `.vercel.app` URL or a successful Vercel commit status plus a Vercel bot comment that exposes a **Ready** preview URL.
+
+`checks_read` is therefore recorded separately as an optional GitHub capability. Missing Checks read does not block generic CI, but it can block Preview discovery when the Vercel bot comment is stale or does not contain a Ready URL. In that case the worker fails closed with an actionable error instead of reporting a generic timeout. The default GitHub path still does not require a Vercel API token.
+
 ## Cross-repo CI evidence with fine-grained tokens
 
 For repositories outside the Factory repository, the runtime must not assume that the GitHub Checks API is available to a fine-grained personal access token. The preferred evidence order is:
