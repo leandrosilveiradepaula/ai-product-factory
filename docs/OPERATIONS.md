@@ -347,10 +347,10 @@ The Console must not create a deployment for every implementation commit.
 Active policy:
 - `main` remains the production branch;
 - implementation branches such as `console/**`, `test/**`, `ci/**` and `security/**` do not deploy automatically;
-- after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
+- after `Console validation` completes successfully for a PR that actually changes `apps/console/**`, the trusted default-branch promotion workflow automatically revalidates the exact PR head plus `test`, `factory-acceptance` and `validate` before moving `preview/pr-<n>` to that SHA; manual `workflow_dispatch` remains an explicit fallback;
 - only `preview/**` is allowed to create the final Preview candidate;
 - if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it before any budget check and does not request another deployment;
-- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five successful promotion workflows per rolling 24 hours;
+- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five successful promotion-workflow runs per rolling 24 hours, counting both automatic and manual triggers conservatively;
 - when read-only `VERCEL_TOKEN` and `FACTORY_VERCEL_TEAM_ID` are configured, the same guard prefers the shared Vercel rolling-24h deployment count and applies the 70/85/95% thresholds;
 - a Vercel API read failure falls back to the bounded GitHub budget instead of blocking all development or bypassing protection;
 - the workflow never calls Vercel CLI or a Vercel deployment-creation API; deployment creation remains the Git integration's responsibility;
