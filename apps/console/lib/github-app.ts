@@ -143,6 +143,40 @@ export async function storeGitHubAppConversion(app:ManifestConversion){
   });
 }
 
+export async function resolveGitHubAppRegistrationGate(gateId:string,actorRef:string){
+  if(!/^[0-9a-f-]{36}$/i.test(gateId))throw new Error("Invalid GitHub App registration gate");
+  const cfg=getSupabaseServerConfig();
+  if(!cfg)throw new Error("Control Plane is unavailable");
+
+  const gateResponse=await fetch(
+    cfg.url+"/rest/v1/factory_human_gates?select=id,run_id,status&id=eq."+encodeURIComponent(gateId)+"&limit=1",
+    {headers:cfg.headers,cache:"no-store"}
+  );
+  if(!gateResponse.ok)throw new Error("GitHub App registration gate lookup failed");
+  const gates=await gateResponse.json();
+  const gate=gates[0];
+  if(!gate||String(gate.status)!=="pending")throw new Error("GitHub App registration gate is not pending");
+
+  const runResponse=await fetch(
+    cfg.url+"/rest/v1/factory_runs?select=id,status,metadata&id=eq."+encodeURIComponent(String(gate.run_id))+"&limit=1",
+    {headers:cfg.headers,cache:"no-store"}
+  );
+  if(!runResponse.ok)throw new Error("GitHub App registration run lookup failed");
+  const runs=await runResponse.json();
+  const run=runs[0];
+  const metadata=run?.metadata&&typeof run.metadata==="object"?run.metadata:{};
+  if(!run||String(run.status)!=="awaiting_human"||metadata.requested_action!=="register_github_app"){
+    throw new Error("Gate does not authorize GitHub App registration");
+  }
+
+  await rpc("factory_resolve_human_gate",{
+    p_gate_id:gateId,
+    p_resolution:"approved",
+    p_resolved_by:actorRef,
+    p_note:"GitHub App registrada por ação humana explícita e callback GitHub validado pelo Console.",
+  });
+}
+
 function createAppJwt(appId:number,privateKey:string){
   const now=Math.floor(Date.now()/1000);
   const header=b64url(JSON.stringify({alg:"RS256",typ:"JWT"}));
