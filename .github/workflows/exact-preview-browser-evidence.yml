@@ -8,11 +8,12 @@ on:
 permissions:
   contents: read
   checks: read
+  statuses: read
   actions: write
 
 jobs:
   browser-evidence:
-    if: ${{ github.event.created == false }}
+    if: ${{ github.event.created == false && github.event.deleted == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -25,11 +26,36 @@ jobs:
             const sha = context.sha;
             const hostPattern = /([A-Za-z0-9][A-Za-z0-9-]*\.vercel\.app)/;
             for (let attempt = 0; attempt < 40; attempt++) {
-              const {data} = await github.rest.checks.listForRef({
-                ...context.repo,
-                ref: sha,
-                per_page: 100,
-              });
+              const [{data}, {data: combined}] = await Promise.all([
+                github.rest.checks.listForRef({
+                  ...context.repo,
+                  ref: sha,
+                  per_page: 100,
+                }),
+                github.rest.repos.getCombinedStatusForRef({
+                  ...context.repo,
+                  ref: sha,
+                  per_page: 100,
+                }),
+              ]);
+              const vercelStatuses = (combined.statuses || []).filter(s =>
+                String(s.context || "").toLowerCase().includes("vercel")
+              );
+              const failedStatus = vercelStatuses.find(s =>
+                ["failure","error"].includes(String(s.state || "").toLowerCase())
+              );
+              if (failedStatus) {
+                core.setFailed("Vercel commit status failed for exact candidate " + sha);
+                return;
+              }
+              const readyStatus = vercelStatuses.some(s =>
+                String(s.state || "").toLowerCase() === "success"
+              );
+              if (!readyStatus) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                continue;
+              }
+
               const vercel = data.check_runs.filter(c =>
                 String(c.app?.slug || "").toLowerCase() === "vercel"
               );
@@ -45,17 +71,13 @@ jobs:
                 if (["success","neutral"].includes(String(check.conclusion)) && match) {
                   core.setOutput("url", "https://" + match[1]);
                   core.setOutput("candidate_sha", sha);
-                  core.notice("Exact Preview resolved for " + sha + ": " + match[1]);
-                  return;
-                }
-                if (["failure","cancelled","timed_out","action_required"].includes(String(check.conclusion))) {
-                  core.setFailed("Vercel Preview check failed for exact candidate " + sha);
+                  core.notice("Exact READY Preview resolved for " + sha + ": " + match[1]);
                   return;
                 }
               }
               await new Promise(resolve => setTimeout(resolve, 5000));
             }
-            core.setFailed("Vercel Preview was not discoverable for exact candidate " + sha);
+            core.setFailed("Vercel Preview did not reach READY with a discoverable URL for exact candidate " + sha);
       - name: Dispatch trusted main browser verifier and wait
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
