@@ -129,7 +129,12 @@ jobs:
             const sha = process.env.CANDIDATE_SHA;
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
             if (pr.state !== "open") return core.setFailed("PR must be open");
-            if (pr.head.sha !== sha) return core.setFailed("candidate SHA is not the exact PR head");
+            if (pr.head.sha !== sha) {
+              core.setOutput("needs_promotion", "false");
+              core.setOutput("promotion_action", "stale");
+              core.notice("Candidate " + sha + " was superseded by PR head " + pr.head.sha + "; skipping obsolete Preview work.");
+              return;
+            }
 
             const required = ["test", "factory-acceptance", "validate"];
             let green = false;
@@ -206,7 +211,7 @@ jobs:
             }
 
       - name: Ensure exact Preview browser evidence
-        if: steps.resolve.outputs.applicable == 'true'
+        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.promotion_action != 'stale'
         id: browser
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
