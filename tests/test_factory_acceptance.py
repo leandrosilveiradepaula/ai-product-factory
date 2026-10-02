@@ -645,7 +645,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("actions: read", promote)
         self.assertNotIn("id-token: write", promote)
         self.assertNotIn("./.github/actions/control-plane-oidc", promote)
-        self.assertIn("scripts/preview_budget_guard.py", promote)
+        self.assertIn("python -m scripts.preview_budget_guard", promote)
         self.assertIn("steps.verify.outputs.needs_promotion == 'true'", promote)
         self.assertIn("current.object.sha === sha", promote)
         self.assertIn('core.setOutput("promotion_action", "reused")', promote)
