@@ -331,7 +331,8 @@ Active policy:
 - implementation branches such as `console/**`, `test/**`, `ci/**` and `security/**` do not deploy automatically;
 - after required CI/acceptance checks are green, the explicit candidate-promotion workflow moves `preview/pr-<n>` to the exact PR head SHA;
 - only `preview/**` is allowed to create the final Preview candidate;
-- the promoted Preview ref points to the exact PR head commit; it does not create a different code commit;
+- the promoted Preview ref is reset to the PR base and then advanced to the exact PR head, so Git integrations observe the complete candidate diff while the final ref still identifies the exact candidate commit;
+- exact browser evidence waits for the Vercel commit status to reach success before using a Vercel check URL; early Preview Comments checks are not sufficient readiness evidence;
 - `ignoreCommand` remains a path-based second guard;
 - Vercel `api-deployments-free-per-day` is an external quota blocker: do not retry deployments or buy capacity automatically.
 
@@ -355,3 +356,4 @@ GitHub Actions `GITHUB_TOKEN` is treated as repository-scoped. Inside Actions it
 Cross-repository issue/branch/PR/CI/Preview operations require `FACTORY_GITHUB_TOKEN`. The runtime never falls back to the current repository token for a different repository. Configure that secret only in the Factory execution environment and never expose it to generated code or browser clients.
 
 Minimum target-repository permissions depend on the operation: contents read/write, issues read/write, pull requests read/write, and checks read for full Direct delivery. Follow-up readers can use narrower permissions when separate credentials are used.
+
