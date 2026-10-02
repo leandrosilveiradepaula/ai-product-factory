@@ -11,6 +11,9 @@ on:
         description: Exact 40-character PR head SHA
         required: true
         type: string
+  workflow_run:
+    workflows: ["Console validation"]
+    types: [completed]
 
 permissions:
   actions: read
@@ -19,39 +22,137 @@ permissions:
   checks: read
 
 concurrency:
-  group: vercel-preview-candidate-${{ inputs.pr_number }}
+  group: vercel-preview-candidate-${{ inputs.pr_number || github.event.workflow_run.head_branch || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   promote-preview-ref:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.conclusion == 'success'
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
+      - name: Resolve exact candidate and Preview applicability
+        id: resolve
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        with:
+          script: |
+            if (context.eventName === "workflow_dispatch") {
+              const prNumber = Number(process.env.INPUT_PR_NUMBER);
+              const sha = String(process.env.INPUT_CANDIDATE_SHA || "");
+              if (!Number.isInteger(prNumber) || prNumber < 1) return core.setFailed("invalid PR number");
+              if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("candidate_sha must be an exact 40-character SHA");
+              core.setOutput("applicable", "true");
+              core.setOutput("pr_number", String(prNumber));
+              core.setOutput("candidate_sha", sha);
+              core.setOutput("source", "manual");
+              return;
+            }
+
+            const run = context.payload.workflow_run;
+            const sha = String(run?.head_sha || "");
+            if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("workflow_run head SHA is invalid");
+
+            let candidates = Array.isArray(run.pull_requests) ? run.pull_requests : [];
+            if (!candidates.length) {
+              const {data} = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                ...context.repo,
+                commit_sha: sha,
+              });
+              candidates = data;
+            }
+
+            let pr = null;
+            for (const candidate of candidates) {
+              const number = Number(candidate.number);
+              if (!Number.isInteger(number) || number < 1) continue;
+              const {data: full} = await github.rest.pulls.get({...context.repo, pull_number: number});
+              if (full.state === "open" && full.head.sha === sha) {
+                pr = full;
+                break;
+              }
+            }
+            if (!pr) {
+              core.notice("No open PR is bound to the completed Console validation SHA; Preview promotion is not applicable.");
+              core.setOutput("applicable", "false");
+              core.setOutput("promotion_action", "not_applicable");
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const consoleChanged = files.some(file => String(file.filename || "").startsWith("apps/console/"));
+            if (!consoleChanged) {
+              core.notice("Console validation completed, but apps/console/** did not change; Preview is explicitly not applicable.");
+              core.setOutput("applicable", "false");
+              core.setOutput("promotion_action", "not_applicable");
+              core.setOutput("pr_number", String(pr.number));
+              core.setOutput("candidate_sha", sha);
+              return;
+            }
+
+            core.setOutput("applicable", "true");
+            core.setOutput("pr_number", String(pr.number));
+            core.setOutput("candidate_sha", sha);
+            core.setOutput("source", "automatic");
+
       - name: Verify exact PR candidate, green checks and reuse opportunity
+        if: steps.resolve.outputs.applicable == 'true'
         id: verify
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          PR_NUMBER: ${{ inputs.pr_number }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
         with:
           script: |
             const prNumber = Number(process.env.PR_NUMBER);
             const sha = process.env.CANDIDATE_SHA;
-            if (!Number.isInteger(prNumber) || prNumber < 1) return core.setFailed("invalid PR number");
-            if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("candidate_sha must be an exact 40-character SHA");
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
             if (pr.state !== "open") return core.setFailed("PR must be open");
             if (pr.head.sha !== sha) return core.setFailed("candidate SHA is not the exact PR head");
-            const {data: checks} = await github.rest.checks.listForRef({...context.repo, ref: sha, per_page: 100});
-            for (const name of ["test", "factory-acceptance", "validate"]) {
-              const ok = checks.check_runs.some(c => c.name === name && c.status === "completed" && c.conclusion === "success");
-              if (!ok) return core.setFailed("required check is not green: " + name);
+
+            const required = ["test", "factory-acceptance", "validate"];
+            let green = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+              const {data: checks} = await github.rest.checks.listForRef({...context.repo, ref: sha, per_page: 100});
+              const missing = required.filter(name =>
+                !checks.check_runs.some(c => c.name === name && c.status === "completed" && c.conclusion === "success")
+              );
+              if (!missing.length) {
+                green = true;
+                break;
+              }
+              const failed = missing.filter(name =>
+                checks.check_runs.some(c =>
+                  c.name === name &&
+                  c.status === "completed" &&
+                  !["success", "neutral", "skipped"].includes(String(c.conclusion))
+                )
+              );
+              if (failed.length) return core.setFailed("required check failed: " + failed.join(", "));
+              if (attempt < 29) await new Promise(resolve => setTimeout(resolve, 5000));
             }
+            if (!green) return core.setFailed("required checks did not become green before timeout");
 
             const ref = "heads/preview/pr-" + prNumber;
             try {
@@ -68,7 +169,7 @@ jobs:
             core.setOutput("needs_promotion", "true");
 
       - name: Enforce bounded Preview deployment budget
-        if: steps.verify.outputs.needs_promotion == 'true'
+        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -76,12 +177,12 @@ jobs:
         run: python -m scripts.preview_budget_guard
 
       - name: Create or update one preview ref to the exact candidate
-        if: steps.verify.outputs.needs_promotion == 'true'
+        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
         id: promote
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          PR_NUMBER: ${{ inputs.pr_number }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
         with:
           script: |
             const ref = "heads/preview/pr-" + Number(process.env.PR_NUMBER);
@@ -101,16 +202,19 @@ jobs:
       - name: Record durable Preview promotion summary
         if: always() && !cancelled()
         env:
+          RESOLVE_ACTION: ${{ steps.resolve.outputs.promotion_action }}
           VERIFY_ACTION: ${{ steps.verify.outputs.promotion_action }}
           PROMOTE_ACTION: ${{ steps.promote.outputs.promotion_action }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
+          PROMOTION_SOURCE: ${{ steps.resolve.outputs.source }}
         run: |
-          action="${PROMOTE_ACTION:-${VERIFY_ACTION:-unknown}}"
+          action="${PROMOTE_ACTION:-${VERIFY_ACTION:-${RESOLVE_ACTION:-unknown}}}"
           {
             printf '%s\n' "### Preview promotion"
-            printf '%s\n' "- PR: #$PR_NUMBER"
-            printf '%s\n' "- candidate: $CANDIDATE_SHA"
+            printf '%s\n' "- PR: #${PR_NUMBER:-n/a}"
+            printf '%s\n' "- candidate: ${CANDIDATE_SHA:-n/a}"
+            printf '%s\n' "- source: ${PROMOTION_SOURCE:-n/a}"
             printf '%s\n' "- action: $action"
             printf '%s\n' "- deploy path: GitHub ref -> Vercel Git integration"
           } >> "$GITHUB_STEP_SUMMARY"
