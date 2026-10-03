@@ -15,7 +15,7 @@ async function submit(formData:FormData){
  if(files.length>10)throw new Error("Envie no máximo 10 arquivos por pedido.");
  const requestId=crypto.randomUUID();
  for(const file of files)await uploadProjectContinuationFile(project.id,requestId,file);
- await enqueueProjectContinuation(projectKey,request,files.length);
+ await enqueueProjectContinuation(projectKey,request,files.length,requestId);
  redirect("/projects/"+encodeURIComponent(projectKey));
 }
 
