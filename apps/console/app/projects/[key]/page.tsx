@@ -85,7 +85,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  }
  const p=await getProjectDetail(key);if(!p)notFound();
  const [ops,state,databases,teamPlan,githubAccess,githubAppStatus]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus()]);
- const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
+ const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
  const currentMacro=macroStageIndex(p.stage);
