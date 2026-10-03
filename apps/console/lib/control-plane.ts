@@ -47,6 +47,11 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
   {method:"PATCH",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({manifest:updatedManifest}),cache:"no-store"}
  );
  if(!updateResponse.ok)throw new Error("Não foi possível registrar o novo pedido no projeto.");
+ const auditResponse=await fetch(
+  `${cfg.url}/rest/v1/factory_audit_events`,
+  {method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({project_id:String(project.id),actor_type:"human",actor_ref:"factory-console",event_type:"project.continuation.requested",payload:{request_id:requestId,summary:clean,requested_at:requestedAt}}),cache:"no-store"}
+ );
+ if(!auditResponse.ok)throw new Error("O pedido foi registrado, mas a evidência de auditoria não pôde ser persistida.");
  const enqueue=await enqueueProjectBootstrap(projectKey);
  return {...enqueue,requestId,requestedAt};
 }
