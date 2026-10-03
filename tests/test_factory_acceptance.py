@@ -180,7 +180,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("openssl",app)
         self.assertIn("factory_get_github_app_credentials",edge)
         self.assertIn("importPKCS8",edge)
-        self.assertIn("repository_ids:[repositoryId]",edge)
+        self.assertIn('repositories:[repository.split("/")[1]]',edge)\n        self.assertNotIn("repository_ids:[repositoryId]",edge)
         self.assertIn("token_persisted:false",edge)
         self.assertIn("neither PEM nor App JWT leaves that broker",operations)
         self.assertIn("never silently falls back to the PAT",operations)
