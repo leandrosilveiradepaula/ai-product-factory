@@ -173,12 +173,10 @@ jobs:
             }
             core.setOutput("needs_promotion", "true");
 
-      - name: Enforce bounded Preview deployment budget
+      - name: Observe recent Preview promotions
         if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          FACTORY_VERCEL_TEAM_ID: ${{ vars.FACTORY_VERCEL_TEAM_ID }}
         run: python -m scripts.preview_budget_guard
 
       - name: Create or update one preview ref to the exact candidate

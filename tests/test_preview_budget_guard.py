@@ -85,7 +85,7 @@ class PreviewBudgetGuardTests(unittest.TestCase):
         self.assertEqual(count, 1)
 
 
-    def test_missing_vercel_credentials_uses_advisory_github_observation(self):
+    def test_standard_preview_path_uses_advisory_github_observation(self):
         def transport(method, url, headers, payload):
             return {"workflow_runs": []}
 
@@ -99,7 +99,7 @@ class PreviewBudgetGuardTests(unittest.TestCase):
         self.assertTrue(decision["allowed"])
         self.assertEqual(decision["source"], "github_actions")
         self.assertFalse(decision["authoritative"])
-        self.assertIn("not configured", decision["fallback_reason"])
+        self.assertIn("outside the standard Preview promotion path", decision["fallback_reason"])
 
 
     def test_high_local_count_does_not_block_without_provider_quota(self):
