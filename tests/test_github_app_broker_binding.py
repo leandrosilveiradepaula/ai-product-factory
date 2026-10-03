@@ -37,6 +37,16 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertIn('["schedule","workflow_dispatch","issue_comment","push"]', edge)
         self.assertIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", edge)
 
+    def test_crm_workflow_is_not_authorized_for_generic_control_plane_proxy(self):
+        edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn("GENERIC_PROXY_WORKFLOW_REFS", edge)
+        generic_block = edge.split("const GENERIC_PROXY_WORKFLOW_REFS = new Set([",1)[1].split("]);",1)[0]
+        self.assertIn(".github/workflows/autonomous-runner.yml@refs/heads/main", generic_block)
+        self.assertIn(".github/workflows/control-plane-oidc-preflight.yml@refs/heads/main", generic_block)
+        self.assertNotIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", generic_block)
+        self.assertIn("github_oidc_proxy_workflow_not_allowed", edge)
+        self.assertIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", edge)
+
     def test_crm_preflight_uses_oidc_and_ephemeral_app_token_not_pat(self):
         workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
         self.assertIn("id-token: write", workflow)
