@@ -12,11 +12,17 @@ NOW = datetime(2026, 10, 2, 18, 0, tzinfo=timezone.utc)
 
 
 class PreviewBudgetGuardTests(unittest.TestCase):
-    def test_local_budget_is_bounded(self):
-        self.assertTrue(evaluate_local_budget(4)["allowed"])
-        blocked = evaluate_local_budget(5)
-        self.assertFalse(blocked["allowed"])
-        self.assertEqual(blocked["state"], "blocked_local_budget")
+    def test_local_observation_never_invents_provider_quota(self):
+        normal = evaluate_local_budget(4)
+        self.assertTrue(normal["allowed"])
+        self.assertEqual(normal["state"], "local_observation")
+        self.assertFalse(normal["authoritative"])
+
+        high = evaluate_local_budget(5)
+        self.assertTrue(high["allowed"])
+        self.assertEqual(high["state"], "local_observation_high")
+        self.assertFalse(high["authoritative"])
+        self.assertIn("advisory only", high["reason"])
 
     def test_recent_successful_promotions_only_counts_real_ref_updates(self):
         def transport(method, url, headers, payload):
@@ -79,7 +85,7 @@ class PreviewBudgetGuardTests(unittest.TestCase):
         self.assertEqual(count, 1)
 
 
-    def test_missing_vercel_credentials_uses_bounded_github_fallback(self):
+    def test_missing_vercel_credentials_uses_advisory_github_observation(self):
         def transport(method, url, headers, payload):
             return {"workflow_runs": []}
 
@@ -92,7 +98,46 @@ class PreviewBudgetGuardTests(unittest.TestCase):
         )
         self.assertTrue(decision["allowed"])
         self.assertEqual(decision["source"], "github_actions")
+        self.assertFalse(decision["authoritative"])
         self.assertIn("not configured", decision["fallback_reason"])
+
+
+    def test_high_local_count_does_not_block_without_provider_quota(self):
+        def transport(method, url, headers, payload):
+            if "promote-preview-candidate.yml/runs" in url:
+                return {
+                    "workflow_runs": [
+                        {
+                            "id": i,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "created_at": (NOW - timedelta(hours=1)).isoformat(),
+                        }
+                        for i in range(1, 7)
+                    ]
+                }
+            if "/jobs" in url:
+                return {
+                    "jobs": [{
+                        "steps": [{
+                            "name": "Create or update one preview ref to the exact candidate",
+                            "conclusion": "success",
+                        }]
+                    }]
+                }
+            raise AssertionError(url)
+
+        decision = decide(
+            github_token="github-token",
+            repository="owner/repo",
+            current_run_id="99",
+            now=NOW,
+            request_json=transport,
+        )
+        self.assertTrue(decision["allowed"])
+        self.assertEqual(decision["state"], "local_observation_high")
+        self.assertEqual(decision["used"], 6)
+        self.assertFalse(decision["authoritative"])
 
     def test_vercel_usage_is_authoritative_when_credentials_exist(self):
         def transport(method, url, headers, payload):

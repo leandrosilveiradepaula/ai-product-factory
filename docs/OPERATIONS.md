@@ -351,9 +351,9 @@ Active policy:
 - only `preview/**` is allowed to create the final Preview candidate;
 - when `preview/pr-<n>` does not exist yet, the promoter seeds it at the candidate parent and immediately advances the same ref to the exact candidate; this produces a real ref update for the Vercel Git integration while the branch-creation event itself remains non-authoritative;
 - if `preview/pr-<n>` already points to the exact candidate SHA, the workflow reuses it before any budget check and does not request another deployment;
-- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions enforces a hard local budget of five actual preview-ref promotions per rolling 24 hours; no-op/stale promoter runs do not consume this budget, and a run counts whenever its ref-update step succeeded even if a later step failed;
+- Preview promotion does not require a Vercel token: when provider usage credentials are absent, GitHub Actions records actual preview-ref promotions in the rolling 24-hour window as advisory telemetry; this local count never masquerades as provider quota and cannot block an exact final candidate by itself; no-op/stale promoter runs do not count, and a run is observed whenever its ref-update step succeeded even if a later step failed;
 - when read-only `VERCEL_TOKEN` and `FACTORY_VERCEL_TEAM_ID` are configured, the same guard prefers the shared Vercel rolling-24h deployment count and applies the 70/85/95% thresholds;
-- a Vercel API read failure falls back to the bounded GitHub budget instead of blocking all development or bypassing protection;
+- a Vercel API read failure falls back to advisory GitHub promotion telemetry; only fresh provider quota evidence may block for quota, while the provider itself can still reject a deployment when its real external limit is reached;
 - the workflow never calls Vercel CLI or a Vercel deployment-creation API; deployment creation remains the Git integration's responsibility;
 - promotion evidence is retained in the GitHub Actions run summary; normal Control Plane reconciliation remains responsible for project lifecycle evidence;
 - ref updates performed by the native `GITHUB_TOKEN` do not recursively start push workflows, so the promoter explicitly dispatches `Exact Preview browser evidence` for the exact candidate and waits for the candidate-scoped `Factory Preview browser evidence` commit status; `evidence/preview/**` is a non-deploying recovery trigger, while only `preview/**` can request Vercel deployment;
@@ -363,7 +363,7 @@ Active policy:
 
 ## Resource quota observability
 
-The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. The optional Vercel collector runs every six hours only when its read-only provider credentials are already configured; missing credentials skip that collector cleanly. Preview safety does not depend on those credentials because the GitHub-local promotion budget remains active. GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
+The Control Plane records provider/resource/metric, used value, limit, percentage inputs, measurement quality, source, window/reset and status. The optional Vercel collector runs every six hours only when its read-only provider credentials are already configured; missing credentials skip that collector cleanly. Preview safety does not depend on those credentials: exact-candidate binding, stale-candidate cancellation, ref reuse and path gating remain active, while the GitHub-local promotion count is advisory rather than an invented provider quota. GitHub Actions usage remains unknown until a reliable billing/usage source is connected.
 
 ## Preview applicability policy
 

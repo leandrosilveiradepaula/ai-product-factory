@@ -27,22 +27,20 @@ def _request_json(method: str, url: str, headers: dict[str, str], payload: dict[
 
 
 def evaluate_local_budget(successful_runs: int, *, limit: int = LOCAL_DAILY_LIMIT) -> dict[str, Any]:
-    if successful_runs >= limit:
-        return {
-            "allowed": False,
-            "state": "blocked_local_budget",
-            "source": "github_actions",
-            "used": successful_runs,
-            "limit": limit,
-            "reason": f"local Preview promotion budget reached ({successful_runs}/{limit} in 24h)",
-        }
+    state = "local_observation_high" if successful_runs >= limit else "local_observation"
     return {
         "allowed": True,
-        "state": "local_budget",
+        "state": state,
         "source": "github_actions",
         "used": successful_runs,
         "limit": limit,
-        "reason": f"local Preview promotion budget available ({successful_runs}/{limit} used in 24h)",
+        "authoritative": False,
+        "reason": (
+            f"local Preview promotion observation is high ({successful_runs}/{limit} in 24h); "
+            "provider quota is unavailable, so this count is advisory only"
+            if successful_runs >= limit
+            else f"local Preview promotion observation ({successful_runs}/{limit} in 24h); provider quota is unavailable"
+        ),
     }
 
 
@@ -55,7 +53,7 @@ def recent_successful_promotions(
     request_json: JsonRequest = _request_json,
 ) -> int:
     if not token:
-        raise RuntimeError("GITHUB_TOKEN is required for the local Preview budget")
+        raise RuntimeError("GITHUB_TOKEN is required for local Preview promotion observation")
     if "/" not in repository:
         raise RuntimeError("GITHUB_REPOSITORY is invalid")
 
@@ -164,9 +162,9 @@ def decide(
                 request_json=request_json,
             )
         except Exception as exc:
-            fallback_reason = f"Vercel usage read failed; bounded GitHub fallback used: {type(exc).__name__}"
+            fallback_reason = f"Vercel usage read failed; GitHub promotion count is advisory only: {type(exc).__name__}"
     else:
-        fallback_reason = "Vercel usage credentials are not configured; bounded GitHub fallback used"
+        fallback_reason = "Vercel usage credentials are not configured; GitHub promotion count is advisory only"
 
     successful_runs = recent_successful_promotions(
         token=github_token,
