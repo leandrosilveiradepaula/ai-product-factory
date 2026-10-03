@@ -16,6 +16,9 @@ class ProjectContinuationAttachmentTests(unittest.TestCase):
         self.assertIn('PROJECT_FILE_BUCKET',attachments)
         self.assertIn('project_id:projectId',attachments)
         self.assertIn('finalized_at:new Date().toISOString()',attachments)
+        self.assertIn('cleanupProjectContinuationFiles',page)
+        self.assertIn('draft_id=eq.',attachments)
+        self.assertIn('method:"DELETE"',attachments)
 
     def test_request_manifest_and_audit_include_attachment_evidence(self):
         control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
