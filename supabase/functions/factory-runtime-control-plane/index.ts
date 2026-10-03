@@ -1,7 +1,8 @@
-import { createRemoteJWKSet, jwtVerify } from "npm:jose@6.1.0";
+import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from "npm:jose@6.1.0";
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 const AUDIENCE = "factory-runtime-control-plane";
+const GITHUB_API_VERSION = "2026-03-10";
 const JWKS = createRemoteJWKSet(new URL("https://token.actions.githubusercontent.com/.well-known/jwks"));
 const EXPECTED = {
   repository: "leandrosilveiradepaula/ai-product-factory",
@@ -13,6 +14,14 @@ const ALLOWED_WORKFLOW_REFS = new Set([
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/control-plane-oidc-preflight.yml@refs/heads/main",
 ]);
+const APP_PERMISSIONS = {
+  actions: "read",
+  checks: "read",
+  contents: "write",
+  issues: "write",
+  pull_requests: "write",
+  statuses: "read",
+};
 
 function json(status:number, body:unknown) {
   return new Response(JSON.stringify(body), {status, headers:{"content-type":"application/json","cache-control":"no-store"}});
@@ -50,6 +59,15 @@ function getSecretKey() {
   return legacy;
 }
 
+function supabaseHeaders(key:string, contentType?:string|null) {
+  const headers=new Headers();
+  headers.set("apikey",key);
+  headers.set("accept","application/json");
+  if(contentType) headers.set("content-type",contentType);
+  if(!key.startsWith("sb_secret_")) headers.set("authorization","Bearer "+key);
+  return headers;
+}
+
 function allowedSuffix(url:URL) {
   const restIndex=url.pathname.indexOf("/rest/v1/");
   if(restIndex<0) throw new Error("only PostgREST/RPC access is allowed");
@@ -63,23 +81,140 @@ function allowedSuffix(url:URL) {
   return suffix;
 }
 
+async function readJson(response:Response, label:string) {
+  const text=await response.text();
+  let body:unknown=null;
+  if(text) {
+    try { body=JSON.parse(text); } catch { body=null; }
+  }
+  if(!response.ok) throw new Error(label+" failed with HTTP "+response.status);
+  return body;
+}
+
+async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:string) {
+  if(req.method!=="POST") return json(405,{error:"method_not_allowed"});
+  const body=await req.json().catch(()=>null) as {repository?:unknown}|null;
+  const repository=String(body?.repository||"").trim();
+  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    return json(400,{error:"invalid_repository"});
+  }
+
+  const projects=await readJson(
+    await fetch(
+      supabaseUrl+"/rest/v1/factory_projects?select=id,repository&repository=eq."+
+        encodeURIComponent(repository)+"&is_active=eq.true&limit=1",
+      {headers:supabaseHeaders(key)}
+    ),
+    "project lookup",
+  ) as Array<{id?:unknown;repository?:unknown}>|null;
+  if(!projects?.length) return json(404,{error:"project_not_found"});
+
+  const projectId=String(projects[0].id||"");
+  const access=await readJson(
+    await fetch(
+      supabaseUrl+"/rest/v1/factory_project_github_access?select=auth_mode,status,installation_id,repository_id"+
+        "&project_id=eq."+encodeURIComponent(projectId)+"&limit=1",
+      {headers:supabaseHeaders(key)}
+    ),
+    "GitHub access lookup",
+  ) as Array<Record<string,unknown>>|null;
+  if(!access?.length) return json(409,{error:"github_app_not_migrated"});
+
+  const row=access[0];
+  if(String(row.auth_mode||"")!=="github_app") return json(409,{error:"github_app_not_migrated"});
+  if(String(row.status||"")!=="ready") return json(409,{error:"github_app_not_ready"});
+
+  const installationId=Number(row.installation_id||0);
+  const repositoryId=Number(row.repository_id||0);
+  if(!Number.isInteger(installationId)||installationId<=0||!Number.isInteger(repositoryId)||repositoryId<=0) {
+    return json(409,{error:"github_app_installation_metadata_incomplete"});
+  }
+
+  const app=await readJson(
+    await fetch(
+      supabaseUrl+"/rest/v1/rpc/factory_get_github_app_credentials",
+      {method:"POST",headers:supabaseHeaders(key,"application/json"),body:"{}"}
+    ),
+    "GitHub App credentials lookup",
+  ) as Record<string,unknown>|null;
+  const appId=Number(app?.app_id||0);
+  const privateKey=String(app?.private_key||"");
+  if(!Number.isInteger(appId)||appId<=0||!privateKey) return json(409,{error:"github_app_not_configured"});
+
+  const signingKey=await importPKCS8(privateKey,"RS256");
+  const now=Math.floor(Date.now()/1000);
+  const appJwt=await new SignJWT({})
+    .setProtectedHeader({alg:"RS256",typ:"JWT"})
+    .setIssuedAt(now-60)
+    .setExpirationTime(now+9*60)
+    .setIssuer(String(appId))
+    .sign(signingKey);
+
+  const githubResponse=await fetch(
+    "https://api.github.com/app/installations/"+installationId+"/access_tokens",
+    {
+      method:"POST",
+      headers:{
+        Accept:"application/vnd.github+json",
+        Authorization:"Bearer "+appJwt,
+        "Content-Type":"application/json",
+        "X-GitHub-Api-Version":GITHUB_API_VERSION,
+      },
+      body:JSON.stringify({repository_ids:[repositoryId],permissions:APP_PERMISSIONS}),
+    },
+  );
+  const tokenBody=await readJson(githubResponse,"GitHub installation token mint") as Record<string,unknown>|null;
+  const token=String(tokenBody?.token||"");
+  if(!token) throw new Error("GitHub installation token response was incomplete");
+
+  const repositoryResponse=await fetch(
+    "https://api.github.com/repositories/"+repositoryId,
+    {
+      headers:{
+        Accept:"application/vnd.github+json",
+        Authorization:"Bearer "+token,
+        "X-GitHub-Api-Version":GITHUB_API_VERSION,
+      },
+    },
+  );
+  const repositoryBody=await readJson(repositoryResponse,"GitHub installation repository binding") as Record<string,unknown>|null;
+  if(Number(repositoryBody?.id||0)!==repositoryId || String(repositoryBody?.full_name||"").toLowerCase()!==repository.toLowerCase()) {
+    return json(409,{error:"github_app_repository_binding_mismatch"});
+  }
+
+  return json(200,{
+    token,
+    expires_at:tokenBody?.expires_at||null,
+    installation_id:installationId,
+    repository_id:repositoryId,
+    token_persisted:false,
+  });
+}
+
 Deno.serve(async(req:Request)=>{
   try {
-    await verifyGithub(req);
-    if(!["GET","POST","PATCH"].includes(req.method)) return json(405,{error:"method_not_allowed"});
+    const identity=await verifyGithub(req);
     const requestUrl=new URL(req.url);
-    const suffix=allowedSuffix(requestUrl);
     const supabaseUrl=(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"");
     if(!supabaseUrl) throw new Error("SUPABASE_URL unavailable");
     const key=getSecretKey();
-    const headers=new Headers();
-    headers.set("apikey",key);
-    headers.set("accept","application/json");
-    const contentType=req.headers.get("content-type");
-    if(contentType) headers.set("content-type",contentType);
+
+    if(requestUrl.pathname.endsWith("/github-app/token")) {
+      const workflowRef=String(identity.workflow_ref||"");
+      const eventName=String(identity.event_name||"");
+      const autonomousRef="leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main";
+      if(workflowRef!==autonomousRef) return json(403,{error:"github_app_token_workflow_not_allowed"});
+      if(!["schedule","workflow_dispatch","issue_comment"].includes(eventName)) {
+        return json(403,{error:"github_app_token_event_not_allowed"});
+      }
+      return await mintGithubInstallationToken(req,supabaseUrl,key);
+    }
+
+    if(!["GET","POST","PATCH"].includes(req.method)) return json(405,{error:"method_not_allowed"});
+    const suffix=allowedSuffix(requestUrl);
+    const headers=supabaseHeaders(key,req.headers.get("content-type"));
     const prefer=req.headers.get("prefer");
     if(prefer) headers.set("prefer",prefer);
-    if(!key.startsWith("sb_secret_")) headers.set("authorization","Bearer "+key);
     const target=supabaseUrl+suffix+requestUrl.search;
     const body=req.method==="GET"?undefined:await req.arrayBuffer();
     const response=await fetch(target,{method:req.method,headers,body});

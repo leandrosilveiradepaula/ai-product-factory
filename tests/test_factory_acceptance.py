@@ -168,6 +168,23 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("operator_allowed_repositories", (ROOT / "config/factory.release-policy.v1.json").read_text())
         self.assertIn("human_release.console_merge_requested", console_release)
 
+    def test_cross_repo_github_app_runtime_is_repository_scoped_and_fail_closed(self):
+        auth=(ROOT/"src/ai_product_factory/github_auth.py").read_text()
+        app=(ROOT/"src/ai_product_factory/github_app_runtime.py").read_text()
+        operations=(ROOT/"docs/OPERATIONS.md").read_text()
+        edge=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn("resolve_github_app_installation_token",auth)
+        self.assertIn('cfg.url.rstrip("/") + "/github-app/token"',app)
+        self.assertIn("GitHub App access is not ready for this repository",app)
+        self.assertNotIn("private_key",app)
+        self.assertNotIn("openssl",app)
+        self.assertIn("factory_get_github_app_credentials",edge)
+        self.assertIn("importPKCS8",edge)
+        self.assertIn("repository_ids:[repositoryId]",edge)
+        self.assertIn("token_persisted:false",edge)
+        self.assertIn("neither PEM nor App JWT leaves that broker",operations)
+        self.assertIn("never silently falls back to the PAT",operations)
+
     def test_cross_repo_followups_bind_environment_secret_scope(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         jobs = (
@@ -639,7 +656,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)
         self.assertIn("console/*|ci/*|test/*|security/*|agents/*|intelligence/*|quality/*|policy/*|runtime/*|operations/*|observability/*|audit/*|release/*)", workflow)
         self.assertIn('"heads/preview/pr-"', promote)
-        self.assertIn("candidate SHA is not the exact PR head", promote)
+        self.assertIn("skipping obsolete Preview work", promote)
+        self.assertIn('promotion_action", "stale"', promote)
         self.assertIn('["test", "factory-acceptance", "validate"]', promote)
         self.assertIn("concurrency:", promote)
         self.assertIn("actions: write", promote)
