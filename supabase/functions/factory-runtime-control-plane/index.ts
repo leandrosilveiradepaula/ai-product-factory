@@ -82,6 +82,67 @@ function allowedSuffix(url:URL) {
   return suffix;
 }
 
+function derLength(length:number) {
+  if(length<0x80) return new Uint8Array([length]);
+  const bytes:number[]=[];
+  let value=length;
+  while(value>0) {
+    bytes.unshift(value&0xff);
+    value=Math.floor(value/256);
+  }
+  return new Uint8Array([0x80|bytes.length,...bytes]);
+}
+
+function concatBytes(...chunks:Uint8Array[]) {
+  const total=chunks.reduce((sum,chunk)=>sum+chunk.length,0);
+  const out=new Uint8Array(total);
+  let offset=0;
+  for(const chunk of chunks) {
+    out.set(chunk,offset);
+    offset+=chunk.length;
+  }
+  return out;
+}
+
+function pemBodyToBytes(pem:string) {
+  const base64=pem
+    .replace(/-----BEGIN [^-]+-----/g,"")
+    .replace(/-----END [^-]+-----/g,"")
+    .replace(/\s+/g,"");
+  const binary=atob(base64);
+  return Uint8Array.from(binary,(char)=>char.charCodeAt(0));
+}
+
+function bytesToPem(label:string,bytes:Uint8Array) {
+  let binary="";
+  for(const byte of bytes) binary+=String.fromCharCode(byte);
+  const base64=btoa(binary);
+  const lines=base64.match(/.{1,64}/g)||[];
+  return "-----BEGIN "+label+"-----\n"+lines.join("\n")+"\n-----END "+label+"-----";
+}
+
+function normalizeRsaPrivateKeyToPkcs8(privateKey:string) {
+  if(privateKey.includes("-----BEGIN PRIVATE KEY-----")) return privateKey;
+  if(!privateKey.includes("-----BEGIN RSA PRIVATE KEY-----")) {
+    throw new Error("GitHub App private key format is unsupported");
+  }
+  const pkcs1=pemBodyToBytes(privateKey);
+  const version=new Uint8Array([0x02,0x01,0x00]);
+  const rsaAlgorithmIdentifier=new Uint8Array([
+    0x30,0x0d,
+    0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x01,
+    0x05,0x00,
+  ]);
+  const privateKeyOctetString=concatBytes(
+    new Uint8Array([0x04]),
+    derLength(pkcs1.length),
+    pkcs1,
+  );
+  const body=concatBytes(version,rsaAlgorithmIdentifier,privateKeyOctetString);
+  const pkcs8=concatBytes(new Uint8Array([0x30]),derLength(body.length),body);
+  return bytesToPem("PRIVATE KEY",pkcs8);
+}
+
 async function readJson(response:Response, label:string) {
   const text=await response.text();
   let body:unknown=null;
@@ -142,7 +203,7 @@ async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:
   const privateKey=String(app?.private_key||"");
   if(!Number.isInteger(appId)||appId<=0||!privateKey) return json(409,{error:"github_app_not_configured"});
 
-  const signingKey=await importPKCS8(privateKey,"RS256");
+  const signingKey=await importPKCS8(normalizeRsaPrivateKeyToPkcs8(privateKey),"RS256");
   const now=Math.floor(Date.now()/1000);
   const appJwt=await new SignJWT({})
     .setProtectedHeader({alg:"RS256",typ:"JWT"})
