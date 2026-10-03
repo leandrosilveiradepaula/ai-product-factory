@@ -18,6 +18,7 @@ class ProjectContinuationRequestTests(unittest.TestCase):
         control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
         self.assertIn('export async function enqueueProjectContinuation',control)
         self.assertIn('continuation_request',control)
+        self.assertIn('reconcile_first:true',control)
         self.assertIn('source:"factory-console"',control)
         self.assertIn('const terminal=new Set(["completed","cancelled","failed","merged"])',control)
         self.assertIn('Já existe trabalho ativo neste projeto',control)
