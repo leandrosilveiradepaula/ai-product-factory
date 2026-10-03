@@ -35,6 +35,7 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  const requestedAt=new Date().toISOString();
  const updatedManifest={
   ...manifest,
+  reconcile_first:true,
   continuation_request:{
    id:requestId,
    summary:clean,
