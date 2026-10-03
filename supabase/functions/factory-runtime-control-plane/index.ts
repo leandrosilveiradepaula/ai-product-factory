@@ -10,10 +10,9 @@ const EXPECTED = {
   repository_owner_id: "256" + "917842",
   ref: "refs/heads/main",
 };
-const ALLOWED_WORKFLOW_REFS = new Set([
+const GENERIC_PROXY_WORKFLOW_REFS = new Set([
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/control-plane-oidc-preflight.yml@refs/heads/main",
-  "leandrosilveiradepaula/ai-product-factory/.github/workflows/crm-cross-repo-preflight.yml@refs/heads/main",
 ]);
 const APP_PERMISSIONS = {
   actions: "read",
@@ -35,7 +34,6 @@ async function verifyGithub(req:Request) {
   for(const [key,expected] of Object.entries(EXPECTED)) {
     if(String(payload[key]??"")!==expected) throw new Error("GitHub OIDC claim mismatch: "+key);
   }
-  if(!ALLOWED_WORKFLOW_REFS.has(String(payload.workflow_ref??""))) throw new Error("GitHub OIDC workflow_ref not allowed");
   const event=String(payload.event_name??"");
   if(!["schedule","workflow_dispatch","push","issue_comment"].includes(event)) throw new Error("GitHub OIDC event not allowed");
   if(event==="issue_comment" && String(payload.actor_id??"")!==EXPECTED.repository_owner_id) {
@@ -275,6 +273,10 @@ Deno.serve(async(req:Request)=>{
       return await mintGithubInstallationToken(req,supabaseUrl,key);
     }
 
+    const workflowRef=String(identity.workflow_ref||"");
+    if(!GENERIC_PROXY_WORKFLOW_REFS.has(workflowRef)) {
+      return json(403,{error:"github_oidc_proxy_workflow_not_allowed"});
+    }
     if(!["GET","POST","PATCH"].includes(req.method)) return json(405,{error:"method_not_allowed"});
     const suffix=allowedSuffix(requestUrl);
     const headers=supabaseHeaders(key,req.headers.get("content-type"));
