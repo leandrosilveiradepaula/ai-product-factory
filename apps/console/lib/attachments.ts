@@ -53,3 +53,20 @@ export async function uploadProjectContinuationFile(projectId:string,requestId:s
  if(!metadata.ok){await fetch(`${cfg.url}/storage/v1/object/${PROJECT_FILE_BUCKET}/${path}`,{method:"DELETE",headers:cfg.headers});throw new Error("Não foi possível registrar o anexo.");}
  return{id,name:file.name,size:file.size,type:file.type,sha256};
 }
+
+export async function cleanupProjectContinuationFiles(projectId:string,requestId:string){
+ const operator=await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane unavailable");
+ const lookup=await fetch(
+  `${cfg.url}/rest/v1/factory_project_attachments?select=id,storage_bucket,storage_path&project_id=eq.${encodeURIComponent(projectId)}&draft_id=eq.${encodeURIComponent(requestId)}&operator_user_id=eq.${encodeURIComponent(operator.userId)}`,
+  {headers:cfg.headers,cache:"no-store"}
+ );
+ if(!lookup.ok)throw new Error("Não foi possível localizar anexos para limpeza.");
+ const rows=await lookup.json() as Array<{id:string;storage_bucket:string;storage_path:string}>;
+ for(const row of rows){
+  const removeObject=await fetch(`${cfg.url}/storage/v1/object/${row.storage_bucket}/${row.storage_path}`,{method:"DELETE",headers:cfg.headers});
+  if(!removeObject.ok&&removeObject.status!==404)throw new Error("Não foi possível remover anexo incompleto.");
+  const removeMetadata=await fetch(`${cfg.url}/rest/v1/factory_project_attachments?id=eq.${encodeURIComponent(row.id)}`,{method:"DELETE",headers:cfg.headers});
+  if(!removeMetadata.ok)throw new Error("Não foi possível remover metadados de anexo incompleto.");
+ }
+ return rows.length;
+}
