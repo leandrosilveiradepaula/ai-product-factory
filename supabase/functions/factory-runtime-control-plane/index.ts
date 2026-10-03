@@ -161,7 +161,7 @@ async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:
         "Content-Type":"application/json",
         "X-GitHub-Api-Version":GITHUB_API_VERSION,
       },
-      body:JSON.stringify({repository_ids:[repositoryId],permissions:APP_PERMISSIONS}),
+      body:JSON.stringify({repositories:[repository.split("/")[1]],permissions:APP_PERMISSIONS}),
     },
   );
   const tokenBody=await readJson(githubResponse,"GitHub installation token mint") as Record<string,unknown>|null;
