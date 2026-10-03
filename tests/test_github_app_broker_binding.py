@@ -14,6 +14,15 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertNotIn("repository_ids:[repositoryId]", edge)
         self.assertIn("token_persisted:false", edge)
 
+    def test_edge_broker_normalizes_legacy_pkcs1_without_persisting_key_material(self):
+        edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn("normalizeRsaPrivateKeyToPkcs8", edge)
+        self.assertIn("-----BEGIN RSA PRIVATE KEY-----", edge)
+        self.assertIn('bytesToPem("PRIVATE KEY",pkcs8)', edge)
+        self.assertIn('importPKCS8(normalizeRsaPrivateKeyToPkcs8(privateKey),"RS256")', edge)
+        self.assertNotIn('console.log(privateKey', edge)
+        self.assertNotIn('console.error(privateKey', edge)
+
     def test_python_runtime_rejects_broker_binding_or_persistence_drift(self):
         runtime = (ROOT / "src/ai_product_factory/github_app_runtime.py").read_text()
         self.assertIn("broker returned a different installation", runtime)
