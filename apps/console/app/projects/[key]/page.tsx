@@ -1,3 +1,5 @@
+import {cookies} from "next/headers";
+import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
@@ -74,8 +76,13 @@ async function requestGitHubRecheck(formData:FormData){
  revalidatePath("/projects/"+projectKey);
 }
 
-export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string}>}){
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
+ if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
+  const jar=await cookies();
+  const project=jar.get("factory_github_app_install_project")?.value||"";
+  if(project===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(project))redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project));
+ }
  const p=await getProjectDetail(key);if(!p)notFound();
  const [ops,state,databases,teamPlan,githubAccess,githubAppStatus]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus()]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
