@@ -21,7 +21,8 @@ class ProjectContinuationRequestTests(unittest.TestCase):
         self.assertIn('source:"factory-console"',control)
         self.assertIn('const terminal=new Set(["completed","cancelled","failed","merged"])',control)
         self.assertIn('Já existe trabalho ativo neste projeto',control)
-        self.assertIn('project.continuation.requested',control)\n        self.assertIn('await enqueueProjectBootstrap(projectKey)',control)
+        self.assertIn('project.continuation.requested',control)
+        self.assertIn('await enqueueProjectBootstrap(projectKey)',control)
         self.assertNotIn('OPENAI_API_KEY',control)
         self.assertNotIn('merge_pull_request',control)
 
