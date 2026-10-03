@@ -1,7 +1,7 @@
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {enqueueProjectContinuation,getProjectDetail} from "../../../../lib/control-plane";
-import {uploadProjectContinuationFile} from "../../../../lib/attachments";
+import {cleanupProjectContinuationFiles,uploadProjectContinuationFile} from "../../../../lib/attachments";
 import {ActionLink,Button,PageHeader,StatusPill} from "../../../ui";
 
 async function submit(formData:FormData){
@@ -14,8 +14,13 @@ async function submit(formData:FormData){
  const files=formData.getAll("attachments").filter((value):value is File=>value instanceof File&&value.size>0);
  if(files.length>10)throw new Error("Envie no máximo 10 arquivos por pedido.");
  const requestId=crypto.randomUUID();
- for(const file of files)await uploadProjectContinuationFile(project.id,requestId,file);
- await enqueueProjectContinuation(projectKey,request,files.length,requestId);
+ try{
+  for(const file of files)await uploadProjectContinuationFile(project.id,requestId,file);
+  await enqueueProjectContinuation(projectKey,request,files.length,requestId);
+ }catch(error){
+  try{await cleanupProjectContinuationFiles(project.id,requestId)}catch{}
+  throw error;
+ }
  redirect("/projects/"+encodeURIComponent(projectKey));
 }
 
