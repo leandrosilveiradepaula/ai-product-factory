@@ -42,3 +42,31 @@ export async function countProjectDraftFiles(draftId:string){
  if(!response.ok)throw new Error("Não foi possível consultar os anexos do rascunho.");
  const rows=await response.json();return Array.isArray(rows)?rows.length:0;
 }
+
+export async function uploadProjectContinuationFile(projectId:string,requestId:string,file:File){
+ const operator=await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane unavailable");
+ validateProjectFile(file);const bytes=Buffer.from(await file.arrayBuffer());const sha256=createHash("sha256").update(bytes).digest("hex");
+ const id=randomUUID();const draftId=requestId;const path=`${operator.userId}/continuations/${projectId}/${requestId}/${id}-${safeName(file.name)}`;
+ const upload=await fetch(`${cfg.url}/storage/v1/object/${PROJECT_FILE_BUCKET}/${path}`,{method:"POST",headers:{...cfg.headers,"Content-Type":file.type,"x-upsert":"false"},body:bytes});
+ if(!upload.ok)throw new Error("Não foi possível armazenar o anexo.");
+ const metadata=await fetch(`${cfg.url}/rest/v1/factory_project_attachments`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({id,draft_id:draftId,operator_user_id:operator.userId,project_id:projectId,storage_bucket:PROJECT_FILE_BUCKET,storage_path:path,original_name:file.name,mime_type:file.type,size_bytes:file.size,sha256,finalized_at:new Date().toISOString()})});
+ if(!metadata.ok){await fetch(`${cfg.url}/storage/v1/object/${PROJECT_FILE_BUCKET}/${path}`,{method:"DELETE",headers:cfg.headers});throw new Error("Não foi possível registrar o anexo.");}
+ return{id,name:file.name,size:file.size,type:file.type,sha256};
+}
+
+export async function cleanupProjectContinuationFiles(projectId:string,requestId:string){
+ const operator=await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane unavailable");
+ const lookup=await fetch(
+  `${cfg.url}/rest/v1/factory_project_attachments?select=id,storage_bucket,storage_path&project_id=eq.${encodeURIComponent(projectId)}&draft_id=eq.${encodeURIComponent(requestId)}&operator_user_id=eq.${encodeURIComponent(operator.userId)}`,
+  {headers:cfg.headers,cache:"no-store"}
+ );
+ if(!lookup.ok)throw new Error("Não foi possível localizar anexos para limpeza.");
+ const rows=await lookup.json() as Array<{id:string;storage_bucket:string;storage_path:string}>;
+ for(const row of rows){
+  const removeObject=await fetch(`${cfg.url}/storage/v1/object/${row.storage_bucket}/${row.storage_path}`,{method:"DELETE",headers:cfg.headers});
+  if(!removeObject.ok&&removeObject.status!==404)throw new Error("Não foi possível remover anexo incompleto.");
+  const removeMetadata=await fetch(`${cfg.url}/rest/v1/factory_project_attachments?id=eq.${encodeURIComponent(row.id)}`,{method:"DELETE",headers:cfg.headers});
+  if(!removeMetadata.ok)throw new Error("Não foi possível remover metadados de anexo incompleto.");
+ }
+ return rows.length;
+}
