@@ -635,7 +635,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
             'audience:AUDIENCE',
         ):
             self.assertIn(claim, broker)
-        self.assertIn("GENERIC_PROXY_WORKFLOW_REFS", broker)\n        self.assertIn("github_oidc_proxy_workflow_not_allowed", broker)
+        self.assertIn("GENERIC_PROXY_WORKFLOW_REFS", broker)
+        self.assertIn("github_oidc_proxy_workflow_not_allowed", broker)
         self.assertIn('resource.startsWith("factory_")', broker)
         self.assertIn('resource.startsWith("rpc/factory_")', broker)
         self.assertNotIn("/auth/v1/", broker)
