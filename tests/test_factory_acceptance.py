@@ -686,7 +686,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Exact READY Preview resolved", exact_preview)
         self.assertIn("Vercel deployment budget policy", operations)
         self.assertIn("Active policy:", operations)
-        self.assertIn("hard local budget of five actual preview-ref promotions", operations)
+        self.assertIn("local count never masquerades as provider quota", operations)
         quota_preflight = (ROOT / ".github/workflows/control-plane-oidc-preflight.yml").read_text()
         self.assertIn("Vercel usage collection is optional and skipped", quota_preflight)
         self.assertIn("steps.readiness.outputs.enabled == 'true'", quota_preflight)
