@@ -1,4 +1,6 @@
 import Link from "next/link";
+import {cookies} from "next/headers";
+import {redirect} from "next/navigation";
 import {getDashboard} from "../../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,PageHeader,StatusPill} from "../ui";
 
@@ -17,8 +19,16 @@ const notices:Record<string,string>={
  project_missing:"O projeto associado à autorização do Supabase não foi encontrado.",
 };
 
-export default async function Projects({searchParams}:{searchParams:Promise<{supabase?:string}>}){
- const [d,query]=await Promise.all([getDashboard(),searchParams]);const notice=query.supabase?notices[query.supabase]:undefined;
+export default async function Projects({searchParams}:{searchParams:Promise<{supabase?:string;github_app?:string}>}){
+ const query=await searchParams;
+ if(query.github_app==="installed"){
+  const jar=await cookies();
+  const project=jar.get("factory_github_app_install_project")?.value||"";
+  if(/^[a-z0-9][a-z0-9-]{0,63}$/.test(project)){
+   redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project)+"&return_to=gates");
+  }
+ }
+ const d=await getDashboard();const notice=query.supabase?notices[query.supabase]:undefined;
  return <>
   <PageHeader eyebrow="Projetos" title="Portfólio de produtos" subtitle="Produtos novos e projetos existentes conduzidos pela Factory." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
   {notice?<div className="card noticeCard danger" role="status"><StatusPill status="failed"/><span>{notice}</span></div>:null}
