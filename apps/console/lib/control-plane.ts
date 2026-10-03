@@ -6,7 +6,7 @@ export async function createProjectIntake(input:{mode:"greenfield"|"existing";na
 
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
 
-export async function enqueueProjectContinuation(projectKey:string,request:string,attachmentCount=0){
+export async function enqueueProjectContinuation(projectKey:string,request:string,attachmentCount=0,requestedId?:string){
  await requireConsoleOperator();
  const clean=request.trim();
  if(!clean)throw new Error("Descreva o que você quer mudar ou continuar.");
@@ -31,7 +31,7 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  const active=tasks.find((task:any)=>!terminal.has(String(task.status)));
  if(active)throw new Error(`Já existe trabalho ativo neste projeto: ${String(active.title||active.id)} (${String(active.status)}).`);
  const manifest=project.manifest&&typeof project.manifest==="object"?project.manifest:{};
- const requestId=crypto.randomUUID();
+ const requestId=requestedId||crypto.randomUUID();
  const requestedAt=new Date().toISOString();
  const updatedManifest={
   ...manifest,
