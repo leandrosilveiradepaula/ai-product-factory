@@ -41,11 +41,15 @@ class GitHubAppOnboardingTests(unittest.TestCase):
         lib = (ROOT / "apps/console/lib/github-app.ts").read_text()
         self.assertIn("Registrar GitHub App da Factory", page)
         self.assertIn("Verificar GitHub App neste projeto", page)
-        self.assertIn("Instalar / ajustar GitHub App", page)
+        self.assertIn("Instalar GitHub App neste projeto", page)
         self.assertNotIn("private_key", page)
         self.assertNotIn("client_secret", page)
         self.assertNotIn("webhook_secret", page)
         self.assertNotIn("installation token", page.lower())
+        self.assertIn('/api/integrations/github-app/install?project=', page)
+        self.assertIn('githubAccess.authMode!=="github_app"', page)
+        self.assertIn('githubAccess.status!=="ready"', page)
+        self.assertIn('Fallback: token fine-grained', page)
         self.assertIn("private_key", lib)
 
     def test_manifest_requests_only_delivery_permissions(self):
