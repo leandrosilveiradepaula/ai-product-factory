@@ -24,7 +24,16 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertIn("github_app_token_workflow_not_allowed", edge)
         self.assertIn("github_app_token_event_not_allowed", edge)
         self.assertIn(".github/workflows/autonomous-runner.yml@refs/heads/main", edge)
-        self.assertIn('["schedule","workflow_dispatch","issue_comment"]', edge)
+        self.assertIn('["schedule","workflow_dispatch","issue_comment","push"]', edge)
+        self.assertIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", edge)
+
+    def test_crm_preflight_uses_oidc_and_ephemeral_app_token_not_pat(self):
+        workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("./.github/actions/control-plane-oidc", workflow)
+        self.assertIn("resolve_github_token(repository)", workflow)
+        self.assertIn('"auth":"github_app_ephemeral"', workflow)
+        self.assertNotIn("FACTORY_GITHUB_TOKEN", workflow)
 
 
 if __name__ == "__main__":

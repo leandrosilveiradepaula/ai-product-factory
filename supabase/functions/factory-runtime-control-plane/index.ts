@@ -13,6 +13,7 @@ const EXPECTED = {
 const ALLOWED_WORKFLOW_REFS = new Set([
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/control-plane-oidc-preflight.yml@refs/heads/main",
+  "leandrosilveiradepaula/ai-product-factory/.github/workflows/crm-cross-repo-preflight.yml@refs/heads/main",
 ]);
 const APP_PERMISSIONS = {
   actions: "read",
@@ -202,9 +203,12 @@ Deno.serve(async(req:Request)=>{
     if(requestUrl.pathname.endsWith("/github-app/token")) {
       const workflowRef=String(identity.workflow_ref||"");
       const eventName=String(identity.event_name||"");
-      const autonomousRef="leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main";
-      if(workflowRef!==autonomousRef) return json(403,{error:"github_app_token_workflow_not_allowed"});
-      if(!["schedule","workflow_dispatch","issue_comment"].includes(eventName)) {
+      const tokenWorkflows=new Set([
+        "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
+        "leandrosilveiradepaula/ai-product-factory/.github/workflows/crm-cross-repo-preflight.yml@refs/heads/main",
+      ]);
+      if(!tokenWorkflows.has(workflowRef)) return json(403,{error:"github_app_token_workflow_not_allowed"});
+      if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName)) {
         return json(403,{error:"github_app_token_event_not_allowed"});
       }
       return await mintGithubInstallationToken(req,supabaseUrl,key);

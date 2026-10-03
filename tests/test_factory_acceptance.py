@@ -555,9 +555,11 @@ class FactoryAcceptanceTests(unittest.TestCase):
 
     def test_crm_cross_repo_preflight_is_read_only_and_explicit(self):
         workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
-        self.assertIn("FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}", workflow)
-        self.assertIn("environment: openai-api", workflow)
-        self.assertIn("blocked_missing_token", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("./.github/actions/control-plane-oidc", workflow)
+        self.assertIn("resolve_github_token(repository)", workflow)
+        self.assertIn('"auth":"github_app_ephemeral"', workflow)
+        self.assertNotIn("FACTORY_GITHUB_TOKEN", workflow)
         self.assertIn("leandrosilveiradepaula/crm-infodive", workflow)
         self.assertIn("/git/ref/heads/main", workflow)
         self.assertIn('"private":True', workflow)
