@@ -164,7 +164,7 @@ def decide(
         except Exception as exc:
             fallback_reason = f"Vercel usage read failed; GitHub promotion count is advisory only: {type(exc).__name__}"
     else:
-        fallback_reason = "Vercel usage credentials are not configured; GitHub promotion count is advisory only"
+        fallback_reason = "provider API quota is outside the standard Preview promotion path; GitHub promotion count is advisory only"
 
     successful_runs = recent_successful_promotions(
         token=github_token,
@@ -183,8 +183,8 @@ def main() -> int:
         github_token=os.environ.get("GITHUB_TOKEN", ""),
         repository=os.environ.get("GITHUB_REPOSITORY", ""),
         current_run_id=os.environ.get("GITHUB_RUN_ID", ""),
-        vercel_token=os.environ.get("VERCEL_TOKEN", ""),
-        team_id=os.environ.get("FACTORY_VERCEL_TEAM_ID", ""),
+        # Standard Preview promotion intentionally has no persistent Vercel credential.
+        # Provider API quota collection is a separate optional Control Plane job.
     )
     print(json.dumps(decision, sort_keys=True))
     return 0 if decision["allowed"] else 2
