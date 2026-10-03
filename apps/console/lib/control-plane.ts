@@ -6,6 +6,56 @@ export async function createProjectIntake(input:{mode:"greenfield"|"existing";na
 
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
 
+export async function enqueueProjectContinuation(projectKey:string,request:string){
+ await requireConsoleOperator();
+ const clean=request.trim();
+ if(!clean)throw new Error("Descreva o que você quer mudar ou continuar.");
+ if(clean.length>6000)throw new Error("O pedido deve ter no máximo 6000 caracteres.");
+ const cfg=getSupabaseServerConfig();
+ if(!cfg)throw new Error("Control plane credentials are not configured");
+ const projectResponse=await fetch(
+  `${cfg.url}/rest/v1/factory_projects?select=id,project_key,project_kind,manifest&project_key=eq.${encodeURIComponent(projectKey)}&is_active=eq.true&limit=1`,
+  {headers:cfg.headers,cache:"no-store"}
+ );
+ if(!projectResponse.ok)throw new Error("Não foi possível localizar o projeto.");
+ const projects=await projectResponse.json();
+ if(projects.length!==1)throw new Error("Projeto ativo não encontrado.");
+ const project=projects[0];
+ const tasksResponse=await fetch(
+  `${cfg.url}/rest/v1/factory_tasks?select=id,status,title&project_id=eq.${encodeURIComponent(String(project.id))}&order=created_at.desc&limit=100`,
+  {headers:cfg.headers,cache:"no-store"}
+ );
+ if(!tasksResponse.ok)throw new Error("Não foi possível verificar o trabalho atual do projeto.");
+ const tasks=await tasksResponse.json();
+ const terminal=new Set(["completed","cancelled","failed","merged"]);
+ const active=tasks.find((task:any)=>!terminal.has(String(task.status)));
+ if(active)throw new Error(`Já existe trabalho ativo neste projeto: ${String(active.title||active.id)} (${String(active.status)}).`);
+ const manifest=project.manifest&&typeof project.manifest==="object"?project.manifest:{};
+ const requestId=crypto.randomUUID();
+ const requestedAt=new Date().toISOString();
+ const updatedManifest={
+  ...manifest,
+  continuation_request:{
+   id:requestId,
+   summary:clean,
+   requested_at:requestedAt,
+   source:"factory-console",
+  },
+ };
+ const updateResponse=await fetch(
+  `${cfg.url}/rest/v1/factory_projects?id=eq.${encodeURIComponent(String(project.id))}`,
+  {method:"PATCH",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({manifest:updatedManifest}),cache:"no-store"}
+ );
+ if(!updateResponse.ok)throw new Error("Não foi possível registrar o novo pedido no projeto.");
+ const auditResponse=await fetch(
+  `${cfg.url}/rest/v1/factory_audit_events`,
+  {method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({project_id:String(project.id),actor_type:"human",actor_ref:"factory-console",event_type:"project.continuation.requested",payload:{request_id:requestId,summary:clean,requested_at:requestedAt}}),cache:"no-store"}
+ );
+ if(!auditResponse.ok)throw new Error("O pedido foi registrado, mas a evidência de auditoria não pôde ser persistida.");
+ const enqueue=await enqueueProjectBootstrap(projectKey);
+ return {...enqueue,requestId,requestedAt};
+}
+
 export async function getDashboard():Promise<Dashboard>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();

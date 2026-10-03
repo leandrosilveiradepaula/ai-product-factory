@@ -85,7 +85,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  }
  const p=await getProjectDetail(key);if(!p)notFound();
  const [ops,state,databases,teamPlan,githubAccess,githubAppStatus]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus()]);
- const activeTasks=p.tasks.filter(t=>!["completed","cancelled"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
+ const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
  const currentMacro=macroStageIndex(p.stage);
@@ -94,7 +94,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
  return <>
-  <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
+  <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/>{activeTasks.length===0?<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir alteração</ActionLink>:null}<ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
   <div className="projectOrientation">
