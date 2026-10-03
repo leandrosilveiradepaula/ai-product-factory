@@ -19,9 +19,9 @@ const notices:Record<string,string>={
  project_missing:"O projeto associado à autorização do Supabase não foi encontrado.",
 };
 
-export default async function Projects({searchParams}:{searchParams:Promise<{supabase?:string;github_app?:string}>}){
+export default async function Projects({searchParams}:{searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string}>}){
  const query=await searchParams;
- if(query.github_app==="installed"){
+ if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
   const jar=await cookies();
   const project=jar.get("factory_github_app_install_project")?.value||"";
   if(/^[a-z0-9][a-z0-9-]{0,63}$/.test(project)){
