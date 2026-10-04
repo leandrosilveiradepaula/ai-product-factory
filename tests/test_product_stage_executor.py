@@ -117,8 +117,8 @@ class ProductStageExecutorTests(unittest.TestCase):
             "capabilities":["implementation","debug"],
             "allowed_tools":["github_write","model_primary"],
         }])
-        self.assertIn("canonical vocabulary",p.requests[0].constraints[4])
-        self.assertIn("Human approval/release is a gate",p.requests[0].constraints[5])
+        self.assertTrue(any("canonical vocabulary" in constraint for constraint in p.requests[0].constraints))
+        self.assertTrue(any("Human approval/release is a gate" in constraint for constraint in p.requests[0].constraints))
 
     def test_planning_rejects_product_task_without_pre_pr_builder_lane(self):
         p=Provider()
@@ -267,6 +267,30 @@ class ProductStageExecutorTests(unittest.TestCase):
         out=h.execute(item(),"planning")
         self.assertEqual(out["decisions_needed"][0]["decision_key"],"approve_debug_contract")
         self.assertEqual(out["tasks"][0]["depends_on"],["gate_debug_contract"])
+
+    def test_reconciliation_prompt_prefers_current_state_facts(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "observed_stage":"planning",
+                "summary":"current facts win",
+                "evidence":[{"source":"current_state_facts","observation":"write ready"}],
+                "gaps":[],
+                "constraints":{},
+                "source_status":{}
+            }),provider_ref="ref-reconcile",usage={"input_tokens":10})
+        p.execute=execute
+        h=ProductStageExecutor(ModelExecutor(primary=p))
+        w=WorkItem("r","t","p","crm-infodive",("reconciliation",),{
+            "state_snapshot":{"summary":"old","evidence":[{"source":"old"}]},
+            "current_state_facts":{"github_access":{"status":"ready","observed_capabilities":{"contents_write":"verified"}}}
+        })
+        h.execute(w,"reconciliation")
+        request=p.requests[0]
+        self.assertIn("current_state_facts",request.context)
+        self.assertIn("newer operational evidence",request.objective)
+        self.assertTrue(any("newer operational evidence" in constraint for constraint in request.constraints))
 
     def test_planning_rejects_noncanonical_human_decision_kind(self):
         p=Provider()

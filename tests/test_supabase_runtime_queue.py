@@ -179,6 +179,23 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertEqual([name for name,_ in calls],["factory_record_execution_team_plan","factory_materialize_change_set"])
 
 
+class CurrentStateFactsMigrationTests(unittest.TestCase):
+    def test_claim_next_run_includes_current_control_plane_facts(self):
+        from pathlib import Path
+        sql=(Path(__file__).resolve().parents[1]/"supabase/migrations/20261004200200_factory_claim_current_state_facts.sql").read_text()
+        compact=" ".join(sql.split())
+        self.assertIn("'current_state_facts'",sql)
+        self.assertIn("'recent_tasks'",sql)
+        self.assertIn("factory_project_github_access",sql)
+        self.assertIn("'observed_capabilities'",sql)
+        self.assertIn("'pending_human_gates'",sql)
+        self.assertIn("factory_human_gates",sql)
+        self.assertIn("limit 25",sql.lower())
+        self.assertNotIn("token",sql.lower())
+        self.assertIn("revoke all on function public.factory_claim_next_run(text)",compact.lower())
+        self.assertIn("grant execute on function public.factory_claim_next_run(text) to service_role",compact.lower())
+
+
 class ProductStagePersistenceMigrationTests(unittest.TestCase):
     def test_reconciliation_runtime_migration_preserves_agent_fields(self):
         from pathlib import Path
