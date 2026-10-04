@@ -2,7 +2,7 @@ import {cookies} from "next/headers";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
-import {getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
+import {getProjectContinuationContext,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {requireConsoleOperator} from "../../../lib/auth-server";
@@ -84,7 +84,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   if(project===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(project))redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project));
  }
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess,githubAppStatus]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus()]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
@@ -116,6 +116,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" no total"}/>
    <MetricCard label="Evidências" value={ops.evaluations+ops.deployments} note={ops.evaluations+" avaliações · "+ops.deployments+" implantações"}/>
   </div>
+  {continuation?<section className="section" id="latest-request"><SectionHeader title="Último pedido" action={<span className="muted">{new Date(continuation.requestedAt).toLocaleString("pt-BR")}</span>}/>
+   <div className="card denseStack">
+    <p style={{margin:0}}>{continuation.summary}</p>
+    <div className="badgeLine"><StatusPill status="verified" label="Registrado no projeto"/><span className="muted">{continuation.attachmentCount+" anexo"+(continuation.attachmentCount===1?"":"s")}</span></div>
+    {continuation.attachments.length?<div className="compactList">{continuation.attachments.map(file=><div className="compactRow" key={file.id}><strong>{file.name}</strong><span className="muted">{file.mimeType+" · "+(file.sizeBytes/1024/1024).toFixed(2)+" MB"}</span></div>)}</div>:continuation.attachmentCount?<p className="muted" style={{margin:0}}>Os anexos foram registrados, mas a listagem privada não está disponível neste momento.</p>:null}
+   </div>
+  </section>:null}
   <section className="section" id="preview-policy"><SectionHeader title="Prévia · política do projeto" action={<StatusPill status={previewPolicy?.required===false?"not_applicable":previewConfigured?"verified":"blocked"} label={previewPolicy?.required===false?"Não aplicável":previewConfigured?"Configurada":"Pendente"}/>}/>
    <div className="card denseStack">
     {previewConfigured?<><div className="detailGrid">

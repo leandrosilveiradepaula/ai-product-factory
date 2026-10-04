@@ -187,6 +187,17 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type ProjectContinuationContext={id:string;summary:string;requestedAt:string;attachmentCount:number;attachments:{id:string;name:string;mimeType:string;sizeBytes:number}[]};
+export async function getProjectContinuationContext(projectId:string):Promise<ProjectContinuationContext|null>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
+ const projectResponse=await fetch(cfg.url+"/rest/v1/factory_projects?select=manifest&id=eq."+encodeURIComponent(projectId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!projectResponse.ok)return null;const projects=await projectResponse.json();const request=projects[0]?.manifest?.continuation_request;
+ if(!request||typeof request!=="object"||!request.id||!request.summary||!request.requested_at)return null;
+ const attachmentResponse=await fetch(cfg.url+"/rest/v1/factory_project_attachments?select=id,original_name,mime_type,size_bytes&project_id=eq."+encodeURIComponent(projectId)+"&draft_id=eq."+encodeURIComponent(String(request.id))+"&finalized_at=not.is.null&order=created_at.asc",{headers:cfg.headers,cache:"no-store"});
+ const attachments=attachmentResponse.ok?await attachmentResponse.json():[];
+ return{id:String(request.id),summary:String(request.summary),requestedAt:String(request.requested_at),attachmentCount:Number(request.attachment_count||attachments.length||0),attachments:attachments.map((x:any)=>({id:String(x.id),name:String(x.original_name),mimeType:String(x.mime_type),sizeBytes:Number(x.size_bytes||0)}))};
+}
+
 export type GitHubAppInstallAction={projectKey:string;projectName:string;repository:string;authMode:string;status:string};
 
 export async function getGitHubAppInstallActions():Promise<GitHubAppInstallAction[]>{
