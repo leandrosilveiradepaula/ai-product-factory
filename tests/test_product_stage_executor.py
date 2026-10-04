@@ -241,6 +241,32 @@ class ProductStageExecutorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"unresolved dependency: redact_debug -> gate_explicit_write_authorization"):
             h.execute(item(),"planning")
 
+    def test_planning_with_human_decision_defers_provisional_unknown_dependencies(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"redact_debug",
+                    "title":"Redact debug output",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":["src/app/debug"],
+                    "depends_on":["gate_debug_contract"],
+                    "preferred_agent_role":"development"
+                }],
+                "decisions_needed":[{
+                    "decision_key":"approve_debug_contract",
+                    "question":"Which diagnostic metadata may remain visible?",
+                    "why_needed":"The allowed diagnostic contract is a product decision."
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        out=h.execute(item(),"planning")
+        self.assertEqual(out["decisions_needed"][0]["decision_key"],"approve_debug_contract")
+        self.assertEqual(out["tasks"][0]["depends_on"],["gate_debug_contract"])
+
     def test_planning_accepts_dependency_on_existing_task_key(self):
         p=Provider()
         def execute(request):
