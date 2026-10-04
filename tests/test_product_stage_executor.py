@@ -268,6 +268,27 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertEqual(out["decisions_needed"][0]["decision_key"],"approve_debug_contract")
         self.assertEqual(out["tasks"][0]["depends_on"],["gate_debug_contract"])
 
+    def test_reconciliation_prompt_does_not_promote_historical_known_pending(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "observed_stage":"planning","summary":"stale pending ignored",
+                "evidence":[],"gaps":[],"constraints":{},"source_status":{}
+            }),provider_ref="ref-stale",usage={"input_tokens":1})
+        p.execute=execute
+        h=ProductStageExecutor(ModelExecutor(primary=p))
+        w=WorkItem("r","t","p","crm-infodive",("reconciliation",),{
+            "state_snapshot":{"summary":"old","evidence":[{"source":"old"}]},
+            "intake_spec":{"known_pending":"GitHub issue #10"},
+            "current_state_facts":{"recent_tasks":[{"external_key":"present-in-usd","status":"completed"}]}
+        })
+        h.execute(w,"reconciliation")
+        request=p.requests[0]
+        self.assertIn("known_pending",request.objective)
+        self.assertIn("never call them active work",request.objective)
+        self.assertTrue(any("known_pending" in constraint and "historical/unverified" in constraint for constraint in request.constraints))
+
     def test_reconciliation_prompt_prefers_current_state_facts(self):
         p=Provider()
         def execute(request):
