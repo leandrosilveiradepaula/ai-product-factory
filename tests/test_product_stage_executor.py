@@ -268,6 +268,32 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertEqual(out["decisions_needed"][0]["decision_key"],"approve_debug_contract")
         self.assertEqual(out["tasks"][0]["depends_on"],["gate_debug_contract"])
 
+    def test_planning_drops_business_priority_without_two_current_active_tasks(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "architecture":{},"workstreams":[],"tasks":[],"specialist_reviews":[],
+                "dependencies":[],"test_strategy":{},"release_strategy":{},"risks":[],
+                "decisions_needed":[
+                    {"decision_key":"stale_priority","decision_kind":"business_priority",
+                     "question":"Which first?","why_needed":"priority",
+                     "candidate_work_keys":["closed-issue-10","debug-remediation"]},
+                    {"decision_key":"debug_contract","decision_kind":"product_requirement",
+                     "question":"What metadata?","why_needed":"contract"}
+                ]
+            }),provider_ref="ref-priority",usage={"input_tokens":1})
+        p.execute=execute
+        h=ProductStageExecutor(ModelExecutor(primary=p))
+        w=WorkItem("r","t","p","crm-infodive",("planning",),{
+            "current_state_facts":{"recent_tasks":[
+                {"external_key":"closed-issue-10","status":"completed"},
+                {"external_key":"debug-remediation","status":"queued"}
+            ]}
+        })
+        out=h.execute(w,"planning")
+        self.assertEqual([d["decision_key"] for d in out["decisions_needed"]],["debug_contract"])
+
     def test_reconciliation_prompt_does_not_promote_historical_known_pending(self):
         p=Provider()
         def execute(request):

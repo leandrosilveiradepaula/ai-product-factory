@@ -16,7 +16,36 @@ class ProductStagePrompts:
     specification: str = "Create an implementable product specification. Return JSON only with scope, user_flows, requirements, non_functional_requirements, acceptance_criteria, exclusions, assumptions."
     reconciliation: str = "Reconcile the existing project from the durable state snapshot, approved intake, and deterministic current_state_facts. Return JSON only with observed_stage, summary, evidence, gaps, constraints, source_status. Preserve confirmed work and do not claim repository checks that are absent from the supplied evidence. When current_state_facts conflict with older intake or snapshot state, treat current_state_facts as the newer operational evidence. A completed/cancelled/failed task is not active work. Verified GitHub capabilities in current_state_facts must not be reported as unverified. Treat intake_spec known_pending and other historical pending labels as unverified historical references only: never call them active work, create a business-priority decision from them, or require a human to resolve their status unless current_state_facts or other supplied current evidence independently confirms they are still active."
     gap_analysis: str = "Compare the reconciled existing-project state with the continuation brief and constraints. Return JSON only with completed, gaps, risks, decisions_needed, recommended_next_work. Do not invent missing evidence or business decisions."
-    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a later gate, never a planning decision or task. If a genuine current human decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Each decisions_needed item must be an object with decision_key, decision_kind, question, and why_needed. decision_kind must be one of product_requirement, scope_authorization, business_priority. Never ask a human to confirm repository facts, CI/readiness state, credentials/capabilities, already-closed work, or future production/release approval in decisions_needed; resolve supplied evidence autonomously or report a technical blocker outside decisions_needed. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. task_key values must be unique. depends_on may contain only task_key values from other tasks in this same output; never put decisions, gates, approvals, credentials, or external conditions in depends_on. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
+    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a later gate, never a planning decision or task. If a genuine current human decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Each decisions_needed item must be an object with decision_key, decision_kind, question, and why_needed. A business_priority decision must also include candidate_work_keys with at least two external_key values that are currently active in current_state_facts.recent_tasks; historical references and terminal tasks are forbidden candidates. decision_kind must be one of product_requirement, scope_authorization, business_priority. Never ask a human to confirm repository facts, CI/readiness state, credentials/capabilities, already-closed work, or future production/release approval in decisions_needed; resolve supplied evidence autonomously or report a technical blocker outside decisions_needed. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. task_key values must be unique. depends_on may contain only task_key values from other tasks in this same output; never put decisions, gates, approvals, credentials, or external conditions in depends_on. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
+
+
+def _drop_unsubstantiated_business_priorities(output: dict, current_state_facts: dict | None) -> None:
+    decisions=output.get("decisions_needed")
+    if not isinstance(decisions,list):
+        return
+    facts=current_state_facts if isinstance(current_state_facts,dict) else {}
+    recent_tasks=facts.get("recent_tasks")
+    active_statuses={"queued","running","awaiting_human","blocked"}
+    active_keys={
+        str(task.get("external_key") or "").strip()
+        for task in recent_tasks or []
+        if isinstance(task,dict)
+        and str(task.get("status") or "").strip() in active_statuses
+        and str(task.get("external_key") or "").strip()
+    }
+    kept=[]
+    for decision in decisions:
+        if not isinstance(decision,dict) or str(decision.get("decision_kind") or "").strip()!="business_priority":
+            kept.append(decision)
+            continue
+        candidates=decision.get("candidate_work_keys")
+        candidate_keys={
+            str(key).strip() for key in candidates or []
+            if str(key).strip()
+        } if isinstance(candidates,list) else set()
+        if len(candidate_keys)>=2 and candidate_keys.issubset(active_keys):
+            kept.append(decision)
+    output["decisions_needed"]=kept
 
 
 def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,...]) -> None:
@@ -184,6 +213,8 @@ class ProductStageExecutor:
                     title=str(task.get("title") or "").strip()
                     if not title and task_key:
                         task["title"]=task_key
+        if stage=="planning":
+            _drop_unsubstantiated_business_priorities(output,item.context.get("current_state_facts"))
         if stage=="planning" and self.team_profiles is not None:
             _validate_pre_pr_planning_tasks(output,self.team_profiles)
             output["_team_plan"]=build_execution_team_plan(output,self.team_profiles)
