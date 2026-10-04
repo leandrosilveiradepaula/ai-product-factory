@@ -266,10 +266,20 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
     expectations=_role_policy_expectations(tasks)
     requested_reviews=engineering_plan.get("specialist_reviews")
     if isinstance(requested_reviews,list):
-        for role_value in requested_reviews:
-            role=str(role_value).strip()
+        for review in requested_reviews:
+            if isinstance(review,str):
+                role=review.strip()
+                detail="planning requested post-candidate specialist review"
+            elif isinstance(review,dict):
+                role=str(review.get("role") or "").strip()
+                review_key=str(review.get("review_key") or "").strip()
+                detail="planning requested post-candidate specialist review"
+                if review_key:
+                    detail+=f": {review_key}"
+            else:
+                continue
             if role in _SPECIALIST_LANE_ROLES:
-                expectations.setdefault(role,[]).append("planning requested post-candidate specialist review")
+                expectations.setdefault(role,[]).append(detail)
     selected=[]
     for key in selected_keys:
         agent=next(a for a in active if a.agent_key==key)
