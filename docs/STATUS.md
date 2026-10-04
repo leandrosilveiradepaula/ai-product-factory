@@ -31,7 +31,7 @@ Last reconciled: 2026-10-02.
 - GitHub Actions is healthy while the repository remains public: `validate` run `36859817890` and `Console validation` run `36859817834` both succeeded on the current `main`. Issue #426 is therefore not an active Actions incident; it remains the administrative revalidation gate for the future GitHub Pro/private transition.
 - Console production deployment `dpl_59HGsseu5UdcXFZip4dPFW7VeMgc` is `READY` for the exact current `main`; `GET /api/health` returned HTTP 200 with commit `582322059cf5`, and Vercel reported zero runtime errors in the checked six-hour window.
 - Control Plane project `fjplmxfcshhbmzgvyqlm` is `ACTIVE_HEALTHY`: 3 active projects, 0 open runs, 0 actionable failed runs, 0 pending human gates, 13 Codex routing rows with 0 actual Codex invocations, 1 active Console operator, and known cumulative tool/model cost US$ 0.3478338.
-- Supabase security advisor still reports the intentional fail-closed `RLS Enabled No Policy` findings plus the external administrative `Leaked Password Protection Disabled` warning. Do not add permissive public policies.
+- Supabase security advisor still reports the intentional fail-closed `RLS Enabled No Policy` findings plus the plan-gated `Leaked Password Protection Disabled` warning (Pro+; not a technical blocker on Free). Do not add permissive public policies.
 - UX umbrella #483 is completed and closed. The delivered sequence #491/#492/#494/#496/#498/#500/#502/#504/#506/#508/#510/#512/#514 materially satisfies the guided-flow, legibility, mobile, accessibility and gate-feedback acceptance criteria. Do not reopen the umbrella for cosmetic iteration without a concrete regression.
 - Issues #512, #513 and #514 are closed/merged/released and must not be revisited in the normal work loop.
 - External/admin blockers remain #240 (Codex workspace WIF enablement/real federation values), #250 (OpenAI API WIF mapping), #474 (main protection/ruleset), #426 (private-repository revalidation after plan change), and the Supabase leaked-password hardening control.
@@ -312,7 +312,7 @@ A fresh live reconciliation after the prepaid Primary activation confirmed:
 - Supabase project `fjplmxfcshhbmzgvyqlm` is `ACTIVE_HEALTHY`;
 - 2 active projects, 0 pending/active runs, 0 failed/dead-letter runs, 0 pending human gates, 0 Codex invocations and 1 active operator;
 - all 18 expected production migrations are registered, including ongoing-project reconciliation, private attachments and durable current-state snapshots;
-- the Supabase security advisor still reports only the intentional fail-closed RLS-without-public-policy findings plus the administrative `Leaked Password Protection Disabled` warning;
+- the Supabase security advisor still reports only the intentional fail-closed RLS-without-public-policy findings plus the plan-gated `Leaked Password Protection Disabled` warning (Pro+; not a technical blocker on Free);
 - Console production remains deployment `dpl_KEEZQTBxLTcVJCzF42skk4V8kUAf` at commit `98d81dee46c7`; `GET /api/health` returned HTTP 200 and the Vercel runtime-error view reported no errors in the six-hour verification window;
 - later main commits did not change `apps/console/**`, so their production builds were canceled by the intentional Vercel ignore-build policy; this does not replace the active Console production deployment;
 - Gmail search found no new OpenAI support response about Codex/WIF enablement or federation values;
@@ -343,7 +343,7 @@ Live reconciliation during the audit:
 - visual-evidence registry is empty after authenticated capture cleanup;
 - production `GET /api/health` is HTTP 200 and reports Console commit `24fc055271c6`;
 - Vercel reported no runtime errors in the six-hour audit window;
-- Supabase security advisor reports only the intentional RLS-without-public-policy informational findings plus the administrative Leaked Password Protection warning;
+- Supabase security advisor reports only the intentional RLS-without-public-policy informational findings plus the plan-gated Leaked Password Protection warning (Pro+; not a technical blocker on Free);
 - performance advisor reports only currently-unused indexes; no index is removed solely from this short observation window.
 
 The authenticated Figma correction in #309 is now visually complete on the
