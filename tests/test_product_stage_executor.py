@@ -268,6 +268,30 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertEqual(out["decisions_needed"][0]["decision_key"],"approve_debug_contract")
         self.assertEqual(out["tasks"][0]["depends_on"],["gate_debug_contract"])
 
+    def test_reconciliation_prompt_prefers_current_state_facts(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "observed_stage":"planning",
+                "summary":"current facts win",
+                "evidence":[{"source":"current_state_facts","observation":"write ready"}],
+                "gaps":[],
+                "constraints":{},
+                "source_status":{}
+            }),provider_ref="ref-reconcile",usage={"input_tokens":10})
+        p.execute=execute
+        h=ProductStageExecutor(ModelExecutor(primary=p))
+        w=WorkItem("r","t","p","crm-infodive",("reconciliation",),{
+            "state_snapshot":{"summary":"old","evidence":[{"source":"old"}]},
+            "current_state_facts":{"github_access":{"status":"ready","observed_capabilities":{"contents_write":"verified"}}}
+        })
+        h.execute(w,"reconciliation")
+        request=p.requests[0]
+        self.assertIn("current_state_facts",request.context)
+        self.assertIn("newer operational evidence",request.objective)
+        self.assertIn("newer operational evidence",request.constraints)
+
     def test_planning_rejects_noncanonical_human_decision_kind(self):
         p=Provider()
         def execute(request):
