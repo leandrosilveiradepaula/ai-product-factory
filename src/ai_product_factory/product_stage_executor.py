@@ -16,7 +16,41 @@ class ProductStagePrompts:
     specification: str = "Create an implementable product specification. Return JSON only with scope, user_flows, requirements, non_functional_requirements, acceptance_criteria, exclusions, assumptions."
     reconciliation: str = "Reconcile the existing project from the durable state snapshot and approved intake. Return JSON only with observed_stage, summary, evidence, gaps, constraints, source_status. Preserve confirmed work and do not claim repository checks that are absent from the supplied evidence."
     gap_analysis: str = "Compare the reconciled existing-project state with the continuation brief and constraints. Return JSON only with completed, gaps, risks, decisions_needed, recommended_next_work. Do not invent missing evidence or business decisions."
-    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, dependencies, test_strategy, release_strategy, risks. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities (array of semantic capabilities such as implementation, ui, security_review, tests, ci), scope_keys (array of repository scope roots it may modify), depends_on (array of task_key values), and may include preferred_agent_role only when a specific specialist role is materially required. Each task must be ownable by one specialist profile; represent cross-specialist review or validation as separate tasks rather than combining incompatible capabilities. Do not assume a fixed number of agents."
+    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a gate, never a task. If a genuine business/governance decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
+
+
+def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,...]) -> None:
+    tasks=output.get("tasks")
+    if not isinstance(tasks,list):
+        return
+    builders=[
+        profile for profile in profiles
+        if profile.is_active
+        and profile.role in {"development","ui"}
+        and "github_write" in set(profile.allowed_tools)
+    ]
+    for task in tasks:
+        if not isinstance(task,dict):
+            raise ValueError("planning tasks must be JSON objects")
+        required={str(x).strip() for x in (task.get("required_capabilities") or []) if str(x).strip()}
+        preferred=str(task.get("preferred_agent_role") or "").strip()
+        eligible=[
+            profile for profile in builders
+            if (not required or required.issubset(set(profile.capabilities)))
+            and (not preferred or preferred in {profile.agent_key,profile.role})
+        ]
+        if not eligible:
+            key=str(task.get("task_key") or task.get("title") or "unnamed")
+            raise ValueError(f"planning task is not executable in a pre-PR builder lane: {key}")
+    reviews=output.get("specialist_reviews")
+    if reviews is None:
+        return
+    if not isinstance(reviews,list):
+        raise ValueError("specialist_reviews must be an array")
+    allowed={"security","qa","operations"}
+    invalid=[str(x) for x in reviews if str(x) not in allowed]
+    if invalid:
+        raise ValueError("unsupported specialist review role: "+", ".join(invalid))
 
 
 class ProductStageExecutor:
@@ -101,6 +135,7 @@ class ProductStageExecutor:
                     if not title and task_key:
                         task["title"]=task_key
         if stage=="planning" and self.team_profiles is not None:
+            _validate_pre_pr_planning_tasks(output,self.team_profiles)
             output["_team_plan"]=build_execution_team_plan(output,self.team_profiles)
         output["_evidence"]={"provider_ref":result.provider_ref,"role":result.role.value,"usage":result.usage or {}}
         self.outputs[(item.run_id,stage)]=output

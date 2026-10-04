@@ -120,6 +120,54 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertIn("canonical vocabulary",p.requests[0].constraints[4])
         self.assertIn("Human approval/release is a gate",p.requests[0].constraints[5])
 
+    def test_planning_rejects_product_task_without_pre_pr_builder_lane(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"reconcile_repo_directives",
+                    "title":"Reconcile repository directives",
+                    "required_capabilities":["planning","dependency_graph"],
+                    "scope_keys":[],
+                    "depends_on":[],
+                    "preferred_agent_role":"product"
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation","debug"),("github_write","model_primary"),{"preferred":"primary"},2,1.5,True)
+        product=AgentProfile("product","product",("planning","dependency_graph"),("github_read","model_primary"),{"preferred":"primary"},1,0.5,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,product))
+        with self.assertRaisesRegex(ValueError,"pre-PR builder lane"):
+            h.execute(item(),"planning")
+
+    def test_planning_accepts_builder_tasks_and_post_candidate_specialist_reviews(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"redact_debug",
+                    "title":"Redact debug output",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":["src/app/debug"],
+                    "depends_on":[],
+                    "preferred_agent_role":"development"
+                }],
+                "specialist_reviews":["security","qa","operations"]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation","debug"),("github_write","model_primary"),{"preferred":"primary"},2,1.5,True)
+        security=AgentProfile("security","security",("security_review",),("github_read","model_primary"),{"preferred":"primary"},1,0.5,True)
+        qa=AgentProfile("qa","qa",("tests",),("github_read","github_actions"),{"preferred":"deterministic"},1,0.25,True)
+        operations=AgentProfile("operations","operations",("ci",),("github_actions",),{"preferred":"deterministic"},1,0.25,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,security,qa,operations))
+        out=h.execute(item(),"planning")
+        self.assertEqual(out["_team_plan"]["status"],"ready")
+        roles={row["role"] for row in out["_team_plan"]["advisory_specialist_lanes"]}
+        self.assertEqual(roles,{"security","qa","operations"})
+        self.assertEqual(out["_team_plan"]["waves"][0]["task_keys"],["redact_debug"])
+
     def test_planning_defaults_missing_title_from_task_key_before_team_plan(self):
         p=Provider()
         def execute(request):
