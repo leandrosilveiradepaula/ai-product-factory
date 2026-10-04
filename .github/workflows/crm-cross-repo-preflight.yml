@@ -77,6 +77,7 @@ jobs:
               "default_branch":"main",
               "head_sha":sha,
               "auth":"github_app_ephemeral",
+              "credential_path":"github_app_only",
               "token_persisted":False,
           }))
           PY
