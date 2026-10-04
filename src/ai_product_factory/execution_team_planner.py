@@ -264,6 +264,12 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
 
     selected_keys=sorted({row["agent_key"] for row in normalized if row.get("agent_key")})
     expectations=_role_policy_expectations(tasks)
+    requested_reviews=engineering_plan.get("specialist_reviews")
+    if isinstance(requested_reviews,list):
+        for role_value in requested_reviews:
+            role=str(role_value).strip()
+            if role in _SPECIALIST_LANE_ROLES:
+                expectations.setdefault(role,[]).append("planning requested post-candidate specialist review")
     selected=[]
     for key in selected_keys:
         agent=next(a for a in active if a.agent_key==key)
