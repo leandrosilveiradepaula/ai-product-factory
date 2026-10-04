@@ -16,7 +16,7 @@ class ProductStagePrompts:
     specification: str = "Create an implementable product specification. Return JSON only with scope, user_flows, requirements, non_functional_requirements, acceptance_criteria, exclusions, assumptions."
     reconciliation: str = "Reconcile the existing project from the durable state snapshot and approved intake. Return JSON only with observed_stage, summary, evidence, gaps, constraints, source_status. Preserve confirmed work and do not claim repository checks that are absent from the supplied evidence."
     gap_analysis: str = "Compare the reconciled existing-project state with the continuation brief and constraints. Return JSON only with completed, gaps, risks, decisions_needed, recommended_next_work. Do not invent missing evidence or business decisions."
-    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a gate, never a task. If a genuine business/governance decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
+    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a gate, never a task. If a genuine business/governance decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. task_key values must be unique. depends_on may contain only task_key values from other tasks in this same output; never put decisions, gates, approvals, credentials, or external conditions in depends_on. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
 
 
 def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,...]) -> None:
@@ -29,9 +29,16 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
         and profile.role in {"development","ui"}
         and "github_write" in set(profile.allowed_tools)
     ]
+    task_keys=[]
     for task in tasks:
         if not isinstance(task,dict):
             raise ValueError("planning tasks must be JSON objects")
+        task_key=str(task.get("task_key") or "").strip()
+        if not task_key:
+            raise ValueError("planning task requires task_key")
+        if task_key in task_keys:
+            raise ValueError(f"duplicate planning task_key: {task_key}")
+        task_keys.append(task_key)
         required={str(x).strip() for x in (task.get("required_capabilities") or []) if str(x).strip()}
         preferred=str(task.get("preferred_agent_role") or "").strip()
         eligible=[
@@ -40,8 +47,18 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
             and (not preferred or preferred in {profile.agent_key,profile.role})
         ]
         if not eligible:
-            key=str(task.get("task_key") or task.get("title") or "unnamed")
-            raise ValueError(f"planning task is not executable in a pre-PR builder lane: {key}")
+            raise ValueError(f"planning task is not executable in a pre-PR builder lane: {task_key}")
+    known_task_keys=set(task_keys)
+    for task in tasks:
+        task_key=str(task.get("task_key") or "").strip()
+        dependencies=task.get("depends_on") or []
+        if not isinstance(dependencies,list):
+            raise ValueError(f"planning task depends_on must be an array: {task_key}")
+        unknown=[str(dep).strip() for dep in dependencies if str(dep).strip() not in known_task_keys]
+        if unknown:
+            raise ValueError(
+                f"planning task has unresolved dependency: {task_key} -> {', '.join(unknown)}"
+            )
     reviews=output.get("specialist_reviews")
     if reviews is None:
         return

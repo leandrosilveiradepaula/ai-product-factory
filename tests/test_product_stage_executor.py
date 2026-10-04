@@ -219,6 +219,77 @@ class ProductStageExecutorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"unsupported specialist review role: compliance"):
             h.execute(item(),"planning")
 
+
+    def test_planning_rejects_unknown_task_dependency(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"redact_debug",
+                    "title":"Redact debug output",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":["src/app/debug"],
+                    "depends_on":["gate_explicit_write_authorization"],
+                    "preferred_agent_role":"development"
+                }],
+                "decisions_needed":[{"decision_key":"authorize_debug_write_scope"}]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        with self.assertRaisesRegex(ValueError,"unresolved dependency: redact_debug -> gate_explicit_write_authorization"):
+            h.execute(item(),"planning")
+
+    def test_planning_accepts_dependency_on_existing_task_key(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[
+                    {
+                        "task_key":"prepare_debug_contract",
+                        "title":"Prepare implementation scaffold",
+                        "required_capabilities":["implementation"],
+                        "scope_keys":["src/app/debug"],
+                        "depends_on":[],
+                        "preferred_agent_role":"development"
+                    },
+                    {
+                        "task_key":"redact_debug",
+                        "title":"Redact debug output",
+                        "required_capabilities":["implementation"],
+                        "scope_keys":["src/app/debug"],
+                        "depends_on":["prepare_debug_contract"],
+                        "preferred_agent_role":"development"
+                    }
+                ]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        out=h.execute(item(),"planning")
+        self.assertEqual(out["_team_plan"]["status"],"ready")
+        self.assertEqual(len(out["_team_plan"]["waves"]),2)
+
+    def test_planning_rejects_duplicate_task_key(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            task={
+                "task_key":"same",
+                "title":"Same task",
+                "required_capabilities":["implementation"],
+                "scope_keys":["src"],
+                "depends_on":[]
+            }
+            return ModelResult(ModelRole.PRIMARY,json.dumps({"tasks":[task,dict(task)]}),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        with self.assertRaisesRegex(ValueError,"duplicate planning task_key: same"):
+            h.execute(item(),"planning")
+
     def test_planning_defaults_missing_title_from_task_key_before_team_plan(self):
         p=Provider()
         def execute(request):
