@@ -222,3 +222,15 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] Depois da verificacao real do CRM, liberar a Fase 3 do runtime e comprovar um ciclo cross-repo sem `FACTORY_GITHUB_TOKEN`.
 - [ ] Avaliar separadamente a instalacao no Agente SQL; nao ampliar acesso junto com o CRM.
 
+## Atualizacao operacional - 2026-10-04
+- [x] Fluxo de continuidade de projetos consolidado no Console: pedido duravel, anexos privados, contexto do ultimo pedido, download autenticado e historico bounded baseado em auditoria.
+- [x] CRM Infodive reconciliado em `operations`, sem PRs/issues abertos no checkpoint e com Vercel verde no `main` `23b4992727adb768a7a5b513cd0a181ea5d1e2d5`.
+- [x] Factory reconciliada em `main` `c1e003ad8a6f7cf0192c6ec65e95d31ec9c651fe` apos merge humano do PR #633; release de producao deve ser verificado separadamente antes de ser declarado concluido.
+- [x] Control Plane no checkpoint: zero tarefas abertas, zero runs abertos e zero gates pendentes para Factory e CRM.
+- [ ] #240 Codex WIF continua externo e depende de enablement/federation values oficiais.
+- [ ] #250 OpenAI API WIF continua hardening externo; nao substituir o caminho operacional selecionado sem preflight verde.
+- [ ] #426 continua gate de revalidacao quando o repositorio retornar a private; nenhuma compra automatica.
+- [ ] #474 continua hardening administrativo da protecao de `main`; runtime permanece sem auto-merge.
+- [ ] Leaked Password Protection do Supabase continua hardening administrativo externo; RLS fail-closed sem policies publicas permanece intencional.
+- [ ] Benchmark de 63 perguntas do Agente SQL continua postergado.
+
