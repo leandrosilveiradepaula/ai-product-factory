@@ -229,7 +229,7 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Control Plane no checkpoint: zero tarefas abertas, zero runs abertos e zero gates pendentes para Factory e CRM.
 - [ ] #240 Codex WIF continua externo e depende de enablement/federation values oficiais.
 - [ ] #250 OpenAI API WIF continua hardening externo; nao substituir o caminho operacional selecionado sem preflight verde.
-- [ ] #426 continua gate de revalidacao quando o repositorio retornar a private; nenhuma compra automatica.
+- [x] #426 encerrada: repositorio esta private e GitHub-hosted Actions voltaram a executar com CI verde, sem compra automatica nem reducao de isolamento.
 - [ ] #474 continua hardening administrativo da protecao de `main`; runtime permanece sem auto-merge.
 - [ ] Leaked Password Protection do Supabase continua hardening administrativo externo; RLS fail-closed sem policies publicas permanece intencional.
 - [ ] Benchmark de 63 perguntas do Agente SQL continua postergado.
