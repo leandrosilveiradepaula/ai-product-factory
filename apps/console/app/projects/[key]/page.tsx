@@ -2,7 +2,7 @@ import {cookies} from "next/headers";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
-import {getProjectContinuationContext,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
+import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {requireConsoleOperator} from "../../../lib/auth-server";
@@ -84,7 +84,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   if(project===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(project))redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project));
  }
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id)]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
@@ -123,6 +123,10 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     {continuation.attachments.length?<div className="compactList">{continuation.attachments.map(file=><div className="compactRow" key={file.id}><strong>{file.name}</strong><div className="badgeLine"><span className="muted">{file.mimeType+" · "+(file.sizeBytes/1024/1024).toFixed(2)+" MB"}</span><a className="linkButton" href={"/api/projects/"+encodeURIComponent(p.key)+"/attachments/"+encodeURIComponent(file.id)}>Baixar</a></div></div>)}</div>:continuation.attachmentCount?<p className="muted" style={{margin:0}}>Os anexos foram registrados, mas a listagem privada não está disponível neste momento.</p>:null}
    </div>
   </section>:null}
+  {continuationHistory.length>1?<details className="projectTechnicalDetails">
+   <summary><span><strong>Pedidos anteriores</strong><small>Histórico durável registrado pela Factory.</small></span><span className="muted">{continuationHistory.length-1} pedido{continuationHistory.length===2?"":"s"} anterior{continuationHistory.length===2?"":"es"}</span></summary>
+   <div className="projectTechnicalBody"><div className="timeline">{continuationHistory.slice(1).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><strong>{item.summary}</strong><span className="muted">{new Date(item.requestedAt).toLocaleString("pt-BR")}</span></div><div className="timelineMeta"><span>{item.attachmentCount+" anexo"+(item.attachmentCount===1?"":"s")}</span></div></div>)}</div></div>
+  </details>:null}
   <section className="section" id="preview-policy"><SectionHeader title="Prévia · política do projeto" action={<StatusPill status={previewPolicy?.required===false?"not_applicable":previewConfigured?"verified":"blocked"} label={previewPolicy?.required===false?"Não aplicável":previewConfigured?"Configurada":"Pendente"}/>}/>
    <div className="card denseStack">
     {previewConfigured?<><div className="detailGrid">

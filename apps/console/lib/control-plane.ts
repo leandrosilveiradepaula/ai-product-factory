@@ -187,6 +187,21 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
+export type ProjectContinuationHistoryItem={id:string;summary:string;requestedAt:string;attachmentCount:number};
+export async function getProjectContinuationHistory(projectId:string,limit=12):Promise<ProjectContinuationHistoryItem[]>{
+ await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
+ const bounded=Math.max(1,Math.min(25,Math.floor(limit)));
+ const response=await fetch(cfg.url+"/rest/v1/factory_audit_events?select=id,payload,created_at&project_id=eq."+encodeURIComponent(projectId)+"&event_type=eq.project.continuation.requested&order=created_at.desc&limit="+bounded,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)return[];
+ const rows=await response.json();
+ return rows.flatMap((x:any)=>{
+  const payload=x.payload&&typeof x.payload==="object"?x.payload:{};
+  const summary=typeof payload.summary==="string"?payload.summary.trim():"";
+  if(!summary)return[];
+  return[{id:String(payload.request_id||x.id),summary,requestedAt:String(payload.requested_at||x.created_at),attachmentCount:Number(payload.attachment_count||0)}];
+ });
+}
+
 export type ProjectContinuationContext={id:string;summary:string;requestedAt:string;attachmentCount:number;attachments:{id:string;name:string;mimeType:string;sizeBytes:number}[]};
 export async function getProjectContinuationContext(projectId:string):Promise<ProjectContinuationContext|null>{
  await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
