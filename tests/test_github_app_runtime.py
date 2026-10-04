@@ -5,6 +5,10 @@ from unittest.mock import patch
 from ai_product_factory.github_app_runtime import resolve_github_app_installation_token
 
 
+BROKER_URL = "https://example.supabase.co/functions/v1/factory-runtime-control-plane"
+DIRECT_URL = "https://example.supabase.co"
+
+
 class FakeTransport:
     def __init__(self, *, auth_mode="github_app", status="ready", broker_status=200):
         self.auth_mode = auth_mode
@@ -25,8 +29,11 @@ class FakeTransport:
                 "repository_id": 5678,
             }]
         if url.endswith("/github-app/token"):
+            if self.broker_status == 404:
+                return 404, {"error": "project_not_found"}
             if self.broker_status == 409:
-                return 409, {"error": "github_app_not_ready"}
+                code = "github_app_not_migrated" if self.auth_mode != "github_app" else "github_app_not_ready"
+                return 409, {"error": code}
             return 200, {
                 "token": "ghs_installation_token",
                 "expires_at": "2026-10-02T23:00:00Z",
@@ -38,40 +45,53 @@ class FakeTransport:
 
 
 class GitHubAppRuntimeTests(unittest.TestCase):
-    def test_ready_github_app_uses_control_plane_token_broker(self):
+    def test_oidc_broker_path_calls_only_dedicated_token_endpoint(self):
         transport = FakeTransport()
-        env = {
-            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
-            "SUPABASE_SECRET_KEY": "oidc-token",
-        }
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
         with patch.dict("os.environ", env, clear=True):
             token = resolve_github_app_installation_token("owner/target", transport=transport)
         self.assertEqual(token, "ghs_installation_token")
-        broker_calls = [call for call in transport.calls if call[1].endswith("/github-app/token")]
-        self.assertEqual(len(broker_calls), 1)
-        method, _, headers, payload = broker_calls[0]
+        self.assertEqual(len(transport.calls), 1)
+        method, url, headers, payload = transport.calls[0]
         self.assertEqual(method, "POST")
+        self.assertTrue(url.endswith("/github-app/token"))
         self.assertEqual(payload, {"repository": "owner/target"})
         self.assertNotIn("private_key", json.dumps(payload))
         self.assertIn("Authorization", headers)
 
-    def test_non_app_project_keeps_legacy_fallback_available(self):
+    def test_oidc_broker_non_app_project_keeps_legacy_fallback_available(self):
+        transport = FakeTransport(auth_mode="fine_grained_pat", status="partial", broker_status=409)
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
+        with patch.dict("os.environ", env, clear=True):
+            token = resolve_github_app_installation_token("owner/target", transport=transport)
+        self.assertIsNone(token)
+        self.assertEqual(len(transport.calls), 1)
+
+    def test_oidc_broker_missing_project_keeps_legacy_fallback_available(self):
+        transport = FakeTransport(broker_status=404)
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
+        with patch.dict("os.environ", env, clear=True):
+            token = resolve_github_app_installation_token("owner/target", transport=transport)
+        self.assertIsNone(token)
+
+    def test_oidc_broker_not_ready_fails_closed(self):
+        transport = FakeTransport(auth_mode="github_app", status="blocked", broker_status=409)
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(PermissionError):
+                resolve_github_app_installation_token("owner/target", transport=transport)
+
+    def test_direct_control_plane_non_app_project_keeps_legacy_fallback_available(self):
         transport = FakeTransport(auth_mode="fine_grained_pat", status="partial")
-        env = {
-            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
-            "SUPABASE_SECRET_KEY": "oidc-token",
-        }
+        env = {"SUPABASE_URL": DIRECT_URL, "SUPABASE_SECRET_KEY": "sb_secret_test"}
         with patch.dict("os.environ", env, clear=True):
             token = resolve_github_app_installation_token("owner/target", transport=transport)
         self.assertIsNone(token)
         self.assertFalse(any(call[1].endswith("/github-app/token") for call in transport.calls))
 
-    def test_github_app_mode_fails_closed_until_installation_is_ready(self):
+    def test_direct_control_plane_github_app_mode_fails_closed_until_ready(self):
         transport = FakeTransport(auth_mode="github_app", status="blocked")
-        env = {
-            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
-            "SUPABASE_SECRET_KEY": "oidc-token",
-        }
+        env = {"SUPABASE_URL": DIRECT_URL, "SUPABASE_SECRET_KEY": "sb_secret_test"}
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 resolve_github_app_installation_token("owner/target", transport=transport)
@@ -79,10 +99,7 @@ class GitHubAppRuntimeTests(unittest.TestCase):
 
     def test_broker_refusal_does_not_fall_back_silently(self):
         transport = FakeTransport(broker_status=409)
-        env = {
-            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
-            "SUPABASE_SECRET_KEY": "oidc-token",
-        }
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 resolve_github_app_installation_token("owner/target", transport=transport)
@@ -99,7 +116,7 @@ class GitHubAppRuntimeTests(unittest.TestCase):
             self.assertIsNone(resolve_github_app_installation_token("owner/target", transport=transport))
         self.assertFalse(called)
 
-    def test_broker_binding_mismatch_is_rejected(self):
+    def test_direct_broker_binding_mismatch_is_rejected(self):
         class MismatchTransport(FakeTransport):
             def __call__(self, method, url, headers, body):
                 status, payload = super().__call__(method, url, headers, body)
@@ -108,13 +125,24 @@ class GitHubAppRuntimeTests(unittest.TestCase):
                     payload["repository_id"] = 9999
                 return status, payload
 
-        env = {
-            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
-            "SUPABASE_SECRET_KEY": "oidc-token",
-        }
+        env = {"SUPABASE_URL": DIRECT_URL, "SUPABASE_SECRET_KEY": "sb_secret_test"}
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 resolve_github_app_installation_token("owner/target", transport=MismatchTransport())
+
+    def test_broker_requires_positive_binding_ids(self):
+        class IncompleteTransport(FakeTransport):
+            def __call__(self, method, url, headers, body):
+                status, payload = super().__call__(method, url, headers, body)
+                if url.endswith("/github-app/token") and status == 200:
+                    payload = dict(payload)
+                    payload["repository_id"] = 0
+                return status, payload
+
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(PermissionError):
+                resolve_github_app_installation_token("owner/target", transport=IncompleteTransport())
 
     def test_broker_must_prove_token_is_not_persisted(self):
         class PersistenceTransport(FakeTransport):
@@ -125,10 +153,7 @@ class GitHubAppRuntimeTests(unittest.TestCase):
                     payload["token_persisted"] = True
                 return status, payload
 
-        env = {
-            "SUPABASE_URL": "https://example.supabase.co/functions/v1/factory-runtime-control-plane",
-            "SUPABASE_SECRET_KEY": "oidc-token",
-        }
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
         with patch.dict("os.environ", env, clear=True):
             with self.assertRaises(PermissionError):
                 resolve_github_app_installation_token("owner/target", transport=PersistenceTransport())
