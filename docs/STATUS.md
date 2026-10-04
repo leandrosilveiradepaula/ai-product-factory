@@ -1,3 +1,12 @@
+## Reconciliation 2026-10-04
+- Factory `main` is `c1e003ad8a6f7cf0192c6ec65e95d31ec9c651fe` after the human merge of PR #633. The production Vercel deployment for this merge is being observed separately; do not infer release success from the merge alone.
+- The recent Console continuation flow is now complete through private evidence handling: PR #627 added attachments to ongoing-project requests; PR #629 surfaced the latest request context; PR #631 added authenticated server-side download without exposing Storage paths; PR #633 added bounded durable request history backed by `project.continuation.requested` audit events.
+- The Factory repository has no open implementation PR at this checkpoint. The Control Plane reconciliation immediately before this update showed the Factory and CRM with zero open tasks, zero open runs and zero pending human gates.
+- CRM Infodive is active in lifecycle `operations`, with no open GitHub PRs/issues at the checkpoint. Its current `main` is `23b4992727adb768a7a5b513cd0a181ea5d1e2d5`; Vercel reports success for that commit. The latest CRM operational change limits Preview creation to final candidates, reducing unnecessary deployment consumption.
+- The Factory core lifecycle, deterministic routing, Direct execution, multi-agent planning, quality/eval gates, exact Preview, human production release boundary, release observation, Control Plane and Console are implemented. Remaining work is primarily operational hardening, finalization and external/admin enablement rather than a missing core orchestration stage.
+- External/admin blockers remain #240 (Codex workspace WIF enablement and real federation values), #250 (OpenAI API WIF mapping hardening), #426 (future private-repository Actions revalidation), #474 (main protection/ruleset), and Supabase leaked-password protection. None may be bypassed by invented credentials, permissive RLS or automatic purchases.
+- Production merge remains exclusively human. The runtime and GitHub adapter must not gain automatic merge capability. The 63-question SQL Agent benchmark remains explicitly postponed.
+
 # Current status
 
 Last reconciled: 2026-10-02.
