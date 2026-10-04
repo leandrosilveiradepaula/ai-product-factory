@@ -15,6 +15,20 @@ class ProjectContinuationContextTests(unittest.TestCase):
         self.assertIn('title="Último pedido"',page)
         self.assertIn("continuation.summary",page)
         self.assertIn("continuation.attachments.map",page)
+        self.assertIn('href={"/api/projects/"+encodeURIComponent(p.key)+"/attachments/"+encodeURIComponent(file.id)}',page)
+
+    def test_attachment_download_is_authenticated_project_bound_and_private(self):
+        route=(ROOT/"apps/console/app/api/projects/[key]/attachments/[attachmentId]/route.ts").read_text()
+        self.assertIn("await requireConsoleOperator()",route)
+        self.assertIn("project_key=eq.",route)
+        self.assertIn("project_id=eq.",route)
+        self.assertIn("finalized_at=not.is.null",route)
+        self.assertIn("file.storage_bucket!==PROJECT_FILE_BUCKET",route)
+        self.assertIn("MAX_PROJECT_FILE_BYTES",route)
+        self.assertIn('"Cache-Control":"private, no-store"',route)
+        self.assertIn('"X-Content-Type-Options":"nosniff"',route)
+        self.assertIn('"Content-Disposition"',route)
+        self.assertNotIn("storage_path",page)
 
 if __name__=="__main__":
     unittest.main()
