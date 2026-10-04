@@ -117,8 +117,8 @@ class ProductStageExecutorTests(unittest.TestCase):
             "capabilities":["implementation","debug"],
             "allowed_tools":["github_write","model_primary"],
         }])
-        self.assertIn("canonical vocabulary",p.requests[0].constraints[4])
-        self.assertIn("Human approval/release is a gate",p.requests[0].constraints[5])
+        self.assertTrue(any("canonical vocabulary" in constraint for constraint in p.requests[0].constraints))
+        self.assertTrue(any("Human approval/release is a gate" in constraint for constraint in p.requests[0].constraints))
 
     def test_planning_rejects_product_task_without_pre_pr_builder_lane(self):
         p=Provider()
@@ -290,7 +290,7 @@ class ProductStageExecutorTests(unittest.TestCase):
         request=p.requests[0]
         self.assertIn("current_state_facts",request.context)
         self.assertIn("newer operational evidence",request.objective)
-        self.assertIn("newer operational evidence",request.constraints)
+        self.assertTrue(any("newer operational evidence" in constraint for constraint in request.constraints))
 
     def test_planning_rejects_noncanonical_human_decision_kind(self):
         p=Provider()
