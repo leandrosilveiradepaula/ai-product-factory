@@ -58,6 +58,43 @@ def _request_json(
     return status, payload
 
 
+def _is_runtime_control_plane_broker(url: str) -> bool:
+    path = parse.urlparse(url).path.rstrip("/")
+    return path.endswith("/functions/v1/factory-runtime-control-plane")
+
+
+def _token_from_broker_response(
+    *,
+    status: int,
+    token_response: Any,
+    expected_installation_id: int | None = None,
+    expected_repository_id: int | None = None,
+) -> str | None:
+    if status == 404:
+        return None
+    if status == 409:
+        code = str((token_response or {}).get("error") or "github_app_not_ready")
+        if code == "github_app_not_migrated":
+            return None
+        raise PermissionError("GitHub App token broker refused this repository: " + code)
+
+    token = str((token_response or {}).get("token") or "")
+    if not token:
+        raise RuntimeError("GitHub installation token was not issued")
+
+    installation_id = int((token_response or {}).get("installation_id") or 0)
+    repository_id = int((token_response or {}).get("repository_id") or 0)
+    if installation_id <= 0 or repository_id <= 0:
+        raise PermissionError("GitHub App token broker returned incomplete repository binding")
+    if expected_installation_id is not None and installation_id != expected_installation_id:
+        raise PermissionError("GitHub installation token broker returned a different installation")
+    if expected_repository_id is not None and repository_id != expected_repository_id:
+        raise PermissionError("GitHub installation token broker returned a different repository")
+    if (token_response or {}).get("token_persisted") is not False:
+        raise PermissionError("GitHub installation token persistence contract was not proven")
+    return token
+
+
 def resolve_github_app_installation_token(
     repository: str,
     *,
@@ -69,6 +106,22 @@ def resolve_github_app_installation_token(
         return None
 
     cfg = resolve_supabase_server_config()
+
+    # GitHub Actions uses the OIDC Control Plane broker as SUPABASE_URL.
+    # In that mode, call only the narrowly authorized GitHub App token endpoint.
+    # The broker itself performs the privileged project/access lookups and revalidates
+    # installation_id, repository_id and exact owner/name binding before returning.
+    if _is_runtime_control_plane_broker(cfg.url):
+        status, token_response = _request_json(
+            "POST",
+            cfg.url.rstrip("/") + "/github-app/token",
+            {**cfg.headers, "Content-Type": "application/json"},
+            {"repository": repository},
+            transport=transport,
+            allowed_statuses=(404, 409),
+        )
+        return _token_from_broker_response(status=status, token_response=token_response)
+
     encoded_repository = parse.quote(repository, safe="")
     _, projects = _request_json(
         "GET",
@@ -97,7 +150,10 @@ def resolve_github_app_installation_token(
         return None
     if str(row.get("status") or "") != "ready":
         raise PermissionError("GitHub App access is not ready for this repository")
-    if int(row.get("installation_id") or 0) <= 0 or int(row.get("repository_id") or 0) <= 0:
+
+    installation_id = int(row.get("installation_id") or 0)
+    repository_id = int(row.get("repository_id") or 0)
+    if installation_id <= 0 or repository_id <= 0:
         raise PermissionError("GitHub App verified installation metadata is incomplete")
 
     status, token_response = _request_json(
@@ -108,17 +164,9 @@ def resolve_github_app_installation_token(
         transport=transport,
         allowed_statuses=(409,),
     )
-    if status == 409:
-        code = str((token_response or {}).get("error") or "github_app_not_ready")
-        raise PermissionError("GitHub App token broker refused this repository: " + code)
-
-    token = str((token_response or {}).get("token") or "")
-    if not token:
-        raise RuntimeError("GitHub installation token was not issued")
-    if int((token_response or {}).get("installation_id") or 0) != int(row.get("installation_id") or 0):
-        raise PermissionError("GitHub installation token broker returned a different installation")
-    if int((token_response or {}).get("repository_id") or 0) != int(row.get("repository_id") or 0):
-        raise PermissionError("GitHub installation token broker returned a different repository")
-    if (token_response or {}).get("token_persisted") is not False:
-        raise PermissionError("GitHub installation token persistence contract was not proven")
-    return token
+    return _token_from_broker_response(
+        status=status,
+        token_response=token_response,
+        expected_installation_id=installation_id,
+        expected_repository_id=repository_id,
+    )
