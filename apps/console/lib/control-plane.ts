@@ -641,3 +641,28 @@ export async function getFactoryAgents():Promise<FactoryAgentSummary[]>{
  });
 }
 
+
+
+export type ProjectReconciliationEnqueueResult={projectId:string;taskId:string;runId:string;created:boolean;mode:string|null};
+
+export async function enqueueProjectReconciliation(projectKey:string):Promise<ProjectReconciliationEnqueueResult>{
+ await requireConsoleOperator();
+ const key=projectKey.trim();
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key))throw new Error("Projeto inválido para reconciliação.");
+ const cfg=serverHeaders();if(!cfg)throw new Error("Control Plane não configurado.");
+ const response=await fetch(cfg.url+"/rest/v1/rpc/factory_enqueue_project_bootstrap",{
+  method:"POST",
+  headers:{...cfg.headers,"Content-Type":"application/json"},
+  body:JSON.stringify({p_project_key:key}),
+  cache:"no-store",
+ });
+ if(!response.ok)throw new Error("Não foi possível enfileirar a reconciliação do projeto.");
+ const data=await response.json();
+ return{
+  projectId:String(data.project_id||""),
+  taskId:String(data.task_id||""),
+  runId:String(data.run_id||""),
+  created:Boolean(data.created),
+  mode:data.mode?String(data.mode):null,
+ };
+}

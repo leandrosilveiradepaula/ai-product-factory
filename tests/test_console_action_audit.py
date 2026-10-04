@@ -119,6 +119,18 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn('name="active" value="true"',operators)
         self.assertIn("<form action={start}",review)
 
+    def test_existing_project_reconciliation_is_actionable_from_console(self):
+        detail=(APP/"projects"/"[key]"/"page.tsx").read_text()
+        control=(ROOT/"apps"/"console"/"lib"/"control-plane.ts").read_text()
+        self.assertIn("<form action={reconcileProject}>",detail)
+        self.assertIn('name="project_key"',detail)
+        self.assertIn("Reconciliar projeto",detail)
+        self.assertIn('p.kind==="existing"',detail)
+        self.assertIn("enqueueProjectReconciliation",control)
+        self.assertIn("/rest/v1/rpc/factory_enqueue_project_bootstrap",control)
+        self.assertIn("already_active",detail)
+        self.assertIn("nenhuma duplicata foi criada",detail)
+
     def test_supabase_connect_visual_action_has_real_route_handlers(self):
         detail=(APP/"projects"/"[key]"/"page.tsx").read_text()
         self.assertIn("/api/integrations/supabase/connect",detail)

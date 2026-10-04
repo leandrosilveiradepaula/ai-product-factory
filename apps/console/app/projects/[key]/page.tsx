@@ -2,7 +2,7 @@ import {cookies} from "next/headers";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
-import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck} from "../../../lib/control-plane";
+import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {requireConsoleOperator} from "../../../lib/auth-server";
@@ -67,6 +67,14 @@ const githubCapabilityLabels:Record<string,string>={
  ci_evidence_read:"Checks / evidência de CI",
 };
 function githubCapabilityLabel(status:string){return status==="verified"?"Verificado":status==="missing"?"Permissão faltando":status==="unverified"?"Ainda não verificado":humanizeStatus(status)}
+async function reconcileProject(formData:FormData){
+ "use server";
+ const projectKey=String(formData.get("project_key")||"");
+ if(!projectKey)throw new Error("Projeto inválido para reconciliação.");
+ const result=await enqueueProjectReconciliation(projectKey);
+ revalidatePath("/projects/"+projectKey);
+ redirect("/projects/"+projectKey+"?reconciliation="+(result.created?"enqueued":"already_active"));
+}
 async function requestGitHubRecheck(formData:FormData){
  "use server";
  const projectId=String(formData.get("project_id")||"");
@@ -76,7 +84,7 @@ async function requestGitHubRecheck(formData:FormData){
  revalidatePath("/projects/"+projectKey);
 }
 
-export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string}>}){
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
   const jar=await cookies();
@@ -91,11 +99,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
+ const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
  return <>
-  <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/>{activeTasks.length===0?<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir alteração</ActionLink>:null}<ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
+  <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/>{activeTasks.length===0?<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir alteração</ActionLink>:null}{p.kind==="existing"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}<ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
+  {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
   <div className="projectOrientation">
    <div>
