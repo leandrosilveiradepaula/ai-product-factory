@@ -28,6 +28,7 @@ class ProjectContinuationContextTests(unittest.TestCase):
         self.assertIn('"Cache-Control":"private, no-store"',route)
         self.assertIn('"X-Content-Type-Options":"nosniff"',route)
         self.assertIn('"Content-Disposition"',route)
+        page=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
         self.assertNotIn("storage_path",page)
 
 if __name__=="__main__":
