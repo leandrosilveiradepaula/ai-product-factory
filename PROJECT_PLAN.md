@@ -76,7 +76,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Registrar projeto no control plane.
 - [x] Escolher proxima linha semantica de planned_filters: suporte generico offline a bindings multi-valor (`IN`) concluido no piloto, sem ativacao semantica.
 - [ ] Benchmark de 63 perguntas permanece postergado por decisao registrada no projeto.
-- [ ] Primeira tarefa funcional nova executada integralmente pela factory.
+- [x] Primeira tarefa funcional nova executada integralmente pela factory (#430 dogfood real ponta a ponta, com Direct, CI, specialist lanes, Preview N/A durável, awaiting_release, merge humano e release observer).
 
 ### F6 - Greenfield Test
 - [x] Validar lifecycle greenfield offline sem chamadas externas.
