@@ -33,6 +33,16 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             q.complete(item);q.fail(item,"x")
         self.assertEqual(call.call_count,4)
 
+    def test_reconciliation_and_gap_analysis_do_not_call_product_stage_persistence(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","crm-infodive",(),{})
+        with patch("urllib.request.urlopen",return_value=Response(None)) as call:
+            q.record_stage(item,StageEvidence("reconciliation","completed",{"summary":"ok"}))
+            q.record_stage(item,StageEvidence("gap_analysis","completed",{"gaps":[]}))
+        urls=[x.args[0].full_url for x in call.call_args_list]
+        self.assertEqual(sum(url.endswith("/rest/v1/rpc/factory_record_runtime_stage") for url in urls),2)
+        self.assertFalse(any(url.endswith("/rest/v1/rpc/factory_persist_product_stage") for url in urls))
+
     def test_stage_lifecycle_event_uses_existing_runtime_stage_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{})
