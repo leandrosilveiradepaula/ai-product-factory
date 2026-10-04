@@ -315,6 +315,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261002191500_factory_github_app_config.sql",
             "20261004145700_reconcile_product_stage_runtime.sql",
             "20261004185900_materialize_planning_decisions.sql",
+            "20261004200200_factory_claim_current_state_facts.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
