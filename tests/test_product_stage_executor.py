@@ -168,6 +168,57 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertEqual(roles,{"security","qa","operations"})
         self.assertEqual(out["_team_plan"]["waves"][0]["task_keys"],["redact_debug"])
 
+    def test_planning_accepts_structured_post_candidate_specialist_reviews(self):
+        p=Provider()
+        structured_review={
+            "role":"security",
+            "review_key":"debug_security_post_candidate_review",
+            "timing":"After candidate implementation.",
+            "required_evidence":["Candidate revision identifier"],
+            "review_criteria":["Confirm raw business records are not exposed."]
+        }
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"redact_debug",
+                    "title":"Redact debug output",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":["src/app/debug"],
+                    "depends_on":[],
+                    "preferred_agent_role":"development"
+                }],
+                "specialist_reviews":[structured_review]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation","debug"),("github_write","model_primary"),{"preferred":"primary"},2,1.5,True)
+        security=AgentProfile("security","security",("security_review",),("github_read","model_primary"),{"preferred":"primary"},1,0.5,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,security))
+        out=h.execute(item(),"planning")
+        self.assertEqual(out["specialist_reviews"],[structured_review])
+        advisory=next(x for x in out["_team_plan"]["advisory_specialist_lanes"] if x["role"]=="security")
+        self.assertIn("debug_security_post_candidate_review",advisory["reasons"][0])
+
+    def test_planning_rejects_structured_specialist_review_with_unknown_role(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"api",
+                    "title":"Build API",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":["src"],
+                    "depends_on":[]
+                }],
+                "specialist_reviews":[{"role":"compliance","review_key":"unsupported"}]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        with self.assertRaisesRegex(ValueError,"unsupported specialist review role: compliance"):
+            h.execute(item(),"planning")
+
     def test_planning_defaults_missing_title_from_task_key_before_team_plan(self):
         p=Provider()
         def execute(request):

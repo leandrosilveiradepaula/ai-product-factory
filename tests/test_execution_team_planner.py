@@ -116,6 +116,28 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         self.assertTrue(all(row["execution_ready"] is False for row in advisory.values()))
         self.assertTrue(all("post-candidate" in row["reasons"][0] for row in advisory.values()))
 
+    def test_structured_specialist_reviews_become_post_candidate_advisory_lanes(self):
+        plan={
+            "tasks":[{
+                "task_key":"api",
+                "title":"Implement API",
+                "required_capabilities":["implementation"],
+                "scope_keys":["src/api"],
+                "depends_on":[]
+            }],
+            "specialist_reviews":[{
+                "role":"security",
+                "review_key":"debug_security_post_candidate_review",
+                "timing":"after candidate",
+                "required_evidence":["candidate revision"],
+                "review_criteria":["confirm raw rows are not exposed"]
+            }]
+        }
+        out=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(out["status"],"ready")
+        advisory=next(x for x in out["advisory_specialist_lanes"] if x["role"]=="security")
+        self.assertIn("debug_security_post_candidate_review",advisory["reasons"][0])
+
     def test_unresolved_dependency_blocks_plan(self):
         plan={"tasks":[{"task_key":"ui","title":"UI","required_capabilities":["ui"],"scope_keys":["apps/console"],"depends_on":["missing"]}]}
         out=build_execution_team_plan(plan,AGENTS)
