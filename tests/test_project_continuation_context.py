@@ -31,5 +31,15 @@ class ProjectContinuationContextTests(unittest.TestCase):
         page=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
         self.assertNotIn("storage_path",page)
 
+    def test_project_detail_shows_bounded_durable_continuation_history(self):
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        page=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
+        self.assertIn("getProjectContinuationHistory",control)
+        self.assertIn("event_type=eq.project.continuation.requested",control)
+        self.assertIn("Math.min(25",control)
+        self.assertIn("continuationHistory.slice(1)",page)
+        self.assertIn("Pedidos anteriores",page)
+        self.assertNotIn("storage_path",control[control.index("export type ProjectContinuationHistoryItem"):control.index("export type ProjectContinuationContext")])
+
 if __name__=="__main__":
     unittest.main()
