@@ -256,6 +256,7 @@ class ProductStageExecutorTests(unittest.TestCase):
                 }],
                 "decisions_needed":[{
                     "decision_key":"approve_debug_contract",
+                    "decision_kind":"product_requirement",
                     "question":"Which diagnostic metadata may remain visible?",
                     "why_needed":"The allowed diagnostic contract is a product decision."
                 }]
@@ -266,6 +267,62 @@ class ProductStageExecutorTests(unittest.TestCase):
         out=h.execute(item(),"planning")
         self.assertEqual(out["decisions_needed"][0]["decision_key"],"approve_debug_contract")
         self.assertEqual(out["tasks"][0]["depends_on"],["gate_debug_contract"])
+
+    def test_planning_rejects_noncanonical_human_decision_kind(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[],
+                "decisions_needed":[{
+                    "decision_key":"confirm_github_app_write_path",
+                    "decision_kind":"technical_readiness",
+                    "question":"Is GitHub write ready?",
+                    "why_needed":"Need to confirm capability."
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        with self.assertRaisesRegex(ValueError,"unsupported planning decision_kind: technical_readiness"):
+            h.execute(item(),"planning")
+
+    def test_planning_rejects_missing_decision_kind(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[],
+                "decisions_needed":[{
+                    "decision_key":"approve_debug_contract",
+                    "question":"Which metadata may remain visible?",
+                    "why_needed":"Product contract is unresolved."
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        with self.assertRaisesRegex(ValueError,"unsupported planning decision_kind: <empty>"):
+            h.execute(item(),"planning")
+
+    def test_planning_accepts_scope_authorization_decision(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[],
+                "decisions_needed":[{
+                    "decision_key":"authorize_debug_write_scope",
+                    "decision_kind":"scope_authorization",
+                    "question":"May the current task authorize writes to /debug?",
+                    "why_needed":"The repository task scope must be expanded before implementation."
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        out=h.execute(item(),"planning")
+        self.assertEqual(out["decisions_needed"][0]["decision_kind"],"scope_authorization")
 
     def test_planning_accepts_dependency_on_existing_task_key(self):
         p=Provider()
