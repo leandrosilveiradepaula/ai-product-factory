@@ -313,6 +313,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261002004600_factory_finalize_console_human_release_ci_pending.sql",
             "20261002014000_factory_project_preview_policy.sql",
             "20261002191500_factory_github_app_config.sql",
+            "20261004145700_reconcile_product_stage_runtime.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
