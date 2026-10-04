@@ -29,9 +29,16 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
         and profile.role in {"development","ui"}
         and "github_write" in set(profile.allowed_tools)
     ]
+    task_keys=[]
     for task in tasks:
         if not isinstance(task,dict):
             raise ValueError("planning tasks must be JSON objects")
+        task_key=str(task.get("task_key") or "").strip()
+        if not task_key:
+            raise ValueError("planning task requires task_key")
+        if task_key in task_keys:
+            raise ValueError(f"duplicate planning task_key: {task_key}")
+        task_keys.append(task_key)
         required={str(x).strip() for x in (task.get("required_capabilities") or []) if str(x).strip()}
         preferred=str(task.get("preferred_agent_role") or "").strip()
         eligible=[
@@ -40,8 +47,18 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
             and (not preferred or preferred in {profile.agent_key,profile.role})
         ]
         if not eligible:
-            key=str(task.get("task_key") or task.get("title") or "unnamed")
-            raise ValueError(f"planning task is not executable in a pre-PR builder lane: {key}")
+            raise ValueError(f"planning task is not executable in a pre-PR builder lane: {task_key}")
+    known_task_keys=set(task_keys)
+    for task in tasks:
+        task_key=str(task.get("task_key") or "").strip()
+        dependencies=task.get("depends_on") or []
+        if not isinstance(dependencies,list):
+            raise ValueError(f"planning task depends_on must be an array: {task_key}")
+        unknown=[str(dep).strip() for dep in dependencies if str(dep).strip() not in known_task_keys]
+        if unknown:
+            raise ValueError(
+                f"planning task has unresolved dependency: {task_key} -> {', '.join(unknown)}"
+            )
     reviews=output.get("specialist_reviews")
     if reviews is None:
         return
