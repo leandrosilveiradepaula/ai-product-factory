@@ -124,6 +124,37 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertGreaterEqual(call.call_count,3)
 
 
+    def test_planning_decision_gate_skips_team_plan_and_change_set_materialization(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","crm-infodive",(),{"manifest":{}})
+        output={
+            "tasks":[{"task_key":"debug","title":"Debug","required_capabilities":["implementation"],"scope_keys":["src"],"depends_on":[]}],
+            "decisions_needed":[{"decision_key":"approve_debug_contract","question":"What may remain visible?"}],
+            "_team_plan":{"version":1,"status":"ready","profiles_selected":1,"planned_worker_peak":1,"blockers":[]},
+        }
+        calls=[]
+        def rpc(name,payload):
+            calls.append((name,payload))
+            if name=="factory_persist_product_stage":
+                return {"human_gate_id":"gate-1","created_tasks":0}
+            if name=="factory_record_definition_of_done":
+                return {"id":"dod-1"}
+            if name in {
+                "factory_record_runtime_stage",
+                "factory_record_requirement_trace",
+                "factory_record_project_brain_snapshot",
+            }:
+                return {}
+            raise AssertionError(name)
+        q._rpc=rpc
+        q.record_stage(item,StageEvidence("planning","completed",output))
+        names=[name for name,_ in calls]
+        self.assertIn("factory_persist_product_stage",names)
+        self.assertNotIn("factory_record_execution_team_plan",names)
+        self.assertNotIn("factory_materialize_change_set",names)
+        self.assertIn("factory_record_definition_of_done",names)
+
+
     def test_rebuild_team_plan_uses_persisted_engineering_plan_and_materializes_ready_change_set(self):
         from ai_product_factory.agent_scheduler import AgentProfile
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
