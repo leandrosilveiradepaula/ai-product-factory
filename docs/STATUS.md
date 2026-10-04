@@ -1,3 +1,10 @@
+## Reconciliation 2026-10-04 - GitHub App runtime
+- CRM GitHub App access is verified `ready` in the Control Plane with short-lived installation credentials and no token persistence.
+- Real Actions preflight run `37209692130` succeeded after #644: repository `leandrosilveiradepaula/crm-infodive`, private=true, default branch main, head `23b4992727adb768a7a5b513cd0a181ea5d1e2d5`, auth `github_app_ephemeral`, credential path `github_app_only`, token_persisted=false.
+- The first post-activation preflight exposed and fixed a real OIDC broker defect: the runtime no longer attempts generic Control Plane proxy reads before the dedicated GitHub App token broker. The narrow broker boundary remains intact.
+- A synthetic write probe was intentionally not added because the CRM preflight is acceptance-protected as read-only and adding another trusted write workflow only to test would expand the security surface. The first real CRM write task should provide the remaining write-path evidence.
+- Current external authentication blockers remain #240 and #250. #402, #426 and #474 are complete.
+
 ## Reconciliation 2026-10-04 - main ruleset
 - GitHub main protection #474 is complete. Repository ruleset `Protect main - human release` is active on the default branch with no bypass actors, pull-request-only updates, deletion/non-fast-forward protection, and required GitHub Actions checks `test` and `factory-acceptance`.
 - `strict_required_status_checks_policy=false` is intentional to avoid unnecessary merge-queue churn while still binding required checks to the exact PR head.

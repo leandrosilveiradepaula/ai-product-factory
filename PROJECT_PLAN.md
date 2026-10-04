@@ -151,7 +151,7 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] Leaked Password Protection permanece hardening opcional condicionado a upgrade pago (Supabase Pro+); nao e blocker tecnico no plano Free e nao deve gerar compra automatica.
 - [ ] Resolver API WIF #250 quando o mapping administrativo puder ser corrigido.
 - [ ] Resolver Codex auth #240 quando houver credencial oficial/enablement.
-- [ ] Retornar repositorio a private depois de encerrada a necessidade da janela publica.
+- [x] Repositorio retornado a private e revalidado com GitHub Actions saudavel (#426).
 
 
 ### F9 - Project Intelligence
@@ -195,8 +195,8 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Schedule-probe com telemetria duravel `work_detected/work_classes` sem novo schema e sem alterar semantica de dispatch.
 - [ ] Codex WIF #240 continua externo: o suporte confirmou o desenho, mas ainda nao confirmou habilitacao do recurso no workspace Infodive nem forneceu federation rule/audience reais.
 - [ ] OpenAI API WIF #250 continua hardening externo; Primary permanece em API key enquanto o preflight WIF nao estiver verde.
-- [ ] Next.js #402 continua aguardando publicacao real de 15.5.27 no npm; nao usar beta/canary.
-- [ ] Repositorio privado/Actions #426 continua gate administrativo externo; nao comprar plano automaticamente.
+- [x] Next.js/dependency hardening #402 concluido e revalidado.
+- [x] Repositorio privado/Actions #426 concluido sem compra automatica.
 
 
 ## Atualizacao operacional - 2026-10-01
@@ -206,8 +206,9 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] GitHub Actions confirmado saudavel no estado publico atual: `validate` e `Console validation` verdes no commit atual.
 - [x] Control Plane reconciliado: 3 projetos ativos, 0 runs abertos, 0 falhas acionaveis, 0 gates pendentes, 0 invocacoes Codex e custo conhecido acumulado de US$ 0.3478338.
 - [x] Console producao confirmado no deployment `dpl_59HGsseu5UdcXFZip4dPFW7VeMgc`, `READY`, health HTTP 200 no commit atual e zero runtime errors na janela verificada.
-- [ ] #426 passa a representar somente o gate administrativo de retorno a private/GitHub Pro e sua revalidacao; nao e falha ativa de Actions enquanto o repositorio estiver public.
-- [ ] #240, #250 e #474 continuam dependencias externas/administrativas e nao devem ser contornadas com valores inventados, ampliacao de acesso ou enfraquecimento de gates.
+- [x] #426 encerrada: repo private e Actions revalidado com sucesso.
+- [ ] #240 e #250 continuam dependencias externas de autenticacao e nao devem ser contornadas com valores inventados ou enfraquecimento de gates.
+- [x] #474 concluida com ruleset ativo na main, checks obrigatorios e bypass vazio.
 - [ ] Leaked Password Protection do Supabase permanece hardening opcional condicionado a plano Pro+; no Free nao e blocker tecnico. Os avisos RLS sem policy publica permanecem intencionais.
 - [x] Production merge continua exclusivamente humano; runtime sem auto-merge e `allow_auto_merge=false`.
 
@@ -218,8 +219,9 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Preview promotion automatico corrigido e validado: novo ref e semeado no parent e avancado ao SHA exato para disparar uma unica promocao observavel pela integracao GitHub/Vercel.
 - [x] PR #595 preparado para centralizar em `/gates` a instalacao/verificacao da App por projeto; candidato exato esta com CI, Preview e browser evidence verdes e aguarda exclusivamente merge humano de producao.
 - [x] Fase 3 do runtime preparada no PR #599: token de instalacao efemero e restrito ao repository_id verificado, sem persistencia de PEM/token e sem fallback silencioso quando um projeto ja migrou para `github_app`.
-- [ ] Instalar e verificar a GitHub App no CRM Infodive por consentimento humano explicito.
-- [ ] Depois da verificacao real do CRM, liberar a Fase 3 do runtime e comprovar um ciclo cross-repo sem `FACTORY_GITHUB_TOKEN`.
+- [x] GitHub App instalada e verificada no CRM Infodive por consentimento humano explicito; Control Plane em github_app/ready.
+- [x] Fase 3 do runtime liberada e autenticacao cross-repo real comprovada sem `FACTORY_GITHUB_TOKEN` no preflight Actions run 37209692130 (`github_app_only`, token efemero, sem persistencia).
+- [ ] Validar a primeira escrita cross-repo real via GitHub App na proxima tarefa funcional do CRM; nao criar mutacao sintetica nem ampliar workflows confiaveis apenas para teste.
 - [ ] Avaliar separadamente a instalacao no Agente SQL; nao ampliar acesso junto com o CRM.
 
 ## Atualizacao operacional - 2026-10-04
@@ -230,7 +232,7 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] #240 Codex WIF continua externo e depende de enablement/federation values oficiais.
 - [ ] #250 OpenAI API WIF continua hardening externo; nao substituir o caminho operacional selecionado sem preflight verde.
 - [x] #426 encerrada: repositorio esta private e GitHub-hosted Actions voltaram a executar com CI verde, sem compra automatica nem reducao de isolamento.
-- [ ] #474 continua hardening administrativo da protecao de `main`; runtime permanece sem auto-merge.
+- [x] #474 concluida: protecao da `main` reforcada no GitHub; runtime permanece sem auto-merge.
 - [ ] Leaked Password Protection do Supabase permanece hardening opcional condicionado a plano Pro+; no Free nao e blocker tecnico. RLS fail-closed sem policies publicas permanece intencional.
 - [ ] Benchmark de 63 perguntas do Agente SQL continua postergado.
 ## Atualizacao operacional - 2026-10-04 protecao da main
