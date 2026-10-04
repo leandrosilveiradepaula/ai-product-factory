@@ -97,6 +97,25 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         self.assertIn("not represented as an explicit planned task",advisory["note"])
         self.assertEqual(out["selected_agents"][0]["agent_key"],"development")
 
+    def test_specialist_reviews_become_post_candidate_advisory_lanes(self):
+        plan={
+            "tasks":[{
+                "task_key":"api",
+                "title":"Implement API",
+                "required_capabilities":["implementation"],
+                "scope_keys":["src/api"],
+                "depends_on":[]
+            }],
+            "specialist_reviews":["security","qa","operations"]
+        }
+        out=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(out["status"],"ready")
+        self.assertEqual(out["waves"][0]["task_keys"],["api"])
+        advisory={row["role"]:row for row in out["advisory_specialist_lanes"]}
+        self.assertEqual(set(advisory),{"security","qa","operations"})
+        self.assertTrue(all(row["execution_ready"] is False for row in advisory.values()))
+        self.assertTrue(all("post-candidate" in row["reasons"][0] for row in advisory.values()))
+
     def test_unresolved_dependency_blocks_plan(self):
         plan={"tasks":[{"task_key":"ui","title":"UI","required_capabilities":["ui"],"scope_keys":["apps/console"],"depends_on":["missing"]}]}
         out=build_execution_team_plan(plan,AGENTS)
