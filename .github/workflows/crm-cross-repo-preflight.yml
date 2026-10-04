@@ -29,6 +29,7 @@ jobs:
       GITHUB_REPOSITORY: leandrosilveiradepaula/ai-product-factory
       CRM_REPOSITORY: leandrosilveiradepaula/crm-infodive
       EXPECTED_SHA: ${{ inputs.expected_sha }}
+      FACTORY_GITHUB_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
@@ -45,6 +46,8 @@ jobs:
           from ai_product_factory.github_auth import resolve_github_token
 
           repository=os.environ["CRM_REPOSITORY"]
+          if os.environ.get("FACTORY_GITHUB_TOKEN","").strip():
+              raise SystemExit("legacy FACTORY_GITHUB_TOKEN must be empty for this GitHub App preflight")
           token=resolve_github_token(repository)
           headers={
               "Authorization": "Bearer "+token,
