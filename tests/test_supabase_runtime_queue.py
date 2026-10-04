@@ -33,7 +33,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             q.complete(item);q.fail(item,"x")
         self.assertEqual(call.call_count,4)
 
-    def test_reconciliation_and_gap_analysis_do_not_call_product_stage_persistence(self):
+    def test_reconciliation_and_gap_analysis_use_product_stage_persistence(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","crm-infodive",(),{})
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
@@ -41,7 +41,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             q.record_stage(item,StageEvidence("gap_analysis","completed",{"gaps":[]}))
         urls=[x.args[0].full_url for x in call.call_args_list]
         self.assertEqual(sum(url.endswith("/rest/v1/rpc/factory_record_runtime_stage") for url in urls),2)
-        self.assertFalse(any(url.endswith("/rest/v1/rpc/factory_persist_product_stage") for url in urls))
+        self.assertEqual(sum(url.endswith("/rest/v1/rpc/factory_persist_product_stage") for url in urls),2)
 
     def test_stage_lifecycle_event_uses_existing_runtime_stage_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
@@ -146,6 +146,20 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertEqual(out["status"],"ready")
         self.assertEqual(out["change_set"]["change_set_id"],"cs-1")
         self.assertEqual([name for name,_ in calls],["factory_record_execution_team_plan","factory_materialize_change_set"])
+
+
+class ProductStagePersistenceMigrationTests(unittest.TestCase):
+    def test_reconciliation_runtime_migration_preserves_agent_fields(self):
+        from pathlib import Path
+        sql=(Path(__file__).resolve().parents[1]/"supabase/migrations/20261004145700_reconcile_product_stage_runtime.sql").read_text()
+        self.assertIn("'reconciliation'",sql)
+        self.assertIn("'gap_analysis'",sql)
+        self.assertIn("factory_project_state_snapshots",sql)
+        self.assertIn("'gap_analysis'",sql)
+        self.assertIn("agent_role,required_capabilities,scope_keys",sql.replace("\n","" ).replace(" ",""))
+        self.assertIn("preferred_agent_role",sql)
+        self.assertIn("security invoker",sql.lower())
+
 
 if __name__=="__main__":
     unittest.main()
