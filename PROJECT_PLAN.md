@@ -148,7 +148,7 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Corrigir documentacao que ainda sugeria merge automatico apos CI.
 - [x] Preservar API key como auth Primary explicita enquanto WIF #250 permanece hardening externo.
 - [x] Fechar #309 apos Preview exato, comparacao visual autenticada contra `Esteira.zip`, release #407 e observacao pos-release sem runtime errors.
-- [ ] Habilitar Leaked Password Protection por acao administrativa.
+- [ ] Leaked Password Protection permanece hardening opcional condicionado a upgrade pago (Supabase Pro+); nao e blocker tecnico no plano Free e nao deve gerar compra automatica.
 - [ ] Resolver API WIF #250 quando o mapping administrativo puder ser corrigido.
 - [ ] Resolver Codex auth #240 quando houver credencial oficial/enablement.
 - [ ] Retornar repositorio a private depois de encerrada a necessidade da janela publica.
@@ -208,7 +208,7 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Console producao confirmado no deployment `dpl_59HGsseu5UdcXFZip4dPFW7VeMgc`, `READY`, health HTTP 200 no commit atual e zero runtime errors na janela verificada.
 - [ ] #426 passa a representar somente o gate administrativo de retorno a private/GitHub Pro e sua revalidacao; nao e falha ativa de Actions enquanto o repositorio estiver public.
 - [ ] #240, #250 e #474 continuam dependencias externas/administrativas e nao devem ser contornadas com valores inventados, ampliacao de acesso ou enfraquecimento de gates.
-- [ ] Leaked Password Protection do Supabase continua hardening administrativo externo; os avisos RLS sem policy publica permanecem intencionais.
+- [ ] Leaked Password Protection do Supabase permanece hardening opcional condicionado a plano Pro+; no Free nao e blocker tecnico. Os avisos RLS sem policy publica permanecem intencionais.
 - [x] Production merge continua exclusivamente humano; runtime sem auto-merge e `allow_auto_merge=false`.
 
 ## Atualizacao operacional - 2026-10-02 GitHub App e Preview
@@ -231,6 +231,6 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] #250 OpenAI API WIF continua hardening externo; nao substituir o caminho operacional selecionado sem preflight verde.
 - [x] #426 encerrada: repositorio esta private e GitHub-hosted Actions voltaram a executar com CI verde, sem compra automatica nem reducao de isolamento.
 - [ ] #474 continua hardening administrativo da protecao de `main`; runtime permanece sem auto-merge.
-- [ ] Leaked Password Protection do Supabase continua hardening administrativo externo; RLS fail-closed sem policies publicas permanece intencional.
+- [ ] Leaked Password Protection do Supabase permanece hardening opcional condicionado a plano Pro+; no Free nao e blocker tecnico. RLS fail-closed sem policies publicas permanece intencional.
 - [ ] Benchmark de 63 perguntas do Agente SQL continua postergado.
 
