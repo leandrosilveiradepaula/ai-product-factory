@@ -113,8 +113,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
 
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
-        if evidence.stage in {"discovery","specification","planning"}:
-            self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
+        self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
         if evidence.stage=="planning":
             trace=build_requirement_trace(evidence.output)
             self._rpc("factory_record_requirement_trace",{
