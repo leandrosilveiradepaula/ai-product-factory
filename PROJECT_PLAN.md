@@ -76,7 +76,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Registrar projeto no control plane.
 - [x] Escolher proxima linha semantica de planned_filters: suporte generico offline a bindings multi-valor (`IN`) concluido no piloto, sem ativacao semantica.
 - [ ] Benchmark de 63 perguntas permanece postergado por decisao registrada no projeto.
-- [ ] Primeira tarefa funcional nova executada integralmente pela factory.
+- [x] Primeira tarefa funcional nova executada integralmente pela factory (#430 dogfood real ponta a ponta, com Direct, CI, specialist lanes, Preview N/A durável, awaiting_release, merge humano e release observer).
 
 ### F6 - Greenfield Test
 - [x] Validar lifecycle greenfield offline sem chamadas externas.
@@ -233,4 +233,9 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] #474 continua hardening administrativo da protecao de `main`; runtime permanece sem auto-merge.
 - [ ] Leaked Password Protection do Supabase permanece hardening opcional condicionado a plano Pro+; no Free nao e blocker tecnico. RLS fail-closed sem policies publicas permanece intencional.
 - [ ] Benchmark de 63 perguntas do Agente SQL continua postergado.
-
+## Atualizacao operacional - 2026-10-04 protecao da main
+- [x] #474 concluida: ruleset `Protect main - human release` ativo para a default branch, sem bypass, com PR obrigatorio, bloqueio de deletion/force-push e checks `test` + `factory-acceptance`.
+- [x] Gate humano de producao reforcado no proprio GitHub sem reintroduzir auto-merge no runtime.
+- [ ] #240 permanece externo: aguarda enablement/valores oficiais de Codex WIF para o workspace Infodive.
+- [ ] #250 permanece hardening externo: aguarda correcao administrativa do mapping OpenAI API WIF.
+- [ ] Supabase Leaked Password Protection permanece hardening opcional condicionado a plano pago e nao bloqueia o encerramento tecnico no Free.

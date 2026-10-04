@@ -1,3 +1,9 @@
+## Reconciliation 2026-10-04 - main ruleset
+- GitHub main protection #474 is complete. Repository ruleset `Protect main - human release` is active on the default branch with no bypass actors, pull-request-only updates, deletion/non-fast-forward protection, and required GitHub Actions checks `test` and `factory-acceptance`.
+- `strict_required_status_checks_policy=false` is intentional to avoid unnecessary merge-queue churn while still binding required checks to the exact PR head.
+- The Factory runtime/GitHub adapter still has no merge capability. Production merge remains a human action; docs/non-production merges may still be performed by the orchestrator only after applicable gates are green.
+- Remaining external/authentication blockers are #240 (Codex workspace WIF enablement/real federation values) and #250 (OpenAI API WIF mapping hardening). Supabase Leaked Password Protection is paid-plan hardening, not a technical blocker on Free.
+
 ## Reconciliation 2026-10-04
 - Factory `main` is `c1e003ad8a6f7cf0192c6ec65e95d31ec9c651fe` after the human merge of PR #633. The production Vercel deployment for this merge is being observed separately; do not infer release success from the merge alone.
 - The recent Console continuation flow is now complete through private evidence handling: PR #627 added attachments to ongoing-project requests; PR #629 surfaced the latest request context; PR #631 added authenticated server-side download without exposing Storage paths; PR #633 added bounded durable request history backed by `project.continuation.requested` audit events.
