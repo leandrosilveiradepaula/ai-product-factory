@@ -16,7 +16,7 @@ class ProductStagePrompts:
     specification: str = "Create an implementable product specification. Return JSON only with scope, user_flows, requirements, non_functional_requirements, acceptance_criteria, exclusions, assumptions."
     reconciliation: str = "Reconcile the existing project from the durable state snapshot and approved intake. Return JSON only with observed_stage, summary, evidence, gaps, constraints, source_status. Preserve confirmed work and do not claim repository checks that are absent from the supplied evidence."
     gap_analysis: str = "Compare the reconciled existing-project state with the continuation brief and constraints. Return JSON only with completed, gaps, risks, decisions_needed, recommended_next_work. Do not invent missing evidence or business decisions."
-    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a gate, never a task. If a genuine business/governance decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. task_key values must be unique. depends_on may contain only task_key values from other tasks in this same output; never put decisions, gates, approvals, credentials, or external conditions in depends_on. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
+    planning: str = "Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a later gate, never a planning decision or task. If a genuine current human decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Each decisions_needed item must be an object with decision_key, decision_kind, question, and why_needed. decision_kind must be one of product_requirement, scope_authorization, business_priority. Never ask a human to confirm repository facts, CI/readiness state, credentials/capabilities, already-closed work, or future production/release approval in decisions_needed; resolve supplied evidence autonomously or report a technical blocker outside decisions_needed. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role. task_key values must be unique. depends_on may contain only task_key values from other tasks in this same output; never put decisions, gates, approvals, credentials, or external conditions in depends_on. Every task must be ownable by one write-capable builder profile. Do not assume a fixed number of agents."
 
 
 def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,...]) -> None:
@@ -51,6 +51,24 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
     decisions=output.get("decisions_needed") or []
     if not isinstance(decisions,list):
         raise ValueError("decisions_needed must be an array")
+    allowed_decision_kinds={"product_requirement","scope_authorization","business_priority"}
+    seen_decision_keys=set()
+    for decision in decisions:
+        if not isinstance(decision,dict):
+            raise ValueError("planning decisions must be JSON objects")
+        decision_key=str(decision.get("decision_key") or "").strip()
+        decision_kind=str(decision.get("decision_kind") or "").strip()
+        question=str(decision.get("question") or "").strip()
+        why_needed=str(decision.get("why_needed") or "").strip()
+        if not decision_key:
+            raise ValueError("planning decision requires decision_key")
+        if decision_key in seen_decision_keys:
+            raise ValueError(f"duplicate planning decision_key: {decision_key}")
+        seen_decision_keys.add(decision_key)
+        if decision_kind not in allowed_decision_kinds:
+            raise ValueError(f"unsupported planning decision_kind: {decision_kind or '<empty>'}")
+        if not question or not why_needed:
+            raise ValueError(f"planning decision requires question and why_needed: {decision_key}")
     known_task_keys=set(task_keys)
     if not decisions:
         for task in tasks:
