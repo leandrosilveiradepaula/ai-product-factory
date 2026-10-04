@@ -48,7 +48,16 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
     if not isinstance(reviews,list):
         raise ValueError("specialist_reviews must be an array")
     allowed={"security","qa","operations"}
-    invalid=[str(x) for x in reviews if str(x) not in allowed]
+    invalid=[]
+    for review in reviews:
+        if isinstance(review,str):
+            role=review.strip()
+        elif isinstance(review,dict):
+            role=str(review.get("role") or "").strip()
+        else:
+            role=""
+        if role not in allowed:
+            invalid.append(role or str(review))
     if invalid:
         raise ValueError("unsupported specialist review role: "+", ".join(invalid))
 
