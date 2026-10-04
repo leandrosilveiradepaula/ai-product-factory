@@ -113,7 +113,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
 
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
-        self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output})
+        persisted=self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output}) or {}
         if evidence.stage=="planning":
             trace=build_requirement_trace(evidence.output)
             self._rpc("factory_record_requirement_trace",{
@@ -133,8 +133,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             })
 
             change_set_id=None
+            decision_gate_pending=bool(persisted.get("human_gate_id"))
             team_plan=evidence.output.get("_team_plan")
-            if isinstance(team_plan,dict):
+            if isinstance(team_plan,dict) and not decision_gate_pending:
                 recorded=self._rpc("factory_record_execution_team_plan",{"p_run_id":item.run_id,"p_plan":team_plan}) or {}
                 team_plan_id=recorded.get("id")
                 if team_plan_id and recorded.get("status")=="ready":

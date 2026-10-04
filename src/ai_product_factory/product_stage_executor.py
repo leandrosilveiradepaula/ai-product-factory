@@ -48,17 +48,21 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
         ]
         if not eligible:
             raise ValueError(f"planning task is not executable in a pre-PR builder lane: {task_key}")
+    decisions=output.get("decisions_needed") or []
+    if not isinstance(decisions,list):
+        raise ValueError("decisions_needed must be an array")
     known_task_keys=set(task_keys)
-    for task in tasks:
-        task_key=str(task.get("task_key") or "").strip()
-        dependencies=task.get("depends_on") or []
-        if not isinstance(dependencies,list):
-            raise ValueError(f"planning task depends_on must be an array: {task_key}")
-        unknown=[str(dep).strip() for dep in dependencies if str(dep).strip() not in known_task_keys]
-        if unknown:
-            raise ValueError(
-                f"planning task has unresolved dependency: {task_key} -> {', '.join(unknown)}"
-            )
+    if not decisions:
+        for task in tasks:
+            task_key=str(task.get("task_key") or "").strip()
+            dependencies=task.get("depends_on") or []
+            if not isinstance(dependencies,list):
+                raise ValueError(f"planning task depends_on must be an array: {task_key}")
+            unknown=[str(dep).strip() for dep in dependencies if str(dep).strip() not in known_task_keys]
+            if unknown:
+                raise ValueError(
+                    f"planning task has unresolved dependency: {task_key} -> {', '.join(unknown)}"
+                )
     reviews=output.get("specialist_reviews")
     if reviews is None:
         return
