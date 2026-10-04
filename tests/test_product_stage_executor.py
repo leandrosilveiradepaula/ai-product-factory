@@ -233,7 +233,7 @@ class ProductStageExecutorTests(unittest.TestCase):
                     "depends_on":["gate_explicit_write_authorization"],
                     "preferred_agent_role":"development"
                 }],
-                "decisions_needed":[{"decision_key":"authorize_debug_write_scope"}]
+                "decisions_needed":[]
             }),provider_ref="ref-plan",usage={"input_tokens":10})
         p.execute=execute
         dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
