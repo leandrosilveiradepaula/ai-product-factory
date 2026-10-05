@@ -17,10 +17,22 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertNotIn("value.join(\", \")",text)
         self.assertIn("<GateReasons value={g.reasons}/>",text)
 
-    def test_planning_answer_uses_multiline_field_with_guidance(self):
+    def test_planning_answer_uses_one_guided_field_per_decision(self):
         text=PAGE.read_text()
-        self.assertIn('<textarea name="note" required rows={5}',text)
-        self.assertIn("Responde cada decisão acima",text)
+        self.assertIn('name={`decision_response_${index}`}',text)
+        self.assertIn('name={`decision_key_${index}`}',text)
+        self.assertIn("O que você precisa decidir",text)
+        self.assertIn("Por que isso é necessário",text)
+        self.assertIn("Sua resposta",text)
+        self.assertIn("Detalhes técnicos",text)
+        self.assertIn("Registrar respostas e continuar",text)
+
+    def test_server_action_composes_all_planning_answers(self):
+        text=PAGE.read_text()
+        self.assertIn('formData.get(`decision_key_${index}`)',text)
+        self.assertIn('formData.get(`decision_response_${index}`)',text)
+        self.assertIn('responses.push(`${index+1}. ${key}',text)
+        self.assertIn('responses.join("\\n\\n")',text)
 
     def test_only_live_awaiting_human_gate_is_actionable(self):
         control=CONTROL.read_text()
