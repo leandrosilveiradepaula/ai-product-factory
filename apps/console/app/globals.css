@@ -278,6 +278,31 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .gateMeta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .gateForm{padding:0 12px 12px}.gateForm input{border-radius:2px;background:#0a0e17}
 .gateActionBar{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.gateIntro{max-width:880px;font-size:12px;line-height:1.55;color:#aeb5c6}
+.decisionSummaryList{display:grid;gap:8px;margin-top:10px}
+.decisionSummaryItem{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;padding:12px;border:1px solid #2a3140;background:#111721}
+.decisionSummaryItem strong{display:block;font-size:13px;line-height:1.45;color:#eef2fb}
+.decisionNumber{width:26px;height:26px;display:grid;place-items:center;border:1px solid #4d8eff;background:#15223a;color:#adc6ff;font-family:var(--font-mono);font-size:10px;font-weight:800}
+.decisionKind{display:block;margin-bottom:5px;color:#8daefb;font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em}
+.planningDecisionHeader{display:grid;gap:4px;padding:12px 14px;border:1px solid #2c3952;background:#111827}
+.planningDecisionHeader strong{font-size:14px;color:#f2f5fb}
+.planningDecisionHeader span{font-size:11px;line-height:1.5;color:#9ca7b8}
+.planningDecisionList{display:grid;gap:12px}
+.planningDecisionItem{padding:14px;border:1px solid #30394a;background:#0d121b}
+.planningDecisionTop{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;align-items:start}
+.planningDecisionTop h4{margin:0;color:#f3f5fb;font-size:14px;line-height:1.45;font-weight:700}
+.planningDecisionWhy{margin:12px 0 0 40px;padding:10px 12px;border-left:2px solid #3a4660;background:#111722}
+.planningDecisionWhy span{display:block;margin-bottom:4px;color:#7f8da4;font-size:9px;text-transform:uppercase;letter-spacing:.07em}
+.planningDecisionWhy p{margin:0;color:#aeb6c5;font-size:11px;line-height:1.5}
+.planningDecisionAnswer{margin:14px 0 0 40px;display:grid!important;gap:6px!important}
+.planningDecisionAnswer>span{color:#f0f3fa;font-size:11px;font-weight:750}
+.planningDecisionAnswer small{color:#8994a6;font-size:10px;font-weight:500;line-height:1.4}
+.gateForm textarea,.planningDecisionAnswer textarea{width:100%;min-height:96px;resize:vertical;background:#090e16;border:1px solid #38445a;border-radius:2px;padding:11px 12px;color:#eef2f8;outline:none;line-height:1.5}
+.gateForm textarea:focus,.planningDecisionAnswer textarea:focus{border-color:#6ca2ff;box-shadow:0 0 0 2px rgba(108,162,255,.12)}
+.planningDecisionTechnical{margin:10px 0 0 40px;color:#6f7a8b;font-size:9px}
+.planningDecisionTechnical summary{cursor:pointer;color:#7d8797}
+.planningDecisionTechnical div{margin-top:4px}
+
 .runStageRail{display:grid;grid-template-columns:repeat(10,minmax(70px,1fr));gap:0;margin:0 0 10px;padding:13px 10px;background:#181b25;border:1px solid #202530;overflow-x:auto}
 .runStage{position:relative;display:grid;justify-items:center;gap:4px;min-width:72px;color:#777e90;font-size:8px;text-align:center}
 .runStage:before{content:"";position:absolute;top:11px;left:-50%;right:50%;height:1px;background:#31353f}.runStage:first-child:before{display:none}
