@@ -82,7 +82,7 @@ export async function getDashboard():Promise<Dashboard>{
  };
 }
 export type RunSummary={id:string;taskId:string;status:string;route:string|null;candidateCommit:string|null;createdAt:string;taskTitle:string;attemptCount:number;leaseOwner:string|null;leaseExpiresAt:string|null;lastError:string|null};
-export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null;actionUrl:string|null;actionLabel:string|null;repository:string|null;prNumber:number|null;canMergeInConsole:boolean;mergeBlocker:string|null;requestedAction:string|null;migrationName:string|null;migrationFile:string|null;canApplyMigration:boolean;migrationBlocker:string|null};
+export type GateSummary={id:string;runId:string;type:string;status:string;reasons:unknown;requestedAt:string;taskTitle:string|null;projectKey:string|null;projectName:string|null;source:"human_gate"|"release_report";candidateCommit:string|null;actionUrl:string|null;actionLabel:string|null;repository:string|null;prNumber:number|null;canMergeInConsole:boolean;mergeBlocker:string|null;requestedAction:string|null;migrationName:string|null;migrationFile:string|null;canApplyMigration:boolean;migrationBlocker:string|null;actionable:boolean;staleReason:string|null;runStatus:string|null;taskStatus:string|null};
 
 function serverHeaders(){return getSupabaseServerConfig();}
 
@@ -135,16 +135,16 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
    }
   }
  }
- const runMap=new Map<string,{taskId:string;metadata:Record<string,unknown>;candidateCommit:string|null}>();const taskMap=new Map<string,{title:string;projectId:string}>();const projectMap=new Map<string,{key:string;name:string;repository:string|null}>();
+ const runMap=new Map<string,{taskId:string;metadata:Record<string,unknown>;candidateCommit:string|null;status:string}>();const taskMap=new Map<string,{title:string;projectId:string;status:string}>();const projectMap=new Map<string,{key:string;name:string;repository:string|null}>();
  if(runIds.length){
-  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,candidate_commit,metadata&id=in.(${runIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,candidate_commit,metadata&id=in.(${runIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
   if(runsResponse.ok){
-   const runs=await runsResponse.json();runs.forEach((x:any)=>runMap.set(String(x.id),{taskId:String(x.task_id||""),metadata:x.metadata&&typeof x.metadata==="object"?x.metadata:{},candidateCommit:x.candidate_commit?String(x.candidate_commit):null}));
+   const runs=await runsResponse.json();runs.forEach((x:any)=>runMap.set(String(x.id),{taskId:String(x.task_id||""),metadata:x.metadata&&typeof x.metadata==="object"?x.metadata:{},candidateCommit:x.candidate_commit?String(x.candidate_commit):null,status:String(x.status||"")}));
    const taskIds=[...new Set(runs.map((x:any)=>String(x.task_id||"")).filter(Boolean))];
    if(taskIds.length){
-    const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,project_id&id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+    const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,project_id&id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
     if(tasksResponse.ok){
-     const tasks=await tasksResponse.json();tasks.forEach((x:any)=>taskMap.set(String(x.id),{title:String(x.title),projectId:String(x.project_id||"")}));
+     const tasks=await tasksResponse.json();tasks.forEach((x:any)=>taskMap.set(String(x.id),{title:String(x.title),projectId:String(x.project_id||""),status:String(x.status||"")}));
      const projectIds=[...new Set(tasks.map((x:any)=>String(x.project_id||"")).filter(Boolean))];
      if(projectIds.length){
       const projectsResponse=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name,repository&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
@@ -164,7 +164,8 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
    else readiness=await getReleaseMergeReadinessForPr(repository,prNumber);
   }
   const migrationReadiness=source==="human_gate"&&requestedAction==="apply_control_plane_migration"&&operator.role==="admin"?getMigrationApplyReadiness(project?.key||null,repository):{enabled:false,reason:source==="human_gate"&&requestedAction==="apply_control_plane_migration"?"Somente administradores podem aplicar migrations de produção pelo Console.":null};
-  mapped.push({id:String(x.id),runId,type:String(x.gate_type),status:String(x.status),reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source,candidateCommit:candidate,actionUrl,actionLabel,repository,prNumber,canMergeInConsole:readiness.enabled&&Boolean(prNumber),mergeBlocker:prNumber?readiness.reason:"Evidência durável do PR não encontrada.",requestedAction,migrationName,migrationFile,canApplyMigration:migrationReadiness.enabled&&Boolean(candidate&&migrationName&&migrationFile&&prNumber),migrationBlocker:requestedAction==="apply_control_plane_migration"?(candidate&&migrationName&&migrationFile&&prNumber?migrationReadiness.reason:"Evidência durável da migration está incompleta."):null});
+  const gateStatus=String(x.status);const runStatus=run?.status||null;const taskStatus=task?.status||null;const actionable=source==="release_report"?gateStatus==="pending":gateStatus==="pending"&&runStatus==="awaiting_human"&&taskStatus==="awaiting_human";const staleReason=gateStatus==="pending"&&!actionable?(source==="human_gate"?`Gate preservado apenas como histórico: execução ${runStatus||"indisponível"} e tarefa ${taskStatus||"indisponível"}.`:"Gate de release não está mais acionável."):null;
+  mapped.push({id:String(x.id),runId,type:String(x.gate_type),status:gateStatus,reasons:x.reasons,requestedAt:String(x.requested_at),taskTitle:task?.title||null,projectKey:project?.key||null,projectName:project?.name||null,source,candidateCommit:candidate,actionUrl,actionLabel,repository,prNumber,canMergeInConsole:actionable&&readiness.enabled&&Boolean(prNumber),mergeBlocker:prNumber?readiness.reason:"Evidência durável do PR não encontrada.",requestedAction,migrationName,migrationFile,canApplyMigration:actionable&&migrationReadiness.enabled&&Boolean(candidate&&migrationName&&migrationFile&&prNumber),migrationBlocker:requestedAction==="apply_control_plane_migration"?(candidate&&migrationName&&migrationFile&&prNumber?migrationReadiness.reason:"Evidência durável da migration está incompleta."):null,actionable,staleReason,runStatus,taskStatus});
  }
  return mapped;
 }
