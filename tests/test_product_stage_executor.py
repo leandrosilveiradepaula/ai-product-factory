@@ -258,7 +258,8 @@ class ProductStageExecutorTests(unittest.TestCase):
                     "decision_key":"approve_debug_contract",
                     "decision_kind":"product_requirement",
                     "question":"Which diagnostic metadata may remain visible?",
-                    "why_needed":"The allowed diagnostic contract is a product decision."
+                    "why_needed":"The allowed diagnostic contract is a product decision.",
+                     "suggested_response":"Manter apenas metadados diagnósticos mínimos e sem dados brutos."
                 }]
             }),provider_ref="ref-plan",usage={"input_tokens":10})
         p.execute=execute
@@ -280,7 +281,7 @@ class ProductStageExecutorTests(unittest.TestCase):
                      "question":"Which first?","why_needed":"priority",
                      "candidate_work_keys":["closed-issue-10","debug-remediation"]},
                     {"decision_key":"debug_contract","decision_kind":"product_requirement",
-                     "question":"What metadata?","why_needed":"contract"}
+                     "question":"What metadata?","why_needed":"contract","suggested_response":"Keep only minimal diagnostic metadata."}
                 ]
             }),provider_ref="ref-priority",usage={"input_tokens":1})
         p.execute=execute
@@ -386,7 +387,8 @@ class ProductStageExecutorTests(unittest.TestCase):
                     "decision_key":"authorize_debug_write_scope",
                     "decision_kind":"scope_authorization",
                     "question":"May the current task authorize writes to /debug?",
-                    "why_needed":"The repository task scope must be expanded before implementation."
+                    "why_needed":"The repository task scope must be expanded before implementation.",
+                     "suggested_response":"Autorizar somente as alterações necessárias à correção e aos testes."
                 }]
             }),provider_ref="ref-plan",usage={"input_tokens":10})
         p.execute=execute
@@ -395,6 +397,7 @@ class ProductStageExecutorTests(unittest.TestCase):
         out=h.execute(item(),"planning")
         self.assertEqual(out["decisions_needed"][0]["decision_kind"],"scope_authorization")
         self.assertIn("Brazilian Portuguese (pt-BR)",p.requests[0].objective)
+        self.assertIn("suggested_response",p.requests[0].objective)
 
     def test_planning_accepts_dependency_on_existing_task_key(self):
         p=Provider()

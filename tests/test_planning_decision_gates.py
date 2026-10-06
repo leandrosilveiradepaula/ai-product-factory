@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 MIGRATION=ROOT/"supabase"/"migrations"/"20261004185900_materialize_planning_decisions.sql"
 GATES_PAGE=ROOT/"apps"/"console"/"app"/"gates"/"page.tsx"
+ANSWER=ROOT/"apps"/"console"/"app"/"gates"/"planning-decision-answer.tsx"
 
 
 class PlanningDecisionGateMigrationTests(unittest.TestCase):
@@ -35,9 +36,13 @@ class PlanningDecisionGateMigrationTests(unittest.TestCase):
         text=GATES_PAGE.read_text()
         self.assertIn('gateType==="planning_decision"&&resolution==="approved"&&!note',text)
         self.assertIn('name={`decision_response_${index}`}',text)
-        self.assertIn('required rows={4}',text)
         self.assertIn('if(!key||!response)throw new Error',text)
         self.assertIn("Registrar respostas e continuar",text)
+        answer=ANSWER.read_text()
+        self.assertIn("required",answer)
+        self.assertIn("rows={4}",answer)
+        self.assertIn("Sugestão da Factory",answer)
+        self.assertIn("Usar sugestão",answer)
 
 
 if __name__=="__main__":
