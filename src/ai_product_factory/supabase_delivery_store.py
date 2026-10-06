@@ -27,6 +27,14 @@ class SupabaseDeliveryStore:
   }) or {}
  def record_tool_usage(self,*,run_id:str,tool_family:str,operation:str|None=None,usage_units:float|None=None,estimated_cost:float|None=None,metadata:dict|None=None):
   return self._rpc("factory_record_delivery_tool_usage",{"p_run_id":run_id,"p_tool_family":tool_family,"p_operation":operation,"p_usage_units":usage_units,"p_estimated_cost":estimated_cost,"p_metadata":metadata or {}})
+ def record_resource_limit_signal(self,*,provider:str,resource_key:str,metric_key:str,quality:str,source:str,unit:str="count",window_key:str|None=None,metadata:dict|None=None):
+  if quality not in {"provider_blocked","unknown"}:raise ValueError("resource limit signal quality must be provider_blocked or unknown")
+  return self._rpc("factory_record_resource_limit",{
+   "p_provider":provider,"p_resource_key":resource_key,"p_metric_key":metric_key,
+   "p_used_value":None,"p_limit_value":None,"p_unit":unit,"p_window_key":window_key,
+   "p_window_started_at":None,"p_resets_at":None,"p_quality":quality,
+   "p_source":source,"p_metadata":metadata or {},
+  })
  def _patch(self,table:str,query:str,payload:dict):
   req=urllib.request.Request(f"{self.url}/rest/v1/{table}?{query}",data=json.dumps(payload).encode(),method="PATCH",headers={**self.headers,"Content-Type":"application/json","Prefer":"return=representation"})
   try:

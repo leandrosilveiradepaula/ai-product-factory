@@ -15,6 +15,20 @@ class Tests(unittest.TestCase):
   with patch("urllib.request.urlopen",return_value=Response(9)) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_tool_usage(run_id="r",tool_family="github",operation="commit",estimated_cost=0)
   self.assertEqual(out,9);self.assertTrue(call.call_args.args[0].full_url.endswith("/rpc/factory_record_delivery_tool_usage"))
+ def test_resource_limit_signal_uses_existing_rpc_without_inventing_percent(self):
+  with patch("urllib.request.urlopen",return_value=Response("snapshot-id")) as call:
+   out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_resource_limit_signal(
+    provider="vercel",resource_key="team",metric_key="deployments_daily",
+    quality="provider_blocked",source="preview-runtime-signal",unit="deployments",
+    window_key="rolling_24h",metadata={"candidate_commit":"abc"},
+   )
+  self.assertEqual(out,"snapshot-id")
+  req=call.call_args.args[0]
+  self.assertTrue(req.full_url.endswith("/rpc/factory_record_resource_limit"))
+  payload=json.loads(req.data.decode())
+  self.assertIsNone(payload["p_used_value"]);self.assertIsNone(payload["p_limit_value"])
+  self.assertEqual(payload["p_quality"],"provider_blocked")
+  self.assertEqual(payload["p_metadata"],{"candidate_commit":"abc"})
  def test_console_release_finalization_uses_bounded_rpc(self):
   with patch("urllib.request.urlopen",return_value=Response({"run_id":"r","task_id":"t","status":"merged","merge_sha":"m","idempotent":False})) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").finalize_console_human_release("r",candidate_commit="abc",merge_sha="m")
