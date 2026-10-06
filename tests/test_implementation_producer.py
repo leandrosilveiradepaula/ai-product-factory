@@ -44,4 +44,22 @@ class Tests(unittest.TestCase):
   self.assertEqual(artifact.files,{})
   self.assertIn("CURRENT_TASK",artifact.blocked_reason)
 
+ def test_blocked_output_does_not_require_unused_commit_or_pr_text(self):
+  data={"plan_markdown":"blocked by governance","files":[],"commit_message":"","pr_title":"","pr_body":"","blocked_reason":"Applicable governance still blocks this task"}
+  artifact=ModelImplementationProducer(ModelExecutor(primary=Provider(json.dumps(data)))).produce(item())
+  self.assertEqual(artifact.files,{})
+  self.assertEqual(artifact.commit_message,"")
+  self.assertIn("blocks",artifact.blocked_reason)
+
+ def test_prompt_reconciles_newer_durable_human_decisions_without_widening_safety(self):
+  class CapturingProvider:
+   def __init__(self):self.request=None
+   def execute(self,request):
+    self.request=request
+    return ModelResult(ModelRole.PRIMARY,json.dumps({"plan_markdown":"blocked","files":[],"commit_message":"","pr_title":"","pr_body":"","blocked_reason":"still blocked"}),provider_ref="x")
+  p=CapturingProvider();ModelImplementationProducer(ModelExecutor(primary=p)).produce(item())
+  self.assertIn("durable human_decisions",p.request.objective)
+  self.assertIn("never broadens repository.write_scopes",p.request.objective)
+  self.assertIn("AGENTS.md remains authoritative",p.request.objective)
+
 if __name__=="__main__":unittest.main()

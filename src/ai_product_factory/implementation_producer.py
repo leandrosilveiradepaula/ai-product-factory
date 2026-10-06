@@ -10,9 +10,12 @@ class ModelImplementationProducer:
  def produce(self,item:DirectExecutionItem)->ImplementationArtifact:
   objective=("Implement the task as a minimal repository patch. Return JSON only with "
              "plan_markdown, files (array of objects with path and full content), commit_message, "
-             "pr_title, pr_body, blocked_reason. Repository governance files in repository_snapshot "
-             "are authoritative. If they do not authorize this exact task, return files=[] and a "
-             "concise blocked_reason; otherwise blocked_reason must be empty and files must be non-empty.")
+             "pr_title, pr_body, blocked_reason. AGENTS.md remains authoritative. Reconcile task-specific "
+             "repository governance with durable human_decisions from the context packet: a newer explicit "
+             "human decision may authorize or clarify the current task when an older CURRENT_TASK is stale, "
+             "but it never broadens repository.write_scopes or overrides security, sandbox, data-loss, cost, "
+             "or production constraints. If the applicable context still does not authorize the task, return "
+             "files=[] and a concise blocked_reason; otherwise blocked_reason must be empty and files non-empty.")
   packet=getattr(item,"context_packet",None)
   if getattr(item,"change_set_id",None) and not isinstance(packet,dict):
    raise RuntimeError("Change Set implementation requires a durable context packet")
@@ -38,7 +41,7 @@ class ModelImplementationProducer:
    "required":["plan_markdown","files","commit_message","pr_title","pr_body","blocked_reason"],
    "additionalProperties":False,
   }
-  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Treat AGENTS.md and task-governance files in repository_snapshot as authoritative.","Do not invent authorization that repository governance does not grant."),output_schema=schema)
+  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Treat AGENTS.md as authoritative and reconcile task-governance files with durable human_decisions without widening write scopes or safety boundaries.","Do not invent authorization that repository governance or durable human decisions do not grant."),output_schema=schema)
   result=self.executor.execute(ExecutionRoute.DIRECT,request)
   try:data=json.loads(result.output)
   except json.JSONDecodeError as exc:raise ValueError("implementation producer returned invalid JSON") from exc
@@ -56,6 +59,10 @@ class ModelImplementationProducer:
     raise ValueError("implementation files require path and content")
    if path in files:raise ValueError("implementation output contains duplicate file path")
    files[path]=content
-  required=("plan_markdown","commit_message","pr_title","pr_body")
-  if any(not isinstance(data.get(k),str) or not data[k].strip() for k in required):raise ValueError("implementation output is missing required text fields")
+  if not isinstance(data.get("plan_markdown"),str) or not data["plan_markdown"].strip():
+   raise ValueError("implementation output is missing required text fields")
+  if not blocked_reason:
+   required=("commit_message","pr_title","pr_body")
+   if any(not isinstance(data.get(k),str) or not data[k].strip() for k in required):
+    raise ValueError("implementation output is missing required text fields")
   return ImplementationArtifact(data["plan_markdown"],files,data["commit_message"],data["pr_title"],data["pr_body"],blocked_reason or None)

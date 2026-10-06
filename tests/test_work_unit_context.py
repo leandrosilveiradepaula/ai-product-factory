@@ -33,7 +33,21 @@ class WorkUnitContextTests(unittest.TestCase):
         self.assertEqual(len(packet.sha256),64)
         self.assertEqual(packet.payload["repository"]["write_scopes"],["src/api/**"])
         self.assertFalse(packet.payload["sandbox"]["secrets_in_context"])
+        self.assertEqual(packet.payload["human_decisions"],[])
         self.assertNotIn("project_history",packet.payload)
+
+    def test_context_packet_carries_durable_human_decisions(self):
+        source=self.source()
+        source["human_decisions"]=[{
+            "gate_id":"gate-1",
+            "response":"Authorize only minimal /debug changes.",
+            "resolved_by":"operator@example.com",
+        }]
+        packet=build_context_packet(
+            source=source,impact={},base_commit="a"*40,branch="factory/cs/api",
+        )
+        self.assertEqual(packet.payload["human_decisions"][0]["gate_id"],"gate-1")
+        self.assertIn("minimal /debug",packet.payload["human_decisions"][0]["response"])
 
     def test_secret_like_context_is_rejected(self):
         source=self.source()
