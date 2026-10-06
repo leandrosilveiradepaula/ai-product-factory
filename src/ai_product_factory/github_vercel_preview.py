@@ -101,10 +101,19 @@ class GitHubVercelPreviewAdapter:
         rows=json.loads(raw) if raw else []
         return [row for row in rows if "vercel" in str((row.get("user") or {}).get("login") or "").lower()]
 
+    @staticmethod
+    def _quota_signal(*values:Any)->bool:
+        text="\n".join(str(value or "") for value in values).lower()
+        return any(marker in text for marker in (
+            "api-deployments-free-per-day",
+            "build-rate-limit",
+            "deployment rate limited",
+            "deployment rate limit",
+        ))
+
     def _quota_blocked(self,comments:list[dict[str,Any]]|None=None)->bool:
         for row in comments if comments is not None else self._vercel_comments():
-            body=str(row.get("body") or "").lower()
-            if "api-deployments-free-per-day" in body:
+            if self._quota_signal(row.get("body")):
                 return True
         return False
 
@@ -130,6 +139,12 @@ class GitHubVercelPreviewAdapter:
             for row in checks:
                 if str(row.get("status") or "").lower()!="completed":
                     continue
+                output=row.get("output") or {}
+                if self._quota_signal(
+                    row.get("details_url"),row.get("target_url"),
+                    output.get("title"),output.get("summary"),output.get("text"),
+                ):
+                    return DeploymentResult(self.name,request_.environment,"blocked_quota",str(row.get("id") or "vercel-check"),None)
                 preview_url=self._preview_url(row)
                 conclusion=str(row.get("conclusion") or "").lower()
                 if conclusion in {"success","neutral"} and preview_url:
@@ -141,6 +156,8 @@ class GitHubVercelPreviewAdapter:
             statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
             preview_url=self._comment_preview_url(comments)
             for row in statuses:
+                if self._quota_signal(row.get("description"),row.get("target_url")):
+                    return DeploymentResult(self.name,request_.environment,"blocked_quota",f"vercel-status-{row.get('id') or 'unknown'}",None)
                 state=str(row.get("state") or "").lower()
                 if state=="success" and preview_url:
                     return DeploymentResult(self.name,request_.environment,"success",f"vercel-status-{row.get('id') or 'unknown'}",preview_url)

@@ -4,6 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
+from ai_product_factory.deployment import DeploymentResult
+from ai_product_factory.preview_flow import PreviewDeferred
+from ai_product_factory.release_policy import ReleaseEnvironment
 from ai_product_factory.runtime_auth import AuthKind
 from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once, run_recovery_once, run_change_set_integration_once
 
@@ -520,6 +523,31 @@ class RuntimeCliTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"browser/e2e"):
                 run_preview_once()
         store.fail_preview.assert_called_once_with("r",candidate_commit="abc",reason="preview requires successful browser/e2e evidence")
+
+    def test_preview_quota_block_returns_cleanly_without_browser_or_release(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc",risk={})
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("web/page.tsx",)
+        store=MagicMock()
+        blocked=DeploymentResult("vercel-github",ReleaseEnvironment.PREVIEW,"blocked_quota","vercel-status-88",None)
+        coordinator=MagicMock();coordinator.execute.side_effect=PreviewDeferred(blocked)
+        env={"FACTORY_VERCEL_PREVIEW_ENABLED":"true","GITHUB_TOKEN":"gh","FACTORY_BROWSER_EVIDENCE_ENABLED":"true","FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["verify"]'}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.GitHubVercelPreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.DurablePreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeploymentEvidenceStore"), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceConfig.from_env",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator):
+            out=run_preview_once()
+        self.assertEqual(out["status"],"blocked_quota")
+        self.assertEqual(out["retry_after_hours"],24)
+        store.record_audit_event.assert_called_once()
+        store.fail_preview.assert_not_called()
 
     def test_github_integrated_preview_needs_no_vercel_token(self):
         item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc")

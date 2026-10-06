@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from datetime import datetime,timedelta,timezone
 
 from .supabase_server import resolve_supabase_server_config
 
@@ -112,6 +113,19 @@ class SupabaseScheduleProbe:
             "&status=in.(unverified,stale)&limit=1"
         ))
 
+        preview_runs=[run for run in runs if str(run.get("status"))=="preview_ready"]
+        blocked_preview_runs=set()
+        if preview_runs:
+            cutoff=(datetime.now(timezone.utc)-timedelta(hours=24)).isoformat().replace("+00:00","Z")
+            blocked_preview_runs={
+                str(row.get("run_id") or "")
+                for row in self._get_optional(
+                    "factory_deployments?select=run_id"
+                    "&environment=eq.preview&status=eq.blocked_quota"
+                    f"&created_at=gte.{cutoff}&limit=200"
+                )
+            }
+
         out = {
             "github_access_work": github_access_work,
             "product_work": product_work,
@@ -123,7 +137,7 @@ class SupabaseScheduleProbe:
             "specialist_security_work": "security" in specialist_roles,
             "specialist_qa_work": "qa" in specialist_roles,
             "specialist_operations_work": "operations" in specialist_roles,
-            "preview_work": any(str(run.get("status")) == "preview_ready" for run in runs),
+            "preview_work": any(str(run.get("id") or "") not in blocked_preview_runs for run in preview_runs),
             "release_work": any(str(run.get("status")) == "awaiting_release" for run in runs),
             "codex_manual_work": codex_manual_work,
         }
