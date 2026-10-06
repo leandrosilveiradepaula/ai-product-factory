@@ -60,10 +60,12 @@ class ChangeSetBuilderWorker:
         for token in tokens:
             if token in lower:
                 score+=3 if f"/{token}/" in f"/{lower}/" else 1
+        if score<=0:
+            return 0
         if lower.endswith((".ts",".tsx",".js",".jsx",".py")):
             score+=1
         if lower.startswith(("docs/","documentation/")):
-            score-=1
+            score=max(1,score-1)
         return score
 
     def _resolved_repository_context(self,*,source:dict,base_commit:str)->tuple[dict,tuple[str,...]]:
