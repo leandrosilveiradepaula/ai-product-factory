@@ -41,7 +41,8 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertIn("actionable:boolean",control)
         page=PAGE.read_text()
         self.assertIn('g.status==="pending"&&g.actionable',page)
-        self.assertIn('label={g.status==="pending"&&!g.actionable?"histórico":undefined}',page)
+        self.assertIn('history.map(g=><article className="gateHistoryItem"',page)
+        self.assertIn('label={g.status==="pending"?"substituído":undefined}',page)
 
     def test_stale_pending_gates_do_not_count_as_pending(self):
         text=PAGE.read_text()
