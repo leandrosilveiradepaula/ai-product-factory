@@ -20,7 +20,7 @@ class ChangeSetTests(unittest.TestCase):
             "project_key":"demo","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
             "plan_task_key":"a","agent_key":"development","wave":1,
             "task":{"title":"A","description":"desc","acceptance_criteria":[]},
-            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
+            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src/a.py"],"context_paths":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
             "repair":{},"constraints":[],
         }
         producer=MagicMock()
@@ -68,7 +68,7 @@ class ChangeSetTests(unittest.TestCase):
             "project_key":"demo","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
             "plan_task_key":"a","agent_key":"development","wave":1,
             "task":{"title":"A","description":"desc","acceptance_criteria":[]},
-            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
+            "assignment":{"task_key":"a","agent_key":"development","scope_keys":["src/a.py"],"context_paths":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
             "repair":{},"constraints":[],
         }
         producer=MagicMock()
@@ -124,6 +124,89 @@ class ChangeSetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=MagicMock()).execute(item)
         producer.produce.assert_not_called()
+
+
+    def test_builder_discovers_semantic_debug_scope_and_governance_before_model(self):
+        github=MagicMock()
+        github.get_branch_sha.return_value="main"
+        github.list_file_paths.return_value=(
+            "AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx","src/services/DealService.ts"
+        )
+        github.get_file_text.side_effect=lambda path,ref: {
+            "AGENTS.md":"Read CURRENT_TASK before edits",
+            "docs/codex/CURRENT_TASK.md":"Allowed scope: src/app/debug/page.tsx",
+            "src/app/debug/page.tsx":"export default function Debug(){}",
+        }[path]
+        github.commit_files.return_value="out"
+        store=MagicMock()
+        store.frozen_source_commit.return_value="base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"crm","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
+            "plan_task_key":"debug-route-remediation","agent_key":"development","wave":1,
+            "task":{"title":"debug-route-remediation","description":"","acceptance_criteria":["Corrigir /debug sem dados brutos"]},
+            "assignment":{"task_key":"debug-route-remediation","agent_key":"development","scope_keys":["debug_application"],"required_capabilities":["implementation","debug"],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
+        captured={}
+        class Producer:
+            def produce(self,item):
+                captured["packet"]=item.context_packet
+                return ImplementationArtifact("plan",{"src/app/debug/page.tsx":"safe"},"fix: debug","t","b")
+        item=DirectExecutionItem("run","task","crm","owner/repo",None,"debug-route-remediation","","factory/cs/debug",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{"confidence":"high","impacted_nodes":[],"unknowns":[]})
+        ChangeSetBuilderWorker(github=github,store=store,producer=Producer(),impact_engine=impact,provenance=MagicMock()).execute(item)
+        packet=captured["packet"]
+        self.assertEqual(packet["repository"]["write_scopes"],["src/app/debug/page.tsx"])
+        self.assertEqual(
+            set(packet["repository_snapshot"]),
+            {"AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx"},
+        )
+
+    def test_builder_fails_before_model_when_context_cannot_be_discovered(self):
+        github=MagicMock()
+        github.get_branch_sha.return_value="main"
+        github.list_file_paths.return_value=("README.md","src/core.ts")
+        store=MagicMock()
+        store.frozen_source_commit.return_value="base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"demo","repository":"owner/repo","plan_task_key":"unknown-remediation","agent_key":"development","wave":1,
+            "task":{"title":"unknown-remediation","description":"","acceptance_criteria":[]},
+            "assignment":{"scope_keys":["totally_unrelated_scope"],"required_capabilities":["implementation"],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
+        producer=MagicMock()
+        item=DirectExecutionItem("run","task","demo","owner/repo",None,"unknown-remediation","","factory/cs/x",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{})
+        with self.assertRaisesRegex(RuntimeError,"no relevant files"):
+            ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=MagicMock()).execute(item)
+        producer.produce.assert_not_called()
+
+    def test_builder_persists_governance_blocker(self):
+        github=MagicMock()
+        github.get_branch_sha.return_value="main"
+        github.list_file_paths.return_value=("AGENTS.md","src/a.py")
+        github.get_file_text.side_effect=lambda path,ref:"governance" if path=="AGENTS.md" else "value=0"
+        store=MagicMock()
+        store.frozen_source_commit.return_value="base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"demo","repository":"owner/repo","plan_task_key":"a","agent_key":"development","wave":1,
+            "task":{"title":"A","description":"","acceptance_criteria":[]},
+            "assignment":{"scope_keys":["src/a.py"],"context_paths":["src/a.py"],"required_capabilities":["implementation"],"depends_on":[]},
+            "repair":{},"constraints":[],
+        }
+        producer=MagicMock()
+        producer.produce.return_value=ImplementationArtifact("blocked",{},"chore: blocked","Blocked","No changes","CURRENT_TASK forbids this change")
+        item=DirectExecutionItem("run","task","demo","owner/repo",None,"A","","factory/cs/a",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{})
+        from ai_product_factory.execution_worker import ImplementationBlocked
+        with self.assertRaisesRegex(ImplementationBlocked,"CURRENT_TASK"):
+            ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=MagicMock()).execute(item)
+        store.block_work_unit.assert_called_once()
+        self.assertEqual(store.block_work_unit.call_args.kwargs["blocker_type"],"repository_governance")
+
 
     def test_integrator_rejects_overlapping_files(self):
         github=MagicMock()
