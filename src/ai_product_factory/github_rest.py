@@ -383,6 +383,16 @@ class GitHubRestAdapter:
             )
         return tuple(failures)
 
+    def dispatch_workflow(self, workflow: str, *, ref: str) -> None:
+        if not workflow.strip() or not ref.strip():
+            raise ValueError("workflow and ref are required")
+        encoded=parse.quote(workflow.strip(),safe="")
+        self._call(
+            "POST",
+            f"/repos/{self.repository}/actions/workflows/{encoded}/dispatches",
+            payload={"ref":ref.strip()},
+        )
+
     def close_issue(self, issue_number: int) -> None:
         self._call("PATCH", f"/repos/{self.repository}/issues/{issue_number}",
                    payload={"state": "closed", "state_reason": "completed"})

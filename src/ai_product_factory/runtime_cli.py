@@ -188,7 +188,11 @@ def run_change_set_integration_once(worker_id:str)->dict:
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
  result=ChangeSetIntegrator(github=github,store=store).integrate(item)
- return {"claimed":True,"status":result.status,"change_set_id":result.change_set_id,"wave":result.wave,"candidate_commit":result.candidate_commit,"pr_number":result.pull_request.number if result.pull_request else None}
+ ci_dispatched=False
+ if result.pull_request and item.repository==os.getenv("GITHUB_REPOSITORY","").strip():
+  github.dispatch_workflow("validate.yml",ref=item.integration_branch)
+  ci_dispatched=True
+ return {"claimed":True,"status":result.status,"change_set_id":result.change_set_id,"wave":result.wave,"candidate_commit":result.candidate_commit,"pr_number":result.pull_request.number if result.pull_request else None,"ci_dispatched":ci_dispatched}
 
 def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
