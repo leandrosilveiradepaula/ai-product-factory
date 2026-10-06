@@ -97,11 +97,19 @@ class ChangeSetBuilderWorker:
             if not context_paths:
                 raise RuntimeError("repository context discovery found no relevant files; replan with explicit context_paths")
 
-        context_paths=list(dict.fromkeys([*governance,*context_paths]))
-        if len(context_paths)>12:
-            raise ValueError("too many repository context paths")
-
         raw_scopes=assignment.get("scope_keys") if isinstance(assignment.get("scope_keys"),list) else []
+        exact_scope_context=[]
+        for raw in raw_scopes:
+            scope=self._normalize_path(raw)
+            if scope and scope in all_paths and scope.endswith(self._TEXT_EXTENSIONS):
+                exact_scope_context.append(scope)
+
+        required_context=list(dict.fromkeys([*governance,*exact_scope_context]))
+        optional_context=[path for path in context_paths if path not in required_context]
+        if len(required_context)>12:
+            raise ValueError("too many required repository context paths")
+        context_paths=[*required_context,*optional_context[:12-len(required_context)]]
+
         resolved_scopes=[]
         semantic_scopes=[]
         for raw in raw_scopes:
