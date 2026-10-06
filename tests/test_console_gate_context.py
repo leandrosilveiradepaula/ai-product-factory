@@ -49,6 +49,21 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertIn("const history=gates.filter",text)
         self.assertIn("orderedGates=[...pending,...history]",text)
 
+    def test_gate_inbox_separates_actionable_work_from_history(self):
+        text=PAGE.read_text()
+        self.assertIn("pending.map(g=><article",text)
+        self.assertIn('details className="gateHistory"',text)
+        self.assertIn("gates resolvidos ou substituídos",text)
+        self.assertNotIn("orderedGates.map",text)
+
+    def test_gate_cards_show_human_context_before_technical_ids(self):
+        text=PAGE.read_text()
+        self.assertIn('className="gateContextHero"',text)
+        self.assertIn("Abrir projeto",text)
+        self.assertIn("Ver execução",text)
+        self.assertIn('details className="gateTechnicalMeta"',text)
+        self.assertIn("Contexto técnico",text)
+
 
 if __name__=="__main__":
     unittest.main()
