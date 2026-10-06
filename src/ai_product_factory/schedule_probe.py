@@ -24,6 +24,29 @@ class SupabaseScheduleProbe:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
+    def _record_telemetry(self, work_detected: bool, work_classes: list[str]) -> None:
+        event = {
+            "actor_type": "system",
+            "actor_ref": "schedule-probe",
+            "event_type": "schedule_probe.observed",
+            "payload": {
+                "work_detected": work_detected,
+                "work_classes": work_classes,
+            },
+        }
+        req = urllib.request.Request(
+            f"{self.url}/rest/v1/factory_audit_events",
+            data=json.dumps(event).encode(),
+            headers={
+                **self.headers,
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
     def probe(self) -> dict:
         runs = self._get(
             "factory_runs?select=id,task_id,status,execution_route"
@@ -93,4 +116,27 @@ class SupabaseScheduleProbe:
                 "codex_manual_work",
             )
         )
+
+        work_classes = [
+            work_class
+            for signal, work_class in (
+                ("product_work", "product"),
+                ("dispatch_work", "dispatch"),
+                ("integration_work", "integration"),
+                ("ci_work", "ci"),
+                ("specialist_security_work", "specialist_security"),
+                ("specialist_qa_work", "specialist_qa"),
+                ("specialist_operations_work", "specialist_operations"),
+                ("preview_work", "preview"),
+                ("release_work", "release"),
+                ("codex_manual_work", "codex_manual"),
+            )
+            if out[signal]
+        ]
+        try:
+            self._record_telemetry(bool(out["work_detected"]), work_classes)
+        except Exception:
+            out["telemetry_recorded"] = False
+        else:
+            out["telemetry_recorded"] = True
         return out
