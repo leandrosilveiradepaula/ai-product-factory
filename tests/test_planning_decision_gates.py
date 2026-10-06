@@ -31,11 +31,13 @@ class PlanningDecisionGateMigrationTests(unittest.TestCase):
         self.assertNotIn("auto_merge",text)
         self.assertNotIn("github merge",text)
 
-    def test_console_requires_response_for_planning_decision(self):
+    def test_console_requires_response_for_each_planning_decision(self):
         text=GATES_PAGE.read_text()
         self.assertIn('gateType==="planning_decision"&&resolution==="approved"&&!note',text)
-        self.assertIn('name="note" required',text)
-        self.assertIn("Registrar decisão e continuar",text)
+        self.assertIn('name={`decision_response_${index}`}',text)
+        self.assertIn('required rows={4}',text)
+        self.assertIn('if(!key||!response)throw new Error',text)
+        self.assertIn("Registrar respostas e continuar",text)
 
 
 if __name__=="__main__":

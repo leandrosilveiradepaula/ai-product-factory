@@ -394,6 +394,7 @@ class ProductStageExecutorTests(unittest.TestCase):
         h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
         out=h.execute(item(),"planning")
         self.assertEqual(out["decisions_needed"][0]["decision_kind"],"scope_authorization")
+        self.assertIn("Brazilian Portuguese (pt-BR)",p.requests[0].objective)
 
     def test_planning_accepts_dependency_on_existing_task_key(self):
         p=Provider()
