@@ -4,6 +4,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 PAGE=ROOT/"apps"/"console"/"app"/"gates"/"page.tsx"
 CONTROL=ROOT/"apps"/"console"/"lib"/"control-plane.ts"
+ANSWER=ROOT/"apps"/"console"/"app"/"gates"/"planning-decision-answer.tsx"
 
 
 class ConsoleGateContextTests(unittest.TestCase):
@@ -23,9 +24,14 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertIn('name={`decision_key_${index}`}',text)
         self.assertIn("O que você precisa decidir",text)
         self.assertIn("Por que isso é necessário",text)
-        self.assertIn("Sua resposta",text)
         self.assertIn("Detalhes técnicos",text)
         self.assertIn("Registrar respostas e continuar",text)
+        answer=ANSWER.read_text()
+        self.assertIn("Sua resposta",answer)
+        self.assertIn("Sugestão da Factory",answer)
+        self.assertIn("Usar sugestão",answer)
+        self.assertIn("setValue(normalizedSuggestion)",answer)
+        self.assertIn("required",answer)
 
     def test_server_action_composes_all_planning_answers(self):
         text=PAGE.read_text()
