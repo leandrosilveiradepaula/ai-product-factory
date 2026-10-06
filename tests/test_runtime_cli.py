@@ -475,7 +475,7 @@ class RuntimeCliTests(unittest.TestCase):
         with patch.dict("os.environ",{},clear=True), \
              patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
-             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
              patch("ai_product_factory.runtime_cli.VercelPreviewAdapter") as vercel:
@@ -609,7 +609,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseDeploymentEvidenceStore"), \
              patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceConfig.from_env",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
-             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
