@@ -176,6 +176,32 @@ class GitHubRestAdapter:
             raise RuntimeError(f"GitHub path is not a base64 file: {path}")
         return base64.b64decode(str(row.get("content") or "").replace("\n","")).decode("utf-8")
 
+    def list_file_paths(self, *, ref: str) -> tuple[str, ...]:
+        if not ref.strip():
+            raise ValueError("ref is required")
+        commit=self._call("GET",f"/repos/{self.repository}/git/commits/{parse.quote(ref,safe='')}")
+        tree_sha=str((commit.get("tree") or {}).get("sha") or "")
+        if not tree_sha:
+            raise RuntimeError("GitHub commit did not expose a tree SHA")
+        tree=self._call(
+            "GET",
+            f"/repos/{self.repository}/git/trees/{parse.quote(tree_sha,safe='')}",
+            query={"recursive":"1"},
+        )
+        if bool(tree.get("truncated")):
+            raise RuntimeError("GitHub repository tree is truncated")
+        rows=tree.get("tree") if isinstance(tree,dict) else None
+        if not isinstance(rows,list):
+            raise RuntimeError("GitHub repository tree is invalid")
+        paths=tuple(
+            str(row.get("path") or "")
+            for row in rows
+            if isinstance(row,dict) and row.get("type")=="blob" and str(row.get("path") or "").strip()
+        )
+        if len(paths)>10000:
+            raise RuntimeError("GitHub repository tree exceeds safe discovery limit")
+        return paths
+
     def commit_files(self, branch: str, files: dict[str, str], *, message: str) -> str:
         if not files:
             raise ValueError("files cannot be empty")
