@@ -320,6 +320,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261006012500_supersede_stale_planning_gates.sql",
             "20261006013000_preserve_planning_decision_continuation.sql",
             "20261006020000_direct_execution_context_preflight.sql",
+            "20261006023500_completed_parent_keeps_backlog.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
