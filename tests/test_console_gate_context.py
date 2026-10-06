@@ -41,13 +41,30 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertIn("actionable:boolean",control)
         page=PAGE.read_text()
         self.assertIn('g.status==="pending"&&g.actionable',page)
-        self.assertIn('label={g.status==="pending"&&!g.actionable?"histórico":undefined}',page)
+        self.assertIn('history.map(g=><article className="gateHistoryItem"',page)
+        self.assertIn('label={g.status==="pending"?"substituído":undefined}',page)
 
     def test_stale_pending_gates_do_not_count_as_pending(self):
         text=PAGE.read_text()
         self.assertIn('const pending=gates.filter(g=>g.status==="pending"&&g.actionable)',text)
         self.assertIn("const history=gates.filter",text)
-        self.assertIn("orderedGates=[...pending,...history]",text)
+        self.assertIn("pending.map(g=><article",text)
+        self.assertIn('details className="gateHistory"',text)
+
+    def test_gate_inbox_separates_actionable_work_from_history(self):
+        text=PAGE.read_text()
+        self.assertIn("pending.map(g=><article",text)
+        self.assertIn('details className="gateHistory"',text)
+        self.assertIn("gates resolvidos ou substituídos",text)
+        self.assertNotIn("orderedGates.map",text)
+
+    def test_gate_cards_show_human_context_before_technical_ids(self):
+        text=PAGE.read_text()
+        self.assertIn('className="gateContextHero"',text)
+        self.assertIn("Abrir projeto",text)
+        self.assertIn("Ver execução",text)
+        self.assertIn('details className="gateTechnicalMeta"',text)
+        self.assertIn("Contexto técnico",text)
 
 
 if __name__=="__main__":
