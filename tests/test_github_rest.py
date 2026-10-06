@@ -29,6 +29,12 @@ class FakeGitHubTransport:
             return 201, {"ref": payload["ref"], "object": {"sha": payload["sha"]}}
         if "/git/commits/base123" in url and method == "GET":
             return 200, {"tree": {"sha": "tree0"}}
+        if "/git/trees/tree0?recursive=1" in url and method == "GET":
+            return 200, {"truncated": False, "tree": [
+                {"path":"AGENTS.md","type":"blob"},
+                {"path":"src/app/debug/page.tsx","type":"blob"},
+                {"path":"src/app/debug","type":"tree"},
+            ]}
         if url.endswith("/git/blobs") and method == "POST":
             return 201, {"sha": "blob1"}
         if url.endswith("/git/trees") and method == "POST":
@@ -93,6 +99,10 @@ class GitHubRestAdapterTests(unittest.TestCase):
     def test_pull_request_files_are_structured(self):
         files=self.github.get_pull_request_files(9)
         self.assertEqual(files,("apps/console/app/page.tsx","src/core.py"))
+
+    def test_repository_file_tree_is_exact_and_blob_only(self):
+        paths=self.github.list_file_paths(ref="base123")
+        self.assertEqual(paths,("AGENTS.md","src/app/debug/page.tsx"))
     def test_pending_and_failed_ci(self):
         self.transport.check_runs = [{"status": "in_progress", "conclusion": None}]
         self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)

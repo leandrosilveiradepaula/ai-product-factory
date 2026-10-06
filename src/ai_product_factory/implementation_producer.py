@@ -9,7 +9,10 @@ class ModelImplementationProducer:
  def __init__(self,executor:ModelExecutor)->None:self.executor=executor
  def produce(self,item:DirectExecutionItem)->ImplementationArtifact:
   objective=("Implement the task as a minimal repository patch. Return JSON only with "
-             "plan_markdown, files (object path->full text), commit_message, pr_title, pr_body.")
+             "plan_markdown, files (array of objects with path and full content), commit_message, "
+             "pr_title, pr_body, blocked_reason. Repository governance files in repository_snapshot "
+             "are authoritative. If they do not authorize this exact task, return files=[] and a "
+             "concise blocked_reason; otherwise blocked_reason must be empty and files must be non-empty.")
   packet=getattr(item,"context_packet",None)
   if getattr(item,"change_set_id",None) and not isinstance(packet,dict):
    raise RuntimeError("Change Set implementation requires a durable context packet")
@@ -30,17 +33,21 @@ class ModelImplementationProducer:
     "commit_message":{"type":"string"},
     "pr_title":{"type":"string"},
     "pr_body":{"type":"string"},
+    "blocked_reason":{"type":"string"},
    },
-   "required":["plan_markdown","files","commit_message","pr_title","pr_body"],
+   "required":["plan_markdown","files","commit_message","pr_title","pr_body","blocked_reason"],
    "additionalProperties":False,
   }
-  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task."),output_schema=schema)
+  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Treat AGENTS.md and task-governance files in repository_snapshot as authoritative.","Do not invent authorization that repository governance does not grant."),output_schema=schema)
   result=self.executor.execute(ExecutionRoute.DIRECT,request)
   try:data=json.loads(result.output)
   except json.JSONDecodeError as exc:raise ValueError("implementation producer returned invalid JSON") from exc
   if not isinstance(data,dict):raise ValueError("implementation output must be a JSON object")
   raw_files=data.get("files")
-  if not isinstance(raw_files,list) or not raw_files:raise ValueError("implementation output requires non-empty files")
+  if not isinstance(raw_files,list):raise ValueError("implementation output files must be an array")
+  blocked_reason=str(data.get("blocked_reason") or "").strip()
+  if not raw_files and not blocked_reason:raise ValueError("implementation output requires non-empty files or blocked_reason")
+  if raw_files and blocked_reason:raise ValueError("implementation output cannot contain files and blocked_reason together")
   files={}
   for entry in raw_files:
    if not isinstance(entry,dict):raise ValueError("implementation files must be structured entries")
@@ -51,4 +58,4 @@ class ModelImplementationProducer:
    files[path]=content
   required=("plan_markdown","commit_message","pr_title","pr_body")
   if any(not isinstance(data.get(k),str) or not data[k].strip() for k in required):raise ValueError("implementation output is missing required text fields")
-  return ImplementationArtifact(data["plan_markdown"],files,data["commit_message"],data["pr_title"],data["pr_body"])
+  return ImplementationArtifact(data["plan_markdown"],files,data["commit_message"],data["pr_title"],data["pr_body"],blocked_reason or None)

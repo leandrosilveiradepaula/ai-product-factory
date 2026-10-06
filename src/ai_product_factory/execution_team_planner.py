@@ -174,6 +174,7 @@ def build_execution_team_plan(engineering_plan: dict,agents: Sequence[AgentProfi
             "required_capabilities":list(_string_list(routing_task.get("required_capabilities"))),
             "source_required_capabilities":list(_string_list(task.get("required_capabilities"))),
             "scope_keys":list(_string_list(task.get("scope_keys"))),
+            "context_paths":list(_string_list(task.get("context_paths"))),
             "depends_on_raw":list(_string_list(task.get("depends_on"))),
         }
         if routing_task.get("preferred_agent_role")=="human_gate" or "human_approval" in set(_string_list(task.get("required_capabilities"))):

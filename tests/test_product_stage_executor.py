@@ -129,7 +129,7 @@ class ProductStageExecutorTests(unittest.TestCase):
                     "task_key":"reconcile_repo_directives",
                     "title":"Reconcile repository directives",
                     "required_capabilities":["planning","dependency_graph"],
-                    "scope_keys":[],
+                    "scope_keys":["src"],
                     "depends_on":[],
                     "preferred_agent_role":"product"
                 }]
@@ -140,6 +140,50 @@ class ProductStageExecutorTests(unittest.TestCase):
         h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,product))
         with self.assertRaisesRegex(ValueError,"pre-PR builder lane"):
             h.execute(item(),"planning")
+
+    def test_planning_rejects_builder_task_without_write_scope(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"unsafe",
+                    "title":"Unsafe task",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":[],
+                    "depends_on":[],
+                    "preferred_agent_role":"development"
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        with self.assertRaisesRegex(ValueError,"requires non-empty scope_keys"):
+            h.execute(item(),"planning")
+
+    def test_planning_preserves_safe_context_paths(self):
+        p=Provider()
+        def execute(request):
+            p.requests.append(request)
+            return ModelResult(ModelRole.PRIMARY,json.dumps({
+                "tasks":[{
+                    "task_key":"debug",
+                    "title":"Debug remediation",
+                    "required_capabilities":["implementation"],
+                    "scope_keys":["src/app/debug"],
+                    "context_paths":["AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx"],
+                    "depends_on":[],
+                    "preferred_agent_role":"development"
+                }]
+            }),provider_ref="ref-plan",usage={"input_tokens":10})
+        p.execute=execute
+        dev=AgentProfile("development","development",("implementation",),("github_write","model_primary"),{"preferred":"primary"},1,1.0,True)
+        h=ProductStageExecutor(ModelExecutor(primary=p),team_profiles=(dev,))
+        out=h.execute(item(),"planning")
+        self.assertEqual(
+            out["_team_plan"]["task_assignments"][0]["context_paths"],
+            ["AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx"],
+        )
 
     def test_planning_accepts_builder_tasks_and_post_candidate_specialist_reviews(self):
         p=Provider()

@@ -14,7 +14,7 @@ from .codex_run_queue import SupabaseCodexRunQueue
 from .codex_cli_producer import CodexCLIProducer
 from .codex_usage import SupabaseCodexUsageRecorder
 from .implementation_producer import ModelImplementationProducer
-from .execution_worker import DirectExecutionWorker
+from .execution_worker import DirectExecutionWorker,ImplementationBlocked
 from .change_set_store import SupabaseChangeSetStore
 from .change_set_worker import ChangeSetBuilderWorker
 from .change_set_integrator import ChangeSetIntegrator
@@ -130,7 +130,11 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
   github=GitHubRestAdapter(repository=item.repository)
   if getattr(item,"change_set_id",None):
-   result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="direct").execute(item)
+   try:
+    result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="direct").execute(item)
+   except ImplementationBlocked as exc:
+    scheduler.release(item.run_id,"blocked")
+    return {"claimed":True,"status":"blocked","run_id":item.run_id,"error":str(exc)}
    scheduler.release(item.run_id,"completed")
    return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())

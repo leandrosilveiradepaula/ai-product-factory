@@ -104,6 +104,15 @@ class SupabaseChangeSetStore:
     def set_repair_status(self,*,run_id:str,status:str)->dict:
         return self._rpc("factory_set_repair_status",{"p_run_id":run_id,"p_status":status}) or {}
 
+    def block_work_unit(self,*,run_id:str,reason:str,blocker_type:str="implementation_blocked")->dict:
+        if not run_id.strip() or not reason.strip():
+            raise ValueError("run id and blocker reason are required")
+        return self._rpc("factory_block_change_set_work_unit",{
+            "p_run_id":run_id,
+            "p_reason":reason[:1000],
+            "p_blocker_type":blocker_type,
+        }) or {}
+
     def complete_work_unit(self,*,run_id:str,output_commit:str,changed_files:tuple[str,...])->dict:
         return self._rpc("factory_complete_change_set_work_unit",{
             "p_run_id":run_id,"p_output_commit":output_commit,"p_changed_files":list(changed_files),
