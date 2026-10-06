@@ -99,6 +99,21 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertIn('"supabase/migrations/"',text)
         self.assertIn('"max_migration_bytes": 1048576',text)
 
+    def test_migration_action_has_visible_pending_and_success_feedback(self):
+        page=PAGE.read_text()
+        pending=(ROOT/"apps"/"console"/"app"/"gates"/"gate-decision-form.tsx").read_text()
+        success=(ROOT/"apps"/"console"/"app"/"gates"/"gate-action-success-banner.tsx").read_text()
+        self.assertIn('pendingLabel="Aplicando migration em produção..."',page)
+        self.assertIn("Isso pode levar alguns segundos",page)
+        self.assertIn('redirect("/gates?success=migration_applied")',page)
+        self.assertIn("Migration aplicada com sucesso",page)
+        self.assertIn("gateBusyPanel",pending)
+        self.assertIn('disabled={pending}',pending)
+        self.assertIn('aria-busy={pending}',pending)
+        self.assertIn('role="status"',success)
+        self.assertIn('url.searchParams.delete("success")',success)
+
+
 
 if __name__=="__main__":
     unittest.main()
