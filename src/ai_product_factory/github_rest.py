@@ -322,7 +322,9 @@ class GitHubRestAdapter:
                 raise
             workflows, statuses = self._fine_grained_ci_evidence(head_sha)
             self.last_ci_evidence_source = "github_actions_statuses"
-            self.last_ci_evidence_present = bool(workflows or statuses)
+            # Commit statuses (for example Vercel) are not sufficient CI evidence.
+            # The same-repo recovery only suppresses dispatch when an Actions workflow exists.
+            self.last_ci_evidence_present = bool(workflows)
             return self.last_ci_evidence_source, workflows, statuses
         self.last_ci_evidence_source = "github_checks"
         self.last_ci_evidence_present = bool(checks)
