@@ -48,7 +48,8 @@ class ConsoleGateContextTests(unittest.TestCase):
         text=PAGE.read_text()
         self.assertIn('const pending=gates.filter(g=>g.status==="pending"&&g.actionable)',text)
         self.assertIn("const history=gates.filter",text)
-        self.assertIn("orderedGates=[...pending,...history]",text)
+        self.assertIn("pending.map(g=><article",text)
+        self.assertIn('details className="gateHistory"',text)
 
     def test_gate_inbox_separates_actionable_work_from_history(self):
         text=PAGE.read_text()
