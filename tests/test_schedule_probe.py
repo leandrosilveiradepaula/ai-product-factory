@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from ai_product_factory.schedule_probe import SupabaseScheduleProbe
@@ -36,6 +37,15 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertFalse(out["release_work"])
         self.assertFalse(out["codex_manual_work"])
 
+    def test_no_work_telemetry_has_no_work_classes(self):
+        out = StubProbe().probe()
+
+        self.assertEqual(out["work_classes"], [])
+        self.assertEqual(
+            out["telemetry"],
+            {"work_detected": False, "work_classes": []},
+        )
+
     def test_product_stage_requires_queued_task(self):
         out = StubProbe(
             runs=[{"id": "r1", "task_id": "t1", "status": "created", "execution_route": None}],
@@ -49,6 +59,39 @@ class ScheduleProbeTests(unittest.TestCase):
             tasks=[{"id": "t1", "status": "queued_execution"}],
         ).probe()
         self.assertFalse(blocked["product_work"])
+
+    def test_detected_work_telemetry_is_normalized_and_sanitized(self):
+        secret = "super-secret-token"
+        raw_run = {
+            "id": "r-sensitive",
+            "task_id": "t-sensitive",
+            "status": "created",
+            "execution_route": "direct",
+            "access_token": secret,
+            "source_row": {"private_key": secret},
+        }
+        raw_task = {
+            "id": "t-sensitive",
+            "status": "queued",
+            "service_role_key": secret,
+        }
+
+        out = StubProbe(runs=[raw_run], tasks=[raw_task]).probe()
+        serialized = json.dumps(out, sort_keys=True)
+
+        self.assertTrue(out["work_detected"])
+        self.assertEqual(out["work_classes"], ["product"])
+        self.assertEqual(
+            out["telemetry"],
+            {"work_detected": True, "work_classes": ["product"]},
+        )
+        self.assertNotIn(raw_run["id"], serialized)
+        self.assertNotIn(raw_task["id"], serialized)
+        self.assertNotIn(secret, serialized)
+        self.assertNotIn("access_token", serialized)
+        self.assertNotIn("service_role_key", serialized)
+        self.assertNotIn("source_row", serialized)
+        self.assertNotIn("private_key", serialized)
 
     def test_manual_codex_detects_prepare_and_followup(self):
         preparing = StubProbe(
