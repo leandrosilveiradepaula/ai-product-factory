@@ -300,6 +300,12 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .planningDecisionWhy{margin-left:40px;padding:11px 13px}
 .planningDecisionAnswer{margin-left:40px}
 .planningDecisionAnswer textarea{min-height:118px;font-size:12px}
+.planningDecisionSuggestion{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid #31405a;background:#111a28}
+.planningDecisionSuggestion>div{display:grid;gap:4px;min-width:0}
+.planningDecisionSuggestion strong{font-size:10px;color:#cfe0ff}
+.planningDecisionSuggestion p{margin:0;font-size:11px;line-height:1.5;color:#aeb8ca}
+.planningDecisionSuggestion button{flex:0 0 auto;white-space:nowrap;padding:7px 9px;font-size:10px}
+
 .gateActionBar{padding-top:8px}
 .gateHistory{margin-top:10px;border:1px solid #252c38;background:#10141c}
 .gateHistory>summary{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none}
