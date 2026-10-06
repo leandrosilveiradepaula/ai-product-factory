@@ -5,7 +5,7 @@ import re
 from typing import Protocol
 
 from .change_set_store import ChangeSetBinding,SupabaseChangeSetStore
-from .execution_worker import DirectExecutionItem,ImplementationArtifact,ImplementationProducer
+from .execution_worker import DirectExecutionItem,ImplementationArtifact,ImplementationProducer,ImplementationBlocked
 from .github_rest import GitHubRestAdapter
 from .impact_engine import SupabaseImpactEngine
 from .work_unit_context import build_context_packet,enforce_write_scopes,redact_repository_text
@@ -213,8 +213,29 @@ class ChangeSetBuilderWorker:
             context_packet=packet.as_dict(),write_scopes=write_scopes,
         )
         self.store.set_repair_status(run_id=item.run_id,status="running")
-        artifact=self.producer.produce(item)
-        if not artifact.files:raise ValueError("implementation producer returned no files")
+        try:
+            artifact=self.producer.produce(item)
+        except Exception as exc:
+            self.store.block_work_unit(
+                run_id=item.run_id,
+                reason=f"{type(exc).__name__}: {str(exc)}",
+                blocker_type="implementation_producer_error",
+            )
+            raise
+        if artifact.blocked_reason:
+            self.store.block_work_unit(
+                run_id=item.run_id,
+                reason=artifact.blocked_reason,
+                blocker_type="repository_governance",
+            )
+            raise ImplementationBlocked(artifact.blocked_reason)
+        if not artifact.files:
+            self.store.block_work_unit(
+                run_id=item.run_id,
+                reason="implementation producer returned no files",
+                blocker_type="implementation_producer_error",
+            )
+            raise ValueError("implementation producer returned no files")
         enforce_write_scopes(artifact.files.keys(),write_scopes)
         commit_message=provenance_commit_message(artifact.commit_message,{
             "Factory-Run":item.run_id,
