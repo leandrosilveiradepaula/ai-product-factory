@@ -93,6 +93,33 @@ class RuntimeCliTests(unittest.TestCase):
         scheduler.require_route_tools.assert_called_once_with("development","direct")
         queue.claim_next.assert_called_once_with("worker","development","run-1")
 
+    def test_direct_change_set_governance_blocker_finishes_cleanly(self):
+        scheduler=MagicMock()
+        item=SimpleNamespace(
+            run_id="run-1",task_id="task-1",project_key="demo",repository="owner/repo",
+            issue_number=None,title="Task",description="",branch="factory/x",
+            human_gate_required=False,change_set_id="cs",work_unit_id="wu",wave=1,
+        )
+        queue=MagicMock();queue.claim_next.return_value=item
+        auth=MagicMock();auth.resolve_primary_api.return_value=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
+        worker=MagicMock()
+        from ai_product_factory.execution_worker import ImplementationBlocked
+        worker.execute.side_effect=ImplementationBlocked("CURRENT_TASK forbids this change")
+        env={"GITHUB_REPOSITORY":"owner/repo","FACTORY_PRIMARY_MODEL_ENABLED":"true"}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=auth), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.ModelImplementationProducer"), \
+             patch("ai_product_factory.runtime_cli.ChangeSetBuilderWorker",return_value=worker):
+            out=run_direct_once("worker","development","run-1")
+        self.assertEqual(out["status"],"blocked")
+        self.assertIn("CURRENT_TASK",out["error"])
+        scheduler.release.assert_called_once_with("run-1","blocked")
+
     def test_exact_codex_run_does_not_schedule_unrelated_work(self):
         scheduler=MagicMock()
         queue=MagicMock();queue.claim_next.return_value=None
