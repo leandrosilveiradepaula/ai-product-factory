@@ -38,7 +38,7 @@ from .github_vercel_preview import GitHubVercelPreviewAdapter,config_from_env as
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
 from .supabase_deployment import DurablePreviewAdapter,SupabaseDeploymentEvidenceStore
 from .browser_evidence_store import BrowserEvidenceRecorder
-from .preview_flow import VerifiedPreviewCoordinator
+from .preview_flow import PreviewDeferred,VerifiedPreviewCoordinator
 from .deployment import DeploymentRequest
 from .release_policy import ReleaseEnvironment
 from .agent_scheduler import SupabaseAgentScheduler
@@ -327,6 +327,14 @@ def run_preview_once()->dict:
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  try:
   verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
+ except PreviewDeferred as exc:
+  store.record_audit_event(
+   run_id=item.run_id,event_type="preview.deferred",
+   payload={"candidate_commit":item.candidate_commit,"status":exc.deployment.status,"deployment_ref":exc.deployment.deployment_ref,"retry_after_hours":24},
+   actor_ref="preview-followup",
+  )
+  return {"claimed":True,"status":exc.deployment.status,"run_id":item.run_id,"pr_number":item.pr_number,
+   "preview_required":True,"deployment_ref":exc.deployment.deployment_ref,"retry_after_hours":24}
  except ValueError as exc:
   if str(exc)=="preview requires successful browser/e2e evidence":
    store.fail_preview(item.run_id,candidate_commit=item.candidate_commit,reason=str(exc))

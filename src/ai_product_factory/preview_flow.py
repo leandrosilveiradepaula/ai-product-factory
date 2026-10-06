@@ -10,11 +10,17 @@ class VerifiedPreviewResult:
  deployment:DeploymentResult
  browser_evidence:BrowserEvidence
 
+class PreviewDeferred(RuntimeError):
+ def __init__(self,deployment:DeploymentResult)->None:
+  super().__init__(f"preview deferred: {deployment.status}")
+  self.deployment=deployment
+
 class VerifiedPreviewCoordinator:
  def __init__(self,*,deployment:DeploymentCoordinator|None=None)->None:self.deployment=deployment or DeploymentCoordinator()
  def execute(self,*,run_id:str,request:DeploymentRequest,deployment_adapter:DeploymentAdapter,browser_adapter:BrowserEvidenceAdapter,evidence_recorder:BrowserEvidenceRecorder)->VerifiedPreviewResult:
   if request.environment is not ReleaseEnvironment.PREVIEW:raise PermissionError("verified preview flow refuses non-preview environments")
   deployed=self.deployment.deploy_if_autonomous(deployment_adapter,request)
+  if deployed.status=="blocked_quota":raise PreviewDeferred(deployed)
   if deployed.status!="success":raise RuntimeError("preview deployment did not succeed")
   if not deployed.preview_url:raise RuntimeError("preview deployment did not provide a preview URL")
   evidence=browser_adapter.verify(deployed.preview_url)

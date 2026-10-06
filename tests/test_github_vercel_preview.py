@@ -116,6 +116,27 @@ class Tests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,"no Ready preview URL"):
                 GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
 
+    def test_vercel_rate_limit_commit_status_is_temporary_quota_block(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0,pull_request_number=42)
+        comments=Response([])
+        status=Response({"statuses":[{
+            "id":88,"context":"Vercel","state":"failure",
+            "target_url":"https://vercel.com/team/project?upgradeToPro=build-rate-limit",
+            "description":"Deployment rate limited — retry in 24 hours.",
+        }]})
+        def fake_urlopen(req,timeout=30):
+            if "/issues/42/comments" in req.full_url:
+                return comments
+            if "/check-runs" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url,403,"forbidden",None,None)
+            if req.full_url.endswith("/status"):
+                return status
+            raise AssertionError(req.full_url)
+        with patch("urllib.request.urlopen",side_effect=fake_urlopen):
+            out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
+        self.assertEqual(out.status,"blocked_quota")
+        self.assertEqual(out.deployment_ref,"vercel-status-88")
+
     def test_vercel_commit_status_failure_is_terminal(self):
         cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0,pull_request_number=42)
         comments=Response([{"user":{"login":"vercel[bot]"},"body":"Deployment failed"}])

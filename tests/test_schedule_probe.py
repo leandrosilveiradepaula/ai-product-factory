@@ -14,6 +14,7 @@ class StubProbe(SupabaseScheduleProbe):
         change_sets=None,
         lanes=None,
         github_access=None,
+        deployments=None,
         telemetry_error=None,
     ):
         self.rows = {
@@ -23,6 +24,7 @@ class StubProbe(SupabaseScheduleProbe):
             "factory_change_sets": list(change_sets or []),
             "factory_specialist_lane_jobs": list(lanes or []),
             "factory_project_github_access": list(github_access or []),
+            "factory_deployments": list(deployments or []),
         }
         self.telemetry_posts = []
         self.telemetry_error = telemetry_error
@@ -127,6 +129,19 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertTrue(out["preview_work"])
         self.assertTrue(out["release_work"])
         self.assertTrue(out["work_detected"])
+
+    def test_recent_quota_block_suppresses_preview_retry(self):
+        probe=StubProbe(
+            runs=[{"id":"r-preview","status":"preview_ready"}],
+            deployments=[{"run_id":"r-preview"}],
+        )
+        out=probe.probe()
+        self.assertFalse(out["preview_work"])
+        self.assertFalse(out["work_detected"])
+
+    def test_preview_without_recent_quota_block_remains_actionable(self):
+        out=StubProbe(runs=[{"id":"r-preview","status":"preview_ready"}],deployments=[]).probe()
+        self.assertTrue(out["preview_work"])
 
     def test_individual_work_signals_record_normalized_work_classes(self):
         cases = {

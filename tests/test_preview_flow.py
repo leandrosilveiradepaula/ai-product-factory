@@ -3,7 +3,7 @@ from ai_product_factory.browser_evidence import BrowserEvidence
 from ai_product_factory.browser_evidence_store import BrowserEvidenceRecorder
 from ai_product_factory.deployment import DeploymentRequest,DeploymentResult
 from ai_product_factory.evidence import EvidenceBundle
-from ai_product_factory.preview_flow import VerifiedPreviewCoordinator
+from ai_product_factory.preview_flow import PreviewDeferred,VerifiedPreviewCoordinator
 from ai_product_factory.release_policy import ReleaseEnvironment
 
 class Deploy:
@@ -25,6 +25,13 @@ class Tests(unittest.TestCase):
  def test_verified_preview(self):
   s=Store();r=VerifiedPreviewCoordinator().execute(run_id="r1",request=request(),deployment_adapter=Deploy(),browser_adapter=Browser(),evidence_recorder=BrowserEvidenceRecorder(s))
   self.assertEqual(r.deployment.deployment_ref,"dep-1");self.assertEqual(s.evals[0]["status"],"success")
+ def test_quota_block_is_deferred_before_browser(self):
+  s=Store();browser=Browser()
+  with self.assertRaises(PreviewDeferred) as ctx:
+   VerifiedPreviewCoordinator().execute(run_id="r1",request=request(),deployment_adapter=Deploy(status="blocked_quota",url=None),browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(s))
+  self.assertEqual(ctx.exception.deployment.status,"blocked_quota")
+  self.assertEqual(s.evals,[])
+
  def test_refuses_prod(self):
   with self.assertRaises(PermissionError):VerifiedPreviewCoordinator().execute(run_id="r1",request=request(ReleaseEnvironment.PROD),deployment_adapter=Deploy(),browser_adapter=Browser(),evidence_recorder=BrowserEvidenceRecorder(Store()))
  def test_failed_browser_is_persisted_and_rejected(self):
