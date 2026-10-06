@@ -280,6 +280,41 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["vercel_preview_github"]["ready"])
         self.assertFalse(out["github_alerts"]["ready"])
 
+    def test_ci_followup_dispatches_missing_same_repo_ci_once(self):
+        item=SimpleNamespace(repository="owner/factory",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/change-set-x",run_id="r",human_gate_required=False)
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.last_ci_evidence_present=False
+        github.get_issue.return_value=SimpleNamespace(number=7)
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        store=MagicMock()
+        loop=MagicMock();loop.evaluate.return_value=SimpleNamespace(action=SimpleNamespace(value="wait_ci"),ci_state=SimpleNamespace(value="pending"))
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_ci_once()
+        self.assertEqual(out["status"],"ci_triggered")
+        github.dispatch_workflow.assert_called_once_with("validate.yml",ref="factory/change-set-x")
+        store.record_tool_usage.assert_called_once()
+        store.record_audit_event.assert_called_once()
+
+    def test_ci_followup_does_not_dispatch_factory_workflow_cross_repo(self):
+        item=SimpleNamespace(repository="owner/crm",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/change-set-x",run_id="r",human_gate_required=False)
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.last_ci_evidence_present=False
+        github.get_issue.return_value=SimpleNamespace(number=7)
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        loop=MagicMock();loop.evaluate.return_value=SimpleNamespace(action=SimpleNamespace(value="wait_ci"),ci_state=SimpleNamespace(value="pending"))
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore"), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_ci_once()
+        self.assertEqual(out["status"],"wait_ci")
+        github.dispatch_workflow.assert_not_called()
+
     def test_ci_followup_empty_queue_has_no_github_side_effect(self):
         queue=MagicMock()
         queue.next_pending.return_value=None

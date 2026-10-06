@@ -212,6 +212,22 @@ def run_ci_once()->dict:
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
  status=decision.action.value
+ if (
+  decision.action.value=="wait_ci"
+  and item.repository==os.getenv("GITHUB_REPOSITORY","").strip()
+  and getattr(github,"last_ci_evidence_present",None) is False
+ ):
+  github.dispatch_workflow("validate.yml",ref=item.branch)
+  store.record_tool_usage(
+   run_id=item.run_id,tool_family="github",operation="dispatch_ci",
+   metadata={"pr":item.pr_number,"head_sha":item.candidate_commit,"workflow":"validate.yml","ref":item.branch},
+  )
+  store.record_audit_event(
+   run_id=item.run_id,event_type="ci.same_repo_dispatched",
+   payload={"pr":item.pr_number,"candidate_commit":item.candidate_commit,"workflow":"validate.yml","ref":item.branch},
+   actor_ref="ci-followup",
+  )
+  return {"claimed":True,"status":"ci_triggered","run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
  if decision.action.value=="preview_ready":
   quality=evaluate_quality_gate(evals=(EvalResult("github_ci",True,required=True),))
   if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
