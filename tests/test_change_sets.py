@@ -131,6 +131,54 @@ class ChangeSetTests(unittest.TestCase):
         producer.produce.assert_not_called()
 
 
+    def test_builder_includes_exact_writable_file_in_snapshot_even_when_ranking_prefers_other_paths(self):
+        github=MagicMock()
+        github.get_branch_sha.return_value="main"
+        github.list_file_paths.return_value=(
+            "AGENTS.md",
+            "src/ai_product_factory/runtime_cli.py",
+            "src/ai_product_factory/schedule_probe.py",
+            "tests/test_schedule_probe.py",
+        )
+        github.get_file_text.side_effect=lambda path,ref: {
+            "AGENTS.md":"governance",
+            "src/ai_product_factory/runtime_cli.py":"runtime",
+            "src/ai_product_factory/schedule_probe.py":"def probe():\n    return False\n",
+            "tests/test_schedule_probe.py":"tests",
+        }[path]
+        github.commit_files.return_value="out"
+        store=MagicMock()
+        store.frozen_source_commit.return_value="base"
+        store.bind_source.return_value=ChangeSetBinding("cs","wu","base","base","factory/change-set-cs",1)
+        store.context_source.return_value={
+            "project_key":"factory","repository":"owner/repo","change_set_id":"cs","work_unit_id":"wu",
+            "plan_task_key":"IMPLEMENT_PROBE_TELEMETRY_WRITER","agent_key":"development","wave":1,
+            "task":{"title":"IMPLEMENT_PROBE_TELEMETRY_WRITER","description":"persist telemetry","acceptance_criteria":[]},
+            "assignment":{
+                "task_key":"IMPLEMENT_PROBE_TELEMETRY_WRITER","agent_key":"development",
+                "scope_keys":["src/ai_product_factory/schedule_probe.py"],
+                "required_capabilities":["implementation"],"depends_on":[],
+            },
+            "repair":{},"constraints":[],
+        }
+        captured={}
+        class Producer:
+            def produce(self,item):
+                captured["packet"]=item.context_packet
+                return ImplementationArtifact(
+                    "plan",
+                    {"src/ai_product_factory/schedule_probe.py":"def probe():\n    return True\n"},
+                    "fix: telemetry","t","b",
+                )
+        item=DirectExecutionItem("run","task","factory","owner/repo",None,"writer","","factory/cs/writer",False,"cs","wu",1)
+        impact=MagicMock();impact.analyze_run.return_value=SimpleNamespace(as_context=lambda:{"confidence":"high","impacted_nodes":[],"unknowns":[]})
+        ChangeSetBuilderWorker(github=github,store=store,producer=Producer(),impact_engine=impact,provenance=MagicMock()).execute(item)
+        self.assertIn("src/ai_product_factory/schedule_probe.py",captured["packet"]["repository_snapshot"])
+        self.assertEqual(
+            captured["packet"]["repository"]["write_scopes"],
+            ["src/ai_product_factory/schedule_probe.py"],
+        )
+
     def test_builder_discovers_semantic_debug_scope_and_governance_before_model(self):
         github=MagicMock()
         github.get_branch_sha.return_value="main"
