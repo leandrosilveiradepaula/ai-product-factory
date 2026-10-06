@@ -105,7 +105,7 @@ class RuntimeCliTests(unittest.TestCase):
         worker=MagicMock()
         from ai_product_factory.execution_worker import ImplementationBlocked
         worker.execute.side_effect=ImplementationBlocked("CURRENT_TASK forbids this change")
-        env={"GITHUB_REPOSITORY":"owner/repo","FACTORY_PRIMARY_MODEL_ENABLED":"true"}
+        env={"GITHUB_REPOSITORY":"owner/repo","FACTORY_PRIMARY_MODEL_ENABLED":"true","OPENAI_API_KEY":"test"}
         with patch.dict("os.environ",env,clear=True), \
              patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
