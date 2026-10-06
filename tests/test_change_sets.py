@@ -187,6 +187,8 @@ class ChangeSetTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,"no relevant files"):
             ChangeSetBuilderWorker(github=github,store=store,producer=producer,impact_engine=impact,provenance=MagicMock()).execute(item)
         producer.produce.assert_not_called()
+        store.block_work_unit.assert_called_once()
+        self.assertEqual(store.block_work_unit.call_args.kwargs["blocker_type"],"implementation_preflight_error")
 
     def test_builder_persists_governance_blocker(self):
         github=MagicMock()
