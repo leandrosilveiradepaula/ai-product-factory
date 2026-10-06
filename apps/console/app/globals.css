@@ -278,6 +278,44 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .gateMeta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .gateForm{padding:0 12px 12px}.gateForm input{border-radius:2px;background:#0a0e17}
 .gateActionBar{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.gateBannerProject{font-size:10px;color:#9fa8ba;font-weight:650}
+.gateContextHero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px 10px;border-bottom:1px solid #202530;background:linear-gradient(180deg,#151a24 0%,#121720 100%)}
+.gateContextHero>div:first-child{display:grid;gap:3px}
+.gateContextHero strong{font-size:15px;color:#f2f5fb}
+.gateContextHero span:not(.detailLabel){font-size:11px;color:#99a3b5}
+.gateContextActions{display:flex;gap:8px;flex-wrap:wrap}
+.gateContextActions a{padding:7px 9px;border:1px solid #303949;background:#0f141d;color:#c9d2e4;font-size:10px;font-weight:650}
+.gateContent{padding:16px}
+.gateContent h3{font-size:18px;margin:5px 0 6px}
+.gateIntro{max-width:920px;font-size:12px;line-height:1.6;color:#aeb7c8}
+.gateTechnicalMeta{margin-top:12px;border-top:1px solid #252c38;padding-top:9px;color:#7f899a}
+.gateTechnicalMeta summary{cursor:pointer;font-size:10px;color:#7f899a}
+.gateTechnicalGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px}
+.gateTechnicalGrid>div{display:grid;gap:3px;padding:8px;border:1px solid #252d3a;background:#0d1219}
+.gateTechnicalGrid span{font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#697386}
+.gateTechnicalGrid strong{font-size:10px;color:#aeb6c6;font-weight:600}
+.planningDecisionList{gap:14px}
+.planningDecisionItem{padding:16px 16px 14px;border-color:#364158;background:linear-gradient(180deg,#101722 0%,#0c1119 100%);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.planningDecisionTop h4{font-size:15px;line-height:1.5}
+.planningDecisionWhy{margin-left:40px;padding:11px 13px}
+.planningDecisionAnswer{margin-left:40px}
+.planningDecisionAnswer textarea{min-height:118px;font-size:12px}
+.gateActionBar{padding-top:8px}
+.gateHistory{margin-top:10px;border:1px solid #252c38;background:#10141c}
+.gateHistory>summary{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none}
+.gateHistory>summary::-webkit-details-marker{display:none}
+.gateHistory>summary span{font-size:11px;font-weight:750;color:#c5ccda}
+.gateHistory>summary strong{display:inline-grid;place-items:center;min-width:22px;height:20px;border:1px solid #323a49;background:#171d27;color:#9aa4b5;font-size:9px}
+.gateHistory>summary small{color:#687386;font-size:9px}
+.gateHistoryList{border-top:1px solid #252c38}
+.gateHistoryItem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 12px;border-top:1px solid #202631}
+.gateHistoryItem:first-child{border-top:0}
+.gateHistoryMain{display:grid;grid-template-columns:auto minmax(180px,.55fr) minmax(0,1fr);gap:10px;align-items:center}
+.gateHistoryMain strong{font-size:10px;color:#b7bfce}
+.gateHistoryMain>span{font-size:9px;color:#737e90}
+.gateHistoryMeta{display:flex;align-items:center;gap:10px;color:#687386;font-size:9px}
+.gateHistoryMeta a{color:#9baad0}
+
 .gateIntro{max-width:880px;font-size:12px;line-height:1.55;color:#aeb5c6}
 .decisionSummaryList{display:grid;gap:8px;margin-top:10px}
 .decisionSummaryItem{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;padding:12px;border:1px solid #2a3140;background:#111721}
@@ -673,4 +711,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
  .projectCard:hover,.projectCard:focus-visible,.guideStepLink:hover,.guideStepLink:focus-visible,.operationalStatLink:hover,.operationalStatLink:focus-visible{transform:none}
+}
+
+@media(max-width:860px){
+ .gateContextHero{align-items:flex-start;flex-direction:column}
+ .gateTechnicalGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .gateHistoryItem,.gateHistoryMain{grid-template-columns:1fr}
+ .gateHistoryMeta{justify-content:space-between}
+}
+@media(max-width:560px){
+ .gateTechnicalGrid{grid-template-columns:1fr}
+ .planningDecisionWhy,.planningDecisionAnswer,.planningDecisionTechnical{margin-left:0}
 }
