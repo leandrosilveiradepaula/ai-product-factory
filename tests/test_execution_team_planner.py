@@ -50,6 +50,22 @@ class ExecutionTeamPlannerTests(unittest.TestCase):
         dev=next(x for x in out["selected_agents"] if x["agent_key"]=="development")
         self.assertEqual(dev["workers_planned"],2)
 
+    def test_context_paths_survive_into_task_assignment(self):
+        plan={"tasks":[{
+            "task_key":"debug",
+            "title":"Debug remediation",
+            "required_capabilities":["implementation"],
+            "scope_keys":["src/app/debug"],
+            "context_paths":["AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx"],
+            "depends_on":[],
+        }]}
+        out=build_execution_team_plan(plan,AGENTS)
+        assignment=out["task_assignments"][0]
+        self.assertEqual(
+            assignment["context_paths"],
+            ["AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx"],
+        )
+
     def test_scope_conflicts_serialize_even_without_dependency(self):
         plan={"tasks":[
             {"task_key":"a","title":"A","required_capabilities":["implementation"],"scope_keys":["src/auth"],"depends_on":[]},
