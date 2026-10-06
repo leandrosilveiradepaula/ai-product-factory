@@ -114,6 +114,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
              patch("ai_product_factory.runtime_cli.ModelImplementationProducer"), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore"), \
              patch("ai_product_factory.runtime_cli.ChangeSetBuilderWorker",return_value=worker):
             out=run_direct_once("worker","development","run-1")
         self.assertEqual(out["status"],"blocked")
