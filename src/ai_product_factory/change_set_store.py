@@ -94,7 +94,19 @@ class SupabaseChangeSetStore:
     def context_source(self,run_id:str)->dict:
         data=self._rpc("factory_work_unit_context_source",{"p_run_id":run_id})
         if not isinstance(data,dict):raise RuntimeError("work-unit context source returned no data")
-        return data
+        project_key=str(data.get("project_key") or "").strip()
+        decisions=[]
+        if project_key:
+            rows=self._get(
+                "factory_projects?select=manifest&project_key=eq."+quote(project_key)+"&limit=1"
+            )
+            if rows and isinstance(rows[0].get("manifest"),dict):
+                value=rows[0]["manifest"].get("human_decisions")
+                if isinstance(value,list):
+                    decisions=value
+        enriched=dict(data)
+        enriched["human_decisions"]=decisions
+        return enriched
 
     def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
         return self._rpc("factory_record_work_unit_context",{
