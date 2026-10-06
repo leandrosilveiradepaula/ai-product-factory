@@ -104,7 +104,32 @@ class SupabaseChangeSetStore:
                 value=rows[0]["manifest"].get("human_decisions")
                 if isinstance(value,list):
                     decisions=value
+
+        assignment=dict(data.get("assignment") if isinstance(data.get("assignment"),dict) else {})
+        work_unit_id=str(data.get("work_unit_id") or "").strip()
+        if work_unit_id:
+            units=self._get(
+                "factory_change_set_work_units?select=task_id&id=eq."+quote(work_unit_id)+"&limit=1"
+            )
+            task_id=str(units[0].get("task_id") or "").strip() if units else ""
+            if task_id:
+                tasks=self._get(
+                    "factory_tasks?select=scope_keys,required_capabilities,agent_role&id=eq."+quote(task_id)+"&limit=1"
+                )
+                if tasks:
+                    task=tasks[0]
+                    scopes=task.get("scope_keys")
+                    capabilities=task.get("required_capabilities")
+                    if isinstance(scopes,list) and scopes:
+                        assignment["scope_keys"]=scopes
+                    if isinstance(capabilities,list) and capabilities:
+                        assignment["required_capabilities"]=capabilities
+                    role=str(task.get("agent_role") or "").strip()
+                    if role:
+                        assignment["agent_role"]=role
+
         enriched=dict(data)
+        enriched["assignment"]=assignment
         enriched["human_decisions"]=decisions
         return enriched
 
