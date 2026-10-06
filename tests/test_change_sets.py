@@ -12,6 +12,8 @@ class ChangeSetTests(unittest.TestCase):
     def test_builder_commits_isolated_work_unit_without_pr(self):
         github=MagicMock()
         github.get_branch_sha.return_value="base"
+        github.list_file_paths.return_value=("src/a.py",)
+        github.get_file_text.return_value="value=0\n"
         github.commit_files.return_value="out"
         store=MagicMock()
         store.frozen_source_commit.return_value=None
@@ -60,6 +62,8 @@ class ChangeSetTests(unittest.TestCase):
     def test_builder_retry_uses_frozen_change_set_source_instead_of_new_main(self):
         github=MagicMock()
         github.get_branch_sha.return_value="new-main"
+        github.list_file_paths.return_value=("src/a.py",)
+        github.get_file_text.return_value="value=0\n"
         github.commit_files.return_value="out"
         store=MagicMock()
         store.frozen_source_commit.return_value="frozen-base"
@@ -86,6 +90,7 @@ class ChangeSetTests(unittest.TestCase):
     def test_builder_loads_explicit_repository_context_paths_from_frozen_base(self):
         github=MagicMock()
         github.get_branch_sha.return_value="main"
+        github.list_file_paths.return_value=("src/probe.py","src/a.py")
         github.get_file_text.return_value="probe = True\n"
         github.commit_files.return_value="out"
         store=MagicMock()
