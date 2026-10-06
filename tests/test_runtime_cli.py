@@ -475,7 +475,7 @@ class RuntimeCliTests(unittest.TestCase):
         with patch.dict("os.environ",{},clear=True), \
              patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
-             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop), \
              patch("ai_product_factory.runtime_cli.VercelPreviewAdapter") as vercel:
@@ -581,6 +581,11 @@ class RuntimeCliTests(unittest.TestCase):
             out=run_preview_once()
         self.assertEqual(out["status"],"blocked_quota")
         self.assertEqual(out["retry_after_hours"],24)
+        store.record_resource_limit_signal.assert_called_once_with(
+            provider="vercel",resource_key="team",metric_key="deployments_daily",
+            quality="provider_blocked",source="preview-runtime-signal",unit="deployments",window_key="rolling_24h",
+            metadata={"repository":"owner/repo","candidate_commit":"abc","deployment_ref":"vercel-status-88"},
+        )
         store.record_audit_event.assert_called_once()
         store.fail_preview.assert_not_called()
 
@@ -591,6 +596,7 @@ class RuntimeCliTests(unittest.TestCase):
         verified=SimpleNamespace(deployment=SimpleNamespace(preview_url="https://preview.example",deployment_ref="check-1"))
         coordinator=MagicMock();coordinator.execute.return_value=verified
         loop=MagicMock();loop.finalize_verified_preview.return_value="awaiting_release"
+        store=MagicMock()
         env={
             "FACTORY_VERCEL_PREVIEW_ENABLED":"true","GITHUB_TOKEN":"gh",
             "FACTORY_BROWSER_EVIDENCE_ENABLED":"true","FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["verify"]',
@@ -611,6 +617,11 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
             out=run_preview_once()
         self.assertEqual(out["status"],"awaiting_release")
+        store.record_resource_limit_signal.assert_called_once_with(
+            provider="vercel",resource_key="team",metric_key="deployments_daily",
+            quality="unknown",source="preview-runtime-recovered",unit="deployments",window_key="rolling_24h",
+            metadata={"repository":"owner/repo","candidate_commit":"abc","deployment_ref":"check-1"},
+        )
         github_vercel.assert_called_once()
         self.assertNotIn("VERCEL_TOKEN",env)
 

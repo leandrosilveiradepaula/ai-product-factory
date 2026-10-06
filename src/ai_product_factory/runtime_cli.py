@@ -344,6 +344,11 @@ def run_preview_once()->dict:
  try:
   verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
  except PreviewDeferred as exc:
+  store.record_resource_limit_signal(
+   provider="vercel",resource_key="team",metric_key="deployments_daily",
+   quality="provider_blocked",source="preview-runtime-signal",unit="deployments",window_key="rolling_24h",
+   metadata={"repository":item.repository,"candidate_commit":item.candidate_commit,"deployment_ref":exc.deployment.deployment_ref},
+  )
   store.record_audit_event(
    run_id=item.run_id,event_type="preview.deferred",
    payload={"candidate_commit":item.candidate_commit,"status":exc.deployment.status,"deployment_ref":exc.deployment.deployment_ref,"retry_after_hours":24},
@@ -355,6 +360,11 @@ def run_preview_once()->dict:
   if str(exc)=="preview requires successful browser/e2e evidence":
    store.fail_preview(item.run_id,candidate_commit=item.candidate_commit,reason=str(exc))
   raise
+ store.record_resource_limit_signal(
+  provider="vercel",resource_key="team",metric_key="deployments_daily",
+  quality="unknown",source="preview-runtime-recovered",unit="deployments",window_key="rolling_24h",
+  metadata={"repository":item.repository,"candidate_commit":item.candidate_commit,"deployment_ref":verified.deployment.deployment_ref},
+ )
  trace=SupabaseTraceabilityStore()
  trace.record_delivery_evidence(
   run_id=item.run_id,evidence_type="preview",status="passed",evidence_ref=verified.deployment.deployment_ref,
