@@ -115,6 +115,7 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.transport.check_runs_forbidden = True
         self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
         self.assertEqual(self.github.last_ci_evidence_source, "github_actions_statuses")
+        self.assertTrue(self.github.last_ci_evidence_present)
         urls=[call[1] for call in self.transport.calls]
         self.assertTrue(any("/actions/runs?" in url for url in urls))
         self.assertTrue(any("/commits/commit1/status" in url for url in urls))
@@ -123,6 +124,7 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.transport.check_runs_forbidden = True
         self.transport.workflow_runs = []
         self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+        self.assertFalse(self.github.last_ci_evidence_present)
 
     def test_fine_grained_ci_fallback_reports_workflow_failure(self):
         self.transport.check_runs_forbidden = True

@@ -80,6 +80,7 @@ class GitHubRestAdapter:
         self.api_url = api_url.rstrip("/")
         self.transport = transport or _default_transport
         self.last_ci_evidence_source: str | None = None
+        self.last_ci_evidence_present: bool | None = None
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -321,8 +322,10 @@ class GitHubRestAdapter:
                 raise
             workflows, statuses = self._fine_grained_ci_evidence(head_sha)
             self.last_ci_evidence_source = "github_actions_statuses"
+            self.last_ci_evidence_present = bool(workflows or statuses)
             return self.last_ci_evidence_source, workflows, statuses
         self.last_ci_evidence_source = "github_checks"
+        self.last_ci_evidence_present = bool(checks)
         return self.last_ci_evidence_source, list(checks), []
 
     def get_ci_state(self, pr_number: int) -> CIState:
