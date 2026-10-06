@@ -57,6 +57,8 @@ class FakeGitHubTransport:
             return 200, {"workflow_runs": self.workflow_runs}
         if "/commits/commit1/status" in url and method == "GET":
             return 200, {"statuses": self.commit_statuses}
+        if "/actions/workflows/validate.yml/dispatches" in url and method == "POST":
+            return 204, None
         if "/issues/5" in url and method == "PATCH":
             return 200, {"number": 5, "state": "closed"}
         return 500, {"message": "unexpected"}
@@ -141,6 +143,13 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertEqual(failures[0].name, "unit-tests")
         self.assertEqual(failures[0].summary, "2 tests failed")
+
+    def test_explicit_workflow_dispatch_targets_candidate_ref(self):
+        self.github.dispatch_workflow("validate.yml",ref="factory/change-set-abc")
+        method,url,_,payload=self.transport.calls[-1]
+        self.assertEqual(method,"POST")
+        self.assertIn("/actions/workflows/validate.yml/dispatches",url)
+        self.assertEqual(payload,{"ref":"factory/change-set-abc"})
 
     def test_adapter_exposes_no_merge_operation(self):
         self.assertFalse(hasattr(self.github, "merge_pull_request"))

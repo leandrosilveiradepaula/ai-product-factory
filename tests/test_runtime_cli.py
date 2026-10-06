@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.runtime_auth import AuthKind
-from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once, run_recovery_once
+from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once, run_recovery_once, run_change_set_integration_once
 
 
 class RuntimeCliTests(unittest.TestCase):
@@ -237,6 +237,34 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["effect"],"none")
         self.assertFalse(out["model_calls_allowed"])
         store.create_replay.assert_called_once_with("run","shadow")
+
+    def test_same_repo_change_set_integration_dispatches_validate_workflow(self):
+        item=SimpleNamespace(repository="owner/factory",integration_branch="factory/change-set-cs")
+        store=MagicMock();store.claim_integration.return_value=item
+        result=SimpleNamespace(status="ci_pending",change_set_id="cs",wave=1,candidate_commit="abc",pull_request=SimpleNamespace(number=9))
+        github=MagicMock()
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
+            integrator.return_value.integrate.return_value=result
+            out=run_change_set_integration_once("worker")
+        self.assertTrue(out["ci_dispatched"])
+        github.dispatch_workflow.assert_called_once_with("validate.yml",ref="factory/change-set-cs")
+
+    def test_cross_repo_change_set_integration_does_not_dispatch_factory_workflow(self):
+        item=SimpleNamespace(repository="owner/crm",integration_branch="factory/change-set-cs")
+        store=MagicMock();store.claim_integration.return_value=item
+        result=SimpleNamespace(status="ci_pending",change_set_id="cs",wave=1,candidate_commit="abc",pull_request=SimpleNamespace(number=9))
+        github=MagicMock()
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
+            integrator.return_value.integrate.return_value=result
+            out=run_change_set_integration_once("worker")
+        self.assertFalse(out["ci_dispatched"])
+        github.dispatch_workflow.assert_not_called()
 
     def test_health_is_side_effect_free_configuration_report(self):
         with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True):
