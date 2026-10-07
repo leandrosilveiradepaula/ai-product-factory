@@ -46,6 +46,7 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
                 "product_readiness": {
                     "ready": True,
                     "status": "passed",
+                    "assessed_commit": "abc123",
                     "assessment_ref": "audit:full-product:2026-10-06",
                 },
             },
