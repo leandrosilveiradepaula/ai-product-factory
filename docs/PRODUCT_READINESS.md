@@ -1,6 +1,6 @@
 # Product Readiness Contract
 
-Last updated: 2026-10-06.
+Last updated: 2026-10-07.
 
 ## Why this exists
 
@@ -23,18 +23,39 @@ The Factory must never infer `product_ready` from CI, Preview, a merged PR, a co
 
 A product can be called ready only when a full-product assessment has current evidence for all applicable domains:
 
-1. **security** — authn/authz, tenant isolation, secrets, public surfaces, dependency/supply-chain and data access boundaries;
-2. **observability_operations** — health/readiness, error aggregation, logs/traceability, alerting, recovery/runbook and critical integrations;
-3. **test_strategy** — representative unit/integration coverage plus E2E of critical journeys and regression gates;
-4. **product_experience** — information architecture, UI consistency, loading/error/empty states, responsiveness and accessibility for products with a user interface;
-5. **documentation** — setup, configuration, operational ownership, known limitations and release/rollback guidance;
-6. **functional_completeness** — no known mock/no-op/demo path presented as a finished production feature and no unresolved critical requirement blocker.
+1. **security** — authn/authz, tenant/data access boundaries, secrets and dependency/supply-chain boundaries;
+2. **observability_operations** — health/readiness, traceability, recovery and alerting;
+3. **test_strategy** — representative unit/integration coverage, critical E2E and regression gates;
+4. **product_experience** — full surface inventory, responsive coverage, accessibility and loading/error/empty states for products with a user interface;
+5. **documentation** — setup/configuration, operations and release/rollback guidance;
+6. **functional_completeness** — requirements inventory, mock/no-op/demo inventory and critical journeys.
 
-If a domain is genuinely not applicable, that non-applicability must be explicit and evidenced; silence is not a pass.
+A domain marked `passed` must provide both:
+- at least one non-empty evidence reference; and
+- explicit `coverage` entries for every required dimension of that domain.
+
+This is deliberate. Evidence such as "reviewed", one screenshot, one green PR or one manually inspected screen is not sufficient to prove a whole-product domain. The coverage contract forces the assessment to say what was actually checked.
+
+If a domain is genuinely not applicable, that non-applicability must be explicit and evidenced with a reason; silence is not a pass.
+
+## Coverage keys
+
+| Domain | Required coverage |
+| --- | --- |
+| security | `authn_authz`, `data_access_boundaries`, `secrets_dependencies` |
+| observability_operations | `health`, `traceability`, `recovery_alerting` |
+| test_strategy | `unit_integration`, `critical_e2e`, `regression_gates` |
+| product_experience | `surface_inventory`, `responsive`, `accessibility`, `states` |
+| documentation | `setup_configuration`, `operations`, `release_rollback` |
+| functional_completeness | `requirements_inventory`, `mock_noop_demo_inventory`, `critical_journeys` |
+
+Project-specific automated audits are encouraged as evidence but are not universally hardcoded. A headless service may mark product experience not applicable with explicit rationale; a UI product cannot skip responsive/accessibility/state coverage just because CI is green.
 
 ## Existing-project rule
 
 Imported/existing projects require a baseline audit before the Factory may make a global completion claim. The audit must look beyond the current change scope because inherited debt can exist outside changed files.
+
+The CRM dogfood demonstrated why: multiple manual UI passes still left hundreds of mechanically detectable surface issues until the repository was scanned globally. Readiness evidence therefore needs coverage, not merely a positive assertion.
 
 ## Release report semantics
 
