@@ -729,3 +729,19 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .gateTechnicalGrid{grid-template-columns:1fr}
  .planningDecisionWhy,.planningDecisionAnswer,.planningDecisionTechnical{margin-left:0}
 }
+
+
+/* Explicit feedback for long-running human gate actions. */
+.gatePendingFieldset{border:0;padding:0;margin:0;min-width:0}
+.gatePendingBody{display:grid;gap:10px;transition:opacity .15s ease,filter .15s ease}
+.gatePendingBody.isPending{opacity:.42;filter:saturate(.65);pointer-events:none;user-select:none}
+.gateBusyPanel{display:flex;align-items:flex-start;gap:11px;padding:12px 13px;margin-bottom:10px;border:1px solid #4d8eff;background:#101a2b;color:#dfe9ff}
+.gateBusyPanel>div{display:grid;gap:3px}
+.gateBusyPanel strong{font-size:12px;line-height:1.35}
+.gateBusyPanel span:not(.gateBusySpinner){color:#aebddd;font-size:10px;line-height:1.5}
+.gateBusySpinner{width:16px;height:16px;flex:0 0 16px;border:2px solid rgba(173,198,255,.28);border-top-color:#adc6ff;border-radius:50%;animation:gateSpin .8s linear infinite;margin-top:1px}
+.gatePendingFieldset[aria-busy="true"] button,.gatePendingFieldset[aria-busy="true"] .linkButton{cursor:wait!important}
+.gateSuccessBanner{margin-bottom:10px;border-color:#2f725c;background:#10211c;color:#d7f5e8}
+.gateSuccessBanner .panelHeading strong{color:#73e0b2}
+@keyframes gateSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.gateBusySpinner{animation:none}}
