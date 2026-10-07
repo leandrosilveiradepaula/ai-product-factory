@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
 
@@ -25,8 +26,36 @@ class SupabaseReleasePolicyStore:
             raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
         return None if not raw else json.loads(raw)
 
+    def _get(self,table:str,query:str):
+        req=urllib.request.Request(
+            f"{self.url}/rest/v1/{table}?{query}",
+            headers=self.headers,
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"control-plane read failed: {table} ({exc.code})") from exc
+        return [] if not raw else json.loads(raw)
+
     def facts(self,run_id:str)->dict:
-        return self._rpc("factory_get_release_facts",{"p_run_id":run_id}) or {}
+        facts=self._rpc("factory_get_release_facts",{"p_run_id":run_id}) or {}
+        rows=self._get(
+            "factory_evaluations",
+            "select=status,baseline_ref,result,created_at"
+            f"&run_id=eq.{quote(run_id)}&eval_type=eq.product_readiness"
+            "&status=eq.passed&order=created_at.desc&limit=1",
+        )
+        if rows:
+            row=rows[0]
+            result=row.get("result") if isinstance(row.get("result"),dict) else {}
+            facts["product_readiness"]={
+                **result,
+                "evaluation_status":row.get("status"),
+                "baseline_ref":row.get("baseline_ref"),
+                "created_at":row.get("created_at"),
+            }
+        return facts
 
     def record(self,*,run_id:str,assessment)->dict:
         decision_id=self._rpc("factory_record_policy_decision",{
