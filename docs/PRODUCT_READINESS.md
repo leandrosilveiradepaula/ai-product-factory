@@ -1,6 +1,6 @@
 # Product Readiness Contract
 
-Last updated: 2026-10-06.
+Last updated: 2026-10-07.
 
 ## Why this exists
 
@@ -30,7 +30,19 @@ A product can be called ready only when a full-product assessment has current ev
 5. **documentation** — setup, configuration, operational ownership, known limitations and release/rollback guidance;
 6. **functional_completeness** — no known mock/no-op/demo path presented as a finished production feature and no unresolved critical requirement blocker.
 
-If a domain is genuinely not applicable, that non-applicability must be explicit and evidenced; silence is not a pass.
+Each domain must also declare a `verification_state` describing how the evidence was validated. Merely configuring a gate or tool is not execution evidence.
+
+Allowed verification states are domain-specific:
+- `security`: `executed` or `reviewed`;
+- `observability_operations`: `executed` or `observed`;
+- `test_strategy`: `executed` only;
+- `product_experience`: `observed` or `reviewed`;
+- `documentation`: `reviewed`;
+- `functional_completeness`: `executed`, `observed`, or `reviewed`.
+
+For `test_strategy`, a workflow that exists but did not run for the assessed SHA is not valid evidence.
+
+If a domain is genuinely not applicable, that non-applicability must be explicit, reviewed, and evidenced; silence is not a pass.
 
 ## Existing-project rule
 
