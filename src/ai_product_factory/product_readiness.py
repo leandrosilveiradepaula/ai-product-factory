@@ -12,6 +12,14 @@ REQUIRED_DOMAINS=(
     "functional_completeness",
 )
 ALLOWED_DOMAIN_STATUS={"passed","failed","not_applicable"}
+ALLOWED_VERIFICATION_STATES={
+    "security":{"executed","reviewed"},
+    "observability_operations":{"executed","observed"},
+    "test_strategy":{"executed"},
+    "product_experience":{"observed","reviewed"},
+    "documentation":{"reviewed"},
+    "functional_completeness":{"executed","observed","reviewed"},
+}
 
 
 @dataclass(frozen=True)
@@ -49,17 +57,24 @@ def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:di
         status=str(raw.get("status") or "").strip()
         reason=str(raw.get("reason") or "").strip()
         evidence=raw.get("evidence") if isinstance(raw.get("evidence"),list) else []
+        verification_state=str(raw.get("verification_state") or "").strip()
         if status not in ALLOWED_DOMAIN_STATUS:
-            normalized[key]={"status":"invalid","reason":"invalid domain status","evidence":evidence}
+            normalized[key]={"status":"invalid","reason":"invalid domain status","evidence":evidence,"verification_state":verification_state}
             blockers.append(f"{key}: invalid status")
             continue
         if status=="not_applicable" and not reason:
-            normalized[key]={"status":"invalid","reason":"not_applicable requires explicit reason","evidence":evidence}
+            normalized[key]={"status":"invalid","reason":"not_applicable requires explicit reason","evidence":evidence,"verification_state":verification_state}
             blockers.append(f"{key}: not_applicable without reason")
             continue
-        normalized[key]={"status":status,"reason":reason,"evidence":evidence}
-        if status=="failed":blockers.append(f"{key}: failed")
-        if status=="passed" and not evidence:blockers.append(f"{key}: passed without evidence")
+        normalized[key]={"status":status,"reason":reason,"evidence":evidence,"verification_state":verification_state}
+        if status=="failed":
+            blockers.append(f"{key}: failed")
+            continue
+        if not evidence:
+            blockers.append(f"{key}: {status} without evidence")
+        allowed=ALLOWED_VERIFICATION_STATES[key]
+        if verification_state not in allowed:
+            blockers.append(f"{key}: invalid verification_state")
     ready=not blockers and all(normalized[k]["status"] in {"passed","not_applicable"} for k in REQUIRED_DOMAINS)
     return ProductReadinessAssessment(
         assessed_commit=assessed_commit.strip(),assessment_ref=assessment_ref.strip(),
