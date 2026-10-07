@@ -26,5 +26,17 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertNotIn("contents: write",preview)
         self.assertNotIn("pull-requests: write",preview)
 
+    def test_exact_preview_push_is_scoped_to_console_changes(self):
+        text=(ROOT/".github/workflows/exact-preview-browser-evidence.yml").read_text()
+        push=text.split("  push:",1)[1].split("  workflow_dispatch:",1)[0]
+        self.assertIn('paths:',push)
+        self.assertIn('- "apps/console/**"',push)
+
+    def test_vercel_preview_ignore_command_matches_console_only_policy(self):
+        text=(ROOT/"apps/console/vercel.json").read_text()
+        self.assertIn('preview/*) git diff --quiet HEAD^ HEAD ./',text)
+        self.assertNotIn('preview/*) exit 1',text)
+        self.assertIn('../../config/factory.release-policy.v1.json',text)
+
 
 if __name__=="__main__":unittest.main()
