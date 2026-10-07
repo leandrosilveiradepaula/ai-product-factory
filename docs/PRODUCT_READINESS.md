@@ -30,9 +30,20 @@ A product can be called ready only when a full-product assessment has current ev
 5. **documentation** — setup/configuration, operations and release/rollback guidance;
 6. **functional_completeness** — requirements inventory, mock/no-op/demo inventory and critical journeys.
 
-A domain marked `passed` must provide both:
-- at least one non-empty evidence reference; and
-- explicit `coverage` entries for every required dimension of that domain.
+A domain marked `passed` must provide all of:
+- at least one non-empty evidence reference;
+- explicit `coverage` entries for every required dimension of that domain; and
+- an explicit `verification_state` proving how that evidence was validated.
+
+Allowed verification states are domain-specific:
+- `security`: `executed` or `reviewed`;
+- `observability_operations`: `executed` or `observed`;
+- `test_strategy`: `executed` only;
+- `product_experience`: `observed` or `reviewed`;
+- `documentation`: `reviewed`;
+- `functional_completeness`: `executed`, `observed`, or `reviewed`.
+
+For `test_strategy`, a configured workflow that did not execute for the assessed SHA is not evidence. A `not_applicable` domain also requires an allowed verification state and non-empty evidence.
 
 This is deliberate. Evidence such as "reviewed", one screenshot, one green PR or one manually inspected screen is not sufficient to prove a whole-product domain. The coverage contract forces the assessment to say what was actually checked.
 
