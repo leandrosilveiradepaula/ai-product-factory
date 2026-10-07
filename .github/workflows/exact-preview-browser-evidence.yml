@@ -6,6 +6,8 @@ on:
     branches:
       - "preview/**"
       - "evidence/preview/**"
+    paths:
+      - "apps/console/**"
   workflow_dispatch:
     inputs:
       candidate_sha:
