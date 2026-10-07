@@ -4,7 +4,7 @@ Last updated: 2026-09-28.
 
 This document defines the executable completion gate for the AI Product Factory itself.
 
-The purpose of this gate is to distinguish **internal product completeness** from **external activation readiness**. A green Factory acceptance check means the deterministic platform, safety boundaries, workers, evidence flow and release model are implemented and regression-tested. It does **not** claim that externally blocked paid providers are enabled.
+The purpose of this gate is to validate **Factory platform acceptance**, not to make a global product-readiness claim about the Factory itself or any app it builds. A green Factory acceptance check means the deterministic platform, safety boundaries, workers, evidence flow and release model are implemented and regression-tested. It does **not** prove a full-product audit, and it does **not** claim that externally blocked paid providers are enabled.
 
 ## Acceptance matrix
 
@@ -27,9 +27,9 @@ The purpose of this gate is to distinguish **internal product completeness** fro
 | Cross-repo safety | Native Actions token is repository-scoped; external repositories require `FACTORY_GITHUB_TOKEN`. |
 | Benchmark safety | The Agent SQL 63-question benchmark is never an implicit Factory action. |
 
-## What “internally complete” means
+## What platform acceptance means
 
-The Factory is internally complete when all of the following are true:
+The Factory platform acceptance check is green when all of the following are true:
 
 1. the normal `validate` job is green;
 2. the dedicated `factory-acceptance` job is green;
@@ -37,6 +37,8 @@ The Factory is internally complete when all of the following are true:
 4. Console production health is green;
 5. there are no unresolved Factory code issues required for lifecycle correctness;
 6. the runtime continues to fail closed for paid/external providers that are not administratively ready.
+
+Passing these checks does not imply `product_ready`. Global readiness is governed by `docs/PRODUCT_READINESS.md` and requires a separate full-product audit with current evidence across all applicable readiness domains.
 
 ## External activation dependencies
 

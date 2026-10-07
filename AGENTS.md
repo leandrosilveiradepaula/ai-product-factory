@@ -71,3 +71,18 @@ CI verde, quality gate e Preview verificado nao autorizam merge de producao. Qua
 A acao humana pode acontecer no GitHub ou, quando o Console de producao estiver explicitamente ativado com credencial dedicada e allowlist, pelo botao administrativo de merge do proprio Console. Isso nao e auto-merge: nao existe scheduler, agente, runtime Python ou adapter capaz de acionar esse caminho. O Console revalida release report, PR aberto, branch base, repository allowlist e SHA candidato exato antes de chamar o GitHub. O release observer continua reconciliando uma acao humana ja realizada.
 
 Migrations de producao seguem a mesma fronteira humana. Quando um gate duravel declara `requested_action=apply_control_plane_migration`, um administrador pode aplicar a migration pelo Console somente por clique explicito. O Console busca o SQL apenas do arquivo versionado no SHA candidato, revalida PR/checks/politica, usa credencial Supabase Management dedicada somente server-side e aplica pelo endpoint oficial de migrations. Scheduler, runtime Python e agentes nao podem acionar esse caminho automaticamente.
+
+## Semantica de prontidao
+
+Nunca use "pronto", "concluido", "100%" ou equivalente para um produto inteiro com base apenas em uma tarefa, PR, CI verde, Preview, release candidate ou fluxo parcial validado.
+
+A Factory deve distinguir explicitamente quatro escopos:
+
+1. **work_item_complete**: a tarefa/change set atual cumpriu seus criterios e evidencias;
+2. **release_candidate_ready**: o SHA candidato cumpriu os gates aplicaveis para chegar ao gate humano de producao;
+3. **release_completed**: um release humano foi observado e reconciliado;
+4. **product_ready**: o produto inteiro passou por auditoria global e possui evidencias atuais de seguranca, autorizacao/isolamento, observabilidade/operacao, estrategia de testes, experiencia de produto (quando aplicavel), documentacao/runbook e ausencia de blockers criticos conhecidos.
+
+`release_candidate_ready` e `release_completed` **nao implicam** `product_ready`. A ausencia de issues abertas tambem nao prova prontidao do produto. Quando nao houver uma auditoria global recente e duravel, o estado de produto deve ser `not_assessed` ou `not_ready`, nunca inferido como pronto.
+
+Antes de declarar um app/projeto pronto, reconciliar o produto como um todo e registrar explicitamente os blockers e as evidencias. Para produtos existentes importados, a auditoria inicial deve procurar divida herdada (mocks/no-ops, seguranca/RBAC/RLS, observabilidade, testes/E2E, UX/a11y/responsividade, documentacao e operacao), mesmo que a tarefa atual nao toque essas areas.

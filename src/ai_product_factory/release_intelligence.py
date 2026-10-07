@@ -76,6 +76,9 @@ def build_release_assessment(
         "cost":{"known":str(known_cost),"unknown_paid_cost":unknown_paid_cost},
         "blockers":list(decision.reasons) if decision.blocked else [],
         "release_state":decision.outcome,
+        "readiness_scope":"release_candidate",
+        "product_complete":bool((facts.get("product_readiness") or {}).get("ready") is True),
+        "product_readiness":facts.get("product_readiness") or {"ready":False,"status":"not_assessed"},
     }
     serializable_context={
         "production_change":context.production_change,
