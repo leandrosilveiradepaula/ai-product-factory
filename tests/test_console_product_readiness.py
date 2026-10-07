@@ -14,6 +14,11 @@ class ConsoleProductReadinessTests(unittest.TestCase):
   self.assertIn("verification_state",text)
   self.assertIn("coverage",text)
 
+ def test_ready_requires_passed_status_and_exact_baseline(self):
+  text=CONTROL.read_text()
+  self.assertIn('result.ready===true&&result.status==="passed"',text)
+  self.assertIn('assessedCommit===String(row.baseline_ref||"")',text)
+
  def test_project_page_does_not_infer_product_ready_from_local_delivery(self):
   text=PAGE.read_text()
   self.assertIn('id="product-readiness"',text)
