@@ -74,6 +74,8 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
             "cross-repo-preview-browser-evidence.yml@refs/heads/main"
         )
         self.assertGreaterEqual(source.count(workflow_ref), 2)
+        self.assertIn('"issue_comment"', source)
+        self.assertIn('payload.actor_id', source)
         self.assertIn('statuses: "read"', source)
         self.assertNotIn('statuses: "write"', source)
 
