@@ -12,7 +12,7 @@ locks access to:
 - immutable owner ID `256917842`;
 - `refs/heads/main`;
 - exact trusted workflows: `.github/workflows/autonomous-runner.yml`, `.github/workflows/control-plane-oidc-preflight.yml`, and `.github/workflows/cross-repo-preview-browser-evidence.yml`;
-- runtime events `schedule`/`workflow_dispatch`, plus `push` only for the dedicated preflight workflow.
+- runtime events `schedule`/`workflow_dispatch`; OWNER-authored `issue_comment` is also accepted for explicitly allowlisted workflows, and `push` remains limited to trusted preflight/reconciliation paths.
 
 Only GET/POST/PATCH calls to `/rest/v1/factory_*` and
 `/rest/v1/rpc/factory_*` are proxied. Auth/admin/storage endpoints and
