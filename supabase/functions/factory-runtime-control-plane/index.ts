@@ -13,6 +13,7 @@ const EXPECTED = {
 const GENERIC_PROXY_WORKFLOW_REFS = new Set([
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/control-plane-oidc-preflight.yml@refs/heads/main",
+  "leandrosilveiradepaula/ai-product-factory/.github/workflows/cross-repo-preview-browser-evidence.yml@refs/heads/main",
 ]);
 const APP_PERMISSIONS = {
   actions: "read",
@@ -265,6 +266,7 @@ Deno.serve(async(req:Request)=>{
       const tokenWorkflows=new Set([
         "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
         "leandrosilveiradepaula/ai-product-factory/.github/workflows/crm-cross-repo-preflight.yml@refs/heads/main",
+        "leandrosilveiradepaula/ai-product-factory/.github/workflows/cross-repo-preview-browser-evidence.yml@refs/heads/main",
       ]);
       if(!tokenWorkflows.has(workflowRef)) return json(403,{error:"github_app_token_workflow_not_allowed"});
       if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName)) {
