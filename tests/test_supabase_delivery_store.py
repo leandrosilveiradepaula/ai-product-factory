@@ -1,6 +1,7 @@
 import json,unittest
 from unittest.mock import patch
 from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
+from ai_product_factory.product_readiness import assess_product_readiness,REQUIRED_DOMAINS
 class Response:
  def __init__(self,data):self.data=data
  def __enter__(self):return self
@@ -51,5 +52,20 @@ class Tests(unittest.TestCase):
   self.assertIn("/rpc/factory_update_run_delivery_status",call.call_args_list[0].args[0].full_url)
   self.assertIn("factory_tasks?id=eq.t",call.call_args_list[1].args[0].full_url)
   self.assertIn("factory_audit_events",call.call_args_list[2].args[0].full_url)
+
+ def test_product_readiness_persists_exact_commit_and_audit(self):
+  domains={key:{"status":"passed","reason":"verified","evidence":[f"evidence:{key}"]} for key in REQUIRED_DOMAINS}
+  assessment=assess_product_readiness(assessed_commit="abc",assessment_ref="audit:1",domains=domains)
+  responses=[Response([{"id":"eval"}]),Response([{"id":1}])]
+  with patch("urllib.request.urlopen",side_effect=responses) as call:
+   out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_product_readiness(run_id="r",assessment=assessment)
+  self.assertEqual(out,[{"id":"eval"}])
+  eval_payload=json.loads(call.call_args_list[0].args[0].data.decode())
+  self.assertEqual(eval_payload["eval_type"],"product_readiness")
+  self.assertEqual(eval_payload["baseline_ref"],"abc")
+  self.assertEqual(eval_payload["status"],"passed")
+  self.assertTrue(eval_payload["result"]["ready"])
+  audit_payload=json.loads(call.call_args_list[1].args[0].data.decode())
+  self.assertEqual(audit_payload["event_type"],"product_readiness.assessed")
 
 if __name__=="__main__":unittest.main()

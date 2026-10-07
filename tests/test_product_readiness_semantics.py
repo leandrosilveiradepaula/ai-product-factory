@@ -46,6 +46,7 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
                 "product_readiness": {
                     "ready": True,
                     "status": "passed",
+                    "assessed_commit": "abc123",
                     "assessment_ref": "audit:full-product:2026-10-06",
                 },
             },
@@ -55,6 +56,26 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         self.assertTrue(assessment.report["product_complete"])
         self.assertTrue(assessment.report["product_readiness"]["assessment_ref"].startswith("audit:full-product:"))
 
+    def test_stale_product_assessment_does_not_make_new_candidate_complete(self):
+        assessment = build_release_assessment(
+            policy=_policy(),
+            candidate_commit="new-sha",
+            changed_files=("src/example.py",),
+            risk={},
+            facts={
+                "definition_of_done": {"satisfied": [], "missing": []},
+                "product_readiness": {
+                    "ready": True,
+                    "status": "passed",
+                    "assessed_commit": "old-sha",
+                    "assessment_ref": "audit:old",
+                },
+            },
+            unknown_paid_cost=False,
+            known_cost=Decimal("0"),
+        )
+        self.assertFalse(assessment.report["product_complete"])
+        self.assertEqual(assessment.report["product_readiness"]["status"], "stale")
     def test_governance_forbids_ambiguous_product_completion_claims(self):
         agents = (ROOT / "AGENTS.md").read_text()
         contract = (ROOT / "docs/PRODUCT_READINESS.md").read_text()
