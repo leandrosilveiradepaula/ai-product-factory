@@ -1,0 +1,270 @@
+name: Cross-repo Preview browser evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repository:
+        description: Target project repository in owner/name form
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact 40-character candidate SHA in the target repository
+        required: true
+        type: string
+      expected_text:
+        description: Text that must be rendered by the target Preview
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+  id-token: write
+
+concurrency:
+  group: cross-repo-preview-browser-${{ inputs.target_repository }}-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+jobs:
+  browser-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: src
+      GITHUB_ACTIONS: "true"
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      TARGET_REPOSITORY: ${{ inputs.target_repository }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      EXPECTED_TEXT: ${{ inputs.expected_text }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Resolve exact target Vercel Preview
+        id: preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import time
+          from urllib import request
+          from ai_product_factory.github_auth import resolve_github_token
+
+          repository=os.environ["TARGET_REPOSITORY"].strip()
+          sha=os.environ["CANDIDATE_SHA"].strip()
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",repository):
+              raise SystemExit("target_repository must be owner/name")
+          if not re.fullmatch(r"[0-9a-f]{40}",sha):
+              raise SystemExit("candidate_sha must be an exact lowercase 40-character SHA")
+
+          token=resolve_github_token(repository)
+          headers={
+              "Authorization":"Bearer "+token,
+              "Accept":"application/vnd.github+json",
+              "X-GitHub-Api-Version":"2026-03-10",
+          }
+
+          def get(path):
+              req=request.Request("https://api.github.com"+path,headers=headers)
+              with request.urlopen(req,timeout=30) as response:
+                  return json.loads(response.read().decode())
+
+          commit=get(f"/repos/{repository}/commits/{sha}")
+          if str(commit.get("sha") or "") != sha:
+              raise SystemExit("target candidate SHA could not be verified")
+
+          host_pattern=re.compile(r"([A-Za-z0-9][A-Za-z0-9-]*\.vercel\.app)")
+          preview_url=None
+          for _ in range(40):
+              combined=get(f"/repos/{repository}/commits/{sha}/status")
+              statuses=combined.get("statuses") or []
+              vercel_statuses=[
+                  item for item in statuses
+                  if "vercel" in str(item.get("context") or "").lower()
+              ]
+              if any(str(item.get("state") or "").lower() in {"failure","error"} for item in vercel_statuses):
+                  raise SystemExit("Vercel commit status failed for exact target candidate")
+              ready=any(str(item.get("state") or "").lower()=="success" for item in vercel_statuses)
+              if ready:
+                  checks=get(f"/repos/{repository}/commits/{sha}/check-runs?per_page=100")
+                  for check in checks.get("check_runs") or []:
+                      app_slug=str(((check.get("app") or {}).get("slug")) or "").lower()
+                      if app_slug!="vercel":
+                          continue
+                      if str(check.get("status") or "")!="completed":
+                          continue
+                      if str(check.get("conclusion") or "") not in {"success","neutral"}:
+                          continue
+                      output=check.get("output") or {}
+                      haystack="\n".join(str(value) for value in (
+                          output.get("title"),
+                          output.get("summary"),
+                          output.get("text"),
+                          check.get("details_url"),
+                      ) if value)
+                      match=host_pattern.search(haystack)
+                      if match:
+                          preview_url="https://"+match.group(1)
+                          break
+              if preview_url:
+                  break
+              time.sleep(5)
+
+          if not preview_url:
+              raise SystemExit("Vercel Preview did not reach READY with a discoverable exact URL")
+
+          output_path=os.environ["GITHUB_OUTPUT"]
+          with open(output_path,"a",encoding="utf-8") as fh:
+              fh.write(f"url={preview_url}\n")
+              fh.write(f"candidate_sha={sha}\n")
+              fh.write(f"target_repository={repository}\n")
+          print(json.dumps({
+              "status":"ready",
+              "repository":repository,
+              "candidate_sha":sha,
+              "preview_url":preview_url,
+              "credential_path":"github_app_or_explicit_cross_repo_token",
+              "token_persisted":False,
+          }))
+          PY
+
+      - name: Dispatch trusted Factory browser verifier and wait
+        id: verifier
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          EXPECTED_TEXT: ${{ inputs.expected_text }}
+        with:
+          script: |
+            const workflowId = "console-browser-evidence.yml";
+            const started = Date.now();
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: workflowId,
+              ref: "main",
+              inputs: {
+                preview_url: process.env.PREVIEW_URL,
+                expected_text: process.env.EXPECTED_TEXT,
+              },
+            });
+            let selected = null;
+            for (let attempt = 0; attempt < 90; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const {data} = await github.rest.actions.listWorkflowRuns({
+                ...context.repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: "main",
+                per_page: 20,
+              });
+              selected = data.workflow_runs.find(run =>
+                Date.parse(run.created_at) >= started - 5000 &&
+                run.event === "workflow_dispatch" &&
+                run.head_branch === "main"
+              ) || null;
+              if (!selected || selected.status !== "completed") continue;
+              core.setOutput("run_url", selected.html_url);
+              if (selected.conclusion !== "success") {
+                core.setFailed("Trusted browser verifier failed: " + selected.html_url);
+              }
+              return;
+            }
+            core.setFailed("Timed out waiting for trusted Factory browser verifier");
+
+      - name: Persist cross-repo browser evidence in Control Plane
+        if: ${{ always() }}
+        shell: bash
+        env:
+          EVIDENCE_SUCCESS: ${{ steps.verifier.outcome == 'success' }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          VERIFIER_RUN_URL: ${{ steps.verifier.outputs.run_url }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib import parse, request
+          from ai_product_factory.supabase_server import resolve_supabase_server_config
+
+          repository=os.environ["TARGET_REPOSITORY"].strip()
+          sha=os.environ["CANDIDATE_SHA"].strip()
+          preview_url=os.environ.get("PREVIEW_URL","").strip()
+          verifier_url=os.environ.get("VERIFIER_RUN_URL","").strip()
+          success=os.environ.get("EVIDENCE_SUCCESS","").lower()=="true"
+
+          cfg=resolve_supabase_server_config()
+
+          def call(method,path,body=None):
+              headers={**cfg.headers,"Accept":"application/json"}
+              data=None
+              if body is not None:
+                  headers["Content-Type"]="application/json"
+                  headers["Prefer"]="return=representation"
+                  data=json.dumps(body,separators=(",",":")).encode()
+              req=request.Request(cfg.url.rstrip("/")+path,data=data,headers=headers,method=method)
+              with request.urlopen(req,timeout=30) as response:
+                  raw=response.read().decode()
+                  return json.loads(raw) if raw else None
+
+          encoded=parse.quote(repository,safe="")
+          projects=call("GET",f"/rest/v1/factory_projects?select=id&repository=eq.{encoded}&is_active=eq.true&limit=1")
+          if not isinstance(projects,list) or not projects:
+              raise SystemExit("target repository is not an active Factory project")
+          project_id=str(projects[0].get("id") or "")
+          if not project_id:
+              raise SystemExit("Factory project id missing")
+
+          evidence={
+              "candidate_commit":sha,
+              "target_repository":repository,
+              "preview":{
+                  "provider":"vercel",
+                  "url":preview_url or None,
+                  "status":"browser_verified" if success else "browser_failed",
+                  "browser_verifier_run_url":verifier_url or None,
+              },
+          }
+          gaps=[] if success else [{
+              "domain":"product_experience",
+              "status":"blocked",
+              "reason":"Cross-repo browser evidence did not pass for the exact candidate Preview.",
+          }]
+          payload={
+              "project_id":project_id,
+              "run_id":None,
+              "observed_stage":"verification",
+              "summary":(
+                  f"Cross-repo browser evidence passed for {repository}@{sha}"
+                  if success else
+                  f"Cross-repo browser evidence failed for {repository}@{sha}"
+              ),
+              "evidence":evidence,
+              "gaps":gaps,
+              "constraints":{
+                  "product_ready_inferred":False,
+                  "release_candidate_ready_inferred":False,
+                  "production_merge_authorized":False,
+              },
+              "source_status":{
+                  "github_target":"verified",
+                  "vercel_preview":"resolved" if preview_url else "not_resolved",
+                  "browser_visual_validation":"success" if success else "failure",
+              },
+          }
+          rows=call("POST","/rest/v1/factory_project_state_snapshots",payload)
+          if not isinstance(rows,list) or not rows:
+              raise SystemExit("Control Plane did not persist cross-repo browser evidence")
+          print(json.dumps({
+              "status":"recorded",
+              "repository":repository,
+              "candidate_sha":sha,
+              "browser_evidence":"success" if success else "failure",
+              "snapshot_id":rows[0].get("id"),
+          }))
+          PY
