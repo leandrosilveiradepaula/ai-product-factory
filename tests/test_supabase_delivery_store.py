@@ -1,7 +1,7 @@
 import json,unittest
 from unittest.mock import patch
 from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
-from ai_product_factory.product_readiness import assess_product_readiness,REQUIRED_DOMAINS
+from ai_product_factory.product_readiness import assess_product_readiness,REQUIRED_COVERAGE_BY_DOMAIN,REQUIRED_DOMAINS
 class Response:
  def __init__(self,data):self.data=data
  def __enter__(self):return self
@@ -54,7 +54,7 @@ class Tests(unittest.TestCase):
   self.assertIn("factory_audit_events",call.call_args_list[2].args[0].full_url)
 
  def test_product_readiness_persists_exact_commit_and_audit(self):
-  domains={key:{"status":"passed","reason":"verified","evidence":[f"evidence:{key}"]} for key in REQUIRED_DOMAINS}
+  domains={key:{"status":"passed","reason":"verified","evidence":[f"evidence:{key}"],"coverage":list(REQUIRED_COVERAGE_BY_DOMAIN[key])} for key in REQUIRED_DOMAINS}
   assessment=assess_product_readiness(assessed_commit="abc",assessment_ref="audit:1",domains=domains)
   responses=[Response([{"id":"eval"}]),Response([{"id":1}])]
   with patch("urllib.request.urlopen",side_effect=responses) as call:
