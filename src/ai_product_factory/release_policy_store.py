@@ -44,7 +44,7 @@ class SupabaseReleasePolicyStore:
             "factory_evaluations",
             "select=status,baseline_ref,result,created_at"
             f"&run_id=eq.{quote(run_id)}&eval_type=eq.product_readiness"
-            "&status=eq.passed&order=created_at.desc&limit=1",
+            "&order=created_at.desc&limit=1",
         )
         if rows:
             row=rows[0]
