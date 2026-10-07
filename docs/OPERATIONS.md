@@ -170,6 +170,14 @@ The Management token is never exposed to browser code, Python runtime workers, a
 
 Do not enable the primary model merely because an API key or API WIF mapping exists. Billing/quota readiness and a bounded smoke test are separate prerequisites. Scheduled Direct additionally requires non-empty budget and reservation variables; the runtime reads current known spend from the Control Plane ledger and blocks if paid usage has unknown cost.
 
+## Factory Console Preview cost policy
+
+Automatic exact Preview/browser evidence for the Factory repository is applicable only when a pushed `preview/**` or `evidence/preview/**` candidate changes `apps/console/**`. Runtime, documentation, tests, broker, or other non-Console changes must not consume a Vercel Preview or browser verification merely because the branch name uses the Preview namespace.
+
+The Vercel project uses the same rule: Preview branches are ignored when the commit does not change the Console tree. Production `main` keeps its broader ignore rule so source-controlled release-policy changes can still publish the Console when required.
+
+Explicit `workflow_dispatch` of exact Preview evidence remains available for a reviewed exceptional case and is not widened by the automatic path filter.
+
 ## Verified Preview activation
 
 The project supplies non-secret deployment metadata in `factory_projects.manifest.preview`. `mode: github` discovers the exact Vercel Preview from GitHub check-runs using `GITHUB_TOKEN`; `mode: api` creates/polls the Preview through the Vercel API and requires Vercel team/project metadata.
