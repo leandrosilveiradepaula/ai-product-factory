@@ -59,5 +59,18 @@ class SupabaseDeliveryStore:
   return None if not raw else json.loads(raw)
  def record_evaluation(self,*,run_id:str,eval_type:str,status:str,score:float|None=None,baseline_ref:str|None=None,result:dict|None=None):
   return self._insert("factory_evaluations",{"run_id":run_id,"eval_type":eval_type,"status":status,"score":score,"baseline_ref":baseline_ref,"result":result or {}})
+ def record_product_readiness(self,*,run_id:str,assessment):
+  result=assessment.as_result()
+  status="passed" if assessment.ready else "failed"
+  saved=self.record_evaluation(
+   run_id=run_id,eval_type="product_readiness",status=status,
+   baseline_ref=assessment.assessed_commit,result=result,
+  )
+  self.record_audit_event(
+   run_id=run_id,event_type="product_readiness.assessed",
+   payload={"assessed_commit":assessment.assessed_commit,"assessment_ref":assessment.assessment_ref,"ready":assessment.ready,"status":assessment.status,"blockers":list(assessment.blockers)},
+   actor_ref="product-readiness",
+  )
+  return saved
  def record_audit_event(self,*,run_id:str,event_type:str,payload:dict|None=None,actor_type:str="factory",actor_ref:str|None=None):
   return self._insert("factory_audit_events",{"run_id":run_id,"actor_type":actor_type,"actor_ref":actor_ref,"event_type":event_type,"payload":payload or {}})
