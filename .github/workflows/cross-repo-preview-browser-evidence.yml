@@ -177,52 +177,94 @@ jobs:
             }
             core.setFailed("Timed out waiting for trusted Factory browser verifier");
 
-      - name: Record exact browser evidence on target candidate
-        if: ${{ always() && steps.preview.outputs.candidate_sha != '' }}
+      - name: Persist cross-repo browser evidence in Control Plane
+        if: ${{ always() }}
         shell: bash
         env:
           EVIDENCE_SUCCESS: ${{ steps.verifier.outcome == 'success' }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
           VERIFIER_RUN_URL: ${{ steps.verifier.outputs.run_url }}
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           import os
-          from urllib import request
-          from ai_product_factory.github_auth import resolve_github_token
+          from urllib import parse, request
+          from ai_product_factory.supabase_server import resolve_supabase_server_config
 
-          repository=os.environ["TARGET_REPOSITORY"]
-          sha=os.environ["CANDIDATE_SHA"]
+          repository=os.environ["TARGET_REPOSITORY"].strip()
+          sha=os.environ["CANDIDATE_SHA"].strip()
+          preview_url=os.environ.get("PREVIEW_URL","").strip()
+          verifier_url=os.environ.get("VERIFIER_RUN_URL","").strip()
           success=os.environ.get("EVIDENCE_SUCCESS","").lower()=="true"
-          token=resolve_github_token(repository)
-          payload={
-              "state":"success" if success else "failure",
-              "context":"Factory Cross-Repo Preview browser evidence",
-              "description":"Exact target Preview verified in trusted browser" if success else "Exact target Preview browser verification failed",
-          }
-          run_url=os.environ.get("VERIFIER_RUN_URL","").strip()
-          if run_url:
-              payload["target_url"]=run_url
-          req=request.Request(
-              f"https://api.github.com/repos/{repository}/statuses/{sha}",
-              data=json.dumps(payload,separators=(",",":")).encode(),
-              headers={
-                  "Authorization":"Bearer "+token,
-                  "Accept":"application/vnd.github+json",
-                  "Content-Type":"application/json",
-                  "X-GitHub-Api-Version":"2026-03-10",
+
+          cfg=resolve_supabase_server_config()
+
+          def call(method,path,body=None):
+              headers={**cfg.headers,"Accept":"application/json"}
+              data=None
+              if body is not None:
+                  headers["Content-Type"]="application/json"
+                  headers["Prefer"]="return=representation"
+                  data=json.dumps(body,separators=(",",":")).encode()
+              req=request.Request(cfg.url.rstrip("/")+path,data=data,headers=headers,method=method)
+              with request.urlopen(req,timeout=30) as response:
+                  raw=response.read().decode()
+                  return json.loads(raw) if raw else None
+
+          encoded=parse.quote(repository,safe="")
+          projects=call("GET",f"/rest/v1/factory_projects?select=id&repository=eq.{encoded}&is_active=eq.true&limit=1")
+          if not isinstance(projects,list) or not projects:
+              raise SystemExit("target repository is not an active Factory project")
+          project_id=str(projects[0].get("id") or "")
+          if not project_id:
+              raise SystemExit("Factory project id missing")
+
+          evidence={
+              "candidate_commit":sha,
+              "target_repository":repository,
+              "preview":{
+                  "provider":"vercel",
+                  "url":preview_url or None,
+                  "status":"browser_verified" if success else "browser_failed",
+                  "browser_verifier_run_url":verifier_url or None,
               },
-              method="POST",
-          )
-          with request.urlopen(req,timeout=30) as response:
-              body=json.loads(response.read().decode())
-          if str(body.get("context") or "") != payload["context"]:
-              raise SystemExit("target evidence status was not persisted as expected")
+          }
+          gaps=[] if success else [{
+              "domain":"product_experience",
+              "status":"blocked",
+              "reason":"Cross-repo browser evidence did not pass for the exact candidate Preview.",
+          }]
+          payload={
+              "project_id":project_id,
+              "run_id":None,
+              "observed_stage":"verification",
+              "summary":(
+                  f"Cross-repo browser evidence passed for {repository}@{sha}"
+                  if success else
+                  f"Cross-repo browser evidence failed for {repository}@{sha}"
+              ),
+              "evidence":evidence,
+              "gaps":gaps,
+              "constraints":{
+                  "product_ready_inferred":False,
+                  "release_candidate_ready_inferred":False,
+                  "production_merge_authorized":False,
+              },
+              "source_status":{
+                  "github_target":"verified",
+                  "vercel_preview":"resolved" if preview_url else "not_resolved",
+                  "browser_visual_validation":"success" if success else "failure",
+              },
+          }
+          rows=call("POST","/rest/v1/factory_project_state_snapshots",payload)
+          if not isinstance(rows,list) or not rows:
+              raise SystemExit("Control Plane did not persist cross-repo browser evidence")
           print(json.dumps({
               "status":"recorded",
               "repository":repository,
               "candidate_sha":sha,
               "browser_evidence":"success" if success else "failure",
-              "token_persisted":False,
+              "snapshot_id":rows[0].get("id"),
           }))
           PY
