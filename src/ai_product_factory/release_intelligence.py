@@ -50,6 +50,18 @@ def build_release_assessment(
         rollback_verified=rollback_verified,
     )
     decision=evaluate_release_policy(policy,context)
+    raw_product=facts.get("product_readiness") if isinstance(facts.get("product_readiness"),dict) else {}
+    product_readiness=dict(raw_product) if raw_product else {"ready":False,"status":"not_assessed"}
+    same_candidate=(
+        str(product_readiness.get("assessed_commit") or product_readiness.get("baseline_ref") or "")==candidate_commit
+    )
+    product_ready=bool(
+        product_readiness.get("ready") is True
+        and product_readiness.get("status")=="passed"
+        and same_candidate
+    )
+    if raw_product and not same_candidate:
+        product_readiness={**product_readiness,"ready":False,"status":"stale","reason":"assessment commit does not match release candidate"}
     previous=facts.get("previous_production")
     rollback={
         "migration_change":migration_change,
@@ -77,8 +89,8 @@ def build_release_assessment(
         "blockers":list(decision.reasons) if decision.blocked else [],
         "release_state":decision.outcome,
         "readiness_scope":"release_candidate",
-        "product_complete":bool((facts.get("product_readiness") or {}).get("ready") is True),
-        "product_readiness":facts.get("product_readiness") or {"ready":False,"status":"not_assessed"},
+        "product_complete":product_ready,
+        "product_readiness":product_readiness,
     }
     serializable_context={
         "production_change":context.production_change,
