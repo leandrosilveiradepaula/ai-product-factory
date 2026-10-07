@@ -54,7 +54,17 @@ class Tests(unittest.TestCase):
   self.assertIn("factory_audit_events",call.call_args_list[2].args[0].full_url)
 
  def test_product_readiness_persists_exact_commit_and_audit(self):
-  domains={key:{"status":"passed","reason":"verified","evidence":[f"evidence:{key}"],"coverage":list(REQUIRED_COVERAGE_BY_DOMAIN[key])} for key in REQUIRED_DOMAINS}
+  verification={
+   "security":"reviewed","observability_operations":"observed","test_strategy":"executed",
+   "product_experience":"observed","documentation":"reviewed","functional_completeness":"reviewed",
+  }
+  domains={
+   key:{
+    "status":"passed","reason":"verified","evidence":[f"evidence:{key}"],
+    "coverage":list(REQUIRED_COVERAGE_BY_DOMAIN[key]),"verification_state":verification[key],
+   }
+   for key in REQUIRED_DOMAINS
+  }
   assessment=assess_product_readiness(assessed_commit="abc",assessment_ref="audit:1",domains=domains)
   responses=[Response([{"id":"eval"}]),Response([{"id":1}])]
   with patch("urllib.request.urlopen",side_effect=responses) as call:

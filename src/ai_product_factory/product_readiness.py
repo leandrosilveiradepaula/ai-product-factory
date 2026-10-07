@@ -12,6 +12,14 @@ REQUIRED_DOMAINS=(
     "functional_completeness",
 )
 ALLOWED_DOMAIN_STATUS={"passed","failed","not_applicable"}
+ALLOWED_VERIFICATION_STATES={
+    "security":{"executed","reviewed"},
+    "observability_operations":{"executed","observed"},
+    "test_strategy":{"executed"},
+    "product_experience":{"observed","reviewed"},
+    "documentation":{"reviewed"},
+    "functional_completeness":{"executed","observed","reviewed"},
+}
 
 REQUIRED_COVERAGE_BY_DOMAIN={
     "security":(
@@ -92,17 +100,32 @@ def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:di
             for x in (raw.get("coverage") if isinstance(raw.get("coverage"),list) else [])
             if str(x).strip()
         ]
+        verification_state=str(raw.get("verification_state") or "").strip()
         if status not in ALLOWED_DOMAIN_STATUS:
-            normalized[key]={"status":"invalid","reason":"invalid domain status","evidence":evidence,"coverage":coverage}
+            normalized[key]={
+                "status":"invalid","reason":"invalid domain status","evidence":evidence,
+                "coverage":coverage,"verification_state":verification_state,
+            }
             blockers.append(f"{key}: invalid status")
             continue
         if status=="not_applicable" and not reason:
-            normalized[key]={"status":"invalid","reason":"not_applicable requires explicit reason","evidence":evidence,"coverage":coverage}
+            normalized[key]={
+                "status":"invalid","reason":"not_applicable requires explicit reason","evidence":evidence,
+                "coverage":coverage,"verification_state":verification_state,
+            }
             blockers.append(f"{key}: not_applicable without reason")
             continue
-        normalized[key]={"status":status,"reason":reason,"evidence":evidence,"coverage":coverage}
-        if status=="failed":blockers.append(f"{key}: failed")
-        if status=="passed" and not evidence:blockers.append(f"{key}: passed without evidence")
+        normalized[key]={
+            "status":status,"reason":reason,"evidence":evidence,"coverage":coverage,
+            "verification_state":verification_state,
+        }
+        if status=="failed":
+            blockers.append(f"{key}: failed")
+            continue
+        if not evidence:
+            blockers.append(f"{key}: {status} without evidence")
+        if verification_state not in ALLOWED_VERIFICATION_STATES[key]:
+            blockers.append(f"{key}: invalid verification_state")
         if status=="passed":
             required=set(REQUIRED_COVERAGE_BY_DOMAIN[key])
             missing=sorted(required-set(coverage))
