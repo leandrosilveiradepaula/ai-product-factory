@@ -25,8 +25,10 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
         self.assertIn('workflowId = "console-browser-evidence.yml"', text)
         self.assertIn('ref: "main"', text)
         self.assertIn("expected_text: process.env.EXPECTED_TEXT", text)
-        self.assertIn("Factory Cross-Repo Preview browser evidence", text)
-        self.assertIn("/statuses/{sha}", text)
+        self.assertIn("factory_project_state_snapshots", text)
+        self.assertIn("browser_visual_validation", text)
+        self.assertIn("product_ready_inferred", text)
+        self.assertNotIn("/statuses/{sha}", text)
         self.assertIn("Vercel Preview did not reach READY", text)
 
     def test_browser_never_receives_cross_repo_github_token(self):
@@ -39,6 +41,16 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
         self.assertNotIn("resolve_github_token", verifier)
         self.assertIn("PREVIEW_URL", verifier)
         self.assertIn("EXPECTED_TEXT", verifier)
+
+    def test_control_plane_broker_explicitly_allows_only_the_trusted_main_workflow(self):
+        source = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        workflow_ref = (
+            "leandrosilveiradepaula/ai-product-factory/.github/workflows/"
+            "cross-repo-preview-browser-evidence.yml@refs/heads/main"
+        )
+        self.assertGreaterEqual(source.count(workflow_ref), 2)
+        self.assertIn('statuses: "read"', source)
+        self.assertNotIn('statuses: "write"', source)
 
 
 if __name__ == "__main__":
