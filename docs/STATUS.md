@@ -1,3 +1,9 @@
+## Reconciliation 2026-10-07 - Preview usage dogfood
+- Dogfood with a non-Console `preview/**` branch exposed an unnecessary Exact Preview/browser run even though Factory policy requires Preview only for `apps/console/**` changes.
+- The corrective candidate scopes automatic `exact-preview-browser-evidence.yml` pushes to `apps/console/**` and aligns `apps/console/vercel.json` so Preview branches with no Console diff are ignored.
+- Explicit manual exact-Preview verification remains available; production `main` keeps release-policy-file awareness.
+- This is a usage/cost hardening only. It does not relax fail-closed Preview semantics when Preview is actually applicable and does not alter the human production merge gate.
+
 ## Reconciliation 2026-10-04 - GitHub App runtime
 - CRM GitHub App access is verified `ready` in the Control Plane with short-lived installation credentials and no token persistence.
 - Real Actions preflight run `37209692130` succeeded after #644: repository `leandrosilveiradepaula/crm-infodive`, private=true, default branch main, head `23b4992727adb768a7a5b513cd0a181ea5d1e2d5`, auth `github_app_ephemeral`, credential path `github_app_only`, token_persisted=false.
