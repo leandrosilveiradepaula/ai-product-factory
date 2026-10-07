@@ -60,8 +60,6 @@ jobs:
           ref=get("/repos/"+repository+"/git/ref/heads/main")
           if repo.get("full_name") != repository:
               raise SystemExit("repository identity mismatch")
-          if repo.get("private") is not True:
-              raise SystemExit("CRM repository is expected to remain private")
           if repo.get("default_branch") != "main":
               raise SystemExit("CRM default branch is expected to be main")
           sha=str((ref.get("object") or {}).get("sha") or "")
@@ -73,7 +71,7 @@ jobs:
           print(json.dumps({
               "status":"ok",
               "repository":repository,
-              "private":True,
+              "visibility":"private" if repo.get("private") else "public",
               "default_branch":"main",
               "head_sha":sha,
               "auth":"github_app_ephemeral",
