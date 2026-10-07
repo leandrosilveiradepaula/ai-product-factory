@@ -172,7 +172,9 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
 
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
 export type ProjectPreviewPolicy={provider:string|null;mode:string|null;required:boolean|null;reason:string|null;evidenceSource:string|null;evidenceCommit:string|null};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;tasks:ProjectTaskSummary[]};
+export type ProjectReadinessDomain={status:string;reason?:string;evidence?:unknown[];coverage?:string[];verification_state?:string};
+export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
@@ -183,9 +185,34 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  const p=projects[0];
  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
  const tasks=tasksResponse.ok?await tasksResponse.json():[];
+ const taskIds=tasks.map((x:any)=>String(x.id));
+ let productReadiness:ProjectReadinessSummary={ready:false,status:"not_assessed",assessedCommit:null,assessmentRef:null,domains:{},blockers:[],createdAt:null};
+ if(taskIds.length){
+  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id&task_id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  const runs=runsResponse.ok?await runsResponse.json():[];
+  const runIds=runs.map((x:any)=>String(x.id));
+  if(runIds.length){
+   const evalResponse=await fetch(`${cfg.url}/rest/v1/factory_evaluations?select=status,baseline_ref,result,created_at&run_id=in.(${runIds.join(",")})&eval_type=eq.product_readiness&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"});
+   const evaluations=evalResponse.ok?await evalResponse.json():[];
+   const row=evaluations[0];
+   if(row){
+    const result=row.result&&typeof row.result==="object"?row.result:{};
+    const assessedCommit=result.assessed_commit?String(result.assessed_commit):(row.baseline_ref?String(row.baseline_ref):null);
+    productReadiness={
+     ready:result.ready===true&&result.status==="passed"&&Boolean(assessedCommit)&&assessedCommit===String(row.baseline_ref||""),
+     status:String(result.status||row.status||"not_ready"),
+     assessedCommit,
+     assessmentRef:result.assessment_ref?String(result.assessment_ref):null,
+     domains:result.domains&&typeof result.domains==="object"?result.domains:{},
+     blockers:Array.isArray(result.blockers)?result.blockers.map((x:any)=>String(x)):[],
+     createdAt:row.created_at?String(row.created_at):null,
+    };
+   }
+  }
+ }
  const preview=p.manifest?.preview&&typeof p.manifest.preview==="object"?p.manifest.preview:null;
  const evidence=preview?.evidence&&typeof preview.evidence==="object"?preview.evidence:null;
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export type ProjectContinuationHistoryItem={id:string;summary:string;requestedAt:string;attachmentCount:number};
