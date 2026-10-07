@@ -5,11 +5,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
-    def test_workflow_is_manual_exact_sha_and_uses_cross_repo_auth_boundary(self):
+    def test_workflow_is_explicit_exact_sha_and_uses_cross_repo_auth_boundary(self):
         text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
 
         self.assertIn("workflow_dispatch:", text)
+        self.assertIn("issue_comment:", text)
         self.assertNotIn("\n  push:", text)
+        self.assertIn("github.event.comment.author_association == 'OWNER'", text)
+        self.assertIn("startsWith(github.event.comment.body, '/factory-browser-evidence ')", text)
         self.assertIn("candidate_sha:", text)
         self.assertIn("target_repository:", text)
         self.assertIn(r"[0-9a-f]{40}", text)
@@ -34,13 +37,35 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
     def test_browser_never_receives_cross_repo_github_token(self):
         text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
         verifier = text.split("- name: Dispatch trusted Factory browser verifier and wait", 1)[1].split(
-            "- name: Record exact browser evidence on target candidate", 1
+            "- name: Persist cross-repo browser evidence in Control Plane", 1
         )[0]
 
         self.assertNotIn("FACTORY_GITHUB_TOKEN", verifier)
         self.assertNotIn("resolve_github_token", verifier)
         self.assertIn("PREVIEW_URL", verifier)
         self.assertIn("EXPECTED_TEXT", verifier)
+
+
+    def test_owner_comment_command_is_strict_and_bounded(self):
+        text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
+
+        self.assertIn("invalid /factory-browser-evidence command", text)
+        self.assertIn("browser evidence comment must be authored by repository OWNER", text)
+        self.assertIn(r"([0-9a-f]{40})", text)
+        self.assertIn(r"([^\r\n]{1,120})", text)
+        self.assertIn("expected_text must be 1-120 characters on one line", text)
+
+    def test_comment_command_exports_only_non_secret_target_inputs(self):
+        text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
+        request_step = text.split("- name: Resolve and validate requested target", 1)[1].split(
+            "- uses: ./.github/actions/control-plane-oidc", 1
+        )[0]
+
+        self.assertIn("TARGET_REPOSITORY=", request_step)
+        self.assertIn("CANDIDATE_SHA=", request_step)
+        self.assertIn("EXPECTED_TEXT=", request_step)
+        self.assertNotIn("FACTORY_GITHUB_TOKEN", request_step)
+        self.assertNotIn("SUPABASE_SECRET_KEY", request_step)
 
     def test_control_plane_broker_explicitly_allows_only_the_trusted_main_workflow(self):
         source = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
@@ -49,6 +74,8 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
             "cross-repo-preview-browser-evidence.yml@refs/heads/main"
         )
         self.assertGreaterEqual(source.count(workflow_ref), 2)
+        self.assertIn('"issue_comment"', source)
+        self.assertIn('payload.actor_id', source)
         self.assertIn('statuses: "read"', source)
         self.assertNotIn('statuses: "write"', source)
 

@@ -1,6 +1,8 @@
 name: Cross-repo Preview browser evidence
 
 on:
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       target_repository:
@@ -22,22 +24,72 @@ permissions:
   id-token: write
 
 concurrency:
-  group: cross-repo-preview-browser-${{ inputs.target_repository }}-${{ inputs.candidate_sha }}
+  group: cross-repo-preview-browser-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   browser-evidence:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/factory-browser-evidence ')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       PYTHONPATH: src
       GITHUB_ACTIONS: "true"
       GITHUB_REPOSITORY: ${{ github.repository }}
-      TARGET_REPOSITORY: ${{ inputs.target_repository }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      EXPECTED_TEXT: ${{ inputs.expected_text }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Resolve and validate requested target
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
+          DISPATCH_REPOSITORY: ${{ inputs.target_repository }}
+          DISPATCH_SHA: ${{ inputs.candidate_sha }}
+          DISPATCH_EXPECTED_TEXT: ${{ inputs.expected_text }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+
+          event=os.environ["EVENT_NAME"]
+          if event=="issue_comment":
+              if os.environ.get("COMMENT_ASSOCIATION")!="OWNER":
+                  raise SystemExit("browser evidence comment must be authored by repository OWNER")
+              body=os.environ.get("COMMENT_BODY","").strip()
+              match=re.fullmatch(
+                  r"/factory-browser-evidence\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\s+([0-9a-f]{40})\s+([^\r\n]{1,120})",
+                  body,
+              )
+              if not match:
+                  raise SystemExit("invalid /factory-browser-evidence command")
+              repository,sha,expected_text=match.groups()
+          elif event=="workflow_dispatch":
+              repository=os.environ.get("DISPATCH_REPOSITORY","").strip()
+              sha=os.environ.get("DISPATCH_SHA","").strip()
+              expected_text=os.environ.get("DISPATCH_EXPECTED_TEXT","").strip()
+              if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",repository):
+                  raise SystemExit("target_repository must be owner/name")
+              if not re.fullmatch(r"[0-9a-f]{40}",sha):
+                  raise SystemExit("candidate_sha must be an exact lowercase 40-character SHA")
+              if not expected_text or len(expected_text)>120 or "\n" in expected_text or "\r" in expected_text:
+                  raise SystemExit("expected_text must be 1-120 characters on one line")
+          else:
+              raise SystemExit("unsupported event")
+
+          output=os.environ["GITHUB_OUTPUT"]
+          env_file=os.environ["GITHUB_ENV"]
+          with open(output,"a",encoding="utf-8") as fh:
+              fh.write(f"target_repository={repository}\n")
+              fh.write(f"candidate_sha={sha}\n")
+          with open(env_file,"a",encoding="utf-8") as fh:
+              fh.write(f"TARGET_REPOSITORY={repository}\n")
+              fh.write(f"CANDIDATE_SHA={sha}\n")
+              fh.write(f"EXPECTED_TEXT={expected_text}\n")
+          print(f"request accepted for {repository}@{sha}")
+          PY
       - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -139,7 +191,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
-          EXPECTED_TEXT: ${{ inputs.expected_text }}
+          EXPECTED_TEXT: ${{ env.EXPECTED_TEXT }}
         with:
           script: |
             const workflowId = "console-browser-evidence.yml";

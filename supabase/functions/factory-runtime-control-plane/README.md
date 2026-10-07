@@ -12,7 +12,7 @@ locks access to:
 - immutable owner ID `256917842`;
 - `refs/heads/main`;
 - exact trusted workflows: `.github/workflows/autonomous-runner.yml`, `.github/workflows/control-plane-oidc-preflight.yml`, and `.github/workflows/cross-repo-preview-browser-evidence.yml`;
-- runtime events `schedule`/`workflow_dispatch`, plus `push` only for the dedicated preflight workflow.
+- runtime events `schedule`/`workflow_dispatch`; OWNER-authored `issue_comment` is also accepted for explicitly allowlisted workflows, and `push` remains limited to trusted preflight/reconciliation paths.
 
 Only GET/POST/PATCH calls to `/rest/v1/factory_*` and
 `/rest/v1/rpc/factory_*` are proxied. Auth/admin/storage endpoints and
@@ -29,8 +29,7 @@ mints the GitHub OIDC token and exports it only for the current job. It points
 the existing Supabase REST adapters at this broker, so the runtime does not
 need a Supabase secret in GitHub.
 
-The dedicated preflight workflow performs a read-only `factory_projects`
-query and never calls a model. The cross-repo Preview browser workflow is manual-only; it uses the broker to resolve a repository-scoped GitHub App token, reads the exact target candidate's Vercel checks/statuses, delegates browser execution to the trusted Factory verifier, and persists a new historical `factory_project_state_snapshots` record. It does not pass the GitHub token to the browser and does not write to the target repository.
+The dedicated preflight workflow performs a read-only `factory_projects` query and never calls a model. The cross-repo Preview browser workflow can be started either with `workflow_dispatch` or by an OWNER-only issue comment in the exact form `/factory-browser-evidence owner/repo <40-char-sha> <expected text>`. The command is parsed fail-closed with bounded one-line expected text. The workflow uses the broker to resolve a repository-scoped GitHub App token, reads the exact target candidate's Vercel checks/statuses, delegates browser execution to the trusted Factory verifier, and persists a new historical `factory_project_state_snapshots` record. It does not pass the GitHub token to the browser and does not write to the target repository.
 
 ## GitHub App installation token broker
 
