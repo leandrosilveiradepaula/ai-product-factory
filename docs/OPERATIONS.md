@@ -178,6 +178,8 @@ The Vercel project uses the same rule: Preview branches are ignored when the com
 
 Explicit `workflow_dispatch` of exact Preview evidence remains available for a reviewed exceptional case and is not widened by the automatic path filter.
 
+The trusted browser verifier itself is manual-only and requires the exact Vercel URL as an explicit runtime input. Do not persist a reusable Preview URL/candidate pair in the repository: Vercel Preview deployments are ephemeral and a historical URL can later return 410. Exact candidate discovery belongs to the exact-Preview/cross-repo resolver, which reads current GitHub/Vercel checks and then dispatches the trusted verifier with the resolved URL.
+
 ## GitHub-hosted browser runtime
 
 Trusted Preview verification on GitHub-hosted Ubuntu 24 runners uses the Chrome executable already provided by the runner image at `/usr/bin/google-chrome`. The workflow still pins the Playwright npm package version, but sets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and does not run `playwright install --with-deps`.
