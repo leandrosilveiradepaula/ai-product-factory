@@ -21,6 +21,9 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn("steps.preview_probe.outputs.browser == 'true'",preview)
         self.assertIn("checks: read",preview)
         self.assertIn("playwright@1.63.0",preview)
+        self.assertIn("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD",preview)
+        self.assertIn("FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome",preview)
+        self.assertNotIn("playwright install --with-deps",preview)
         self.assertIn('FACTORY_BROWSER_EVIDENCE_ENABLED: "true"',preview)
         self.assertIn("scripts/verify_preview.mjs",preview)
         self.assertNotIn("contents: write",preview)
@@ -37,6 +40,26 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('preview/*) git diff --quiet HEAD^ HEAD ./',text)
         self.assertNotIn('preview/*) exit 1',text)
         self.assertIn('../../config/factory.release-policy.v1.json',text)
+
+
+    def test_trusted_browser_verifier_uses_preinstalled_system_chrome(self):
+        workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+        script=(ROOT/"scripts/verify_preview.mjs").read_text()
+
+        self.assertIn('PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"',workflow)
+        self.assertIn('FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome',workflow)
+        self.assertIn('test -x /usr/bin/google-chrome',workflow)
+        self.assertNotIn('playwright install --with-deps',workflow)
+        self.assertIn('process.env.FACTORY_BROWSER_EXECUTABLE_PATH',script)
+        self.assertIn('executablePath: browserExecutablePath',script)
+
+    def test_browser_gate_stays_fail_closed_when_system_chrome_is_missing(self):
+        workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+        autonomous=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+
+        self.assertIn('test -x /usr/bin/google-chrome',workflow)
+        self.assertIn('test -x "$FACTORY_BROWSER_EXECUTABLE_PATH"',autonomous)
+        self.assertNotIn('|| true',workflow.split('test -x /usr/bin/google-chrome',1)[1].splitlines()[0])
 
 
 if __name__=="__main__":unittest.main()
