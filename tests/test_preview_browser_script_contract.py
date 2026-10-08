@@ -42,6 +42,17 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('../../config/factory.release-policy.v1.json',text)
 
 
+    def test_trusted_browser_verifier_is_manual_only_and_requires_url(self):
+        workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+
+        self.assertIn("workflow_dispatch:",workflow)
+        self.assertNotIn("\n  push:",workflow)
+        self.assertIn("preview_url:",workflow)
+        self.assertIn("required: true",workflow)
+        self.assertNotIn(".github/preview-target.json",workflow)
+        self.assertNotIn("candidate_sha",workflow)
+
+
     def test_trusted_browser_verifier_uses_preinstalled_system_chrome(self):
         workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
         script=(ROOT/"scripts/verify_preview.mjs").read_text()

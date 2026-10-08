@@ -709,19 +709,17 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Vercel usage collection is optional and skipped", quota_preflight)
         self.assertIn("steps.readiness.outputs.enabled == 'true'", quota_preflight)
 
-    def test_source_controlled_browser_evidence_target_is_exact_and_secret_free(self):
+    def test_trusted_browser_verifier_requires_explicit_runtime_target(self):
         workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
-        target=(ROOT/".github/preview-target.json").read_text()
-        self.assertIn('".github/preview-target.json"',workflow)
-        self.assertIn("candidate_sha",workflow)
-        self.assertIn("^[0-9a-f]{40}$",workflow)
+        self.assertIn("workflow_dispatch:",workflow)
+        self.assertNotIn("\n  push:",workflow)
+        self.assertIn("preview_url:",workflow)
+        self.assertIn("required: true",workflow)
         self.assertIn("\\.vercel\\.app",workflow)
-        self.assertIn("repos.getCommit",workflow)
+        self.assertNotIn(".github/preview-target.json",workflow)
+        self.assertNotIn("candidate_sha",workflow)
         self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN",workflow)
-        self.assertIn("preview_url",target)
-        self.assertIn("candidate_sha",target)
-        for forbidden in ("VERCEL_TOKEN","SUPABASE_SECRET_KEY","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","FACTORY_GITHUB_TOKEN"):
-            self.assertNotIn(forbidden,target)
+        self.assertFalse((ROOT/".github/preview-target.json").exists())
 
     def test_agent_sql_benchmark_is_not_implicit_runtime_work(self):
         workflow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()

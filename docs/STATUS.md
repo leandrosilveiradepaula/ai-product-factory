@@ -1,3 +1,9 @@
+## Reconciliation 2026-10-08 - stale Preview target hardening
+- Console browser evidence #65 proved that the GitHub-hosted Chrome path works, but the verifier consumed the historical `.github/preview-target.json` from PR #434 and received HTTP 410 GONE.
+- The trusted verifier is now manual-only and requires an explicit current Vercel URL; the stale source-controlled target file is removed.
+- Exact Preview and cross-repo workflows remain responsible for resolving the URL from current GitHub/Vercel evidence before dispatching the trusted verifier.
+- Regression tests prohibit reintroducing a static Preview target or an automatic push trigger on the trusted verifier. HTTP 410 remains a failure and the browser gate stays fail-closed.
+
 ## Reconciliation 2026-10-08 - browser runner hardening
 - Autonomous runner #203 was cancelled while `playwright install --with-deps chromium` spent the job window downloading Ubuntu packages; schedule probe and Control Plane claim had succeeded before that point.
 - GitHub-hosted Ubuntu 24 already provides Google Chrome. The candidate browser hardening reuses `/usr/bin/google-chrome`, keeps Playwright pinned, skips browser download, and fails closed if the executable is unavailable.
