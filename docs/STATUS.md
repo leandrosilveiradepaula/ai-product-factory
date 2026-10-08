@@ -1,3 +1,9 @@
+## Reconciliation 2026-10-08 - browser runner hardening
+- Autonomous runner #203 was cancelled while `playwright install --with-deps chromium` spent the job window downloading Ubuntu packages; schedule probe and Control Plane claim had succeeded before that point.
+- GitHub-hosted Ubuntu 24 already provides Google Chrome. The candidate browser hardening reuses `/usr/bin/google-chrome`, keeps Playwright pinned, skips browser download, and fails closed if the executable is unavailable.
+- The same browser runtime contract is applied to the scheduled Preview worker and the trusted Console browser verifier.
+- This does not weaken Preview applicability, exact-SHA evidence, Trusted OIDC, or the human production merge gate.
+
 ## Reconciliation 2026-10-07 - Preview usage dogfood
 - Dogfood with a non-Console `preview/**` branch exposed an unnecessary Exact Preview/browser run even though Factory policy requires Preview only for `apps/console/**` changes.
 - The corrective candidate scopes automatic `exact-preview-browser-evidence.yml` pushes to `apps/console/**` and aligns `apps/console/vercel.json` so Preview branches with no Console diff are ignored.
