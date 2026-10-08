@@ -3,6 +3,7 @@ import { chromium } from "playwright";
 const previewUrl = process.env.FACTORY_PREVIEW_URL;
 const expectedText = (process.env.FACTORY_PREVIEW_EXPECTED_TEXT || "").trim();
 const trustedOidcToken = (process.env.FACTORY_VERCEL_TRUSTED_OIDC_TOKEN || "").trim();
+const browserExecutablePath = (process.env.FACTORY_BROWSER_EXECUTABLE_PATH || "").trim();
 const checks = [];
 const errors = [];
 const observed = { finalUrl: null, title: null, statusCode: null, bodySample: null };
@@ -18,7 +19,10 @@ if (!previewUrl || !/^https:\/\//.test(previewUrl)) {
 
 let browser;
 try {
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    ...(browserExecutablePath ? { executablePath: browserExecutablePath } : {}),
+  });
   const context = await browser.newContext({
     extraHTTPHeaders: trustedOidcToken
       ? { "x-vercel-trusted-oidc-idp-token": trustedOidcToken }

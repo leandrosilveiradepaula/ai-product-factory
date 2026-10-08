@@ -34,11 +34,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
-      - name: Install pinned Playwright browser
+      - name: Install pinned Playwright package
         shell: bash
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
-          npx playwright install --with-deps chromium
+          test -x /usr/bin/google-chrome
+          /usr/bin/google-chrome --version
       - name: Mint short-lived GitHub OIDC token
         id: oidc
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -81,6 +84,7 @@ jobs:
           FACTORY_PREVIEW_URL: ${{ steps.target.outputs.preview_url }}
           FACTORY_PREVIEW_EXPECTED_TEXT: ${{ steps.target.outputs.expected_text }}
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
         shell: bash
         run: |
           result="$(node scripts/verify_preview.mjs)"
