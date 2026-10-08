@@ -178,6 +178,17 @@ The Vercel project uses the same rule: Preview branches are ignored when the com
 
 Explicit `workflow_dispatch` of exact Preview evidence remains available for a reviewed exceptional case and is not widened by the automatic path filter.
 
+## GitHub-hosted browser runtime
+
+Trusted Preview verification on GitHub-hosted Ubuntu 24 runners uses the Chrome executable already provided by the runner image at `/usr/bin/google-chrome`. The workflow still pins the Playwright npm package version, but sets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and does not run `playwright install --with-deps`.
+
+This is a performance/cost hardening only:
+- Playwright remains the browser automation library;
+- browser verification remains mandatory when Preview is applicable;
+- the workflow verifies that the expected Chrome executable exists and fails closed if it does not;
+- no browser binary, Vercel bypass secret, reusable credential or generated-code token is persisted;
+- the autonomous Preview worker installs the Playwright package only after `preview-probe` reports real browser work.
+
 ## Verified Preview activation
 
 The project supplies non-secret deployment metadata in `factory_projects.manifest.preview`. `mode: github` discovers the exact Vercel Preview from GitHub check-runs using `GITHUB_TOKEN`; `mode: api` creates/polls the Preview through the Vercel API and requires Vercel team/project metadata.
