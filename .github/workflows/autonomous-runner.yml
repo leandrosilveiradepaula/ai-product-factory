@@ -716,6 +716,7 @@ jobs:
       FACTORY_BROWSER_EVIDENCE_ENABLED: "true"
       FACTORY_BROWSER_EVIDENCE_COMMAND_JSON: '["node","scripts/verify_preview.mjs"]'
       FACTORY_BROWSER_EVIDENCE_TIMEOUT_SECONDS: "120"
+      FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
@@ -750,12 +751,15 @@ jobs:
         if: ${{ steps.preview_probe.outputs.browser == 'true' }}
         with:
           node-version: "22"
-      - name: Install pinned Playwright browser
+      - name: Prepare pinned Playwright with system Chrome
         if: ${{ steps.preview_probe.outputs.browser == 'true' }}
         shell: bash
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
-          npx playwright install --with-deps chromium
+          test -x "$FACTORY_BROWSER_EXECUTABLE_PATH"
+          "$FACTORY_BROWSER_EXECUTABLE_PATH" --version
       - name: Run at most one verified Preview
         if: ${{ steps.preview_probe.outputs.work == 'true' }}
         shell: bash
