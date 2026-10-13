@@ -323,6 +323,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261006023500_completed_parent_keeps_backlog.sql",
             "20261006152500_claim_active_agent_assignment_only.sql",
             "20261013172800_factory_portfolio_planned_task_eligibility.sql",
+            "20261013203000_guard_change_set_materialization.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
