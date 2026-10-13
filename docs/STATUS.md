@@ -1,3 +1,10 @@
+## Reconciliation 2026-10-13 - Portfolio dispatch truth (candidate)
+
+- Read-only production check after #745 migrations: `factory_portfolio_candidates(20)` still returned both Factory and CRM even though zero pending Work Units and zero active/planned Change Sets existed. Historical `plan-*` queued task titles were the sole eligibility cause.
+- Candidate migration `20261013212000_align_portfolio_with_dispatcher.sql` removes historical queued-task eligibility and requires exactly the dispatcher claim guards: latest ready team plan, planned/building Change Set, current-wave pending unit, queued task, no prior execution and no duplicate consumed unit. Keeps P0 incident priority, paused project and worker capacity policies.
+- Manual product-audit `preview_ready` rows no longer count against the dispatch concurrency budget. Scheduler wakeup now needs both pending unit hint **and** a portfolio-eligible project; already-routed work remains independent. Adds no-cost regressions and bounded diagnostics.
+- **This migration is a proposal**: production application requires a human gate and verified CI; do not infer end-to-end autonomous delivery from a clean queue.
+
 ## Reconciliation 2026-10-13 - Closed PR durable terminal transition (candidate)
 
 - Live evidence: CRM PR #19 was closed unmerged on 2026-10-07; run d8ed0c24 remains preview_ready and Change Set a9d67bad remains ci_pending, with two already integrated Work Units. Those Work Units and the completed root task are immutable in this correction. Manual dogfood product-readiness audit rows are intentionally excluded from delivery.

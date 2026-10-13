@@ -127,9 +127,10 @@ class SupabaseScheduleProbe:
             and task_status.get(str(run.get("task_id"))) == "queued_execution"
             for run in runs
         )
-        # Portfolio candidates may contain planning-only tasks, which the dispatch RPC
-        # cannot claim. Only runnable Change Set units or already-routed runs wake dispatch.
-        dispatch_work = pending_change_set_work or assigned_execution_work
+        # Both predicates must agree: a raw pending unit is only a hint and must
+        # survive portfolio pause/incident/capacity rules before waking dispatch.
+        # Already routed queued execution continues independently.
+        dispatch_work = (pending_change_set_work and bool(portfolio_candidates)) or assigned_execution_work
         integration_work = bool(self._get(
             "factory_change_sets?select=id&status=in.(building,integrating)&limit=1"
         ))
@@ -188,6 +189,8 @@ class SupabaseScheduleProbe:
                 "queued_execution_tasks": len(execution_task_ids),
                 "queued_execution_without_queued_run": len(execution_task_ids - execution_run_ids),
                 "eligible_product_tasks": len(product_ids),
+                "pending_work_unit_hint": pending_change_set_work,
+                "portfolio_dispatch_candidate_count": len(portfolio_candidates),
                 "queued_without_product_run": len(queued_ids - product_ids),
                 "queued_without_product_run_but_portfolio_eligible": eligible_queued_without_run,
                 "queued_without_product_run_and_not_portfolio_eligible": len(queued_ids - product_ids) - eligible_queued_without_run,

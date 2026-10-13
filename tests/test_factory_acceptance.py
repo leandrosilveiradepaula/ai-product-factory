@@ -325,6 +325,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261013172800_factory_portfolio_planned_task_eligibility.sql",
             "20261013203000_guard_change_set_materialization.sql",
             "20261013210000_reconcile_closed_preview_candidate.sql",
+            "20261013212000_align_portfolio_with_dispatcher.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
