@@ -10,6 +10,37 @@ class AtomicRouteDispatchMigrationTests(unittest.TestCase):
     def setUp(self):
         self.sql=MIGRATION.read_text()
 
+    def test_plpgsql_bodies_are_well_bounded_with_no_orphan_sql(self):
+        # #750 used substring presence checks that allowed an unterminated
+        # regex string and a duplicated, orphaned SQL tail to pass CI.
+        pieces=self.sql.split("as $$")
+        self.assertEqual(len(pieces),3)
+        self.assertEqual(self.sql.count("create or replace function"),2)
+        self.assertEqual(self.sql.count("$$;"),2)
+        for piece in pieces[1:]:
+            body,delimiter,*tail=piece.partition("$$;")
+            self.assertEqual(delimiter,"$$;")
+            self.assertEqual(body.count("\\nbegin\\n"),1)
+            self.assertEqual(body.count("\\nend;\\n"),1)
+            self.assertEqual(body.count("'") % 2,0)
+        # The last function terminator must be followed ONLY by its ACL.
+        last_tail=self.sql.rsplit("$$;",1)[1]
+        self.assertIn("revoke all on function public.factory_dispatch_preapproved_planned_task",last_tail)
+        self.assertNotIn("select id into v_project_id",last_tail)
+        self.assertNotIn("insert into public.factory_runs",last_tail)
+        self.assertNotIn("raise exception",last_tail)
+
+    def test_exact_fingerprint_regex_and_route_guard_precede_all_writes(self):
+        claim=self.sql.split(
+            "create or replace function public.factory_dispatch_preapproved_planned_task",1
+        )[1].split("$$;",1)[0]
+        self.assertIn("p_fingerprint !~ '^[0-9a-f]{32}$' then",claim)
+        self.assertIn("p_route not in ('direct','codex')",claim)
+        self.assertLess(claim.index("p_fingerprint !~"),claim.index("select id into v_project_id"))
+        self.assertLess(claim.index("p_route not in"),claim.index("select id into v_project_id"))
+        self.assertEqual(claim.count("insert into public.factory_runs"),1)
+        self.assertEqual(claim.count("perform public.factory_record_dispatch_decision_v2"),1)
+
     def test_preflight_is_read_only(self):
         peek=self.sql.split("create or replace function public.factory_peek_planned_work",1)[1].split(
             "create or replace function public.factory_dispatch_preapproved_planned_task",1)[0]

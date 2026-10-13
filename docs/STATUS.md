@@ -1,3 +1,8 @@
+## 2026-10-13 - Fix malformed but unapplied route-aware SQL
+- PR #750 was merged with green CI, but subsequent source review found an unterminated fingerprint regex plus orphan SQL copied outside the function. The migration was **not** installed in production.
+- This patch repairs the SQL without changing its original versioned filename, and adds structural tests for exact PL/pgSQL body boundaries and matched quotes. CI must pass before a new human production merge; only then apply and verify the versioned migration.
+- The Factory still has zero pending Work Units; no historical job has been reactivated and no paid model was called.
+
 ## Reconciliation 2026-10-13 - Atomic route-aware Codex preclaim (candidate)
 - PR #749 merged at eddc9bf4; candidate CI passed. The prior preclaim guard
   blocked ALL new planned dispatch when Primary was off, including Codex-only
