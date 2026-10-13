@@ -48,7 +48,7 @@ class SupabaseScheduleProbe:
         with urllib.request.urlopen(req, timeout=30):
             pass
 
-    def _record_telemetry(self, *, work_detected: bool, work_classes: list[str]) -> bool:
+    def _record_telemetry(self, *, work_detected: bool, work_classes: list[str], queue_diagnostics: dict | None = None) -> bool:
         try:
             self._post(
                 "factory_audit_events",
@@ -59,6 +59,7 @@ class SupabaseScheduleProbe:
                     "payload": {
                         "work_detected": work_detected,
                         "work_classes": work_classes,
+                        "queue_diagnostics": queue_diagnostics or {},
                     },
                 },
             )
@@ -126,7 +127,17 @@ class SupabaseScheduleProbe:
                 )
             }
 
+        queued_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued"}
+        product_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in queued_ids}
         out = {
+            "queue_diagnostics": {
+                "queued_tasks": len(queued_ids),
+                "queued_execution_tasks": sum(t.get("status") == "queued_execution" for t in tasks),
+                "eligible_product_tasks": len(product_ids),
+                "queued_without_product_run": len(queued_ids - product_ids),
+                "preview_ready_runs": len(preview_runs),
+                "preview_quota_blocked_runs": sum(str(run.get("id") or "") in blocked_preview_runs for run in preview_runs),
+            },
             "github_access_work": github_access_work,
             "product_work": product_work,
             "dispatch_work": dispatch_work,
@@ -175,5 +186,6 @@ class SupabaseScheduleProbe:
         out["telemetry_recorded"] = self._record_telemetry(
             work_detected=out["work_detected"],
             work_classes=work_classes,
+            queue_diagnostics=out["queue_diagnostics"],
         )
         return out
