@@ -28,6 +28,7 @@ class StubProbe(SupabaseScheduleProbe):
         }
         self.telemetry_posts = []
         self.telemetry_error = telemetry_error
+        self.probe_diagnostics = {}
 
     def _get(self, path: str):
         for table, rows in self.rows.items():
@@ -37,6 +38,7 @@ class StubProbe(SupabaseScheduleProbe):
 
     def _post(self, path: str, payload: dict) -> None:
         self.telemetry_posts.append((path, payload))
+        self.probe_diagnostics = payload["payload"]["queue_diagnostics"]
         if self.telemetry_error:
             raise self.telemetry_error
 
@@ -55,6 +57,7 @@ class ScheduleProbeTests(unittest.TestCase):
                         "payload": {
                             "work_detected": work_detected,
                             "work_classes": work_classes,
+                            "queue_diagnostics": probe.probe_diagnostics,
                         },
                     },
                 )
@@ -80,6 +83,18 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertFalse(out["codex_manual_work"])
         self.assertTrue(out["telemetry_recorded"])
         self.assert_telemetry(probe, work_detected=False, work_classes=[])
+
+    def test_orphan_queued_task_is_visible_without_triggering_paid_work(self):
+        probe = StubProbe(tasks=[{"id": "t1", "status": "queued"}])
+        out = probe.probe()
+        self.assertFalse(out["work_detected"])
+        self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
+
+    def test_quota_blocked_preview_is_counted_without_retry(self):
+        out = StubProbe(runs=[{"id": "p1", "status": "preview_ready"}], deployments=[{"run_id": "p1"}]).probe()
+        self.assertFalse(out["preview_work"])
+        self.assertEqual(out["queue_diagnostics"]["preview_ready_runs"], 1)
+        self.assertEqual(out["queue_diagnostics"]["preview_quota_blocked_runs"], 1)
 
     def test_product_stage_requires_queued_task(self):
         out = StubProbe(
@@ -219,7 +234,7 @@ class ScheduleProbeTests(unittest.TestCase):
                 "actor_type": "system",
                 "actor_ref": "schedule-probe",
                 "event_type": "schedule_probe.observed",
-                "payload": {"work_detected": True, "work_classes": ["product"]},
+                "payload": {"work_detected": True, "work_classes": ["product"], "queue_diagnostics": out["queue_diagnostics"]},
             },
         )
 
