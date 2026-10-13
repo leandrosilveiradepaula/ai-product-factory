@@ -99,6 +99,16 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertFalse(out["work_detected"])
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
 
+    def test_existing_queued_execution_run_wakes_dispatch_matrix(self):
+        probe = StubProbe(
+            tasks=[{"id": "t1", "status": "queued_execution"}],
+            runs=[{"id": "r1", "task_id": "t1", "status": "queued", "execution_route": "direct"}],
+        )
+        out = probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertTrue(out["work_detected"])
+        self.assert_telemetry(probe, work_detected=True, work_classes=["dispatch"])
+
     def test_queued_execution_without_active_queued_run_is_observable_but_not_dispatched(self):
         probe = StubProbe(tasks=[{"id": "t1", "status": "queued_execution"}])
         out = probe.probe()
