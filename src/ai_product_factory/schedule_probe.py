@@ -92,7 +92,7 @@ class SupabaseScheduleProbe:
             "&order=created_at.asc&limit=200"
         )
         tasks = self._get(
-            "factory_tasks?select=id,status"
+            "factory_tasks?select=id,status,project_id"
             "&status=in.(queued,queued_execution)&limit=200"
         )
         task_status = {str(row["id"]): str(row.get("status") or "") for row in tasks}
@@ -159,6 +159,8 @@ class SupabaseScheduleProbe:
 
         queued_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued"}
         product_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in queued_ids}
+        portfolio_eligible_projects = {str(row.get("project_id")) for row in portfolio_candidates if row.get("project_id")}
+        eligible_queued_without_run = sum(str(t.get("project_id") or "") in portfolio_eligible_projects for t in tasks if str(t.get("id")) in queued_ids - product_ids)
         execution_task_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued_execution"}
         execution_run_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in execution_task_ids}
         stale_preview_runs = 0
@@ -182,6 +184,8 @@ class SupabaseScheduleProbe:
                 "queued_execution_without_queued_run": len(execution_task_ids - execution_run_ids),
                 "eligible_product_tasks": len(product_ids),
                 "queued_without_product_run": len(queued_ids - product_ids),
+                "queued_without_product_run_but_portfolio_eligible": eligible_queued_without_run,
+                "queued_without_product_run_and_not_portfolio_eligible": len(queued_ids - product_ids) - eligible_queued_without_run,
                 "preview_ready_runs": len(preview_runs),
                 "preview_ready_older_than_24h": stale_preview_runs,
                 "preview_quota_blocked_runs": sum(str(run.get("id") or "") in blocked_preview_runs for run in preview_runs),
