@@ -93,10 +93,19 @@ def run_recovery_once(max_attempts:int=3)->dict:
  runs=queue.recover_expired(max_attempts)
  decisions=queue.resume_resolved_decisions()
  descendants=queue.reconcile_terminal_descendants()
- agents=SupabaseAgentScheduler().recover_expired()
+ scheduler=SupabaseAgentScheduler()
+ agents=scheduler.recover_expired()
+ # Retry an atomic assignment for a previously routed, unassigned run.
+ # This does not dispatch a new task or invoke a model.
+ agent_retry={"assigned":False,"no_eligible_slot":False}
+ try:
+  agent_retry["assigned"]=scheduler.schedule_next() is not None
+ except RuntimeError as exc:
+  if "no eligible agent slot" not in str(exc):raise
+  agent_retry["no_eligible_slot"]=True
  specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
  change_sets=SupabaseChangeSetStore().recover_expired(max_attempts)
- return {"runs":runs,"decisions":decisions,"descendants":descendants,"agents":agents,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
+ return {"runs":runs,"decisions":decisions,"descendants":descendants,"agents":agents,"agent_retry":agent_retry,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
 
 def run_product_once(worker_id:str)->dict:
  try:
