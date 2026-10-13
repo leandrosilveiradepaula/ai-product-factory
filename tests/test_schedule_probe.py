@@ -38,7 +38,7 @@ class StubProbe(SupabaseScheduleProbe):
     def _get(self, path: str):
         for table, rows in self.rows.items():
             if path.startswith(table + "?"):
-                if "&status=eq." in path:
+                if table in {"factory_runs", "factory_tasks"} and "&status=eq." in path:
                     status = path.split("&status=eq.", 1)[1].split("&", 1)[0]
                     rows = [row for row in rows if row.get("status") == status]
                 return list(rows)
