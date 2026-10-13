@@ -20,8 +20,8 @@ class AtomicRouteDispatchMigrationTests(unittest.TestCase):
         for piece in pieces[1:]:
             body,delimiter,*tail=piece.partition("$$;")
             self.assertEqual(delimiter,"$$;")
-            self.assertEqual(body.count("\\nbegin\\n"),1)
-            self.assertEqual(body.count("\\nend;\\n"),1)
+            self.assertEqual(body.splitlines().count("begin"),1)
+            self.assertEqual(body.splitlines().count("end;"),1)
             self.assertEqual(body.count("'") % 2,0)
         # The last function terminator must be followed ONLY by its ACL.
         last_tail=self.sql.rsplit("$$;",1)[1]
