@@ -146,6 +146,8 @@ jobs:
 
   product-stage:
     needs: schedule-probe
+    outputs:
+      dispatch_work: ${{ steps.post_product_probe.outputs.dispatch_work }}
     if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.product_work == 'true') }}
     runs-on: ubuntu-latest
     environment: openai-api
@@ -223,9 +225,37 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Process at most one product-stage run
+        id: product_run
         if: ${{ steps.readiness.outputs.control_plane == 'true' && steps.readiness.outputs.primary_model == 'true' }}
         shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}"
+        run: |
+          set -euo pipefail
+          python -m ai_product_factory.runtime_cli --mode product --worker-id "gha-${{ github.run_id }}" > /tmp/factory-product-run.json
+          cat /tmp/factory-product-run.json
+          python - <<'PY'
+          import json,os
+          from ai_product_factory.runner_signals import product_run_completed
+          with open("/tmp/factory-product-run.json") as raw:
+              result=json.load(raw)
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              out.write("completed="+("true" if product_run_completed(result) else "false")+"\n")
+          PY
+      - name: Probe freshly materialized dispatch work after product completion
+        id: post_product_probe
+        if: ${{ steps.product_run.outputs.completed == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_product_factory.runtime_cli --mode schedule-probe > /tmp/factory-post-product-probe.json
+          cat /tmp/factory-post-product-probe.json
+          python - <<'PY'
+          import json,os
+          from ai_product_factory.runner_signals import dispatch_queue_ready
+          with open("/tmp/factory-post-product-probe.json") as raw:
+              result=json.load(raw)
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              out.write("dispatch_work="+("true" if dispatch_queue_ready(result) else "false")+"\n")
+          PY
 
 
   change-set-integration:
@@ -423,7 +453,7 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.schedule-probe.outputs.product_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
     needs: [schedule-probe, github-access-preflight, product-stage]
     runs-on: ubuntu-latest
     timeout-minutes: 5

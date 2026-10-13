@@ -19,6 +19,22 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
 | `retry` | Create one fresh auditable run from a terminal failed run | Control Plane writes only | Manual | Source run must be `failed`; original run is immutable; explicit retry reason required |
 
+## Same-run dispatch after product planning
+
+The initial scheduler probe's `product_work` signal only indicates a possible
+product-stage run; it does **not** prove any Work Units exist. The dispatcher
+must not start just because the product-stage job was successful (a job may
+succeed after reporting disabled primary credentials). The product-stage job
+writes a structured `claimed/completed` result; only a completed claimed
+run triggers one additional read-only Control Plane schedule probe. Dispatch
+is eligible during a scheduled/owner-wake run if either the initial probe or
+the fresh post-product probe reports `dispatch_work=true`. This preserves
+same-run planning -> Change Set -> dispatcher responsiveness without an
+unproductive dispatch or unnecessary Model/Preview operation. The manual
+`workflow_dispatch` intent remains independent. The post-product probe
+records existing durable schedule-probe audit events only; it does not
+invent or resurrect Work Units.
+
 ## Primary-model opt-in for unattended product and Direct execution
 
 The production GitHub Actions `product-stage` and `direct` jobs read the protected
