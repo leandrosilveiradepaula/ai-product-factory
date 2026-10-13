@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from ai_product_factory.schedule_probe import SupabaseScheduleProbe
 
@@ -92,6 +93,19 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertFalse(out["codex_manual_work"])
         self.assertTrue(out["telemetry_recorded"])
         self.assert_telemetry(probe, work_detected=False, work_classes=[])
+
+    def test_stale_preview_runs_are_recorded_without_new_deployments(self):
+        old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        fresh = datetime.now(timezone.utc).isoformat()
+        probe = StubProbe(runs=[
+            {"id": "r1", "status": "preview_ready", "created_at": old},
+            {"id": "r2", "status": "preview_ready", "created_at": fresh},
+            {"id": "r3", "status": "preview_ready", "created_at": "invalid"},
+        ])
+        out = probe.probe()
+        self.assertEqual(out["queue_diagnostics"]["preview_ready_runs"], 3)
+        self.assertEqual(out["queue_diagnostics"]["preview_ready_older_than_24h"], 1)
+        self.assertEqual(probe.probe_diagnostics["preview_ready_older_than_24h"], 1)
 
     def test_orphan_queued_task_is_visible_without_triggering_paid_work(self):
         probe = StubProbe(tasks=[{"id": "t1", "status": "queued"}])
