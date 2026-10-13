@@ -30,7 +30,10 @@ on:
         default: false
         type: boolean
   schedule:
+    # Independent staggered wake opportunities: GitHub may delay or drop scheduled events.
+    # This is best-effort redundancy, not a guaranteed 30-minute SLA.
     - cron: "17 * * * *"
+    - cron: "47 * * * *"
 
 permissions:
   contents: read
