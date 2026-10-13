@@ -410,3 +410,10 @@ that upstream release is available.
 - The official visual-evidence broker intentionally provisions role `operator`; the OAuth connect route requires `requireConsoleAdmin()`. An automated operator therefore cannot cross the admin gate, and the Factory did not weaken that boundary just for testing.
 - Audit run `36633088137` was cleaned/expired; normal authenticated evidence run `36633521570` subsequently passed and was recorded as `captured`; zero ephemeral visual operators remain.
 - The only remaining OAuth activation step is interactive admin consent in the production Console, followed by the built-in project identity and read-only database verification.
+
+## Reconciliation 2026-10-13 - planning-to-dispatch safety candidate
+
+- Read-only SQL inspection: CRM Change Set a9d67bad-99fc-4d42-b63b-ef3d02c45753 has two integrated work units and remains ci_pending. Factory historical sets are completed/superseded. Historical queued plan-* tasks do not imply runnable work.
+- Migration 20261013203000 guards repeated materialization, already executed tasks and stale plan dispatch. It is a **candidate** only: a production database migration requires the human gate.
+- GitHub App HTTP 403 diagnostics are bounded and fail-closed; PAT fallback remains prohibited for blocked App access. Edge Function changes require an explicit controlled deployment.
+- Verify a real fresh team plan -> Change Set -> Work Units -> CI/Preview -> release gate before calling the autonomous loop recovered.

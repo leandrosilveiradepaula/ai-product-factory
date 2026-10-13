@@ -97,6 +97,21 @@ class GitHubAppRuntimeTests(unittest.TestCase):
                 resolve_github_app_installation_token("owner/target", transport=transport)
         self.assertFalse(any(call[1].endswith("/github-app/token") for call in transport.calls))
 
+    def test_broker_403_preserves_sanitized_code_without_echoing_details(self):
+        class DeniedTransport(FakeTransport):
+            def __call__(self, method, url, headers, body):
+                if url.endswith("/github-app/token"):
+                    return 403, {"error": "github_app_upstream_permission_denied",
+                                 "detail": "secret-do-not-expose"}
+                return super().__call__(method, url, headers, body)
+
+        env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaises(PermissionError) as caught:
+                resolve_github_app_installation_token("owner/target", transport=DeniedTransport())
+        self.assertIn("code=github_app_upstream_permission_denied", str(caught.exception))
+        self.assertNotIn("secret-do-not-expose", str(caught.exception))
+
     def test_broker_refusal_does_not_fall_back_silently(self):
         transport = FakeTransport(broker_status=409)
         env = {"SUPABASE_URL": BROKER_URL, "SUPABASE_SECRET_KEY": "oidc-token"}

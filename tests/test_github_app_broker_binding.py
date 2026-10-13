@@ -47,6 +47,13 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertIn("github_oidc_proxy_workflow_not_allowed", edge)
         self.assertIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", edge)
 
+    def test_broker_denials_are_bounded_and_do_not_echo_raw_details(self):
+        edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn('error:"github_oidc_claim_mismatch"', edge)
+        self.assertIn('error:"github_app_upstream_permission_denied"', edge)
+        self.assertIn('return json(403,{error:"forbidden"})', edge)
+        self.assertNotIn('return json(403,{error:"forbidden",detail})', edge)
+
     def test_crm_preflight_uses_oidc_and_ephemeral_app_token_not_pat(self):
         workflow = (ROOT / ".github/workflows/crm-cross-repo-preflight.yml").read_text()
         self.assertIn("id-token: write", workflow)
