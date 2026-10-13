@@ -99,6 +99,22 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertFalse(out["work_detected"])
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
 
+    def test_queued_execution_without_active_queued_run_is_observable_but_not_dispatched(self):
+        probe = StubProbe(tasks=[{"id": "t1", "status": "queued_execution"}])
+        out = probe.probe()
+        self.assertEqual(out["queue_diagnostics"]["queued_execution_tasks"], 1)
+        self.assertEqual(out["queue_diagnostics"]["queued_execution_without_queued_run"], 1)
+        self.assertFalse(out["dispatch_work"])
+        self.assertFalse(out["work_detected"])
+
+    def test_queued_execution_with_queued_run_is_not_reported_as_orphan(self):
+        probe = StubProbe(
+            tasks=[{"id": "t1", "status": "queued_execution"}],
+            runs=[{"id": "r1", "task_id": "t1", "status": "queued", "execution_route": "direct"}],
+        )
+        out = probe.probe()
+        self.assertEqual(out["queue_diagnostics"]["queued_execution_without_queued_run"], 0)
+
     def test_portfolio_candidate_wakes_dispatch_without_pending_change_set_units(self):
         probe = StubProbe(
             tasks=[{"id": "t1", "status": "queued"}],
