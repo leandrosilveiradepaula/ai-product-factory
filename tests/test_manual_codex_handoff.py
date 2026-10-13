@@ -38,7 +38,7 @@ class ManualCodexHandoffTests(unittest.TestCase):
         )
         binding = MagicMock()
 
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED": "true"}, clear=True):
             out = prepare_once(
                 "worker-1",
                 queue=queue,
@@ -69,7 +69,7 @@ class ManualCodexHandoffTests(unittest.TestCase):
         )
         binding = MagicMock()
 
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED": "true"}, clear=True):
             out = prepare_once(
                 "worker-1",
                 queue=queue,
@@ -93,7 +93,7 @@ class ManualCodexHandoffTests(unittest.TestCase):
             "https://example/issues/19",
         )
 
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED": "true"}, clear=True):
             out = prepare_once(
                 "worker-1",
                 queue=queue,
@@ -111,6 +111,64 @@ class ManualCodexHandoffTests(unittest.TestCase):
             out = prepare_once("worker-1", queue=queue)
         self.assertEqual(out["reason"], "automatic_codex_enabled")
         queue.claim_next.assert_not_called()
+
+    def test_prepare_is_inert_unless_manual_fallback_explicitly_true(self):
+        for value in (None, "", "false", "TRUE", "yes", "1"):
+            queue=MagicMock()
+            env={} if value is None else {"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":value}
+            with self.subTest(value=value), patch.dict("os.environ",env,clear=True):
+                result=prepare_once("worker-1",queue=queue)
+            self.assertEqual(result["status"],"blocked")
+            self.assertEqual(result["reason"],"manual_codex_fallback_disabled")
+            queue.claim_next.assert_not_called()
+
+    def test_bound_issue_requires_exact_run_marker_before_waiting(self):
+        queue=MagicMock()
+        queue.claim_next.return_value=item(issue_number=19)
+        github=MagicMock()
+        github.get_issue.return_value=GitHubIssue(
+            19,"Other Factory work",run_marker("wrong-run"),
+            "https://example/issues/19",
+        )
+        binding=MagicMock()
+        with patch.dict("os.environ",{"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"true"},clear=True):
+            with self.assertRaisesRegex(RuntimeError,"run marker"):
+                prepare_once("worker-1",queue=queue,binding=binding,
+                             github_factory=lambda _:github)
+        queue.mark_waiting.assert_not_called()
+        binding.bind_issue.assert_not_called()
+        github.create_issue.assert_not_called()
+
+    def test_bound_issue_number_mismatch_is_not_marked_waiting(self):
+        queue=MagicMock()
+        queue.claim_next.return_value=item(issue_number=19)
+        github=MagicMock()
+        github.get_issue.return_value=GitHubIssue(
+            20,"Wrong bound number",run_marker("run-1"),
+            "https://example/issues/20",
+        )
+        with patch.dict("os.environ",{"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"true"},clear=True):
+            with self.assertRaisesRegex(RuntimeError,"number mismatch"):
+                prepare_once("worker-1",queue=queue,
+                             github_factory=lambda _:github)
+        queue.mark_waiting.assert_not_called()
+
+    def test_found_issue_with_mismatched_marker_does_not_bind(self):
+        queue=MagicMock()
+        queue.claim_next.return_value=item()
+        github=MagicMock()
+        github.find_open_issue_containing.return_value=GitHubIssue(
+            17,"Wrong search response",run_marker("other-run"),
+            "https://example/issues/17",
+        )
+        binding=MagicMock()
+        with patch.dict("os.environ",{"FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"true"},clear=True):
+            with self.assertRaisesRegex(RuntimeError,"run marker"):
+                prepare_once("worker-1",queue=queue,binding=binding,
+                             github_factory=lambda _:github)
+        binding.bind_issue.assert_not_called()
+        queue.mark_waiting.assert_not_called()
+        github.create_issue.assert_not_called()
 
     def test_followup_waits_until_marker_pr_exists(self):
         queue = MagicMock()

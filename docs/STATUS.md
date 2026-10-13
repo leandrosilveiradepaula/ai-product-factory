@@ -1,3 +1,9 @@
+## 2026-10-13 - Codex manual fallback consistent default-off (candidate)
+- Confirmed the production route-aware migration at version 20261013222158; the read-only peek returns no eligible Factory/CRM Work Units. No new runs or gates were created.
+- Found split readiness: dispatcher required exact `FACTORY_CODEX_MANUAL_FALLBACK_ENABLED=true`, but manual handoff preparation defaulted unset configuration to enabled and GitHub Actions used `!=false`.
+- Candidate makes preparation default-off in both Python and workflow while leaving followup of existing handoffs independent; validates Issue run marker and bound Issue number before transitioning state. Added offline regression tests.
+- This does not enable Codex WIF, spend Primary credits, apply migrations, open new product tasks, or authorize a production merge.
+
 ## 2026-10-13 - Fix malformed but unapplied route-aware SQL
 - PR #750 was merged with green CI, but subsequent source review found an unterminated fingerprint regex plus orphan SQL copied outside the function. The migration was **not** installed in production.
 - This patch repairs the SQL without changing its original versioned filename, and adds structural tests for exact PL/pgSQL body boundaries and matched quotes. CI must pass before a new human production merge; only then apply and verify the versioned migration.

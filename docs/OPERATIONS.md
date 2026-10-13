@@ -1,3 +1,24 @@
+## Manual Codex handoff — explicit opt-in and issue provenance
+
+A **new** manual Codex handoff may be claimed only when
+`FACTORY_CODEX_ENABLED` is not enabled and
+`FACTORY_CODEX_MANUAL_FALLBACK_ENABLED` is explicitly the exact value
+`true`. An unset, empty or malformed flag is **disabled** in both the
+GitHub Actions prepare step and the Python worker. The dispatcher has the same
+strict default-off rule. This avoids accidentally claiming a task that would
+need a human Codex operator.
+
+For a pre-existing handoff the read-only PR-followup path remains usable even
+if the opt-in flag has since been disabled; no new handoff is claimed during
+followup. Before marking any new handoff `awaiting_codex_manual`, the worker
+confirms the Issue's body contains the exact Factory run marker and, when an
+Issue was previously bound, the Issue number still matches. A mismatch aborts
+before persisting a new binding or transitioning the run.
+
+This is a human **implementation handoff**, not proof of autonomous Codex WIF
+execution or a license for automatic merges. Do not enable manual fallback
+solely to manufacture an E2E test or reactivate old plan tasks.
+
 # Operations Runbook
 
 This runbook describes the safe operating modes of the AI Product Factory runtime. It intentionally contains no secret values.
