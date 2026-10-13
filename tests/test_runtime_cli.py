@@ -75,7 +75,7 @@ class RuntimeCliTests(unittest.TestCase):
                  patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue), \
                  patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
                  patch("ai_product_factory.runtime_cli.CodexCLIProducer") as producer:
-                out=run_codex_once("w")
+                out=run_codex_once("w","development","r")
         self.assertEqual(out,{"claimed":False,"status":"empty"})
         github.assert_not_called()
         producer.assert_not_called()
@@ -200,8 +200,12 @@ class RuntimeCliTests(unittest.TestCase):
         queue.resume_resolved_decisions.assert_called_once_with()
         queue.reconcile_terminal_descendants.assert_called_once_with()
         provider.assert_not_called()
-        self.assertEqual(agents.schedule_next.call_count, 6)
-        self.assertEqual(out["agent_retry"],{"attempted":6,"assigned":6,"no_eligible_slot":False})
+        agents.schedule_next.assert_not_called()
+        agents.schedule_eligible_direct.assert_not_called()
+        self.assertEqual(out["agent_retry"],{
+            "attempted":0,"assigned":0,"no_eligible_slot":False,
+            "deferred_to_readiness_gated_dispatch":True,
+        })
 
     def test_recovery_handles_missing_agent_slot_without_model_calls(self):
         queue=MagicMock()
@@ -213,7 +217,8 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore"), \
              patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as provider:
             out=run_recovery_once()
-        self.assertEqual(out["agent_retry"],{"attempted":1,"assigned":0,"no_eligible_slot":True})
+        self.assertTrue(out["agent_retry"]["deferred_to_readiness_gated_dispatch"])
+        agents.schedule_next.assert_not_called()
         provider.assert_not_called()
 
     def test_recovery_stops_when_no_unassigned_run_remains(self):
@@ -225,7 +230,67 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue"), \
              patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore"):
             out=run_recovery_once()
-        self.assertEqual(out["agent_retry"],{"attempted":2,"assigned":1,"no_eligible_slot":False})
+        self.assertEqual(out["agent_retry"]["attempted"],0)
+        self.assertEqual(out["agent_retry"]["assigned"],0)
+        agents.schedule_next.assert_not_called()
+
+    def test_route_specific_select_never_assigns_unscoped_agent(self):
+        from ai_product_factory.runtime_cli import _select_assigned_route_run
+        scheduler=MagicMock()
+        scheduler.work_matrix.return_value={
+            "direct":[{"run_id":"direct-1","agent_key":"ui"}],
+            "codex":[{"run_id":"codex-2","agent_key":"developer"}],
+        }
+        self.assertEqual(_select_assigned_route_run(scheduler,"direct"),("direct-1","ui"))
+        self.assertEqual(_select_assigned_route_run(scheduler,"codex"),("codex-2","developer"))
+        self.assertIsNone(_select_assigned_route_run(scheduler,"direct","developer"))
+        scheduler.schedule_next.assert_not_called()
+        scheduler.schedule_run.assert_not_called()
+        scheduler.schedule_eligible_direct.assert_not_called()
+
+    def test_missing_or_invalid_route_matrix_fails_closed(self):
+        from ai_product_factory.runtime_cli import _select_assigned_route_run
+        for matrix in ({}, {"direct":None}, {"direct":"invalid"},
+                       {"direct":[{"run_id":"","agent_key":"ui"}]},
+                       {"direct":[{"run_id":"r"}]},
+                       {"direct":[None]}):
+            scheduler=MagicMock();scheduler.work_matrix.return_value=matrix
+            with self.subTest(matrix=matrix),self.assertRaises(RuntimeError):
+                _select_assigned_route_run(scheduler,"direct")
+            scheduler.schedule_next.assert_not_called()
+
+    def test_direct_unscoped_worker_uses_direct_matrix_not_global_scheduler(self):
+        scheduler=MagicMock()
+        scheduler.work_matrix.return_value={
+            "direct":[{"run_id":"assigned-direct","agent_key":"development"}],
+            "codex":[{"run_id":"unrelated-codex","agent_key":"development"}],
+        }
+        queue=MagicMock();queue.claim_next.return_value=None
+        auth=MagicMock();auth.resolve_primary_api.return_value=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
+        with patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=auth), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=queue):
+            out=run_direct_once("worker")
+        self.assertEqual(out["status"],"empty")
+        queue.claim_next.assert_called_once_with("worker","development","assigned-direct")
+        scheduler.schedule_next.assert_not_called()
+
+    def test_codex_unscoped_worker_selects_only_codex_matrix(self):
+        scheduler=MagicMock()
+        scheduler.work_matrix.return_value={
+            "direct":[{"run_id":"unrelated-direct","agent_key":"developer"}],
+            "codex":[{"run_id":"assigned-codex","agent_key":"developer"}],
+        }
+        queue=MagicMock();queue.claim_next.return_value=None
+        with patch("ai_product_factory.runtime_cli.require_codex_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue):
+            out=run_codex_once("worker")
+        self.assertEqual(out["status"],"empty")
+        queue.claim_next.assert_called_once_with("worker","developer","assigned-codex")
+        scheduler.schedule_next.assert_not_called()
 
     def test_retry_mode_is_model_free_and_delegates_to_queue(self):
         queue=MagicMock()
@@ -1008,7 +1073,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"):
             resolver.return_value.resolve_primary_api.return_value=auth
             with self.assertRaisesRegex(RuntimeError,"implementation failed"):
-                run_direct_once("w")
+                run_direct_once("w","development","r")
         scheduler.release.assert_called_once_with("r","blocked")
 
     def test_cross_repo_direct_fails_closed_before_github_write_when_capability_is_missing(self):
@@ -1027,7 +1092,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             resolver.return_value.resolve_primary_api.return_value=auth
             with self.assertRaisesRegex(PermissionError,"not ready"):
-                run_direct_once("w")
+                run_direct_once("w","development","r")
         access.require_capabilities.assert_called_once_with("crm",("contents_write","issues_write","pull_requests_write"))
         github.assert_not_called()
         scheduler.release.assert_called_once_with("r","blocked")
@@ -1050,7 +1115,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"), \
              patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"):
             with self.assertRaisesRegex(RuntimeError,"codex failed"):
-                run_codex_once("w")
+                run_codex_once("w","development","r")
         scheduler.release.assert_called_once_with("r","blocked")
 
     def test_alert_mode_is_blocked_without_explicit_enable_and_config(self):

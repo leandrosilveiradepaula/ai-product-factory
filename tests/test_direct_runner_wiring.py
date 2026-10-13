@@ -18,6 +18,8 @@ class Tests(unittest.TestCase):
   health=type("H",(),{"known_cost":0,"unknown_cost_events":0})()
   reader=type("R",(),{"read":lambda self,**kwargs:health})()
   with patch.dict("os.environ",env,clear=True),patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=Resolver(AuthKind.OPENAI_API_KEY)),patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader",return_value=reader),patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider"),patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler,patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue",return_value=Q()),patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as gh:
+   scheduler.return_value.work_matrix.return_value={"direct":[],"codex":[]}
    out=run_direct_once("w")
   self.assertEqual(out["status"],"empty");gh.assert_not_called()
+  scheduler.return_value.schedule_next.assert_not_called()
 if __name__=="__main__":unittest.main()

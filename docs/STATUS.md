@@ -1,3 +1,9 @@
+## 2026-10-13 - Route-isolated recovery candidate
+- Read-only audit: no pending Work Units, active runs, gates or agent slots. Last Direct scheduling migration is applied.
+- Legacy recovery performed unscoped `schedule_next()` for Direct or Codex without executor readiness, potentially reserving Codex manual slots. Unscoped Direct/Codex workers could do the same.
+- Candidate removes all assignment side effects from recovery, isolates each optional worker to existing route-specific assigned work, and leaves allocation of Direct work to the Primary/ledger-gated dispatch path. No Primary, Codex or paid-model activation; no database migration.
+- Validate CI and acceptance before human merge. No full E2E delivery is asserted.
+
 ## 2026-10-13 - PR #753 expanded to cover approved Direct resumption
 - PR #753 was open/CI-green on `27594509`, but further review found a
   possible agent slot reservation before human gate approval and a lack of
