@@ -1,3 +1,15 @@
+## 2026-10-13 - Exact-run scheduling and unstaffed manual Codex (candidate)
+- PR #752 merged at 27a13e1c with green post-merge CI.
+- The dispatch worker still called `factory_schedule_next_unassigned_run` globally
+  after each atomic claim. That could reserve an agent for a different queued
+  run (including a new manual Codex handoff), leaving the claimed Direct
+  implementation unassigned and consuming slot capacity while waiting for
+  manual work.
+- Candidate propagates the atomic run ID in DispatchDecision, schedules Direct
+  only via the exact run ID, and skips assignment for manual Codex. Dispatch
+  wakes manual Codex via the newly claimed route rather than the work matrix.
+- No database schema changes, model calls, credentials or automatic merge.
+
 ## 2026-10-13 - Codex manual fallback consistent default-off (candidate)
 - Confirmed the production route-aware migration at version 20261013222158; the read-only peek returns no eligible Factory/CRM Work Units. No new runs or gates were created.
 - Found split readiness: dispatcher required exact `FACTORY_CODEX_MANUAL_FALLBACK_ENABLED=true`, but manual handoff preparation defaulted unset configuration to enabled and GitHub Actions used `!=false`.

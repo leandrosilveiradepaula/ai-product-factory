@@ -8,6 +8,8 @@ class Worker:
  def __init__(self,**kw):pass
  def run_once(self):return Result()
 class Decision:
+ run_id="test-direct-run"
+ task=type("T",(),{"metadata":{}})()
  execution=type("E",(),{"route":type("R",(),{"value":"direct"})(),"human_gate_required":False,"codex":type("C",(),{"level":0})()})()
 class Dispatch:
  def dispatch_next(self,key,*,allowed_routes=("direct","codex")):return Decision()
@@ -17,7 +19,7 @@ class Tests(unittest.TestCase):
   with patch("ai_product_factory.runtime_cli.build_handler",side_effect=RuntimeError("missing")):
    self.assertEqual(run_product_once("w")["status"],"blocked")
  def test_dispatch_reports_route(self):
-  scheduler=type("S",(),{"schedule_next":lambda self:None})()
+  scheduler=type("S",(),{"schedule_run":lambda self,**kw:None})()
   adaptive=type("A",(),{"work_matrix":lambda self,limit:{"direct":[],"codex":[],"decisions":[]}})()
   with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"),patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=Dispatch()),patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler),patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
    out=run_dispatch_once("p",max_items=1)

@@ -634,11 +634,63 @@ class RuntimeCliTests(unittest.TestCase):
         dispatch.dispatch_next_any.assert_called_once()
         adaptive.work_matrix.assert_called_once()
 
+    def test_manual_codex_route_does_not_reserve_agent_capacity(self):
+        task=SimpleNamespace(metadata={"agent_key":"development"})
+        codex=SimpleNamespace(run_id="codex-run",task=task,execution=SimpleNamespace(
+            route=SimpleNamespace(value="codex"),human_gate_required=False,
+            codex=SimpleNamespace(level=4)))
+        dispatch=MagicMock();dispatch.dispatch_next_any.side_effect=[codex,None]
+        scheduler=MagicMock()
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("codex",)), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            out=run_dispatch_once(max_items=1)
+        self.assertEqual(out["status"],"routed")
+        self.assertEqual(out["routed"][0]["run_id"],"codex-run")
+        self.assertEqual(out["scheduling"]["attempted"],0)
+        scheduler.schedule_next.assert_not_called()
+        scheduler.schedule_run.assert_not_called()
+
+    def test_direct_only_schedules_exact_newly_claimed_run(self):
+        task=SimpleNamespace(metadata={"agent_key":"ui"})
+        direct=SimpleNamespace(run_id="direct-run",task=task,execution=SimpleNamespace(
+            route=SimpleNamespace(value="direct"),human_gate_required=False,
+            codex=SimpleNamespace(level=0)))
+        dispatch=MagicMock();dispatch.dispatch_next_any.side_effect=[direct,None]
+        scheduler=MagicMock();scheduler.schedule_run.return_value=SimpleNamespace(assignment_id="slot")
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            out=run_dispatch_once(max_items=1)
+        self.assertEqual(out["scheduling"]["assigned"],1)
+        scheduler.schedule_run.assert_called_once_with(run_id="direct-run",preferred_role="ui")
+        scheduler.schedule_next.assert_not_called()
+
+    def test_missing_claim_run_id_blocks_unsound_agent_scheduling(self):
+        invalid=SimpleNamespace(run_id=None,task=SimpleNamespace(metadata={}),
+            execution=SimpleNamespace(route=SimpleNamespace(value="direct"),
+               human_gate_required=False,codex=SimpleNamespace(level=0)))
+        dispatch=MagicMock();dispatch.dispatch_next_any.return_value=invalid
+        scheduler=MagicMock()
+        with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler):
+            with self.assertRaisesRegex(RuntimeError,"durable run ID"):
+                run_dispatch_once(max_items=1)
+        scheduler.schedule_run.assert_not_called()
+        scheduler.schedule_next.assert_not_called()
+
     def test_dispatch_reports_unassigned_run_when_agent_slot_missing(self):
         dispatch=MagicMock()
-        dispatch.dispatch_next_any.side_effect=[SimpleNamespace(execution=SimpleNamespace(route=SimpleNamespace(value="direct"),human_gate_required=False,codex=SimpleNamespace(level="none"))),None]
+        dispatch.dispatch_next_any.side_effect=[SimpleNamespace(run_id="test-direct",task=SimpleNamespace(metadata={}),
+            execution=SimpleNamespace(route=SimpleNamespace(value="direct"),
+              human_gate_required=False,codex=SimpleNamespace(level="none"))),None]
         scheduler=MagicMock()
-        scheduler.schedule_next.return_value=None
+        scheduler.schedule_run.side_effect=RuntimeError("agent scheduler returned no assignment")
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
         with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"), \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \

@@ -1,3 +1,21 @@
+## Agent slots after atomic dispatch
+
+The dispatcher must schedule the **exact run ID** returned by the atomic
+route-aware claim. It must not call the global schedule-next RPC immediately
+after a new claim, because that RPC can assign an unrelated older run.
+
+Manual Codex handoffs are an intentionally unstaffed waiting state:
+when the selected and approved route is Codex manual, no agent slot is
+reserved. The dispatcher includes the claimed Codex route in its durable
+output; the workflow uses that signal to wake the manual Codex prepare job
+without requiring a work-matrix agent assignment. A Direct route still
+receives an agent assignment by exact run ID and the planned preferred agent
+key when specified. Empty/malformed claim IDs fail closed.
+
+Previously assigned in-flight work and recovery remain separate concerns;
+this patch does not requeue historical runs, enable Codex WIF, purchase
+model credit, create Previews, or alter the production release gate.
+
 ## Manual Codex handoff — explicit opt-in and issue provenance
 
 A **new** manual Codex handoff may be claimed only when

@@ -538,15 +538,28 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
   decision=(dispatch.dispatch_next(project_key,allowed_routes=allowed_routes)
     if project_key else dispatch.dispatch_next_any(allowed_routes=allowed_routes))
   if decision is None:break
-  routed.append({"route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level})
+  if not isinstance(decision.run_id,str) or not decision.run_id.strip():
+   raise RuntimeError("atomic dispatcher did not return a durable run ID")
+  routed.append({"route":decision.execution.route.value,"run_id":decision.run_id,
+   "human_gate_required":decision.execution.human_gate_required,
+   "codex_level":decision.execution.codex.level})
+  if decision.execution.route.value=="codex":
+   # A manual Codex handoff is prepared by codex-manual, not by an
+   # unattended agent. Do not reserve a long-lived agent slot while waiting.
+   continue
+  if decision.execution.route.value!="direct":
+   raise RuntimeError("unsupported dispatch execution route")
   scheduling["attempted"]+=1
   try:
-   assignment=scheduler.schedule_next()
+   # Schedule this exact newly claimed run. A global schedule_next could
+   # otherwise reserve the slot for the oldest pending manual Codex run.
+   agent_key=(decision.task.metadata or {}).get("agent_key")
+   assignment=scheduler.schedule_run(run_id=decision.run_id,
+     preferred_role=agent_key or None)
   except RuntimeError as exc:
-   if "no eligible agent slot" not in str(exc):raise
-   scheduling["no_eligible_slot"]=True
-   break
-  if assignment is None:
+   if ("no eligible agent slot" not in str(exc)
+       and "agent scheduler returned no assignment" not in str(exc)):
+    raise
    scheduling["no_eligible_slot"]=True
    break
   scheduling["assigned"]+=1

@@ -40,6 +40,7 @@ class DispatchTests(unittest.TestCase):
  def test_atomic_claim_records_route_in_same_rpc(self):
   decision,calls=self.make_dispatch(("direct",),[candidate()],{"run_id":"r","task_id":"t"})
   self.assertEqual(decision.execution.route,ExecutionRoute.DIRECT)
+  self.assertEqual(decision.run_id,"r")
   self.assertEqual([x[0] for x in calls],[
     "factory_peek_planned_work","factory_dispatch_preapproved_planned_task"])
   args=calls[1][1]
@@ -71,6 +72,7 @@ class DispatchTests(unittest.TestCase):
   decision,calls=self.make_dispatch(
     ("codex",),[candidate(),complex_task],{"run_id":"run","task_id":"complex"})
   self.assertEqual(decision.execution.route,ExecutionRoute.CODEX)
+  self.assertEqual(decision.run_id,"run")
   self.assertEqual(calls[1][1]["p_work_unit_id"],"complex-unit")
   self.assertEqual(calls[1][1]["p_route"],"codex")
 
