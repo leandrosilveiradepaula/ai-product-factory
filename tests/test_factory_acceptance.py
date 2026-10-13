@@ -326,6 +326,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261013203000_guard_change_set_materialization.sql",
             "20261013210000_reconcile_closed_preview_candidate.sql",
             "20261013212000_align_portfolio_with_dispatcher.sql",
+            "20261013220500_route_aware_atomic_dispatch.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -1159,9 +1160,12 @@ class RoutingV2AcceptanceTests(unittest.TestCase):
         self.assertIn("Codex tem vantagem historica relevante de first-pass",policy)
         self.assertIn("Direct tem vantagem historica relevante de first-pass",policy)
         self.assertIn("custo historico do Codex e alto versus Direct",policy)
-        self.assertIn("factory_record_dispatch_decision_v2",dispatch)
-        self.assertIn("p_codex_reasons",dispatch)
-        self.assertIn("p_gate_reasons",dispatch)
+        atomic=(ROOT/"supabase/migrations/20261013220500_route_aware_atomic_dispatch.sql").read_text()
+        self.assertIn("factory_dispatch_preapproved_planned_task",dispatch)
+        self.assertIn("factory_record_dispatch_decision_v2",atomic)
+        self.assertIn("p_codex_reasons",atomic)
+        self.assertIn("p_gate_reasons",atomic)
+        self.assertIn("perform public.factory_record_dispatch_decision_v2",atomic)
         self.assertIn('ROUTER_POLICY_VERSION="v2"',provenance)
         self.assertIn("routing_policy_version",migration)
         self.assertIn("codex_reasons",migration)

@@ -1,3 +1,15 @@
+## Reconciliation 2026-10-13 - Atomic route-aware Codex preclaim (candidate)
+- PR #749 merged at eddc9bf4; candidate CI passed. The prior preclaim guard
+  blocked ALL new planned dispatch when Primary was off, including Codex-only
+  work, because the route was selected only after a database claim.
+- This PR adds read-only Work Unit preflight and an exact-fingerprint atomic
+  commit with a route decision; it revokes service_role access to the blind
+  legacy dispatcher. No stale task or duplicate Work Unit may be claimed.
+- Direct readiness still needs Primary API authentication and known cost.
+  The independent Codex path is limited to explicitly enabled zero-model
+  manual handoff while automated Codex is off. It never invents WIF values,
+  skips production merge gates, or grants new public database permissions.
+- This is an un-applied migration candidate, not proof of live autonomy.
 ## Reconciliation 2026-10-13 - dispatch executor preclaim (candidate)
 - PR #748 merged at c7af3f32 with green CI; schedule now requires real Work Units.
 - Previously the dispatch RPC could claim tasks before verifying that an executor

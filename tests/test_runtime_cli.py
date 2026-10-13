@@ -529,6 +529,50 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["status"],"ready")
         self.assertFalse(out["preview_required"])
 
+    def test_explicit_manual_codex_does_not_depend_on_primary_or_budget(self):
+        env={
+            "FACTORY_PRIMARY_MODEL_ENABLED":"false",
+            "FACTORY_CODEX_ENABLED":"false",
+            "FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"true",
+            "FACTORY_DISPATCH_MANUAL_CODEX_READY":"true",
+        }
+        dispatch=MagicMock();dispatch.dispatch_next_any.return_value=None
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as paid:
+            result=run_dispatch_once()
+        self.assertEqual(result["status"],"empty")
+        dispatch.dispatch_next_any.assert_called_once_with(allowed_routes=("codex",))
+        paid.assert_not_called()
+
+    def test_automatic_codex_does_not_fake_workload_identity_readiness(self):
+        env={
+            "FACTORY_PRIMARY_MODEL_ENABLED":"false",
+            "FACTORY_CODEX_ENABLED":"true",
+            "FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"true",
+            "FACTORY_DISPATCH_MANUAL_CODEX_READY":"true",
+        }
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as backlog:
+            result=run_dispatch_once()
+        self.assertEqual(result["status"],"blocked_executor_readiness")
+        backlog.assert_not_called()
+
+    def test_manual_fallback_requires_explicit_runner_enable(self):
+        env={
+            "FACTORY_PRIMARY_MODEL_ENABLED":"false",
+            "FACTORY_CODEX_ENABLED":"false",
+            "FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"true",
+        }
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as backlog:
+            result=run_dispatch_once()
+        self.assertEqual(result["status"],"blocked_executor_readiness")
+        backlog.assert_not_called()
+
     def test_dispatch_blocks_before_claim_when_primary_disabled(self):
         env={"FACTORY_PRIMARY_MODEL_ENABLED":"false","FACTORY_DISPATCH_PRIMARY_READY":"true"}
         with patch.dict("os.environ",env,clear=True), \

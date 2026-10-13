@@ -10,7 +10,7 @@ class Worker:
 class Decision:
  execution=type("E",(),{"route":type("R",(),{"value":"direct"})(),"human_gate_required":False,"codex":type("C",(),{"level":0})()})()
 class Dispatch:
- def dispatch_next(self,key):return Decision()
+ def dispatch_next(self,key,*,allowed_routes=("direct","codex")):return Decision()
 
 class Tests(unittest.TestCase):
  def test_product_blocked_auth_is_non_destructive_status(self):
