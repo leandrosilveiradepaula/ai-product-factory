@@ -86,6 +86,56 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
         self.assertTrue(urls[4].endswith("/rest/v1/rpc/factory_record_execution_team_plan"))
         self.assertTrue(urls[5].endswith("/rest/v1/rpc/factory_record_definition_of_done"))
 
+    def test_offline_new_work_flows_from_planner_through_materializer_without_paid_model(self):
+        provider=Provider()
+        ui=AgentProfile(
+            agent_key="ui",
+            role="ui",
+            capabilities=("ui","ux"),
+            allowed_tools=("github_write","model_primary"),
+            model_policy={"preferred":"primary"},
+            max_concurrency=2,
+            cost_budget_usd=0.75,
+            is_active=True,
+        )
+        item=WorkItem("run-new","task-new","project-new","factory-e2e",("planning",),{
+            "manifest":{"preview":{"required_paths":["apps/console/**"]}},
+            "summary":"Create a safe UI view",
+        })
+        output=ProductStageExecutor(
+            ModelExecutor(primary=provider),team_profiles=(ui,)
+        ).execute(item,"planning")
+        plan=output["_team_plan"]
+        self.assertEqual(plan["status"],"ready")
+        self.assertEqual(len(plan["task_assignments"]),1)
+        self.assertEqual(plan["task_assignments"][0]["execution_lane"],"builder")
+        self.assertEqual(plan["task_assignments"][0]["wave"],1)
+        self.assertEqual(len(provider.requests),1)  # In-memory test provider only.
+
+        queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="test")
+        calls=[]
+        def fake_rpc(name,payload):
+            calls.append((name,payload))
+            if name=="factory_persist_product_stage":
+                return {"created_tasks":1}
+            if name=="factory_record_execution_team_plan":
+                self.assertEqual(payload["p_plan"]["status"],"ready")
+                return {"id":"team-new","status":"ready"}
+            if name=="factory_materialize_change_set":
+                self.assertEqual(payload["p_team_plan_id"],"team-new")
+                return {"change_set_id":"set-new","builder_work_units":1,"status":"planned"}
+            return {}
+        queue._rpc=fake_rpc
+        queue.record_stage(item,StageEvidence("planning","completed",output))
+        names=[name for name,_ in calls]
+        self.assertLess(names.index("factory_persist_product_stage"),
+                        names.index("factory_record_execution_team_plan"))
+        self.assertLess(names.index("factory_record_execution_team_plan"),
+                        names.index("factory_materialize_change_set"))
+        dod=next(payload for name,payload in calls if name=="factory_record_definition_of_done")
+        self.assertEqual(dod["p_change_set_id"],"set-new")
+        self.assertEqual(len(provider.requests),1)
+
 
 if __name__=="__main__":
     unittest.main()
