@@ -139,7 +139,7 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
         self.assertEqual(out["queue_diagnostics"]["queued_execution_without_queued_run"], 0)
 
-    def test_portfolio_candidate_wakes_dispatch_without_pending_change_set_units(self):
+    def test_planning_only_portfolio_candidate_does_not_wake_dispatch(self):
         probe = StubProbe(
             tasks=[{"id": "t1", "status": "queued"}],
             portfolio_candidates=[{"project_key": "demo"}],
