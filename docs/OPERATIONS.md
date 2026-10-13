@@ -1,3 +1,8 @@
+## Fail-closed recovery and route-isolated workers
+The recovery job can requeue expired runs, resume decisions and release expired agent slots, but **must not allocate a new agent**. Generic `factory_schedule_next_unassigned_run` can select Codex manual or Direct work while its executor is disabled. Direct allocation is handled only by dispatch after Primary auth, real budget and ledger checks, through `factory_schedule_eligible_direct_run`.
+
+When a Direct/Codex worker starts without an exact run ID, it may read only the durable existing assignments for its own route using `factory_agent_work_matrix`. It must not call the generic scheduler or implicitly create a new assignment. Missing assignments produce `empty`. Neither operation activates Codex WIF or Primary, requeues historical work, or authorizes a production merge.
+
 ## Route-safe Direct scheduling and post-gate recovery (PR #753 extension)
 
 The versioned `factory_schedule_eligible_direct_run` RPC assigns only an
