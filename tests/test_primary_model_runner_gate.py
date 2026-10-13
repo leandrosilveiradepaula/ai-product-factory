@@ -6,7 +6,10 @@ class PrimaryModelRunnerGateTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         workflow = (root / ".github/workflows/autonomous-runner.yml").read_text()
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"', workflow)
-        self.assertEqual(workflow.count('FACTORY_PRIMARY_MODEL_ENABLED: "false"'), 2)
+        strict_opt_in = "FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}"
+        self.assertEqual(workflow.count(strict_opt_in), 2)
+        self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}', workflow)
+        self.assertNotIn("|| 'true'", workflow)
         self.assertIn("FACTORY_MODEL_RESERVE_USD", workflow)
         self.assertIn("FACTORY_PRIMARY_AUTH_MODE", workflow)
 

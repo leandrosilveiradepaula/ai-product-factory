@@ -160,7 +160,8 @@ jobs:
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       FACTORY_PRIMARY_AUTH_MODE: api_key
-      FACTORY_PRIMARY_MODEL_ENABLED: "false"
+      # Never imply paid authorization from a secret alone; unset GitHub variable stays off.
+      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
       FACTORY_MODEL_BUDGET_USD: "4.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
     steps:
@@ -498,7 +499,8 @@ jobs:
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
       FACTORY_PRIMARY_AUTH_MODE: api_key
-      FACTORY_PRIMARY_MODEL_ENABLED: "false"
+      # Never imply paid authorization from a secret alone; unset GitHub variable stays off.
+      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
       FACTORY_MODEL_BUDGET_USD: "4.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
       GITHUB_TOKEN: ${{ github.token }}

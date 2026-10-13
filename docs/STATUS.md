@@ -1,3 +1,10 @@
+## Reconciliation 2026-10-13 - Primary-model activation wiring (candidate)
+
+- Post-#746 Control Plane read confirms the corrected portfolio RPC returns `[]` with zero active Change Sets and no pending Work Units; the historical CRM PR #19 was durably reconciled. No new autonomous work should be manufactured.
+- The production autonomous-runner workflow still hard-coded `FACTORY_PRIMARY_MODEL_ENABLED: "false"` in both `product-stage` and `direct`, which prevented any new Primary-dependent intake/implementation regardless of documentation stating earlier API budget approval. This PR makes the flag explicitly controlled by an admin-owned GitHub variable with **default off**; it does not set the variable.
+- Fixed per-job US$ 4.00 budget and US$ 0.50 reservation, server-side ledger/unknown-cost preflight, API auth, GitHub App isolation and all release/Preview gates remain intact. No model call or paid test was performed. The real Primary execution state remains **unverified** until the variable/configuration is audited and a genuine bounded run finishes.
+- An in-memory planning -> team plan -> materialization -> Definition-of-Done contract regression exercises the deterministic segments without calling an external model, opening PRs, or deploying.
+
 ## Reconciliation 2026-10-13 - Portfolio dispatch truth (candidate)
 
 - Read-only production check after #745 migrations: `factory_portfolio_candidates(20)` still returned both Factory and CRM even though zero pending Work Units and zero active/planned Change Sets existed. Historical `plan-*` queued task titles were the sole eligibility cause.

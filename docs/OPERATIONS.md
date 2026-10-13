@@ -19,6 +19,30 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
 | `retry` | Create one fresh auditable run from a terminal failed run | Control Plane writes only | Manual | Source run must be `failed`; original run is immutable; explicit retry reason required |
 
+## Primary-model opt-in for unattended product and Direct execution
+
+The production GitHub Actions `product-stage` and `direct` jobs read the protected
+`FACTORY_PRIMARY_MODEL_ENABLED` GitHub variable as a strict, case-sensitive
+boolean. When the variable is absent, malformed, or anything other than
+`true`, the jobs receive `false`. The mere existence of `OPENAI_API_KEY`
+or WIF configuration does **not** authorize paid requests.
+
+Before an administrator explicitly enables that variable, verify the existing
+approved API billing/quota and model access, plus Control Plane ledger health
+(known spend, no unknown-cost events) and the fixed US$ 4.00 total budget /
+US$ 0.50 reservation. The Python runtime rechecks both the enable flag and
+the ledger *before claiming* a product-stage or Direct run, and the metered
+provider still enforces the real per-run reservation. Do not perform paid
+smoke calls just to poll readiness, and never purchase credit automatically.
+
+This explicit opt-in does not enable Codex, change GitHub App permissions,
+authorize production merges, bypass preview verification, or requeue historical
+`plan-*` tasks. A newly created real task must still demonstrate
+planning -> new Change Set -> claimable Work Units -> PR -> CI/evals ->
+verified Preview when applicable -> awaiting_release. A deterministic
+fixture test exercises only the early planning/materialization contract; it
+is **not** a release or production E2E signal.
+
 ## Merge autonomy
 
 The ChatGPT/operator layer may merge a PR directly after its applicable CI/quality gates are green **only when that merge cannot publish production**. It must use the verified head SHA and fail closed if the PR moved, became non-mergeable, or a human gate condition appeared.
