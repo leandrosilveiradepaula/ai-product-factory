@@ -1,3 +1,10 @@
+## Reconciliation 2026-10-13 - Closed PR durable terminal transition (candidate)
+
+- Live evidence: CRM PR #19 was closed unmerged on 2026-10-07; run d8ed0c24 remains preview_ready and Change Set a9d67bad remains ci_pending, with two already integrated Work Units. Those Work Units and the completed root task are immutable in this correction. Manual dogfood product-readiness audit rows are intentionally excluded from delivery.
+- PR candidate adds a service-role-only transactional RPC that requires matching run, source, candidate SHA, PR number, latest durable PR evidence and exact Change Set binding; refuses pending human gate, released report, merged PR and state races; on verified closure records cancelled run + superseded Change Set with durable audit and idempotence.
+- Runtime Preview probe marks a verified closed/unmerged candidate as reconciliation-only, without installing browser or initiating Vercel Preview. Executor does only the audited RPC, with no release merge capability.
+- This migration remains **unapplied** until explicit production migration gate. The 24-hour quota cooldown still suppresses scheduled selection until its expiry; no attempt is made to bypass Preview quota, and no E2E recovery is claimed.
+
 ## Reconciliation 2026-10-13 - Preview queue eligibility (candidate)
 - CRM PR #19 closed without merging on 2026-10-07 as superseded; its historical Preview run still held a 2026-10-13 quota-blocked deployment. Two additional Preview-ready records were manual dogfood product-readiness audits, not delivery PRs.
 - Bounded Preview queue selection now skips manual audit-only runs and applies 24-hour quota cooldown to exact run+candidate SHA, avoiding oldest-run starvation. Schedule probe uses the same eligibility predicate. Closed/merged PRs never pass Preview probe or deploy execution.

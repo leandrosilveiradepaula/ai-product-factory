@@ -21,6 +21,16 @@ class SupabaseDeliveryStore:
  def update_run_status(self,run_id:str,status:str,*,candidate_commit:str|None=None)->DurableRunRecord:
   d=self._rpc("factory_update_run_delivery_status",{"p_run_id":run_id,"p_status":status,"p_candidate_commit":candidate_commit})
   return DurableRunRecord(d["run_id"],d["task_id"],d["status"],d.get("candidate_commit"))
+ def reconcile_closed_preview_candidate(self,run_id:str,*,candidate_commit:str,pr_number:int,github_state:str,github_merged:bool)->dict:
+  if github_state!="closed" or github_merged is not False or pr_number<=0:
+   raise ValueError("only a verified closed, unmerged PR may be superseded")
+  data=self._rpc("factory_reconcile_closed_preview_candidate",{
+   "p_run_id":run_id,"p_candidate_commit":candidate_commit,"p_pr_number":pr_number,
+   "p_github_state":github_state,"p_github_merged":github_merged,
+  })
+  if not isinstance(data,dict) or data.get("run_id")!=run_id or data.get("status")!="cancelled" or data.get("change_set_status")!="superseded":
+   raise RuntimeError("closed Preview reconciliation result is inconsistent")
+  return data
  def finalize_console_human_release(self,run_id:str,*,candidate_commit:str,merge_sha:str)->dict:
   return self._rpc("factory_finalize_console_human_release",{
    "p_run_id":run_id,"p_candidate_commit":candidate_commit,"p_merge_sha":merge_sha,
