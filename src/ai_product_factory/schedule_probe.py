@@ -151,10 +151,13 @@ class SupabaseScheduleProbe:
 
         queued_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued"}
         product_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in queued_ids}
+        execution_task_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued_execution"}
+        execution_run_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in execution_task_ids}
         out = {
             "queue_diagnostics": {
                 "queued_tasks": len(queued_ids),
-                "queued_execution_tasks": sum(t.get("status") == "queued_execution" for t in tasks),
+                "queued_execution_tasks": len(execution_task_ids),
+                "queued_execution_without_queued_run": len(execution_task_ids - execution_run_ids),
                 "eligible_product_tasks": len(product_ids),
                 "queued_without_product_run": len(queued_ids - product_ids),
                 "preview_ready_runs": len(preview_runs),
