@@ -1,3 +1,8 @@
+## Reconciliation 2026-10-13 - Preview queue eligibility (candidate)
+- CRM PR #19 closed without merging on 2026-10-07 as superseded; its historical Preview run still held a 2026-10-13 quota-blocked deployment. Two additional Preview-ready records were manual dogfood product-readiness audits, not delivery PRs.
+- Bounded Preview queue selection now skips manual audit-only runs and applies 24-hour quota cooldown to exact run+candidate SHA, avoiding oldest-run starvation. Schedule probe uses the same eligibility predicate. Closed/merged PRs never pass Preview probe or deploy execution.
+- No database rows have been rewritten and no historical PR was reopened; durable terminal-state reconciliation remains separate. Preview and human release gates remain fail-closed.
+
 ## Reconciliation 2026-10-08 - stale Preview target hardening
 - Console browser evidence #65 proved that the GitHub-hosted Chrome path works, but the verifier consumed the historical `.github/preview-target.json` from PR #434 and received HTTP 410 GONE.
 - The trusted verifier is now manual-only and requires an explicit current Vercel URL; the stale source-controlled target file is removed.

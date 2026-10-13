@@ -6,6 +6,7 @@ import urllib.request
 from datetime import datetime,timedelta,timezone
 
 from .supabase_server import resolve_supabase_server_config
+from .preview_eligibility import is_delivery_preview_run, is_quota_blocked_candidate
 
 
 class SupabaseScheduleProbe:
@@ -87,7 +88,7 @@ class SupabaseScheduleProbe:
 
     def probe(self) -> dict:
         runs = self._get(
-            "factory_runs?select=id,task_id,status,execution_route,created_at"
+            "factory_runs?select=id,task_id,status,execution_route,created_at,branch_name,candidate_commit,metadata"
             "&status=in.(created,queued,ci_pending,preview_ready,awaiting_release,awaiting_codex_manual)"
             "&order=created_at.asc&limit=200"
         )
@@ -147,16 +148,18 @@ class SupabaseScheduleProbe:
         ))
 
         preview_runs=[run for run in runs if str(run.get("status"))=="preview_ready"]
+        deliverable_previews=[run for run in preview_runs if is_delivery_preview_run(run)]
         blocked_preview_runs=set()
-        if preview_runs:
+        if deliverable_previews:
             cutoff=(datetime.now(timezone.utc)-timedelta(hours=24)).isoformat().replace("+00:00","Z")
+            blocks=self._get_optional(
+                "factory_deployments?select=run_id,metadata"
+                "&environment=eq.preview&status=eq.blocked_quota"
+                f"&created_at=gte.{cutoff}&order=created_at.desc&limit=200"
+            )
             blocked_preview_runs={
-                str(row.get("run_id") or "")
-                for row in self._get_optional(
-                    "factory_deployments?select=run_id"
-                    "&environment=eq.preview&status=eq.blocked_quota"
-                    f"&created_at=gte.{cutoff}&limit=200"
-                )
+                str(run.get("id") or "") for run in deliverable_previews
+                if is_quota_blocked_candidate(run,blocks)
             }
 
         queued_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued"}
@@ -189,6 +192,7 @@ class SupabaseScheduleProbe:
                 "queued_without_product_run_but_portfolio_eligible": eligible_queued_without_run,
                 "queued_without_product_run_and_not_portfolio_eligible": len(queued_ids - product_ids) - eligible_queued_without_run,
                 "preview_ready_runs": len(preview_runs),
+                "preview_manual_audit_only_runs": len(preview_runs)-len(deliverable_previews),
                 "preview_ready_older_than_24h": stale_preview_runs,
                 "preview_quota_blocked_runs": sum(str(run.get("id") or "") in blocked_preview_runs for run in preview_runs),
             },
@@ -202,7 +206,7 @@ class SupabaseScheduleProbe:
             "specialist_security_work": "security" in specialist_roles,
             "specialist_qa_work": "qa" in specialist_roles,
             "specialist_operations_work": "operations" in specialist_roles,
-            "preview_work": any(str(run.get("id") or "") not in blocked_preview_runs for run in preview_runs),
+            "preview_work": any(str(run.get("id") or "") not in blocked_preview_runs for run in deliverable_previews),
             "release_work": any(str(run.get("status")) == "awaiting_release" for run in runs),
             "codex_manual_work": codex_manual_work,
         }

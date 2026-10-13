@@ -173,7 +173,7 @@ class ScheduleProbeTests(unittest.TestCase):
             StubProbe(portfolio_error=RuntimeError("portfolio unavailable")).probe()
 
     def test_quota_blocked_preview_is_counted_without_retry(self):
-        out = StubProbe(runs=[{"id": "p1", "status": "preview_ready"}], deployments=[{"run_id": "p1"}]).probe()
+        out = StubProbe(runs=[{"id": "p1", "status": "preview_ready", "candidate_commit":"sha"}], deployments=[{"run_id": "p1", "metadata":{"candidate_commit":"sha"}}]).probe()
         self.assertFalse(out["preview_work"])
         self.assertEqual(out["queue_diagnostics"]["preview_ready_runs"], 1)
         self.assertEqual(out["queue_diagnostics"]["preview_quota_blocked_runs"], 1)
@@ -229,8 +229,8 @@ class ScheduleProbeTests(unittest.TestCase):
 
     def test_recent_quota_block_suppresses_preview_retry(self):
         probe=StubProbe(
-            runs=[{"id":"r-preview","status":"preview_ready"}],
-            deployments=[{"run_id":"r-preview"}],
+            runs=[{"id":"r-preview","status":"preview_ready","candidate_commit":"sha"}],
+            deployments=[{"run_id":"r-preview","metadata":{"candidate_commit":"sha"}}],
         )
         out=probe.probe()
         self.assertFalse(out["preview_work"])
@@ -239,6 +239,21 @@ class ScheduleProbeTests(unittest.TestCase):
     def test_preview_without_recent_quota_block_remains_actionable(self):
         out=StubProbe(runs=[{"id":"r-preview","status":"preview_ready"}],deployments=[]).probe()
         self.assertTrue(out["preview_work"])
+
+
+    def test_manual_audit_does_not_wake_preview(self):
+        out=StubProbe(runs=[{"id":"audit","status":"preview_ready","metadata":{"source":"dogfood_manual_audit"}}]).probe()
+        self.assertFalse(out["preview_work"])
+        self.assertFalse(out["work_detected"])
+        self.assertEqual(out["queue_diagnostics"]["preview_manual_audit_only_runs"],1)
+
+    def test_quota_for_old_sha_keeps_new_sha_actionable(self):
+        out=StubProbe(
+            runs=[{"id":"r","status":"preview_ready","candidate_commit":"new"}],
+            deployments=[{"run_id":"r","metadata":{"candidate_commit":"old"}}]
+        ).probe()
+        self.assertTrue(out["preview_work"])
+        self.assertEqual(out["queue_diagnostics"]["preview_quota_blocked_runs"],0)
 
     def test_individual_work_signals_record_normalized_work_classes(self):
         cases = {

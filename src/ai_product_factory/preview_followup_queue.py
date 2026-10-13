@@ -4,7 +4,10 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
+
+from .preview_eligibility import is_delivery_preview_run, is_quota_blocked_candidate
 
 from .supabase_server import resolve_supabase_server_config
 
@@ -41,10 +44,30 @@ class SupabasePreviewFollowupQueue:
         return [] if not raw else json.loads(raw)
 
     def next_pending(self) -> PreviewFollowupItem | None:
-        runs=self._get("factory_runs?select=id,task_id,branch_name,candidate_commit,metadata&status=eq.preview_ready&order=created_at.asc&limit=1")
+        # A quota-blocked oldest run must not starve later candidates.
+        runs=self._get(
+            "factory_runs?select=id,task_id,branch_name,candidate_commit,metadata"
+            "&status=eq.preview_ready&order=created_at.asc&limit=50"
+        )
         if not runs:
             return None
-        run=runs[0]
+        cutoff=(datetime.now(timezone.utc)-timedelta(hours=24)).isoformat().replace("+00:00","Z")
+        run=None
+        for row in runs:
+            if not is_delivery_preview_run(row):
+                continue
+            blocks=self._get(
+                "factory_deployments?select=run_id,metadata"
+                "&environment=eq.preview&status=eq.blocked_quota"
+                f"&run_id=eq.{quote(str(row['id']))}&created_at=gte.{cutoff}"
+                "&order=created_at.desc&limit=20"
+            )
+            if is_quota_blocked_candidate(row,blocks):
+                continue
+            run=row
+            break
+        if run is None:
+            return None
         run_id=str(run["id"])
         task_id=str(run["task_id"])
         candidate=str(run.get("candidate_commit") or "")
