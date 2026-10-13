@@ -16,6 +16,8 @@ class StubProbe(SupabaseScheduleProbe):
         github_access=None,
         deployments=None,
         telemetry_error=None,
+        portfolio_candidates=None,
+        portfolio_error=None,
     ):
         self.rows = {
             "factory_runs": list(runs or []),
@@ -28,6 +30,8 @@ class StubProbe(SupabaseScheduleProbe):
         }
         self.telemetry_posts = []
         self.telemetry_error = telemetry_error
+        self.portfolio_candidates = list(portfolio_candidates or [])
+        self.portfolio_error = portfolio_error
         self.probe_diagnostics = {}
 
     def _get(self, path: str):
@@ -35,6 +39,11 @@ class StubProbe(SupabaseScheduleProbe):
             if path.startswith(table + "?"):
                 return list(rows)
         raise AssertionError(f"unexpected path: {path}")
+
+    def _portfolio_dispatch_candidates(self):
+        if self.portfolio_error:
+            raise self.portfolio_error
+        return self.portfolio_candidates
 
     def _post(self, path: str, payload: dict) -> None:
         self.telemetry_posts.append((path, payload))
@@ -89,6 +98,25 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
         self.assertFalse(out["work_detected"])
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
+
+    def test_portfolio_candidate_wakes_dispatch_without_pending_change_set_units(self):
+        probe = StubProbe(
+            tasks=[{"id": "t1", "status": "queued"}],
+            portfolio_candidates=[{"project_key": "demo"}],
+        )
+        out = probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertTrue(out["work_detected"])
+        self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
+        self.assert_telemetry(probe, work_detected=True, work_classes=["dispatch"])
+
+    def test_no_portfolio_candidates_keeps_orphan_queue_idle(self):
+        out = StubProbe(tasks=[{"id": "t1", "status": "queued"}]).probe()
+        self.assertFalse(out["dispatch_work"])
+
+    def test_portfolio_failure_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "portfolio unavailable"):
+            StubProbe(portfolio_error=RuntimeError("portfolio unavailable")).probe()
 
     def test_quota_blocked_preview_is_counted_without_retry(self):
         out = StubProbe(runs=[{"id": "p1", "status": "preview_ready"}], deployments=[{"run_id": "p1"}]).probe()
