@@ -1,3 +1,15 @@
+## 2026-10-13 - Status-partitioned scheduler work detection (candidate)
+- PR #755 merged as aad8d484, post-merge CI green. Supabase still has zero
+  pending Work Units, active runs/gates and assigned agent slots.
+- Found a scheduler liveness bug: the oldest 200 runs across all statuses could
+  consist of manual Preview audits, hiding a newer queued Direct run. Likewise,
+  200 queued historical tasks could obscure a queued_execution task.
+- Candidate queries each status under its own cap, deduplicates transient ID
+  status transitions and reports capped partitions in sanitized telemetry.
+  The work eligibility/Preview policy, Primary ledger, and production gate
+  are unchanged. Regression tests use 200 historical Preview and queued tasks
+  without any paid call, migration or production write.
+
 ## 2026-10-13 - Route-isolated recovery candidate
 - Read-only audit: no pending Work Units, active runs, gates or agent slots. Last Direct scheduling migration is applied.
 - Legacy recovery performed unscoped `schedule_next()` for Direct or Codex without executor readiness, potentially reserving Codex manual slots. Unscoped Direct/Codex workers could do the same.

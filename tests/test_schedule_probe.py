@@ -38,6 +38,9 @@ class StubProbe(SupabaseScheduleProbe):
     def _get(self, path: str):
         for table, rows in self.rows.items():
             if path.startswith(table + "?"):
+                if table in {"factory_runs", "factory_tasks"} and "&status=eq." in path:
+                    status = path.split("&status=eq.", 1)[1].split("&", 1)[0]
+                    rows = [row for row in rows if row.get("status") == status]
                 return list(rows)
         raise AssertionError(f"unexpected path: {path}")
 
@@ -112,6 +115,74 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
         self.assertFalse(out["work_detected"])
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
+
+    def test_many_manual_preview_audits_do_not_hide_new_direct_run(self):
+        class CappedProbe(StubProbe):
+            def _get(self, path):
+                return super()._get(path)[:200]
+
+        # One combined, oldest-first 200-row query used to hide this run.
+        audits = [
+            {"id": f"legacy-preview-{i}", "status": "preview_ready",
+             "created_at": "2026-09-01T00:00:00Z",
+             "metadata": {"source": "dogfood_manual_audit"}}
+            for i in range(200)
+        ]
+        probe = CappedProbe(
+            runs=audits + [
+                {"id": "new-direct", "task_id": "new-task",
+                 "status": "queued", "execution_route": "direct",
+                 "created_at": "2026-10-13T22:00:00Z"},
+            ],
+            tasks=[{"id": "new-task", "status": "queued_execution"}],
+        )
+        out = probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertFalse(out["preview_work"])
+        self.assertEqual(out["queue_diagnostics"]["preview_manual_audit_only_runs"], 200)
+        self.assertEqual(out["queue_diagnostics"]["run_status_partitions_at_limit"], ["preview_ready"])
+        self.assert_telemetry(probe, work_detected=True, work_classes=["dispatch"])
+
+    def test_many_legacy_queued_tasks_cannot_hide_queued_execution_task(self):
+        class CappedProbe(StubProbe):
+            def _get(self, path):
+                return super()._get(path)[:200]
+
+        old = [{"id": f"old-task-{i}", "status": "queued"} for i in range(200)]
+        probe = CappedProbe(
+            runs=[{"id": "new-run", "task_id": "new-task", "status": "queued",
+                   "execution_route": "direct"}],
+            tasks=old + [{"id": "new-task", "status": "queued_execution"}],
+        )
+        out = probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertEqual(out["queue_diagnostics"]["task_status_partitions_at_limit"], ["queued"])
+        self.assertEqual(out["queue_diagnostics"]["queued_execution_tasks"], 1)
+
+    def test_status_change_between_queries_keeps_only_latest_observation(self):
+        class RacingProbe(StubProbe):
+            def _get(self, path):
+                if path.startswith("factory_runs?") and "&status=eq.created" in path:
+                    return [{"id": "r", "task_id": "t", "status": "created"}]
+                if path.startswith("factory_runs?") and "&status=eq.queued" in path:
+                    return [{"id": "r", "task_id": "t", "status": "queued",
+                             "execution_route": "direct"}]
+                return super()._get(path)
+
+        probe = RacingProbe(tasks=[{"id": "t", "status": "queued_execution"}])
+        out = probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertFalse(out["product_work"])
+
+    def test_mismatched_or_malformed_partition_fails_closed(self):
+        class MalformedProbe(StubProbe):
+            def _get(self, path):
+                if path.startswith("factory_runs?") and "&status=eq.queued" in path:
+                    return [{"id": "run", "status": "preview_ready"}]
+                return super()._get(path)
+
+        with self.assertRaisesRegex(RuntimeError, "invalid status-partitioned"):
+            MalformedProbe().probe()
 
     def test_existing_queued_execution_run_wakes_dispatch_matrix(self):
         probe = StubProbe(
