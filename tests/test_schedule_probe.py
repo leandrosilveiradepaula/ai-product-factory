@@ -150,6 +150,20 @@ class ScheduleProbeTests(unittest.TestCase):
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
         self.assert_telemetry(probe, work_detected=True, work_classes=["dispatch"])
 
+    def test_queued_tasks_are_classified_by_portfolio_project_eligibility(self):
+        probe = StubProbe(
+            tasks=[
+                {"id": "t1", "status": "queued", "project_id": "p1"},
+                {"id": "t2", "status": "queued", "project_id": "p2"},
+            ],
+            portfolio_candidates=[{"project_id": "p1", "project_key": "demo"}],
+        )
+        out = probe.probe()
+        self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 2)
+        self.assertEqual(out["queue_diagnostics"]["queued_without_product_run_but_portfolio_eligible"], 1)
+        self.assertEqual(out["queue_diagnostics"]["queued_without_product_run_and_not_portfolio_eligible"], 1)
+        self.assertTrue(out["dispatch_work"])
+
     def test_no_portfolio_candidates_keeps_orphan_queue_idle(self):
         out = StubProbe(tasks=[{"id": "t1", "status": "queued"}]).probe()
         self.assertFalse(out["dispatch_work"])
