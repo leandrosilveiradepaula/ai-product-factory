@@ -294,7 +294,21 @@ Deno.serve(async(req:Request)=>{
     return new Response(response.body,{status:response.status,headers:responseHeaders});
   } catch(error) {
     const detail=error instanceof Error?error.message:"unknown";
-    console.error("factory runtime control-plane broker rejected request:",detail);
-    return json(403,{error:"forbidden",detail});
+    // Bounded diagnostics: never echo arbitrary exception text, JWTs or API responses.
+    if(detail.startsWith("GitHub OIDC claim mismatch: ")) {
+      const claim=detail.slice("GitHub OIDC claim mismatch: ".length);
+      if(Object.prototype.hasOwnProperty.call(EXPECTED,claim)) {
+        return json(403,{error:"github_oidc_claim_mismatch",claim});
+      }
+    }
+    if(detail==="missing GitHub OIDC token" || detail.startsWith("JWT")) {
+      return json(403,{error:"github_oidc_authentication_failed"});
+    }
+    if(detail.startsWith("GitHub installation token mint failed with HTTP ") ||
+       detail.startsWith("GitHub installation repository binding failed with HTTP ")) {
+      return json(403,{error:"github_app_upstream_permission_denied"});
+    }
+    console.error("factory runtime broker denied request (diagnostic detail redacted)");
+    return json(403,{error:"forbidden"});
   }
 });

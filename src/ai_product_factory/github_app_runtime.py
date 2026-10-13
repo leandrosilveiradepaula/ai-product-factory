@@ -54,6 +54,17 @@ def _request_json(
     if status < 200 or status >= 300:
         if status in allowed_statuses:
             return status, payload
+        # Never log the broker's freeform detail or upstream credentials.
+        if status == 403 and url.rstrip("/").endswith("/github-app/token"):
+            raw_code = payload.get("error") if isinstance(payload, dict) else None
+            allowed_codes = {
+                "forbidden", "github_app_token_workflow_not_allowed",
+                "github_app_token_event_not_allowed", "github_oidc_claim_mismatch",
+                "github_oidc_authentication_failed",
+                "github_app_upstream_permission_denied",
+            }
+            code = raw_code if isinstance(raw_code, str) and raw_code in allowed_codes else "unspecified"
+            raise PermissionError(f"GitHub App broker refused token (HTTP 403; code={code})")
         raise RuntimeError(f"GitHub App runtime request failed with HTTP {status}")
     return status, payload
 
