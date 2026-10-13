@@ -48,6 +48,24 @@ class SupabaseScheduleProbe:
         with urllib.request.urlopen(req, timeout=30):
             pass
 
+    def _portfolio_dispatch_candidates(self) -> list[dict]:
+        """Read-only RPC; fail closed if portfolio eligibility cannot be verified."""
+        headers = {**self.headers, "Content-Type": "application/json"}
+        req = urllib.request.Request(
+            f"{self.url}/rest/v1/rpc/factory_portfolio_candidates",
+            data=json.dumps({"p_limit": 20}).encode(),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                value = json.loads(response.read().decode())
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+            raise RuntimeError("portfolio eligibility read failed") from exc
+        if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
+            raise RuntimeError("invalid portfolio eligibility response")
+        return value
+
     def _record_telemetry(self, *, work_detected: bool, work_classes: list[str], queue_diagnostics: dict | None = None) -> bool:
         try:
             self._post(
@@ -94,9 +112,13 @@ class SupabaseScheduleProbe:
             for run in runs
         )
 
-        dispatch_work = bool(self._get(
+        pending_change_set_work = bool(self._get(
             "factory_change_set_work_units?select=id&status=eq.pending&limit=1"
         ))
+        # Portfolio RPC enforces project pause, worker limits and incident priority.
+        # Never infer eligibility from orphan queued tasks alone.
+        portfolio_candidates = self._portfolio_dispatch_candidates()
+        dispatch_work = pending_change_set_work or bool(portfolio_candidates)
         integration_work = bool(self._get(
             "factory_change_sets?select=id&status=in.(building,integrating)&limit=1"
         ))
