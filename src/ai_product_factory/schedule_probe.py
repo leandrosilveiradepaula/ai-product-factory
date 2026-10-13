@@ -126,7 +126,9 @@ class SupabaseScheduleProbe:
             and task_status.get(str(run.get("task_id"))) == "queued_execution"
             for run in runs
         )
-        # Portfolio candidates may contain planning-only tasks, which the dispatch RPC\n        # cannot claim. Only runnable Change Set units or already-routed runs wake dispatch.\n        dispatch_work = pending_change_set_work or assigned_execution_work
+        # Portfolio candidates may contain planning-only tasks, which the dispatch RPC
+        # cannot claim. Only runnable Change Set units or already-routed runs wake dispatch.
+        dispatch_work = pending_change_set_work or assigned_execution_work
         integration_work = bool(self._get(
             "factory_change_sets?select=id&status=in.(building,integrating)&limit=1"
         ))
