@@ -1,3 +1,15 @@
+## 2026-10-13 - Bounded newest/oldest wake and linked task lookup (candidate)
+- PR #756 merged at 0d7f6acc; post-merge CI green. No pending runs,
+  Work Units or human gates in the Control Plane.
+- Status partitions fixed cross-status starvation but still sampled only
+  the oldest 200 rows per state. A queue with 200 manual Preview audits
+  could hide the newest delivery Preview. Also, independently capped
+  queued_execution tasks could obscure a selected queued Direct run's task.
+- Candidate adds bounded newest-run sampling on capped partitions, read-only
+  task-ID join completion, strict validation, and truncation telemetry.
+  Regression fixtures cover both blindspots and malformed responses.
+- No paid models, migrations, new tasks or production merge were performed.
+
 ## 2026-10-13 - Status-partitioned scheduler work detection (candidate)
 - PR #755 merged as aad8d484, post-merge CI green. Supabase still has zero
   pending Work Units, active runs/gates and assigned agent slots.
