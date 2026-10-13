@@ -95,20 +95,11 @@ def run_recovery_once(max_attempts:int=3)->dict:
  descendants=queue.reconcile_terminal_descendants()
  scheduler=SupabaseAgentScheduler()
  agents=scheduler.recover_expired()
- # Retry an atomic assignment for a previously routed, unassigned run.
- # This does not dispatch a new task or invoke a model.
- agent_retry={"attempted":0,"assigned":0,"no_eligible_slot":False}
- for _ in range(6):
-  agent_retry["attempted"]+=1
-  try:
-   assignment=scheduler.schedule_next()
-  except RuntimeError as exc:
-   if "no eligible agent slot" not in str(exc):raise
-   agent_retry["no_eligible_slot"]=True
-   break
-  if assignment is None:
-   break
-  agent_retry["assigned"]+=1
+ # Recovery never creates new agent assignments: the legacy global RPC can
+ # silently choose an unready Direct run or a Codex manual handoff. The
+ # readiness-gated dispatcher schedules eligible Direct runs separately.
+ agent_retry={"attempted":0,"assigned":0,"no_eligible_slot":False,
+              "deferred_to_readiness_gated_dispatch":True}
  specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
  change_sets=SupabaseChangeSetStore().recover_expired(max_attempts)
  return {"runs":runs,"decisions":decisions,"descendants":descendants,"agents":agents,"agent_retry":agent_retry,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
@@ -122,6 +113,23 @@ def run_product_once(worker_id:str)->dict:
  result=RuntimeWorker(queue=SupabaseRuntimeQueue(),handler=handler,worker_id=worker_id).run_once()
  return {"claimed":result is not None,"status":result.status.value if result else None,"error":result.error if result else None}
 
+def _select_assigned_route_run(scheduler:SupabaseAgentScheduler,route:str,
+                                agent_key:str|None=None)->tuple[str,str]|None:
+ # Pure read of already-assigned work; never reserve the next unscoped run.
+ if route not in {"direct","codex"}:raise ValueError("invalid worker route")
+ matrix=scheduler.work_matrix(12)
+ items=matrix.get(route)
+ if not isinstance(items,list):raise RuntimeError("invalid route work matrix")
+ for row in items:
+  if not isinstance(row,dict):raise RuntimeError("invalid assigned work item")
+  row_run=row.get("run_id")
+  row_agent=row.get("agent_key")
+  if not isinstance(row_run,str) or not row_run.strip() or not isinstance(row_agent,str) or not row_agent.strip():
+   raise RuntimeError("assigned work item lacks durable run and agent")
+  if agent_key is None or row_agent==agent_key:
+   return row_run,row_agent
+ return None
+
 def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
@@ -131,9 +139,9 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  scheduler=SupabaseAgentScheduler()
  if run_id is None:
-  assignment=scheduler.schedule_next()
-  if assignment is None:return {"claimed":False,"status":"empty"}
-  agent_key=assignment.agent_key
+  selected=_select_assigned_route_run(scheduler,"direct",agent_key)
+  if selected is None:return {"claimed":False,"status":"empty"}
+  run_id,agent_key=selected
  elif not agent_key:
   raise ValueError("agent_key is required when run_id is explicit")
  scheduler.require_route_tools(agent_key,"direct")
@@ -168,9 +176,9 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  scheduler=SupabaseAgentScheduler()
  if run_id is None:
-  assignment=scheduler.schedule_next()
-  if assignment is None:return {"claimed":False,"status":"empty"}
-  agent_key=assignment.agent_key
+  selected=_select_assigned_route_run(scheduler,"codex",agent_key)
+  if selected is None:return {"claimed":False,"status":"empty"}
+  run_id,agent_key=selected
  elif not agent_key:
   raise ValueError("agent_key is required when run_id is explicit")
  scheduler.require_route_tools(agent_key,"codex")
