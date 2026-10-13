@@ -460,6 +460,20 @@ class RuntimeCliTests(unittest.TestCase):
         dispatch.dispatch_next_any.assert_called_once()
         adaptive.work_matrix.assert_called_once()
 
+    def test_dispatch_reports_unassigned_run_when_agent_slot_missing(self):
+        dispatch=MagicMock()
+        dispatch.dispatch_next_any.side_effect=[SimpleNamespace(execution=SimpleNamespace(route=SimpleNamespace(value="direct"),human_gate_required=False,codex=SimpleNamespace(level="none"))),None]
+        scheduler=MagicMock()
+        scheduler.schedule_next.return_value=None
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            out=run_dispatch_once()
+        self.assertEqual(out["status"],"routed")
+        self.assertEqual(out["scheduling"],{"attempted":1,"assigned":0,"no_eligible_slot":True})
+        self.assertEqual(dispatch.dispatch_next_any.call_count,1)
+
     def test_preview_mode_empty_queue_does_not_require_external_readiness(self):
         queue=MagicMock();queue.next_pending.return_value=None
         with patch.dict("os.environ", {}, clear=True), patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
