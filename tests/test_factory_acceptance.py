@@ -328,6 +328,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261013212000_align_portfolio_with_dispatcher.sql",
             "20261013220500_route_aware_atomic_dispatch.sql",
             "20261013224500_schedule_eligible_direct_run.sql",
+            "20261013235000_scheduler_queue_signals.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

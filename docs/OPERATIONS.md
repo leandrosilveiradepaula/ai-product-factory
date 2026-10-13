@@ -1,3 +1,20 @@
+## Authoritative queue wakeup signals
+
+The status-window scan is diagnostic only. The `factory_scheduler_queue_signals`
+read-only, stable, security-invoker, service-role-only RPC uses indexed
+PostgreSQL EXISTS/joins to detect genuine product runs, routed Direct/Codex
+runs and pending manual Codex followups independent of legacy queue volume.
+The query checks active projects and task/run state. New Work Units still
+require the existing eligible portfolio RPC. This avoids false idle when
+a genuine run falls between oldest/newest REST windows.
+
+The scheduler fails closed if the RPC is missing, malformed or inaccessible;
+do **not** treat that state as successful idle. Therefore
+`20261013235000_scheduler_queue_signals.sql` must be applied and ACL-tested
+immediately after a human merge, before depending on a production schedule.
+Preview eligibility, quota, model/ledger gates and human release gates stay
+unchanged. This is queue detection only, not paid-model authorization.
+
 ## Bounded queue join and newest-run fairness
 
 When a run status partition reaches 200, the read-only probe samples **both**
