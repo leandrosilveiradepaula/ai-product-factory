@@ -676,7 +676,6 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(scheduler.schedule_eligible_direct.call_args_list[1].kwargs,
                          {"project_key":None})
         scheduler.schedule_run.assert_not_called()
-        scheduler.schedule_eligible_direct.assert_not_called()
         scheduler.schedule_next.assert_not_called()
 
     def test_missing_claim_run_id_blocks_unsound_agent_scheduling(self):
@@ -694,7 +693,7 @@ class RuntimeCliTests(unittest.TestCase):
         scheduler.schedule_next.assert_not_called()
 
     def test_approved_direct_run_is_resumed_without_claiming_new_task(self):
-        dispatch=MagicMock();dispatch.dispatch_next_any.return_value=None
+        dispatch=MagicMock();dispatch.dispatch_next.return_value=None
         scheduler=MagicMock()
         scheduler.schedule_eligible_direct.side_effect=[
             SimpleNamespace(run_id="approved-run",assignment_id="agent-slot"),None]
