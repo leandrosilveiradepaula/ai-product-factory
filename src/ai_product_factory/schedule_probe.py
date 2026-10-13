@@ -87,7 +87,7 @@ class SupabaseScheduleProbe:
 
     def probe(self) -> dict:
         runs = self._get(
-            "factory_runs?select=id,task_id,status,execution_route"
+            "factory_runs?select=id,task_id,status,execution_route,created_at"
             "&status=in.(created,queued,ci_pending,preview_ready,awaiting_release,awaiting_codex_manual)"
             "&order=created_at.asc&limit=200"
         )
@@ -161,6 +161,20 @@ class SupabaseScheduleProbe:
         product_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in queued_ids}
         execution_task_ids = {str(t["id"]) for t in tasks if t.get("status") == "queued_execution"}
         execution_run_ids = {str(run.get("task_id")) for run in runs if str(run.get("status")) in {"created", "queued"} and str(run.get("task_id")) in execution_task_ids}
+        stale_preview_runs = 0
+        now = datetime.now(timezone.utc)
+        for run in preview_runs:
+            created_at = run.get("created_at")
+            if not isinstance(created_at, str):
+                continue
+            try:
+                created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                if created.tzinfo is None:
+                    continue
+                if now - created >= timedelta(hours=24):
+                    stale_preview_runs += 1
+            except ValueError:
+                continue
         out = {
             "queue_diagnostics": {
                 "queued_tasks": len(queued_ids),
@@ -169,6 +183,7 @@ class SupabaseScheduleProbe:
                 "eligible_product_tasks": len(product_ids),
                 "queued_without_product_run": len(queued_ids - product_ids),
                 "preview_ready_runs": len(preview_runs),
+                "preview_ready_older_than_24h": stale_preview_runs,
                 "preview_quota_blocked_runs": sum(str(run.get("id") or "") in blocked_preview_runs for run in preview_runs),
             },
             "github_access_work": github_access_work,
