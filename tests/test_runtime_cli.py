@@ -447,7 +447,8 @@ class RuntimeCliTests(unittest.TestCase):
         with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github):
             out=run_preview_probe_once()
-        self.assertEqual(out["status"],"stale_closed_pr")
+        self.assertEqual(out["status"],"reconcile_closed_pr")
+        self.assertTrue(out["claimed"])
         self.assertFalse(out["preview_required"])
         github.get_pull_request_files.assert_not_called()
 
@@ -456,13 +457,43 @@ class RuntimeCliTests(unittest.TestCase):
         queue=MagicMock();queue.next_pending.return_value=item
         github=MagicMock()
         github.get_pull_request.return_value=SimpleNamespace(state="closed",merged=False,head_sha="sha")
+        store=MagicMock()
+        store.reconcile_closed_preview_candidate.return_value={"status":"cancelled","change_set_status":"superseded"}
         with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.GitHubVercelPreviewAdapter") as provider:
             out=run_preview_once()
-        self.assertEqual(out["status"],"stale_closed_pr")
+        self.assertEqual(out["status"],"superseded")
+        self.assertEqual(out["change_set_status"],"superseded")
+        store.reconcile_closed_preview_candidate.assert_called_once_with(
+            "r",candidate_commit="sha",pr_number=19,github_state="closed",github_merged=False)
         github.get_issue.assert_not_called()
         provider.assert_not_called()
+
+    def test_merged_pr_is_not_falsely_superseded(self):
+        item=SimpleNamespace(run_id="r",repository="owner/repo",pr_number=19,candidate_commit="sha",issue_number=18)
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        github.get_pull_request.return_value=SimpleNamespace(state="closed",merged=True,head_sha="sha")
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as store:
+            out=run_preview_once()
+        self.assertEqual(out["status"],"merged_pr_requires_release_observation")
+        store.assert_not_called()
+
+    def test_closed_pr_sha_mismatch_blocks_reconciliation(self):
+        item=SimpleNamespace(run_id="r",repository="owner/repo",pr_number=19,candidate_commit="sha",issue_number=18)
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock()
+        github.get_pull_request.return_value=SimpleNamespace(state="closed",merged=False,head_sha="changed")
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as store:
+            with self.assertRaisesRegex(RuntimeError,"closed PR head"):
+                run_preview_once()
+        store.assert_not_called()
 
     def test_preview_probe_empty_has_no_github_side_effect(self):
         queue=MagicMock();queue.next_pending.return_value=None

@@ -1,5 +1,5 @@
 import json,unittest
-from unittest.mock import patch
+from unittest.mock import patch,MagicMock
 from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
 from ai_product_factory.product_readiness import assess_product_readiness,REQUIRED_COVERAGE_BY_DOMAIN,REQUIRED_DOMAINS
 class Response:
@@ -77,5 +77,37 @@ class Tests(unittest.TestCase):
   self.assertTrue(eval_payload["result"]["ready"])
   audit_payload=json.loads(call.call_args_list[1].args[0].data.decode())
   self.assertEqual(audit_payload["event_type"],"product_readiness.assessed")
+
+    def test_closed_pr_reconciliation_uses_narrow_rpc_and_validates_output(self):
+        store=SupabaseDeliveryStore.__new__(SupabaseDeliveryStore)
+        store._rpc=MagicMock(return_value={
+            "run_id":"r","status":"cancelled","change_set_status":"superseded","idempotent":False})
+        result=store.reconcile_closed_preview_candidate(
+            "r",candidate_commit="a"*40,pr_number=19,
+            github_state="closed",github_merged=False)
+        self.assertEqual(result["status"],"cancelled")
+        store._rpc.assert_called_once_with("factory_reconcile_closed_preview_candidate",{
+            "p_run_id":"r","p_candidate_commit":"a"*40,"p_pr_number":19,
+            "p_github_state":"closed","p_github_merged":False})
+
+    def test_closed_pr_reconciliation_fails_closed_before_rpc(self):
+        store=SupabaseDeliveryStore.__new__(SupabaseDeliveryStore)
+        store._rpc=MagicMock()
+        for state,merged in (("open",False),("closed",True),("closed",None)):
+            with self.subTest(state=state,merged=merged):
+                with self.assertRaises(ValueError):
+                    store.reconcile_closed_preview_candidate(
+                        "r",candidate_commit="a"*40,pr_number=19,
+                        github_state=state,github_merged=merged)
+        store._rpc.assert_not_called()
+
+    def test_closed_pr_reconciliation_rejects_inconsistent_rpc_result(self):
+        store=SupabaseDeliveryStore.__new__(SupabaseDeliveryStore)
+        store._rpc=MagicMock(return_value={
+            "run_id":"r","status":"completed","change_set_status":"completed"})
+        with self.assertRaises(RuntimeError):
+            store.reconcile_closed_preview_candidate(
+                "r",candidate_commit="a"*40,pr_number=19,
+                github_state="closed",github_merged=False)
 
 if __name__=="__main__":unittest.main()

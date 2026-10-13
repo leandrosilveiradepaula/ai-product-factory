@@ -308,7 +308,12 @@ def run_preview_probe_once()->dict:
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if getattr(pr,"state","open")!="open" or getattr(pr,"merged",False):
-  return {"claimed":False,"status":"stale_closed_pr","run_id":item.run_id,
+  if getattr(pr,"merged",False):
+   return {"claimed":False,"status":"merged_pr_requires_release_observation",
+    "run_id":item.run_id,"pr_number":item.pr_number,"preview_required":False}
+  if pr.head_sha!=item.candidate_commit:
+   raise RuntimeError("closed PR head does not match durable candidate")
+  return {"claimed":True,"status":"reconcile_closed_pr","run_id":item.run_id,
    "pr_number":item.pr_number,"preview_required":False}
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
  _require_current_preview_base(github,pr)
@@ -328,7 +333,17 @@ def run_preview_once()->dict:
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if getattr(pr,"state","open")!="open" or getattr(pr,"merged",False):
-  return {"claimed":False,"status":"stale_closed_pr","run_id":item.run_id,"pr_number":item.pr_number}
+  if getattr(pr,"merged",False):
+   return {"claimed":False,"status":"merged_pr_requires_release_observation",
+    "run_id":item.run_id,"pr_number":item.pr_number}
+  if pr.head_sha!=item.candidate_commit:
+   raise RuntimeError("closed PR head does not match durable candidate")
+  result=SupabaseDeliveryStore().reconcile_closed_preview_candidate(
+   item.run_id,candidate_commit=item.candidate_commit,
+   pr_number=item.pr_number,github_state="closed",github_merged=False)
+  return {"claimed":True,"status":"superseded","run_id":item.run_id,
+   "pr_number":item.pr_number,"change_set_status":result["change_set_status"],
+   "idempotent":result.get("idempotent",False)}
  issue=github.get_issue(item.issue_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
  changed_files=github.get_pull_request_files(item.pr_number)
