@@ -207,7 +207,9 @@ def prepare_once(
             "status": "blocked",
             "reason": "automatic_codex_enabled",
         }
-    if os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED", "true").strip().lower() == "false":
+    # Explicit opt-in is required to claim a new manual handoff. The
+    # followup worker may still complete handoffs created before disablement.
+    if os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED") != "true":
         return {
             "claimed": False,
             "status": "blocked",
@@ -228,8 +230,16 @@ def prepare_once(
         issue = github.find_open_issue_containing(marker)
         if issue is None:
             issue = github.create_issue(title=f"[codex-manual] {item.title}", body=_issue_body(item))
+        # Search is filtered by marker, but validate the response too.
+        # Never persist a binding for a mismatched or unrelated issue.
+        if marker not in issue.body:
+            raise RuntimeError("manual Codex issue does not match Factory run marker")
         (binding or SupabaseIssueBindingStore()).bind_issue(run_id=item.run_id, issue=issue)
 
+    if marker not in issue.body:
+        raise RuntimeError("manual Codex issue does not match Factory run marker")
+    if item.issue_number is not None and issue.number != item.issue_number:
+        raise RuntimeError("manual Codex issue binding number mismatch")
     queue.mark_waiting(item.run_id)
     return {
         "claimed": True,
