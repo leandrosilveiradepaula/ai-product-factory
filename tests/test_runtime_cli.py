@@ -75,7 +75,7 @@ class RuntimeCliTests(unittest.TestCase):
                  patch("ai_product_factory.runtime_cli.SupabaseCodexRunQueue",return_value=queue), \
                  patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
                  patch("ai_product_factory.runtime_cli.CodexCLIProducer") as producer:
-                out=run_codex_once("w")
+                out=run_codex_once("w","development","r")
         self.assertEqual(out,{"claimed":False,"status":"empty"})
         github.assert_not_called()
         producer.assert_not_called()
@@ -1073,7 +1073,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"):
             resolver.return_value.resolve_primary_api.return_value=auth
             with self.assertRaisesRegex(RuntimeError,"implementation failed"):
-                run_direct_once("w")
+                run_direct_once("w","development","r")
         scheduler.release.assert_called_once_with("r","blocked")
 
     def test_cross_repo_direct_fails_closed_before_github_write_when_capability_is_missing(self):
@@ -1092,7 +1092,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             resolver.return_value.resolve_primary_api.return_value=auth
             with self.assertRaisesRegex(PermissionError,"not ready"):
-                run_direct_once("w")
+                run_direct_once("w","development","r")
         access.require_capabilities.assert_called_once_with("crm",("contents_write","issues_write","pull_requests_write"))
         github.assert_not_called()
         scheduler.release.assert_called_once_with("r","blocked")
@@ -1115,7 +1115,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseIssueBindingStore"), \
              patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"):
             with self.assertRaisesRegex(RuntimeError,"codex failed"):
-                run_codex_once("w")
+                run_codex_once("w","development","r")
         scheduler.release.assert_called_once_with("r","blocked")
 
     def test_alert_mode_is_blocked_without_explicit_enable_and_config(self):
