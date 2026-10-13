@@ -139,6 +139,24 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
         self.assertEqual(out["queue_diagnostics"]["queued_execution_without_queued_run"], 0)
 
+    def test_pending_unit_paused_by_portfolio_does_not_wake_dispatch(self):
+        # A pending unit on a paused/exhausted project is not dispatchable.
+        probe=StubProbe(pending_units=[{"id":"unit-paused"}],portfolio_candidates=[])
+        out=probe.probe()
+        self.assertFalse(out["dispatch_work"])
+        self.assertFalse(out["work_detected"])
+        self.assertTrue(out["queue_diagnostics"]["pending_work_unit_hint"])
+        self.assertEqual(out["queue_diagnostics"]["portfolio_dispatch_candidate_count"],0)
+
+    def test_runnable_candidate_plus_pending_unit_wakes_dispatch(self):
+        probe=StubProbe(
+            pending_units=[{"id":"unit-runnable"}],
+            portfolio_candidates=[{"project_id":"p1","project_key":"demo"}],
+        )
+        out=probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertEqual(out["queue_diagnostics"]["portfolio_dispatch_candidate_count"],1)
+
     def test_planning_only_portfolio_candidate_does_not_wake_dispatch(self):
         probe = StubProbe(
             tasks=[{"id": "t1", "status": "queued"}],
@@ -212,6 +230,7 @@ class ScheduleProbeTests(unittest.TestCase):
                 {"id": "r3", "task_id": "t3", "status": "awaiting_release", "execution_route": "direct"},
             ],
             pending_units=[{"id": "u1"}],
+            portfolio_candidates=[{"project_id":"p1","project_key":"demo"}],
             change_sets=[{"id": "c1"}],
             lanes=[{"role": "security"}, {"role": "qa"}],
         ).probe()
@@ -262,7 +281,7 @@ class ScheduleProbeTests(unittest.TestCase):
                 "runs": [{"id": "r1", "task_id": "t1", "status": "created"}],
                 "tasks": [{"id": "t1", "status": "queued"}],
             },
-            "dispatch": {"pending_units": [{"id": "unit-1"}]},
+            "dispatch": {"pending_units": [{"id": "unit-1"}], "portfolio_candidates":[{"project_id":"p1","project_key":"demo"}]},
             "integration": {"change_sets": [{"id": "change-set-1"}]},
             "ci": {"runs": [{"id": "r1", "status": "ci_pending"}]},
             "specialist_security": {"lanes": [{"role": "security"}]},
