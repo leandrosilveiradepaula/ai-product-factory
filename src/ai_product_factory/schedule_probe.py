@@ -118,7 +118,7 @@ class SupabaseScheduleProbe:
         # Portfolio RPC enforces project pause, worker limits and incident priority.
         # Never infer eligibility from orphan queued tasks alone.
         portfolio_candidates = self._portfolio_dispatch_candidates()
-        dispatch_work = pending_change_set_work or bool(portfolio_candidates)
+        # Existing routed runs also need the dispatch matrix to wake executors.\n        # Never use orphan tasks alone to infer executable work.\n        assigned_execution_work = any(\n            str(run.get("status")) == "queued"\n            and str(run.get("execution_route") or "") in {"direct", "codex"}\n            and task_status.get(str(run.get("task_id"))) == "queued_execution"\n            for run in runs\n        )\n        dispatch_work = pending_change_set_work or bool(portfolio_candidates) or assigned_execution_work
         integration_work = bool(self._get(
             "factory_change_sets?select=id&status=in.(building,integrating)&limit=1"
         ))
