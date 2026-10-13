@@ -200,6 +200,21 @@ class RuntimeCliTests(unittest.TestCase):
         queue.resume_resolved_decisions.assert_called_once_with()
         queue.reconcile_terminal_descendants.assert_called_once_with()
         provider.assert_not_called()
+        agents.schedule_next.assert_called_once_with()
+        self.assertTrue(out["agent_retry"]["assigned"])
+
+    def test_recovery_handles_missing_agent_slot_without_model_calls(self):
+        queue=MagicMock()
+        agents=MagicMock()
+        agents.schedule_next.side_effect=RuntimeError("no eligible agent slot")
+        with patch("ai_product_factory.runtime_cli.SupabaseRuntimeQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=agents), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue"), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore"), \
+             patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as provider:
+            out=run_recovery_once()
+        self.assertEqual(out["agent_retry"],{"assigned":False,"no_eligible_slot":True})
+        provider.assert_not_called()
 
     def test_retry_mode_is_model_free_and_delegates_to_queue(self):
         queue=MagicMock()
