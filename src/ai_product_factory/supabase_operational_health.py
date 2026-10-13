@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from .operational_alerts import OperationalHealth
@@ -34,7 +34,7 @@ class SupabaseOperationalHealthReader:
 
     def read(self, *, budget: Decimal | None = None, now: datetime | None = None) -> OperationalHealth:
         now=now or datetime.now(timezone.utc)
-        runs=self._get("factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at&order=created_at.desc&limit=200")
+        runs=self._get("factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200")
         task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status")=="failed"})
         task_status_by_id={}
         if task_ids:
@@ -42,6 +42,7 @@ class SupabaseOperationalHealthReader:
             tasks=self._get(f"factory_tasks?select=id,status&id=in.({encoded})")
             task_status_by_id={str(row.get("id")):str(row.get("status") or "") for row in tasks}
         usage=self._get("factory_tool_usage?select=tool_family,estimated_cost&order=created_at.desc&limit=1000")
+        stale_preview=0
         expired=0
         dead=0
         failed=0
@@ -50,6 +51,10 @@ class SupabaseOperationalHealthReader:
             lease=_parse_time(row.get("lease_expires_at"))
             if lease is not None and lease < now and status in {"running","implementing","preparing_codex_manual"}:
                 expired+=1
+            if status == "preview_ready":
+                created=_parse_time(row.get("created_at"))
+                if created is not None and created.tzinfo is not None and now-created>=timedelta(hours=24):
+                    stale_preview+=1
             if status == "failed":
                 if task_status_by_id.get(str(row.get("task_id") or ""))=="failed":
                     failed+=1
@@ -64,4 +69,4 @@ class SupabaseOperationalHealthReader:
                     unknown+=1
             else:
                 known+=Decimal(str(value))
-        return OperationalHealth(expired_leases=expired,dead_letter_runs=dead,failed_runs=failed,unknown_cost_events=unknown,known_cost=known,budget=budget)
+        return OperationalHealth(expired_leases=expired,dead_letter_runs=dead,failed_runs=failed,unknown_cost_events=unknown,known_cost=known,budget=budget,stale_preview_runs=stale_preview)

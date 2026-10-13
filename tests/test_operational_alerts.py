@@ -9,4 +9,7 @@ class Tests(unittest.TestCase):
  def test_budget_exhaustion_is_critical(self):
   alerts=evaluate_operational_alerts(OperationalHealth(known_cost=Decimal("5"),budget=Decimal("5")))
   self.assertEqual(alerts[0].code,"budget_exhausted");self.assertEqual(alerts[0].severity,"critical")
+ def test_stale_preview_warning(self):
+  alerts=evaluate_operational_alerts(OperationalHealth(stale_preview_runs=3))
+  self.assertEqual([(a.code,a.severity) for a in alerts],[("stale_preview","warning")])
 if __name__=="__main__":unittest.main()

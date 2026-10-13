@@ -34,6 +34,13 @@ class Tests(unittest.TestCase):
 
 
 
+    def test_preview_age_is_counted_without_deployment(self):
+        runs=[{"id":"old","status":"preview_ready","created_at":"2026-10-05T00:00:00Z"}, {"id":"new","status":"preview_ready","created_at":"2026-10-13T17:00:00Z"}]
+        with patch("urllib.request.urlopen",side_effect=[Response(runs),Response([])]):
+            reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
+            out=reader.read(now=datetime(2026,10,13,18,tzinfo=timezone.utc))
+        self.assertEqual(out.stale_preview_runs,1)
+
     def test_historical_failed_run_is_not_actionable_when_task_recovered(self):
         runs=[
             {"id":"r1","task_id":"t1","status":"failed","attempt_count":1,"last_error":"historical failure","lease_expires_at":None},
