@@ -147,8 +147,10 @@ jobs:
   product-stage:
     needs: schedule-probe
     outputs:
+      primary_ready: ${{ steps.readiness.outputs.primary_model }}
       dispatch_work: ${{ steps.post_product_probe.outputs.dispatch_work }}
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.product_work == 'true') }}
+    # Auth preflight is also needed when the only work is already planned.
+    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.product_work == 'true' || needs.schedule-probe.outputs.dispatch_work == 'true') }}
     runs-on: ubuntu-latest
     environment: openai-api
     permissions:
@@ -226,7 +228,8 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Process at most one product-stage run
         id: product_run
-        if: ${{ steps.readiness.outputs.control_plane == 'true' && steps.readiness.outputs.primary_model == 'true' }}
+        # Do not call the model merely to check dispatch-only readiness.
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && steps.readiness.outputs.primary_model == 'true' && (needs.schedule-probe.outputs.product_work == 'true' || github.event_name == 'workflow_dispatch') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -464,6 +467,11 @@ jobs:
       codex_matrix: ${{ steps.dispatch.outputs.codex_matrix }}
     env:
       PYTHONPATH: src
+      # Never pass the OpenAI key to dispatcher. Only the prior auth signal.
+      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
+      FACTORY_DISPATCH_PRIMARY_READY: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}
+      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_RESERVE_USD: "0.50"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc

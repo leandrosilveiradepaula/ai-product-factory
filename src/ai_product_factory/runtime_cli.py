@@ -1,6 +1,6 @@
 from __future__ import annotations
 import argparse,json,os,socket
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from .model_executor import ModelExecutor
 from .metered_provider import MeteredPrimaryProvider
 from .openai_provider import OpenAIResponsesProvider
@@ -499,7 +499,22 @@ def run_alerts_once()->dict:
   "resolutions":[{"code":result.code,"issue_number":result.issue_number} for result in resolved],
  }
 
+def require_dispatch_claim_readiness()->None:
+ # The protected product-stage job authenticated Primary and exposes only a
+ # bounded readiness signal, not API secrets, to the dispatcher.
+ require_primary_runtime_enabled()
+ if os.getenv("FACTORY_DISPATCH_PRIMARY_READY")!="true":
+  raise PermissionError("dispatcher has no verified primary-auth readiness")
+ # Ledger is checked before claiming; the Direct worker repeats its own check.
+ require_paid_runtime_budget()
+
 def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
+ try:
+  require_dispatch_claim_readiness()
+ except (RuntimeError,PermissionError,ValueError,InvalidOperation):
+  return {"claimed":False,"status":"blocked_executor_readiness",
+   "routed":[],"scheduling":{"attempted":0,"assigned":0,"no_eligible_slot":False},
+   "matrix":{"direct":[],"codex":[]}}
  dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
  scheduling={"attempted":0,"assigned":0,"no_eligible_slot":False}
  for _ in range(max(1,min(max_items,32))):

@@ -19,7 +19,7 @@ class Tests(unittest.TestCase):
  def test_dispatch_reports_route(self):
   scheduler=type("S",(),{"schedule_next":lambda self:None})()
   adaptive=type("A",(),{"work_matrix":lambda self,limit:{"direct":[],"codex":[],"decisions":[]}})()
-  with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=Dispatch()),patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler),patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+  with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"),patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=Dispatch()),patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler),patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
    out=run_dispatch_once("p",max_items=1)
   self.assertEqual(out["route"],"direct");self.assertFalse(out["human_gate_required"])
 if __name__=="__main__":unittest.main()

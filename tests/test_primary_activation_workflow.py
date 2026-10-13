@@ -15,7 +15,7 @@ class PrimaryActivationWorkflowTests(unittest.TestCase):
     def test_product_and_direct_are_explicit_opt_in_default_false(self):
         workflow=WF.read_text()
         opt_in="FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}"
-        self.assertEqual(workflow.count(opt_in),2)
+        self.assertEqual(workflow.count(opt_in),3)  # Product, Direct, and preclaim dispatcher
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"',workflow)
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "false"',workflow)
 
