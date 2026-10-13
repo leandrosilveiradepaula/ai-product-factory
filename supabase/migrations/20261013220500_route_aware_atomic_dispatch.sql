@@ -65,7 +65,14 @@ as $$
 declare v_project_id uuid;v_team_id uuid;v_team_status text;v_actual_fingerprint text;v_task public.factory_tasks%rowtype;v_run_id uuid;v_unit public.factory_change_set_work_units%rowtype;v_set public.factory_change_sets%rowtype;
 begin
  if p_work_unit_id is null or p_fingerprint is null
-    or p_fingerprint !~ '^[0-9a-f]{32} where project_key=btrim(p_project_key) and is_active=true;
+    or p_fingerprint !~ '^[0-9a-f]{32}$' then
+    raise exception 'exact Work Unit fingerprint required';
+ end if;
+ if p_route not in ('direct','codex') then
+    raise exception 'invalid route';
+ end if;
+ select id into v_project_id from public.factory_projects
+ where project_key=btrim(p_project_key) and is_active=true;
  if v_project_id is null then raise exception 'active project not found'; end if;
  select id,status into v_team_id,v_team_status from public.factory_execution_team_plans where project_id=v_project_id order by version desc limit 1;
  if v_team_status is distinct from 'ready' then return null; end if;
@@ -115,45 +122,6 @@ begin
  );
 end;
 $$;
- then
-    raise exception 'exact Work Unit fingerprint required';
- end if;
- if p_route not in ('direct','codex') then raise exception 'invalid route';end if;
- select id into v_project_id from public.factory_projects where project_key=btrim(p_project_key) and is_active=true;
- if v_project_id is null then raise exception 'active project not found'; end if;
- select id,status into v_team_id,v_team_status from public.factory_execution_team_plans where project_id=v_project_id order by version desc limit 1;
- if v_team_status is distinct from 'ready' then return null; end if;
- select u.* into v_unit
- from public.factory_change_set_work_units u
- join public.factory_change_sets s on s.id=u.change_set_id
- join public.factory_tasks t on t.id=u.task_id
- where s.project_id=v_project_id and s.team_plan_id=v_team_id and t.status='queued'
-   and not exists (select 1 from public.factory_runs prior
-     where prior.task_id=t.id and prior.status in ('created','queued','implementing','completed'))
-   and not exists (select 1 from public.factory_change_set_work_units prior_unit
-     where prior_unit.task_id=t.id and prior_unit.id<>u.id
-       and prior_unit.status in ('queued','running','completed','integrated')) and s.status in ('planned','building') and u.status='pending' and u.wave=s.current_wave
- order by u.created_at for update of u skip locked limit 1;
- if v_unit.id is null then return null; end if;
- select * into v_set from public.factory_change_sets where id=v_unit.change_set_id;
- select * into v_task from public.factory_tasks where id=v_unit.task_id for update;
- insert into public.factory_runs(task_id,status,metadata)
- values(v_task.id,'created',jsonb_build_object('dispatch_pending',true,'source','change-set','change_set_id',v_set.id,'work_unit_id',v_unit.id,'wave',v_unit.wave))
- returning id into v_run_id;
- update public.factory_tasks set status='dispatching',updated_at=now() where id=v_task.id;
- update public.factory_change_set_work_units set status='queued',run_id=v_run_id,updated_at=now() where id=v_unit.id;
- insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
- values(v_project_id,v_task.id,v_run_id,'system','backlog-dispatcher','change_set.work_unit.dispatched',
-   jsonb_build_object('change_set_id',v_set.id,'work_unit_id',v_unit.id,'wave',v_unit.wave,'team_plan_status',v_team_status));
- return jsonb_build_object(
-  'run_id',v_run_id,'task_id',v_task.id,'project_id',v_project_id,'project_key',p_project_key,
-  'title',v_task.title,'description',v_task.description,'complexity',v_task.complexity,'risk',v_task.risk,
-  'metadata',jsonb_build_object('acceptance_criteria',v_task.acceptance_criteria,'depends_on',v_task.depends_on,
-    'change_set_id',v_set.id,'work_unit_id',v_unit.id,'wave',v_unit.wave,'agent_key',v_unit.agent_key)
- );
-end;
-$$;
-
 revoke all on function public.factory_dispatch_preapproved_planned_task(text,uuid,text,text,integer,boolean,jsonb,text,boolean,jsonb)
  from public,anon,authenticated;
 grant execute on function public.factory_dispatch_preapproved_planned_task(text,uuid,text,text,integer,boolean,jsonb,text,boolean,jsonb)
