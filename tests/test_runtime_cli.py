@@ -613,8 +613,9 @@ class RuntimeCliTests(unittest.TestCase):
         with patch.dict("os.environ",env,clear=True), \
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as budget, \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=backlog), \
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as scheduler_cls, \
              patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            scheduler_cls.return_value.schedule_eligible_direct.return_value=None
             out=run_dispatch_once()
         self.assertEqual(out["status"],"empty")
         budget.assert_called_once_with()
