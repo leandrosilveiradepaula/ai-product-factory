@@ -511,9 +511,15 @@ jobs:
           matrix=data.get("matrix") or {}
           direct=list(matrix.get("direct") or [])
           codex=list(matrix.get("codex") or [])
+          # Manual Codex requires no agent reservation; wake its handoff
+          # from the durable routes just claimed, not from assigned matrix.
+          handoffs=sum(
+              route.get("route")=="codex" and route.get("human_gate_required") is False
+              for route in (data.get("routed") or [])
+          )
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:
               out.write("direct_count="+str(len(direct))+"\n")
-              out.write("codex_count="+str(len(codex))+"\n")
+              out.write("codex_count="+str(len(codex)+handoffs)+"\n")
               out.write("direct_matrix="+json.dumps({"include":direct},separators=(",",":"))+"\n")
               out.write("codex_matrix="+json.dumps({"include":codex},separators=(",",":"))+"\n")
           PY

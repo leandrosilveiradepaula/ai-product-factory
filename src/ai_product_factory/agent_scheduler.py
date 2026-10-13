@@ -92,6 +92,19 @@ class SupabaseAgentScheduler:
         if assignment is None:raise RuntimeError("agent scheduler returned no assignment")
         return assignment
 
+    def schedule_eligible_direct(self,*,run_id:str|None=None,project_key:str|None=None)->AgentAssignment|None:
+        """Atomically assign only an approved and queued Direct execution."""
+        data=self._rpc("factory_schedule_eligible_direct_run",{
+            "p_run_id":run_id,"p_project_key":project_key,
+        })
+        assignment=self._assignment(data)
+        if assignment is not None:
+            if not assignment.run_id:
+                raise RuntimeError("Direct scheduler omitted run ID")
+            if run_id is not None and assignment.run_id!=run_id:
+                raise RuntimeError("Direct scheduler returned a different run")
+        return assignment
+
     def schedule_next(self)->AgentAssignment|None:
         return self._assignment(self._rpc("factory_schedule_next_unassigned_run",{}))
 

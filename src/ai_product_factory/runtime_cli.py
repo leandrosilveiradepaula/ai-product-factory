@@ -538,10 +538,23 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
   decision=(dispatch.dispatch_next(project_key,allowed_routes=allowed_routes)
     if project_key else dispatch.dispatch_next_any(allowed_routes=allowed_routes))
   if decision is None:break
-  routed.append({"route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level})
+  if not isinstance(decision.run_id,str) or not decision.run_id.strip():
+   raise RuntimeError("atomic dispatcher did not return a durable run ID")
+  routed.append({"route":decision.execution.route.value,"run_id":decision.run_id,
+   "human_gate_required":decision.execution.human_gate_required,
+   "codex_level":decision.execution.codex.level})
+  if decision.execution.route.value=="codex":
+   # Manual handoffs must not consume agent slots.
+   continue
+  if decision.execution.route.value!="direct":
+   raise RuntimeError("unsupported dispatch execution route")
+  if decision.execution.human_gate_required:
+   # Atomic claim is awaiting_human: no agent reservation before approval.
+   continue
   scheduling["attempted"]+=1
   try:
-   assignment=scheduler.schedule_next()
+   assignment=scheduler.schedule_eligible_direct(
+     run_id=decision.run_id,project_key=project_key)
   except RuntimeError as exc:
    if "no eligible agent slot" not in str(exc):raise
    scheduling["no_eligible_slot"]=True
@@ -550,8 +563,23 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    scheduling["no_eligible_slot"]=True
    break
   scheduling["assigned"]+=1
+ # Resume Direct runs that became eligible after human approval or freed slots.
+ # Never do this for Codex or without approved Primary/real budget readiness.
+ resumed_direct=0
+ if "direct" in allowed_routes and not scheduling["no_eligible_slot"]:
+  for _ in range(max(1,min(max_items,32))):
+   try:
+    assignment=scheduler.schedule_eligible_direct(project_key=project_key)
+   except RuntimeError as exc:
+    if "no eligible agent slot" not in str(exc):raise
+    scheduling["no_eligible_slot"]=True
+    break
+   if assignment is None:break
+   scheduling["attempted"]+=1
+   scheduling["assigned"]+=1
+   resumed_direct+=1
  matrix=SupabaseAdaptiveConcurrencyController().work_matrix(max_items)
- out={"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"scheduling":scheduling,"matrix":matrix}
+ out={"claimed":bool(routed),"status":"routed" if routed else ("scheduled_existing" if resumed_direct else "empty"),"routed":routed,"scheduling":scheduling,"resumed_direct":resumed_direct,"matrix":matrix}
  if routed:
   out.update(routed[0])
  return out

@@ -23,6 +23,8 @@ class DispatchDecision:
     profile: TaskProfile
     risk: RiskProfile
     execution: ExecutionDecision
+    # The durable run ID returned by the *atomic* routing claim. Not a guess.
+    run_id: str | None = None
 
 
 def _bool(data: dict, key: str) -> bool:

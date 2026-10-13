@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json,os,urllib.error,urllib.request
+from dataclasses import replace
 from .backlog_dispatcher import BacklogDispatcher,DispatchDecision,PlannedTask
 from .supabase_server import resolve_supabase_server_config
 from .portfolio_scheduler import SupabasePortfolioScheduler
@@ -38,7 +39,7 @@ class SupabaseBacklogDispatch:
    if claimed is None:continue
    if str(claimed.get("task_id"))!=str(data["task_id"]) or not claimed.get("run_id"):
     raise RuntimeError("atomic route claim returned an inconsistent task")
-   return decision
+   return replace(decision,run_id=str(claimed["run_id"]))
   return None
 
  def dispatch_next_any(self,*,allowed_routes:tuple[str,...]=("direct","codex"))->DispatchDecision|None:
