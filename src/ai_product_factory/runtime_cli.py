@@ -307,6 +307,9 @@ def run_preview_probe_once()->dict:
  if item is None:return {"claimed":False,"status":"empty","preview_required":False}
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
+ if getattr(pr,"state","open")!="open" or getattr(pr,"merged",False):
+  return {"claimed":False,"status":"stale_closed_pr","run_id":item.run_id,
+   "pr_number":item.pr_number,"preview_required":False}
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
  _require_current_preview_base(github,pr)
  changed_files=github.get_pull_request_files(item.pr_number)
@@ -323,8 +326,10 @@ def run_preview_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
- issue=github.get_issue(item.issue_number)
  pr=github.get_pull_request(item.pr_number)
+ if getattr(pr,"state","open")!="open" or getattr(pr,"merged",False):
+  return {"claimed":False,"status":"stale_closed_pr","run_id":item.run_id,"pr_number":item.pr_number}
+ issue=github.get_issue(item.issue_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
  changed_files=github.get_pull_request_files(item.pr_number)
  applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
