@@ -41,6 +41,12 @@ class StubProbe(SupabaseScheduleProbe):
                 if table in {"factory_runs", "factory_tasks"} and "&status=eq." in path:
                     status = path.split("&status=eq.", 1)[1].split("&", 1)[0]
                     rows = [row for row in rows if row.get("status") == status]
+                if table == "factory_tasks" and "&id=in.(" in path:
+                    raw = path.split("&id=in.(", 1)[1].split(")", 1)[0]
+                    ids = set(raw.split(","))
+                    rows = [row for row in rows if row.get("id") in ids and row.get("status") in {"queued","queued_execution"}]
+                if table == "factory_runs" and "&order=created_at.desc" in path:
+                    rows = sorted(rows, key=lambda r: r.get("created_at") or "", reverse=True)
                 return list(rows)
         raise AssertionError(f"unexpected path: {path}")
 
@@ -115,6 +121,57 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
         self.assertFalse(out["work_detected"])
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
+
+    def test_two_hundred_preview_audits_do_not_hide_recent_real_preview(self):
+        class CappedProbe(StubProbe):
+            def _get(self, path):
+                return super()._get(path)[:200]
+        old = [
+            {"id": f"audit-{i}", "status": "preview_ready",
+             "created_at": "2026-09-01T00:00:00Z",
+             "metadata": {"source": "dogfood_manual_audit"}}
+            for i in range(200)
+        ]
+        new = {"id": "delivery", "status": "preview_ready",
+               "created_at": "2026-10-13T22:00:00Z",
+               "candidate_commit": "abcdef1234567890"}
+        out = CappedProbe(runs=old + [new]).probe()
+        self.assertTrue(out["preview_work"])
+        self.assertEqual(out["queue_diagnostics"]["run_status_partitions_at_limit"], ["preview_ready"])
+        self.assertEqual(out["queue_diagnostics"]["preview_manual_audit_only_runs"],200)
+
+    def test_exact_linked_task_lookup_prevents_independent_task_cap_blindspot(self):
+        class CappedProbe(StubProbe):
+            def _get(self, path):
+                return super()._get(path)[:200]
+        legacy = [{"id": f"historic-{i}", "status": "queued_execution"} for i in range(200)]
+        probe = CappedProbe(
+            tasks=legacy + [{"id": "latest-task", "status": "queued_execution"}],
+            runs=[{"id": "latest-run", "task_id": "latest-task", "status": "queued",
+                   "execution_route": "direct"}],
+        )
+        out = probe.probe()
+        self.assertTrue(out["dispatch_work"])
+        self.assertEqual(out["queue_diagnostics"]["linked_task_lookups"],1)
+        self.assertEqual(out["queue_diagnostics"]["linked_task_lookup_truncated"],0)
+        self.assertEqual(out["queue_diagnostics"]["task_status_partitions_at_limit"],["queued_execution"])
+
+    def test_malformed_task_link_fails_closed_before_postgrest_filter(self):
+        probe = StubProbe(runs=[
+            {"id": "r", "task_id": "t),status.neq.queued", "status": "queued"}])
+        with self.assertRaisesRegex(RuntimeError,"invalid linked task identifier"):
+            probe.probe()
+
+    def test_mismatched_linked_task_result_fails_closed(self):
+        class CorruptedLinkedProbe(StubProbe):
+            def _get(self, path):
+                if "&id=in.(" in path:
+                    return [{"id": "other-task", "status": "queued_execution"}]
+                return super()._get(path)
+        probe = CorruptedLinkedProbe(runs=[
+            {"id": "r", "task_id": "wanted-task", "status": "queued"}])
+        with self.assertRaisesRegex(RuntimeError,"invalid linked-task"):
+            probe.probe()
 
     def test_many_manual_preview_audits_do_not_hide_new_direct_run(self):
         class CappedProbe(StubProbe):

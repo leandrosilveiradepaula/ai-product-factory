@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from datetime import datetime,timedelta,timezone
@@ -95,24 +96,66 @@ class SupabaseScheduleProbe:
         rows: dict[str, dict] = {}
         capped: list[str] = []
         for status in statuses:
-            items = self._get(
-                f"{table}?select={columns}&status=eq.{status}&order=created_at.asc&limit=200"
-                if table == "factory_runs"
-                else f"{table}?select={columns}&status=eq.{status}&limit=200"
+            base = f"{table}?select={columns}&status=eq.{status}"
+            oldest = self._get(
+                base + "&order=created_at.asc&limit=200"
+                if table == "factory_runs" else base + "&limit=200"
             )
-            if not isinstance(items, list) or any(
-                not isinstance(row, dict)
-                or str(row.get("status") or "") != status
-                or not isinstance(row.get("id"), str)
-                or not row["id"]
-                for row in items
-            ):
-                raise RuntimeError("invalid status-partitioned Control Plane snapshot")
-            if len(items) >= 200:
+            snapshots = [oldest]
+            if isinstance(oldest, list) and len(oldest) == 200:
                 capped.append(status)
-            for item in items:
-                rows[item["id"]] = item
+                # Always retain old FIFO candidates. Include newest runs too,
+                # so historic Preview/queued runs cannot crowd out fresh work.
+                if table == "factory_runs":
+                    snapshots.append(self._get(base + "&order=created_at.desc&limit=200"))
+            for items in snapshots:
+                if not isinstance(items, list) or any(
+                    not isinstance(row, dict)
+                    or str(row.get("status") or "") != status
+                    or not isinstance(row.get("id"), str) or not row["id"]
+                    for row in items
+                ):
+                    raise RuntimeError("invalid status-partitioned Control Plane snapshot")
+                for item in items:
+                    rows[item["id"]] = item
         return list(rows.values()), tuple(capped)
+
+    def _linked_task_statuses(self, runs: list[dict], task_status: dict[str,str]) -> tuple[dict[str,str],int,int]:
+        """Resolve run/task joins missed by an independently bounded task scan.
+
+        Only exact alphanumeric/UUID task IDs returned from Control Plane are
+        used in PostgREST filters; malformed IDs fail closed before URL usage.
+        """
+        linked = {
+            str(run.get("task_id"))
+            for run in runs
+            if str(run.get("status") or "") in {"created", "queued"}
+            and run.get("task_id") is not None
+        }
+        missing = sorted(linked - set(task_status))
+        for task_id in missing:
+            if re.fullmatch(r"[A-Za-z0-9_-]{1,64}",task_id) is None:
+                raise RuntimeError("invalid linked task identifier")
+        resolved = dict(task_status)
+        # Bound lookups even if a legacy backlog is very large; expose that
+        # truncation in durable diagnostic telemetry instead of claiming full coverage.
+        bounded = missing[:400]
+        for offset in range(0,len(bounded),40):
+            batch=bounded[offset:offset+40]
+            data=self._get(
+                "factory_tasks?select=id,status,project_id&id=in.("
+                + ",".join(batch) + ")&status=in.(queued,queued_execution)&limit=40"
+            )
+            if not isinstance(data,list) or any(
+                not isinstance(t,dict)
+                or t.get("id") not in batch
+                or t.get("status") not in {"queued","queued_execution"}
+                for t in data
+            ):
+                raise RuntimeError("invalid linked-task Control Plane response")
+            for t in data:
+                resolved[str(t["id"])]=str(t["status"])
+        return resolved,len(bounded),max(0,len(missing)-len(bounded))
 
     def probe(self) -> dict:
         runs, capped_run_statuses = self._status_partitioned_rows(
@@ -124,6 +167,7 @@ class SupabaseScheduleProbe:
             "factory_tasks", "id,status,project_id", ("queued", "queued_execution"),
         )
         task_status = {str(row["id"]): str(row.get("status") or "") for row in tasks}
+        task_status,linked_task_lookups,linked_task_lookup_truncated = self._linked_task_statuses(runs,task_status)
 
         product_work = any(
             str(run.get("status")) in {"created", "queued"}
@@ -214,6 +258,8 @@ class SupabaseScheduleProbe:
             "queue_diagnostics": {
                 "run_status_partitions_at_limit": list(capped_run_statuses),
                 "task_status_partitions_at_limit": list(capped_task_statuses),
+                "linked_task_lookups": linked_task_lookups,
+                "linked_task_lookup_truncated": linked_task_lookup_truncated,
                 "queued_tasks": len(queued_ids),
                 "queued_execution_tasks": len(execution_task_ids),
                 "queued_execution_without_queued_run": len(execution_task_ids - execution_run_ids),

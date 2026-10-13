@@ -1,3 +1,20 @@
+## Bounded queue join and newest-run fairness
+
+When a run status partition reaches 200, the read-only probe samples **both**
+the oldest and newest 200 rows for that status. This prevents a historical
+manual-preview backlog from hiding new delivery work while retaining old FIFO
+work. Because the task status partitions are bounded independently from runs,
+the probe also resolves missing run/task references through batched exact
+PostgREST task-ID lookups (40 IDs/request, 400 additional IDs maximum).
+Identifier format and row membership are validated before use. A malformed
+server response fails closed; all requests remain read-only and zero-model.
+
+Audit diagnostics report capped status partitions and linked-task lookup
+truncation so the system never claims exhaustive queue coverage beyond these
+hard limits. Only a transactionally eligible Change Set wakes new dispatch,
+and Preview still uses its source/sha/quota policy. This is not a replacement
+for a future SQL-indexed existence RPC if one status exceeds these bounds.
+
 ## Status-partitioned work detection after recovery
 
 The autonomous runner's read-only schedule probe used to fetch the oldest 200
