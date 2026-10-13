@@ -1,3 +1,10 @@
+## Reconciliation 2026-10-13 - Same-run product-to-dispatch signal (candidate)
+
+- PR #747 merged at `cc466d68`; CI post-merge passed. The Primary enable flag remains explicit/default-off; no paid model request or GitHub variable activation was performed.
+- Found workflow race/false wake: `dispatch` was triggered on the **initial** `product_work` signal even when product execution was blocked, skipped, or produced no runnable Change Set. A successful product-stage job is not durable work evidence.
+- Candidate introduces a strict claimed+completed product result and a second read-only queue probe only after actual product completion; dispatch then wakes solely on actionable `dispatch_work` from the initial or freshly observed state. Supports same-run planning -> execution without reintroducing phantom work. Adds static and dynamic unit coverage; preview/release boundaries unchanged.
+- This workflow correction is **not** end-to-end autonomous delivery proof and does not turn on Primary, Codex, Vercel Preview, or auto-merge.
+
 ## Reconciliation 2026-10-13 - Primary-model activation wiring (candidate)
 
 - Post-#746 Control Plane read confirms the corrected portfolio RPC returns `[]` with zero active Change Sets and no pending Work Units; the historical CRM PR #19 was durably reconciled. No new autonomous work should be manufactured.
