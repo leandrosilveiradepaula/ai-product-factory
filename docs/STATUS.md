@@ -1,3 +1,15 @@
+## Reconciliation 2026-10-13 - dispatch executor preclaim (candidate)
+- PR #748 merged at c7af3f32 with green CI; schedule now requires real Work Units.
+- Previously the dispatch RPC could claim tasks before verifying that an executor
+  was ready. A disabled paid Direct worker then left routed runs stranded.
+- Candidate: product-stage preflight in protected environment also covers
+  dispatch-only work without calling the model. Dispatch receives only a boolean,
+  checks the explicit Primary flag and real known-cost ledger budget before claim.
+  No model credentials enter the dispatch job. Blocked readiness yields no claim.
+- Already-routed Codex/manual handoff is unchanged. Route-safe new Codex dispatch
+  while Primary is disabled requires a future transactional preclaim capability.
+- No paid calls, credential changes, Preview, auto-merge, migration, or production
+  deployment occurred. CI and human production merge remain required.
 ## Reconciliation 2026-10-13 - Same-run product-to-dispatch signal (candidate)
 
 - PR #747 merged at `cc466d68`; CI post-merge passed. The Primary enable flag remains explicit/default-off; no paid model request or GitHub variable activation was performed.

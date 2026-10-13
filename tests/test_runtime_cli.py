@@ -529,12 +529,60 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["status"],"ready")
         self.assertFalse(out["preview_required"])
 
+    def test_dispatch_blocks_before_claim_when_primary_disabled(self):
+        env={"FACTORY_PRIMARY_MODEL_ENABLED":"false","FACTORY_DISPATCH_PRIMARY_READY":"true"}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as backlog, \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler") as agents, \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as budget:
+            out=run_dispatch_once()
+        self.assertEqual(out["status"],"blocked_executor_readiness")
+        self.assertFalse(out["claimed"])
+        self.assertEqual(out["matrix"],{"direct":[],"codex":[]})
+        backlog.assert_not_called()
+        agents.assert_not_called()
+        budget.assert_not_called()
+
+    def test_dispatch_blocks_missing_auth_signal_even_when_flag_is_on(self):
+        with patch.dict("os.environ",{"FACTORY_PRIMARY_MODEL_ENABLED":"true"},clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as backlog, \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as budget:
+            out=run_dispatch_once("crm-infodive")
+        self.assertEqual(out["status"],"blocked_executor_readiness")
+        backlog.assert_not_called()
+        budget.assert_not_called()
+
+    def test_dispatch_blocks_unknown_paid_cost_before_claim(self):
+        env={"FACTORY_PRIMARY_MODEL_ENABLED":"true","FACTORY_DISPATCH_PRIMARY_READY":"true"}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget",
+                   side_effect=PermissionError("unknown cost")), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as backlog:
+            out=run_dispatch_once()
+        self.assertEqual(out["status"],"blocked_executor_readiness")
+        backlog.assert_not_called()
+
+    def test_dispatch_ready_gate_then_empty_backlog(self):
+        env={"FACTORY_PRIMARY_MODEL_ENABLED":"true","FACTORY_DISPATCH_PRIMARY_READY":"true"}
+        backlog=MagicMock(); backlog.dispatch_next_any.return_value=None
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as budget, \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=backlog), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            out=run_dispatch_once()
+        self.assertEqual(out["status"],"empty")
+        budget.assert_called_once_with()
+        backlog.dispatch_next_any.assert_called_once()
+
     def test_dispatch_without_project_uses_global_selector(self):
         dispatch=MagicMock()
         dispatch.dispatch_next_any.return_value=None
         scheduler=MagicMock()
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[],"decisions":[]}
-        with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+        with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
              patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
             out=run_dispatch_once()
@@ -548,7 +596,8 @@ class RuntimeCliTests(unittest.TestCase):
         scheduler=MagicMock()
         scheduler.schedule_next.return_value=None
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
-        with patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+        with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
              patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
             out=run_dispatch_once()

@@ -19,6 +19,24 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
 | `retry` | Create one fresh auditable run from a terminal failed run | Control Plane writes only | Manual | Source run must be `failed`; original run is immutable; explicit retry reason required |
 
+## Preclaim executor readiness for planned Work Units
+
+The dispatcher cannot turn a pending Work Unit into a run unless a real executor
+is configured. The product-stage job performs the existing Primary authentication
+preflight in the protected openai-api environment, even for dispatch-only work,
+without calling the model for dispatch-only readiness.
+
+Dispatch sees only a boolean readiness signal and the explicit primary flag,
+not OPENAI_API_KEY. Before any claim, Python checks the enable flag, verified
+auth signal and read-only ledger budget/unknown-cost status. Missing readiness
+returns blocked_executor_readiness with empty matrices, no new run, and no model call.
+The Direct worker independently checks budget and authentication again.
+
+Because route selection currently happens after the atomic claim, this guard
+conservatively also prevents NEW Codex routing when Primary is disabled.
+Already-routed Codex and manual handoffs continue under independent paths.
+Allowing new Codex-only claims without Primary requires a separately designed
+route-aware transactional preclaim selector; bypassing this guard is unsafe.
 ## Same-run dispatch after product planning
 
 The initial scheduler probe's `product_work` signal only indicates a possible
