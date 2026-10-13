@@ -1,3 +1,24 @@
+## Route-safe Direct scheduling and post-gate recovery (PR #753 extension)
+
+The versioned `factory_schedule_eligible_direct_run` RPC assigns only an
+active project's Direct run when its run is `queued`, task is
+`queued_execution`, and no assigned/claimed agent slot exists. It uses
+row locks and passes the persisted agent role, capabilities and scope keys
+to the existing capacity/scope-checked allocator. An explicit run ID
+schedules a freshly claimed Direct candidate; a null run ID safely resumes
+previously queued Direct work after human approval or agent-capacity recovery.
+No Codex manual work may be scheduled by this RPC.
+
+Python skips agent assignment for all `human_gate_required` runs and only
+drains unassigned Direct work when Primary auth and the paid ledger have
+passed the existing fail-closed gate. If Primary is disabled, it leaves
+approved Direct work queued without consuming slots. Owner issue-comment
+wakes can prepare independently enabled Codex manual handoffs.
+
+Migration `20261013224500_schedule_eligible_direct_run.sql` must be applied
+only after CI and human merge; until then the new RPC fails closed. No paid
+model smoke or fabricated product task is authorized by these tests.
+
 ## Agent slots after atomic dispatch
 
 The dispatcher must schedule the **exact run ID** returned by the atomic

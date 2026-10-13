@@ -624,6 +624,7 @@ class RuntimeCliTests(unittest.TestCase):
         dispatch=MagicMock()
         dispatch.dispatch_next_any.return_value=None
         scheduler=MagicMock()
+        scheduler.schedule_eligible_direct.return_value=None
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[],"decisions":[]}
         with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"), \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
@@ -652,6 +653,7 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["scheduling"]["attempted"],0)
         scheduler.schedule_next.assert_not_called()
         scheduler.schedule_run.assert_not_called()
+        scheduler.schedule_eligible_direct.assert_not_called()
 
     def test_direct_only_schedules_exact_newly_claimed_run(self):
         task=SimpleNamespace(metadata={"agent_key":"ui"})
@@ -659,7 +661,9 @@ class RuntimeCliTests(unittest.TestCase):
             route=SimpleNamespace(value="direct"),human_gate_required=False,
             codex=SimpleNamespace(level=0)))
         dispatch=MagicMock();dispatch.dispatch_next_any.side_effect=[direct,None]
-        scheduler=MagicMock();scheduler.schedule_run.return_value=SimpleNamespace(assignment_id="slot")
+        scheduler=MagicMock()
+        scheduler.schedule_eligible_direct.side_effect=[
+            SimpleNamespace(assignment_id="slot",run_id="direct-run"),None]
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
         with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
@@ -667,7 +671,12 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
             out=run_dispatch_once(max_items=1)
         self.assertEqual(out["scheduling"]["assigned"],1)
-        scheduler.schedule_run.assert_called_once_with(run_id="direct-run",preferred_role="ui")
+        self.assertEqual(scheduler.schedule_eligible_direct.call_args_list[0].kwargs,
+                         {"run_id":"direct-run","project_key":None})
+        self.assertEqual(scheduler.schedule_eligible_direct.call_args_list[1].kwargs,
+                         {"project_key":None})
+        scheduler.schedule_run.assert_not_called()
+        scheduler.schedule_eligible_direct.assert_not_called()
         scheduler.schedule_next.assert_not_called()
 
     def test_missing_claim_run_id_blocks_unsound_agent_scheduling(self):
@@ -684,13 +693,45 @@ class RuntimeCliTests(unittest.TestCase):
         scheduler.schedule_run.assert_not_called()
         scheduler.schedule_next.assert_not_called()
 
+    def test_approved_direct_run_is_resumed_without_claiming_new_task(self):
+        dispatch=MagicMock();dispatch.dispatch_next_any.return_value=None
+        scheduler=MagicMock()
+        scheduler.schedule_eligible_direct.side_effect=[
+            SimpleNamespace(run_id="approved-run",assignment_id="agent-slot"),None]
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            out=run_dispatch_once(project_key="crm-infodive")
+        self.assertEqual(out["status"],"scheduled_existing")
+        self.assertEqual(out["resumed_direct"],1)
+        scheduler.schedule_eligible_direct.assert_any_call(project_key="crm-infodive")
+        self.assertFalse(out["claimed"])
+
+    def test_unresolved_human_gate_never_reserves_agent_slot(self):
+        gated=SimpleNamespace(run_id="awaiting-human",task=SimpleNamespace(metadata={}),
+            execution=SimpleNamespace(route=SimpleNamespace(value="direct"),
+                human_gate_required=True,codex=SimpleNamespace(level=0)))
+        dispatch=MagicMock();dispatch.dispatch_next_any.side_effect=[gated,None]
+        scheduler=MagicMock();scheduler.schedule_eligible_direct.return_value=None
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive):
+            out=run_dispatch_once(max_items=1)
+        self.assertEqual(out["scheduling"]["assigned"],0)
+        self.assertEqual(out["scheduling"]["attempted"],0)
+        scheduler.schedule_eligible_direct.assert_called_once_with(project_key=None)
+
     def test_dispatch_reports_unassigned_run_when_agent_slot_missing(self):
         dispatch=MagicMock()
         dispatch.dispatch_next_any.side_effect=[SimpleNamespace(run_id="test-direct",task=SimpleNamespace(metadata={}),
             execution=SimpleNamespace(route=SimpleNamespace(value="direct"),
               human_gate_required=False,codex=SimpleNamespace(level="none"))),None]
         scheduler=MagicMock()
-        scheduler.schedule_run.side_effect=RuntimeError("agent scheduler returned no assignment")
+        scheduler.schedule_eligible_direct.return_value=None
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
         with patch("ai_product_factory.runtime_cli.require_dispatch_claim_readiness"), \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \

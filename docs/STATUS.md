@@ -1,3 +1,15 @@
+## 2026-10-13 - PR #753 expanded to cover approved Direct resumption
+- PR #753 was open/CI-green on `27594509`, but further review found a
+  possible agent slot reservation before human gate approval and a lack of
+  route-safe resumption after an approval or capacity recovery.
+- The candidate adds a new fail-closed `security invoker`, service-role-only
+  Direct scheduling RPC with exact ID or eligible queued fallback. The
+  dispatcher uses it for initial Direct assignment and bounded safe recovery.
+- No manual Codex agent is reserved, and owner-comment wake now covers
+  Codex manual preparation. Full E2E remains unproven.
+- SQL migration not yet applied. No paid calls, secret changes, Preview or
+  production merge were performed; re-run CI before human gate.
+
 ## 2026-10-13 - Exact-run scheduling and unstaffed manual Codex (candidate)
 - PR #752 merged at 27a13e1c with green post-merge CI.
 - The dispatch worker still called `factory_schedule_next_unassigned_run` globally

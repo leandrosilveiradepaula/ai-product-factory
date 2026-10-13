@@ -20,10 +20,12 @@ class ClaimedRunSchedulingContractTests(unittest.TestCase):
 
  def test_exact_claimed_run_is_passed_to_agent_scheduler(self):
   body=PY.split("def run_dispatch_once(",1)[1].split("\ndef main(",1)[0]
-  self.assertIn('assignment=scheduler.schedule_run(run_id=decision.run_id',body)
+  self.assertIn('assignment=scheduler.schedule_eligible_direct(',body)
+  self.assertIn("run_id=decision.run_id,project_key=project_key",body)
   self.assertNotIn("scheduler.schedule_next()",body)
   self.assertIn('decision.execution.route.value=="codex"',body)
-  self.assertLess(body.index('decision.execution.route.value=="codex"'),body.index("scheduler.schedule_run("))
+  self.assertIn('if decision.execution.human_gate_required:',body)
+  self.assertLess(body.index('if decision.execution.human_gate_required:'),body.index("scheduler.schedule_eligible_direct("))
   self.assertIn("atomic dispatcher did not return a durable run ID",body)
 
  def test_no_credential_or_production_merge_regression(self):
