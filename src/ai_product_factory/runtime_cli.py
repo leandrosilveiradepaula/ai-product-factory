@@ -466,16 +466,24 @@ def run_alerts_once()->dict:
 
 def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
+ scheduling={"attempted":0,"assigned":0,"no_eligible_slot":False}
  for _ in range(max(1,min(max_items,32))):
   decision=dispatch.dispatch_next(project_key) if project_key else dispatch.dispatch_next_any()
   if decision is None:break
   routed.append({"route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level})
-  try:scheduler.schedule_next()
+  scheduling["attempted"]+=1
+  try:
+   assignment=scheduler.schedule_next()
   except RuntimeError as exc:
    if "no eligible agent slot" not in str(exc):raise
+   scheduling["no_eligible_slot"]=True
    break
+  if assignment is None:
+   scheduling["no_eligible_slot"]=True
+   break
+  scheduling["assigned"]+=1
  matrix=SupabaseAdaptiveConcurrencyController().work_matrix(max_items)
- out={"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"matrix":matrix}
+ out={"claimed":bool(routed),"status":"routed" if routed else "empty","routed":routed,"scheduling":scheduling,"matrix":matrix}
  if routed:
   out.update(routed[0])
  return out
