@@ -508,17 +508,35 @@ def require_dispatch_claim_readiness()->None:
  # Ledger is checked before claiming; the Direct worker repeats its own check.
  require_paid_runtime_budget()
 
-def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
+def allowed_dispatch_routes()->tuple[str,...]:
+ # The Direct route may claim ONLY when authenticated in the protected job
+ # and the real paid ledger permits it. Never pass model keys to dispatcher.
+ enabled=[]
  try:
   require_dispatch_claim_readiness()
  except (RuntimeError,PermissionError,ValueError,InvalidOperation):
+  pass
+ else:
+  enabled.append("direct")
+ # Automatic Codex is intentionally ineligible without a separate WIF/token
+ # preflight. Only the existing no-model manual handoff can be selected.
+ if (os.getenv("FACTORY_CODEX_ENABLED")!="true"
+     and os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED")=="true"
+     and os.getenv("FACTORY_DISPATCH_MANUAL_CODEX_READY")=="true"):
+  enabled.append("codex")
+ return tuple(enabled)
+
+def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
+ allowed_routes=allowed_dispatch_routes()
+ if not allowed_routes:
   return {"claimed":False,"status":"blocked_executor_readiness",
    "routed":[],"scheduling":{"attempted":0,"assigned":0,"no_eligible_slot":False},
    "matrix":{"direct":[],"codex":[]}}
  dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
  scheduling={"attempted":0,"assigned":0,"no_eligible_slot":False}
  for _ in range(max(1,min(max_items,32))):
-  decision=dispatch.dispatch_next(project_key) if project_key else dispatch.dispatch_next_any()
+  decision=(dispatch.dispatch_next(project_key,allowed_routes=allowed_routes)
+    if project_key else dispatch.dispatch_next_any(allowed_routes=allowed_routes))
   if decision is None:break
   routed.append({"route":decision.execution.route.value,"human_gate_required":decision.execution.human_gate_required,"codex_level":decision.execution.codex.level})
   scheduling["attempted"]+=1

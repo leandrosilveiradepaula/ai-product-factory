@@ -29,8 +29,8 @@ class PreclaimDispatchSafetyContractTests(unittest.TestCase):
     def test_python_gate_precedes_claim(self):
         source=(ROOT/"src/ai_product_factory/runtime_cli.py").read_text()
         body=source.split("def run_dispatch_once(",1)[1].split("\ndef main(",1)[0]
-        self.assertLess(body.index("require_dispatch_claim_readiness()"),body.index("SupabaseBacklogDispatch()"))
-        readiness=source.split("def require_dispatch_claim_readiness()",1)[1].split("\ndef run_dispatch_once(",1)[0]
+        self.assertLess(body.index("allowed_dispatch_routes()"),body.index("SupabaseBacklogDispatch()"))
+        readiness=source.split("def require_dispatch_claim_readiness()",1)[1].split("\ndef allowed_dispatch_routes(",1)[0]
         self.assertIn("require_primary_runtime_enabled()",readiness)
         self.assertIn("require_paid_runtime_budget()",readiness)
         self.assertIn('os.getenv("FACTORY_DISPATCH_PRIMARY_READY")!="true"',readiness)

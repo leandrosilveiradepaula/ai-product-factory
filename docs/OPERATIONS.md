@@ -19,6 +19,31 @@ This runbook describes the safe operating modes of the AI Product Factory runtim
 | `alerts` | Evaluate operational alerts and publish deduplicated GitHub Issues | GitHub issue writes | Hourly bounded + manual | Backend GitHub issue permission |
 | `retry` | Create one fresh auditable run from a terminal failed run | Control Plane writes only | Manual | Source run must be `failed`; original run is immutable; explicit retry reason required |
 
+## Atomic route-aware dispatch (candidate; requires migration)
+
+The pending Work Unit can be *peeked* without side effects. Python decides
+Direct vs Codex using the existing deterministic router, then calls a single
+new transactional RPC with the exact Work Unit ID, a 32-character fingerprint
+of the task/unit/Change Set, and the routing decision. The RPC locks and
+rechecks the latest ready plan, task/unit state, current wave and fingerprint
+before creating the run. It records the route, audit and human execution
+gate in the same PostgreSQL transaction. A mismatch aborts the claim; there
+is no fallback to the blind claim RPC, whose service_role grant is revoked.
+
+New Direct claims require the protected Primary API readiness boolean and
+known-cost budget checks. New Codex claims are independent of Primary only
+when the existing manual Codex fallback is **explicitly** enabled by the
+corresponding repository variable, automatic Codex is off, and the derived
+dispatch readiness signal matches. This is a manual handoff, not an automatic
+Codex entitlement or a new production gate. Automatic Codex remains unavailable
+for new claims until official WIF/token readiness is proved. No Codex or
+OpenAI credential is passed into the dispatcher.
+
+Versioned migration `20261013220500_route_aware_atomic_dispatch.sql` must
+be applied in a controlled deployment after merge. Between merging code and
+applying the migration, new dispatches fail closed (the new RPCs do not yet
+exist); no historical work is reactivated. Verify first with a truly new,
+bounded task; zero pending units alone is not a real end-to-end test.
 ## Preclaim executor readiness for planned Work Units
 
 The dispatcher cannot turn a pending Work Unit into a run unless a real executor
