@@ -1,3 +1,21 @@
+## Status-partitioned work detection after recovery
+
+The autonomous runner's read-only schedule probe used to fetch the oldest 200
+runs across *all* statuses and 200 tasks across two statuses. Historical
+Preview/audit rows could therefore hide newly queued Direct/ Codex work, and
+legacy queued tasks could hide an active queued_execution task. The probe now
+reads each status in an independently bounded 200-row partition, retaining
+per-status caps in audit diagnostics and de-duplicating IDs by the latest
+observed status if a transition happens while probing.
+
+This affects only wakeup detection, not claim authorization. A pending Work Unit
+still requires a real eligible portfolio candidate. Manual Preview audit rows
+never cause deployment. A queued execution wakes the dispatcher, which still
+checks executor readiness and the known-cost ledger before creating any new
+assignment. Status partitions at the 200 cap are diagnostic evidence of possible
+further backlog; do not claim complete coverage beyond that bound. No changes
+to human merge gates, Primary activation or Codex WIF.
+
 ## Fail-closed recovery and route-isolated workers
 The recovery job can requeue expired runs, resume decisions and release expired agent slots, but **must not allocate a new agent**. Generic `factory_schedule_next_unassigned_run` can select Codex manual or Direct work while its executor is disabled. Direct allocation is handled only by dispatch after Primary auth, real budget and ledger checks, through `factory_schedule_eligible_direct_run`.
 

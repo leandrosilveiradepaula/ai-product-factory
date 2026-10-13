@@ -86,15 +86,42 @@ class SupabaseScheduleProbe:
             return False
         return True
 
+    def _status_partitioned_rows(self, table: str, columns: str, statuses: tuple[str, ...]) -> tuple[list[dict], tuple[str, ...]]:
+        """Prevent a flood of old entries in one status hiding another queue.
+
+        All partitions are read-only; a repeated ID can occur if a run changes
+        status between calls. In that case the latest observed row wins.
+        """
+        rows: dict[str, dict] = {}
+        capped: list[str] = []
+        for status in statuses:
+            items = self._get(
+                f"{table}?select={columns}&status=eq.{status}&order=created_at.asc&limit=200"
+                if table == "factory_runs"
+                else f"{table}?select={columns}&status=eq.{status}&limit=200"
+            )
+            if not isinstance(items, list) or any(
+                not isinstance(row, dict)
+                or str(row.get("status") or "") != status
+                or not isinstance(row.get("id"), str)
+                or not row["id"]
+                for row in items
+            ):
+                raise RuntimeError("invalid status-partitioned Control Plane snapshot")
+            if len(items) >= 200:
+                capped.append(status)
+            for item in items:
+                rows[item["id"]] = item
+        return list(rows.values()), tuple(capped)
+
     def probe(self) -> dict:
-        runs = self._get(
-            "factory_runs?select=id,task_id,status,execution_route,created_at,branch_name,candidate_commit,metadata"
-            "&status=in.(created,queued,ci_pending,preview_ready,awaiting_release,awaiting_codex_manual)"
-            "&order=created_at.asc&limit=200"
+        runs, capped_run_statuses = self._status_partitioned_rows(
+            "factory_runs",
+            "id,task_id,status,execution_route,created_at,branch_name,candidate_commit,metadata",
+            ("created", "queued", "ci_pending", "preview_ready", "awaiting_release", "awaiting_codex_manual"),
         )
-        tasks = self._get(
-            "factory_tasks?select=id,status,project_id"
-            "&status=in.(queued,queued_execution)&limit=200"
+        tasks, capped_task_statuses = self._status_partitioned_rows(
+            "factory_tasks", "id,status,project_id", ("queued", "queued_execution"),
         )
         task_status = {str(row["id"]): str(row.get("status") or "") for row in tasks}
 
@@ -185,6 +212,8 @@ class SupabaseScheduleProbe:
                 continue
         out = {
             "queue_diagnostics": {
+                "run_status_partitions_at_limit": list(capped_run_statuses),
+                "task_status_partitions_at_limit": list(capped_task_statuses),
                 "queued_tasks": len(queued_ids),
                 "queued_execution_tasks": len(execution_task_ids),
                 "queued_execution_without_queued_run": len(execution_task_ids - execution_run_ids),
