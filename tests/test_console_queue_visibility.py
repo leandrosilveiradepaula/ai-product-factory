@@ -32,7 +32,7 @@ class QueueVisibilityTests(unittest.TestCase):
         self.assertIn("const needsReview=items.filter(x=>x.requiresReconciliation)",PAGE)
         self.assertIn("Tarefas que exigem reconciliação",PAGE)
         self.assertIn("Um pai concluído não comprova",PAGE)
-        self.assertIn("não autoriza executá-lo novamente",PAGE)
+        self.assertIn("nem autoriza executá-lo novamente",PAGE)
         self.assertIn("queue.reconciliation",PAGE)
         self.assertIn("operational.map",PAGE)
         self.assertIn("needsReview.map",PAGE)
