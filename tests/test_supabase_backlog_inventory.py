@@ -44,6 +44,27 @@ class Tests(unittest.TestCase):
         self.assertEqual(result["historical_children_without_active_units"],1)
         self.assertTrue(all(c.args[0].get_method()=="GET" for c in calls.call_args_list))
 
+    def test_all_database_work_unit_statuses_are_handled_explicitly(self):
+        for status in ("pending","queued","running","completed","integrated","failed","blocked"):
+            with self.subTest(status=status), patch("urllib.request.urlopen",side_effect=[
+                Response(self.projects),Response([self.task]),
+                Response([{"id":PARENT,"project_id":P,"status":"completed"}]),
+                Response([{"id":UNIT,"task_id":T,"status":status}])
+            ]):
+                result=inventory().read()
+            self.assertEqual(result["active_work_units"],1 if status in ("pending","queued","running") else 0)
+            self.assertEqual(result["completed_parent_with_inactive_work_units"],0 if status in ("pending","queued","running") else 1)
+
+    def test_unknown_work_unit_status_fails_closed_instead_of_counting_as_inactive(self):
+        for status in ("parked", "", None, "RUNNING", 123):
+            with self.subTest(status=status),patch("urllib.request.urlopen",side_effect=[
+                Response(self.projects),Response([self.task]),
+                Response([{"id":PARENT,"project_id":P,"status":"completed"}]),
+                Response([{"id":UNIT,"task_id":T,"status":status}])
+            ]):
+                with self.assertRaisesRegex(RuntimeError,"unknown work-unit status"):
+                    inventory().read()
+
     def test_completed_parent_without_units_has_explicit_diagnostic(self):
         with patch("urllib.request.urlopen",side_effect=[
             Response(self.projects),Response([self.task]),
