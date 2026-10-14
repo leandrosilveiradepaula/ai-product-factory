@@ -170,6 +170,72 @@ class ReleasePolicyEngineTests(unittest.TestCase):
         self.assertFalse(out.rollback["verified"])
         self.assertIn("definition_of_done_unverified",out.context["missing_nonhuman_dod"])
 
+    def test_human_only_true_cannot_waive_nonhuman_required_checks(self):
+        for key in ("github_ci","qa","preview","browser_evidence",
+                    "critical_e2e","rollback_analysis","security_review"):
+            with self.subTest(key=key):
+                out=self._candidate({
+                    "satisfied":["github_ci"] if key!="github_ci" else ["qa"],
+                    "missing":[{"key":key,"human_only":True}],
+                })
+                self.assertEqual(out.decision.outcome,"blocked")
+                self.assertIn(
+                    "definition_of_done_unauthorized_human_only:"+key,
+                    out.context["missing_nonhuman_dod"],
+                )
+                self.assertIn(key,out.context["missing_nonhuman_dod"])
+
+    def test_empty_well_typed_dod_cannot_claim_release_ready(self):
+        out=self._candidate({"satisfied":[],"missing":[]})
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertIn(
+            "definition_of_done_missing_verified_ci",
+            out.context["missing_nonhuman_dod"],
+        )
+
+    def test_human_release_only_without_ci_is_still_blocked(self):
+        out=self._candidate({
+            "satisfied":[],
+            "missing":[{"key":"human_release","human_only":True}],
+        })
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertIn("definition_of_done_missing_verified_ci",
+                      out.context["missing_nonhuman_dod"])
+
+    def test_declaring_github_ci_human_only_cannot_bypass_ci(self):
+        out=self._candidate({
+            "satisfied":["qa"],
+            "missing":[{"key":"github_ci","human_only":True},
+                       {"key":"human_release","human_only":True}],
+        })
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertIn("github_ci",out.context["missing_nonhuman_dod"])
+        self.assertIn("definition_of_done_missing_verified_ci",
+                      out.context["missing_nonhuman_dod"])
+
+    def test_release_ready_requires_ci_and_only_real_human_merge_gate(self):
+        out=self._candidate({
+            "satisfied":["github_ci","qa","preview","browser_evidence"],
+            "missing":[{"key":"human_release","human_only":True}],
+        })
+        self.assertEqual(out.decision.outcome,"ready_for_human_release")
+        self.assertEqual(out.context["missing_nonhuman_dod"],[])
+        self.assertIn("human",out.decision.reasons[0])
+
+    def test_nonhuman_human_only_spoof_does_not_change_production_gate(self):
+        spoof=self._candidate({
+            "satisfied":["github_ci"],
+            "missing":[{"key":"qa","human_only":True}],
+        })
+        legitimate=self._candidate({
+            "satisfied":["github_ci"],
+            "missing":[{"key":"human_release","human_only":True}],
+        })
+        self.assertEqual(spoof.decision.outcome,"blocked")
+        self.assertEqual(legitimate.decision.outcome,"ready_for_human_release")
+        self.assertTrue(legitimate.context["production_change"])
+
+
 
 if __name__=="__main__":
     unittest.main()

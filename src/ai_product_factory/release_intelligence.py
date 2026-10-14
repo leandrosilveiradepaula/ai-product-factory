@@ -33,6 +33,10 @@ def _missing_nonhuman(readiness:dict)->tuple[str,...]:
 
     satisfied_set={value.strip() for value in satisfied}
     blockers=set()
+    # CI evidence is an invariant for every release candidate. An entirely
+    # empty DoD list is not a passing assessment, even if well-typed.
+    if "github_ci" not in satisfied_set:
+        blockers.add("definition_of_done_missing_verified_ci")
     seen_missing=set()
     for row in missing:
         if not isinstance(row,dict):
@@ -53,8 +57,12 @@ def _missing_nonhuman(readiness:dict)->tuple[str,...]:
         # or arbitrary objects into permission to skip non-human gates.
         human_only=row.get("human_only",False)
         if human_only is True:
-            continue
-        if human_only is not False:
+            # Only the actual production merge gate is human-only. A caller
+            # cannot relabel CI, QA, Preview, rollback or browser evidence.
+            if key == "human_release":
+                continue
+            blockers.add("definition_of_done_unauthorized_human_only:"+key)
+        elif human_only is not False:
             blockers.add("definition_of_done_invalid_human_only:"+key)
         blockers.add(key)
     return tuple(sorted(blockers))

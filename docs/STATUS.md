@@ -1,3 +1,9 @@
+## 2026-10-14 - Mandatory CI proof and human-only DoD identity (candidate)
+- PR #776 was merged at a3504ffe and validated on main. Control Plane shows zero active Work Units/gates; scheduler-gap issue #772 remains open, with last observed scheduler probe 08:03 UTC. Factory had zero open PRs before this candidate.
+- Follow-up audit proved an authorization bypass remained: a caller could mark missing `qa`, `github_ci` or any other nonhuman gate with literal `human_only: true` and the DoD evaluator would waive it. A perfectly typed empty `satisfied=[]/missing=[]` report also reached release readiness with no evidence of CI.
+- Candidate whitelists the **single** human-only check `human_release` and requires `github_ci` in satisfied DoD evidence; unauthorized waiver attempts always block. All pre-existing type guards and production human merge/release gates remain.
+- Six deterministic regressions cover CI spoof, review/Preview/rollback waivers, empty lists, legitimate candidate and preserved human gate. No migration, model credit, Preview, fake Control Plane tasks or auto-merge.
+
 ## 2026-10-14 - Definition of Done fail-closed input validation (candidate)
 - PR #775 merged at bc42b05c with green post-merge CI. CRM #56 still has no verified candidate Preview, while scheduler-gap issue #772 remains open and no durable Factory scheduler heartbeat newer than 08:03 UTC was observed in the reconciled Control Plane.
 - Another deterministic release gate bypass existed: `_missing_nonhuman` used `bool(row.get('human_only'))`, so JSON strings including `"false"` were truthy and waived mandatory missing CI/E2E checks. It also skipped malformed records and silently interpreted a missing DoD as no missing work.
