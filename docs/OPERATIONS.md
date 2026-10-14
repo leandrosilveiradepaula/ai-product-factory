@@ -1,3 +1,10 @@
+## Owner-only alerts wake without dispatch (candidate)
+When scheduled GitHub Actions wakes are delayed, the safe recovery command is a *GitHub issue comment* containing exactly `/factory-alerts`, authored by the repository OWNER. It deliberately does not reuse `/factory-wake`, which can run the scheduler, recovery and executor lanes. A PR comment, a non-owner comment, altered/mixed command text, or an issue edit must not start the alerts job.
+
+`alerts-owner-comment` independently checks out main, installs the pinned Python runtime, obtains protected Control Plane access via OIDC, validates availability fail-closed, and invokes only `python -m ai_product_factory.runtime_cli --mode alerts`. It gets only `contents:read`, `id-token:write` and `issues:write`; neither model nor Codex secrets are passed. Alert deduplication/reconciliation still depends on authoritative live DB data. Verify the workflow run and resolved GitHub issues after dispatch; never infer success from posting a comment alone.
+
+This GitHub-hosted operator hook is not independent monitoring if GitHub Actions itself cannot start jobs. Production release, cost, auth and Preview gates remain unchanged.
+
 ## Scheduler wake-gap alerting (candidate)
 Operational alerts now include `scheduler_gap` from the durable Control Plane `schedule_probe.observed` timestamps. The read-only health check inspects the newest two entries; a latest probe age >=2 hours or a separation >=2 hours raises a deduplicated warning. Missing evidence also warns. It uses normal alert issue marker/closing reconciliation and does not disclose credentials.
 
