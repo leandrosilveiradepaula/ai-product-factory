@@ -13,6 +13,8 @@ from .supabase_server import resolve_supabase_server_config
 # A completed parent satisfies dependencies and may still have actionable children.
 TERMINAL_PARENT = {"completed", "integrated", "cancelled"}
 ACTIVE_UNIT = {"queued", "pending", "running"}
+# Mirrors the verified factory_change_set_work_units_status_check constraint.
+ALLOWED_UNIT_STATUS = frozenset({"pending", "queued", "running", "completed", "integrated", "failed", "blocked"})
 
 
 def valid_id(value: object) -> str:
@@ -113,8 +115,10 @@ class SupabaseBacklogInventoryReader:
         unit_ids = set()
         for row in units:
             uid, tid = valid_id(row.get("id")), valid_id(row.get("task_id"))
-            if uid in unit_ids or tid not in task_ids or not isinstance(row.get("status"), str):
+            if uid in unit_ids or tid not in task_ids:
                 raise RuntimeError("inconsistent work-unit inventory")
+            if row.get("status") not in ALLOWED_UNIT_STATUS:
+                raise RuntimeError("unknown work-unit status in backlog inventory")
             unit_ids.add(uid)
             all_units_by_task[tid] += 1
             if row["status"] in ACTIVE_UNIT:
