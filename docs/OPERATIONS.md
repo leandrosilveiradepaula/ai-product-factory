@@ -1,3 +1,11 @@
+## Consolidação de auditoria do Console (#795 + #798)
+
+Este candidato combina legibilidade responsiva e avaliação rigorosa da prontidão global, reduzindo para um único Preview SHA-exato após liberação do Vercel. CI de código não substitui verificação visual de navegador, revisão acessível ou gate humano de release. Esta seção não afirma produto pronto.
+
+## Product-readiness evaluation and current HEAD distinction (14/10/2026)
+Audit #713 found that the Console previously treated an evaluation result JSON's own `ready:true` and `status:passed` plus a self-consistent `assessed_commit == baseline_ref` as enough to display **Produto pronto**. This could misrepresent a failed evaluation row, populated blockers, missing coverage, malformed domains, or stale project HEAD. The Console now checks the evaluation row status, empty blockers, exact 40-char SHA and all six mandatory domains with explicit verification state, coverage and evidence before labeling the **evaluation** approved. It no longer says the product is ready globally from this record alone: an audit at SHA N does not prove that the repository's current HEAD is still N or that release gates/Preview/CI are satisfied.
+This is a defensive presentation and read-boundary change, not proof of live E2E readiness. A future authoritative current-head check and full-product release assessment remain part of audit #713; no GitHub credentials are placed in browser code. The latest observed production CRM evaluation was `failed/not_ready`; the patch does not turn it into passing. This PR changes `apps/console/**`, so browser Preview of the exact final SHA is required and remains blocked by the provider's observed deployment rate limit.
+
 ## 14/10/2026 — Confirmacao pos-merge das correcoes de operacao
 
 - PR #806 mergeado em `2c604bec`: o alerta `scheduler_pipeline` foi exercitado pela reconciliacao `/factory-alerts` (run `38628800312` SUCCESS); issue #809 foi aberta pelo bot, pois run agendado #38619635786 concluiu FAILURE. `scheduler_gap` (heartbeat) estar fechado nao equivale a pipeline recuperado.

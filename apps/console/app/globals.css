@@ -743,3 +743,57 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .gateSuccessCopy{display:grid;gap:4px;flex:1 1 220px;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
 .gateSuccessCopy strong{font-size:15px}
 @media(prefers-reduced-motion:reduce){.gateBusySpinner{animation:none;border-style:dashed}}
+
+/* Readability pass (audit #713): these overrides deliberately follow the
+   legacy dense rules, without changing layout semantics or authorization. */
+.sidebar .navItem{font-size:14px;line-height:1.45;min-height:42px}
+.sidebar .navGroupLabel,.sidebar .brandBlock span{font-size:12px;line-height:1.4}
+.sidebar .envBadge,.sidebar .signOut,.sidebarHealth{font-size:12px;line-height:1.45}
+.topbar .topbarTrail,.topbar .topbarTrail strong,.topbar .topbarMeta{font-size:12px}
+.main .tableHeader{font-size:12px;letter-spacing:.035em}
+.main .pill,.main .detailLabel,.main .planningDecisionTechnical{font-size:12px;line-height:1.45}
+.main .gateTechnicalGrid span,.main .gateTechnicalGrid strong{font-size:12px}
+.main .planningDecisionSuggestion strong,.main .planningDecisionSuggestion p{font-size:13px}
+.main .gateHistoryMain strong,.main .gateHistoryMain>span,.main .gateHistoryMeta{font-size:12px}
+.main .runStage,.main .runStage strong,.main .runStage small{font-size:12px;line-height:1.35}
+.main .runStageDot{font-size:12px;width:28px;height:28px}
+.main .runScore span,.main .operationalStat span{font-size:12px}
+.main .logPanel{font-size:12px;line-height:1.6;overflow-x:auto}
+.main .overviewControl,.main .configTabs a,.main .usageBarMeta span{font-size:12px}
+.main .gateTechnicalMeta summary{font-size:13px;min-height:40px}
+.main .planningDecisionSuggestion button,.main .gateContextActions a{font-size:13px;min-height:42px}
+.main .configRows small{font-size:12px}
+@media(max-width:860px){
+ .mobileNav>summary{min-height:44px;font-size:15px}
+ .mobileNavHint{font-size:12px}
+ .mobileNewProject{font-size:14px;min-height:44px}
+ .main .tableRow,.main .cardMeta,.main .timelineMeta,.main .compactRow{font-size:14px}
+ .main .subtitle{font-size:14px}
+ .main .runStage{min-width:90px}
+ .main .runStage strong,.main .runStage small{font-size:12px}
+}
+@media(max-width:560px){
+ .main{overflow-wrap:anywhere}
+ .main .gateTechnicalGrid,.main .verificationGrid{min-width:0}
+ .main .runStage{min-width:76px}
+}
+
+/* Second audit pass: remaining operational microtext and button hit targets. */
+.workspacePicker{font-size:12px;min-height:36px;height:auto}
+.topbar .topbarWork{font-size:14px;min-height:42px;height:auto}
+.main .eyebrow,.main .decisionKind,.main .decisionNumber{font-size:12px}
+.main .primary,.main .secondary,.main .danger,.main .ghostButton{font-size:14px;min-height:42px}
+.main .mode button,.main .planningDecisionSuggestion button{font-size:14px;min-height:42px}
+.main .lifecycleRail span,.main .macroStage span,.main .macroStage small{font-size:12px;line-height:1.45}
+.main .gateHistory>summary span,.main .gateHistory>summary strong,.main .gateHistory>summary small{font-size:12px}
+.main .planningDecisionWhy span,.main .planningDecisionWhy p,.main .planningDecisionAnswer>span,.main .planningDecisionAnswer small{font-size:12px;line-height:1.5}
+.main .gateBannerProject,.main .gateContextHero span:not(.detailLabel),.main .planningDecisionHeader span{font-size:12px}
+.main .resourceRow span,.main .technicalStats span,.main .technicalStats small{font-size:12px;line-height:1.45}
+.main .jsonBlock,.main .valueRow,.main .intakeHint,.main .attentionFooter,.main .errorText{font-size:12px;line-height:1.5}
+.main .screenGuide strong,.main .panelHeading strong{font-size:13px}
+.main .configRows span,.main .configRows strong{font-size:12px}
+@media(max-width:860px){
+ .main .primary,.main .secondary,.main .danger,.main .ghostButton{min-height:44px}
+ .main .mode button,.main .planningDecisionSuggestion button{min-height:44px}
+ .main .lifecycleRail{overflow-x:auto}
+}
