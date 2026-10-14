@@ -4,7 +4,7 @@
 Only works on a dedicated local test database. Production/Supabase connections
 are intentionally rejected. Loads the exact SQL function definitions committed
 in the Factory migrations, while using a small explicit schema fixture.
-The generic agent-slot allocator is a fixture, NOT the production allocator.
+The real production agent-slot allocator is loaded from versioned migrations.
 """
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import os
 import re
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from pathlib import Path
 
 import psycopg
@@ -22,6 +24,8 @@ from psycopg.types.json import Jsonb
 ROOT = Path(__file__).resolve().parents[1]
 MODE = ROOT / "supabase/migrations/20261014015500_codex_atomic_mode_isolation.sql"
 HARDEN = ROOT / "supabase/migrations/20261014032600_codex_claim_agent_hardening.sql"
+REGISTRY = ROOT / "supabase/migrations/20260928212700_factory_agent_registry.sql"
+SCOPE_FIX = ROOT / "supabase/migrations/20261014092500_serialize_agent_scope_claims.sql"
 DSN = os.getenv("FACTORY_CODEX_PG_TEST_DSN", "")
 
 # No remote database may ever receive fixture writes, even accidentally.
@@ -48,6 +52,15 @@ def function_definition(file: Path, name: str) -> str:
     return match.group(0)
 
 
+def registry_function(name: str) -> str:
+    sql = REGISTRY.read_text()
+    pattern = r"create or replace function public\\." + re.escape(name) + r"\\(.*?end;\\$\\$;"
+    match = re.search(pattern, sql, flags=re.DOTALL | re.IGNORECASE)
+    if match is None:
+        raise AssertionError(f"original allocator not found: {name}")
+    return match.group(0)
+
+
 SETUP = """
 CREATE TABLE public.factory_projects (
   id uuid PRIMARY KEY, project_key text NOT NULL,
@@ -70,10 +83,12 @@ CREATE TABLE public.factory_agents (
   id uuid PRIMARY KEY, agent_key text NOT NULL, role text NOT NULL,
   is_active boolean NOT NULL, allowed_tools jsonb NOT NULL,
   capabilities jsonb NOT NULL, max_concurrency integer NOT NULL DEFAULT 1,
-  model_policy jsonb NOT NULL DEFAULT '{}'
+  model_policy jsonb NOT NULL DEFAULT '{}',
+  health_status text NOT NULL DEFAULT 'idle',
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.factory_run_agent_assignments (
-  id uuid PRIMARY KEY, run_id uuid NOT NULL REFERENCES public.factory_runs,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), run_id uuid NOT NULL REFERENCES public.factory_runs,
   agent_id uuid NOT NULL REFERENCES public.factory_agents,
   status text NOT NULL, assigned_at timestamptz NOT NULL DEFAULT now(),
   claimed_at timestamptz
@@ -83,47 +98,21 @@ CREATE TABLE public.factory_change_set_work_units (
   status text NOT NULL, change_set_id uuid NOT NULL,
   plan_task_key text NOT NULL, wave integer NOT NULL DEFAULT 1
 );
+CREATE TABLE public.factory_agent_scope_locks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES public.factory_projects,
+  run_id uuid NOT NULL REFERENCES public.factory_runs,
+  agent_id uuid NOT NULL REFERENCES public.factory_agents,
+  scope_key text NOT NULL, acquired_at timestamptz NOT NULL DEFAULT now(),
+  lease_expires_at timestamptz NOT NULL, released_at timestamptz
+);
 CREATE TABLE public.factory_audit_events (
   project_id uuid, task_id uuid, run_id uuid,
   actor_type text, actor_ref text, event_type text, payload jsonb
 );
 """
 
-# The production scheduler delegates to an allocator that needs many other
-# tables. This deliberately minimal allocator tests scheduler handoff and
-# exact-agent rejection, NOT its separate capacity/scope-lock implementation.
-ALLOCATOR_FIXTURE = """
-CREATE OR REPLACE FUNCTION public.factory_schedule_run_agent(
-  p_run_id uuid, p_preferred_role text DEFAULT NULL,
-  p_required_capabilities jsonb DEFAULT '[]'::jsonb,
-  p_scope_keys jsonb DEFAULT '[]'::jsonb,
-  p_lease_seconds integer DEFAULT 900
-) RETURNS jsonb LANGUAGE plpgsql AS $$
-DECLARE v_agent public.factory_agents%rowtype; v_assignment_id uuid;
-BEGIN
-  SELECT a.* INTO v_agent
-  FROM public.factory_agents a
-  WHERE a.is_active
-    AND (p_preferred_role IS NULL OR a.agent_key=p_preferred_role OR a.role=p_preferred_role)
-    AND NOT EXISTS (
-      SELECT 1 FROM jsonb_array_elements_text(p_required_capabilities) cap(value)
-      WHERE NOT (a.capabilities ? cap.value)
-    )
-  ORDER BY CASE WHEN a.agent_key=p_preferred_role THEN 0 ELSE 1 END, a.agent_key
-  FOR UPDATE OF a SKIP LOCKED LIMIT 1;
-  IF v_agent.id IS NULL THEN RETURN NULL; END IF;
-  v_assignment_id:=gen_random_uuid();
-  INSERT INTO public.factory_run_agent_assignments(id,run_id,agent_id,status)
-  VALUES(v_assignment_id,p_run_id,v_agent.id,'assigned');
-  RETURN jsonb_build_object(
-    'assignment_id',v_assignment_id,'agent_id',v_agent.id,
-    'agent_key',v_agent.agent_key,'role',v_agent.role,
-    'max_concurrency',v_agent.max_concurrency,
-    'model_policy',v_agent.model_policy,
-    'allowed_tools',v_agent.allowed_tools
-  );
-END; $$;
-"""
+# The allocator is loaded from the original versioned SQL, not simulated.
 
 PROJECT = "00000000-0000-0000-0000-000000000001"
 AGENT = "00000000-0000-0000-0000-000000000002"
@@ -149,7 +138,8 @@ class CodexPostgresClaims(unittest.TestCase):
             for name in ("anon", "authenticated", "service_role"):
                 conn.execute(f"CREATE ROLE {name} NOLOGIN")
             conn.execute(SETUP)
-            conn.execute(ALLOCATOR_FIXTURE)
+            conn.execute(function_definition(SCOPE_FIX, 'factory_claim_agent_slot'))
+            conn.execute(registry_function('factory_schedule_run_agent'))
             for file, name in (
                 (MODE, "factory_claim_next_manual_codex_handoff"),
                 (HARDEN, "factory_claim_next_agent_codex_run"),
@@ -158,6 +148,7 @@ class CodexPostgresClaims(unittest.TestCase):
             ):
                 conn.execute(function_definition(file, name))
             for signature in (
+                "public.factory_claim_agent_slot(uuid,text,jsonb,integer)",
                 "public.factory_claim_next_manual_codex_handoff(text)",
                 "public.factory_claim_next_agent_codex_run(text,text,uuid)",
                 "public.factory_schedule_eligible_codex_run(uuid,text)",
@@ -329,8 +320,88 @@ class CodexPostgresClaims(unittest.TestCase):
                 "SELECT public.factory_schedule_eligible_codex_run(%s,%s)",
                 (run, "test-project")).fetchone()[0])
 
+    def test_real_allocator_rejects_concurrency_exhaustion(self):
+        first = self.seed(30, "automatic", assigned=False)
+        second = self.seed(31, "automatic", assigned=False)
+        with connection(autocommit=True) as conn:
+            self.assertIsNotNone(conn.execute(
+                "SELECT public.factory_claim_agent_slot(%s,%s,%s,%s)",
+                (first, "codex-dev", Jsonb([]), 900)).fetchone()[0])
+            with self.assertRaisesRegex(psycopg.Error, "agent concurrency exhausted"):
+                conn.execute(
+                    "SELECT public.factory_claim_agent_slot(%s,%s,%s,%s)",
+                    (second, "codex-dev", Jsonb([]), 900))
+        self.assertEqual(self.audit_count(second), 0)
+
+    def test_cross_agent_overlapping_scopes_serialize_across_transactions(self):
+        first = self.seed(32, "automatic", assigned=False)
+        second = self.seed(33, "automatic", assigned=False)
+        with connection(autocommit=True) as setup:
+            self.agent(setup, BAD_AGENT, "zz-codex-other", ["codex","github_write"], ["build"])
+
+        entered = Event()
+        def second_claim():
+            with connection() as conn:
+                conn.execute("SET LOCAL statement_timeout = '6000ms'")
+                entered.set()
+                try:
+                    conn.execute(
+                        "SELECT public.factory_claim_agent_slot(%s,%s,%s,%s)",
+                        (second, "zz-codex-other", Jsonb(["src/app"]), 900))
+                    conn.commit()
+                    return "unexpected-success"
+                except psycopg.Error as exc:
+                    conn.rollback()
+                    return str(exc).splitlines()[0]
+
+        with connection() as a:
+            a.execute(
+                "SELECT public.factory_claim_agent_slot(%s,%s,%s,%s)",
+                (first, "codex-dev", Jsonb(["src"]), 900))
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                competing = executor.submit(second_claim)
+                self.assertTrue(entered.wait(timeout=3))
+                time.sleep(0.2)
+                self.assertFalse(competing.done(), "other agent bypassed the project scope lock")
+                a.commit()
+                self.assertIn("scope conflict", competing.result(timeout=5))
+        with connection(autocommit=True) as conn:
+            self.assertEqual(conn.execute(
+                "SELECT count(*) FROM public.factory_agent_scope_locks WHERE released_at IS NULL"
+            ).fetchone()[0], 1)
+            self.assertEqual(conn.execute(
+                "SELECT count(*) FROM public.factory_run_agent_assignments"
+            ).fetchone()[0], 1)
+
+    def test_disjoint_scope_paths_can_coexist(self):
+        first = self.seed(34, "automatic", assigned=False)
+        second = self.seed(35, "automatic", assigned=False)
+        with connection(autocommit=True) as conn:
+            self.agent(conn, BAD_AGENT, "zz-codex-other", ["codex","github_write"], ["build"])
+            for run_id, agent_key, scope in (
+                (first, "codex-dev", "src"),
+                (second, "zz-codex-other", "src2"),
+            ):
+                self.assertIsNotNone(conn.execute(
+                    "SELECT public.factory_claim_agent_slot(%s,%s,%s,%s)",
+                    (run_id, agent_key, Jsonb([scope]), 900)).fetchone()[0])
+            self.assertEqual(conn.execute(
+                "SELECT count(*) FROM public.factory_agent_scope_locks"
+            ).fetchone()[0], 2)
+
+    def test_scoped_claim_rolls_back_assignment_on_invalid_scope(self):
+        run_id = self.seed(36, "automatic", assigned=False)
+        with connection(autocommit=True) as conn:
+            with self.assertRaisesRegex(psycopg.Error, "invalid scope key"):
+                conn.execute("SELECT public.factory_claim_agent_slot(%s,%s,%s,%s)",
+                             (run_id, "codex-dev", Jsonb(["../secrets"]), 900))
+            self.assertEqual(conn.execute(
+                "SELECT count(*) FROM public.factory_run_agent_assignments"
+            ).fetchone()[0], 0)
+
     def test_functions_private_to_service_role(self):
         signatures = (
+            "public.factory_claim_agent_slot(uuid,text,jsonb,integer)",
             "public.factory_claim_next_manual_codex_handoff(text)",
             "public.factory_claim_next_agent_codex_run(text,text,uuid)",
             "public.factory_schedule_eligible_codex_run(uuid,text)",

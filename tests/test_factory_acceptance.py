@@ -332,6 +332,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261014001500_extend_scheduler_queue_signals.sql",
             "20261014015500_codex_atomic_mode_isolation.sql",
             "20261014032600_codex_claim_agent_hardening.sql",
+            "20261014092500_serialize_agent_scope_claims.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
