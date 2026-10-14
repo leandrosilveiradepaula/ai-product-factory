@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 
 REQUIRED_DOMAINS=(
@@ -87,6 +88,13 @@ def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:di
     if not isinstance(domains,dict):raise ValueError("domains must be an object")
     normalized={}
     blockers=[str(x).strip() for x in critical_blockers if str(x).strip()]
+    # A passing audit must name one full Git commit, never a branch, prefix,
+    # or arbitrary string. Invalid values remain a not-ready assessment rather
+    # than crashing release intelligence while parsing untrusted evidence.
+    normalized_commit=assessed_commit.strip().lower()
+    if (assessed_commit != assessed_commit.strip()
+        or re.fullmatch(r"[0-9a-f]{40}",normalized_commit) is None):
+        blockers.append("assessed_commit: exact 40-character Git SHA required")
     for key in REQUIRED_DOMAINS:
         raw=domains.get(key)
         if not isinstance(raw,dict):
@@ -149,6 +157,6 @@ def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:di
                 blockers.append(f"{key}: missing coverage {','.join(missing)}")
     ready=not blockers and all(normalized[k]["status"] in {"passed","not_applicable"} for k in REQUIRED_DOMAINS)
     return ProductReadinessAssessment(
-        assessed_commit=assessed_commit.strip(),assessment_ref=assessment_ref.strip(),
+        assessed_commit=normalized_commit,assessment_ref=assessment_ref.strip(),
         ready=ready,status="passed" if ready else "not_ready",domains=normalized,blockers=tuple(blockers),
     )
