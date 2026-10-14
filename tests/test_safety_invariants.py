@@ -56,7 +56,9 @@ class SafetyInvariantTests(unittest.TestCase):
   probe=text.split("\n  schedule-probe:",1)[1].split("\n  product-stage:",1)[0]
   alerts=text.split("\n  alerts:",1)[1]
   self.assertIn("github.event_name == 'schedule'",probe)
-  self.assertIn("--mode alerts",probe)
+  self.assertNotIn("--mode alerts",probe)
+  self.assertIn("--mode alerts",alerts)
+  self.assertIn("always()",alerts)
   self.assertIn("inputs.run_alerts == true",alerts)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',probe)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',alerts)
