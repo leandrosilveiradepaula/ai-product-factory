@@ -241,3 +241,13 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [ ] #240 permanece externo: aguarda enablement/valores oficiais de Codex WIF para o workspace Infodive.
 - [ ] #250 permanece hardening externo: aguarda correcao administrativa do mapping OpenAI API WIF.
 - [ ] Supabase Leaked Password Protection permanece hardening opcional condicionado a plano pago e nao bloqueia o encerramento tecnico no Free.
+
+## Reconciliacao operacional - 2026-10-14 apos #807
+
+- Core deterministico e observabilidade evoluiram; nao declarar Factory `product_ready` por CI verde. Exigir E2E greenfield/existing, gates, operacao e auditoria #713.
+- `main` verificada `10016635fdd09a87e598220df1b7ecf733fd4d71`, CI #38629927087 SUCCESS. Hotfix #805, comprovacao de scheduler #806 e paginacao de runs #807 integrados por merges humanos.
+- Scheduler: alert-only #38628800312 SUCCESS e #809 `scheduler_pipeline` aberta; aguardando duas execucoes nativas consecutivas completas. Nao confundir heartbeats, backups e verificacoes manuais.
+- Continuacao transacional #786 esta bloqueada para release por Preview SHA-exato indisponivel. Migration foi aplicada (versao `20261014192321`), nao repetir SQL. Registrar provas antes de qualquer merge.
+- Vercel: novo rate limit sobre SHA #786 as 19:42:26 UTC do dia 14/10. Evitar novos Preview desnecessarios, novas tentativas sem evidencias de liberacao e deploy em producao automatico.
+- WIF Codex/OpenAI dependencias externas separadas; modelo primario pago permanece desligado e qualquer alteracao de billing exige aprovacao explicita.
+

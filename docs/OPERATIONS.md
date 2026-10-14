@@ -1,3 +1,11 @@
+## 14/10/2026 — Confirmacao pos-merge das correcoes de operacao
+
+- PR #806 mergeado em `2c604bec`: o alerta `scheduler_pipeline` foi exercitado pela reconciliacao `/factory-alerts` (run `38628800312` SUCCESS); issue #809 foi aberta pelo bot, pois run agendado #38619635786 concluiu FAILURE. `scheduler_gap` (heartbeat) estar fechado nao equivale a pipeline recuperado.
+- PR #807 mergeado em `10016635`: CI de push `38629927087` SUCCESS; issue #804 encerrada. Scan paginado de `factory_runs` e leitura em lotes sao codigo de producao, mas **nenhuma validacao com mais de 200 runs reais** foi feita: o banco possui 81. Regressao simulada no CI cobre >200.
+- Para o proximo ciclo, confirmar duas `schedule` de `autonomous-runner.yml` nativas, consecutivas, com `conclusion=success`, antes de fechar #809. Rerun, `workflow_dispatch`, issue_comment e OIDC backup nao contam. Nao criar trabalhos falsos, creditos de API nem redeploy do Vercel.
+- Ao testar #786, conferir SHA exato e sinais READY + browser, sem reutilizar URLs antigos. A migration RPC ja esta aplicada; evitar executa-la novamente. Publicacao de producao exige gate humano.
+- O diagnostico de custos/saude nao concede permissao para dispatch ou calls pagas.
+
 ## Operational runs: complete bounded read, no false healthy totals (2026-10-14 candidate #804)
 
 \`SupabaseOperationalHealthReader\` must not infer the current number of failed, dead-letter, or expired-lease incidents from the latest 200 \`factory_runs\` only. The run history now paginates in deterministic \`created_at desc,id desc\` order (200 records/page, up to 20 pages), validates unique run IDs and known statuses, and **raises an error** instead of reporting incomplete totals. The limit is intentional (4,000 runs): reaching it without observing the final short page fails closed. Failed-run parent task statuses are fetched in bounded 100-ID batches, preserving the rule that recovered/completed tasks suppress obsolete historical failure warnings. Independently partitioned Preview and usage-ledger scans keep their earlier rules.
