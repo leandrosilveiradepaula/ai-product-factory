@@ -22,13 +22,33 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  if(projects.length!==1)throw new Error("Projeto ativo não encontrado.");
  const project=projects[0];
  const tasksResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_tasks?select=id,status,title&project_id=eq.${encodeURIComponent(String(project.id))}&order=created_at.desc&limit=100`,
+  `${cfg.url}/rest/v1/factory_tasks?select=id,status,title,parent_task_id&project_id=eq.${encodeURIComponent(String(project.id))}&order=created_at.desc&limit=101`,
   {headers:cfg.headers,cache:"no-store"}
  );
  if(!tasksResponse.ok)throw new Error("Não foi possível verificar o trabalho atual do projeto.");
  const tasks=await tasksResponse.json();
- const terminal=new Set(["completed","cancelled","failed","merged"]);
- const active=tasks.find((task:any)=>!terminal.has(String(task.status)));
+ // An incomplete partition cannot prove that no active root or child exists.
+ if(!Array.isArray(tasks)||tasks.length>100)throw new Error("Inventário de tarefas incompleto; não é seguro abrir outra execução.");
+ const terminal=new Set(["completed","cancelled","failed","merged","integrated"]);
+ const unfinished=tasks.filter((task:any)=>!terminal.has(String(task.status)));
+ const parentIds=[...new Set(unfinished.map((task:any)=>String(task.parent_task_id||"")).filter(Boolean))];
+ let parentStatuses=new Map<string,{status:string;projectId:string}>();
+ if(parentIds.length){
+  const parentsResponse=await fetch(
+   `${cfg.url}/rest/v1/factory_tasks?select=id,status,project_id&id=in.(${parentIds.map(encodeURIComponent).join(",")})`,
+   {headers:cfg.headers,cache:"no-store"}
+  );
+  if(!parentsResponse.ok)throw new Error("Não foi possível verificar as tarefas-pai.");
+  const parents=await parentsResponse.json();
+  if(!Array.isArray(parents)||parents.length!==parentIds.length)throw new Error("Tarefas-pai ausentes; continuação bloqueada por segurança.");
+  parentStatuses=new Map(parents.map((parent:any)=>[String(parent.id),{status:String(parent.status),projectId:String(parent.project_id)}]));
+ }
+ const active=unfinished.find((task:any)=>{
+  if(!task.parent_task_id)return true; // An unfinished root is executable/pending.
+  const parent=parentStatuses.get(String(task.parent_task_id));
+  if(!parent||parent.projectId!==String(project.id))return true; // Fail closed.
+  return !terminal.has(parent.status); // Historical children of terminal parents do not block.
+ });
  if(active)throw new Error(`Já existe trabalho ativo neste projeto: ${String(active.title||active.id)} (${String(active.status)}).`);
  const manifest=project.manifest&&typeof project.manifest==="object"?project.manifest:{};
  const requestId=requestedId||crypto.randomUUID();
