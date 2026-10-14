@@ -68,6 +68,23 @@ class SupabaseScheduleProbe:
             raise RuntimeError("invalid portfolio eligibility response")
         return value
 
+    def _execution_signals(self) -> dict[str,bool]:
+        """Read authoritative queue existence without bounded REST windows."""
+        req = urllib.request.Request(
+            f"{self.url}/rest/v1/rpc/factory_scheduler_queue_signals",
+            method="POST", headers={**self.headers, "Content-Type": "application/json"},
+            data=b"{}",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                payload = json.loads(response.read().decode())
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+            raise RuntimeError("authoritative queue signal unavailable") from exc
+        names = ("product_work", "routed_execution_work", "codex_manual_work")
+        if not isinstance(payload, dict) or any(type(payload.get(k)) is not bool for k in names):
+            raise RuntimeError("invalid authoritative queue signal response")
+        return {key: payload[key] for key in names}
+
     def _record_telemetry(self, *, work_detected: bool, work_classes: list[str], queue_diagnostics: dict | None = None) -> bool:
         try:
             self._post(
@@ -169,20 +186,11 @@ class SupabaseScheduleProbe:
         task_status = {str(row["id"]): str(row.get("status") or "") for row in tasks}
         task_status,linked_task_lookups,linked_task_lookup_truncated = self._linked_task_statuses(runs,task_status)
 
-        product_work = any(
-            str(run.get("status")) in {"created", "queued"}
-            and task_status.get(str(run.get("task_id"))) == "queued"
-            for run in runs
-        )
-        codex_manual_work = any(
-            str(run.get("status")) == "awaiting_codex_manual"
-            or (
-                str(run.get("status")) == "queued"
-                and str(run.get("execution_route") or "") == "codex"
-                and task_status.get(str(run.get("task_id"))) == "queued_execution"
-            )
-            for run in runs
-        )
+        # Sampled windows remain useful diagnostics, never the source of
+        # truth for liveness: legacy audits can exceed both 200-row windows.
+        signals = self._execution_signals()
+        product_work = signals["product_work"]
+        codex_manual_work = signals["codex_manual_work"]
 
         pending_change_set_work = bool(self._get(
             "factory_change_set_work_units?select=id&status=eq.pending&limit=1"
@@ -192,12 +200,7 @@ class SupabaseScheduleProbe:
         portfolio_candidates = self._portfolio_dispatch_candidates()
         # Existing routed runs also need the dispatch matrix to wake executors.
         # Never use orphan tasks alone to infer executable work.
-        assigned_execution_work = any(
-            str(run.get("status")) == "queued"
-            and str(run.get("execution_route") or "") in {"direct", "codex"}
-            and task_status.get(str(run.get("task_id"))) == "queued_execution"
-            for run in runs
-        )
+        assigned_execution_work = signals["routed_execution_work"]
         # Both predicates must agree: a raw pending unit is only a hint and must
         # survive portfolio pause/incident/capacity rules before waking dispatch.
         # Already routed queued execution continues independently.
@@ -256,6 +259,7 @@ class SupabaseScheduleProbe:
                 continue
         out = {
             "queue_diagnostics": {
+                "queue_signal_source": "authoritative_rpc",
                 "run_status_partitions_at_limit": list(capped_run_statuses),
                 "task_status_partitions_at_limit": list(capped_task_statuses),
                 "linked_task_lookups": linked_task_lookups,

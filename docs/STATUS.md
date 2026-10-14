@@ -1,3 +1,15 @@
+## 2026-10-13 - Indexed PostgreSQL scheduler signals (candidate)
+- PR #757 merged as 88bf8c54; CI post-merge green. Read-only Control
+  Plane returned no active Work Units, runs, agent slots or gates.
+- Even two bounded oldest/newest 200-row windows can miss a runnable
+  middle-of-queue run. This patch moves product/routed/manual Codex queue
+  existence predicates to a service-only, read-only PostgreSQL RPC,
+  leaving REST windows for diagnostics only.
+- Migration must be applied after CI + human merge; until then the
+  probe fails closed and intentionally does not wake workers. Tests use
+  over 400 queued historical run fixtures, no model call or real task.
+- No quota change, new credentials, Preview, data deletion or auto-merge.
+
 ## 2026-10-13 - Bounded newest/oldest wake and linked task lookup (candidate)
 - PR #756 merged at 0d7f6acc; post-merge CI green. No pending runs,
   Work Units or human gates in the Control Plane.

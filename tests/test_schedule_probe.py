@@ -50,6 +50,26 @@ class StubProbe(SupabaseScheduleProbe):
                 return list(rows)
         raise AssertionError(f"unexpected path: {path}")
 
+    def _execution_signals(self):
+        # In-memory authoritative SQL simulator. Uses the entire provided
+        # fixture, not the sampled 200-row diagnostic windows.
+        task_status={str(t["id"]):t.get("status") for t in self.rows["factory_tasks"]}
+        runs=self.rows["factory_runs"]
+        return {
+            "product_work":any(
+                r.get("status") in {"created","queued"}
+                and task_status.get(r.get("task_id"))=="queued" for r in runs),
+            "routed_execution_work":any(
+                r.get("status")=="queued"
+                and r.get("execution_route") in {"direct","codex"}
+                and task_status.get(r.get("task_id"))=="queued_execution" for r in runs),
+            "codex_manual_work":any(
+                r.get("status")=="awaiting_codex_manual" or (
+                    r.get("status")=="queued" and r.get("execution_route")=="codex"
+                    and task_status.get(r.get("task_id"))=="queued_execution"
+                ) for r in runs),
+        }
+
     def _portfolio_dispatch_candidates(self):
         if self.portfolio_error:
             raise self.portfolio_error
@@ -121,6 +141,50 @@ class ScheduleProbeTests(unittest.TestCase):
         out = probe.probe()
         self.assertFalse(out["work_detected"])
         self.assertEqual(out["queue_diagnostics"]["queued_without_product_run"], 1)
+
+    def test_authoritative_signal_prevents_middle_of_queue_blindspot(self):
+        class BoundedWindowProbe(StubProbe):
+            def _get(self, path):
+                return super()._get(path)[:200]
+
+        # Neither oldest nor newest window contains the middle matching run.
+        runs=[
+            {"id":f"old-{i}","status":"queued","task_id":f"old-task-{i}",
+             "execution_route":None,"created_at":f"2026-01-01T00:{i//60:02d}:{i%60:02d}Z"}
+            for i in range(200)
+        ]
+        runs += [{"id":"middle-direct","status":"queued","task_id":"middle-task",
+                  "execution_route":"direct","created_at":"2026-06-01T00:00:00Z"}]
+        runs += [
+            {"id":f"new-{i}","status":"queued","task_id":f"new-task-{i}",
+             "execution_route":None,"created_at":f"2026-10-01T00:{i//60:02d}:{i%60:02d}Z"}
+            for i in range(200)
+        ]
+        probe=BoundedWindowProbe(runs=runs,tasks=[
+            {"id":"middle-task","status":"queued_execution"}
+        ])
+        result=probe.probe()
+        self.assertTrue(result["dispatch_work"])
+        self.assertEqual(result["queue_diagnostics"]["queue_signal_source"],"authoritative_rpc")
+        self.assertEqual(result["queue_diagnostics"]["run_status_partitions_at_limit"],["queued"])
+
+    def test_large_product_and_manual_codex_queue_do_not_need_sampling(self):
+        class BoundedWindowProbe(StubProbe):
+            def _get(self,path):return super()._get(path)[:200]
+        old=[
+            {"id":f"old-{i}","status":"created","task_id":f"orphan-{i}",
+             "created_at":f"2026-01-01T00:{i//60:02d}:{i%60:02d}Z"}
+            for i in range(450)
+        ]
+        product={"id":"product","status":"created","task_id":"legit-product",
+                 "created_at":"2026-06-01T00:00:00Z"}
+        manual={"id":"manual","status":"awaiting_codex_manual",
+                "task_id":"manual-task"}
+        probe=BoundedWindowProbe(runs=old+[product,manual],
+            tasks=[{"id":"legit-product","status":"queued"}])
+        result=probe.probe()
+        self.assertTrue(result["product_work"])
+        self.assertTrue(result["codex_manual_work"])
 
     def test_two_hundred_preview_audits_do_not_hide_recent_real_preview(self):
         class CappedProbe(StubProbe):
@@ -218,6 +282,9 @@ class ScheduleProbeTests(unittest.TestCase):
 
     def test_status_change_between_queries_keeps_only_latest_observation(self):
         class RacingProbe(StubProbe):
+            def _execution_signals(self):
+                return {"product_work":False, "routed_execution_work":True,
+                        "codex_manual_work":False}
             def _get(self, path):
                 if path.startswith("factory_runs?") and "&status=eq.created" in path:
                     return [{"id": "r", "task_id": "t", "status": "created"}]
