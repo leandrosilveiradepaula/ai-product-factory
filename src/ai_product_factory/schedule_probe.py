@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -96,7 +97,7 @@ class SupabaseScheduleProbe:
                 {
                     "actor_type": "system",
                     "actor_ref": "schedule-probe",
-                    "event_type": "schedule_probe.observed",
+                    "event_type": "schedule_probe.native_observed" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "schedule_probe.observed",
                     "payload": {
                         "work_detected": work_detected,
                         "work_classes": work_classes,
@@ -327,4 +328,6 @@ class SupabaseScheduleProbe:
             work_classes=work_classes,
             queue_diagnostics=out["queue_diagnostics"],
         )
+        if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not out["telemetry_recorded"]:
+            raise RuntimeError("native scheduler heartbeat could not be persisted")
         return out

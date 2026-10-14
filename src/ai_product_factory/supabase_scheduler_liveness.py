@@ -54,7 +54,7 @@ class SupabaseSchedulerLivenessReader:
         now = now.astimezone(timezone.utc)
         path = (
             "factory_audit_events?select=created_at"
-            "&event_type=eq.schedule_probe.observed"
+            "&event_type=eq.schedule_probe.native_observed"
             "&order=created_at.desc&limit=2"
         )
         request = urllib.request.Request(

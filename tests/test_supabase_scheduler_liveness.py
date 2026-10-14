@@ -21,7 +21,7 @@ def probe(rows):
         ).read(now=NOW)
     req=urlopen.call_args.args[0]
     assert req.get_method()=="GET"
-    assert "schedule_probe.observed" in req.full_url
+    assert "schedule_probe.native_observed" in req.full_url
     return state
 
 class Tests(unittest.TestCase):

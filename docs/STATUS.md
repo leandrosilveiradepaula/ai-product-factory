@@ -1,3 +1,8 @@
+## 2026-10-14 - Native scheduler provenance vs fallback (candidate)
+- PR #778 merged at cc06728f with CI green; native schedule heartbeat still stale at 08:03 UTC.
+- Existing backup workflow_run could emit schedule_probe.observed and clear scheduler_gap even with broken native GitHub cron. Fix writes schedule_probe.native_observed only for actual schedule events and makes native telemetry persistence mandatory, while other wake types retain the generic event.
+- Liveness now reads only native evidence; tests cover native, backup, missing persistence, and source filtering. No migration, model, Preview or auto-merge.
+
 ## 2026-10-14 - Mandatory CI proof and human-only DoD identity (candidate)
 - PR #776 was merged at a3504ffe and validated on main. Control Plane shows zero active Work Units/gates; scheduler-gap issue #772 remains open, with last observed scheduler probe 08:03 UTC. Factory had zero open PRs before this candidate.
 - Follow-up audit proved an authorization bypass remained: a caller could mark missing `qa`, `github_ci` or any other nonhuman gate with literal `human_only: true` and the DoD evaluator would waive it. A perfectly typed empty `satisfied=[]/missing=[]` report also reached release readiness with no evidence of CI.
