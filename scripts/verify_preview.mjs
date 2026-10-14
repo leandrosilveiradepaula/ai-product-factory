@@ -8,7 +8,7 @@ const checks = [];
 const errors = [];
 const failedResources = [];
 const observed = { finalUrl: null, title: null, statusCode: null, bodySample: null, failedResources };
-const previewOrigin = new URL(previewUrl).origin;
+const previewOrigin = previewUrl && /^https:\/\//.test(previewUrl) ? new URL(previewUrl).origin : null;
 
 function safeResourcePath(rawUrl) {
   try {
