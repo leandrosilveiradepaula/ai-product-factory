@@ -50,6 +50,9 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         }
         return {
             "ready":True,"status":"passed","assessed_commit":sha,
+            # Independent durable factory_evaluations row fields: a JSON result
+            # cannot overwrite this information in SupabaseReleasePolicyStore.
+            "evaluation_status":"passed","baseline_ref":sha,
             "assessment_ref":"audit:full-product:2026-10-14",
             "domains":{
                 key:{
@@ -199,6 +202,48 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         result=self._release(assessment)
         self.assertTrue(result.report["product_complete"])
         self.assertEqual(result.report["product_readiness"]["status"],"passed")
+
+    def test_failed_row_cannot_be_promoted_by_embedded_ready_true(self):
+        evidence=self._full_evidence()
+        evidence["evaluation_status"]="failed"
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertEqual(out.report["product_readiness"]["status"],"not_ready")
+        self.assertIn("durable product evaluation",out.report["product_readiness"]["reason"])
+
+    def test_nonpassing_or_missing_durable_evaluation_status_fails_closed(self):
+        for value in (None,"not_ready","pending","success",True,0):
+            with self.subTest(status=value):
+                evidence=self._full_evidence()
+                evidence["evaluation_status"]=value
+                out=self._release(evidence)
+                self.assertFalse(out.report["product_complete"])
+                self.assertEqual(out.report["product_readiness"]["status"],"not_ready")
+
+    def test_baseline_from_durable_row_must_match_candidate(self):
+        for value in (None,"", "b"*40, "a"*39, False):
+            with self.subTest(baseline=value):
+                evidence=self._full_evidence()
+                evidence["baseline_ref"]=value
+                out=self._release(evidence)
+                self.assertFalse(out.report["product_complete"])
+                self.assertEqual(out.report["product_readiness"]["status"],"stale")
+                self.assertIn("recorded evaluation baseline",out.report["product_readiness"]["reason"])
+
+    def test_missing_row_provenance_never_approves_product(self):
+        evidence=self._full_evidence()
+        evidence.pop("evaluation_status")
+        evidence.pop("baseline_ref")
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+
+    def test_recorded_provenance_does_not_replace_global_evidence(self):
+        evidence=self._full_evidence()
+        evidence["domains"].pop("security")
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertIn("security: missing assessment",out.report["product_readiness"]["blockers"])
+
     def test_governance_forbids_ambiguous_product_completion_claims(self):
         agents = (ROOT / "AGENTS.md").read_text()
         contract = (ROOT / "docs/PRODUCT_READINESS.md").read_text()
