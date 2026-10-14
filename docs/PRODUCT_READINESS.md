@@ -68,6 +68,22 @@ Imported/existing projects require a baseline audit before the Factory may make 
 
 The CRM dogfood demonstrated why: multiple manual UI passes still left hundreds of mechanically detectable surface issues until the repository was scanned globally. Readiness evidence therefore needs coverage, not merely a positive assertion.
 
+## Release report proof boundary (14/10/2026)
+
+A release report must re-run the deterministic six-domain evaluator against the
+complete product audit payload for the **exact** `candidate_commit`. Merely
+supplying `product_readiness.ready=true`, `status=passed`, `baseline_ref`, or
+a matching SHA without domains, coverage and verification evidence cannot set
+`product_complete=true`. Declared critical blockers must also be checked.
+Malformed/missing evidence produces `product_readiness.status=not_ready`, while
+a mismatched `assessed_commit` produces `stale`.
+
+Product completeness is orthogonal to the production release policy. Even a
+fully passing whole-product audit never authorizes auto-merge or a production
+deployment. Conversely, a release candidate can pass its separate delivery
+gates while the global product remains `not_ready`.
+
+
 ## Release report semantics
 
 Release reports describe the **candidate/release**, not the entire product. They must carry `readiness_scope=release_candidate` and must not set `product_complete=true` unless a separate full-product readiness assessment is present and passing.

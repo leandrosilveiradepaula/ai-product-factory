@@ -5,6 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .release_policy_engine import ReleasePolicyContext,ReleasePolicyDecision,evaluate_release_policy,load_release_policy
+from .product_readiness import assess_product_readiness
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,49 @@ def _missing_nonhuman(readiness:dict)->tuple[str,...]:
             key=str(row.get("key") or "").strip()
             if key:out.append(key)
     return tuple(sorted(set(out)))
+
+
+
+def _verified_product_assessment(raw:dict, candidate_commit:str)->tuple[dict,bool]:
+    """Never trust a summary flag as evidence of whole-product readiness.
+
+    Validate the *full* six-domain product-readiness assessment for this exact
+    candidate. Ineligible evidence changes the product label only, never the
+    separate human production-release policy decision.
+    """
+    if not raw:
+        return {"ready":False,"status":"not_assessed"},False
+    if raw.get("assessed_commit")!=candidate_commit:
+        return {**raw,"ready":False,"status":"stale",
+                "reason":"assessment commit does not match release candidate"},False
+
+    # A non-passing recorded assessment is never promoted just because its
+    # domains happen to look valid. Its explicit recorded state wins.
+    if raw.get("ready") is not True or raw.get("status")!="passed":
+        return {**raw,"ready":False,"status":"not_ready"},False
+
+    domains=raw.get("domains")
+    ref=raw.get("assessment_ref")
+    if not isinstance(domains,dict) or not isinstance(ref,str) or not ref.strip():
+        return {**raw,"ready":False,"status":"not_ready",
+                "reason":"full product assessment requires domains and assessment_ref",
+                "blockers":["missing complete product assessment evidence"]},False
+
+    critical=raw.get("blockers",[])
+    if (not isinstance(critical,(list,tuple))
+        or any(not isinstance(item,str) for item in critical)):
+        return {**raw,"ready":False,"status":"not_ready",
+                "reason":"invalid product assessment blocker record",
+                "blockers":["invalid product assessment blocker record"]},False
+
+    verified=assess_product_readiness(
+        assessed_commit=candidate_commit,assessment_ref=ref,
+        domains=domains,critical_blockers=tuple(critical),
+    )
+    result=verified.as_result()
+    if not verified.ready:
+        result["reason"]="full product assessment did not satisfy required domains"
+    return result,verified.ready
 
 
 def build_release_assessment(
@@ -51,17 +95,7 @@ def build_release_assessment(
     )
     decision=evaluate_release_policy(policy,context)
     raw_product=facts.get("product_readiness") if isinstance(facts.get("product_readiness"),dict) else {}
-    product_readiness=dict(raw_product) if raw_product else {"ready":False,"status":"not_assessed"}
-    same_candidate=(
-        str(product_readiness.get("assessed_commit") or product_readiness.get("baseline_ref") or "")==candidate_commit
-    )
-    product_ready=bool(
-        product_readiness.get("ready") is True
-        and product_readiness.get("status")=="passed"
-        and same_candidate
-    )
-    if raw_product and not same_candidate:
-        product_readiness={**product_readiness,"ready":False,"status":"stale","reason":"assessment commit does not match release candidate"}
+    product_readiness,product_ready=_verified_product_assessment(raw_product,candidate_commit)
     previous=facts.get("previous_production")
     rollback={
         "migration_change":migration_change,
