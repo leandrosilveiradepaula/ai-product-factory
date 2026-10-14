@@ -1,3 +1,8 @@
+## Agent scope race prevention (candidate)
+The follow-up migration `20261014092500_serialize_agent_scope_claims.sql` is **not installed until human release gate**. Agent-row `FOR UPDATE` locks alone cannot protect a scope hierarchy across two independently assigned agents. A transaction-scoped PostgreSQL advisory lock by project serializes the final scope-conflict query and insert inside `factory_claim_agent_slot`; no persistent lock row or new privileges are introduced. An empty scope array does not require project serialization. Per-run/per-agent protections still operate independently.
+
+The dedicated `Codex PostgreSQL claims` workflow now loads the real versioned functions `factory_claim_agent_slot` and `factory_schedule_run_agent` instead of a simulated allocator. The test fixture schema is isolated and simplified, but concurrent PostgreSQL transactions exercise the same SQL bodies. Do not apply this migration or report production race protection until the merged SHA is confirmed and the official Supabase migration tool verifies function body and ACL afterward.
+
 ## Real PostgreSQL regression for Codex claim isolation (candidate)
 Run `scripts/verify_codex_claim_postgres.py` only in the dedicated `factory_codex_claim_test` database on loopback with `FACTORY_CODEX_PG_TEST_ISOLATED=true`; the integration harness fails closed otherwise. The `Codex PostgreSQL claims` workflow provisions ephemeral Postgres 16 on GitHub Actions, installs the pinned psycopg client, and executes the exact versioned manual/automatic claim, scheduler and work-matrix functions in concurrent transactions. It never accesses the production Supabase project, calls Codex or grants new production permissions.
 

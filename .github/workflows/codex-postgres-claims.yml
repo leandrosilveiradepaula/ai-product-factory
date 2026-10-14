@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/*codex*.sql"
+      - "supabase/migrations/*scope*.sql"
+      - "supabase/migrations/*agent_registry*.sql"
       - "scripts/verify_codex_claim_postgres.py"
       - ".github/workflows/codex-postgres-claims.yml"
   push:
     branches: [main]
     paths:
       - "supabase/migrations/*codex*.sql"
+      - "supabase/migrations/*scope*.sql"
+      - "supabase/migrations/*agent_registry*.sql"
       - "scripts/verify_codex_claim_postgres.py"
       - ".github/workflows/codex-postgres-claims.yml"
   workflow_dispatch:

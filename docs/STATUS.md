@@ -1,3 +1,10 @@
+## 2026-10-14 - Cross-agent hierarchical scope claim race (candidate)
+- #765 merged at 1fb5fde8 with both validate and PostgreSQL claims workflows green after merge. No active runs, Work Units or pending human gates in the Control Plane. Previous Codex migrations are recorded.
+- Inspection of the versioned and installed allocator found a cross-agent race: agent row locks serialize a single agent, but two agents can independently observe zero scope conflicts for overlapping project paths and both insert before either commits. A unique constraint on an exact key cannot cover hierarchical path overlap.
+- Candidate updates factory_claim_agent_slot to hold a transaction-scoped advisory lock derived from project ID only for nonempty scope arrays, before the conflict-read/insert. Existing scope, capacity, agent and role policies stay intact; advisory hash collisions only over-serialize and cannot grant access.
+- PostgreSQL CI replaces the simulated allocator with the two real versioned allocator RPC definitions; expands coverage for cross-agent overlapping scope contention, allowed sibling scopes, agent concurrency and invalid-scope rollback. No production migration applied yet; no synthetic Control Plane work, model, Preview, paid auth or automatic merge.
+- Remaining limitation: the test database is an explicit minimal schema fixture, not a copy of production. Full product lifecycle readiness is not implied.
+
 ## 2026-10-14 - Isolated PostgreSQL Codex claim concurrency CI (candidate)
 - PR #764 merged at c4df4609; post-merge CI succeeded, and Supabase migration codex_claim_agent_hardening was applied and verified (three service-role-only RPCs; no queued Codex runs). No Factory PR was open before this candidate.
 - The earlier SQL string-contract tests did not execute two simultaneous database transactions. This candidate adds an isolated PostgreSQL 16 GitHub Actions workflow running the actual current manual and automatic claim functions, automatic scheduler, and work-matrix SQL (no production Control Plane writes).
