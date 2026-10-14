@@ -13,6 +13,27 @@ from .supabase_server import resolve_supabase_server_config
 
 USAGE_PAGE_SIZE = 1000
 MAX_USAGE_PAGES = 20
+MAX_USAGE_BIGINT = (1 << 63) - 1
+
+
+def _usage_identity(value: object) -> str:
+    """Canonical PostgreSQL bigint primary key as JSON number or decimal text.
+
+    Reject booleans (subclasses of int), floats, malformed values and values
+    outside the signed bigint range. Canonicalize before deduplicating.
+    """
+    if isinstance(value, bool):
+        raise RuntimeError("cost usage inventory has invalid ID")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.isascii() and value.isdecimal():
+        parsed = int(value)
+    else:
+        raise RuntimeError("cost usage inventory has invalid ID")
+    if not 0 < parsed <= MAX_USAGE_BIGINT:
+        raise RuntimeError("cost usage inventory has invalid ID")
+    return str(parsed)
+
 
 
 def _parse_time(value: str | None) -> datetime | None:
@@ -57,8 +78,8 @@ class SupabaseOperationalHealthReader:
             for row in batch:
                 if not isinstance(row, dict):
                     raise RuntimeError("cost usage inventory includes malformed row")
-                identity = row.get("id")
-                if not isinstance(identity, str) or not identity.strip() or identity in seen:
+                identity = _usage_identity(row.get("id"))
+                if identity in seen:
                     raise RuntimeError("cost usage inventory has invalid or duplicate ID")
                 if not isinstance(row.get("tool_family"), str) or not row["tool_family"].strip():
                     raise RuntimeError("cost usage inventory has invalid tool family")
