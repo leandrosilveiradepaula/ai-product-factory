@@ -15,6 +15,15 @@ class ProjectContinuationRequestTests(unittest.TestCase):
         self.assertNotIn('const activeTasks=project.tasks.filter',page)
         self.assertIn('Produção continua sob gate humano',page)
 
+    def test_request_link_not_hidden_by_historical_queued_tasks(self):
+        # The database RPC, not a potentially stale UI task counter, is the
+        # authoritative concurrency gate. Historical queued descendants of
+        # terminal parents must not hide the continuation entry point.
+        detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
+        self.assertIn('<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir alteração</ActionLink>',detail)
+        self.assertNotIn('activeTasks.length===0?<ActionLink',detail)
+        self.assertIn('enqueueProjectContinuation', (ROOT/"apps/console/app/projects/[key]/request/page.tsx").read_text())
+
     def test_continuation_uses_one_atomic_rpc_with_idempotency(self):
         control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
         self.assertIn('export async function enqueueProjectContinuation',control)
