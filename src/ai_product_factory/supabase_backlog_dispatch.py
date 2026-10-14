@@ -21,7 +21,7 @@ class SupabaseBacklogDispatch:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
   except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
   return None if not raw else json.loads(raw)
- def dispatch_next(self,project_key:str,*,allowed_routes:tuple[str,...]=("direct","codex"))->DispatchDecision|None:
+ def dispatch_next(self,project_key:str,*,allowed_routes:tuple[str,...]=("direct","codex"),codex_mode:str|None=None)->DispatchDecision|None:
   if not allowed_routes:return None
   candidates=self._rpc("factory_peek_planned_work",{"p_project_key":project_key,"p_limit":100})
   if not isinstance(candidates,list):raise RuntimeError("planned-work preview must be an array")
@@ -29,23 +29,25 @@ class SupabaseBacklogDispatch:
    task=PlannedTask(data["task_id"],data["project_key"],data["title"],data.get("description") or "",data.get("complexity") or "medium",data.get("risk") or {},data.get("metadata") or {})
    decision=self.dispatcher.decide(task);e=decision.execution
    if e.route.value not in allowed_routes:continue
-   claimed=self._rpc("factory_dispatch_preapproved_planned_task",{
+   mode=codex_mode if e.route.value=="codex" else None
+   if e.route.value=="codex" and mode not in ("manual","automatic"):raise RuntimeError("Codex mode required")
+   claimed=self._rpc("factory_dispatch_preapproved_planned_task_v2",{
     "p_project_key":project_key,"p_work_unit_id":data["work_unit_id"],
     "p_fingerprint":data["fingerprint"],"p_route":e.route.value,
     "p_codex_level":e.codex.level,"p_codex_used":e.codex.should_use,
     "p_codex_reasons":list(e.codex.reasons),"p_routing_policy_version":e.codex.policy_version,
-    "p_human_gate":e.human_gate_required,"p_gate_reasons":list(e.gate_reasons),
+    "p_human_gate":e.human_gate_required,"p_gate_reasons":list(e.gate_reasons),"p_codex_mode":mode,
    })
    if claimed is None:continue
-   if str(claimed.get("task_id"))!=str(data["task_id"]) or not claimed.get("run_id"):
+   if (str(claimed.get("task_id"))!=str(data["task_id"]) or not claimed.get("run_id") or claimed.get("codex_execution_mode")!=mode):
     raise RuntimeError("atomic route claim returned an inconsistent task")
    return replace(decision,run_id=str(claimed["run_id"]))
   return None
 
- def dispatch_next_any(self,*,allowed_routes:tuple[str,...]=("direct","codex"))->DispatchDecision|None:
+ def dispatch_next_any(self,*,allowed_routes:tuple[str,...]=("direct","codex"),codex_mode:str|None=None)->DispatchDecision|None:
   candidates=self.portfolio.candidates(20)
   for candidate in candidates:
-   decision=self.dispatch_next(candidate.project_key,allowed_routes=allowed_routes)
+   decision=self.dispatch_next(candidate.project_key,allowed_routes=allowed_routes,codex_mode=codex_mode)
    if decision is not None:
     self.portfolio.record(candidate,candidates,outcome="dispatched")
     return decision

@@ -545,7 +545,11 @@ def allowed_dispatch_routes()->tuple[str,...]:
  # preflight. Only the existing no-model manual handoff can be selected.
  # Until automatic/manual Codex claims are isolated in the Control Plane,
  # a protected auth-ready boolean alone is NOT sufficient to claim work.
- if (os.getenv("FACTORY_CODEX_ENABLED")!="true"
+ if (os.getenv("FACTORY_CODEX_ENABLED")=="true"
+     and os.getenv("FACTORY_DISPATCH_CODEX_READY")=="true"
+     and os.getenv("FACTORY_CODEX_COST_APPROVED")=="true"):
+  enabled.append("codex")
+ elif (os.getenv("FACTORY_CODEX_ENABLED")!="true"
        and os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED")=="true"
        and os.getenv("FACTORY_DISPATCH_MANUAL_CODEX_READY")=="true"):
   enabled.append("codex")
@@ -558,10 +562,11 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    "routed":[],"scheduling":{"attempted":0,"assigned":0,"no_eligible_slot":False},
    "matrix":{"direct":[],"codex":[]}}
  dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
+ codex_mode="automatic" if os.getenv("FACTORY_CODEX_ENABLED")=="true" else ("manual" if "codex" in allowed_routes else None)
  scheduling={"attempted":0,"assigned":0,"no_eligible_slot":False}
  for _ in range(max(1,min(max_items,32))):
-  decision=(dispatch.dispatch_next(project_key,allowed_routes=allowed_routes)
-    if project_key else dispatch.dispatch_next_any(allowed_routes=allowed_routes))
+  decision=(dispatch.dispatch_next(project_key,allowed_routes=allowed_routes,codex_mode=codex_mode)
+    if project_key else dispatch.dispatch_next_any(allowed_routes=allowed_routes,codex_mode=codex_mode))
   if decision is None:break
   if not isinstance(decision.run_id,str) or not decision.run_id.strip():
    raise RuntimeError("atomic dispatcher did not return a durable run ID")
@@ -569,13 +574,15 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    "human_gate_required":decision.execution.human_gate_required,
    "codex_level":decision.execution.codex.level})
   if decision.execution.route.value=="codex":
-   # Protect automatic Codex claims from the legacy manual-handoff RPC,
-   # which reads all queued Codex runs. Until a durable execution-mode
-   # discriminator is atomically enforced at both claim boundaries, the
-   # automatic route must not claim or schedule work.
-   if os.getenv("FACTORY_CODEX_ENABLED")=="true":
-    raise RuntimeError("automatic Codex dispatch requires atomic execution-mode isolation")
-   # Manual handoffs do not reserve agent slots.
+   if codex_mode=="manual":continue
+   if codex_mode!="automatic":raise RuntimeError("Codex route requires explicit mode")
+   if decision.execution.human_gate_required:continue
+   scheduling["attempted"]+=1
+   assignment=scheduler.schedule_eligible_codex(run_id=decision.run_id,project_key=project_key)
+   if assignment is None:
+    scheduling["no_eligible_slot"]=True
+    break
+   scheduling["assigned"]+=1
    continue
   if decision.execution.route.value!="direct":
    raise RuntimeError("unsupported dispatch execution route")
@@ -594,6 +601,12 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    scheduling["no_eligible_slot"]=True
    break
   scheduling["assigned"]+=1
+ if codex_mode=="automatic" and "codex" in allowed_routes and not scheduling["no_eligible_slot"]:
+  for _ in range(max(1,min(max_items,32))):
+   assignment=scheduler.schedule_eligible_codex(project_key=project_key)
+   if assignment is None:break
+   scheduling["attempted"]+=1
+   scheduling["assigned"]+=1
  # Resume Direct runs that became eligible after human approval or freed slots.
  # Never do this for Codex or without approved Primary/real budget readiness.
  resumed_direct=0

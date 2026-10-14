@@ -29,20 +29,20 @@ class DispatchTests(unittest.TestCase):
    name=req.full_url.rsplit("/",1)[-1]
    requests.append((name,body))
    if name=="factory_peek_planned_work":return Response(preview)
-   if name=="factory_dispatch_preapproved_planned_task":return Response(claimed)
+   if name=="factory_dispatch_preapproved_planned_task_v2":return Response(claimed)
    raise AssertionError("unexpected dispatch RPC: "+name)
   with patch("urllib.request.urlopen",side_effect=urlopen):
    decision=SupabaseBacklogDispatch(
      url="https://example.supabase.co",service_role_key="secret"
-   ).dispatch_next("demo",allowed_routes=allowed_routes)
+   ).dispatch_next("demo",allowed_routes=allowed_routes,codex_mode="manual" if "codex" in allowed_routes else None)
   return decision,requests
 
  def test_atomic_claim_records_route_in_same_rpc(self):
-  decision,calls=self.make_dispatch(("direct",),[candidate()],{"run_id":"r","task_id":"t"})
+  decision,calls=self.make_dispatch(("direct",),[candidate()],{"run_id":"r","task_id":"t","codex_execution_mode":None})
   self.assertEqual(decision.execution.route,ExecutionRoute.DIRECT)
   self.assertEqual(decision.run_id,"r")
   self.assertEqual([x[0] for x in calls],[
-    "factory_peek_planned_work","factory_dispatch_preapproved_planned_task"])
+    "factory_peek_planned_work","factory_dispatch_preapproved_planned_task_v2"])
   args=calls[1][1]
   self.assertEqual(args["p_route"],"direct")
   self.assertEqual(args["p_work_unit_id"],"u")
@@ -70,7 +70,7 @@ class DispatchTests(unittest.TestCase):
     "large_refactor":True,"estimated_files":25},
     task_id="complex",work_unit_id="complex-unit")
   decision,calls=self.make_dispatch(
-    ("codex",),[candidate(),complex_task],{"run_id":"run","task_id":"complex"})
+    ("codex",),[candidate(),complex_task],{"run_id":"run","task_id":"complex","codex_execution_mode":"manual"})
   self.assertEqual(decision.execution.route,ExecutionRoute.CODEX)
   self.assertEqual(decision.run_id,"run")
   self.assertEqual(calls[1][1]["p_work_unit_id"],"complex-unit")
@@ -98,7 +98,7 @@ class DispatchTests(unittest.TestCase):
   with patch.object(dispatcher,"dispatch_next",return_value=MagicMock()) as call:
    result=dispatcher.dispatch_next_any(allowed_routes=("codex",))
   self.assertIsNotNone(result)
-  call.assert_called_once_with("demo",allowed_routes=("codex",))
+  call.assert_called_once_with("demo",allowed_routes=("codex",),codex_mode=None)
   portfolio.record.assert_called_once_with(
     selected,(selected,),outcome="dispatched")
 

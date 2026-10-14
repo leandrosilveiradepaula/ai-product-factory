@@ -475,6 +475,7 @@ jobs:
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED == 'true' && 'true' || 'false' }}
       # No Codex token/WIF claims ever cross into dispatcher.
       FACTORY_DISPATCH_CODEX_READY: ${{ needs.codex-route-preflight.outputs.ready == 'true' && 'true' || 'false' }}
+      FACTORY_CODEX_COST_APPROVED: ${{ vars.FACTORY_CODEX_COST_APPROVED == 'true' && 'true' || 'false' }}
       FACTORY_CODEX_MANUAL_FALLBACK_ENABLED: ${{ vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED == 'true' && 'true' || 'false' }}
       # Only the explicitly opted-in manual handoff may be routed without Primary.
       FACTORY_DISPATCH_MANUAL_CODEX_READY: ${{ vars.FACTORY_CODEX_ENABLED != 'true' && vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED == 'true' && 'true' || 'false' }}
@@ -518,7 +519,7 @@ jobs:
           handoffs=sum(
               route.get("route")=="codex" and route.get("human_gate_required") is False
               for route in (data.get("routed") or [])
-          )
+          ) if os.environ.get("FACTORY_CODEX_ENABLED") != "true" else 0
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:
               out.write("direct_count="+str(len(direct))+"\n")
               out.write("codex_count="+str(len(codex)+handoffs)+"\n")

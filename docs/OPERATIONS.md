@@ -1,3 +1,6 @@
+## Codex mode isolation (candidate)
+New Codex runs are stamped manual/automatic in one transaction; both claimers filter exact mode. Untagged historical runs fail closed. Automatic Codex scheduling uses Codex-capable agents only and the exact run ID. Activation needs protected Codex auth and FACTORY_CODEX_COST_APPROVED=true; this variable remains off until cost entitlement and real ledger approval. Migration 20261014015500_codex_atomic_mode_isolation.sql is unapplied until human merge. No automatic production merge.
+
 ## Codex routing safety: mandatory durable execution-mode isolation
 
 The protected Codex route preflight added in PR #760 proves presence of

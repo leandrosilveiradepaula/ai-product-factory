@@ -669,7 +669,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as paid:
             result=run_dispatch_once()
         self.assertEqual(result["status"],"empty")
-        dispatch.dispatch_next_any.assert_called_once_with(allowed_routes=("codex",))
+        dispatch.dispatch_next_any.assert_called_once_with(allowed_routes=("codex",),codex_mode="manual")
         paid.assert_not_called()
 
     def test_automatic_codex_does_not_fake_workload_identity_readiness(self):
