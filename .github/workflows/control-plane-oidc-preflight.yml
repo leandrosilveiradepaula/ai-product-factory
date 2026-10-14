@@ -20,6 +20,8 @@ jobs:
   preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      scheduler_gap: ${{ steps.scheduler_health.outputs.scheduler_gap }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc
@@ -35,6 +37,61 @@ jobs:
             exit 1
           fi
           BODY="$body" python -c 'import json,os; rows=json.loads(os.environ["BODY"]); assert isinstance(rows,list), "Control Plane response is not a list"; keys={str(r.get("project_key") or "") for r in rows}; assert "ai-product-factory" in keys, "Expected Factory project is not readable through OIDC broker"; print(json.dumps({"status":"ok","projects":sorted(keys)}))'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        if: ${{ github.event_name == 'schedule' }}
+        with:
+          python-version: "3.12"
+      - name: Probe missing Factory scheduler wakeups read-only
+        if: ${{ github.event_name == 'schedule' }}
+        id: scheduler_health
+        env:
+          PYTHONPATH: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from ai_product_factory.supabase_scheduler_liveness import (
+              SupabaseSchedulerLivenessReader, evaluate_scheduler_liveness,
+          )
+          state = SupabaseSchedulerLivenessReader().read()
+          alerts = evaluate_scheduler_liveness(state)
+          has_gap = any(a.code == "scheduler_gap" for a in alerts)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"scheduler_gap={'true' if has_gap else 'false'}\n")
+          print(f"read_only_scheduler_gap={'true' if has_gap else 'false'}")
+          PY
+
+  # Backup observer reuses the existing six-hour OIDC preflight schedule.
+  # It is not an independent scheduler and must never dispatch work.
+  scheduler-gap-fallback:
+    needs: preflight
+    if: ${{ github.event_name == 'schedule' && needs.preflight.result == 'success' && needs.preflight.outputs.scheduler_gap == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    concurrency:
+      group: factory-scheduler-gap-fallback
+      cancel-in-progress: false
+    env:
+      PYTHONPATH: src
+      FACTORY_GITHUB_ALERTS_ENABLED: "true"
+      FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
+      FACTORY_MODEL_BUDGET_USD: "4.00"
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Publish or reconcile operational alerts without dispatch
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode alerts
 
   vercel-quota:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
