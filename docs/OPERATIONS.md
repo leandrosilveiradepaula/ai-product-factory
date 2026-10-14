@@ -1,3 +1,10 @@
+## 14/10/2026 — Preparação fail-closed do Preview (#797; sem ativação privilegiada)
+
+\`scripts/preview_candidate_contract.py\` define um contrato **puro e determinístico** de elegibilidade:
+PR aberto e não-draft, origem/destino no mesmo repositório confiável, base \`main\`, SHA completo idêntico, checks \`test\`, \`factory-acceptance\` e \`validate\` verdes no SHA exato, e alterações verificadas em \`apps/console/**\`. O segundo predicado só admite evidência de navegador se a promoção tiver resultado comprovado \`reused\`, \`updated\` ou \`created_then_updated\`, e o ref observado continuar no SHA exato.
+
+**Isto ainda não altera o pipeline.** O workflow privilegiado de promoção deve buscar **novamente** PR, checks e ref imediatamente antes da escrita; um resultado anterior à espera por CI não é garantia de estado atual. A integração e o gatilho \`ready_for_review\` são mudança de segurança e precisam de revisão/aprovação explícita das permissões do GitHub Actions. Não houve criação de trigger, modificação de workflow, promoção de ref, Vercel deployment ou merge. O PR #811 permanece draft até Preview/browser evidenciarem o SHA candidato ou a política explicitamente permitir outro caminho.
+
 ## 14/10/2026 — Confirmacao pos-merge das correcoes de operacao
 
 - PR #806 mergeado em `2c604bec`: o alerta `scheduler_pipeline` foi exercitado pela reconciliacao `/factory-alerts` (run `38628800312` SUCCESS); issue #809 foi aberta pelo bot, pois run agendado #38619635786 concluiu FAILURE. `scheduler_gap` (heartbeat) estar fechado nao equivale a pipeline recuperado.
