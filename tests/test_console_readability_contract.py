@@ -21,7 +21,7 @@ class ConsoleReadabilityContract(unittest.TestCase):
    ".main .logPanel", ".main .planningDecisionSuggestion button",
   ):
    with self.subTest(selector=selector):
-    self.assertIn(selector+"{",RULES)
+    self.assertRegex(RULES,re.escape(selector)+r"(?=[,{])")
   self.assertIn("min-height:42px",RULES)
 
  def test_mobile_readability_and_no_hiding(self):
