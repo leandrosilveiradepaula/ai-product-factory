@@ -1,3 +1,6 @@
+## Fail-closed Definition of Done inputs (candidate)
+When preparing a release assessment, do **not** coerce `human_only` or allow untyped DoD `missing` entries to vanish. Only a literal JSON boolean `true` denotes a human-only item. Strings such as `"false"`/`"true"` and numeric flags are invalid and block release. Omitted or malformed `definition_of_done.satisfied` or `definition_of_done.missing` arrays, duplicate missing keys, invalid missing rows, and simultaneous satisfied/missing keys also block deterministically. A missing DoD must never be treated as evidence that all checks passed. Separately, the human production gate always applies, even when nonhuman checks are complete.
+
 ## Mandatory product-readiness domains and evidence format (candidate)
 The product-wide readiness evaluator may only accept `product_experience=not_applicable` for documented headless workloads, never `security`, `observability_operations`, `test_strategy`, `documentation`, or `functional_completeness`. Every mandatory domain needs full required coverage and valid evidence. `evidence` and `coverage` values must be lists of strings; any non-string entry fails closed rather than being coerced into a bogus reference. The release reporter reuses this evaluator for the SHA-exact product assessment.
 
