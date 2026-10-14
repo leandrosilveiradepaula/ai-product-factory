@@ -1,3 +1,9 @@
+## 14/10/2026 — Dependabot e CI do Console sem ampliar privilégios (#808)
+
+O CI do PR #808 (upgrade `actions/setup-node`) falhou no passo `Enforce Console branch convention` porque toda branch `dependabot/**` era rejeitada, embora a automação já fosse autorizada a abrir PRs e o workflow seja `contents: read`. A exceção agora exige simultaneamente autor autenticado `dependabot[bot]` e head repository idêntico ao repositório da Factory, obtidos de campos separados do evento GitHub (não do nome da branch). Forks, nomes falsificados e `preview/**` continuam bloqueados.
+
+A alteração não cria gatilhos privilegiados, não amplia permissões, não fornece secrets e não chama o Vercel. Testes unitários executam o script bash do gate com identidade real, spoofing, fork e ramos permitidos. O PR #808 ainda precisa de CI verde sobre o SHA correto após incorporação deste patch e de revisão humana do update Dependabot. Merge em produção continua gate humano.
+
 ## 14/10/2026 — Preparação fail-closed do Preview (#797; sem ativação privilegiada)
 
 \`scripts/preview_candidate_contract.py\` define um contrato **puro e determinístico** de elegibilidade:
