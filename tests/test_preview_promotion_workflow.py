@@ -31,6 +31,21 @@ class PreviewPromotionWorkflowTests(unittest.TestCase):
         self.assertIn('promotion_action", "not_applicable"', workflow)
         self.assertIn('github.event_name == \'workflow_dispatch\'', workflow)
 
+    def test_manual_and_automatic_preview_require_same_pr_eligibility(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        resolve=workflow.split("      - name: Resolve exact candidate and Preview applicability",1)[1].split("      - name: Verify exact PR candidate",1)[0]
+        self.assertIn('const manual = context.eventName === "workflow_dispatch"',resolve)
+        self.assertIn('pr = requested;',resolve)
+        self.assertIn('pr.state !== "open" || pr.draft',resolve)
+        self.assertIn('pr.base?.ref !== "main"',resolve)
+        self.assertIn('pr.base?.repo?.full_name !== fullRepo',resolve)
+        self.assertIn('pr.head?.repo?.full_name !== fullRepo',resolve)
+        self.assertIn('pr.head?.sha !== sha',resolve)
+        self.assertIn('github.rest.pulls.listFiles',resolve)
+        self.assertIn('startsWith("apps/console/")',resolve)
+        self.assertIn('manual ? "manual" : "automatic"',resolve)
+        self.assertNotIn('core.setOutput("applicable", "true");\\n              return;',resolve)
+
     def test_token_driven_promotion_dispatches_exact_browser_evidence(self):
         promote = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
         exact = (ROOT / ".github/workflows/exact-preview-browser-evidence.yml").read_text()
