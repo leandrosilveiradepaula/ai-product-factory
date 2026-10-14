@@ -8,6 +8,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 CONFIG=ROOT/"apps/console/vercel.json"
+SCRIPT=ROOT/"apps/console/vercel-ignore-build.sh"
 
 class VercelPreviewIgnoreTests(unittest.TestCase):
  def setUp(self):
@@ -32,6 +33,7 @@ class VercelPreviewIgnoreTests(unittest.TestCase):
   self.git("commit","-m","docs only followup")
   self.head=self.git("rev-parse","HEAD").stdout.strip()
   self.command=json.loads(CONFIG.read_text())["ignoreCommand"]
+  (self.app/"vercel-ignore-build.sh").write_text(SCRIPT.read_text())
 
  def tearDown(self):self.tmp.cleanup()
 

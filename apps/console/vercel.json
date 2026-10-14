@@ -7,5 +7,5 @@
       "preview/**": true
     }
   },
-  "ignoreCommand": "case \"$VERCEL_GIT_COMMIT_REF\" in preview/pr-*) case \"${VERCEL_GIT_COMMIT_REF#preview/pr-}\" in ''|*[!0-9]*) exit 0 ;; esac; if printf '%s' \"$VERCEL_GIT_PREVIOUS_SHA\" | grep -Eq '^[0-9a-f]{40}$' && git cat-file -e \"${VERCEL_GIT_PREVIOUS_SHA}^{commit}\" 2>/dev/null; then git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- .; else exit 1; fi ;; preview/*) exit 0 ;; *) git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json ;; esac"
+  "ignoreCommand": "sh ./vercel-ignore-build.sh"
 }
