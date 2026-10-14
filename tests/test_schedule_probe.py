@@ -319,8 +319,8 @@ class ScheduleProbeTests(unittest.TestCase):
     def test_status_change_between_queries_keeps_only_latest_observation(self):
         class RacingProbe(StubProbe):
             def _execution_signals(self):
-                return {"product_work":False, "routed_execution_work":True,
-                        "codex_manual_work":False}
+                return {**super()._execution_signals(), "product_work":False,
+                        "routed_execution_work":True, "codex_manual_work":False}
             def _get(self, path):
                 if path.startswith("factory_runs?") and "&status=eq.created" in path:
                     return [{"id": "r", "task_id": "t", "status": "created"}]
@@ -462,7 +462,7 @@ class ScheduleProbeTests(unittest.TestCase):
             ],
             pending_units=[{"id": "u1"}],
             portfolio_candidates=[{"project_id":"p1","project_key":"demo"}],
-            change_sets=[{"id": "c1"}],
+            change_sets=[{"id": "c1", "status": "building"}],
             lanes=[{"role": "security"}, {"role": "qa"}],
         ).probe()
         self.assertTrue(out["dispatch_work"])
