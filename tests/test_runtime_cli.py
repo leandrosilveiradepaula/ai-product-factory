@@ -1194,6 +1194,8 @@ class RuntimeCliTests(unittest.TestCase):
         with patch.dict("os.environ", {"FACTORY_ALERTS_GITHUB_REPOSITORY":"owner/repo"}, clear=True), \
              patch("ai_product_factory.runtime_cli.github_alerts_readiness",return_value=readiness), \
              patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader",return_value=reader), \
+             patch("ai_product_factory.runtime_cli.SupabaseSchedulerLivenessReader") as scheduler, \
+             patch("ai_product_factory.runtime_cli.evaluate_scheduler_liveness",return_value=()), \
              patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=()), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
              patch("ai_product_factory.runtime_cli.GitHubIssueAlertAdapter",return_value=adapter):
@@ -1206,6 +1208,26 @@ class RuntimeCliTests(unittest.TestCase):
         called=adapter.resolve_inactive.call_args.kwargs
         self.assertEqual(called["active_codes"],set())
         self.assertIn("failed_runs",called["known_codes"])
+
+    def test_alerts_mode_publishes_scheduler_gap_and_does_not_resolve_it(self):
+        from ai_product_factory.operational_alerts import OperationalAlert
+        readiness=SimpleNamespace(ready=True,missing=())
+        adapter=MagicMock()
+        adapter.publish_many.return_value=()
+        adapter.resolve_inactive.return_value=()
+        gap=OperationalAlert("scheduler_gap","warning","missed scheduler wakes")
+        with patch.dict("os.environ", {"FACTORY_ALERTS_GITHUB_REPOSITORY":"owner/repo"}, clear=True), \
+             patch("ai_product_factory.runtime_cli.github_alerts_readiness",return_value=readiness), \
+             patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader"), \
+             patch("ai_product_factory.runtime_cli.SupabaseSchedulerLivenessReader"), \
+             patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=()), \
+             patch("ai_product_factory.runtime_cli.evaluate_scheduler_liveness",return_value=(gap,)), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.GitHubIssueAlertAdapter",return_value=adapter):
+            result=run_alerts_once()
+        self.assertEqual(result["status"],"ok")
+        self.assertEqual(adapter.publish_many.call_args.args[0],(gap,))
+        self.assertIn("scheduler_gap",adapter.resolve_inactive.call_args.kwargs["active_codes"])
 
     def test_health_recognizes_modern_supabase_secret_key(self):
         env={"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SECRET_KEY":"sb_secret_modern"}

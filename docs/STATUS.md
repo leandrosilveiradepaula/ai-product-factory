@@ -1,3 +1,9 @@
+## 2026-10-14 - Durable scheduler wake-gap monitoring (candidate)
+- The Control Plane observed scheduler probes at 07:42 and 08:03 UTC, then none before reconciliation at 11:08 UTC. Prior to that, probes had a 5.5-hour gap. The GitHub schedule is explicitly best-effort, and CI passing does not prove continuous autonomous operation.
+- This candidate reads at most the newest two persisted `schedule_probe.observed` event timestamps. It warns on a latest observation older than two hours, a prior inter-probe gap of two hours or more, or zero evidence. Reads require consistent timestamps/timezones and fail closed if malformed.
+- The warning is a deduplicated `scheduler_gap` operational GitHub Issue, evaluated along with other alerts; it neither changes the scheduler nor enables extra wakeups. Importantly, it **cannot notify while the runner itself is not executing**: detection happens only on the next successful alert evaluation or separately initiated alerts-only wake.
+- Tests cover expected cadence, stale last wake, recovered gap, cold-start, malformed/future timestamps, issue lifecycle and read-only GET. No paid calls, migration, preview, storage changes, or auto-merge.
+
 ## 2026-10-14 - Read-only reconciliation of queued task records (candidate)
 - Live Control Plane inspection: 10 `factory_tasks.status=queued` (Factory 5, CRM 5); all have terminal completed parents and zero active Work Units. All current Change Sets are completed or superseded; scheduler's authoritative runnable signals remain false.
 - New bounded read-only backlog audit distinguishes old queued descendants without active units, queued tasks with active units and other queued entries. It never treats an inventory row as dispatch approval, does not reactivate historical tasks and fails closed on truncated/malformed data.

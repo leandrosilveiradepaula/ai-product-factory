@@ -1,3 +1,8 @@
+## Scheduler wake-gap alerting (candidate)
+Operational alerts now include `scheduler_gap` from the durable Control Plane `schedule_probe.observed` timestamps. The read-only health check inspects the newest two entries; a latest probe age >=2 hours or a separation >=2 hours raises a deduplicated warning. Missing evidence also warns. It uses normal alert issue marker/closing reconciliation and does not disclose credentials.
+
+**Limitation:** GitHub cron is best-effort; if GitHub never schedules the Factory, this in-run detector cannot emit an alert until another scheduled or owner-triggered alerts-only run executes. This is not independent uptime monitoring and does not constitute a guaranteed wake SLA. Do not compensate by adding paid services, noisy deployments, or production work. Investigate the schedule itself and consider an independent, approved monitoring channel if a wake SLA becomes a requirement.
+
 ## Read-only queued backlog audit (candidate)
 When `schedule-probe` reports no executable work, it does NOT imply all `factory_tasks` are terminal. Historical planning child tasks may remain `queued` under completed parents with no active `factory_change_set_work_units`. Use `python -m ai_product_factory.runtime_cli --mode backlog-audit` for an explicitly read-only report, or inspect its best-effort scheduled log when `work_detected=false`.
 
