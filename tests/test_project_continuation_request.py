@@ -12,18 +12,19 @@ class ProjectContinuationRequestTests(unittest.TestCase):
         self.assertIn('href={"/projects/"+p.key+"/request"}',detail)
         self.assertIn('enqueueProjectContinuation',page)
         self.assertIn('A Factory não abre dois ciclos concorrentes',page)
+        self.assertNotIn('const activeTasks=project.tasks.filter',page)
         self.assertIn('Produção continua sob gate humano',page)
 
-    def test_continuation_is_durable_fail_closed_and_reuses_existing_bootstrap(self):
+    def test_continuation_uses_one_atomic_rpc_with_idempotency(self):
         control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
         self.assertIn('export async function enqueueProjectContinuation',control)
-        self.assertIn('continuation_request',control)
-        self.assertIn('reconcile_first:true',control)
-        self.assertIn('source:"factory-console"',control)
-        self.assertIn('const terminal=new Set(["completed","cancelled","failed","merged","integrated"])',control)
+        self.assertIn('rpc/factory_enqueue_project_continuation',control)
+        self.assertIn('p_request_id:requestId',control)
+        self.assertIn('p_attachment_count:attachmentCount',control)
+        self.assertIn('result.request_id!==requestId',control)
         self.assertIn('Já existe trabalho ativo neste projeto',control)
-        self.assertIn('project.continuation.requested',control)
-        self.assertIn('await enqueueProjectBootstrap(projectKey)',control)
+        self.assertNotIn('await enqueueProjectBootstrap(projectKey)',control[control.index('export async function enqueueProjectContinuation'):control.index('export async function getDashboard')])
+        self.assertNotIn('factory_projects?id=eq.',control[control.index('export async function enqueueProjectContinuation'):control.index('export async function getDashboard')])
         self.assertNotIn('OPENAI_API_KEY',control)
         self.assertNotIn('merge_pull_request',control)
 

@@ -19,7 +19,9 @@ class Tests(unittest.TestCase):
     def test_console_rebuilds_when_release_policy_changes(self):
         cfg=json.loads(VERCEL.read_text())
         ignore=cfg["ignoreCommand"]
-        self.assertIn("../../config/factory.release-policy.v1.json",ignore)
+        self.assertEqual(ignore,"sh ./vercel-ignore-build.sh")
+        script=(ROOT/"apps/console/vercel-ignore-build.sh").read_text()
+        self.assertIn("../../config/factory.release-policy.v1.json",script)
 
 if __name__=="__main__":
     unittest.main()

@@ -1,3 +1,8 @@
+## 14/10/2026 — Candidato consolidado de Console: uma promoção de Preview, gate humano preservado
+
+Este PR #811 agrega três candidatos antes separados: #786 (bootstrap/continuação transacional e RPC previamente aplicada), #789 (diff cumulativo de Vercel Preview) e #811 (legibilidade mobile, readiness fail-closed, inventários paginados e diagnóstico da fila). O propósito é validar uma única vez o mesmo SHA com Console CI, PostgreSQL isolado, Preview Vercel e Playwright autenticado, reduzindo a quota consumida por candidatos intermediários.
+
+**Segurança:** a migration `20261014160500_atomic_project_continuation.sql` já foi aplicada anteriormente ao Control Plane com aprovação humana. Este PR NÃO a reaplica nem executa mudanças no banco; o workflow PostgreSQL roda contra instância de CI descartável. PRs originais permanecem abertos até CI do consolidado ficar verde, quando poderão ser encerrados SEM merge como substituídos. Preview em apps/console exige Vercel READY e browser evidence no SHA exato; não herdar evidência dos SHAs anteriores. Publicação de produção exige merge humano.
 ## 14/10/2026 — Console: filhos de pais concluídos não somem da fila (#713)
 
 A leitura read-only do Control Plane confirmou 10 tarefas em status queued, sendo 5 da Factory e 5 do CRM, todas descendentes de tarefas-pai completed; nenhuma possuía run ativo. A página de fila descartava esses descendentes por status do pai e podia exibir fila vazia. Essa apresentação não comprova que os filhos foram implementados e escondia um diagnóstico relevante.
