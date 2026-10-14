@@ -1,3 +1,6 @@
+## Scheduler native heartbeat provenance (candidate)
+Use schedule_probe.native_observed for GitHub event_name=schedule only. A workflow_run fallback or manual operator wake records schedule_probe.observed, never proving the native cron healthy. A native heartbeat write failure fails that probe; backup telemetry may remain best effort. No schema changes. Verify live schedule and native DB event after human merge; do not close scheduler_gap on fallback-only success.
+
 ## Required CI and human-only DoD whitelist (candidate)
 Candidate release readiness requires `github_ci` explicitly satisfied; absence of the key blocks even if the DoD lists are structurally valid. A missing item can be marked `human_only: true` only when its key is exactly `human_release`. Any other human-only claim is treated as an unauthorized attempt to waive a deterministic gate and blocks release. These rules supplement strict JSON booleans and duplicate/conflict validation. They do not themselves certify the CI run for a SHA; the evidence collector must still verify exact SHA check-runs and Preview as applicable. Even a legitimate candidate remains subject to the human production merge gate.
 

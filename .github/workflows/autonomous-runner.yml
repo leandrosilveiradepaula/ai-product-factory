@@ -73,6 +73,7 @@ jobs:
       work_detected: ${{ steps.probe.outputs.work_detected }}
     env:
       PYTHONPATH: src
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
       FACTORY_MODEL_BUDGET_USD: "4.00"
