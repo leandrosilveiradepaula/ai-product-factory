@@ -79,10 +79,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Recover expired leases in the shared scheduler runner
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Probe durable work queues without side effects
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_alerts != true }}
         id: probe
         shell: bash
         run: |
@@ -110,7 +111,7 @@ jobs:
   github-access-preflight:
     environment: openai-api
     needs: schedule-probe
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.github_access_work == 'true') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.github_access_work == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -150,7 +151,7 @@ jobs:
       primary_ready: ${{ steps.readiness.outputs.primary_model }}
       dispatch_work: ${{ steps.post_product_probe.outputs.dispatch_work }}
     # Auth preflight is also needed when the only work is already planned.
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.product_work == 'true' || needs.schedule-probe.outputs.dispatch_work == 'true') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.product_work == 'true' || needs.schedule-probe.outputs.dispatch_work == 'true') }}
     runs-on: ubuntu-latest
     environment: openai-api
     permissions:
@@ -262,7 +263,7 @@ jobs:
 
 
   change-set-integration:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.direct.result != 'failure' && needs.codex.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.integration_work == 'true' || needs.direct.result == 'success' || needs.codex.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.direct.result != 'failure' && needs.codex.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.integration_work == 'true' || needs.direct.result == 'success' || needs.codex.result == 'success') }}
     needs: [schedule-probe, direct, codex]
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -294,7 +295,7 @@ jobs:
 
   ci-followup:
     environment: openai-api
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.change-set-integration.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.change-set-integration.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success') }}
     needs: [schedule-probe, product-stage, change-set-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -331,7 +332,7 @@ jobs:
 
   specialist-security:
     environment: openai-api
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_security_work == 'true' || needs.ci-followup.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_security_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -361,7 +362,7 @@ jobs:
 
   specialist-qa:
     environment: openai-api
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_qa_work == 'true' || needs.ci-followup.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_qa_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -391,7 +392,7 @@ jobs:
 
   specialist-operations:
     environment: openai-api
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_operations_work == 'true' || needs.ci-followup.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.specialist_operations_work == 'true' || needs.ci-followup.result == 'success') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -422,7 +423,7 @@ jobs:
 
   release-followup:
     environment: openai-api
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.release_work == 'true') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.release_work == 'true') }}
     needs: [schedule-probe, ci-followup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -456,7 +457,7 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && needs.codex-route-preflight.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && needs.codex-route-preflight.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
     needs: [schedule-probe, github-access-preflight, product-stage, codex-route-preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -529,7 +530,7 @@ jobs:
 
   direct:
     environment: openai-api
-    if: ${{ always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' || github.event_name == 'issue_comment') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.direct_count != '' && needs.dispatch.outputs.direct_count != '0' && ((github.event_name == 'workflow_dispatch' && inputs.run_direct == true) || github.event_name == 'schedule' || github.event_name == 'issue_comment') }}
     needs: dispatch
     strategy:
       fail-fast: false
@@ -608,7 +609,7 @@ jobs:
 
   codex:
     environment: openai-codex
-    if: ${{ always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0' && vars.FACTORY_CODEX_ENABLED == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0' && vars.FACTORY_CODEX_ENABLED == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: dispatch
     strategy:
       fail-fast: false
@@ -709,7 +710,7 @@ jobs:
 
 
   codex-manual:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.codex_manual_work == 'true' || (needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0'))) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && ((github.event_name == 'schedule' && (needs.schedule-probe.outputs.codex_manual_work == 'true' || (needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0'))) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: [schedule-probe, dispatch]
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -751,7 +752,7 @@ jobs:
 
   preview:
     environment: openai-api
-    if: ${{ always() && needs.schedule-probe.result == 'success' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.preview_work == 'true' || needs.specialist-security.result == 'success' || needs.specialist-qa.result == 'success' || needs.specialist-operations.result == 'success')) || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true)) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.preview_work == 'true' || needs.specialist-security.result == 'success' || needs.specialist-qa.result == 'success' || needs.specialist-operations.result == 'success')) || (github.event_name == 'workflow_dispatch' && inputs.run_preview == true)) }}
     needs: [schedule-probe, specialist-security, specialist-qa, specialist-operations]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -822,8 +823,8 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode preview
 
   alerts:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_alerts == true }}
-    needs: release-followup
+    if: ${{ always() && needs.schedule-probe.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_alerts == true }}
+    needs: schedule-probe
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -861,7 +862,7 @@ jobs:
   codex-route-preflight:
     # Independent from Primary; run only when there is actual dispatch work.
     needs: schedule-probe
-    if: ${{ always() && needs.schedule-probe.result == 'success' && vars.FACTORY_CODEX_ENABLED == 'true' && (needs.schedule-probe.outputs.dispatch_work == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && vars.FACTORY_CODEX_ENABLED == 'true' && (needs.schedule-probe.outputs.dispatch_work == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     environment: openai-codex
     runs-on: ubuntu-latest
     timeout-minutes: 3
