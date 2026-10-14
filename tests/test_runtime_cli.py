@@ -79,25 +79,19 @@ class RuntimeCliTests(unittest.TestCase):
             with self.assertRaisesRegex(PermissionError,"CODEX_ACCESS_TOKEN"):
                 require_codex_runtime_enabled()
 
-    def test_codex_auto_route_independent_of_primary_when_protected_preflight_ready(self):
+    def test_codex_auto_route_is_inert_until_database_claim_mode_is_isolated(self):
         env={
             "FACTORY_PRIMARY_MODEL_ENABLED":"false",
             "FACTORY_CODEX_ENABLED":"true",
             "FACTORY_DISPATCH_CODEX_READY":"true",
             "FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"false",
         }
-        dispatcher=MagicMock()
-        dispatcher.dispatch_next_any.return_value=None
-        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
         with patch.dict("os.environ",env,clear=True), \
-             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatcher), \
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
-             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive), \
-             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as paid:
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as dispatch:
             result=run_dispatch_once()
-        self.assertEqual(result["status"],"empty")
-        dispatcher.dispatch_next_any.assert_called_once_with(allowed_routes=("codex",))
-        paid.assert_not_called()
+        self.assertEqual(result["status"],"blocked_executor_readiness")
+        dispatch.assert_not_called()
+
 
     def test_codex_auto_route_requires_both_explicit_enable_and_preflight(self):
         for enabled,ready in (("false","true"),("true","false"),("true",""),("", "true")):

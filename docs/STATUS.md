@@ -1,3 +1,16 @@
+## 2026-10-14 - Codex competing-claimer guard (candidate)
+- #760 merged as 3d136da7 with green main CI. No active/queued Codex
+  runs or agent slots in the live Control Plane.
+- Post-merge audit found a safety defect: the legacy manual Codex RPC
+  accepts all queued Codex runs, while the new automatic Codex path has no
+  agent assignment. The two modes are not durably isolated.
+- Candidate refuses new automatic Codex claims until both claimers use
+  an atomic execution-mode discriminator. Official Codex WIF/token
+  readiness improvements remain, and existing manual handoffs remain.
+- No migrations, paid-model calls, fabricated work or automatic merge.
+- Follow-up needed: atomic SQL split for claim modes + route-specific
+  agent scheduling with offline concurrency tests.
+
 ## 2026-10-14 - Codex route and auth parity (candidate)
 - Factory main bff9c298, post-merge CI green; 9 SQL scheduler signals
   installed and reporting no active Control Plane work.
