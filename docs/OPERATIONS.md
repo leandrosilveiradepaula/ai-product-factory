@@ -1,3 +1,8 @@
+## Do not clear scheduler gap after one cron event (candidate)
+A native `schedule_probe.native_observed` record proves one successful GitHub schedule wake, **not a stable cadence**. The liveness contract now requires the two newest native records to both exist, the newest to be younger than two hours and their separation shorter than two hours before `scheduler_gap` can resolve. Old generic audit events and operator/backup `issue_comment`/`workflow_run` wakes never count. This intentionally preserves warnings after a cold start or prolonged outage until the second timely native wake.
+
+Issue #772 was prematurely closed at 13:47:10 UTC on 14/10 after only the first native record; this was a logic bug, not proof of health. The GitHub alert adapter currently searches only open marked issues, so it may create a new numbered warning when the corrected reconciler first runs. Record linkage to #772 in that new issue; never close it based on just CI green or an owner manual wake. No changes to cron frequency, queue dispatch, Preview or human production gate.
+
 ## Scheduler native heartbeat provenance (candidate)
 Use schedule_probe.native_observed for GitHub event_name=schedule only. A workflow_run fallback or manual operator wake records schedule_probe.observed, never proving the native cron healthy. A native heartbeat write failure fails that probe; backup telemetry may remain best effort. No schema changes. Verify live schedule and native DB event after human merge; do not close scheduler_gap on fallback-only success.
 

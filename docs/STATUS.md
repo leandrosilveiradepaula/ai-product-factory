@@ -1,3 +1,10 @@
+## 2026-10-14 - Prove two consecutive native wakes before clearing scheduler_gap (candidate)
+- Factory main `db42fb7b`, CI green. A real native GitHub `schedule` run [38574669505](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38574669505) completed at 13:47 UTC and persisted the **first** `schedule_probe.native_observed` audit event at 13:47:01 UTC. Owner-triggered manual wake at 13:45 UTC persisted only legacy `schedule_probe.observed`, as intended.
+- The `scheduler_gap` alert issue #772 was automatically closed at 13:47:10 UTC despite only a single new native sample. Root cause: `evaluate_scheduler_liveness` returned no alerts whenever the latest native heartbeat was fresh and there was no `previous` sample.
+- Candidate retains `scheduler_gap` until **two consecutive native observations** have been persisted with interval below the existing two-hour threshold and a fresh latest heartbeat. Absent evidence, a single sample, stale latest and a large inter-sample gap remain warning states. Legacy/manual/backup heartbeats are not valid evidence.
+- Regression covers exact post-outage scenario, single recent/stale samples, valid consecutive pair, and two samples separated by a prolonged gap. No schema migration, extra cron, paid models, Preview or auto-merge; #772 historical closure must not be taken as verified restoration.
+- Still needed after human merge: run the isolated alert reconciler so that a current warning reopens *as a new alert issue* (the existing alert adapter only deduplicates open issues), then observe two genuine scheduled native heartbeats in the Control Plane before declaring regularity.
+
 ## 2026-10-14 - Native scheduler provenance vs fallback (candidate)
 - PR #778 merged at cc06728f with CI green; native schedule heartbeat still stale at 08:03 UTC.
 - Existing backup workflow_run could emit schedule_probe.observed and clear scheduler_gap even with broken native GitHub cron. Fix writes schedule_probe.native_observed only for actual schedule events and makes native telemetry persistence mandatory, while other wake types retain the generic event.

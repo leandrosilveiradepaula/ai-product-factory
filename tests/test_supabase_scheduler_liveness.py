@@ -48,9 +48,40 @@ class Tests(unittest.TestCase):
         ])
         self.assertIn("197 minutes",evaluate_scheduler_liveness(state)[0].message)
 
-    def test_one_recent_bootstrap_wake_no_false_gap(self):
+    def test_one_recent_bootstrap_wake_cannot_close_gap(self):
         state=probe([{"created_at":"2026-10-14T11:17:00Z"}])
+        alerts=evaluate_scheduler_liveness(state)
+        self.assertEqual([a.code for a in alerts],["scheduler_gap"])
+        self.assertIn("two consecutive",alerts[0].message)
+
+    def test_first_new_native_heartbeat_after_outage_still_alerts(self):
+        # Real 2026-10-14 production scenario: a gap of hours followed
+        # by a lone native observation must not close issue #772.
+        state=probe([{"created_at":"2026-10-14T11:17:00Z"}])
+        self.assertEqual(len(evaluate_scheduler_liveness(state)),1)
+        self.assertEqual(state.previous,None)
+        self.assertLess(state.age,timedelta(hours=2))
+
+    def test_two_timely_native_wakes_allow_recovery(self):
+        state=probe([
+            {"created_at":"2026-10-14T11:17:00Z"},
+            {"created_at":"2026-10-14T10:47:00Z"},
+        ])
         self.assertEqual(evaluate_scheduler_liveness(state),())
+        self.assertEqual(state.gap,timedelta(minutes=30))
+
+    def test_two_recent_wakes_separated_by_outage_still_alert(self):
+        state=probe([
+            {"created_at":"2026-10-14T11:17:00Z"},
+            {"created_at":"2026-10-14T08:03:00Z"},
+        ])
+        self.assertEqual([a.code for a in evaluate_scheduler_liveness(state)],["scheduler_gap"])
+
+    def test_single_stale_native_wake_preserves_staleness_priority(self):
+        state=probe([{"created_at":"2026-10-14T08:03:00Z"}])
+        alerts=evaluate_scheduler_liveness(state)
+        self.assertEqual(len(alerts),1)
+        self.assertIn("207 minutes",alerts[0].message)
 
     def test_zero_wakes_is_not_silently_green(self):
         state=probe([])
