@@ -37,7 +37,7 @@ class CodexPreflightContractTests(unittest.TestCase):
         self.assertIn('os.path.isfile(os.environ["OPENAI_IDENTITY_TOKEN_FILE"])',before)
         self.assertIn('FACTORY_GITHUB_TOKEN',before)
         dispatch=PY.split("def allowed_dispatch_routes()",1)[1].split("\ndef run_dispatch_once(",1)[0]
-        self.assertNotIn('enabled.append("codex")\n elif (os.getenv("FACTORY_CODEX_ENABLED")',dispatch)
+        self.assertIn('os.getenv("FACTORY_CODEX_COST_APPROVED")=="true"',dispatch)
         self.assertIn('os.getenv("FACTORY_CODEX_ENABLED")!="true"',dispatch)
         self.assertNotIn('require_paid_runtime_budget()',dispatch)
         self.assertNotIn('CODEX_ACCESS_TOKEN',dispatch)

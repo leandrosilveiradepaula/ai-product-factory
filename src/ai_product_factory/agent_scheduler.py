@@ -105,6 +105,13 @@ class SupabaseAgentScheduler:
                 raise RuntimeError("Direct scheduler returned a different run")
         return assignment
 
+    def schedule_eligible_codex(self,*,run_id:str|None=None,project_key:str|None=None)->AgentAssignment|None:
+        data=self._rpc("factory_schedule_eligible_codex_run",{"p_run_id":run_id,"p_project_key":project_key})
+        assignment=self._assignment(data)
+        if assignment is not None and (not assignment.run_id or (run_id is not None and assignment.run_id!=run_id)):
+            raise RuntimeError("Codex scheduler returned an inconsistent run ID")
+        return assignment
+
     def schedule_next(self)->AgentAssignment|None:
         return self._assignment(self._rpc("factory_schedule_next_unassigned_run",{}))
 

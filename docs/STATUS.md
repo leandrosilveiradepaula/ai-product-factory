@@ -1,3 +1,6 @@
+## 2026-10-14 - Mode-aware Codex scheduling candidate
+- #761 merged; candidate adds atomic mode stamp, separates competing manual/automatic claims, schedules automatic Codex by exact run and independently guards cost. Database migration unapplied; no paid call, credential activation or production release performed.
+
 ## 2026-10-14 - Codex competing-claimer guard (candidate)
 - #760 merged as 3d136da7 with green main CI. No active/queued Codex
   runs or agent slots in the live Control Plane.
