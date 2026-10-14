@@ -1,3 +1,23 @@
+## Codex routing safety: mandatory durable execution-mode isolation
+
+The protected Codex route preflight added in PR #760 proves presence of
+configuration only. It must **not** enable automatic Codex claims by itself.
+The legacy `factory_claim_next_manual_codex_handoff` RPC currently accepts
+every queued Codex run without checking an execution-mode discriminator.
+Automatic Codex dispatcher/worker therefore cannot safely coexist with
+the manual handoff consumer, even if the automatic worker is configured.
+New automatic claims are temporarily fail-closed; explicitly enabled manual
+handoffs are unchanged.
+
+Activation requires a follow-up **atomic Control Plane migration**: stamp
+`manual` or `automatic` in the same transaction that routes the run;
+enforce that stamp in both automatic and manual claim RPCs; assign the exact
+newly routed automatic run (not an unrelated queued run); and test both
+concurrent claims in isolated transactions. Do not enable automatic Codex
+until the migration is installed, CI and preview requirements satisfied and
+official login/ledger gates approved. Never workaround by automatically
+merging production.
+
 ## Independent Codex preclaim readiness and official access token fallback
 
 The protected `openai-codex` workflow now exposes a strict boolean route

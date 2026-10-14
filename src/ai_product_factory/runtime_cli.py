@@ -543,12 +543,9 @@ def allowed_dispatch_routes()->tuple[str,...]:
   enabled.append("direct")
  # Automatic Codex is intentionally ineligible without a separate WIF/token
  # preflight. Only the existing no-model manual handoff can be selected.
- if (os.getenv("FACTORY_CODEX_ENABLED")=="true"
-     and os.getenv("FACTORY_DISPATCH_CODEX_READY")=="true"):
-  # This boolean comes only from the protected openai-codex preflight job.
-  # Credentials stay in that job, never in the dispatcher.
-  enabled.append("codex")
- elif (os.getenv("FACTORY_CODEX_ENABLED")!="true"
+ # Until automatic/manual Codex claims are isolated in the Control Plane,
+ # a protected auth-ready boolean alone is NOT sufficient to claim work.
+ if (os.getenv("FACTORY_CODEX_ENABLED")!="true"
        and os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED")=="true"
        and os.getenv("FACTORY_DISPATCH_MANUAL_CODEX_READY")=="true"):
   enabled.append("codex")
@@ -572,7 +569,13 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    "human_gate_required":decision.execution.human_gate_required,
    "codex_level":decision.execution.codex.level})
   if decision.execution.route.value=="codex":
-   # Manual handoffs must not consume agent slots.
+   # Protect automatic Codex claims from the legacy manual-handoff RPC,
+   # which reads all queued Codex runs. Until a durable execution-mode
+   # discriminator is atomically enforced at both claim boundaries, the
+   # automatic route must not claim or schedule work.
+   if os.getenv("FACTORY_CODEX_ENABLED")=="true":
+    raise RuntimeError("automatic Codex dispatch requires atomic execution-mode isolation")
+   # Manual handoffs do not reserve agent slots.
    continue
   if decision.execution.route.value!="direct":
    raise RuntimeError("unsupported dispatch execution route")
