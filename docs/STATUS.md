@@ -1,3 +1,13 @@
+## 2026-10-14 20:12 UTC — reconciliacao pos-merge #807 (estado verificado)
+
+- `main`: `10016635fdd09a87e598220df1b7ecf733fd4d71`, merge humano #807 (issue #804 encerrada). CI de push `38629927087` = SUCCESS; sem Preview porque somente nucleo Python, testes e docs mudaram.
+- #806 mergeado em `2c604bec9a98d8f3d4c386fbc9897635da66586b`. Apos merge, comando de alertas via issue #804 levou ao workflow `38628800312`, resultado SUCCESS, abrindo automaticamente issue #809 `scheduler_pipeline` por ultimo run nativo #38619635786 FAILURE. Isso valida o observador, nao o scheduler end-to-end; alerta #809 permanece aberto ate duas execucoes nativas consecutivas bem-sucedidas.
+- Supabase Control Plane (read-only): 81 runs historicos; 10 tarefas `queued` (5 Factory, 5 CRM), nenhuma fila de execucao automaticamente autorizada so por essa contagem. O pager #807 protege falhas mais antigas que 200 registros, sem mudar semantica de recovered incidents.
+- PR #786: head `683073dbb792aa0a0a7ccf78c2bd8e3f3f6deaa2`, CI de validacao/acceptance/concurrency verde; migration `atomic_project_continuation` ja aplicada no Supabase, registrada sob versao `20261014192321` (filename no PR `20261014160500_atomic_project_continuation.sql`). Funcao RPC confirmada; **nao reaplicar** migration. O head atual nao possui Preview SHA-exato: Vercel registrou novo `Deployment rate limited - retry in 24 hours` 2026-10-14 19:42:26Z. PR fica aberto; release gate humano permanece.
+- #789: o Vercel publicou Preview READY e browser evidence no SHA antigo `a87cbb38ef2be845c51588c40c79554f098c328a`, nao no head atual `280ef04268d58ded4c399088bd44cdb5c1402fec`. Nao transferir evidence entre commits.
+- PRs abertos em 20:12Z: #786, #789, #795, #798 e Dependabot #808. Auditoria global #713 segue aberta, Codex/OpenAI WIF #240/#250 dependem de integracao externa. Nenhum merge automatico nem autorizacao de producao inferido destes status.
+- As notas historicas abaixo sao snapshots do instante em que foram escritas, **nao** refletem necessariamente o HEAD/CI/migrations correntes.
+
 ## 2026-10-14 — Preview #789 verified, release ordering and native scheduler alert (verified)
 - Main at start of this reconciliation: `0aaac12fa82cba3b30983d004e006340c20fe350` after the **docs-only** PR #788 merged. This is not a whole-product release claim.
 - PR #787 (`6c2f52b97c1b3abef6e98046b2e15c3d9a11dc5b`) fixes the manual Preview promotion eligibility bypass. `validate` passed; no Console app file changed, so Preview is not applicable. Its GitHub workflow takes effect in main only after a **human production merge**.
