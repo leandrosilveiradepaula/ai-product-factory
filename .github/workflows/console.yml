@@ -9,6 +9,10 @@ on:
       - "config/console_dependency_audit_exceptions.json"
       - "tests/test_dependency_audit.py"
   pull_request:
+    # Draft -> Ready has no push. Re-run unprivileged Console CI so the existing
+    # trusted workflow_run promoter can inspect exact candidate and cooldown.
+    # Preserve all original default pull_request activity types explicitly.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "apps/console/**"

@@ -1,3 +1,11 @@
+## 14/10/2026 — Draft to Ready desperta Preview sem novo gatilho privilegiado (#797)
+
+O Console CI nao reagia a ready_for_review: tirar Draft nao cria push e nao ativa o workflow de validacao por padrao. O gatilho de pull_request read-only agora enumera opened, synchronize, reopened e ready_for_review, mantendo os mesmos filtros de path/branch e permissions: contents: read. A mesma validacao de typecheck/build volta a rodar, e seu evento workflow_run de sucesso pode acordar o promotor confiavel ja existente em main.
+
+O promotor ainda verifica PR open/nao Draft, mesma origem/base, SHA exato, checks verdes, mudanca apps/console/**, cooldown de rate limit e limite de budget antes de atualizar ref ou disparar navegador. Nao foi adicionado pull_request_target, issue_comment, cron, novo token de escrita, permissao de Console ou auto-merge. Gatilhos privilegiados existentes permanecem intactos.
+
+Este patch nao confirma Preview do PR #811 ou #789, nem contorna a quota Vercel; transicao para Ready deve ocorrer apenas quando a disponibilidade do provedor estiver adequada. PR #786 que ja estava Ready antes do patch nao gera evento retroativo. O merge em main continua gate humano.
+
 ## 14/10/2026 — Alertas desacoplados do schedule-probe (Falha 38619635786; #809)
 
 **Evidencia de producao:** workflow nativo agendado #38619635786 observou filas e gerou heartbeat, mas `Evaluate operational alerts in the shared scheduler runner` falhou com `RuntimeError: cost usage inventory has invalid or duplicate ID`. A falha no step final invalidou o job `schedule-probe` e fez todas as lanes de trabalho dependentes dele serem puladas, mesmo com a sondagem de filas bem-sucedida. A validação do ledger foi corrigida depois, mas o acoplamento continuava perigoso para qualquer futura falha de observabilidade.
