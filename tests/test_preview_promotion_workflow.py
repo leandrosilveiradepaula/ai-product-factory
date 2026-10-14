@@ -88,5 +88,63 @@ class PreviewPromotionWorkflowTests(unittest.TestCase):
         self.assertNotIn('createRef({...context.repo, ref: "refs/" + ref, sha})', workflow)
 
 
+    def test_revalidates_after_ci_poll_and_immediately_before_ref_write(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        verify=workflow.split("      - name: Verify exact PR candidate",1)[1].split("      - name: Block fresh Preview attempts",1)[0]
+        promote=workflow.split("      - name: Create or update one preview ref",1)[1].split("      - name: Ensure exact Preview browser evidence",1)[0]
+        self.assertLess(verify.index('if (!green)'),verify.index('const {data: fresh}'))
+        self.assertLess(verify.index('const {data: fresh}'),verify.index('getRef({...context.repo, ref}') )
+        self.assertIn('fresh.draft !== false',verify)
+        self.assertIn('fresh.head?.sha !== sha',verify)
+        self.assertIn('fresh.base?.ref !== "main"',verify)
+        self.assertIn('promotion_action", "stale"',verify)
+        self.assertIn("python -m scripts.preview_provider_cooldown",workflow)
+        self.assertIn("python -m scripts.preview_budget_guard",workflow)
+        self.assertIn('const {data: pr} = await github.rest.pulls.get(',promote)
+        self.assertIn('pr.state !== "open" || pr.draft !== false',promote)
+        self.assertIn('pr.base?.ref !== "main"',promote)
+        self.assertIn('pr.base?.repo?.full_name !== fullRepo',promote)
+        self.assertIn('pr.head?.repo?.full_name !== fullRepo',promote)
+        self.assertIn('pr.head?.sha !== sha',promote)
+        self.assertLess(promote.index('const {data: pr}'),promote.index('github.rest.git.updateRef'))
+        self.assertLess(promote.index('const {data: checks}'),promote.index('github.rest.git.updateRef'))
+        self.assertIn('c.head_sha === sha',promote)
+        self.assertIn('skipped_stale',promote)
+        self.assertIn('skipped_checks',promote)
+        self.assertIn('skipped_no_console',promote)
+        self.assertIn('github.rest.pulls.listFiles',promote)
+        self.assertIn('startsWith("apps/console/")',promote)
+
+    def test_browser_dispatch_is_strictly_after_confirmed_promotion_and_ref(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        browser=workflow.split("      - name: Ensure exact Preview browser evidence",1)[1].split("      - name: Record durable Preview promotion summary",1)[0]
+        self.assertIn("steps.verify.outputs.promotion_action == 'reused'",browser)
+        self.assertIn("steps.promote.outputs.promotion_action == 'updated'",browser)
+        self.assertIn("steps.promote.outputs.promotion_action == 'created_then_updated'",browser)
+        self.assertNotIn("promotion_action != 'stale'",browser)
+        self.assertIn('pr.draft !== false',browser)
+        self.assertIn('pr.head?.sha !== sha',browser)
+        self.assertIn('previewRef.object.sha !== sha',browser)
+        self.assertIn('skipped_ref_mismatch',browser)
+        self.assertIn('skipped_stale',browser)
+        self.assertLess(browser.index('github.rest.git.getRef'),browser.index('actions.createWorkflowDispatch'))
+        self.assertLess(browser.index('const {data: pr}'),browser.index('actions.createWorkflowDispatch'))
+
+    def test_privileged_event_and_permissions_not_expanded(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        trigger=workflow.split("\non:\n",1)[1].split("\npermissions:\n",1)[0]
+        self.assertIn("workflow_dispatch:",trigger)
+        self.assertIn("workflow_run:",trigger)
+        self.assertNotIn("pull_request_target:",trigger)
+        self.assertNotIn("ready_for_review",trigger)
+        self.assertNotIn("issue_comment:",trigger)
+        self.assertNotIn("schedule:",trigger)
+        self.assertIn("    checks: read",workflow) if "    checks: read" in workflow else self.assertIn("  checks: read",workflow)
+        self.assertIn("  pull-requests: read",workflow)
+        self.assertIn("  actions: write",workflow)
+        self.assertIn("  contents: write",workflow)
+
+
+
 if __name__ == "__main__":
     unittest.main()

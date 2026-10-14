@@ -1,3 +1,10 @@
+## 14/10/2026 — Console: relatório operacional completo ou falha explícita (#713)
+
+Após a paginação de runs no backend (#807), o Console ainda consultava apenas 200 runs e 1.000 eventos de uso; quando o ledger falhava, uma resposta vazia podia ser exibida como custo zero. O Console agora pagina ambas as tabelas com ordenação verificada por created_at e id, limites de 200 por página e 4.000 por fonte; IDs de runs são UUIDs e IDs de uso são BIGINTs. A leitura detecta duplicidade, respostas truncadas, quebra de ordem, falha HTTP e valores inválidos, e falha fechada em vez de declarar saúde operacional.
+
+O status de runs falhos é correlacionado com a tarefa atual em lotes de 100, e dead-letters já recuperadas não voltam a contar como incidentes ativos. Custo de modelo pago sem valor registrado permanece explicitamente desconhecido. Nenhuma dessas contagens concede autorização de dispatch ou atesta product_ready.
+
+Offset REST não é snapshot transacional durante concorrência. Falhas detectáveis de deslocamento são bloqueadas; um próximo passo opcional seria RPC de inventário transacional após revisão de schema. Regressões funcionais executam a implementação TypeScript real com Node, compilada localmente pelo TypeScript instalado no npm ci do Console: >200 runs, >1000 custos, BIGINT, HTTP 503, páginas duplicadas/desordenadas, valor desconhecido, status recuperado e limite de 4000. Esta alteração afeta apps/console/** e precisa de Preview com SHA exato antes de merge do #811. Não houve Vercel deployment nem mutation de banco.
 ## Auditoria autenticada de viewport 390px: configuracao (14/10/2026)
 
 O run de produção GitHub Actions `38638289607` falhou no Playwright durante a verificação de `/configuration`: `document.documentElement.scrollWidth=458` com `innerWidth=390`. O CI/build #808 foi verde, mas não representa validação visual. Este candidato adiciona classe de grid `configOverviewGrid`, tracks `minmax(0,...)`, wrapping de dados/repositórios longos e empilhamento mobile para cards/configRows/compactRows. O teste de navegador **continua fail-closed**: ao detectar largura excessiva, agora registra tag/classe/width/right dos elementos responsáveis, sem texto, credenciais ou valores de campos. Não esconde overflow via `body{overflow-x:hidden}`.
@@ -11,6 +18,30 @@ Este candidato combina legibilidade responsiva e avaliação rigorosa da prontid
 ## Product-readiness evaluation and current HEAD distinction (14/10/2026)
 Audit #713 found that the Console previously treated an evaluation result JSON's own `ready:true` and `status:passed` plus a self-consistent `assessed_commit == baseline_ref` as enough to display **Produto pronto**. This could misrepresent a failed evaluation row, populated blockers, missing coverage, malformed domains, or stale project HEAD. The Console now checks the evaluation row status, empty blockers, exact 40-char SHA and all six mandatory domains with explicit verification state, coverage and evidence before labeling the **evaluation** approved. It no longer says the product is ready globally from this record alone: an audit at SHA N does not prove that the repository's current HEAD is still N or that release gates/Preview/CI are satisfied.
 This is a defensive presentation and read-boundary change, not proof of live E2E readiness. A future authoritative current-head check and full-product release assessment remain part of audit #713; no GitHub credentials are placed in browser code. The latest observed production CRM evaluation was `failed/not_ready`; the patch does not turn it into passing. This PR changes `apps/console/**`, so browser Preview of the exact final SHA is required and remains blocked by the provider's observed deployment rate limit.
+
+## 14/10/2026 — Draft to Ready desperta Preview sem novo gatilho privilegiado (#797)
+
+O Console CI nao reagia a ready_for_review: tirar Draft nao cria push e nao ativa o workflow de validacao por padrao. O gatilho de pull_request read-only agora enumera opened, synchronize, reopened e ready_for_review, mantendo os mesmos filtros de path/branch e permissions: contents: read. A mesma validacao de typecheck/build volta a rodar, e seu evento workflow_run de sucesso pode acordar o promotor confiavel ja existente em main.
+
+O promotor ainda verifica PR open/nao Draft, mesma origem/base, SHA exato, checks verdes, mudanca apps/console/**, cooldown de rate limit e limite de budget antes de atualizar ref ou disparar navegador. Nao foi adicionado pull_request_target, issue_comment, cron, novo token de escrita, permissao de Console ou auto-merge. Gatilhos privilegiados existentes permanecem intactos.
+
+Este patch nao confirma Preview do PR #811 ou #789, nem contorna a quota Vercel; transicao para Ready deve ocorrer apenas quando a disponibilidade do provedor estiver adequada. PR #786 que ja estava Ready antes do patch nao gera evento retroativo. O merge em main continua gate humano.
+
+## 14/10/2026 — Alertas desacoplados do schedule-probe (Falha 38619635786; #809)
+
+**Evidencia de producao:** workflow nativo agendado #38619635786 observou filas e gerou heartbeat, mas `Evaluate operational alerts in the shared scheduler runner` falhou com `RuntimeError: cost usage inventory has invalid or duplicate ID`. A falha no step final invalidou o job `schedule-probe` e fez todas as lanes de trabalho dependentes dele serem puladas, mesmo com a sondagem de filas bem-sucedida. A validação do ledger foi corrigida depois, mas o acoplamento continuava perigoso para qualquer futura falha de observabilidade.
+
+Correção: mover a reconciliação de alertas do último step de `schedule-probe` para o job `alerts` **já existente**, usando `always()` para `schedule` e preservando o `workflow_dispatch/run_alerts=true` com check de probe. Os processos de recuperação, heartbeat e roteamento seguem sob `schedule-probe`, com as mesmas restrições. Uma eventual falha de `alerts` **continua vermelha e visível no workflow nativo**, mas não cancela `product-stage`, `dispatch`, `ci-followup` e demais lanes com `needs.schedule-probe.result == success`. O job de alertas não recebe `FACTORY_GITHUB_TOKEN` cross-repo; o probe perde escopo `issues: write` porque só o job de alertas deve escrever Issues. Nenhum cron, trigger, ambiente, modelo pago, migration, Preview ou autorização de produção é adicionado.
+
+O alerta #809 segue aberto até **duas execuções nativas agendadas completas e com sucesso**, não apenas alert-only ou backups. Esse patch evita bloqueio transversal, não afirma que o GitHub tenha voltado a emitir cron nem substitui evidência real de recuperação pós-merge.
+
+## 2026-10-14 — Fechamento TOCTOU do Preview (issue #797, patch sem ampliar acesso)
+
+O pipeline `.github/workflows/promote-preview-candidate.yml` permanece exclusivamente disparável por `workflow_run: Console validation completed` e `workflow_dispatch`, operando apenas com código fixado da main. Nenhum novo evento `pull_request_target`, `ready_for_review`, concessão de token, terceiro servidor ou merge automático é habilitado neste patch.
+
+Após a espera pelos três checks, o verificador consulta novamente o PR e impede `reused` se ele deixou de estar aberto, não-draft, base `main`, same-repo ou SHA exato. Após cooldown e budget, o **próprio passo de escrita** consulta uma nova cópia do PR, lista mudanças `apps/console/**` e exige `test`, `factory-acceptance` e `validate` com status `completed/success` no candidato antes de `git.updateRef`. A etapa de navegador só funciona após uma ação `reused|updated|created_then_updated`, revalidando o PR e consultando `preview/pr-N` para confirmar SHA idêntico antes de disparar verificação. Mudanças concorrentes levam a `skipped_stale`, `skipped_no_console`, `skipped_checks` ou `skipped_ref_mismatch`; nunca ao falso sucesso do Preview. A summary durável do Actions registra a ação e o navegador independentemente.
+
+A integração ao gatilho `ready_for_review` é trabalho **separado** e depende de revisão das permissões do evento privilegiado: não foi ativado aqui. Run antigo, CI verde e Preview de SHA anterior continuam insuficientes para autorizar release. O PR de código de workflow não muda `apps/console/**`; Preview da Factory não é aplicável a este patch. Merge que publica produção continua humano.
 
 ## 14/10/2026 — Dependabot e CI do Console sem ampliar privilégios (#808)
 

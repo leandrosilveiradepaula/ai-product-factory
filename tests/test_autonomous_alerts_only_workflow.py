@@ -30,9 +30,26 @@ class TestAlertsOnlyWorkflow(unittest.TestCase):
         self.assertIn("inputs.run_alerts != true",probe)
         self.assertIn("Probe durable work queues without side effects",probe)
         self.assertIn("--mode recovery",probe)
-    def test_scheduled_alerts_preserved(self):
-        self.assertIn("if: ${{ github.event_name == 'schedule' }}",body(self.text,"schedule-probe"))
-        self.assertIn("--mode alerts",body(self.text,"schedule-probe"))
+    def test_scheduled_alerts_are_isolated_from_work_probe(self):
+        probe=body(self.text,"schedule-probe")
+        alerts=body(self.text,"alerts")
+        self.assertNotIn("--mode alerts",probe)
+        self.assertNotIn("issues: write",probe)
+        self.assertIn("github.event_name == 'schedule'",alerts)
+        self.assertIn("--mode alerts",alerts)
+        self.assertIn("always()",alerts)
+        self.assertIn("needs: schedule-probe",alerts)
+        self.assertNotIn("FACTORY_GITHUB_TOKEN",alerts)
+        self.assertIn("issues: write",alerts)
+        self.assertIn("needs.schedule-probe.result == 'success'",alerts)
+        self.assertIn("inputs.run_alerts == true",alerts)
+        self.assertNotIn("continue-on-error: true",alerts)
+        # The optional alert collector can fail, while work scheduling is
+        # still gated by the successful durable probe alone.
+        for name in ("product-stage","dispatch","preview","release-followup"):
+            worker=body(self.text,name)
+            self.assertIn("needs.schedule-probe.result == 'success'",worker)
+            self.assertNotIn("needs.alerts.",worker)
 
 if __name__=="__main__":
     unittest.main()

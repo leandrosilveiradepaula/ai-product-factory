@@ -1,4 +1,5 @@
-import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
+import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
+import {readCompleteOperationalRows,summarizeOperationalHealth} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
@@ -441,26 +442,42 @@ export async function getProjectOperations(projectId:string):Promise<ProjectOper
 
 export type OperationsHealth={expiredLeases:number;deadLetterRuns:number;failedRuns:number;queuedRuns:number;knownCost:number;unknownCostEvents:number;incidents:{id:string;status:string;route:string|null;attempts:number;error:string|null;leaseExpiresAt:string|null;createdAt:string}[]};
 export async function getOperationsHealth():Promise<OperationsHealth>{
- await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{expiredLeases:0,deadLetterRuns:0,failedRuns:0,queuedRuns:0,knownCost:0,unknownCostEvents:0,incidents:[]};
- const [runsResponse,usageResponse]=await Promise.all([
-  fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200`,{headers:cfg.headers,cache:"no-store"}),
-  fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=tool_family,estimated_cost,created_at&order=created_at.desc&limit=1000`,{headers:cfg.headers,cache:"no-store"})
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg)throw new Error("Control Plane indisponível; não é seguro mostrar indicadores zerados.");
+ const [runs,usage]=await Promise.all([
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_runs",
+   select:"id,task_id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at",idKind:"uuid"}),
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_tool_usage",
+   select:"id,tool_family,estimated_cost,created_at",idKind:"bigint"})
  ]);
- if(!runsResponse.ok)throw new Error("Unable to load operational health");
- const runs=await runsResponse.json();const usage=usageResponse.ok?await usageResponse.json():[];const now=Date.now();
- const failedTaskIds=[...new Set(runs.filter((x:any)=>x.status==="failed"&&x.task_id).map((x:any)=>String(x.task_id)))];
- const failedTaskStatus=new Map<string,string>();
- if(failedTaskIds.length){
-  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,status&id=in.(${failedTaskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
-  if(tasksResponse.ok){const tasks=await tasksResponse.json();tasks.forEach((x:any)=>failedTaskStatus.set(String(x.id),String(x.status||"")));}
+ const failedIds=[...new Set(runs.filter(x=>x.status==="failed").map(x=>{
+  const id=x.task_id;
+  if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+   throw new Error("Run falho sem task_id confiável.");
+  return id;
+ }))];
+ const failedTasks=new Map<string,string>();
+ for(let offset=0;offset<failedIds.length;offset+=100){
+  const chunk=failedIds.slice(offset,offset+100);
+  const response=await fetch(
+   cfg.url+"/rest/v1/factory_tasks?select=id,status&id=in.("+chunk.join(",")+")&limit=101",
+   {headers:cfg.headers,cache:"no-store"});
+  if(!response.ok)throw new Error("Falha ao consultar recuperação de tarefas.");
+  const values:unknown=await response.json();
+  if(!Array.isArray(values)||values.length!==chunk.length)
+   throw new Error("Inventário de recuperação incompleto.");
+  const allowed=new Set(chunk);
+  for(const item of values){
+   if(!item||typeof item!=="object"||Array.isArray(item))throw new Error("Tarefa recuperada inválida.");
+   const row=item as Record<string,unknown>;
+   if(typeof row.id!=="string"||!allowed.has(row.id)||failedTasks.has(row.id)||typeof row.status!=="string"||!row.status)
+    throw new Error("Inventário de recuperação inconsistente.");
+   failedTasks.set(row.id,row.status);
+  }
  }
- const expired=(x:any)=>x.lease_expires_at&&Date.parse(x.lease_expires_at)<now&&["running","implementing"].includes(x.status);
- const dead=(x:any)=>x.status==="failed"&&String(x.last_error||"").toLowerCase().includes("maximum attempts");
- const actionableFailed=(x:any)=>x.status==="failed"&&failedTaskStatus.get(String(x.task_id||""))==="failed";
- const incidents=runs.filter((x:any)=>expired(x)||dead(x)||actionableFailed(x)).map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
- const paidFamilies=new Set(["model","openai","llm","paid_provider"]);return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter(actionableFailed).length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,incidents};
+ return summarizeOperationalHealth(runs,usage,failedTasks,Date.now());
 }
-
 
 export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string};
 export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
