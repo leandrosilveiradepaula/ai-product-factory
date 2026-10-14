@@ -864,6 +864,40 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode alerts
 
+  # Owner-controlled operator recovery when scheduled wakes are delayed.
+  # Exact issue-comment command; never activates scheduler/recovery/model lanes.
+  alerts-owner-comment:
+    if: ${{ github.event_name == 'issue_comment' && github.event.comment.body == '/factory-alerts' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    env:
+      PYTHONPATH: src
+      FACTORY_GITHUB_ALERTS_ENABLED: "true"
+      FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
+      FACTORY_MODEL_BUDGET_USD: "4.00"
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Require protected Control Plane access
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || { [ -z "${SUPABASE_SECRET_KEY:-}" ] && [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; }; then
+            echo "::error::Protected Control Plane connection is unavailable."
+            exit 1
+          fi
+      - name: Reconcile operational alerts only
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode alerts
+
   codex-route-preflight:
     # Independent from Primary; run only when there is actual dispatch work.
     needs: schedule-probe
