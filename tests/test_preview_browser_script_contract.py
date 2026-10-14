@@ -53,6 +53,24 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertNotIn("candidate_sha",workflow)
 
 
+    def test_browser_captures_http_failures_without_ignoring_errors(self):
+        script=(ROOT/"scripts/verify_preview.mjs").read_text()
+        self.assertIn('page.on("response"',script)
+        self.assertIn('response.status() >= 400',script)
+        self.assertIn('failedResources.length < 12',script)
+        self.assertIn('url.origin !== previewOrigin',script)
+        self.assertIn('url.pathname.slice(0, 160)',script)
+        self.assertIn('const resourceDetails = failedResources.map',script)
+        self.assertIn('if (errors.length || failedResources.length)',script)
+        self.assertIn('"console_clean"',script)
+
+    def test_console_registers_application_icon_to_avoid_missing_favicon(self):
+        icon=ROOT/"apps/console/app/icon.svg"
+        self.assertTrue(icon.is_file())
+        content=icon.read_text()
+        self.assertIn("<svg",content)
+        self.assertIn('viewBox="0 0 64 64"',content)
+
     def test_trusted_browser_verifier_uses_preinstalled_system_chrome(self):
         workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
         script=(ROOT/"scripts/verify_preview.mjs").read_text()
