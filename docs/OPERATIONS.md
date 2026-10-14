@@ -1,3 +1,10 @@
+## 14/10/2026 — Console: filhos de pais concluídos não somem da fila (#713)
+
+A leitura read-only do Control Plane confirmou 10 tarefas em status queued, sendo 5 da Factory e 5 do CRM, todas descendentes de tarefas-pai completed; nenhuma possuía run ativo. A página de fila descartava esses descendentes por status do pai e podia exibir fila vazia. Essa apresentação não comprova que os filhos foram implementados e escondia um diagnóstico relevante.
+
+O Console agora mantém o inventário completo limitado a 100 tarefas + sentinela de paginação. Ele consulta pais e projetos de forma obrigatória (erro HTTP ou resposta incompleta falha fechado), distingue itens operacionais de tarefas que exigem reconciliação, informa o status do pai e nunca usa essa classificação como autorização de execução. Somente após reconciliação de Work Units, dependências, run e gates um caminho de retomada pode ser decidido; **este patch não reativa trabalhos nem cria migrations**. Os contadores de despacho excluem os registros apenas diagnósticos, mas eles permanecem visíveis em seção própria.
+
+Alteração no Console requer CI/build e Preview/browser SHA-exato; não comprova automaticamente a ausência de overflow mobile. O PR #811 permanece draft e produção é gate humano.
 ## 14/10/2026 — Console: relatório operacional completo ou falha explícita (#713)
 
 Após a paginação de runs no backend (#807), o Console ainda consultava apenas 200 runs e 1.000 eventos de uso; quando o ledger falhava, uma resposta vazia podia ser exibida como custo zero. O Console agora pagina ambas as tabelas com ordenação verificada por created_at e id, limites de 200 por página e 4.000 por fonte; IDs de runs são UUIDs e IDs de uso são BIGINTs. A leitura detecta duplicidade, respostas truncadas, quebra de ordem, falha HTTP e valores inválidos, e falha fechada em vez de declarar saúde operacional.
