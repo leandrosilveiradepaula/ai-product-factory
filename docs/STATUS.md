@@ -1,3 +1,9 @@
+## 2026-10-14 - False stale-preview alert from historical CRM audit runs (candidate)
+- Factory main 33123604 / Supabase reconciled: two aged `preview_ready` records for CRM exist with completed tasks and `source=dogfood_manual_audit`, not delivery Preview runs. Issue #754 arose because OperationalHealth counted these audit rows despite the Preview queue filtering them out.
+- Health now uses the same delivery provenance predicate, scans a separate oldest-first `preview_ready` status partition, refuses >200 rows and invalid delivery timestamps, and leaves genuine overdue deliveries actionable.
+- Regression covers real audit provenance, old/fresh deliveries, newest-history starvation, overflow and missing timestamps. Read-only; no synthetic work, Preview, migration, model spend or historical run mutation.
+- Issue #754 is not closed by this PR. Let the existing alerts observer verify the Control Plane after human merge and reconcile the marker safely.
+
 ## 2026-10-14 - Cross-agent hierarchical scope claim race (candidate)
 - #765 merged at 1fb5fde8 with both validate and PostgreSQL claims workflows green after merge. No active runs, Work Units or pending human gates in the Control Plane. Previous Codex migrations are recorded.
 - Inspection of the versioned and installed allocator found a cross-agent race: agent row locks serialize a single agent, but two agents can independently observe zero scope conflicts for overlapping project paths and both insert before either commits. A unique constraint on an exact key cannot cover hierarchical path overlap.

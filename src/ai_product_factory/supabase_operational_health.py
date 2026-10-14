@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from .operational_alerts import OperationalHealth
 from .cost_observability import requires_cost_estimate
+from .preview_eligibility import is_delivery_preview_run
 from .supabase_server import resolve_supabase_server_config
 
 
@@ -41,8 +42,26 @@ class SupabaseOperationalHealthReader:
             encoded=",".join(task_ids)
             tasks=self._get(f"factory_tasks?select=id,status&id=in.({encoded})")
             task_status_by_id={str(row.get("id")):str(row.get("status") or "") for row in tasks}
-        usage=self._get("factory_tool_usage?select=tool_family,estimated_cost&order=created_at.desc&limit=1000")
+        # Delivery eligibility must match the Preview queue. Historical manual
+        # audits stay visible in the Control Plane, but are not delivery work.
+        preview_runs=self._get(
+            "factory_runs?select=id,created_at,metadata"
+            "&status=eq.preview_ready&order=created_at.asc&limit=201"
+        )
+        if not isinstance(preview_runs,list) or len(preview_runs)>200:
+            raise RuntimeError("preview health scan exceeded its verified 200-run boundary")
         stale_preview=0
+        for row in preview_runs:
+            if not isinstance(row,dict):
+                raise RuntimeError("malformed preview health row")
+            if not is_delivery_preview_run(row):
+                continue
+            created=_parse_time(row.get("created_at"))
+            if created is None or created.tzinfo is None:
+                raise RuntimeError("delivery preview run has no valid creation time")
+            if now-created >= timedelta(hours=24):
+                stale_preview+=1
+        usage=self._get("factory_tool_usage?select=tool_family,estimated_cost&order=created_at.desc&limit=1000")
         expired=0
         dead=0
         failed=0
@@ -51,10 +70,6 @@ class SupabaseOperationalHealthReader:
             lease=_parse_time(row.get("lease_expires_at"))
             if lease is not None and lease < now and status in {"running","implementing","preparing_codex_manual"}:
                 expired+=1
-            if status == "preview_ready":
-                created=_parse_time(row.get("created_at"))
-                if created is not None and created.tzinfo is not None and now-created>=timedelta(hours=24):
-                    stale_preview+=1
             if status == "failed":
                 if task_status_by_id.get(str(row.get("task_id") or ""))=="failed":
                     failed+=1
