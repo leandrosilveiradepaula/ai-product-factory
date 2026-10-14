@@ -1,3 +1,8 @@
+## 2026-10-14 - Codex automatic claim agent identity/capabilities (candidate)
+- Reconciled main `eb043896`, green post-merge CI, zero active Work Units, runs, assignments and gates. Supabase migration `codex_atomic_mode_isolation` was applied and audited: seven route RPC signatures/ACLs validated, old dispatch revoked from service_role, queue signals all false.
+- Follow-up hardens automatic Codex at three SQL boundaries: scheduler requires both `codex` and `github_write` and checks the allocator's exact agent; claimer re-checks agent tools, task capabilities, active project, and matching agent key under row locks; work matrix only advertises eligible Codex assignments. Client guards reject unexpected run/agent IDs.
+- Migration `20261014032600_codex_claim_agent_hardening.sql` is **not applied**, pending human PR merge. SQL contracts and mocked client tests do not claim true concurrency validation. No paid calls, fake production tasks, Preview deployments or automatic merges.
+
 ## 2026-10-14 - Mode-aware Codex scheduling candidate
 - #761 merged; candidate adds atomic mode stamp, separates competing manual/automatic claims, schedules automatic Codex by exact run and independently guards cost. Database migration unapplied; no paid call, credential activation or production release performed.
 

@@ -55,6 +55,12 @@ class SupabaseCodexRunQueue:
         data = json.loads(raw)
         if data is None:
             return None
+        if not isinstance(data, dict):
+            raise RuntimeError('Codex claim returned a non-object payload')
+        if run_id is not None and str(data.get('run_id')) != run_id:
+            raise RuntimeError('Codex claim returned a different run ID')
+        if agent_key is not None and data.get('agent_key') != agent_key:
+            raise RuntimeError('Codex claim returned a different assigned agent')
         return CodexExecutionItem(
             run_id=data["run_id"],
             task_id=data["task_id"],
