@@ -25,7 +25,9 @@ class StubProbe(SupabaseScheduleProbe):
             "factory_tasks": list(tasks or []),
             "factory_change_set_work_units": list(pending_units or []),
             "factory_change_sets": list(change_sets or []),
-            "factory_specialist_lane_jobs": list(lanes or []),
+            "factory_specialist_lane_jobs": [
+                {**row, "status": row.get("status", "queued")} for row in (lanes or [])
+            ],
             "factory_project_github_access": list(github_access or []),
             "factory_deployments": list(deployments or []),
         }
@@ -68,6 +70,18 @@ class StubProbe(SupabaseScheduleProbe):
                     r.get("status")=="queued" and r.get("execution_route")=="codex"
                     and task_status.get(r.get("task_id"))=="queued_execution"
                 ) for r in runs),
+            "integration_work":any(
+                cs.get("status") in {"building","integrating"}
+                for cs in self.rows["factory_change_sets"]),
+            "ci_work":any(r.get("status")=="ci_pending" for r in runs),
+            "release_work":any(r.get("status")=="awaiting_release" for r in runs),
+            **{
+                f"specialist_{role}_work":any(
+                    job.get("status")=="queued" and job.get("role")==role
+                    for job in self.rows["factory_specialist_lane_jobs"]
+                )
+                for role in ("security","qa","operations")
+            },
         }
 
     def _portfolio_dispatch_candidates(self):
@@ -102,6 +116,28 @@ class ScheduleProbeTests(unittest.TestCase):
                 )
             ],
         )
+
+    def test_large_queues_still_wake_downstream_lanes(self):
+        class Capped(StubProbe):
+            def _get(self,path):return super()._get(path)[:200]
+        old=[{"id":str(i),"status":"ci_pending"} for i in range(410)]
+        probe=Capped(runs=old+[{"id":"new-release","status":"awaiting_release"}],
+                     change_sets=[{"id":"s","status":"integrating"}],
+                     lanes=[{"role":"security"},{"role":"qa"},{"role":"operations"}])
+        out=probe.probe()
+        self.assertTrue(out["ci_work"])
+        self.assertTrue(out["integration_work"])
+        self.assertTrue(out["release_work"])
+        self.assertEqual(out["specialist_roles"],["operations","qa","security"])
+
+    def test_terminal_specialist_jobs_do_not_wake(self):
+        probe=StubProbe(lanes=[
+            {"role":"security","status":"completed"},
+            {"role":"qa","status":"cancelled"},
+            {"role":"operations","status":"running"}])
+        out=probe.probe()
+        self.assertFalse(out["specialist_work"])
+        self.assertEqual(out["specialist_roles"],[])
 
     def test_empty_control_plane_reports_no_work_and_records_durable_telemetry(self):
         probe = StubProbe()
@@ -283,8 +319,8 @@ class ScheduleProbeTests(unittest.TestCase):
     def test_status_change_between_queries_keeps_only_latest_observation(self):
         class RacingProbe(StubProbe):
             def _execution_signals(self):
-                return {"product_work":False, "routed_execution_work":True,
-                        "codex_manual_work":False}
+                return {**super()._execution_signals(), "product_work":False,
+                        "routed_execution_work":True, "codex_manual_work":False}
             def _get(self, path):
                 if path.startswith("factory_runs?") and "&status=eq.created" in path:
                     return [{"id": "r", "task_id": "t", "status": "created"}]
@@ -426,7 +462,7 @@ class ScheduleProbeTests(unittest.TestCase):
             ],
             pending_units=[{"id": "u1"}],
             portfolio_candidates=[{"project_id":"p1","project_key":"demo"}],
-            change_sets=[{"id": "c1"}],
+            change_sets=[{"id": "c1", "status": "building"}],
             lanes=[{"role": "security"}, {"role": "qa"}],
         ).probe()
         self.assertTrue(out["dispatch_work"])
@@ -477,7 +513,7 @@ class ScheduleProbeTests(unittest.TestCase):
                 "tasks": [{"id": "t1", "status": "queued"}],
             },
             "dispatch": {"pending_units": [{"id": "unit-1"}], "portfolio_candidates":[{"project_id":"p1","project_key":"demo"}]},
-            "integration": {"change_sets": [{"id": "change-set-1"}]},
+            "integration": {"change_sets": [{"id": "change-set-1", "status": "building"}]},
             "ci": {"runs": [{"id": "r1", "status": "ci_pending"}]},
             "specialist_security": {"lanes": [{"role": "security"}]},
             "specialist_qa": {"lanes": [{"role": "qa"}]},

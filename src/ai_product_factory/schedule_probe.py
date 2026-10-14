@@ -80,7 +80,11 @@ class SupabaseScheduleProbe:
                 payload = json.loads(response.read().decode())
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
             raise RuntimeError("authoritative queue signal unavailable") from exc
-        names = ("product_work", "routed_execution_work", "codex_manual_work")
+        names = (
+            "product_work", "routed_execution_work", "codex_manual_work",
+            "integration_work", "ci_work", "release_work",
+            "specialist_security_work", "specialist_qa_work", "specialist_operations_work",
+        )
         if not isinstance(payload, dict) or any(type(payload.get(k)) is not bool for k in names):
             raise RuntimeError("invalid authoritative queue signal response")
         return {key: payload[key] for key in names}
@@ -205,17 +209,12 @@ class SupabaseScheduleProbe:
         # survive portfolio pause/incident/capacity rules before waking dispatch.
         # Already routed queued execution continues independently.
         dispatch_work = (pending_change_set_work and bool(portfolio_candidates)) or assigned_execution_work
-        integration_work = bool(self._get(
-            "factory_change_sets?select=id&status=in.(building,integrating)&limit=1"
-        ))
-        lanes = self._get(
-            "factory_specialist_lane_jobs?select=role&status=eq.queued&limit=20"
-        )
-        specialist_roles = sorted({
-            str(row.get("role") or "")
-            for row in lanes
-            if str(row.get("role") or "") in {"security", "qa", "operations"}
-        })
+        # Read-only SQL EXISTS, never capped REST samples, owns wake decisions.
+        integration_work = signals["integration_work"]
+        specialist_roles = [
+            role for role in ("operations", "qa", "security")
+            if signals[f"specialist_{role}_work"]
+        ]
 
         github_access_work = bool(self._get_optional(
             "factory_project_github_access?select=project_id"
@@ -282,14 +281,14 @@ class SupabaseScheduleProbe:
             "product_work": product_work,
             "dispatch_work": dispatch_work,
             "integration_work": integration_work,
-            "ci_work": any(str(run.get("status")) == "ci_pending" for run in runs),
+            "ci_work": signals["ci_work"],
             "specialist_work": bool(specialist_roles),
             "specialist_roles": specialist_roles,
             "specialist_security_work": "security" in specialist_roles,
             "specialist_qa_work": "qa" in specialist_roles,
             "specialist_operations_work": "operations" in specialist_roles,
             "preview_work": any(str(run.get("id") or "") not in blocked_preview_runs for run in deliverable_previews),
-            "release_work": any(str(run.get("status")) == "awaiting_release" for run in runs),
+            "release_work": signals["release_work"],
             "codex_manual_work": codex_manual_work,
         }
         out["work_detected"] = any(
