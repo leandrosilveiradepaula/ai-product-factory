@@ -20,6 +20,7 @@ permissions:
   contents: write
   pull-requests: read
   checks: read
+  statuses: read
 
 concurrency:
   group: vercel-preview-candidate-${{ inputs.pr_number || github.event.workflow_run.head_branch || github.run_id }}
@@ -177,6 +178,12 @@ jobs:
               if (error.status !== 404) throw error;
             }
             core.setOutput("needs_promotion", "true");
+
+      - name: Block fresh Preview attempts on observed Vercel rate limit
+        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m scripts.preview_provider_cooldown
 
       - name: Observe recent Preview promotions
         if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
