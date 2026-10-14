@@ -54,7 +54,7 @@ def function_definition(file: Path, name: str) -> str:
 
 def registry_function(name: str) -> str:
     sql = REGISTRY.read_text()
-    pattern = r"create or replace function public\\." + re.escape(name) + r"\\(.*?end;\\$\\$;"
+    pattern = r"create or replace function public\." + re.escape(name) + r"\(.*?end;\$\$;"
     match = re.search(pattern, sql, flags=re.DOTALL | re.IGNORECASE)
     if match is None:
         raise AssertionError(f"original allocator not found: {name}")
