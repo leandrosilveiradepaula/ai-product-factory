@@ -27,6 +27,7 @@ from .cost_policy import require_cost_ceiling
 from .integration_readiness import github_alerts_readiness,github_vercel_preview_readiness,vercel_preview_readiness,verified_preview_readiness
 from .operational_alerts import OPERATIONAL_ALERT_CODES,evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
+from .supabase_scheduler_liveness import SupabaseSchedulerLivenessReader,evaluate_scheduler_liveness
 from .supabase_backlog_inventory import SupabaseBacklogInventoryReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
@@ -510,7 +511,8 @@ def run_alerts_once()->dict:
  budget_raw=os.getenv("FACTORY_MODEL_BUDGET_USD")
  budget=Decimal(budget_raw) if budget_raw else None
  health=SupabaseOperationalHealthReader().read(budget=budget)
- alerts=evaluate_operational_alerts(health)
+ liveness=SupabaseSchedulerLivenessReader().read()
+ alerts=(*evaluate_operational_alerts(health),*evaluate_scheduler_liveness(liveness))
  repository=os.environ["FACTORY_ALERTS_GITHUB_REPOSITORY"]
  adapter=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository))
  results=adapter.publish_many(alerts)
