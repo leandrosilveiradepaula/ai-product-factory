@@ -17,7 +17,7 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control plane credentials are not configured");
  // A single Postgres RPC locks the project and commits request, task, run and audit atomically.
- // Never PATCH the manifest or call bootstrap separately: those paths admit concurrent cycles.
+ // Never split the manifest update, audit and enqueue into separate calls: they admit concurrent cycles.
  const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_continuation`,{
   method:"POST",
   headers:{...cfg.headers,"Content-Type":"application/json"},
