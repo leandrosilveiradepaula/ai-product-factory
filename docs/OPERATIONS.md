@@ -1,3 +1,17 @@
+## Downstream stage wakeup without REST-window starvation
+
+`factory_scheduler_queue_signals` now also uses read-only PostgreSQL
+`EXISTS` for Change Set integration, CI follow-up, human release observation,
+and queued specialist security/QA/operations work. These signals are
+independent of 200/400-row history windows. Terminal specialist lanes never
+wake a worker. Strict nine-boolean response validation fails closed when
+the RPC is not yet deployed.
+
+Preview retains its separate SHA, origin and quota policy. Direct/Primary
+auth, Codex WIF, ledger/cost and human merge gates remain unchanged.
+Deploy migration `20261014001500_extend_scheduler_queue_signals.sql`
+after CI and human merge, and verify ACLs and empty-queue signals.
+
 ## Authoritative queue wakeup signals
 
 The status-window scan is diagnostic only. The `factory_scheduler_queue_signals`

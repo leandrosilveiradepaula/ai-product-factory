@@ -1,3 +1,12 @@
+## 2026-10-14 - Downstream wakeup signals (candidate)
+- #758 merged at c5a882c9 with post-merge CI green and
+  `factory_scheduler_queue_signals` installed as 20261014000254.
+- Integration, CI, specialists and release remained vulnerable to bounded
+  REST sampling of long queues. Candidate extends the same read-only RPC
+  to nine signals, with strict runtime validation, regression fixtures and
+  no changes to Preview or production merge gates.
+- Migration not yet applied; no paid model call or fake product job.
+
 ## 2026-10-13 - Indexed PostgreSQL scheduler signals (candidate)
 - PR #757 merged as 88bf8c54; CI post-merge green. Read-only Control
   Plane returned no active Work Units, runs, agent slots or gates.
