@@ -54,39 +54,36 @@ jobs:
           INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         with:
           script: |
-            if (context.eventName === "workflow_dispatch") {
+            const manual = context.eventName === "workflow_dispatch";
+            let pr = null;
+            let sha = "";
+            if (manual) {
               const prNumber = Number(process.env.INPUT_PR_NUMBER);
-              const sha = String(process.env.INPUT_CANDIDATE_SHA || "");
+              sha = String(process.env.INPUT_CANDIDATE_SHA || "");
               if (!Number.isInteger(prNumber) || prNumber < 1) return core.setFailed("invalid PR number");
               if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("candidate_sha must be an exact 40-character SHA");
-              core.setOutput("applicable", "true");
-              core.setOutput("pr_number", String(prNumber));
-              core.setOutput("candidate_sha", sha);
-              core.setOutput("source", "manual");
-              return;
-            }
-
-            const run = context.payload.workflow_run;
-            const sha = String(run?.head_sha || "");
-            if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("workflow_run head SHA is invalid");
-
-            let candidates = Array.isArray(run.pull_requests) ? run.pull_requests : [];
-            if (!candidates.length) {
-              const {data} = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                ...context.repo,
-                commit_sha: sha,
-              });
-              candidates = data;
-            }
-
-            let pr = null;
-            for (const candidate of candidates) {
-              const number = Number(candidate.number);
-              if (!Number.isInteger(number) || number < 1) continue;
-              const {data: full} = await github.rest.pulls.get({...context.repo, pull_number: number});
-              if (full.state === "open" && full.head.sha === sha) {
-                pr = full;
-                break;
+              const {data: requested} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
+              pr = requested;
+            } else {
+              const run = context.payload.workflow_run;
+              sha = String(run?.head_sha || "");
+              if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("workflow_run head SHA is invalid");
+              let candidates = Array.isArray(run.pull_requests) ? run.pull_requests : [];
+              if (!candidates.length) {
+                const {data} = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  ...context.repo,
+                  commit_sha: sha,
+                });
+                candidates = data;
+              }
+              for (const candidate of candidates) {
+                const number = Number(candidate.number);
+                if (!Number.isInteger(number) || number < 1) continue;
+                const {data: full} = await github.rest.pulls.get({...context.repo, pull_number: number});
+                if (full.state === "open" && full.head.sha === sha) {
+                  pr = full;
+                  break;
+                }
               }
             }
             if (!pr) {
@@ -94,6 +91,13 @@ jobs:
               core.setOutput("applicable", "false");
               core.setOutput("promotion_action", "not_applicable");
               return;
+            }
+            const fullRepo = context.repo.owner + "/" + context.repo.repo;
+            // Manual and automatic paths must share the same fail-closed eligibility policy.
+            if (pr.state !== "open" || pr.draft ||
+                pr.base?.ref !== "main" || pr.base?.repo?.full_name !== fullRepo ||
+                pr.head?.repo?.full_name !== fullRepo || pr.head?.sha !== sha) {
+              return core.setFailed("candidate must be an open, non-draft same-repo main PR at the exact requested SHA");
             }
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
@@ -103,18 +107,19 @@ jobs:
             });
             const consoleChanged = files.some(file => String(file.filename || "").startsWith("apps/console/"));
             if (!consoleChanged) {
-              core.notice("Console validation completed, but apps/console/** did not change; Preview is explicitly not applicable.");
+              core.notice("PR has no apps/console/** changes; Preview is explicitly not applicable.");
               core.setOutput("applicable", "false");
               core.setOutput("promotion_action", "not_applicable");
               core.setOutput("pr_number", String(pr.number));
               core.setOutput("candidate_sha", sha);
+              core.setOutput("source", manual ? "manual" : "automatic");
               return;
             }
 
             core.setOutput("applicable", "true");
             core.setOutput("pr_number", String(pr.number));
             core.setOutput("candidate_sha", sha);
-            core.setOutput("source", "automatic");
+            core.setOutput("source", manual ? "manual" : "automatic");
 
       - name: Verify exact PR candidate, green checks and reuse opportunity
         if: steps.resolve.outputs.applicable == 'true'
