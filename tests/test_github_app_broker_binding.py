@@ -47,6 +47,13 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertIn("github_oidc_proxy_workflow_not_allowed", edge)
         self.assertIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", edge)
 
+    def test_backup_oidc_does_not_gain_github_app_minting(self):
+        edge=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn('if(event==="workflow_run")',edge)
+        self.assertIn('String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF',edge)
+        self.assertIn('["schedule","workflow_dispatch","issue_comment","push"]',edge)
+        self.assertNotIn('["schedule","workflow_dispatch","issue_comment","push","workflow_run"]',edge)
+
     def test_broker_denials_are_bounded_and_do_not_echo_raw_details(self):
         edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
         self.assertIn('error:"github_oidc_claim_mismatch"', edge)

@@ -38,6 +38,17 @@ class BackupWakeContract(unittest.TestCase):
         self.assertIn("cancel-in-progress: false",W)
         for name in ("product-stage","dispatch","direct","codex","preview","release-followup"):
             self.assertIn("needs: ",block(name))
+    def test_oidc_broker_allows_only_exact_backup_runtime_workflow(self):
+        edge=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn('if(event==="workflow_run")',edge)
+        self.assertIn('String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF',edge)
+        self.assertIn('.github/workflows/autonomous-runner.yml@refs/heads/main',edge)
+        self.assertIn('GitHub OIDC workflow_run workflow not allowed',edge)
+        self.assertIn('if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName))',edge)
+        self.assertNotIn('["schedule","workflow_dispatch","issue_comment","push","workflow_run"].includes(eventName)',edge)
+        self.assertIn('const workflowRef=String(identity.workflow_ref||"")',edge)
+        self.assertIn('GENERIC_PROXY_WORKFLOW_REFS.has(workflowRef)',edge)
+
     def test_no_elevated_backup_credentials_or_merge(self):
         root=block("schedule-probe")
         self.assertNotIn("OPENAI_API_KEY",root)

@@ -1,3 +1,9 @@
+## Backup scheduler workflow_run OIDC gate (candidate; not deployed)
+
+During the 2026-10-14 17:04 UTC six-hour OIDC scheduled preflight, the downstream `Factory autonomous runner` launched via `workflow_run` failed with HTTP 403 at `SupabaseSchedulerLivenessReader`: the broker's `verifyGithub` explicitly rejected the `workflow_run` event. The upstream preflight itself passed. This change narrowly permits the signed `workflow_run` event **only when** the JWT's `workflow_ref` identifies the exact trusted main-branch `autonomous-runner.yml`. The existing issuer/audience, immutable repository/owner/ref checks, GitHub OIDC claim checks and generic proxy allowlist still apply. The runner job itself independently requires an upstream successful scheduled `Control Plane OIDC preflight` on the same repository and `main`.
+
+**Sensitive access activation gate:** code/CI alone does not activate this change in the deployed Edge broker. Review the exact source SHA, verify no other workflows/events gain the generic proxy, and explicitly authorize deployment of the updated Edge Function in production. The `/github-app/token` route still **rejects** `workflow_run`; this patch does not grant cross-repository GitHub App minting to backup events. No paid model, preview, DB migration or auto-merge is needed for regression testing. After approval and deployment, verify one real `workflow_run` backup sequence and its durable audit before claiming liveness recovered. The actual native `schedule` heartbeat warning #790 remains open until two timely native events are confirmed.
+
 # Factory runtime Control Plane broker
 
 This Edge Function lets the trusted `Factory autonomous runner` use the
