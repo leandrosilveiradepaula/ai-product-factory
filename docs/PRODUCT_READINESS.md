@@ -1,3 +1,7 @@
+## Exact commit evidence for product readiness (14/10/2026)
+The deterministic core rejects a passing `product_ready` assessment when `assessed_commit` is missing or is a branch name, abbreviated SHA, malformed hash or padded value. It accepts a canonical full 40-character Git SHA-1 commit and normalizes uppercase hex to lowercase for evidence. An invalid, nonempty string yields a `not_ready` result with an explicit blocker instead of crashing release intelligence, so no release policy can infer whole-product completion from ambiguous identity. Empty/non-string commit identities remain invalid inputs.
+This is **only a format check**, not proof that the commit exists remotely, belongs to the project's repository, or is its current HEAD. That requires separate trusted GitHub identity and exact-head verification; it does not replace verified CI, Preview/browser evidence, production human release gate or a global audit. No Supabase migration, provider call or Vercel deployment is required for this Python-core regression.
+
 # Product Readiness Contract
 
 Last updated: 2026-10-07.
