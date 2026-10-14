@@ -32,4 +32,23 @@ class ConsoleReadabilityContract(unittest.TestCase):
   self.assertNotIn("display:none",RULES)
   self.assertNotIn("visibility:hidden",RULES)
 
+ def test_remaining_gate_labels_and_actions_not_microtext(self):
+  self.assertIn("/* Second audit pass:",CSS)
+  overrides=CSS.split("/* Second audit pass:",1)[1]
+  self.assertIn(".main .primary,.main .secondary,.main .danger,.main .ghostButton{font-size:14px;min-height:42px}",overrides)
+  self.assertIn(".main .mode button,.main .planningDecisionSuggestion button{font-size:14px;min-height:42px}",overrides)
+  self.assertIn(".topbar .topbarWork{font-size:14px;min-height:42px",overrides)
+  for selector in (
+   ".main .lifecycleRail span", ".main .macroStage small",
+   ".main .gateHistory>summary small", ".main .planningDecisionWhy span",
+   ".main .planningDecisionAnswer small", ".main .resourceRow span",
+   ".main .technicalStats span", ".main .jsonBlock",
+   ".main .valueRow", ".main .screenGuide strong",
+   ".main .configRows strong",
+  ):
+   with self.subTest(selector=selector):
+    self.assertRegex(overrides,re.escape(selector)+r"(?=[,{])")
+  self.assertIn("min-height:44px",overrides)
+  self.assertNotIn("display:none",overrides)
+
 if __name__=="__main__":unittest.main()
