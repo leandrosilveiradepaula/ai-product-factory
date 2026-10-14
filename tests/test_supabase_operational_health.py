@@ -22,7 +22,7 @@ class Tests(unittest.TestCase):
             {"id":"r3","task_id":"t3","status":"failed","attempt_count":3,"last_error":"maximum attempts reached","lease_expires_at":None},
         ]
         tasks=[{"id":"t3","status":"failed"}]
-        usage=[{"id":"u1","tool_family":"openai","estimated_cost":"1.25"},{"id":"u2","tool_family":"model","estimated_cost":None},{"id":"u3","tool_family":"github","estimated_cost":None}]
+        usage=[{"id":1,"tool_family":"openai","estimated_cost":"1.25"},{"id":2,"tool_family":"model","estimated_cost":None},{"id":3,"tool_family":"github","estimated_cost":None}]
         with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(tasks),Response([]),Response(usage)]):
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             out=reader.read(budget=Decimal("5"),now=datetime(2026,9,26,tzinfo=timezone.utc))
@@ -34,12 +34,40 @@ class Tests(unittest.TestCase):
 
 
 
+    def test_real_postgres_bigint_id_works_in_cost_inventory(self):
+        usage=[
+            {"id":101,"tool_family":"github","estimated_cost":None},
+            {"id":100,"tool_family":"openai","estimated_cost":"0.125"},
+            {"id":"99","tool_family":"model","estimated_cost":"0.250"},
+        ]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response([]),Response([]),Response(usage)
+        ]) as calls:
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+        self.assertEqual(health.known_cost,Decimal("0.375"))
+        self.assertEqual(health.unknown_cost_events,0)
+        self.assertIn("select=id,tool_family,estimated_cost",calls.call_args_list[2].args[0].full_url)
+
+    def test_signed_bigint_range_and_identity_types_fail_closed(self):
+        for invalid in (None,False,True,0,-1,1.0,"abc","1.2","",str(2**63),2**63):
+            with self.subTest(identity=invalid),patch("urllib.request.urlopen",side_effect=[
+                Response([]),Response([]),Response([
+                    {"id":invalid,"tool_family":"openai","estimated_cost":"0.01"}
+                ])
+            ]):
+                with self.assertRaisesRegex(RuntimeError,"invalid ID"):
+                    SupabaseOperationalHealthReader(
+                        url="https://x.supabase.co",secret_key="sb_secret_x"
+                    ).read()
+
     def test_full_cost_history_uses_second_page_without_understating_budget(self):
         first=[
-            {"id":f"usage-{i:04d}","tool_family":"openai","estimated_cost":"0.01"}
+            {"id":i+1,"tool_family":"openai","estimated_cost":"0.01"}
             for i in range(1000)
         ]
-        second=[{"id":"usage-1000","tool_family":"openai","estimated_cost":"0.50"}]
+        second=[{"id":1001,"tool_family":"openai","estimated_cost":"0.50"}]
         with patch("urllib.request.urlopen",side_effect=[
             Response([]),Response([]),Response(first),Response(second),
         ]) as calls:
@@ -57,10 +85,10 @@ class Tests(unittest.TestCase):
 
     def test_duplicate_usage_between_pages_fails_closed(self):
         first=[
-            {"id":f"usage-{i:04d}","tool_family":"model","estimated_cost":"0.01"}
+            {"id":i+1,"tool_family":"model","estimated_cost":"0.01"}
             for i in range(1000)
         ]
-        second=[{"id":"usage-0999","tool_family":"model","estimated_cost":"0.20"}]
+        second=[{"id":"1000","tool_family":"model","estimated_cost":"0.20"}]
         with patch("urllib.request.urlopen",side_effect=[
             Response([]),Response([]),Response(first),Response(second),
         ]):
@@ -71,17 +99,17 @@ class Tests(unittest.TestCase):
         for value in ("-0.01","NaN","Infinity","not-a-number"):
             with self.subTest(cost=value),patch("urllib.request.urlopen",side_effect=[
                 Response([]),Response([]),
-                Response([{"id":"usage-1","tool_family":"model","estimated_cost":value}])
+                Response([{"id":1,"tool_family":"model","estimated_cost":value}])
             ]):
                 with self.assertRaisesRegex(RuntimeError,"invalid amount"):
                     SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x").read()
 
     def test_unknown_paid_cost_on_later_page_is_observed(self):
         first=[
-            {"id":f"usage-{i:04d}","tool_family":"github","estimated_cost":"0.00"}
+            {"id":i+1,"tool_family":"github","estimated_cost":"0.00"}
             for i in range(1000)
         ]
-        second=[{"id":"usage-late","tool_family":"model","estimated_cost":None}]
+        second=[{"id":1001,"tool_family":"model","estimated_cost":None}]
         with patch("urllib.request.urlopen",side_effect=[
             Response([]),Response([]),Response(first),Response(second),
         ]):
@@ -92,7 +120,7 @@ class Tests(unittest.TestCase):
         for row in (
             {"tool_family":"openai","estimated_cost":"1"},
             {"id":"", "tool_family":"openai","estimated_cost":"1"},
-            {"id":"usage-1","tool_family":None,"estimated_cost":"1"},
+            {"id":1,"tool_family":None,"estimated_cost":"1"},
         ):
             with self.subTest(row=row),patch("urllib.request.urlopen",side_effect=[
                 Response([]),Response([]),Response([row])
