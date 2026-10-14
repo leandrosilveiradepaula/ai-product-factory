@@ -29,6 +29,11 @@ on:
         required: false
         default: false
         type: boolean
+  workflow_run:
+    # Reuses existing trusted six-hour OIDC preflight cron, no new timer.
+    workflows: ["Control Plane OIDC preflight"]
+    types: [completed]
+    branches: [main]
   schedule:
     # Independent staggered wake opportunities: GitHub may delay or drop scheduled events.
     # This is best-effort redundancy, not a guaranteed 30-minute SLA.
@@ -45,7 +50,7 @@ concurrency:
 
 jobs:
   schedule-probe:
-    if: ${{ github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER') }}
+    if: ${{ (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -78,12 +83,32 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Verify backup scheduler wake is necessary
+        if: ${{ github.event_name == 'workflow_run' }}
+        id: backup_wake
+        env:
+          PYTHONPATH: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from ai_product_factory.supabase_scheduler_liveness import (
+              SupabaseSchedulerLivenessReader, evaluate_scheduler_liveness
+          )
+          liveness = SupabaseSchedulerLivenessReader().read()
+          needed = any(a.code == "scheduler_gap"
+                       for a in evaluate_scheduler_liveness(liveness))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("wake=" + ("true" if needed else "false") + "\n")
+          print("backup_wake_needed=" + ("true" if needed else "false"))
+          PY
       - name: Recover expired leases in the shared scheduler runner
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Probe durable work queues without side effects
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_alerts != true }}
+        if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && (github.event_name != 'workflow_run' || steps.backup_wake.outputs.wake == 'true') }}
         id: probe
         shell: bash
         run: |
@@ -104,7 +129,7 @@ jobs:
                   out.write(f"{key}={'true' if data.get(key) else 'false'}\n")
           PY
       - name: Diagnose historical queued backlog without dispatch
-        if: ${{ github.event_name == 'schedule' && steps.probe.outputs.work_detected == 'false' }}
+        if: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true')) && steps.probe.outputs.work_detected == 'false' }}
         continue-on-error: true
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode backlog-audit
