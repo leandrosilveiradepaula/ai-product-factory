@@ -9,6 +9,8 @@ from collections import defaultdict
 
 from .supabase_server import resolve_supabase_server_config
 
+# Diagnostic statuses only; never use inventory counts to authorize dispatch.
+# A completed parent satisfies dependencies and may still have actionable children.
 TERMINAL_PARENT = {"completed", "integrated", "cancelled"}
 ACTIVE_UNIT = {"queued", "pending", "running"}
 
@@ -72,7 +74,11 @@ class SupabaseBacklogInventoryReader:
             return {"status": "observed", "read_only": True, "queued_tasks": 0,
                     "active_work_units": 0, "with_active_units": 0,
                     "historical_children_without_active_units": 0,
-                    "other_queued_without_active_units": 0, "projects": []}
+                    "other_queued_without_active_units": 0,
+                    "completed_parent_without_work_units": 0,
+                    "completed_parent_with_inactive_work_units": 0,
+                    "unverified_parent_status_without_active_units": 0,
+                    "projects": []}
 
         task_ids, parent_ids = set(), set()
         for row in queued:
@@ -103,12 +109,14 @@ class SupabaseBacklogInventoryReader:
             f"&task_id=in.({query})&limit=501"
         ), 500, "work units")
         active_by_task = defaultdict(int)
+        all_units_by_task = defaultdict(int)
         unit_ids = set()
         for row in units:
             uid, tid = valid_id(row.get("id")), valid_id(row.get("task_id"))
             if uid in unit_ids or tid not in task_ids or not isinstance(row.get("status"), str):
                 raise RuntimeError("inconsistent work-unit inventory")
             unit_ids.add(uid)
+            all_units_by_task[tid] += 1
             if row["status"] in ACTIVE_UNIT:
                 active_by_task[tid] += 1
 
@@ -116,7 +124,10 @@ class SupabaseBacklogInventoryReader:
             pid: {"project_key": project["project_key"], "is_active": project["is_active"],
                   "queued_tasks": 0, "active_work_units": 0, "with_active_units": 0,
                   "historical_children_without_active_units": 0,
-                  "other_queued_without_active_units": 0}
+                  "other_queued_without_active_units": 0,
+                  "completed_parent_without_work_units": 0,
+                  "completed_parent_with_inactive_work_units": 0,
+                  "unverified_parent_status_without_active_units": 0}
             for pid, project in indexed.items()
         }
         for row in queued:
@@ -133,17 +144,36 @@ class SupabaseBacklogInventoryReader:
                 parent = parents[valid_id(parent_id)]
                 if valid_id(parent.get("project_id")) != pid:
                     raise RuntimeError("cross-project queued-task parent")
-                if parent.get("status") in TERMINAL_PARENT:
+                parent_status=parent.get("status")
+                if not isinstance(parent_status,str) or not parent_status.strip():
+                    raise RuntimeError("invalid parent task status for backlog classification")
+                if parent_status=="completed":
+                    # Completed dependencies may still have unmaterialized children.
+                    # Keep the legacy historical counter for compatibility, but
+                    # explicitly surface these separately for operator review.
+                    if all_units_by_task[tid]==0:
+                        project_stats["completed_parent_without_work_units"] += 1
+                    else:
+                        project_stats["completed_parent_with_inactive_work_units"] += 1
+                if parent_status in TERMINAL_PARENT:
                     project_stats["historical_children_without_active_units"] += 1
                     continue
+                project_stats["unverified_parent_status_without_active_units"] += 1
             project_stats["other_queued_without_active_units"] += 1
 
         result = sorted((v for v in stats.values() if v["queued_tasks"]),
                         key=lambda v: v["project_key"])
         names = ("queued_tasks", "active_work_units", "with_active_units",
                  "historical_children_without_active_units",
-                 "other_queued_without_active_units")
+                 "other_queued_without_active_units",
+                 "completed_parent_without_work_units",
+                 "completed_parent_with_inactive_work_units",
+                 "unverified_parent_status_without_active_units")
         return {"status": "observed", "read_only": True,
                 **{k: sum(p[k] for p in result) for k in names},
                 "projects": result,
-                "disclaimer": "Inventory counts do not establish dispatch eligibility."}
+                "disclaimer": (
+                    "Inventory counts do not establish dispatch eligibility. "
+                    "Completed parents may have unmaterialized actionable children; "
+                    "historical is a diagnostic label, not a terminal verdict."
+                )}
