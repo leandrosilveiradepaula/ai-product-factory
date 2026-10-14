@@ -20,9 +20,9 @@ class ProjectContinuationAttachmentTests(unittest.TestCase):
         self.assertIn('draft_id=eq.',attachments)
         self.assertIn('method:"DELETE"',attachments)
         self.assertIn('name="request_id"',page)
-        self.assertIn('ProjectContinuationRejectedError',page)
-        self.assertIn('if(error instanceof ProjectContinuationRejectedError)',page)
-        self.assertIn('timeout/5xx cannot prove rollback',page)
+        self.assertIn('Never delete files based on an ambiguous response',page)
+        self.assertNotIn('ProjectContinuationRejectedError',page)
+        self.assertIn('await enqueueProjectContinuation(projectKey,request,files.length,requestId)',page)
 
     def test_request_manifest_and_audit_include_attachment_evidence(self):
         control=(ROOT/"apps/console/lib/control-plane.ts").read_text()

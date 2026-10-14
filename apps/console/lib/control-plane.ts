@@ -6,9 +6,6 @@ export async function createProjectIntake(input:{mode:"greenfield"|"existing";na
 
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
 
-// A definite database rejection is safe to clean up. Network/5xx failures are ambiguous.
-export class ProjectContinuationRejectedError extends Error {}
-
 export async function enqueueProjectContinuation(projectKey:string,request:string,attachmentCount=0,requestedId?:string){
  await requireConsoleOperator();
  const clean=request.trim();
@@ -33,7 +30,7 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
   cache:"no-store",
  });
  if(!response.ok){
-  if(response.status===409||response.status===400)throw new ProjectContinuationRejectedError("Já existe trabalho ativo neste projeto ou o pedido foi repetido com conteúdo divergente. Confira o estado do projeto antes de tentar novamente.");
+  if(response.status===409||response.status===400)throw new Error("Já existe trabalho ativo neste projeto ou o pedido foi repetido com conteúdo divergente. Confira o estado do projeto antes de tentar novamente.");
   throw new Error("Não foi possível registrar e enfileirar o pedido de forma atômica.");
  }
  const result=await response.json();

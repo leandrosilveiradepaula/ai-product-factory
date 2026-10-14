@@ -1,6 +1,6 @@
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
-import {enqueueProjectContinuation,getProjectDetail,ProjectContinuationRejectedError} from "../../../../lib/control-plane";
+import {enqueueProjectContinuation,getProjectDetail} from "../../../../lib/control-plane";
 import {cleanupProjectContinuationFiles,uploadProjectContinuationFile} from "../../../../lib/attachments";
 import {ActionLink,Button,PageHeader,StatusPill} from "../../../ui";
 
@@ -22,15 +22,10 @@ async function submit(formData:FormData){
   try{await cleanupProjectContinuationFiles(project.id,requestId)}catch{}
   throw error;
  }
- try{
-  await enqueueProjectContinuation(projectKey,request,files.length,requestId);
- }catch(error){
-  // Once RPC begins, timeout/5xx cannot prove rollback. Preserve private uploads.
-  if(error instanceof ProjectContinuationRejectedError){
-   try{await cleanupProjectContinuationFiles(project.id,requestId)}catch{}
-  }
-  throw error;
- }
+ // After RPC submission, even a 409 can refer to an already committed request_id.
+ // Never delete files based on an ambiguous response; a separate verified cleanup
+ // policy must handle private orphan uploads without risking legitimate attachments.
+ await enqueueProjectContinuation(projectKey,request,files.length,requestId);
  redirect("/projects/"+encodeURIComponent(projectKey));
 }
 
