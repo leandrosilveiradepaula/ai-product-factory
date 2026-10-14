@@ -1,3 +1,9 @@
+## Auditoria autenticada de viewport 390px: configuracao (14/10/2026)
+
+O run de produção GitHub Actions `38638289607` falhou no Playwright durante a verificação de `/configuration`: `document.documentElement.scrollWidth=458` com `innerWidth=390`. O CI/build #808 foi verde, mas não representa validação visual. Este candidato adiciona classe de grid `configOverviewGrid`, tracks `minmax(0,...)`, wrapping de dados/repositórios longos e empilhamento mobile para cards/configRows/compactRows. O teste de navegador **continua fail-closed**: ao detectar largura excessiva, agora registra tag/classe/width/right dos elementos responsáveis, sem texto, credenciais ou valores de campos. Não esconde overflow via `body{overflow-x:hidden}`.
+
+Trata-se de correção de código e teste de contrato CI; **não** é evidência de que o overflow em produção já foi corrigido. O PR #811 deve ficar draft até Vercel Preview READY + navegador autenticado no seu SHA exato, sem conflitar com #786/#789. Nenhuma migration, token novo ou merge automático.
+
 ## Consolidação de auditoria do Console (#795 + #798)
 
 Este candidato combina legibilidade responsiva e avaliação rigorosa da prontidão global, reduzindo para um único Preview SHA-exato após liberação do Vercel. CI de código não substitui verificação visual de navegador, revisão acessível ou gate humano de release. Esta seção não afirma produto pronto.
@@ -5,6 +11,19 @@ Este candidato combina legibilidade responsiva e avaliação rigorosa da prontid
 ## Product-readiness evaluation and current HEAD distinction (14/10/2026)
 Audit #713 found that the Console previously treated an evaluation result JSON's own `ready:true` and `status:passed` plus a self-consistent `assessed_commit == baseline_ref` as enough to display **Produto pronto**. This could misrepresent a failed evaluation row, populated blockers, missing coverage, malformed domains, or stale project HEAD. The Console now checks the evaluation row status, empty blockers, exact 40-char SHA and all six mandatory domains with explicit verification state, coverage and evidence before labeling the **evaluation** approved. It no longer says the product is ready globally from this record alone: an audit at SHA N does not prove that the repository's current HEAD is still N or that release gates/Preview/CI are satisfied.
 This is a defensive presentation and read-boundary change, not proof of live E2E readiness. A future authoritative current-head check and full-product release assessment remain part of audit #713; no GitHub credentials are placed in browser code. The latest observed production CRM evaluation was `failed/not_ready`; the patch does not turn it into passing. This PR changes `apps/console/**`, so browser Preview of the exact final SHA is required and remains blocked by the provider's observed deployment rate limit.
+
+## 14/10/2026 — Dependabot e CI do Console sem ampliar privilégios (#808)
+
+O CI do PR #808 (upgrade `actions/setup-node`) falhou no passo `Enforce Console branch convention` porque toda branch `dependabot/**` era rejeitada, embora a automação já fosse autorizada a abrir PRs e o workflow seja `contents: read`. A exceção agora exige simultaneamente autor autenticado `dependabot[bot]` e head repository idêntico ao repositório da Factory, obtidos de campos separados do evento GitHub (não do nome da branch). Forks, nomes falsificados e `preview/**` continuam bloqueados.
+
+A alteração não cria gatilhos privilegiados, não amplia permissões, não fornece secrets e não chama o Vercel. Testes unitários executam o script bash do gate com identidade real, spoofing, fork e ramos permitidos. O PR #808 ainda precisa de CI verde sobre o SHA correto após incorporação deste patch e de revisão humana do update Dependabot. Merge em produção continua gate humano.
+
+## 14/10/2026 — Preparação fail-closed do Preview (#797; sem ativação privilegiada)
+
+\`scripts/preview_candidate_contract.py\` define um contrato **puro e determinístico** de elegibilidade:
+PR aberto e não-draft, origem/destino no mesmo repositório confiável, base \`main\`, SHA completo idêntico, checks \`test\`, \`factory-acceptance\` e \`validate\` verdes no SHA exato, e alterações verificadas em \`apps/console/**\`. O segundo predicado só admite evidência de navegador se a promoção tiver resultado comprovado \`reused\`, \`updated\` ou \`created_then_updated\`, e o ref observado continuar no SHA exato.
+
+**Isto ainda não altera o pipeline.** O workflow privilegiado de promoção deve buscar **novamente** PR, checks e ref imediatamente antes da escrita; um resultado anterior à espera por CI não é garantia de estado atual. A integração e o gatilho \`ready_for_review\` são mudança de segurança e precisam de revisão/aprovação explícita das permissões do GitHub Actions. Não houve criação de trigger, modificação de workflow, promoção de ref, Vercel deployment ou merge. O PR #811 permanece draft até Preview/browser evidenciarem o SHA candidato ou a política explicitamente permitir outro caminho.
 
 ## 14/10/2026 — Confirmacao pos-merge das correcoes de operacao
 

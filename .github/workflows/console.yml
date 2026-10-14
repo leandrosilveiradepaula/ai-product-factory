@@ -33,13 +33,23 @@ jobs:
       - name: Enforce Console branch convention
         if: github.event_name == 'pull_request'
         shell: bash
+        env:
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           case "${GITHUB_HEAD_REF}" in
             console/*|ci/*|test/*|security/*|agents/*|intelligence/*|quality/*|policy/*|runtime/*|operations/*|observability/*|audit/*|release/*) ;;
+            dependabot/*)
+              # Enforce authenticated bot identity and trusted origin for read-only CI.
+              if [ "$PR_AUTHOR_LOGIN" != "dependabot[bot]" ] || [ "$PR_HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+                echo "::error::dependabot/** requires the real Dependabot author in this repository."
+                exit 1
+              fi
+              ;;
             preview/*) echo "::error::preview/** refs are reserved for promoted release candidates."; exit 1 ;;
             *) echo "::error::Console/config changes must use an approved technical branch namespace; preview/** is reserved for final candidates."; exit 1 ;;
           esac
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: "npm"

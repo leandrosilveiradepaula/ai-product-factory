@@ -21,7 +21,7 @@ export default async function Configuration(){
    <a href="#preview">Preview</a>
    <a href="#seguranca">Segurança</a>
   </nav>
-  <div className="overviewGrid">
+  <div className="overviewGrid configOverviewGrid">
    <section className="denseStack">
     <div className="card" id="modelos">
      <div className="panelHeading"><strong>Política de provedores</strong><StatusPill status={c.controlPlaneConfigured?"healthy":"blocked"} label={c.controlPlaneConfigured?"Control Plane pronto":"Control Plane ausente"}/></div>

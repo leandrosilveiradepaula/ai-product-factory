@@ -797,3 +797,30 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .main .mode button,.main .planningDecisionSuggestion button{min-height:44px}
  .main .lifecycleRail{overflow-x:auto}
 }
+
+/* Authenticated visual audit: /configuration at 390px overflowed to 458px.
+   Shrink grid tracks and allow long repository names to wrap. Do not conceal
+   body overflow; Playwright's strict scroll-width check remains in place. */
+.configOverviewGrid{min-width:0;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr)}
+.configOverviewGrid>.denseStack,
+.configOverviewGrid .card,
+.configOverviewGrid .detailItem,
+.configOverviewGrid .cardTop,
+.configOverviewGrid .cardTop>div,
+.configOverviewGrid .configRows>div{min-width:0}
+.configOverviewGrid .mono,
+.configOverviewGrid .configRows strong,
+.configOverviewGrid .configRows small,
+.configOverviewGrid .compactRow>span,
+.configOverviewGrid .logPanel{overflow-wrap:anywhere;min-width:0}
+.configOverviewGrid .logPanel{max-width:100%;overflow-x:auto}
+.configTabs{max-width:100%;min-width:0}
+@media(max-width:1180px){
+ .configOverviewGrid{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:560px){
+ .configOverviewGrid .cardTop{flex-wrap:wrap}
+ .configOverviewGrid .configRows>div{grid-template-columns:minmax(0,1fr)}
+ .configOverviewGrid .compactRow{grid-template-columns:minmax(0,1fr)}
+ .configOverviewGrid .badgeLine{max-width:100%}
+}

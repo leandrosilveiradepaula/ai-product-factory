@@ -188,7 +188,21 @@ try {
       scrollWidth:document.documentElement.scrollWidth,
       height:document.documentElement.scrollHeight,
     }));
-    if (layout.scrollWidth > layout.innerWidth + 2) throw new Error(`mobile horizontal overflow on ${route.path}: ${layout.scrollWidth} > ${layout.innerWidth}`);
+    if (layout.scrollWidth > layout.innerWidth + 2) {
+      // Diagnostic only: never mask the failure with body overflow-x:hidden.
+      // Element names and CSS classes are safe to log; do not include text,
+      // attributes, field values or any operator/session information.
+      const offenders = await page.evaluate(() => [...document.body.querySelectorAll("*")]
+        .map(el => {
+          const rect = el.getBoundingClientRect();
+          return {tag:el.tagName.toLowerCase(), cssClass:typeof el.className === "string" ? el.className.slice(0,90) : "",
+            right:Math.ceil(rect.right),width:Math.ceil(rect.width)};
+        })
+        .filter(item => item.width > 0 && item.right > window.innerWidth + 2)
+        .sort((a,b) => b.right - a.right)
+        .slice(0,12));
+      throw new Error(`mobile horizontal overflow on ${route.path}: ${layout.scrollWidth} > ${layout.innerWidth}; offenders=${JSON.stringify(offenders)}`);
+    }
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
     interactionEvidence.mobile.push({...route,status:response.status(),layout});
   }
