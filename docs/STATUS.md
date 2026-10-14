@@ -1,3 +1,9 @@
+## 2026-10-14 - Read-only reconciliation of queued task records (candidate)
+- Live Control Plane inspection: 10 `factory_tasks.status=queued` (Factory 5, CRM 5); all have terminal completed parents and zero active Work Units. All current Change Sets are completed or superseded; scheduler's authoritative runnable signals remain false.
+- New bounded read-only backlog audit distinguishes old queued descendants without active units, queued tasks with active units and other queued entries. It never treats an inventory row as dispatch approval, does not reactivate historical tasks and fails closed on truncated/malformed data.
+- CLI `--mode backlog-audit` can be run independently; the scheduled runner logs the audit only when its normal work probe detects no active work. An audit failure cannot suppress normal scheduler/alerts processing.
+- Regression covers existing history shape, empty inventory, real active unit, ambiguous root, parent missing/cross-project, duplication and 100-row boundary. No Supabase DDL, Primary/Codex calls, synthetic work, Preview or production merge.
+
 ## 2026-10-14 - False stale-preview alert from historical CRM audit runs (candidate)
 - Factory main 33123604 / Supabase reconciled: two aged `preview_ready` records for CRM exist with completed tasks and `source=dogfood_manual_audit`, not delivery Preview runs. Issue #754 arose because OperationalHealth counted these audit rows despite the Preview queue filtering them out.
 - Health now uses the same delivery provenance predicate, scans a separate oldest-first `preview_ready` status partition, refuses >200 rows and invalid delivery timestamps, and leaves genuine overdue deliveries actionable.

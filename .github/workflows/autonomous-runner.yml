@@ -103,6 +103,11 @@ jobs:
               for key in keys:
                   out.write(f"{key}={'true' if data.get(key) else 'false'}\n")
           PY
+      - name: Diagnose historical queued backlog without dispatch
+        if: ${{ github.event_name == 'schedule' && steps.probe.outputs.work_detected == 'false' }}
+        continue-on-error: true
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode backlog-audit
       - name: Evaluate operational alerts in the shared scheduler runner
         if: ${{ github.event_name == 'schedule' }}
         shell: bash
