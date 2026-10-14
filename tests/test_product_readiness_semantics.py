@@ -35,26 +35,106 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         self.assertFalse(assessment.report["product_complete"])
         self.assertEqual(assessment.report["product_readiness"]["status"], "not_assessed")
 
-    def test_product_ready_requires_explicit_passing_product_assessment(self):
-        assessment = build_release_assessment(
-            policy=_policy(),
-            candidate_commit="abc123",
-            changed_files=("src/example.py",),
-            risk={},
-            facts={
-                "definition_of_done": {"satisfied": [], "missing": []},
-                "product_readiness": {
-                    "ready": True,
-                    "status": "passed",
-                    "assessed_commit": "abc123",
-                    "assessment_ref": "audit:full-product:2026-10-06",
-                },
-            },
-            unknown_paid_cost=False,
-            known_cost=Decimal("0"),
+    def _full_evidence(self,sha="abc123"):
+        from ai_product_factory.product_readiness import (
+            REQUIRED_DOMAINS,REQUIRED_COVERAGE_BY_DOMAIN,
         )
+        verification={
+            "security":"reviewed",
+            "observability_operations":"observed",
+            "test_strategy":"executed",
+            "product_experience":"observed",
+            "documentation":"reviewed",
+            "functional_completeness":"executed",
+        }
+        return {
+            "ready":True,"status":"passed","assessed_commit":sha,
+            "assessment_ref":"audit:full-product:2026-10-14",
+            "domains":{
+                key:{
+                    "status":"passed","reason":"assessed for exact SHA",
+                    "evidence":[f"audit:{key}:{sha}"],
+                    "coverage":list(REQUIRED_COVERAGE_BY_DOMAIN[key]),
+                    "verification_state":verification[key],
+                }
+                for key in REQUIRED_DOMAINS
+            },
+            "blockers":[],
+        }
+
+    def _release(self,product,sha="abc123"):
+        return build_release_assessment(
+            policy=_policy(),candidate_commit=sha,
+            changed_files=("src/example.py",),risk={},
+            facts={"definition_of_done":{"satisfied":[],"missing":[]},
+                   "product_readiness":product},
+            unknown_paid_cost=False,known_cost=Decimal("0"),
+        )
+
+    def test_product_ready_requires_validated_full_six_domain_assessment(self):
+        assessment=self._release(self._full_evidence())
         self.assertTrue(assessment.report["product_complete"])
-        self.assertTrue(assessment.report["product_readiness"]["assessment_ref"].startswith("audit:full-product:"))
+        self.assertEqual(assessment.report["product_readiness"]["status"],"passed")
+        self.assertEqual(len(assessment.report["product_readiness"]["domains"]),6)
+
+    def test_ready_true_summary_without_domains_fails_closed(self):
+        assessment=self._release({
+            "ready":True,"status":"passed","assessed_commit":"abc123",
+            "assessment_ref":"audit:forged-summary",
+        })
+        self.assertFalse(assessment.report["product_complete"])
+        self.assertFalse(assessment.report["product_readiness"]["ready"])
+        self.assertEqual(assessment.report["product_readiness"]["status"],"not_ready")
+        self.assertEqual(assessment.report["readiness_scope"],"release_candidate")
+
+    def test_missing_critical_domain_never_passes(self):
+        evidence=self._full_evidence()
+        evidence["domains"].pop("security")
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertIn("security: missing assessment",out.report["product_readiness"]["blockers"])
+
+    def test_missing_critical_e2e_coverage_never_passes(self):
+        evidence=self._full_evidence()
+        evidence["domains"]["test_strategy"]["coverage"]=["unit_integration"]
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertTrue(any("critical_e2e" in b for b in out.report["product_readiness"]["blockers"]))
+
+    def test_declared_product_blockers_cannot_be_overridden_by_green_domains(self):
+        evidence=self._full_evidence()
+        evidence["blockers"]=["CRM: Preview candidate missing"]
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertIn("CRM: Preview candidate missing",out.report["product_readiness"]["blockers"])
+
+    def test_malformed_blocker_record_fails_closed(self):
+        evidence=self._full_evidence()
+        evidence["blockers"]="not-a-list"
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertIn("invalid product assessment blocker record",out.report["product_readiness"]["blockers"])
+
+    def test_baseline_ref_cannot_impersonate_assessed_commit(self):
+        evidence=self._full_evidence()
+        evidence.pop("assessed_commit")
+        evidence["baseline_ref"]="abc123"
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertEqual(out.report["product_readiness"]["status"],"stale")
+
+    def test_recorded_negative_state_not_promoted_by_valid_domains(self):
+        evidence=self._full_evidence()
+        evidence["ready"]=False
+        out=self._release(evidence)
+        self.assertFalse(out.report["product_complete"])
+        self.assertEqual(out.report["product_readiness"]["status"],"not_ready")
+
+    def test_release_human_gate_independent_of_product_complete_flag(self):
+        good=self._release(self._full_evidence())
+        bad=self._release({"ready":True,"status":"passed","assessed_commit":"abc123"})
+        self.assertEqual(good.report["release_state"],bad.report["release_state"])
+        self.assertEqual(good.report["readiness_scope"],"release_candidate")
 
     def test_stale_product_assessment_does_not_make_new_candidate_complete(self):
         assessment = build_release_assessment(
