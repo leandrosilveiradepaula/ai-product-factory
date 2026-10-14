@@ -29,7 +29,11 @@ class CiConcurrencyTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
         self.assertIn('promotion_action", "stale"', workflow)
         self.assertIn("skipping obsolete Preview work", workflow)
-        self.assertIn("steps.verify.outputs.promotion_action != 'stale'", workflow)
+        # Dispatch must require confirmed promotion, not merely "not stale".
+        self.assertNotIn("steps.verify.outputs.promotion_action != 'stale'", workflow)
+        self.assertIn("steps.verify.outputs.promotion_action == 'reused'", workflow)
+        self.assertIn("steps.promote.outputs.promotion_action == 'updated'", workflow)
+        self.assertIn("steps.promote.outputs.promotion_action == 'created_then_updated'", workflow)
 
     def test_validate_does_not_double_run_on_ci_branch_pushes(self):
         workflow = (ROOT / ".github/workflows/validate.yml").read_text()

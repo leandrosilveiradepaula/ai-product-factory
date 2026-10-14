@@ -84,7 +84,10 @@ class OwnerAlertsOnlyContract(unittest.TestCase):
     def test_existing_alerts_only_dispatch_and_cron_are_unchanged(self):
         self.assertIn("inputs.run_alerts == true",self.jobs["alerts"])
         self.assertIn("github.event_name == 'schedule'",self.jobs["schedule-probe"])
-        self.assertIn("python -m ai_product_factory.runtime_cli --mode alerts",self.jobs["schedule-probe"])
+        self.assertNotIn("python -m ai_product_factory.runtime_cli --mode alerts",self.jobs["schedule-probe"])
+        self.assertIn("python -m ai_product_factory.runtime_cli --mode alerts",self.jobs["alerts"])
+        self.assertIn("github.event_name == 'schedule'",self.jobs["alerts"])
+        self.assertIn("always()",self.jobs["alerts"])
 
 if __name__=="__main__":
     unittest.main()

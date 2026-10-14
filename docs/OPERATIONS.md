@@ -1,3 +1,64 @@
+## 14/10/2026 — Draft to Ready desperta Preview sem novo gatilho privilegiado (#797)
+
+O Console CI nao reagia a ready_for_review: tirar Draft nao cria push e nao ativa o workflow de validacao por padrao. O gatilho de pull_request read-only agora enumera opened, synchronize, reopened e ready_for_review, mantendo os mesmos filtros de path/branch e permissions: contents: read. A mesma validacao de typecheck/build volta a rodar, e seu evento workflow_run de sucesso pode acordar o promotor confiavel ja existente em main.
+
+O promotor ainda verifica PR open/nao Draft, mesma origem/base, SHA exato, checks verdes, mudanca apps/console/**, cooldown de rate limit e limite de budget antes de atualizar ref ou disparar navegador. Nao foi adicionado pull_request_target, issue_comment, cron, novo token de escrita, permissao de Console ou auto-merge. Gatilhos privilegiados existentes permanecem intactos.
+
+Este patch nao confirma Preview do PR #811 ou #789, nem contorna a quota Vercel; transicao para Ready deve ocorrer apenas quando a disponibilidade do provedor estiver adequada. PR #786 que ja estava Ready antes do patch nao gera evento retroativo. O merge em main continua gate humano.
+
+## 14/10/2026 — Alertas desacoplados do schedule-probe (Falha 38619635786; #809)
+
+**Evidencia de producao:** workflow nativo agendado #38619635786 observou filas e gerou heartbeat, mas `Evaluate operational alerts in the shared scheduler runner` falhou com `RuntimeError: cost usage inventory has invalid or duplicate ID`. A falha no step final invalidou o job `schedule-probe` e fez todas as lanes de trabalho dependentes dele serem puladas, mesmo com a sondagem de filas bem-sucedida. A validação do ledger foi corrigida depois, mas o acoplamento continuava perigoso para qualquer futura falha de observabilidade.
+
+Correção: mover a reconciliação de alertas do último step de `schedule-probe` para o job `alerts` **já existente**, usando `always()` para `schedule` e preservando o `workflow_dispatch/run_alerts=true` com check de probe. Os processos de recuperação, heartbeat e roteamento seguem sob `schedule-probe`, com as mesmas restrições. Uma eventual falha de `alerts` **continua vermelha e visível no workflow nativo**, mas não cancela `product-stage`, `dispatch`, `ci-followup` e demais lanes com `needs.schedule-probe.result == success`. O job de alertas não recebe `FACTORY_GITHUB_TOKEN` cross-repo; o probe perde escopo `issues: write` porque só o job de alertas deve escrever Issues. Nenhum cron, trigger, ambiente, modelo pago, migration, Preview ou autorização de produção é adicionado.
+
+O alerta #809 segue aberto até **duas execuções nativas agendadas completas e com sucesso**, não apenas alert-only ou backups. Esse patch evita bloqueio transversal, não afirma que o GitHub tenha voltado a emitir cron nem substitui evidência real de recuperação pós-merge.
+
+## 2026-10-14 — Fechamento TOCTOU do Preview (issue #797, patch sem ampliar acesso)
+
+O pipeline `.github/workflows/promote-preview-candidate.yml` permanece exclusivamente disparável por `workflow_run: Console validation completed` e `workflow_dispatch`, operando apenas com código fixado da main. Nenhum novo evento `pull_request_target`, `ready_for_review`, concessão de token, terceiro servidor ou merge automático é habilitado neste patch.
+
+Após a espera pelos três checks, o verificador consulta novamente o PR e impede `reused` se ele deixou de estar aberto, não-draft, base `main`, same-repo ou SHA exato. Após cooldown e budget, o **próprio passo de escrita** consulta uma nova cópia do PR, lista mudanças `apps/console/**` e exige `test`, `factory-acceptance` e `validate` com status `completed/success` no candidato antes de `git.updateRef`. A etapa de navegador só funciona após uma ação `reused|updated|created_then_updated`, revalidando o PR e consultando `preview/pr-N` para confirmar SHA idêntico antes de disparar verificação. Mudanças concorrentes levam a `skipped_stale`, `skipped_no_console`, `skipped_checks` ou `skipped_ref_mismatch`; nunca ao falso sucesso do Preview. A summary durável do Actions registra a ação e o navegador independentemente.
+
+A integração ao gatilho `ready_for_review` é trabalho **separado** e depende de revisão das permissões do evento privilegiado: não foi ativado aqui. Run antigo, CI verde e Preview de SHA anterior continuam insuficientes para autorizar release. O PR de código de workflow não muda `apps/console/**`; Preview da Factory não é aplicável a este patch. Merge que publica produção continua humano.
+
+## 14/10/2026 — Dependabot e CI do Console sem ampliar privilégios (#808)
+
+O CI do PR #808 (upgrade `actions/setup-node`) falhou no passo `Enforce Console branch convention` porque toda branch `dependabot/**` era rejeitada, embora a automação já fosse autorizada a abrir PRs e o workflow seja `contents: read`. A exceção agora exige simultaneamente autor autenticado `dependabot[bot]` e head repository idêntico ao repositório da Factory, obtidos de campos separados do evento GitHub (não do nome da branch). Forks, nomes falsificados e `preview/**` continuam bloqueados.
+
+A alteração não cria gatilhos privilegiados, não amplia permissões, não fornece secrets e não chama o Vercel. Testes unitários executam o script bash do gate com identidade real, spoofing, fork e ramos permitidos. O PR #808 ainda precisa de CI verde sobre o SHA correto após incorporação deste patch e de revisão humana do update Dependabot. Merge em produção continua gate humano.
+
+## 14/10/2026 — Preparação fail-closed do Preview (#797; sem ativação privilegiada)
+
+\`scripts/preview_candidate_contract.py\` define um contrato **puro e determinístico** de elegibilidade:
+PR aberto e não-draft, origem/destino no mesmo repositório confiável, base \`main\`, SHA completo idêntico, checks \`test\`, \`factory-acceptance\` e \`validate\` verdes no SHA exato, e alterações verificadas em \`apps/console/**\`. O segundo predicado só admite evidência de navegador se a promoção tiver resultado comprovado \`reused\`, \`updated\` ou \`created_then_updated\`, e o ref observado continuar no SHA exato.
+
+**Isto ainda não altera o pipeline.** O workflow privilegiado de promoção deve buscar **novamente** PR, checks e ref imediatamente antes da escrita; um resultado anterior à espera por CI não é garantia de estado atual. A integração e o gatilho \`ready_for_review\` são mudança de segurança e precisam de revisão/aprovação explícita das permissões do GitHub Actions. Não houve criação de trigger, modificação de workflow, promoção de ref, Vercel deployment ou merge. O PR #811 permanece draft até Preview/browser evidenciarem o SHA candidato ou a política explicitamente permitir outro caminho.
+
+## 14/10/2026 — Confirmacao pos-merge das correcoes de operacao
+
+- PR #806 mergeado em `2c604bec`: o alerta `scheduler_pipeline` foi exercitado pela reconciliacao `/factory-alerts` (run `38628800312` SUCCESS); issue #809 foi aberta pelo bot, pois run agendado #38619635786 concluiu FAILURE. `scheduler_gap` (heartbeat) estar fechado nao equivale a pipeline recuperado.
+- PR #807 mergeado em `10016635`: CI de push `38629927087` SUCCESS; issue #804 encerrada. Scan paginado de `factory_runs` e leitura em lotes sao codigo de producao, mas **nenhuma validacao com mais de 200 runs reais** foi feita: o banco possui 81. Regressao simulada no CI cobre >200.
+- Para o proximo ciclo, confirmar duas `schedule` de `autonomous-runner.yml` nativas, consecutivas, com `conclusion=success`, antes de fechar #809. Rerun, `workflow_dispatch`, issue_comment e OIDC backup nao contam. Nao criar trabalhos falsos, creditos de API nem redeploy do Vercel.
+- Ao testar #786, conferir SHA exato e sinais READY + browser, sem reutilizar URLs antigos. A migration RPC ja esta aplicada; evitar executa-la novamente. Publicacao de producao exige gate humano.
+- O diagnostico de custos/saude nao concede permissao para dispatch ou calls pagas.
+
+## Operational runs: complete bounded read, no false healthy totals (2026-10-14 candidate #804)
+
+\`SupabaseOperationalHealthReader\` must not infer the current number of failed, dead-letter, or expired-lease incidents from the latest 200 \`factory_runs\` only. The run history now paginates in deterministic \`created_at desc,id desc\` order (200 records/page, up to 20 pages), validates unique run IDs and known statuses, and **raises an error** instead of reporting incomplete totals. The limit is intentional (4,000 runs): reaching it without observing the final short page fails closed. Failed-run parent task statuses are fetched in bounded 100-ID batches, preserving the rule that recovered/completed tasks suppress obsolete historical failure warnings. Independently partitioned Preview and usage-ledger scans keep their earlier rules.
+
+\`offset\` pagination is not a transactional snapshot. Concurrent inserts/deletes can move boundaries; overlapping IDs or inverted timestamp order are detected and rejected. Missing rows caused by concurrent shifting that produce no duplicate cannot be ruled out by offset scans: for immutable complete historical accounting at much higher volume, use a privileged transactional snapshot/keyset pagination strategy in a separately reviewed change. Operational health is **observability**, never evidence authorizing paid-model calls, dispatch, or release. No production schema change, paid model usage, Console Preview, or new token permission is required.
+
+Observed production on 2026-10-14: 81 total Factory runs, so the 200-row truncation was a latent growth hazard, not a live missing incident. Tests exercise 201+ histories with failed/expired/recovered incidents, duplicate IDs, invalid statuses/timestamps, batch lookup, and bounded overflow. Merge into production still requires the human gate; after human merge, verify scheduled alert evaluation against a read-only Control Plane snapshot.
+
+## Native scheduler completion vs heartbeat (2026-10-14 candidate)
+
+The existing \`scheduler_gap\` is a **delivery-cadence** warning derived from two native \`schedule_probe.native_observed\` events in Supabase. Those are emitted before alert evaluation; therefore they cannot prove the GitHub Actions workflow completed successfully. A manual \`/factory-alerts\` pass can legitimately clear the cadence warning while a preceding native workflow failed. Never claim an autonomous runner is end-to-end healthy on that basis alone.
+
+\`scheduler_pipeline\` independently observes the GitHub Actions REST \`actions/runs?event=schedule\` inventory, filtering to \`.github/workflows/autonomous-runner.yml\` on the trusted \`main\` repository. It requires the **last two completed** native scheduled workflows to have \`conclusion=success\`, with the newest fresh (under 2 hours) and the completion observations within 2 hours. The currently running scheduled workflow is not considered complete; unrelated scheduled preflights, dispatches, owner comments and backup wakes never count. Read-only API errors or malformed results retain a warning and cannot silently resolve the issue. This uses the existing GitHub token/client and opens/closes only the existing deduplicated alert mechanism; no extra cron, workflow permissions, database migration, paid provider, or deployment is introduced.
+
+After a human merge, a **real** scheduled runner must complete twice (at timely intervals) for pipeline health. Verify the GitHub Actions run IDs/conclusions independently; alert-only checks are evidence of the alert system, not the completion of the native runner. If the token cannot read the Actions inventory, investigate its existing permissions before making any access expansion. No automatic permission change is authorized by this patch.
+
 ## Hotfix: production BIGINT cost usage IDs (2026-10-14)
 At native scheduled run [38619635786](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38619635786) at 18:58 UTC, the alert step failed with `RuntimeError: cost usage inventory has invalid or duplicate ID` introduced by #803. The live schema proves `factory_tool_usage.id bigint NOT NULL` (identity sequence), so PostgREST returns the IDs as JSON numbers, whereas #803's read-only pagination erroneously required strings. Live SQL verified 97 distinct/non-null IDs; no corruption.
 The reader now accepts signed-BIGINT-range **positive integer** JSON values or decimal-string forms and normalizes them to the same canonical ID before duplicate detection. It rejects booleans, floats, zero, negatives, malformed strings or out-of-range values. Existing cost pagination and fail-closed budget/ledger semantics remain unchanged. Tests use numeric IDs mirroring the production schema, include numeric-string cross-page duplicate detection and invalid boundary values.
