@@ -179,6 +179,19 @@ jobs:
             }
             if (!green) return core.setFailed("required checks did not become green before timeout");
 
+            // The CI wait can last 150 seconds. Its initial PR object must
+            // never authorize promotion if the candidate changed meanwhile.
+            const {data: fresh} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
+            const fullRepo = context.repo.owner + "/" + context.repo.repo;
+            if (fresh.state !== "open" || fresh.draft !== false ||
+                fresh.base?.ref !== "main" || fresh.base?.repo?.full_name !== fullRepo ||
+                fresh.head?.repo?.full_name !== fullRepo || fresh.head?.sha !== sha) {
+              core.setOutput("needs_promotion", "false");
+              core.setOutput("promotion_action", "stale");
+              core.notice("Preview candidate eligibility changed during check polling; no promotion.");
+              return;
+            }
+
             const ref = "heads/preview/pr-" + prNumber;
             try {
               const {data: current} = await github.rest.git.getRef({...context.repo, ref});
@@ -214,8 +227,44 @@ jobs:
           CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
         with:
           script: |
-            const ref = "heads/preview/pr-" + Number(process.env.PR_NUMBER);
+            const prNumber = Number(process.env.PR_NUMBER);
+            const ref = "heads/preview/pr-" + prNumber;
             const sha = process.env.CANDIDATE_SHA;
+            const fullRepo = context.repo.owner + "/" + context.repo.repo;
+            // Revalidate after CI and provider-budget waits, immediately
+            // before touching any privileged Git reference.
+            if (!Number.isInteger(prNumber) || prNumber < 1 || !/^[0-9a-f]{40}$/.test(sha)) {
+              return core.setFailed("invalid Preview candidate identity");
+            }
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
+            if (pr.state !== "open" || pr.draft !== false ||
+                pr.base?.ref !== "main" || pr.base?.repo?.full_name !== fullRepo ||
+                pr.head?.repo?.full_name !== fullRepo || pr.head?.sha !== sha) {
+              core.setOutput("promotion_action", "skipped_stale");
+              core.notice("PR no longer matches exact trusted Preview candidate; no Git ref updated.");
+              return;
+            }
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo, pull_number: prNumber, per_page: 100,
+            });
+            if (!files.some(file => String(file.filename || "").startsWith("apps/console/"))) {
+              core.setOutput("promotion_action", "skipped_no_console");
+              core.notice("Candidate no longer requires a Console Preview; no Git ref updated.");
+              return;
+            }
+            const required = ["test", "factory-acceptance", "validate"];
+            const {data: checks} = await github.rest.checks.listForRef({
+              ...context.repo, ref: sha, per_page: 100,
+            });
+            const missing = required.filter(name =>
+              !checks.check_runs.some(c => c.name === name && c.head_sha === sha &&
+                c.status === "completed" && c.conclusion === "success")
+            );
+            if (missing.length) {
+              core.setOutput("promotion_action", "skipped_checks");
+              core.notice("Required exact-SHA checks are not green: " + missing.join(", "));
+              return;
+            }
             try {
               await github.rest.git.getRef({...context.repo, ref});
               await github.rest.git.updateRef({...context.repo, ref, sha, force: true});
@@ -235,14 +284,37 @@ jobs:
             }
 
       - name: Ensure exact Preview browser evidence
-        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.promotion_action != 'stale'
+        if: >-
+          ${{ steps.resolve.outputs.applicable == 'true' &&
+              (steps.verify.outputs.promotion_action == 'reused' ||
+               steps.promote.outputs.promotion_action == 'updated' ||
+               steps.promote.outputs.promotion_action == 'created_then_updated') }}
         id: browser
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
         with:
           script: |
             const sha = process.env.CANDIDATE_SHA;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const fullRepo = context.repo.owner + "/" + context.repo.repo;
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: prNumber});
+            if (pr.state !== "open" || pr.draft !== false ||
+                pr.base?.ref !== "main" || pr.base?.repo?.full_name !== fullRepo ||
+                pr.head?.repo?.full_name !== fullRepo || pr.head?.sha !== sha) {
+              core.setOutput("browser_action", "skipped_stale");
+              core.notice("Browser evidence skipped: PR no longer matches exact trusted candidate.");
+              return;
+            }
+            const {data: previewRef} = await github.rest.git.getRef({
+              ...context.repo, ref: "heads/preview/pr-" + prNumber,
+            });
+            if (previewRef.object.sha !== sha) {
+              core.setOutput("browser_action", "skipped_ref_mismatch");
+              core.notice("Browser evidence skipped: promoted ref differs from candidate.");
+              return;
+            }
             const contextName = "Factory Preview browser evidence";
             const current = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha, per_page: 100});
             const alreadyGreen = (current.data.statuses || []).some(s =>

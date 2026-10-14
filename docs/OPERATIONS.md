@@ -1,3 +1,11 @@
+## 2026-10-14 — Fechamento TOCTOU do Preview (issue #797, patch sem ampliar acesso)
+
+O pipeline `.github/workflows/promote-preview-candidate.yml` permanece exclusivamente disparável por `workflow_run: Console validation completed` e `workflow_dispatch`, operando apenas com código fixado da main. Nenhum novo evento `pull_request_target`, `ready_for_review`, concessão de token, terceiro servidor ou merge automático é habilitado neste patch.
+
+Após a espera pelos três checks, o verificador consulta novamente o PR e impede `reused` se ele deixou de estar aberto, não-draft, base `main`, same-repo ou SHA exato. Após cooldown e budget, o **próprio passo de escrita** consulta uma nova cópia do PR, lista mudanças `apps/console/**` e exige `test`, `factory-acceptance` e `validate` com status `completed/success` no candidato antes de `git.updateRef`. A etapa de navegador só funciona após uma ação `reused|updated|created_then_updated`, revalidando o PR e consultando `preview/pr-N` para confirmar SHA idêntico antes de disparar verificação. Mudanças concorrentes levam a `skipped_stale`, `skipped_no_console`, `skipped_checks` ou `skipped_ref_mismatch`; nunca ao falso sucesso do Preview. A summary durável do Actions registra a ação e o navegador independentemente.
+
+A integração ao gatilho `ready_for_review` é trabalho **separado** e depende de revisão das permissões do evento privilegiado: não foi ativado aqui. Run antigo, CI verde e Preview de SHA anterior continuam insuficientes para autorizar release. O PR de código de workflow não muda `apps/console/**`; Preview da Factory não é aplicável a este patch. Merge que publica produção continua humano.
+
 ## 14/10/2026 — Dependabot e CI do Console sem ampliar privilégios (#808)
 
 O CI do PR #808 (upgrade `actions/setup-node`) falhou no passo `Enforce Console branch convention` porque toda branch `dependabot/**` era rejeitada, embora a automação já fosse autorizada a abrir PRs e o workflow seja `contents: read`. A exceção agora exige simultaneamente autor autenticado `dependabot[bot]` e head repository idêntico ao repositório da Factory, obtidos de campos separados do evento GitHub (não do nome da branch). Forks, nomes falsificados e `preview/**` continuam bloqueados.
