@@ -1,3 +1,10 @@
+## 2026-10-14 - Isolated PostgreSQL Codex claim concurrency CI (candidate)
+- PR #764 merged at c4df4609; post-merge CI succeeded, and Supabase migration codex_claim_agent_hardening was applied and verified (three service-role-only RPCs; no queued Codex runs). No Factory PR was open before this candidate.
+- The earlier SQL string-contract tests did not execute two simultaneous database transactions. This candidate adds an isolated PostgreSQL 16 GitHub Actions workflow running the actual current manual and automatic claim functions, automatic scheduler, and work-matrix SQL (no production Control Plane writes).
+- Coverage: competing auto/auto and manual/manual transactions with held row locks; manual vs automatic separation; untagged legacy and wrong-route rejection; exact agent, active project, required tools/capabilities, queued Work Unit; work-matrix eligibility; RPC execute ACLs. A clearly labeled fixture replaces the generic allocator, so tests do not prove production allocator scope-lock behavior.
+- Guard: script refuses non-local host, wrong database name or missing isolated opt-in; workflow runs on relevant files only. No migration, model credit, Codex auth, production job, Preview or auto-merge is changed.
+- Results must come from exact PR CI; green text checks alone are not concurrency evidence.
+
 ## 2026-10-14 - Codex automatic claim agent identity/capabilities (candidate)
 - Reconciled main `eb043896`, green post-merge CI, zero active Work Units, runs, assignments and gates. Supabase migration `codex_atomic_mode_isolation` was applied and audited: seven route RPC signatures/ACLs validated, old dispatch revoked from service_role, queue signals all false.
 - Follow-up hardens automatic Codex at three SQL boundaries: scheduler requires both `codex` and `github_write` and checks the allocator's exact agent; claimer re-checks agent tools, task capabilities, active project, and matching agent key under row locks; work matrix only advertises eligible Codex assignments. Client guards reject unexpected run/agent IDs.
