@@ -1,3 +1,11 @@
+## 14/10/2026 — Alertas desacoplados do schedule-probe (Falha 38619635786; #809)
+
+**Evidencia de producao:** workflow nativo agendado #38619635786 observou filas e gerou heartbeat, mas `Evaluate operational alerts in the shared scheduler runner` falhou com `RuntimeError: cost usage inventory has invalid or duplicate ID`. A falha no step final invalidou o job `schedule-probe` e fez todas as lanes de trabalho dependentes dele serem puladas, mesmo com a sondagem de filas bem-sucedida. A validação do ledger foi corrigida depois, mas o acoplamento continuava perigoso para qualquer futura falha de observabilidade.
+
+Correção: mover a reconciliação de alertas do último step de `schedule-probe` para o job `alerts` **já existente**, usando `always()` para `schedule` e preservando o `workflow_dispatch/run_alerts=true` com check de probe. Os processos de recuperação, heartbeat e roteamento seguem sob `schedule-probe`, com as mesmas restrições. Uma eventual falha de `alerts` **continua vermelha e visível no workflow nativo**, mas não cancela `product-stage`, `dispatch`, `ci-followup` e demais lanes com `needs.schedule-probe.result == success`. O job de alertas não recebe `FACTORY_GITHUB_TOKEN` cross-repo; o probe perde escopo `issues: write` porque só o job de alertas deve escrever Issues. Nenhum cron, trigger, ambiente, modelo pago, migration, Preview ou autorização de produção é adicionado.
+
+O alerta #809 segue aberto até **duas execuções nativas agendadas completas e com sucesso**, não apenas alert-only ou backups. Esse patch evita bloqueio transversal, não afirma que o GitHub tenha voltado a emitir cron nem substitui evidência real de recuperação pós-merge.
+
 ## 2026-10-14 — Fechamento TOCTOU do Preview (issue #797, patch sem ampliar acesso)
 
 O pipeline `.github/workflows/promote-preview-candidate.yml` permanece exclusivamente disparável por `workflow_run: Console validation completed` e `workflow_dispatch`, operando apenas com código fixado da main. Nenhum novo evento `pull_request_target`, `ready_for_review`, concessão de token, terceiro servidor ou merge automático é habilitado neste patch.
