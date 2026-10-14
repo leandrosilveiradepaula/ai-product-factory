@@ -94,6 +94,7 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
     def test_ready_true_summary_without_domains_fails_closed(self):
         assessment=self._release({
             "ready":True,"status":"passed","assessed_commit":GIT_COMMIT,
+            "evaluation_status":"passed","baseline_ref":GIT_COMMIT,
             "assessment_ref":"audit:forged-summary",
         })
         self.assertFalse(assessment.report["product_complete"])
