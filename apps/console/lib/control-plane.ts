@@ -11,71 +11,31 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  const clean=request.trim();
  if(!clean)throw new Error("Descreva o que você quer mudar ou continuar.");
  if(clean.length>6000)throw new Error("O pedido deve ter no máximo 6000 caracteres.");
+ if(!Number.isInteger(attachmentCount)||attachmentCount<0||attachmentCount>10)throw new Error("Quantidade de anexos inválida.");
+ const requestId=requestedId||crypto.randomUUID();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))throw new Error("Identificador do pedido inválido.");
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control plane credentials are not configured");
- const projectResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_projects?select=id,project_key,project_kind,manifest&project_key=eq.${encodeURIComponent(projectKey)}&is_active=eq.true&limit=1`,
-  {headers:cfg.headers,cache:"no-store"}
- );
- if(!projectResponse.ok)throw new Error("Não foi possível localizar o projeto.");
- const projects=await projectResponse.json();
- if(projects.length!==1)throw new Error("Projeto ativo não encontrado.");
- const project=projects[0];
- const tasksResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_tasks?select=id,status,title,parent_task_id&project_id=eq.${encodeURIComponent(String(project.id))}&order=created_at.desc&limit=101`,
-  {headers:cfg.headers,cache:"no-store"}
- );
- if(!tasksResponse.ok)throw new Error("Não foi possível verificar o trabalho atual do projeto.");
- const tasks=await tasksResponse.json();
- // An incomplete partition cannot prove that no active root or child exists.
- if(!Array.isArray(tasks)||tasks.length>100)throw new Error("Inventário de tarefas incompleto; não é seguro abrir outra execução.");
- const terminal=new Set(["completed","cancelled","failed","merged","integrated"]);
- const unfinished=tasks.filter((task:any)=>!terminal.has(String(task.status)));
- const parentIds=[...new Set(unfinished.map((task:any)=>String(task.parent_task_id||"")).filter(Boolean))];
- let parentStatuses=new Map<string,{status:string;projectId:string}>();
- if(parentIds.length){
-  const parentsResponse=await fetch(
-   `${cfg.url}/rest/v1/factory_tasks?select=id,status,project_id&id=in.(${parentIds.map(encodeURIComponent).join(",")})`,
-   {headers:cfg.headers,cache:"no-store"}
-  );
-  if(!parentsResponse.ok)throw new Error("Não foi possível verificar as tarefas-pai.");
-  const parents=await parentsResponse.json();
-  if(!Array.isArray(parents)||parents.length!==parentIds.length)throw new Error("Tarefas-pai ausentes; continuação bloqueada por segurança.");
-  parentStatuses=new Map(parents.map((parent:any)=>[String(parent.id),{status:String(parent.status),projectId:String(parent.project_id)}]));
- }
- const active=unfinished.find((task:any)=>{
-  if(!task.parent_task_id)return true; // An unfinished root is executable/pending.
-  const parent=parentStatuses.get(String(task.parent_task_id));
-  if(!parent||parent.projectId!==String(project.id))return true; // Fail closed.
-  return !terminal.has(parent.status); // Historical children of terminal parents do not block.
+ // A single Postgres RPC locks the project and commits request, task, run and audit atomically.
+ // Never PATCH the manifest or call bootstrap separately: those paths admit concurrent cycles.
+ const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_continuation`,{
+  method:"POST",
+  headers:{...cfg.headers,"Content-Type":"application/json"},
+  body:JSON.stringify({
+   p_project_key:projectKey,
+   p_request:clean,
+   p_request_id:requestId,
+   p_attachment_count:attachmentCount,
+  }),
+  cache:"no-store",
  });
- if(active)throw new Error(`Já existe trabalho ativo neste projeto: ${String(active.title||active.id)} (${String(active.status)}).`);
- const manifest=project.manifest&&typeof project.manifest==="object"?project.manifest:{};
- const requestId=requestedId||crypto.randomUUID();
- const requestedAt=new Date().toISOString();
- const updatedManifest={
-  ...manifest,
-  reconcile_first:true,
-  continuation_request:{
-   id:requestId,
-   summary:clean,
-   requested_at:requestedAt,
-   source:"factory-console",
-   attachment_count:attachmentCount,
-  },
- };
- const updateResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_projects?id=eq.${encodeURIComponent(String(project.id))}`,
-  {method:"PATCH",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({manifest:updatedManifest}),cache:"no-store"}
- );
- if(!updateResponse.ok)throw new Error("Não foi possível registrar o novo pedido no projeto.");
- const auditResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_audit_events`,
-  {method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({project_id:String(project.id),actor_type:"human",actor_ref:"factory-console",event_type:"project.continuation.requested",payload:{request_id:requestId,summary:clean,requested_at:requestedAt,attachment_count:attachmentCount}}),cache:"no-store"}
- );
- if(!auditResponse.ok)throw new Error("O pedido foi registrado, mas a evidência de auditoria não pôde ser persistida.");
- const enqueue=await enqueueProjectBootstrap(projectKey);
- return {...enqueue,requestId,requestedAt};
+ if(!response.ok){
+  if(response.status===409||response.status===400)throw new Error("Já existe trabalho ativo neste projeto ou o pedido foi repetido com conteúdo divergente. Confira o estado do projeto antes de tentar novamente.");
+  throw new Error("Não foi possível registrar e enfileirar o pedido de forma atômica.");
+ }
+ const result=await response.json();
+ if(!result||result.request_id!==requestId||!result.project_id||!result.task_id||!result.run_id||typeof result.created!=="boolean")throw new Error("Resposta de enfileiramento não corresponde ao pedido. Nenhum sucesso foi presumido.");
+ return {...result,requestId,requestedAt:String(result.requested_at||"")};
 }
 
 export async function getDashboard():Promise<Dashboard>{
