@@ -88,7 +88,7 @@ test("BIGINT malformed and non timezone timestamps fail closed",async()=>{
 test("invalid or unknown cost stays blocked, never coerced to zero",()=>{
  assert.equal(parseRecordedCost(null),null);
  assert.equal(parseRecordedCost("1.37"),1.37);
- for(const value of ("", "-1", "NaN", "Infinity", true, {}, -1, Infinity)){
+ for(const value of ["", "-1", "NaN", "Infinity", true, {}, -1, Infinity]){
   assert.throws(()=>parseRecordedCost(value),/Custo operacional/);
  }
 });
