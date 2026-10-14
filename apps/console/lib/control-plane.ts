@@ -193,6 +193,54 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
 export type ProjectPreviewPolicy={provider:string|null;mode:string|null;required:boolean|null;reason:string|null;evidenceSource:string|null;evidenceCommit:string|null};
 export type ProjectReadinessDomain={status:string;reason?:string;evidence?:unknown[];coverage?:string[];verification_state?:string};
+// Mirror the deterministic product-readiness domain contract at the Console
+// trust boundary. The evaluation JSON is evidence to verify, not an authority
+// to render an unconditional product-ready state.
+const productReadinessCoverage:Record<string,readonly string[]>={
+ security:["authn_authz","data_access_boundaries","secrets_dependencies"],
+ observability_operations:["health","traceability","recovery_alerting"],
+ test_strategy:["unit_integration","critical_e2e","regression_gates"],
+ product_experience:["surface_inventory","responsive","accessibility","states"],
+ documentation:["setup_configuration","operations","release_rollback"],
+ functional_completeness:["requirements_inventory","mock_noop_demo_inventory","critical_journeys"],
+};
+const productReadinessVerification:Record<string,readonly string[]>={
+ security:["executed","reviewed"],
+ observability_operations:["executed","observed"],
+ test_strategy:["executed"],
+ product_experience:["observed","reviewed"],
+ documentation:["reviewed"],
+ functional_completeness:["executed","observed","reviewed"],
+};
+function verifiedProductReadinessDomains(value:unknown):boolean{
+ if(!value||typeof value!=="object"||Array.isArray(value))return false;
+ const domains=value as Record<string,unknown>;
+ return Object.entries(productReadinessCoverage).every(([key,required])=>{
+  const raw=domains[key];
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))return false;
+  const domain=raw as Record<string,unknown>;
+  if(!Array.isArray(domain.evidence)||!domain.evidence.length||
+     !domain.evidence.every(x=>typeof x==="string"&&x.trim().length>0))return false;
+  if(!productReadinessVerification[key].includes(String(domain.verification_state||"")))return false;
+  if(domain.status==="not_applicable"){
+   return key==="product_experience" && typeof domain.reason==="string" &&
+    domain.reason.trim().length>0;
+  }
+  if(domain.status!=="passed"||!Array.isArray(domain.coverage)||
+     !domain.coverage.every(x=>typeof x==="string"&&x.trim().length>0))return false;
+  const coverage=new Set(domain.coverage);
+  return required.every(k=>coverage.has(k));
+ });
+}
+function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record<string,any>,assessedCommit:string|null):boolean{
+ const baseline=String(row.baseline_ref||"");
+ return result.ready===true&&result.status==="passed" &&
+   row.status==="passed" && Array.isArray(result.blockers) && result.blockers.length===0 &&
+   Boolean(assessedCommit) && /^[0-9a-f]{40}$/i.test(String(assessedCommit)) &&
+   assessedCommit===String(row.baseline_ref||"") &&
+   verifiedProductReadinessDomains(result.domains);
+}
+
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
 export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;tasks:ProjectTaskSummary[]};
 
@@ -219,7 +267,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
     const result=row.result&&typeof row.result==="object"?row.result:{};
     const assessedCommit=result.assessed_commit?String(result.assessed_commit):(row.baseline_ref?String(row.baseline_ref):null);
     productReadiness={
-     ready:result.ready===true&&result.status==="passed"&&Boolean(assessedCommit)&&assessedCommit===String(row.baseline_ref||""),
+     ready:verifiedProductReadinessAssessment(row,result,assessedCommit),
      status:String(result.status||row.status||"not_ready"),
      assessedCommit,
      assessmentRef:result.assessment_ref?String(result.assessment_ref):null,
