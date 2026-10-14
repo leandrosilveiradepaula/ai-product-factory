@@ -777,3 +777,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .main .gateTechnicalGrid,.main .verificationGrid{min-width:0}
  .main .runStage{min-width:76px}
 }
+
+/* Second audit pass: remaining operational microtext and button hit targets. */
+.workspacePicker{font-size:12px;min-height:36px;height:auto}
+.topbar .topbarWork{font-size:14px;min-height:42px;height:auto}
+.main .eyebrow,.main .decisionKind,.main .decisionNumber{font-size:12px}
+.main .primary,.main .secondary,.main .danger,.main .ghostButton{font-size:14px;min-height:42px}
+.main .mode button,.main .planningDecisionSuggestion button{font-size:14px;min-height:42px}
+.main .lifecycleRail span,.main .macroStage span,.main .macroStage small{font-size:12px;line-height:1.45}
+.main .gateHistory>summary span,.main .gateHistory>summary strong,.main .gateHistory>summary small{font-size:12px}
+.main .planningDecisionWhy span,.main .planningDecisionWhy p,.main .planningDecisionAnswer>span,.main .planningDecisionAnswer small{font-size:12px;line-height:1.5}
+.main .gateBannerProject,.main .gateContextHero span:not(.detailLabel),.main .planningDecisionHeader span{font-size:12px}
+.main .resourceRow span,.main .technicalStats span,.main .technicalStats small{font-size:12px;line-height:1.45}
+.main .jsonBlock,.main .valueRow,.main .intakeHint,.main .attentionFooter,.main .errorText{font-size:12px;line-height:1.5}
+.main .screenGuide strong,.main .panelHeading strong{font-size:13px}
+.main .configRows span,.main .configRows strong{font-size:12px}
+@media(max-width:860px){
+ .main .primary,.main .secondary,.main .danger,.main .ghostButton{min-height:44px}
+ .main .mode button,.main .planningDecisionSuggestion button{min-height:44px}
+ .main .lifecycleRail{overflow-x:auto}
+}
