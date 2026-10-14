@@ -513,7 +513,7 @@ class ScheduleProbeTests(unittest.TestCase):
                 "tasks": [{"id": "t1", "status": "queued"}],
             },
             "dispatch": {"pending_units": [{"id": "unit-1"}], "portfolio_candidates":[{"project_id":"p1","project_key":"demo"}]},
-            "integration": {"change_sets": [{"id": "change-set-1"}]},
+            "integration": {"change_sets": [{"id": "change-set-1", "status": "building"}]},
             "ci": {"runs": [{"id": "r1", "status": "ci_pending"}]},
             "specialist_security": {"lanes": [{"role": "security"}]},
             "specialist_qa": {"lanes": [{"role": "qa"}]},
