@@ -37,7 +37,11 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
 
     def test_vercel_preview_ignore_command_matches_console_only_policy(self):
         text=(ROOT/"apps/console/vercel.json").read_text()
-        self.assertIn('preview/*) git diff --quiet HEAD^ HEAD ./',text)
+        self.assertIn('VERCEL_GIT_PREVIOUS_SHA',text)
+        self.assertIn('git diff --quiet \\"$VERCEL_GIT_PREVIOUS_SHA\\" HEAD -- .',text)
+        self.assertIn('preview/pr-*',text)
+        self.assertIn('preview/*) exit 0',text)
+        self.assertIn('git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json',text)
         self.assertNotIn('preview/*) exit 1',text)
         self.assertIn('../../config/factory.release-policy.v1.json',text)
 
