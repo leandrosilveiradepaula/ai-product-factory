@@ -77,8 +77,7 @@ begin
     'change_set_id',v_set.id,'work_unit_id',v_unit.id,'wave',v_unit.wave,'agent_key',v_unit.agent_key)
  );
 end;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.factory_claim_next_manual_codex_handoff(p_worker_id text)
  RETURNS jsonb
@@ -175,8 +174,7 @@ begin
     'codex_level',greatest(1,coalesce((v_run.metadata->>'codex_level')::integer,1))
   );
 end;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.factory_claim_next_agent_codex_run(p_worker_id text, p_agent_key text DEFAULT NULL::text, p_run_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
@@ -285,8 +283,7 @@ begin
     'human_gate_required',coalesce((v_run.metadata->>'human_gate_required')::boolean,false)
   );
 end;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.factory_schedule_eligible_codex_run(p_run_id uuid DEFAULT NULL::uuid, p_project_key text DEFAULT NULL::text)
  RETURNS jsonb
@@ -349,8 +346,7 @@ begin
  );
  return v_assignment || jsonb_build_object('run_id',v_run.id,'task_id',v_task.id);
 end;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.factory_agent_work_matrix(p_limit integer DEFAULT 12)
  RETURNS jsonb
@@ -374,8 +370,7 @@ AS $function$
    'direct',coalesce((select jsonb_agg(jsonb_build_object('run_id',run_id,'agent_key',agent_key,'role',role) order by assigned_at) from work where execution_route='direct'),'[]'::jsonb),
    'codex',coalesce((select jsonb_agg(jsonb_build_object('run_id',run_id,'agent_key',agent_key,'role',role) order by assigned_at) from work where execution_route='codex'),'[]'::jsonb)
  );
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.factory_scheduler_queue_signals()
  RETURNS jsonb
@@ -433,8 +428,7 @@ AS $function$
      where j.status='queued' and j.role='operations'
    )
  );
-$function$
-
+$function$;
 
 revoke all on function public.factory_dispatch_preapproved_planned_task_v2(text,uuid,text,text,integer,boolean,jsonb,text,boolean,jsonb,text) from public,anon,authenticated;
 grant execute on function public.factory_dispatch_preapproved_planned_task_v2(text,uuid,text,text,integer,boolean,jsonb,text,boolean,jsonb,text) to service_role;
