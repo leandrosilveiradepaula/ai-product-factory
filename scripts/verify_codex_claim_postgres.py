@@ -44,7 +44,7 @@ def function_definition(file: Path, name: str) -> str:
     pattern = (
         r"CREATE OR REPLACE FUNCTION public\."
         + re.escape(name)
-        + r"\([\s\S]*?\$function\$;"
+        + r"\([\s\S]*?(?:\$function\$;|end;\$\$;)"
     )
     match = re.search(pattern, sql, flags=re.DOTALL | re.IGNORECASE)
     if match is None:
