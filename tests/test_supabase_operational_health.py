@@ -175,7 +175,7 @@ class Tests(unittest.TestCase):
             {"id":"audit2","status":"preview_ready","created_at":"2026-10-07T16:42:41Z",
              "metadata":{"source":"dogfood_manual_audit","purpose":"product_readiness_assessment"}},
         ]
-        with patch("urllib.request.urlopen",side_effect=[Response(audits),Response(audits),Response([])]):
+        with patch("urllib.request.urlopen",side_effect=[Response(list(reversed(audits))),Response(audits),Response([])]):
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             health=reader.read(now=datetime(2026,10,14,10,tzinfo=timezone.utc))
         self.assertEqual(health.stale_preview_runs,0)
@@ -197,7 +197,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(health.stale_preview_runs,1)
 
     def test_older_delivery_not_hidden_by_newest_200_terminal_runs(self):
-        terminal=[{"id":str(i),"status":"completed","created_at":"2026-10-14T09:00:00Z"} for i in range(200)]
+        terminal=[{"id":f"{i:04d}","status":"completed","created_at":"2026-10-14T09:00:00Z"} for i in range(199,-1,-1)]
         preview=[{"id":"old","created_at":"2026-10-01T00:00:00Z","metadata":{}}]
         with patch("urllib.request.urlopen",side_effect=[Response(terminal),Response([]),Response(preview),Response([])]) as calls:
             health=SupabaseOperationalHealthReader(
