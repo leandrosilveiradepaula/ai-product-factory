@@ -5,6 +5,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PreviewPromotionWorkflowTests(unittest.TestCase):
+    def test_provider_rate_limit_observed_before_consuming_preview_quota(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        self.assertIn("statuses: read",workflow)
+        self.assertIn("python -m scripts.preview_provider_cooldown",workflow)
+        self.assertLess(workflow.index("python -m scripts.preview_provider_cooldown"),workflow.index("python -m scripts.preview_budget_guard"))
+
     def test_budget_guard_is_invoked_as_module(self):
         workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
         self.assertIn("python -m scripts.preview_budget_guard", workflow)
