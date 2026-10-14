@@ -56,7 +56,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      issues: write
     outputs:
       github_access_work: ${{ steps.probe.outputs.github_access_work }}
       product_work: ${{ steps.probe.outputs.product_work }}
@@ -134,11 +133,6 @@ jobs:
         continue-on-error: true
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode backlog-audit
-      - name: Evaluate operational alerts in the shared scheduler runner
-        if: ${{ github.event_name == 'schedule' }}
-        shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode alerts
-
   github-access-preflight:
     environment: openai-api
     needs: schedule-probe
@@ -699,7 +693,7 @@ jobs:
         if: ${{ steps.readiness.outputs.ready == 'true' }}
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ steps.readiness.outputs.ready == 'true' }}
         with:
           node-version: "22"
@@ -835,7 +829,7 @@ jobs:
               out.write(f"work={'true' if data.get('claimed') else 'false'}\n")
               out.write(f"browser={'true' if data.get('preview_required') else 'false'}\n")
           PY
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ steps.preview_probe.outputs.browser == 'true' }}
         with:
           node-version: "22"
@@ -854,7 +848,9 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode preview
 
   alerts:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_alerts == true }}
+    # Alert collector failure must be visible, but must not invalidate the
+    # durable work probe or suppress ready product/dispatch/CI lanes.
+    if: ${{ always() && (github.event_name == 'schedule' || (needs.schedule-probe.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_alerts == true)) }}
     needs: schedule-probe
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -868,7 +864,6 @@ jobs:
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
       FACTORY_MODEL_BUDGET_USD: "4.00"
       GITHUB_TOKEN: ${{ github.token }}
-      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/control-plane-oidc

@@ -1,3 +1,33 @@
+## 14/10/2026 — Draft to Ready desperta Preview sem novo gatilho privilegiado (#797)
+
+O Console CI nao reagia a ready_for_review: tirar Draft nao cria push e nao ativa o workflow de validacao por padrao. O gatilho de pull_request read-only agora enumera opened, synchronize, reopened e ready_for_review, mantendo os mesmos filtros de path/branch e permissions: contents: read. A mesma validacao de typecheck/build volta a rodar, e seu evento workflow_run de sucesso pode acordar o promotor confiavel ja existente em main.
+
+O promotor ainda verifica PR open/nao Draft, mesma origem/base, SHA exato, checks verdes, mudanca apps/console/**, cooldown de rate limit e limite de budget antes de atualizar ref ou disparar navegador. Nao foi adicionado pull_request_target, issue_comment, cron, novo token de escrita, permissao de Console ou auto-merge. Gatilhos privilegiados existentes permanecem intactos.
+
+Este patch nao confirma Preview do PR #811 ou #789, nem contorna a quota Vercel; transicao para Ready deve ocorrer apenas quando a disponibilidade do provedor estiver adequada. PR #786 que ja estava Ready antes do patch nao gera evento retroativo. O merge em main continua gate humano.
+
+## 14/10/2026 — Alertas desacoplados do schedule-probe (Falha 38619635786; #809)
+
+**Evidencia de producao:** workflow nativo agendado #38619635786 observou filas e gerou heartbeat, mas `Evaluate operational alerts in the shared scheduler runner` falhou com `RuntimeError: cost usage inventory has invalid or duplicate ID`. A falha no step final invalidou o job `schedule-probe` e fez todas as lanes de trabalho dependentes dele serem puladas, mesmo com a sondagem de filas bem-sucedida. A validação do ledger foi corrigida depois, mas o acoplamento continuava perigoso para qualquer futura falha de observabilidade.
+
+Correção: mover a reconciliação de alertas do último step de `schedule-probe` para o job `alerts` **já existente**, usando `always()` para `schedule` e preservando o `workflow_dispatch/run_alerts=true` com check de probe. Os processos de recuperação, heartbeat e roteamento seguem sob `schedule-probe`, com as mesmas restrições. Uma eventual falha de `alerts` **continua vermelha e visível no workflow nativo**, mas não cancela `product-stage`, `dispatch`, `ci-followup` e demais lanes com `needs.schedule-probe.result == success`. O job de alertas não recebe `FACTORY_GITHUB_TOKEN` cross-repo; o probe perde escopo `issues: write` porque só o job de alertas deve escrever Issues. Nenhum cron, trigger, ambiente, modelo pago, migration, Preview ou autorização de produção é adicionado.
+
+O alerta #809 segue aberto até **duas execuções nativas agendadas completas e com sucesso**, não apenas alert-only ou backups. Esse patch evita bloqueio transversal, não afirma que o GitHub tenha voltado a emitir cron nem substitui evidência real de recuperação pós-merge.
+
+## 2026-10-14 — Fechamento TOCTOU do Preview (issue #797, patch sem ampliar acesso)
+
+O pipeline `.github/workflows/promote-preview-candidate.yml` permanece exclusivamente disparável por `workflow_run: Console validation completed` e `workflow_dispatch`, operando apenas com código fixado da main. Nenhum novo evento `pull_request_target`, `ready_for_review`, concessão de token, terceiro servidor ou merge automático é habilitado neste patch.
+
+Após a espera pelos três checks, o verificador consulta novamente o PR e impede `reused` se ele deixou de estar aberto, não-draft, base `main`, same-repo ou SHA exato. Após cooldown e budget, o **próprio passo de escrita** consulta uma nova cópia do PR, lista mudanças `apps/console/**` e exige `test`, `factory-acceptance` e `validate` com status `completed/success` no candidato antes de `git.updateRef`. A etapa de navegador só funciona após uma ação `reused|updated|created_then_updated`, revalidando o PR e consultando `preview/pr-N` para confirmar SHA idêntico antes de disparar verificação. Mudanças concorrentes levam a `skipped_stale`, `skipped_no_console`, `skipped_checks` ou `skipped_ref_mismatch`; nunca ao falso sucesso do Preview. A summary durável do Actions registra a ação e o navegador independentemente.
+
+A integração ao gatilho `ready_for_review` é trabalho **separado** e depende de revisão das permissões do evento privilegiado: não foi ativado aqui. Run antigo, CI verde e Preview de SHA anterior continuam insuficientes para autorizar release. O PR de código de workflow não muda `apps/console/**`; Preview da Factory não é aplicável a este patch. Merge que publica produção continua humano.
+
+## 14/10/2026 — Dependabot e CI do Console sem ampliar privilégios (#808)
+
+O CI do PR #808 (upgrade `actions/setup-node`) falhou no passo `Enforce Console branch convention` porque toda branch `dependabot/**` era rejeitada, embora a automação já fosse autorizada a abrir PRs e o workflow seja `contents: read`. A exceção agora exige simultaneamente autor autenticado `dependabot[bot]` e head repository idêntico ao repositório da Factory, obtidos de campos separados do evento GitHub (não do nome da branch). Forks, nomes falsificados e `preview/**` continuam bloqueados.
+
+A alteração não cria gatilhos privilegiados, não amplia permissões, não fornece secrets e não chama o Vercel. Testes unitários executam o script bash do gate com identidade real, spoofing, fork e ramos permitidos. O PR #808 ainda precisa de CI verde sobre o SHA correto após incorporação deste patch e de revisão humana do update Dependabot. Merge em produção continua gate humano.
+
 ## 14/10/2026 — Preparação fail-closed do Preview (#797; sem ativação privilegiada)
 
 \`scripts/preview_candidate_contract.py\` define um contrato **puro e determinístico** de elegibilidade:
