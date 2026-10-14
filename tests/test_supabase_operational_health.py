@@ -23,7 +23,7 @@ class Tests(unittest.TestCase):
         ]
         tasks=[{"id":"t3","status":"failed"}]
         usage=[{"tool_family":"openai","estimated_cost":"1.25"},{"tool_family":"model","estimated_cost":None},{"tool_family":"github","estimated_cost":None}]
-        with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(tasks),Response(usage)]):
+        with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(tasks),Response([]),Response(usage)]):
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             out=reader.read(budget=Decimal("5"),now=datetime(2026,9,26,tzinfo=timezone.utc))
         self.assertEqual(out.expired_leases,2)
@@ -36,9 +36,10 @@ class Tests(unittest.TestCase):
 
     def test_preview_age_is_counted_without_deployment(self):
         runs=[{"id":"old","status":"preview_ready","created_at":"2026-10-05T00:00:00Z"}, {"id":"new","status":"preview_ready","created_at":"2026-10-13T17:00:00Z"}]
-        with patch("urllib.request.urlopen",side_effect=[Response(runs),Response([])]):
+        with patch("urllib.request.urlopen",side_effect=[Response([]),Response(runs),Response([])]) as calls:
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             out=reader.read(now=datetime(2026,10,13,18,tzinfo=timezone.utc))
+        self.assertIn("status=eq.preview_ready",calls.call_args_list[1].args[0].full_url)
         self.assertEqual(out.stale_preview_runs,1)
 
     def test_historical_failed_run_is_not_actionable_when_task_recovered(self):
@@ -47,11 +48,68 @@ class Tests(unittest.TestCase):
         ]
         tasks=[{"id":"t1","status":"integrated"}]
         usage=[]
-        with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(tasks),Response(usage)]):
+        with patch("urllib.request.urlopen",side_effect=[Response(runs),Response(tasks),Response([]),Response(usage)]):
             reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
             out=reader.read(now=datetime(2026,9,30,tzinfo=timezone.utc))
         self.assertEqual(out.failed_runs,0)
         self.assertEqual(out.dead_letter_runs,0)
+
+    def test_two_historical_dogfood_audits_do_not_trigger_preview_warning(self):
+        from ai_product_factory.operational_alerts import evaluate_operational_alerts
+        audits=[
+            {"id":"audit1","status":"preview_ready","created_at":"2026-10-07T15:51:04Z",
+             "metadata":{"source":"dogfood_manual_audit","purpose":"product_readiness_assessment"}},
+            {"id":"audit2","status":"preview_ready","created_at":"2026-10-07T16:42:41Z",
+             "metadata":{"source":"dogfood_manual_audit","purpose":"product_readiness_assessment"}},
+        ]
+        with patch("urllib.request.urlopen",side_effect=[Response(audits),Response(audits),Response([])]):
+            reader=SupabaseOperationalHealthReader(url="https://x.supabase.co",secret_key="sb_secret_x")
+            health=reader.read(now=datetime(2026,10,14,10,tzinfo=timezone.utc))
+        self.assertEqual(health.stale_preview_runs,0)
+        self.assertEqual(evaluate_operational_alerts(health),())
+
+    def test_real_delivery_and_fresh_runs_count_independently(self):
+        preview=[
+            {"id":"audit","status":"preview_ready","created_at":"2026-10-01T00:00:00Z",
+             "metadata":{"source":"dogfood_manual_audit"}},
+            {"id":"old","status":"preview_ready","created_at":"2026-10-03T00:00:00Z",
+             "metadata":{"github_issue":{"number":9}}},
+            {"id":"fresh","status":"preview_ready","created_at":"2026-10-14T09:00:00Z",
+             "metadata":{"github_issue":{"number":10}}},
+        ]
+        with patch("urllib.request.urlopen",side_effect=[Response([]),Response(preview),Response([])]):
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,10,14,10,tzinfo=timezone.utc))
+        self.assertEqual(health.stale_preview_runs,1)
+
+    def test_older_delivery_not_hidden_by_newest_200_terminal_runs(self):
+        terminal=[{"id":str(i),"status":"completed","created_at":"2026-10-14T09:00:00Z"} for i in range(200)]
+        preview=[{"id":"old","created_at":"2026-10-01T00:00:00Z","metadata":{}}]
+        with patch("urllib.request.urlopen",side_effect=[Response(terminal),Response(preview),Response([])]) as calls:
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,10,14,10,tzinfo=timezone.utc))
+        self.assertEqual(health.stale_preview_runs,1)
+        self.assertIn("order=created_at.asc",calls.call_args_list[1].args[0].full_url)
+
+    def test_excess_preview_partition_fails_closed(self):
+        preview=[{"id":str(i),"created_at":"2026-10-01T00:00:00Z","metadata":{}} for i in range(201)]
+        with patch("urllib.request.urlopen",side_effect=[Response([]),Response(preview)]) as calls:
+            with self.assertRaisesRegex(RuntimeError,"200-run boundary"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+        self.assertEqual(calls.call_count,2)
+
+    def test_missing_delivery_timestamp_fails_closed(self):
+        preview=[{"id":"delivery","metadata":{}}]
+        with patch("urllib.request.urlopen",side_effect=[Response([]),Response(preview)]):
+            with self.assertRaisesRegex(RuntimeError,"creation time"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+
 
 if __name__ == "__main__":
     unittest.main()

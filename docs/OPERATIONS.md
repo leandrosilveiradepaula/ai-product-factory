@@ -1,3 +1,8 @@
+## Stale Preview alert provenance (candidate)
+The operational health reader now separates real overdue delivery candidates from historic product-readiness audit rows (`metadata.source=dogfood_manual_audit`) using the same `is_delivery_preview_run` rule as the Preview queue. It reads an oldest-first `preview_ready` partition, not the newest 200 general runs. An overflow >200, malformed row or missing delivery timestamp fails closed before the alert reconciler can incorrectly close an issue. This does not change run status, queue scheduling, quota, or Preview/production gate rules.
+
+Post-merge, the existing `alerts` runtime can reconcile issue #754 when the current Control Plane reports no actionable overdue deliveries; no manual reset or invented Preview evidence is needed.
+
 ## Agent scope race prevention (candidate)
 The follow-up migration `20261014092500_serialize_agent_scope_claims.sql` is **not installed until human release gate**. Agent-row `FOR UPDATE` locks alone cannot protect a scope hierarchy across two independently assigned agents. A transaction-scoped PostgreSQL advisory lock by project serializes the final scope-conflict query and insert inside `factory_claim_agent_slot`; no persistent lock row or new privileges are introduced. An empty scope array does not require project serialization. Per-run/per-agent protections still operate independently.
 
