@@ -82,6 +82,17 @@ def _verified_product_assessment(raw:dict, candidate_commit:str)->tuple[dict,boo
         return {**raw,"ready":False,"status":"stale",
                 "reason":"assessment commit does not match release candidate"},False
 
+    # The Control Plane provides the durable evaluation row status and
+    # baseline_ref separately from result JSON. Never promote an embedded
+    # self-reported ready:true when that *row* failed, is missing, or was
+    # evaluated against another commit. No fallback from result or facts RPC.
+    if raw.get("baseline_ref") != candidate_commit:
+        return {**raw,"ready":False,"status":"stale",
+                "reason":"recorded evaluation baseline does not match release candidate"},False
+    if raw.get("evaluation_status") != "passed":
+        return {**raw,"ready":False,"status":"not_ready",
+                "reason":"durable product evaluation has not passed"},False
+
     # A non-passing recorded assessment is never promoted just because its
     # domains happen to look valid. Its explicit recorded state wins.
     if raw.get("ready") is not True or raw.get("status")!="passed":
