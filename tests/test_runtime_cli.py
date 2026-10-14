@@ -1198,6 +1198,8 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.evaluate_scheduler_liveness",return_value=()), \
              patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=()), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.GithubNativeScheduledRunReader"), \
+             patch("ai_product_factory.runtime_cli.evaluate_native_scheduler_health",return_value=()), \
              patch("ai_product_factory.runtime_cli.GitHubIssueAlertAdapter",return_value=adapter):
             out=run_alerts_once()
         self.assertEqual(out["status"],"ok")
@@ -1223,6 +1225,8 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=()), \
              patch("ai_product_factory.runtime_cli.evaluate_scheduler_liveness",return_value=(gap,)), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.GithubNativeScheduledRunReader"), \
+             patch("ai_product_factory.runtime_cli.evaluate_native_scheduler_health",return_value=()), \
              patch("ai_product_factory.runtime_cli.GitHubIssueAlertAdapter",return_value=adapter):
             result=run_alerts_once()
         self.assertEqual(result["status"],"ok")
