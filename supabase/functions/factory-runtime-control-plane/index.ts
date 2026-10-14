@@ -10,6 +10,8 @@ const EXPECTED = {
   repository_owner_id: "256" + "917842",
   ref: "refs/heads/main",
 };
+// Only this trusted workflow may use the six-hour workflow_run backup wake.
+const TRUSTED_BACKUP_WORKFLOW_REF = "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main";
 const GENERIC_PROXY_WORKFLOW_REFS = new Set([
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main",
   "leandrosilveiradepaula/ai-product-factory/.github/workflows/control-plane-oidc-preflight.yml@refs/heads/main",
@@ -36,7 +38,16 @@ async function verifyGithub(req:Request) {
     if(String(payload[key]??"")!==expected) throw new Error("GitHub OIDC claim mismatch: "+key);
   }
   const event=String(payload.event_name??"");
-  if(!["schedule","workflow_dispatch","push","issue_comment"].includes(event)) throw new Error("GitHub OIDC event not allowed");
+  // workflow_run is not a generic identity: only the exact Factory scheduler
+  // workflow is eligible, and its job guards independently verify the upstream
+  // scheduled OIDC preflight run, repository, main branch and success.
+  if(event==="workflow_run") {
+    if(String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF) {
+      throw new Error("GitHub OIDC workflow_run workflow not allowed");
+    }
+  } else if(!["schedule","workflow_dispatch","push","issue_comment"].includes(event)) {
+    throw new Error("GitHub OIDC event not allowed");
+  }
   if(event==="issue_comment" && String(payload.actor_id??"")!==EXPECTED.repository_owner_id) {
     throw new Error("GitHub OIDC issue_comment actor not allowed");
   }

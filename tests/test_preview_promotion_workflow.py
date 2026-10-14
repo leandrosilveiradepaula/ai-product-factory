@@ -5,6 +5,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PreviewPromotionWorkflowTests(unittest.TestCase):
+    def test_provider_rate_limit_observed_before_consuming_preview_quota(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        self.assertIn("statuses: read",workflow)
+        self.assertIn("python -m scripts.preview_provider_cooldown",workflow)
+        self.assertLess(workflow.index("python -m scripts.preview_provider_cooldown"),workflow.index("python -m scripts.preview_budget_guard"))
+
     def test_budget_guard_is_invoked_as_module(self):
         workflow = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
         self.assertIn("python -m scripts.preview_budget_guard", workflow)
@@ -30,6 +36,35 @@ class PreviewPromotionWorkflowTests(unittest.TestCase):
         self.assertIn('startsWith("apps/console/")', workflow)
         self.assertIn('promotion_action", "not_applicable"', workflow)
         self.assertIn('github.event_name == \'workflow_dispatch\'', workflow)
+
+    def test_automatic_draft_is_not_applicable_without_deployment(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        resolve=workflow.split("      - name: Resolve exact candidate and Preview applicability",1)[1].split("      - name: Verify exact PR candidate",1)[0]
+        self.assertIn('if (!manual && pr.state === "open" && pr.draft &&',resolve)
+        self.assertIn('pr.head?.sha === sha',resolve)
+        self.assertIn('promotion_action", "not_applicable_draft"',resolve)
+        self.assertIn('core.setOutput("applicable", "false")',resolve)
+        self.assertIn('core.setOutput("source", "automatic")',resolve)
+        self.assertLess(resolve.index('not_applicable_draft'),resolve.index('if (pr.state !== "open" || pr.draft'))
+        self.assertIn('return core.setFailed("candidate must be an open, non-draft',resolve)
+        # A skipped resolve must not reach quota checks, ref mutation or browser dispatch.
+        self.assertIn("if: steps.resolve.outputs.applicable == 'true'",workflow)
+        self.assertIn("if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'",workflow)
+
+    def test_manual_and_automatic_preview_require_same_pr_eligibility(self):
+        workflow=(ROOT/".github/workflows/promote-preview-candidate.yml").read_text()
+        resolve=workflow.split("      - name: Resolve exact candidate and Preview applicability",1)[1].split("      - name: Verify exact PR candidate",1)[0]
+        self.assertIn('const manual = context.eventName === "workflow_dispatch"',resolve)
+        self.assertIn('pr = requested;',resolve)
+        self.assertIn('pr.state !== "open" || pr.draft',resolve)
+        self.assertIn('pr.base?.ref !== "main"',resolve)
+        self.assertIn('pr.base?.repo?.full_name !== fullRepo',resolve)
+        self.assertIn('pr.head?.repo?.full_name !== fullRepo',resolve)
+        self.assertIn('pr.head?.sha !== sha',resolve)
+        self.assertIn('github.rest.pulls.listFiles',resolve)
+        self.assertIn('startsWith("apps/console/")',resolve)
+        self.assertIn('manual ? "manual" : "automatic"',resolve)
+        self.assertNotIn('core.setOutput("applicable", "true");\\n              return;',resolve)
 
     def test_token_driven_promotion_dispatches_exact_browser_evidence(self):
         promote = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
