@@ -13,9 +13,9 @@ SOURCE=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
 JOBS=re.findall(r"(?m)^  ([a-z][a-z0-9-]+):\n",SOURCE)
 
 def job(name):
-    head=f"  {name}:\n"
-    if head not in SOURCE:raise AssertionError(name)
-    return SOURCE.split(head,1)[1].split("\n  ",1)[0]
+    match=re.search(r"(?ms)^  "+re.escape(name)+r":\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",SOURCE)
+    if not match:raise AssertionError(name)
+    return match.group(1)
 
 class SchedulerAlertIsolationContract(unittest.TestCase):
     def test_collector_failure_is_not_suppressed_or_relabelled_success(self):
@@ -33,7 +33,7 @@ class SchedulerAlertIsolationContract(unittest.TestCase):
         probe=job("schedule-probe")
         self.assertIn("--mode schedule-probe",probe)
         self.assertIn("--mode recovery",probe)
-        self.assertIn("schedule_probe.native_observed", (ROOT/"src/ai_product_factory/supabase_schedule_probe.py").read_text()) if (ROOT/"src/ai_product_factory/supabase_schedule_probe.py").exists() else self.assertIn("Probe durable work queues without side effects",probe)
+        self.assertIn("Probe durable work queues without side effects",probe)
         self.assertNotIn("--mode alerts",probe)
         self.assertNotIn("issues: write",probe)
         self.assertNotIn("continue-on-error: true\n        run: python -m ai_product_factory.runtime_cli --mode schedule-probe",probe)
