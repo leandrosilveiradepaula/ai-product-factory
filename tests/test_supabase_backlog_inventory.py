@@ -44,6 +44,62 @@ class Tests(unittest.TestCase):
         self.assertEqual(result["historical_children_without_active_units"],1)
         self.assertTrue(all(c.args[0].get_method()=="GET" for c in calls.call_args_list))
 
+    def test_completed_parent_without_units_has_explicit_diagnostic(self):
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(self.projects),Response([self.task]),
+            Response([{"id":PARENT,"project_id":P,"status":"completed"}]),
+            Response([])
+        ]) as calls:
+            result=inventory().read()
+        self.assertEqual(result["historical_children_without_active_units"],1)
+        self.assertEqual(result["completed_parent_without_work_units"],1)
+        self.assertEqual(result["completed_parent_with_inactive_work_units"],0)
+        self.assertEqual(result["active_work_units"],0)
+        self.assertIn("may have unmaterialized",result["disclaimer"])
+        self.assertTrue(all(c.args[0].get_method()=="GET" for c in calls.call_args_list))
+
+    def test_completed_parent_with_integrated_unit_is_not_unmaterialized(self):
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(self.projects),Response([self.task]),
+            Response([{"id":PARENT,"project_id":P,"status":"completed"}]),
+            Response([{"id":UNIT,"task_id":T,"status":"integrated"}])
+        ]):
+            result=inventory().read()
+        self.assertEqual(result["historical_children_without_active_units"],1)
+        self.assertEqual(result["completed_parent_without_work_units"],0)
+        self.assertEqual(result["completed_parent_with_inactive_work_units"],1)
+
+    def test_unknown_parent_state_is_not_hidden_as_historical(self):
+        for status in ("failed","merged","awaiting_gate"):
+            with self.subTest(status=status),patch("urllib.request.urlopen",side_effect=[
+                Response(self.projects),Response([self.task]),
+                Response([{"id":PARENT,"project_id":P,"status":status}]),Response([])
+            ]):
+                result=inventory().read()
+            self.assertEqual(result["historical_children_without_active_units"],0)
+            self.assertEqual(result["other_queued_without_active_units"],1)
+            self.assertEqual(result["unverified_parent_status_without_active_units"],1)
+
+    def test_completed_parent_with_active_unit_never_hidden(self):
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(self.projects),Response([self.task]),
+            Response([{"id":PARENT,"project_id":P,"status":"completed"}]),
+            Response([{"id":UNIT,"task_id":T,"status":"running"}])
+        ]):
+            result=inventory().read()
+        self.assertEqual(result["active_work_units"],1)
+        self.assertEqual(result["with_active_units"],1)
+        self.assertEqual(result["completed_parent_without_work_units"],0)
+        self.assertEqual(result["completed_parent_with_inactive_work_units"],0)
+
+    def test_malformed_parent_status_fails_closed(self):
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(self.projects),Response([self.task]),
+            Response([{"id":PARENT,"project_id":P,"status":None}]),Response([])
+        ]):
+            with self.assertRaisesRegex(RuntimeError,"invalid parent task status"):
+                inventory().read()
+
     def test_active_unit_is_reported_without_claiming_runnability(self):
         task={**self.task,"parent_task_id":None}
         with patch("urllib.request.urlopen",side_effect=[
