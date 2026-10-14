@@ -1,3 +1,8 @@
+## Mandatory product-readiness domains and evidence format (candidate)
+The product-wide readiness evaluator may only accept `product_experience=not_applicable` for documented headless workloads, never `security`, `observability_operations`, `test_strategy`, `documentation`, or `functional_completeness`. Every mandatory domain needs full required coverage and valid evidence. `evidence` and `coverage` values must be lists of strings; any non-string entry fails closed rather than being coerced into a bogus reference. The release reporter reuses this evaluator for the SHA-exact product assessment.
+
+This deliberately does not authenticate arbitrary external evidence strings or claim complete product readiness in absence of verified evidence. All production merge/release gates and provider Preview policies remain separate, unchanged.
+
 ## Exact-candidate full product readiness in release reports (candidate)
 Release reports must **not** treat `facts.product_readiness.ready=true` as a trusted completion verdict. `build_release_assessment` now revalidates the six `domains` using the same deterministic `assess_product_readiness` contract and requires `assessed_commit == candidate_commit`, a real `assessment_ref`, coverage/evidence/verification state, and no critical blockers. `baseline_ref` is historical context, not equivalent to an assessed candidate SHA. When evidence is missing or malformed, the report stays `readiness_scope=release_candidate` and `product_complete=false`; no release outcome or human production gate is changed. In particular, Preview or CI for a single PR never constitutes a whole-product assessment.
 

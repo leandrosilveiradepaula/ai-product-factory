@@ -47,6 +47,10 @@ For `test_strategy`, a configured workflow that did not execute for the assessed
 
 This is deliberate. Evidence such as "reviewed", one screenshot, one green PR or one manually inspected screen is not sufficient to prove a whole-product domain. The coverage contract forces the assessment to say what was actually checked.
 
+Only the **product_experience** domain may be marked `not_applicable`, and only when a product genuinely has no user interface, with reason, evidence and an allowed verification state. Security, operations, test strategy, documentation and functional completeness cannot be waived as entire domains. For example, a headless service still requires real security and test evidence.
+
+Evidence and coverage entries must be strings; non-text values or malformed containers never count as verified evidence. Claiming a `ready=true` summary cannot override those deterministic checks.
+
 If a domain is genuinely not applicable, that non-applicability must be explicit and evidenced with a reason; silence is not a pass.
 
 ## Coverage keys

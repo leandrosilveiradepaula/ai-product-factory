@@ -121,4 +121,74 @@ class ProductReadinessTests(unittest.TestCase):
         self.assertIn("P0 auth bypass",out.blockers)
 
 
+    def test_all_six_domains_not_applicable_is_never_product_ready(self):
+        domains=self._passed_domains()
+        for key in REQUIRED_DOMAINS:
+            domains[key]={
+                "status":"not_applicable","reason":"claimed exception",
+                "evidence":[f"audit:{key}"],
+                "verification_state":domains[key]["verification_state"],
+            }
+        result=assess_product_readiness(
+            assessed_commit="abc",assessment_ref="audit:1",domains=domains
+        )
+        self.assertFalse(result.ready)
+        self.assertIn("security: not_applicable forbidden for required domain",result.blockers)
+        self.assertIn("test_strategy: not_applicable forbidden for required domain",result.blockers)
+        self.assertIn("functional_completeness: not_applicable forbidden for required domain",result.blockers)
+
+    def test_required_domains_cannot_claim_not_applicable(self):
+        for key in ("security","observability_operations","test_strategy",
+                    "documentation","functional_completeness"):
+            with self.subTest(domain=key):
+                domains=self._passed_domains()
+                domains[key]={
+                    "status":"not_applicable","reason":"no tests necessary",
+                    "evidence":["assessment:review"],
+                    "verification_state":domains[key]["verification_state"],
+                }
+                result=assess_product_readiness(
+                    assessed_commit="abc",assessment_ref="audit:1",domains=domains
+                )
+                self.assertFalse(result.ready)
+                self.assertIn(f"{key}: not_applicable forbidden for required domain",result.blockers)
+
+    def test_malformed_evidence_items_never_count_as_verified(self):
+        for bad in (None,42,True,{"ref":"audit:fake"}):
+            with self.subTest(value=bad):
+                domains=self._passed_domains()
+                domains["security"]["evidence"]=["evidence:real",bad]
+                result=assess_product_readiness(
+                    assessed_commit="abc",assessment_ref="audit:1",domains=domains
+                )
+                self.assertFalse(result.ready)
+                self.assertIn("security: malformed evidence",result.blockers)
+
+    def test_malformed_evidence_container_never_passes(self):
+        domains=self._passed_domains()
+        domains["security"]["evidence"]={"ref":"audit:fake"}
+        result=assess_product_readiness(
+            assessed_commit="abc",assessment_ref="audit:1",domains=domains
+        )
+        self.assertFalse(result.ready)
+        self.assertIn("security: malformed evidence",result.blockers)
+
+    def test_malformed_coverage_never_passes_with_valid_coverage_present(self):
+        domains=self._passed_domains()
+        domains["security"]["coverage"].append({"key":"forged"})
+        result=assess_product_readiness(
+            assessed_commit="abc",assessment_ref="audit:1",domains=domains
+        )
+        self.assertFalse(result.ready)
+        self.assertIn("security: malformed coverage",result.blockers)
+
+    def test_none_or_nonstring_assessment_identity_is_rejected(self):
+        for sha,ref in ((None,"audit:1"),("abc",None),(123,"audit:1"),("abc",7)):
+            with self.subTest(sha=sha,ref=ref):
+                with self.assertRaises(ValueError):
+                    assess_product_readiness(
+                        assessed_commit=sha,assessment_ref=ref,
+                        domains=self._passed_domains(),
+                    )
+
 if __name__=="__main__":unittest.main()

@@ -12,6 +12,9 @@ REQUIRED_DOMAINS=(
     "functional_completeness",
 )
 ALLOWED_DOMAIN_STATUS={"passed","failed","not_applicable"}
+# Only genuinely interface-less products may waive the UI experience domain.
+# Security, testing, operations, documentation and functionality always apply.
+NOT_APPLICABLE_DOMAINS=frozenset({"product_experience"})
 ALLOWED_VERIFICATION_STATES={
     "security":{"executed","reviewed"},
     "observability_operations":{"executed","observed"},
@@ -77,8 +80,10 @@ class ProductReadinessAssessment:
 
 
 def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:dict,critical_blockers:tuple[str,...]=())->ProductReadinessAssessment:
-    if not assessed_commit.strip():raise ValueError("assessed_commit is required")
-    if not assessment_ref.strip():raise ValueError("assessment_ref is required")
+    if not isinstance(assessed_commit,str) or not assessed_commit.strip():
+        raise ValueError("assessed_commit is required")
+    if not isinstance(assessment_ref,str) or not assessment_ref.strip():
+        raise ValueError("assessment_ref is required")
     if not isinstance(domains,dict):raise ValueError("domains must be an object")
     normalized={}
     blockers=[str(x).strip() for x in critical_blockers if str(x).strip()]
@@ -88,19 +93,24 @@ def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:di
             normalized[key]={"status":"missing","reason":"domain assessment is required"}
             blockers.append(f"{key}: missing assessment")
             continue
-        status=str(raw.get("status") or "").strip()
-        reason=str(raw.get("reason") or "").strip()
-        evidence=[
-            str(x).strip()
-            for x in (raw.get("evidence") if isinstance(raw.get("evidence"),list) else [])
-            if str(x).strip()
-        ]
-        coverage=[
-            str(x).strip()
-            for x in (raw.get("coverage") if isinstance(raw.get("coverage"),list) else [])
-            if str(x).strip()
-        ]
-        verification_state=str(raw.get("verification_state") or "").strip()
+        status_value=raw.get("status")
+        status=status_value.strip() if isinstance(status_value,str) else ""
+        reason_value=raw.get("reason")
+        reason=reason_value.strip() if isinstance(reason_value,str) else ""
+        evidence_raw=raw.get("evidence")
+        evidence_valid=(
+            isinstance(evidence_raw,list)
+            and all(isinstance(item,str) for item in evidence_raw)
+        )
+        evidence=[item.strip() for item in evidence_raw if item.strip()] if evidence_valid else []
+        coverage_raw=raw.get("coverage")
+        coverage_valid=(
+            isinstance(coverage_raw,list)
+            and all(isinstance(item,str) for item in coverage_raw)
+        )
+        coverage=[item.strip() for item in coverage_raw if item.strip()] if coverage_valid else []
+        verification_value=raw.get("verification_state")
+        verification_state=verification_value.strip() if isinstance(verification_value,str) else ""
         if status not in ALLOWED_DOMAIN_STATUS:
             normalized[key]={
                 "status":"invalid","reason":"invalid domain status","evidence":evidence,
@@ -122,8 +132,14 @@ def assess_product_readiness(*,assessed_commit:str,assessment_ref:str,domains:di
         if status=="failed":
             blockers.append(f"{key}: failed")
             continue
-        if not evidence:
+        if status=="not_applicable" and key not in NOT_APPLICABLE_DOMAINS:
+            blockers.append(f"{key}: not_applicable forbidden for required domain")
+        if not evidence_valid:
+            blockers.append(f"{key}: malformed evidence")
+        elif not evidence:
             blockers.append(f"{key}: {status} without evidence")
+        if status=="passed" and not coverage_valid:
+            blockers.append(f"{key}: malformed coverage")
         if verification_state not in ALLOWED_VERIFICATION_STATES[key]:
             blockers.append(f"{key}: invalid verification_state")
         if status=="passed":

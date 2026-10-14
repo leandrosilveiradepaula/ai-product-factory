@@ -156,6 +156,38 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         )
         self.assertFalse(assessment.report["product_complete"])
         self.assertEqual(assessment.report["product_readiness"]["status"], "stale")
+
+    def test_release_rejects_not_applicable_security_even_with_evidence(self):
+        assessment=self._full_evidence()
+        assessment["domains"]["security"]={
+            "status":"not_applicable","reason":"app owner says no security",
+            "evidence":["claimed-review"],"verification_state":"reviewed",
+        }
+        result=self._release(assessment)
+        self.assertFalse(result.report["product_complete"])
+        self.assertIn(
+            "security: not_applicable forbidden for required domain",
+            result.report["product_readiness"]["blockers"],
+        )
+
+    def test_release_rejects_nonstring_evidence_with_other_valid_references(self):
+        assessment=self._full_evidence()
+        assessment["domains"]["test_strategy"]["evidence"].append({"ref":"fabricated"})
+        result=self._release(assessment)
+        self.assertFalse(result.report["product_complete"])
+        self.assertIn("test_strategy: malformed evidence",result.report["product_readiness"]["blockers"])
+
+    def test_release_accepts_only_product_experience_headless_exception(self):
+        assessment=self._full_evidence()
+        assessment["domains"]["product_experience"]={
+            "status":"not_applicable",
+            "reason":"no user interface; background-only service",
+            "evidence":["architecture:headless-verified"],
+            "verification_state":"reviewed",
+        }
+        result=self._release(assessment)
+        self.assertTrue(result.report["product_complete"])
+        self.assertEqual(result.report["product_readiness"]["status"],"passed")
     def test_governance_forbids_ambiguous_product_completion_claims(self):
         agents = (ROOT / "AGENTS.md").read_text()
         contract = (ROOT / "docs/PRODUCT_READINESS.md").read_text()
