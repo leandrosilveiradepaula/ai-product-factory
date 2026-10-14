@@ -6,7 +6,21 @@ const trustedOidcToken = (process.env.FACTORY_VERCEL_TRUSTED_OIDC_TOKEN || "").t
 const browserExecutablePath = (process.env.FACTORY_BROWSER_EXECUTABLE_PATH || "").trim();
 const checks = [];
 const errors = [];
-const observed = { finalUrl: null, title: null, statusCode: null, bodySample: null };
+const failedResources = [];
+const observed = { finalUrl: null, title: null, statusCode: null, bodySample: null, failedResources };
+const previewOrigin = new URL(previewUrl).origin;
+
+function safeResourcePath(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    // Only show our own resource paths; no query strings, fragments, or other hosts.
+    if (url.origin !== previewOrigin) return "[external]";
+    return url.pathname.slice(0, 160);
+  } catch {
+    return "[invalid]";
+  }
+}
+
 
 function emit(status, detail = null) {
   process.stdout.write(JSON.stringify({ status, checks, detail, observed }));
@@ -30,6 +44,16 @@ try {
   });
   const page = await context.newPage();
   page.on("pageerror", error => errors.push(`pageerror: ${error.message}`));
+  page.on("response", response => {
+    if (response.status() >= 400 && failedResources.length < 12) {
+      failedResources.push({
+        status: response.status(),
+        path: safeResourcePath(response.url()),
+        type: response.request().resourceType(),
+      });
+    }
+  });
+
   page.on("console", message => {
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
@@ -58,8 +82,9 @@ try {
     checks.push("expected_text");
   }
 
-  if (errors.length) {
-    emit("failure", errors.slice(0, 10).join(" | "));
+  if (errors.length || failedResources.length) {
+    const resourceDetails = failedResources.map(item => `http_${item.status}: ${item.type} ${item.path}`);
+    emit("failure", [...errors.slice(0, 10), ...resourceDetails].slice(0, 16).join(" | "));
   } else {
     checks.push("console_clean");
     emit("success", null);
