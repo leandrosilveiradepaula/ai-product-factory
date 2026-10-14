@@ -1,6 +1,6 @@
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
-import {enqueueProjectContinuation,getProjectDetail} from "../../../../lib/control-plane";
+import {enqueueProjectContinuation,getProjectDetail,ProjectContinuationRejectedError} from "../../../../lib/control-plane";
 import {cleanupProjectContinuationFiles,uploadProjectContinuationFile} from "../../../../lib/attachments";
 import {ActionLink,Button,PageHeader,StatusPill} from "../../../ui";
 
@@ -13,12 +13,22 @@ async function submit(formData:FormData){
  if(!project)throw new Error("Projeto ativo não encontrado.");
  const files=formData.getAll("attachments").filter((value):value is File=>value instanceof File&&value.size>0);
  if(files.length>10)throw new Error("Envie no máximo 10 arquivos por pedido.");
- const requestId=crypto.randomUUID();
+ const requestId=String(formData.get("request_id")||"").trim();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))throw new Error("Identificador do pedido inválido.");
  try{
   for(const file of files)await uploadProjectContinuationFile(project.id,requestId,file);
+ }catch(error){
+  // No database RPC has run yet, so cleanup is unquestionably safe.
+  try{await cleanupProjectContinuationFiles(project.id,requestId)}catch{}
+  throw error;
+ }
+ try{
   await enqueueProjectContinuation(projectKey,request,files.length,requestId);
  }catch(error){
-  try{await cleanupProjectContinuationFiles(project.id,requestId)}catch{}
+  // Once RPC begins, timeout/5xx cannot prove rollback. Preserve private uploads.
+  if(error instanceof ProjectContinuationRejectedError){
+   try{await cleanupProjectContinuationFiles(project.id,requestId)}catch{}
+  }
   throw error;
  }
  redirect("/projects/"+encodeURIComponent(projectKey));
@@ -32,6 +42,7 @@ export default async function ProjectRequest({params}:{params:Promise<{key:strin
   <PageHeader eyebrow="Novo pedido" title={"Continuar "+project.name} subtitle="Descreva o resultado que você quer. A Factory reconcilia o estado atual, identifica as lacunas e cria somente o trabalho necessário." actions={<ActionLink href={"/projects/"+key}>Cancelar</ActionLink>}/>
   <form action={submit} className="form card" style={{maxWidth:820}} encType="multipart/form-data">
    <input type="hidden" name="project_key" value={key}/>
+   <input type="hidden" name="request_id" value={crypto.randomUUID()}/>
    <label>O que você quer mudar ou continuar?
     <textarea name="request" rows={10} autoFocus required maxLength={6000} placeholder="Ex.: corrigir o fluxo de proposta em dólar, preservar as regras atuais e validar a mudança ponta a ponta pela Factory."/>
    </label>

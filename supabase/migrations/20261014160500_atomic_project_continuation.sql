@@ -86,6 +86,7 @@ DECLARE
  v_request text := btrim(p_request);
  v_previous_summary text;
  v_previous_count integer;
+ v_original_requested_at text;
  v_requested_at timestamptz := clock_timestamp();
 BEGIN
  IF p_request_id IS NULL OR nullif(btrim(p_project_key),'') IS NULL
@@ -102,8 +103,9 @@ BEGIN
 
  -- Retries of the SAME request are idempotent, including after completion.
  SELECT r.id,t.id,r.metadata#>>'{continuation_request,summary}',
-        nullif(r.metadata#>>'{continuation_request,attachment_count}','')::integer
- INTO v_run_id,v_task_id,v_previous_summary,v_previous_count
+        nullif(r.metadata#>>'{continuation_request,attachment_count}','')::integer,
+        r.metadata#>>'{continuation_request,requested_at}'
+ INTO v_run_id,v_task_id,v_previous_summary,v_previous_count,v_original_requested_at
  FROM public.factory_runs r
  JOIN public.factory_tasks t ON t.id=r.task_id
  WHERE t.project_id=v_project_id AND r.metadata->>'continuation_request_id'=p_request_id::text
@@ -112,7 +114,7 @@ BEGIN
   IF v_previous_summary IS DISTINCT FROM v_request OR v_previous_count IS DISTINCT FROM p_attachment_count
   THEN RAISE EXCEPTION 'request id reused with different content' USING errcode='PT409'; END IF;
   RETURN jsonb_build_object('project_id',v_project_id,'task_id',v_task_id,'run_id',v_run_id,
-     'request_id',p_request_id::text,'created',false,'requested_at',v_manifest#>>'{continuation_request,requested_at}');
+     'request_id',p_request_id::text,'created',false,'requested_at',v_original_requested_at);
  END IF;
 
  -- Historical queued children of terminal parents are NOT live work.
@@ -154,7 +156,7 @@ BEGIN
    'stages',jsonb_build_array('reconciliation','gap_analysis','planning'),
    'source','factory-console','reconcile_first',true,
    'continuation_request_id',p_request_id::text,
-   'continuation_request',jsonb_build_object('summary',v_request,'attachment_count',p_attachment_count)
+   'continuation_request',jsonb_build_object('summary',v_request,'attachment_count',p_attachment_count,'requested_at',v_requested_at)
  )) RETURNING id INTO v_run_id;
 
  INSERT INTO public.factory_tool_usage(run_id,tool_family,operation,usage_units,estimated_cost,metadata)

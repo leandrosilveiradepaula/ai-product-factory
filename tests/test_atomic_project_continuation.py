@@ -13,6 +13,7 @@ class AtomicProjectContinuationContractTests(unittest.TestCase):
   self.assertIn('factory_enqueue_project_continuation(',sql)
   self.assertIn('factory_enqueue_project_bootstrap(p_project_key text)',sql)
   self.assertIn("another active project cycle exists",sql)
+  self.assertIn("v_original_requested_at",sql)
   self.assertIn("r.metadata->>'continuation_request_id'=p_request_id::text",sql)
   self.assertIn('v_previous_summary IS DISTINCT FROM v_request',sql)
   self.assertIn("parent.status IN ('completed','cancelled','failed','merged','integrated')",sql)
