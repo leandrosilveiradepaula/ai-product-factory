@@ -94,8 +94,12 @@ The production release policy must treat an absent or malformed
 `definition_of_done` payload as an incomplete release candidate, not as
 an empty list of checks. It requires `satisfied` and `missing` arrays.
 Each missing check has a non-empty text `key`, with `human_only`
-being a real JSON boolean. **Only** `human_only: true` can defer a
-check to the manual production-release gate; strings such as
+being a real JSON boolean. **Only** `human_only: true` on the
+`human_release` key can defer that one check to the manual production-release
+gate. Relabeling `github_ci`, `qa`, `preview`, `browser_evidence`,
+`rollback_analysis` or any other check as human-only is rejected. The
+`github_ci` key must explicitly be in the satisfied list to allow release
+readiness; empty but well-typed lists cannot prove CI. Strings such as
 `"false"` or `"true"`, numeric values and null cannot waive it.
 Duplicate missing keys and checks simultaneously marked satisfied
 and missing are invalid and block. Malformed items cannot silently
