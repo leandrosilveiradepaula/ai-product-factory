@@ -199,12 +199,12 @@ class Tests(unittest.TestCase):
     def test_older_delivery_not_hidden_by_newest_200_terminal_runs(self):
         terminal=[{"id":str(i),"status":"completed","created_at":"2026-10-14T09:00:00Z"} for i in range(200)]
         preview=[{"id":"old","created_at":"2026-10-01T00:00:00Z","metadata":{}}]
-        with patch("urllib.request.urlopen",side_effect=[Response(terminal),Response(preview),Response([])]) as calls:
+        with patch("urllib.request.urlopen",side_effect=[Response(terminal),Response([]),Response(preview),Response([])]) as calls:
             health=SupabaseOperationalHealthReader(
                 url="https://x.supabase.co",secret_key="sb_secret_x"
             ).read(now=datetime(2026,10,14,10,tzinfo=timezone.utc))
         self.assertEqual(health.stale_preview_runs,1)
-        self.assertIn("order=created_at.asc",calls.call_args_list[1].args[0].full_url)
+        self.assertIn("order=created_at.asc",calls.call_args_list[2].args[0].full_url)
 
     def test_excess_preview_partition_fails_closed(self):
         preview=[{"id":str(i),"created_at":"2026-10-01T00:00:00Z","metadata":{}} for i in range(201)]
@@ -222,6 +222,131 @@ class Tests(unittest.TestCase):
                 SupabaseOperationalHealthReader(
                     url="https://x.supabase.co",secret_key="sb_secret_x"
                 ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+
+
+    def test_failed_incident_behind_200_newer_completed_runs_is_detected(self):
+        first=[{"id":f"run-{i:04d}","status":"completed","task_id":f"t-{i}"}
+               for i in range(200)]
+        older=[{"id":"old-failed","task_id":"t-failed","status":"failed",
+                "last_error":"maximum attempts reached","lease_expires_at":None}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(first),Response(older),Response([{"id":"t-failed","status":"failed"}]),
+            Response([]),Response([])
+        ]) as calls:
+            out=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+        self.assertEqual(out.failed_runs,1)
+        self.assertEqual(out.dead_letter_runs,1)
+        first_query=calls.call_args_list[0].args[0].full_url
+        second_query=calls.call_args_list[1].args[0].full_url
+        self.assertIn("order=created_at.desc,id.desc",first_query)
+        self.assertIn("offset=0",first_query)
+        self.assertIn("offset=200",second_query)
+        self.assertTrue(all(call.args[0].get_method()=="GET" for call in calls.call_args_list))
+
+    def test_expired_lease_older_than_200_runs_is_not_hidden(self):
+        first=[{"id":f"run-{i:04d}","status":"completed"} for i in range(200)]
+        older=[{"id":"stale-lease","status":"running",
+                "lease_expires_at":"2026-10-01T00:00:00Z"}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(first),Response(older),Response([]),Response([])
+        ]):
+            out=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+        self.assertEqual(out.expired_leases,1)
+
+    def test_recovered_failed_run_on_later_page_remains_nonactionable(self):
+        first=[{"id":f"run-{i:04d}","status":"completed"} for i in range(200)]
+        older=[{"id":"old-failed","task_id":"t-recovered","status":"failed",
+                "last_error":"maximum attempts reached"}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(first),Response(older),
+            Response([{"id":"t-recovered","status":"integrated"}]),
+            Response([]),Response([])
+        ]):
+            out=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,10,14,tzinfo=timezone.utc))
+        self.assertEqual(out.failed_runs,0)
+        self.assertEqual(out.dead_letter_runs,0)
+
+    def test_run_inventory_duplicate_across_pages_fails_closed(self):
+        first=[{"id":f"run-{i:04d}","status":"completed"} for i in range(200)]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(first),Response([{"id":"run-0199","status":"completed"}])
+        ]):
+            with self.assertRaisesRegex(RuntimeError,"duplicate ID"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read()
+
+    def test_malformed_and_unknown_run_statuses_fail_closed(self):
+        for invalid in ({"id":"x","status":"unexpected"}, {"id":"x","status":None},
+                        {"id":None,"status":"completed"}, "malformed"):
+            with self.subTest(invalid=invalid), patch("urllib.request.urlopen",
+                    side_effect=[Response([invalid])]):
+                with self.assertRaises(RuntimeError):
+                    SupabaseOperationalHealthReader(
+                        url="https://x.supabase.co",secret_key="sb_secret_x"
+                    ).read()
+
+    def test_run_inventory_hard_limit_rejects_partial_health(self):
+        from ai_product_factory.supabase_operational_health import (
+            RUN_PAGE_SIZE,MAX_RUN_PAGES
+        )
+        pages=[
+            Response([{"id":f"run-{page*RUN_PAGE_SIZE+i:05d}",
+                       "status":"completed"} for i in range(RUN_PAGE_SIZE)])
+            for page in range(MAX_RUN_PAGES)
+        ]
+        with patch("urllib.request.urlopen",side_effect=pages) as calls:
+            with self.assertRaisesRegex(RuntimeError,"pagination boundary"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read()
+        self.assertEqual(calls.call_count,MAX_RUN_PAGES)
+
+    def test_failed_task_status_lookup_is_batched_and_complete(self):
+        failed=[{"id":f"r-{i}","task_id":f"t-{i}","status":"failed",
+                 "last_error":"maximum attempts"} for i in range(150)]
+        # IDs sort lexically, and the reader must fetch every group.
+        task_keys=sorted({row["task_id"] for row in failed})
+        task_batches=[
+            [{"id":id,"status":"failed"} for id in task_keys[:100]],
+            [{"id":id,"status":"integrated"} for id in task_keys[100:]],
+        ]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(failed),Response(task_batches[0]),Response(task_batches[1]),
+            Response([]),Response([])
+        ]) as calls:
+            result=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read()
+        self.assertEqual(result.failed_runs,100)
+        self.assertEqual(result.dead_letter_runs,100)
+        self.assertIn("id=in.(",calls.call_args_list[1].args[0].full_url)
+        self.assertIn("id=in.(",calls.call_args_list[2].args[0].full_url)
+
+    def test_run_rows_with_invalid_timestamps_or_order_are_rejected(self):
+        for invalid in ("bad", "2026-10-14T12:00:00", 42):
+            with self.subTest(invalid=invalid),patch("urllib.request.urlopen",
+                side_effect=[Response([{"id":"r1","status":"completed","created_at":invalid}])]):
+                with self.assertRaisesRegex(RuntimeError,"creation time"):
+                    SupabaseOperationalHealthReader(
+                        url="https://x.supabase.co",secret_key="sb_secret_x"
+                    ).read()
+        rows=[
+            {"id":"r1","status":"completed","created_at":"2026-10-14T11:00:00Z"},
+            {"id":"r2","status":"completed","created_at":"2026-10-14T12:00:00Z"},
+        ]
+        with patch("urllib.request.urlopen",side_effect=[Response(rows)]):
+            with self.assertRaisesRegex(RuntimeError,"not sorted"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read()
+
 
 
 if __name__ == "__main__":

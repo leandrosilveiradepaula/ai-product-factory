@@ -14,6 +14,18 @@ from .supabase_server import resolve_supabase_server_config
 USAGE_PAGE_SIZE = 1000
 MAX_USAGE_PAGES = 20
 MAX_USAGE_BIGINT = (1 << 63) - 1
+RUN_PAGE_SIZE = 200
+MAX_RUN_PAGES = 20
+FAILED_TASK_BATCH = 100
+# Includes historical and active phases. Unknown strings fail closed rather than
+# being silently dropped from all health counters.
+KNOWN_RUN_STATUSES = frozenset({
+    "created", "queued", "pending", "running", "implementing",
+    "preparing_codex_manual", "awaiting_codex_manual", "awaiting_release",
+    "awaiting_gate", "awaiting_human", "awaiting_ci", "ci_pending",
+    "review_ready", "preview_ready", "completed", "integrated", "merged",
+    "failed", "cancelled", "blocked", "planning", "routing",
+})
 
 
 def _usage_identity(value: object) -> str:
@@ -89,19 +101,69 @@ class SupabaseOperationalHealthReader:
                 return usage
         raise RuntimeError("cost usage inventory exceeded verified pagination boundary")
 
+    def _all_runs(self) -> list[dict]:
+        """Enumerate the run ledger fully or refuse a partial health report.
+
+        Stable created_at/id ordering plus identity validation detects overlap.
+        Offset pagination remains subject to concurrent insertions; a duplicate
+        or out-of-order page must fail closed, not suppress old incidents.
+        """
+        seen: set[str] = set()
+        runs: list[dict] = []
+        last_time: datetime | None = None
+        last_id: str | None = None
+        for page in range(MAX_RUN_PAGES):
+            batch=self._get(
+                "factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at,created_at"
+                "&order=created_at.desc,id.desc"
+                f"&limit={RUN_PAGE_SIZE}&offset={page*RUN_PAGE_SIZE}"
+            )
+            if not isinstance(batch,list) or len(batch)>RUN_PAGE_SIZE:
+                raise RuntimeError("run health inventory is not a bounded array")
+            for row in batch:
+                if not isinstance(row,dict):
+                    raise RuntimeError("run health inventory contains malformed row")
+                identity=row.get("id")
+                if not isinstance(identity,str) or not identity.strip() or identity in seen:
+                    raise RuntimeError("run health inventory has invalid or duplicate ID")
+                if row.get("status") not in KNOWN_RUN_STATUSES:
+                    raise RuntimeError("run health inventory contains unknown status")
+                created=row.get("created_at")
+                if created is not None:
+                    try:
+                        when=_parse_time(created)
+                    except (ValueError,TypeError,AttributeError) as exc:
+                        raise RuntimeError("run health inventory has invalid creation time") from exc
+                    if when is None or when.tzinfo is None or when.utcoffset() is None:
+                        raise RuntimeError("run health inventory has invalid creation time")
+                    if last_time is not None and (
+                        when>last_time or (when==last_time and last_id is not None and identity>last_id)
+                    ):
+                        raise RuntimeError("run health inventory is not sorted by timestamp and ID")
+                    last_time=when
+                    last_id=identity
+                seen.add(identity)
+                runs.append(row)
+            if len(batch)<RUN_PAGE_SIZE:
+                return runs
+        raise RuntimeError("run health inventory exceeded verified pagination boundary")
+
     def read(self, *, budget: Decimal | None = None, now: datetime | None = None) -> OperationalHealth:
         now=now or datetime.now(timezone.utc)
-        runs=self._get("factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200")
+        runs=self._all_runs()
         task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status")=="failed"})
         task_status_by_id={}
-        if task_ids:
-            encoded=",".join(task_ids)
+        for start in range(0,len(task_ids),FAILED_TASK_BATCH):
+            batch_ids=task_ids[start:start+FAILED_TASK_BATCH]
+            encoded=",".join(batch_ids)
             tasks=self._get(f"factory_tasks?select=id,status&id=in.({encoded})")
-            if not isinstance(tasks, list) or any(not isinstance(row, dict) for row in tasks):
+            if not isinstance(tasks,list) or any(not isinstance(row,dict) for row in tasks):
                 raise RuntimeError("failed task health lookup is malformed")
-            task_status_by_id={str(row.get("id")):str(row.get("status") or "") for row in tasks}
-            if set(task_status_by_id) != set(task_ids) or len(tasks) != len(task_ids):
+            statuses={str(row.get("id")):row.get("status") for row in tasks}
+            if (set(statuses)!=set(batch_ids) or len(tasks)!=len(batch_ids)
+                    or any(not isinstance(status,str) or not status.strip() for status in statuses.values())):
                 raise RuntimeError("failed task health lookup is incomplete")
+            task_status_by_id.update(statuses)
         # Delivery eligibility must match the Preview queue. Historical manual
         # audits stay visible in the Control Plane, but are not delivery work.
         preview_runs=self._get(
