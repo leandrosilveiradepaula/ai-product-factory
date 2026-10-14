@@ -1,3 +1,13 @@
+## Release report: durable evaluation row is authoritative (2026-10-14 #713)
+
+A release report that says `product_complete` must corroborate the six-domain assessment against the *durable* `factory_evaluations` row. A `result` JSON containing `ready:true`/`status:passed` does **not** override a row with `status:failed`, an absent row, or a mismatched `baseline_ref`. The read boundary `SupabaseReleasePolicyStore.facts` supplies `evaluation_status` and `baseline_ref` from separate selected columns, and the deterministic `_verified_product_assessment` requires `evaluation_status == 'passed'` and `baseline_ref == candidate_commit` in addition to exact `assessed_commit` and all six domain proofs. Missing or malformed provenance is fail-closed. This never changes the independent human production release gate.
+
+This is **not** an authoritative check of the repository's current HEAD: `candidate_commit` is the release candidate supplied by the trusted release workflow, whereas a separate GitHub identity/read is needed to assert that it is the current repo HEAD. Do not promote the scope of this report to global product readiness. No migration, credential expansion, model call or Vercel Preview is needed for this Python-core guard.
+
+## Exact commit evidence for product readiness (14/10/2026)
+The deterministic core rejects a passing `product_ready` assessment when `assessed_commit` is missing or is a branch name, abbreviated SHA, malformed hash or padded value. It accepts a canonical full 40-character Git SHA-1 commit and normalizes uppercase hex to lowercase for evidence. An invalid, nonempty string yields a `not_ready` result with an explicit blocker instead of crashing release intelligence, so no release policy can infer whole-product completion from ambiguous identity. Empty/non-string commit identities remain invalid inputs.
+This is **only a format check**, not proof that the commit exists remotely, belongs to the project's repository, or is its current HEAD. That requires separate trusted GitHub identity and exact-head verification; it does not replace verified CI, Preview/browser evidence, production human release gate or a global audit. No Supabase migration, provider call or Vercel deployment is required for this Python-core regression.
+
 # Product Readiness Contract
 
 Last updated: 2026-10-07.

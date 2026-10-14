@@ -65,14 +65,14 @@ class Tests(unittest.TestCase):
    }
    for key in REQUIRED_DOMAINS
   }
-  assessment=assess_product_readiness(assessed_commit="abc",assessment_ref="audit:1",domains=domains)
+  assessment=assess_product_readiness(assessed_commit="a"*40,assessment_ref="audit:1",domains=domains)
   responses=[Response([{"id":"eval"}]),Response([{"id":1}])]
   with patch("urllib.request.urlopen",side_effect=responses) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_product_readiness(run_id="r",assessment=assessment)
   self.assertEqual(out,[{"id":"eval"}])
   eval_payload=json.loads(call.call_args_list[0].args[0].data.decode())
   self.assertEqual(eval_payload["eval_type"],"product_readiness")
-  self.assertEqual(eval_payload["baseline_ref"],"abc")
+  self.assertEqual(eval_payload["baseline_ref"],"a"*40)
   self.assertEqual(eval_payload["status"],"passed")
   self.assertTrue(eval_payload["result"]["ready"])
   audit_payload=json.loads(call.call_args_list[1].args[0].data.decode())

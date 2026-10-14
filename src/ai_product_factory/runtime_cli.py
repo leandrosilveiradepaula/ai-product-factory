@@ -28,6 +28,7 @@ from .integration_readiness import github_alerts_readiness,github_vercel_preview
 from .operational_alerts import OPERATIONAL_ALERT_CODES,evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
 from .supabase_scheduler_liveness import SupabaseSchedulerLivenessReader,evaluate_scheduler_liveness
+from .github_scheduler_health import GithubNativeScheduledRunReader,evaluate_native_scheduler_health
 from .supabase_backlog_inventory import SupabaseBacklogInventoryReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
@@ -512,9 +513,22 @@ def run_alerts_once()->dict:
  budget=Decimal(budget_raw) if budget_raw else None
  health=SupabaseOperationalHealthReader().read(budget=budget)
  liveness=SupabaseSchedulerLivenessReader().read()
- alerts=(*evaluate_operational_alerts(health),*evaluate_scheduler_liveness(liveness))
  repository=os.environ["FACTORY_ALERTS_GITHUB_REPOSITORY"]
- adapter=GitHubIssueAlertAdapter(GitHubRestAdapter(repository=repository))
+ github=GitHubRestAdapter(repository=repository)
+ # Native heartbeat telemetry proves delivery, not successful workflow completion.
+ # A read-only GitHub API failure is itself a warning; never silently resolve
+ # the pipeline issue or prevent other alerts from being reconciled.
+ try:
+  native=GithubNativeScheduledRunReader(github).read()
+  pipeline_alerts=evaluate_native_scheduler_health(native)
+ except (RuntimeError, ValueError, OSError):
+  from .operational_alerts import OperationalAlert
+  pipeline_alerts=(OperationalAlert(
+   "scheduler_pipeline","warning",
+   "Native GitHub Actions workflow results could not be verified"
+  ),)
+ alerts=(*evaluate_operational_alerts(health),*evaluate_scheduler_liveness(liveness),*pipeline_alerts)
+ adapter=GitHubIssueAlertAdapter(github)
  results=adapter.publish_many(alerts)
  resolved=adapter.resolve_inactive(active_codes={alert.code for alert in alerts},known_codes=OPERATIONAL_ALERT_CODES)
  return {

@@ -20,6 +20,7 @@ permissions:
   contents: write
   pull-requests: read
   checks: read
+  statuses: read
 
 concurrency:
   group: vercel-preview-candidate-${{ inputs.pr_number || github.event.workflow_run.head_branch || github.run_id }}
@@ -93,6 +94,20 @@ jobs:
               return;
             }
             const fullRepo = context.repo.owner + "/" + context.repo.repo;
+            // Draft is not an eligible deployment candidate. Automatic triggers
+            // should record not_applicable rather than mark unrelated CI as red.
+            // Manual requests continue to fail closed for drafts.
+            if (!manual && pr.state === "open" && pr.draft &&
+                pr.base?.ref === "main" && pr.base?.repo?.full_name === fullRepo &&
+                pr.head?.repo?.full_name === fullRepo && pr.head?.sha === sha) {
+              core.notice("Candidate PR #" + pr.number + " is draft; Preview is not applicable until it is ready for review.");
+              core.setOutput("applicable", "false");
+              core.setOutput("promotion_action", "not_applicable_draft");
+              core.setOutput("pr_number", String(pr.number));
+              core.setOutput("candidate_sha", sha);
+              core.setOutput("source", "automatic");
+              return;
+            }
             // Manual and automatic paths must share the same fail-closed eligibility policy.
             if (pr.state !== "open" || pr.draft ||
                 pr.base?.ref !== "main" || pr.base?.repo?.full_name !== fullRepo ||
@@ -177,6 +192,12 @@ jobs:
               if (error.status !== 404) throw error;
             }
             core.setOutput("needs_promotion", "true");
+
+      - name: Block fresh Preview attempts on observed Vercel rate limit
+        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m scripts.preview_provider_cooldown
 
       - name: Observe recent Preview promotions
         if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
