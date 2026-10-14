@@ -84,6 +84,92 @@ class ReleasePolicyEngineTests(unittest.TestCase):
         self.assertTrue(out.rollback["required"])
         self.assertFalse(out.rollback["verified"])
 
+    def _candidate(self, definition_of_done=None, *, changed_files=("src/core.py",)):
+        if definition_of_done is None:
+            facts={}
+        else:
+            facts={"definition_of_done":definition_of_done}
+        return build_release_assessment(
+            policy=POLICY,candidate_commit="f"*40,changed_files=changed_files,
+            risk={},facts=facts,unknown_paid_cost=False,known_cost=Decimal("0"),
+        )
+
+    def test_false_string_is_not_human_only_and_blocks_release(self):
+        for value in ("false","true",0,1,None,[],{}):
+            with self.subTest(value=value):
+                decision=self._candidate({
+                    "satisfied":["github_ci"],
+                    "missing":[{"key":"critical_e2e","human_only":value}],
+                })
+                self.assertEqual(decision.decision.outcome,"blocked")
+                self.assertIn("critical_e2e",decision.context["missing_nonhuman_dod"])
+
+    def test_true_boolean_is_the_only_exempt_human_gate(self):
+        decision=self._candidate({
+            "satisfied":["github_ci"],
+            "missing":[{"key":"human_release","human_only":True}],
+        })
+        self.assertEqual(decision.decision.outcome,"ready_for_human_release")
+        self.assertEqual(decision.context["missing_nonhuman_dod"],[])
+
+    def test_missing_dod_payload_or_fields_blocks_instead_of_implicitly_passing(self):
+        for dod in (None,{},{"satisfied":[]},{"missing":[]},
+                    {"satisfied":[],"missing":"qa"},
+                    {"satisfied":"github_ci","missing":[]}):
+            with self.subTest(dod=dod):
+                out=self._candidate(dod)
+                self.assertEqual(out.decision.outcome,"blocked")
+                self.assertIn("definition_of_done_unverified",
+                              out.context["missing_nonhuman_dod"])
+
+    def test_malformed_missing_entries_fail_closed(self):
+        for row in (None,7,False,{"human_only":True},
+                    {"key":42,"human_only":True},{"key":"  ","human_only":True}):
+            with self.subTest(row=row):
+                out=self._candidate({"satisfied":["github_ci"],"missing":[row]})
+                self.assertEqual(out.decision.outcome,"blocked")
+                self.assertIn("definition_of_done_invalid_missing",
+                              out.context["missing_nonhuman_dod"])
+
+    def test_missing_and_satisfied_cannot_conflict(self):
+        out=self._candidate({
+            "satisfied":["critical_e2e","github_ci"],
+            "missing":[{"key":"critical_e2e","human_only":True}],
+        })
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertIn("definition_of_done_conflicting_status:critical_e2e",
+                      out.context["missing_nonhuman_dod"])
+
+    def test_duplicate_missing_keys_fail_closed(self):
+        out=self._candidate({
+            "satisfied":["github_ci"],
+            "missing":[
+                {"key":"qa","human_only":False},
+                {"key":"qa","human_only":True},
+            ],
+        })
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertIn("definition_of_done_duplicate_missing:qa",
+                      out.context["missing_nonhuman_dod"])
+
+    def test_invalid_satisfied_entry_blocks_even_if_other_gates_are_clear(self):
+        out=self._candidate({
+            "satisfied":["github_ci",{"key":"rollback_analysis"}],
+            "missing":[],
+        })
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertIn("definition_of_done_invalid_satisfied",
+                      out.context["missing_nonhuman_dod"])
+
+    def test_malformed_dod_cannot_bypass_migration_rollback_evidence(self):
+        out=self._candidate(
+            {"satisfied":"rollback_analysis","missing":[]},
+            changed_files=("supabase/migrations/20261014_sample.sql",),
+        )
+        self.assertEqual(out.decision.outcome,"blocked")
+        self.assertFalse(out.rollback["verified"])
+        self.assertIn("definition_of_done_unverified",out.context["missing_nonhuman_dod"])
+
 
 if __name__=="__main__":
     unittest.main()

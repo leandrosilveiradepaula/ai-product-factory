@@ -1,3 +1,9 @@
+## 2026-10-14 - Definition of Done fail-closed input validation (candidate)
+- PR #775 merged at bc42b05c with green post-merge CI. CRM #56 still has no verified candidate Preview, while scheduler-gap issue #772 remains open and no durable Factory scheduler heartbeat newer than 08:03 UTC was observed in the reconciled Control Plane.
+- Another deterministic release gate bypass existed: `_missing_nonhuman` used `bool(row.get('human_only'))`, so JSON strings including `"false"` were truthy and waived mandatory missing CI/E2E checks. It also skipped malformed records and silently interpreted a missing DoD as no missing work.
+- Candidate requires structured `satisfied`/`missing` lists, rejects missing/duplicate/conflicting or malformed keys, and permits only literal `human_only: true` to exempt a check from **nonhuman** gates. Malformed satisfaction evidence blocks release and cannot prove rollback. Existing literal human-only release gate semantics stay unchanged.
+- Eight additional release policy regressions prove wrong types, missing payload, conflict, duplicate and migrations fail closed. No migration, model usage, Preview, gate bypass or auto-merge.
+
 ## 2026-10-14 - Enforce mandatory readiness domains and typed evidence (candidate)
 - PR #774 merged into main at 9548c7ca; post-merge CI passed. No Factory PRs were open when this candidate began. CRM candidate #56 stays open and preview-unverified; scheduler_gap issue #772 stays open with latest durable scheduler probe at 08:03 UTC.
 - Further audit exposed two bypasses in the underlying full-product assessment: all six domains could claim `not_applicable` with plausible reasons/evidence and become ready; evidence list items were coerced with `str()`, so malformed objects, booleans and numbers could appear as accepted evidence. A single malformed coverage entry could also be ignored while other keys made the coverage set pass.

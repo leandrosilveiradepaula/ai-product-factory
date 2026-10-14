@@ -17,12 +17,47 @@ class ReleaseAssessment:
 
 
 def _missing_nonhuman(readiness:dict)->tuple[str,...]:
-    out=[]
-    for row in readiness.get("missing") or []:
-        if isinstance(row,dict) and not bool(row.get("human_only")):
-            key=str(row.get("key") or "").strip()
-            if key:out.append(key)
-    return tuple(sorted(set(out)))
+    """Only an actual JSON true may defer a check to the human release gate.
+
+    Absent, malformed or contradictory DoD evidence blocks release readiness.
+    In particular Python bool("false") is True and cannot be used here.
+    """
+    if not isinstance(readiness,dict):
+        return ("definition_of_done_unverified",)
+    satisfied=readiness.get("satisfied")
+    missing=readiness.get("missing")
+    if not isinstance(satisfied,list) or not isinstance(missing,list):
+        return ("definition_of_done_unverified",)
+    if any(not isinstance(value,str) or not value.strip() for value in satisfied):
+        return ("definition_of_done_invalid_satisfied",)
+
+    satisfied_set={value.strip() for value in satisfied}
+    blockers=set()
+    seen_missing=set()
+    for row in missing:
+        if not isinstance(row,dict):
+            blockers.add("definition_of_done_invalid_missing")
+            continue
+        key=row.get("key")
+        if not isinstance(key,str) or not key.strip():
+            blockers.add("definition_of_done_invalid_missing")
+            continue
+        key=key.strip()
+        if key in seen_missing:
+            blockers.add("definition_of_done_duplicate_missing:"+key)
+        seen_missing.add(key)
+        if key in satisfied_set:
+            blockers.add("definition_of_done_conflicting_status:"+key)
+
+        # Explicit native bool is required. No coercion of strings, numbers
+        # or arbitrary objects into permission to skip non-human gates.
+        human_only=row.get("human_only",False)
+        if human_only is True:
+            continue
+        if human_only is not False:
+            blockers.add("definition_of_done_invalid_human_only:"+key)
+        blockers.add(key)
+    return tuple(sorted(blockers))
 
 
 
@@ -79,7 +114,8 @@ def build_release_assessment(
     known_cost:Decimal,
 )->ReleaseAssessment:
     readiness=facts.get("definition_of_done") if isinstance(facts.get("definition_of_done"),dict) else {}
-    satisfied=set(str(x) for x in readiness.get("satisfied") or [])
+    raw_satisfied=readiness.get("satisfied")
+    satisfied={x.strip() for x in raw_satisfied if isinstance(x,str) and x.strip()} if isinstance(raw_satisfied,list) else set()
     migration_change=any(str(path).startswith("supabase/migrations/") for path in changed_files)
     rollback_verified=(not migration_change) or "rollback_analysis" in satisfied
     context=ReleasePolicyContext(

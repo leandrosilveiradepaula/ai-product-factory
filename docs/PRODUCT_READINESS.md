@@ -88,6 +88,23 @@ deployment. Conversely, a release candidate can pass its separate delivery
 gates while the global product remains `not_ready`.
 
 
+## Definition of Done input safety
+
+The production release policy must treat an absent or malformed
+`definition_of_done` payload as an incomplete release candidate, not as
+an empty list of checks. It requires `satisfied` and `missing` arrays.
+Each missing check has a non-empty text `key`, with `human_only`
+being a real JSON boolean. **Only** `human_only: true` can defer a
+check to the manual production-release gate; strings such as
+`"false"` or `"true"`, numeric values and null cannot waive it.
+Duplicate missing keys and checks simultaneously marked satisfied
+and missing are invalid and block. Malformed items cannot silently
+disappear while promoting a release candidate.
+
+These rules do not alter the production human release requirement,
+cost gates, Preview requirements or the independent full-product
+readiness assessment.
+
 ## Release report semantics
 
 Release reports describe the **candidate/release**, not the entire product. They must carry `readiness_scope=release_candidate` and must not set `product_complete=true` unless a separate full-product readiness assessment is present and passing.
