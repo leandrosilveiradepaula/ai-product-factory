@@ -1,3 +1,18 @@
+## 2026-10-14 - Codex route and auth parity (candidate)
+- Factory main bff9c298, post-merge CI green; 9 SQL scheduler signals
+  installed and reporting no active Control Plane work.
+- Discovered automatic Codex would never dispatch if Primary was disabled:
+  the preclaim allowed only Direct or the manual fallback, not automatically
+  authenticated Codex. Separately the Codex CLI producer supported the
+  official access-token fallback, but the runtime rejected it before claim.
+- Candidate adds a protected no-model configuration preflight in
+  openai-codex, outputs only a boolean to dispatch, permits exact Codex route
+  independently of Primary, and aligns runtime WIF/official access-token
+  checks (partial WIF fails closed).
+- Neither WIF nor token is auto-enabled or verified by a paid call here.
+  Actual authentication remains subject to an independent operator preflight
+  before Codex activation. No production merge or deployment was performed.
+
 ## 2026-10-14 - Downstream wakeup signals (candidate)
 - #758 merged at c5a882c9 with post-merge CI green and
   `factory_scheduler_queue_signals` installed as 20261014000254.

@@ -1,3 +1,26 @@
+## Independent Codex preclaim readiness and official access token fallback
+
+The protected `openai-codex` workflow now exposes a strict boolean route
+preflight to dispatch only when actual routed work exists and Codex is
+explicitly enabled. It requires a complete official WIF federation mapping
+or a configured `CODEX_ACCESS_TOKEN`, plus an explicit cross-repository
+GitHub credential. Partial WIF rejects token fallback; secrets NEVER reach
+the dispatcher or the Primary jobs.
+
+This is a **configuration preflight**, not an official Codex login success:
+the `codex` worker rechecks WIF/token, attempts the official auth mode and
+fails closed before any model invocation if credentials are invalid.
+Activation still requires a prior no-model auth validation recorded by an
+operator; do not flip `FACTORY_CODEX_ENABLED` merely because a secret
+exists. No token values or invented federation settings belong in docs.
+
+Automatic Codex route authorization is independent from Primary budget or
+API key. If Primary is disabled but Codex is explicitly active and protected
+preflight passes, only Codex may be claimed. If neither route is available,
+work remains unclaimed. The manual Codex path remains separate and
+explicitly opt-in when automatic Codex is off. No auto-merge or Preview
+policy is changed.
+
 ## Downstream stage wakeup without REST-window starvation
 
 `factory_scheduler_queue_signals` now also uses read-only PostgreSQL

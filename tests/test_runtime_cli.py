@@ -45,6 +45,71 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["status"],"blocked")
         queue.assert_not_called()
 
+    def test_codex_access_token_is_supported_without_wif(self):
+        env={
+            "FACTORY_CODEX_ENABLED":"true",
+            "CODEX_ACCESS_TOKEN":"official-codex-token",
+            "FACTORY_GITHUB_TOKEN":"explicit-repo-token",
+        }
+        with patch.dict("os.environ",env,clear=True):
+            require_codex_runtime_enabled()
+
+    def test_codex_partial_wif_never_falls_back_to_access_token(self):
+        for partial in (
+            {"OPENAI_FEDERATION_RULE_ID":"rule-only"},
+            {"OPENAI_WIF_AUDIENCE":"audience-only"},
+            {"OPENAI_IDENTITY_TOKEN_FILE":"/tmp/not-real"},
+        ):
+            env={
+                "FACTORY_CODEX_ENABLED":"true",
+                "CODEX_ACCESS_TOKEN":"official-codex-token",
+                "FACTORY_GITHUB_TOKEN":"explicit-repo-token",
+                **partial,
+            }
+            with self.subTest(partial=partial),patch.dict("os.environ",env,clear=True):
+                with self.assertRaisesRegex(PermissionError,"WIF configuration is incomplete"):
+                    require_codex_runtime_enabled()
+
+    def test_codex_claim_remains_blocked_without_official_credentials(self):
+        env={
+            "FACTORY_CODEX_ENABLED":"true",
+            "FACTORY_GITHUB_TOKEN":"explicit-repo-token",
+        }
+        with patch.dict("os.environ",env,clear=True):
+            with self.assertRaisesRegex(PermissionError,"CODEX_ACCESS_TOKEN"):
+                require_codex_runtime_enabled()
+
+    def test_codex_auto_route_independent_of_primary_when_protected_preflight_ready(self):
+        env={
+            "FACTORY_PRIMARY_MODEL_ENABLED":"false",
+            "FACTORY_CODEX_ENABLED":"true",
+            "FACTORY_DISPATCH_CODEX_READY":"true",
+            "FACTORY_CODEX_MANUAL_FALLBACK_ENABLED":"false",
+        }
+        dispatcher=MagicMock()
+        dispatcher.dispatch_next_any.return_value=None
+        adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatcher), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
+             patch("ai_product_factory.runtime_cli.SupabaseAdaptiveConcurrencyController",return_value=adaptive), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget") as paid:
+            result=run_dispatch_once()
+        self.assertEqual(result["status"],"empty")
+        dispatcher.dispatch_next_any.assert_called_once_with(allowed_routes=("codex",))
+        paid.assert_not_called()
+
+    def test_codex_auto_route_requires_both_explicit_enable_and_preflight(self):
+        for enabled,ready in (("false","true"),("true","false"),("true",""),("", "true")):
+            env={"FACTORY_PRIMARY_MODEL_ENABLED":"false","FACTORY_CODEX_ENABLED":enabled,
+                 "FACTORY_DISPATCH_CODEX_READY":ready}
+            with self.subTest(enabled=enabled,ready=ready), \
+                 patch.dict("os.environ",env,clear=True), \
+                 patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch") as dispatch:
+                result=run_dispatch_once()
+            self.assertEqual(result["status"],"blocked_executor_readiness")
+            dispatch.assert_not_called()
+
     def test_codex_runtime_requires_cross_repo_credential(self):
         import tempfile
         with tempfile.NamedTemporaryFile() as identity:

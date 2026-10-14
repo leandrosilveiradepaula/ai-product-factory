@@ -456,8 +456,8 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode release
 
   dispatch:
-    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
-    needs: [schedule-probe, github-access-preflight, product-stage]
+    if: ${{ always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && needs.codex-route-preflight.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    needs: [schedule-probe, github-access-preflight, product-stage, codex-route-preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -473,6 +473,8 @@ jobs:
       FACTORY_MODEL_BUDGET_USD: "4.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED == 'true' && 'true' || 'false' }}
+      # No Codex token/WIF claims ever cross into dispatcher.
+      FACTORY_DISPATCH_CODEX_READY: ${{ needs.codex-route-preflight.outputs.ready == 'true' && 'true' || 'false' }}
       FACTORY_CODEX_MANUAL_FALLBACK_ENABLED: ${{ vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED == 'true' && 'true' || 'false' }}
       # Only the explicitly opted-in manual handoff may be routed without Primary.
       FACTORY_DISPATCH_MANUAL_CODEX_READY: ${{ vars.FACTORY_CODEX_ENABLED != 'true' && vars.FACTORY_CODEX_MANUAL_FALLBACK_ENABLED == 'true' && 'true' || 'false' }}
@@ -854,3 +856,41 @@ jobs:
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode alerts
+
+  codex-route-preflight:
+    # Independent from Primary; run only when there is actual dispatch work.
+    needs: schedule-probe
+    if: ${{ always() && needs.schedule-probe.result == 'success' && vars.FACTORY_CODEX_ENABLED == 'true' && (needs.schedule-probe.outputs.dispatch_work == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    environment: openai-codex
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Verify explicitly enabled official Codex routing configuration
+        id: check
+        env:
+          FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED == 'true' && 'true' || 'false' }}
+          OPENAI_FEDERATION_RULE_ID: ${{ vars.OPENAI_FEDERATION_RULE_ID }}
+          OPENAI_WIF_AUDIENCE: ${{ vars.OPENAI_WIF_AUDIENCE }}
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          if [ "$FACTORY_CODEX_ENABLED" = "true" ] && [ -n "$FACTORY_GITHUB_TOKEN" ]; then
+            if [ -n "$OPENAI_FEDERATION_RULE_ID$OPENAI_WIF_AUDIENCE" ]; then
+              # Incomplete WIF MUST NOT fall back to a token.
+              if [ -n "$OPENAI_FEDERATION_RULE_ID" ] && [ -n "$OPENAI_WIF_AUDIENCE" ]; then
+                ready=true
+              fi
+            elif [ -n "$CODEX_ACCESS_TOKEN" ]; then
+              ready=true
+            fi
+          fi
+          # Presence is a configuration preflight, NOT a successful login.
+          # The protected Codex worker must separately validate runtime auth.
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
