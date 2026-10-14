@@ -97,7 +97,16 @@ def evaluate_scheduler_liveness(state: SchedulerLiveness) -> tuple[OperationalAl
         minutes = int(state.age.total_seconds()//60)
         return (OperationalAlert(
             "scheduler_gap", "warning",
-            f"Last durable scheduler probe is {minutes} minutes old (expected best-effort twice hourly)"
+            f"Last native scheduler probe is {minutes} minutes old (expected best-effort twice hourly)"
+        ),)
+    # One new cron wake after a prolonged outage is not enough to establish
+    # recovery. Never automatically resolve the alert without a *pair*
+    # of consecutive, timely native schedule observations. Legacy or manual
+    # telemetry is excluded by the reader and cannot satisfy this requirement.
+    if state.previous is None:
+        return (OperationalAlert(
+            "scheduler_gap", "warning",
+            "Only one native scheduled probe is recorded; need two consecutive timely observations to verify recovery"
         ),)
     if state.gap is not None and state.gap >= MAX_GAP:
         minutes = int(state.gap.total_seconds()//60)
