@@ -1,0 +1,47 @@
+from pathlib import Path
+import unittest
+
+ROOT=Path(__file__).resolve().parents[1]
+PAGE=(ROOT/"apps/console/app/gates/page.tsx").read_text()
+PENDING=(ROOT/"apps/console/app/gates/gate-decision-form.tsx").read_text()
+OUTCOME=(ROOT/"apps/console/lib/migration-feedback.ts").read_text()
+BANNER=(ROOT/"apps/console/app/gates/gate-action-success-banner.tsx").read_text()
+CSS=(ROOT/"apps/console/app/globals.css").read_text()
+
+class VerifiedMigrationFeedbackTests(unittest.TestCase):
+ def test_confirmation_is_not_derived_from_user_supplied_query(self):
+  self.assertIn('await getVerifiedMigrationOutcome(params.migration_result)',PAGE)
+  self.assertIn('gate.status!=="approved"',OUTCOME)
+  self.assertIn('metadata?.requested_action!=="apply_control_plane_migration"',OUTCOME)
+  self.assertIn("event?.payload?.candidate_commit===expectedCommit",OUTCOME)
+  self.assertIn("event?.payload?.migration_name===expectedName",OUTCOME)
+  self.assertIn("human_migration.console_apply_succeeded",OUTCOME)
+  self.assertIn("human_migration.console_already_applied",OUTCOME)
+  self.assertIn("if(!matching)return null",OUTCOME)
+  self.assertIn('cache:"no-store"',OUTCOME)
+
+ def test_server_action_redirects_only_after_verified_operator_return(self):
+  action=PAGE.split("async function applyMigration(formData:FormData){",1)[1].split("const githubAppNotices",1)[0]
+  self.assertLess(action.index("await applyPendingMigrationFromConsole"),action.index("redirect(\"/gates?migration_result=\""))
+  self.assertLess(action.index('revalidatePath("/gates")'),action.index("redirect(\"/gates?migration_result=\""))
+  self.assertIn('catch(error){redirectGateError(error);}',action)
+
+ def test_pending_state_disables_controls_and_says_what_is_happening(self):
+  self.assertIn('const {pending}=useFormStatus()',PENDING)
+  self.assertIn('disabled={pending}',PENDING)
+  self.assertIn('aria-busy={pending}',PENDING)
+  self.assertIn('role="status"',PENDING)
+  self.assertIn('aria-live="polite"',PENDING)
+  self.assertIn("Não envie a operação novamente",PAGE)
+  self.assertIn("Revalidando o SHA",PAGE)
+  self.assertIn("gateBusySpinner",CSS)
+  self.assertIn("prefers-reduced-motion:reduce",CSS)
+
+ def test_success_is_dismissible_and_query_is_removed(self):
+  self.assertIn('url.searchParams.delete("migration_result")',BANNER)
+  self.assertIn("window.history.replaceState",BANNER)
+  self.assertIn('aria-label="Fechar confirmação"',BANNER)
+  self.assertIn('role="status"',BANNER)
+  self.assertIn("alreadyApplied?",BANNER)
+
+if __name__=="__main__":unittest.main()
