@@ -75,10 +75,25 @@ def require_paid_runtime_budget(*, health_reader=None)->None:
  require_cost_ceiling(budget=budget,known_spend=health.known_cost,reserved_cost=reserve,strict=True)
 
 def require_codex_runtime_enabled()->None:
- if os.getenv("FACTORY_CODEX_ENABLED")!="true":raise PermissionError("Codex execution is disabled")
- missing=[name for name in ("OPENAI_FEDERATION_RULE_ID","OPENAI_WIF_AUDIENCE","OPENAI_IDENTITY_TOKEN_FILE","FACTORY_GITHUB_TOKEN") if not os.getenv(name,"").strip()]
- if missing:raise PermissionError("Codex runtime configuration is incomplete: "+", ".join(missing))
- if not os.path.isfile(os.environ["OPENAI_IDENTITY_TOKEN_FILE"]):raise PermissionError("Codex identity token file does not exist")
+ """Validate one official Codex auth mode without performing a paid request.
+
+ A partial WIF configuration always wins over and disables token fallback.
+ """
+ if os.getenv("FACTORY_CODEX_ENABLED")!="true":
+  raise PermissionError("Codex execution is disabled")
+ if not os.getenv("FACTORY_GITHUB_TOKEN","").strip():
+  raise PermissionError("Codex runtime configuration is incomplete: FACTORY_GITHUB_TOKEN")
+ wif=("OPENAI_FEDERATION_RULE_ID","OPENAI_WIF_AUDIENCE","OPENAI_IDENTITY_TOKEN_FILE")
+ configured=[name for name in wif if os.getenv(name,"").strip()]
+ if configured:
+  missing=[name for name in wif if not os.getenv(name,"").strip()]
+  if missing:
+   raise PermissionError("Codex WIF configuration is incomplete: "+", ".join(missing))
+  if not os.path.isfile(os.environ["OPENAI_IDENTITY_TOKEN_FILE"]):
+   raise PermissionError("Codex identity token file does not exist")
+ elif not os.getenv("CODEX_ACCESS_TOKEN","").strip():
+  raise PermissionError("Codex runtime requires official WIF or CODEX_ACCESS_TOKEN")
+
 
 def build_handler():
  require_primary_runtime_enabled()
@@ -528,9 +543,14 @@ def allowed_dispatch_routes()->tuple[str,...]:
   enabled.append("direct")
  # Automatic Codex is intentionally ineligible without a separate WIF/token
  # preflight. Only the existing no-model manual handoff can be selected.
- if (os.getenv("FACTORY_CODEX_ENABLED")!="true"
-     and os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED")=="true"
-     and os.getenv("FACTORY_DISPATCH_MANUAL_CODEX_READY")=="true"):
+ if (os.getenv("FACTORY_CODEX_ENABLED")=="true"
+     and os.getenv("FACTORY_DISPATCH_CODEX_READY")=="true"):
+  # This boolean comes only from the protected openai-codex preflight job.
+  # Credentials stay in that job, never in the dispatcher.
+  enabled.append("codex")
+ elif (os.getenv("FACTORY_CODEX_ENABLED")!="true"
+       and os.getenv("FACTORY_CODEX_MANUAL_FALLBACK_ENABLED")=="true"
+       and os.getenv("FACTORY_DISPATCH_MANUAL_CODEX_READY")=="true"):
   enabled.append("codex")
  return tuple(enabled)
 
