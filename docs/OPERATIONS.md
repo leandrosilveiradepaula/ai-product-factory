@@ -1,3 +1,8 @@
+## Read-only queued backlog audit (candidate)
+When `schedule-probe` reports no executable work, it does NOT imply all `factory_tasks` are terminal. Historical planning child tasks may remain `queued` under completed parents with no active `factory_change_set_work_units`. Use `python -m ai_product_factory.runtime_cli --mode backlog-audit` for an explicitly read-only report, or inspect its best-effort scheduled log when `work_detected=false`.
+
+The reader uses only GET queries with bounded rows (100 queued tasks, 500 work units), validates all identities and parent references and fails closed rather than misreporting partial data. It does not promote tasks, create runs, claim work, contact a model, or infer human release approval. A queued task with active unit is still not necessarily dispatchable: only authoritative scheduler/claim gates decide. No schema migration is needed.
+
 ## Stale Preview alert provenance (candidate)
 The operational health reader now separates real overdue delivery candidates from historic product-readiness audit rows (`metadata.source=dogfood_manual_audit`) using the same `is_delivery_preview_run` rule as the Preview queue. It reads an oldest-first `preview_ready` partition, not the newest 200 general runs. An overflow >200, malformed row or missing delivery timestamp fails closed before the alert reconciler can incorrectly close an issue. This does not change run status, queue scheduling, quota, or Preview/production gate rules.
 
