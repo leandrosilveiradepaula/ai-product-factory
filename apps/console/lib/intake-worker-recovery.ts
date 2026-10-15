@@ -29,9 +29,11 @@ export async function recoverPendingProjectWake(projectKey:string,actorId:string
  // 15 minutes blocks repeated requests. Concurrent requests can still race;
  // endpoint is intentionally limited to authenticated admins, not automated polling.
  const since=new Date(Date.now()-15*60*1000).toISOString();
- const prior=await fetch(cfg.url+"/rest/v1/factory_audit_events?select=id&run_id=eq."+encodeURIComponent(runId)+"&event_type=in.(project.bootstrap.wake_attempted,project.bootstrap.recovery_requested)&created_at=gte."+encodeURIComponent(since)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ const prior=await fetch(cfg.url+"/rest/v1/factory_audit_events?select=event_type,payload&run_id=eq."+encodeURIComponent(runId)+"&event_type=eq.project.bootstrap.wake_attempted&created_at=gte."+encodeURIComponent(since)+"&order=created_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"});
  if(!prior.ok)throw new Error("Unable to check recovery cooldown");
- if((await prior.json()).length)return {status:"cooldown",integration};
+ const recent=(await prior.json())[0];
+ // Only a successful dispatch warrants cooldown; failed/unconfigured attempts may retry.
+ if(recent?.payload?.status==="requested")return {status:"cooldown",integration};
  const auditBody={project_id:id,run_id:runId,task_id:taskId,actor_type:"operator",actor_ref:"console-admin",event_type:"project.bootstrap.recovery_requested",payload:{source:"admin_recovery",operator_ref:actorId}};
  const audit=await fetch(cfg.url+"/rest/v1/factory_audit_events",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json",Prefer:"return=minimal"},body:JSON.stringify(auditBody),cache:"no-store"});
  if(!audit.ok)throw new Error("Cannot persist recovery request");
