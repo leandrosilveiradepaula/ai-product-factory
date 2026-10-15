@@ -16,7 +16,9 @@ from urllib import request
 JSONRequest = Callable[[str, str, dict[str, str]], Any]
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REPO = re.compile(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$")
-MAX_RECENT_PRS = 50
+MAX_RECENT_PRS = 500
+MAX_PR_PAGES = 5
+PR_PAGE_SIZE = 100
 WINDOW = timedelta(hours=24)
 
 
@@ -50,36 +52,53 @@ def observe_rate_limit(
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    root = f"https://api.github.com/repos/{repository}"
-    # Include recently closed PRs: the Vercel rate limit is shared beyond one
-    # PR's lifecycle. Most recent PRs first; a truncated recent window fails shut.
-    pulls = get_json(
-        "GET", f"{root}/pulls?state=all&sort=updated&direction=desc&per_page=100", headers
-    )
-    if not isinstance(pulls, list) or len(pulls) > 100:
-        raise RuntimeError("recent PR inventory is incomplete or malformed")
+    root = f"https:    # Recently updated PRs are needed because a closed PR may still carry
+    # the latest Vercel rate-limit observation. Separately enumerate every
+    # open PR: an old open PR can have a recently updated provider status.
+    # Use bounded pagination and fail closed on incomplete inventories.
     cutoff = now_utc - WINDOW
-    candidates = []
-    for pull in pulls:
-        if not isinstance(pull, dict):
-            raise RuntimeError("invalid PR inventory item")
-        state = pull.get("state")
-        if state not in ("open", "closed"):
-            raise RuntimeError("invalid PR state")
-        updated_raw = pull.get("updated_at")
-        if not isinstance(updated_raw, str):
-            raise RuntimeError("PR inventory has missing update timestamp")
-        updated_at = _parse_timestamp(updated_raw)
-        if updated_at > now_utc + timedelta(minutes=5):
-            raise RuntimeError("PR inventory timestamp exceeds clock tolerance")
-        if state == "open" or updated_at >= cutoff:
-            candidates.append(pull)
-    if len(pulls) == 100:
-        oldest = _parse_timestamp(pulls[-1]["updated_at"])
-        if oldest >= cutoff:
-            raise RuntimeError("recent PR inventory is paginated and incomplete")
+
+    def collect_pulls(state: str) -> list[dict[str, Any]]:
+        selected: list[dict[str, Any]] = []
+        for page in range(1, MAX_PR_PAGES + 1):
+            pulls = get_json(
+                "GET",
+                f"{root}/pulls?state={state}&sort=updated&direction=desc"
+                f"&per_page={PR_PAGE_SIZE}&page={page}",
+                headers,
+            )
+            if not isinstance(pulls, list) or len(pulls) > PR_PAGE_SIZE:
+                raise RuntimeError("recent PR inventory is incomplete or malformed")
+            previous: datetime | None = None
+            for pull in pulls:
+                if not isinstance(pull, dict):
+                    raise RuntimeError("invalid PR inventory item")
+                pr_state = pull.get("state")
+                if pr_state not in ("open", "closed") or (state == "open" and pr_state != "open"):
+                    raise RuntimeError("invalid PR state")
+                updated_raw = pull.get("updated_at")
+                if not isinstance(updated_raw, str):
+                    raise RuntimeError("PR inventory has missing update timestamp")
+                updated_at = _parse_timestamp(updated_raw)
+                if updated_at > now_utc + timedelta(minutes=5):
+                    raise RuntimeError("PR inventory timestamp exceeds clock tolerance")
+                if previous is not None and updated_at > previous:
+                    raise RuntimeError("PR inventory lost descending order")
+                previous = updated_at
+                if state == "open" or updated_at >= cutoff:
+                    selected.append(pull)
+            # Sorted 'all' includes closed PRs. Once older than our window,
+            # stop and rely on the independent open-only inventory.
+            if len(pulls) < PR_PAGE_SIZE or (
+                state == "all" and previous is not None and previous < cutoff
+            ):
+                return selected
+        raise RuntimeError("recent PR inventory paginated beyond safe bound")
+
+    candidates = collect_pulls("all") + collect_pulls("open")
     if len(candidates) > MAX_RECENT_PRS:
         raise RuntimeError("recent PR inventory exceeds safe bound")
+nt PR inventory exceeds safe bound")
     seen = set()
     for pull in candidates:
         sha = (pull.get("head") or {}).get("sha")

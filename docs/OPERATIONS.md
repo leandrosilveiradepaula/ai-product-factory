@@ -1,3 +1,10 @@
+## 2026-10-15 — Bounded pagination do cooldown Vercel (fix pós-#811)
+
+- Fato verificado: `Promote exact PR candidate to Vercel Preview` run #38657573456 falhou na etapa `scripts.preview_provider_cooldown` com `recent PR inventory exceeds safe bound`. A consulta tinha 52 PRs atualizados nas últimas 24h, ultrapassando o limite artificial de 50. Isso bloqueou a promoção antes de qualquer chamada à Vercel.
+- A leitura do cooldown passa a paginar até cinco páginas de 100 PRs por consulta, mantendo duas fontes: PRs atualizados recentemente (inclui fechados) e todos os PRs abertos, inclusive antigos. Revalida estrutura, horário, ordenação e limites; inventário parcial continua bloqueando. O máximo de 500 registros candidatos continua deliberadamente fail-closed; nenhum token, serviço, permissão, scheduler ou ref privilegiado é alterado.
+- Testes reproduzem 52 PRs recentes, falha Vercel encontrada na segunda página, PR aberto antigo com rate limit recente, inventário excessivo e ordem inválida. Ausência de rate limit continua sendo observação não autoritativa de quota, não promessa de disponibilidade.
+- PR #811 foi **mergeado por humano** em `34c614be92a544bb52c1b2634fc6c82b1be6d25e`. Vercel de produção marcou deployment como concluído no SHA, CI de pós-merge verde. Auditoria visual autenticada pós-merge #38658173777 necessita leitura separada dos resultados. Este patch é somente Python/tests/docs; Preview Console não é requerido e merge em produção continua humano.
+
 ## 14/10/2026 — Candidato consolidado de Console: uma promoção de Preview, gate humano preservado
 
 Este PR #811 agrega três candidatos antes separados: #786 (bootstrap/continuação transacional e RPC previamente aplicada), #789 (diff cumulativo de Vercel Preview) e #811 (legibilidade mobile, readiness fail-closed, inventários paginados e diagnóstico da fila). O propósito é validar uma única vez o mesmo SHA com Console CI, PostgreSQL isolado, Preview Vercel e Playwright autenticado, reduzindo a quota consumida por candidatos intermediários.
