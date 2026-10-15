@@ -206,6 +206,15 @@ jobs:
             }
             core.setOutput("needs_promotion", "true");
 
+      - name: Require READY Vercel evidence before reusing Preview ref
+        if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.promotion_action == 'reused'
+        id: reuse_guard
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
+        run: python -m scripts.preview_reuse_guard
+
       - name: Block fresh Preview attempts on observed Vercel rate limit
         if: steps.resolve.outputs.applicable == 'true' && steps.verify.outputs.needs_promotion == 'true'
         env:
@@ -369,8 +378,12 @@ jobs:
           CANDIDATE_SHA: ${{ steps.resolve.outputs.candidate_sha }}
           PROMOTION_SOURCE: ${{ steps.resolve.outputs.source }}
           BROWSER_ACTION: ${{ steps.browser.outputs.browser_action }}
+          REUSE_GUARD_OUTCOME: ${{ steps.reuse_guard.outcome }}
         run: |
           action="${PROMOTE_ACTION:-${VERIFY_ACTION:-${RESOLVE_ACTION:-unknown}}}"
+          if [ "$action" = "reused" ] && [ "${REUSE_GUARD_OUTCOME:-}" = "failure" ]; then
+            action="blocked_reused_ref_without_vercel_ready"
+          fi
           {
             printf '%s\n' "### Preview promotion"
             printf '%s\n' "- PR: #${PR_NUMBER:-n/a}"

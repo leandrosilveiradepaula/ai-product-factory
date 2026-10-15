@@ -1,3 +1,10 @@
+## 2026-10-15 — Reused Preview ref ≠ Vercel deployment (candidato sem Console)
+
+- Caso real #863: a ref `preview/pr-863` aponta para o SHA candidato, mas a Vercel retornou `Deployment rate limited` às 22:23:10 UTC e não publicou Preview. A primeira recuperação (#861) detectou um deployment posterior no SHA #860, mas a tentativa de novo Preview consumiu uma promoção de ref e recebeu nova negativa do provider.
+- Este candidato adiciona o guard determinístico `scripts.preview_reuse_guard` ao fluxo já existente: quando `preview/pr-N` é reutilizada no mesmo SHA, exige status Vercel mais recente, inequívoco, `Deployment has completed`/`Deployment ready` e URL HTTPS de deployment concreto no mesmo commit. Rate limit, `Ignored Build Step`, ausência de status, empate de timestamps e inventário inválido bloqueiam antes de disparar outro browser workflow; o bloqueio é explicitado no resumo.
+- Não força a ref de volta ao parent nem recria branch, não chama Vercel API/CLI, não habilita quota paga e não atribui Preview `READY` a uma referência Git. A prova pelo navegador continua obrigatória após status Vercel real. Para o mesmo SHA previamente recusado, um **novo deployment autorizado pelo provider** permanece dependência externa; rerun do promotor por si só não o cria.
+- Somente Python, workflow e documentação; Preview Console N/A para o patch da Factory, CI obrigatório e merge de produção humano.
+
 ## 2026-10-15 — Atomic project intake and first run (#713)
 
 The previous Console submitted create-intake, attachment-finalization and initial-bootstrap as three independent database calls. A failure after creation could strand a project with no initial run; repeating the form then hit the duplicate project key.
