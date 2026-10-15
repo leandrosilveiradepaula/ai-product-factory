@@ -95,6 +95,8 @@ class GithubExistingInventoryTests(unittest.TestCase):
         self.assertNotIn("pull_request_target:",s)
         self.assertNotIn("issue_comment:",s)
         self.assertIn("Upload read-only inventory",s)
+        self.assertIn('json.dumps(evidence,indent=2,sort_keys=True)+"\\n"',s)
+        self.assertNotIn('json.dumps(evidence,indent=2,sort_keys=True)+"\\\\n"',s)
         self.assertIn('".github/crm-existing-inventory-target.json"',s)
         self.assertIn("inventory_candidate(",s)
         self.assertIn("get_json=lambda path: _get(token,path)",s)

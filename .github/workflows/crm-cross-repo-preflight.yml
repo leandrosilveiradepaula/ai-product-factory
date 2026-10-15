@@ -105,7 +105,7 @@ jobs:
               raise SystemExit("Git inventory cannot be promoted to product readiness")
           output=Path("audit-evidence/crm-existing-inventory.json")
           output.parent.mkdir(parents=True,exist_ok=True)
-          output.write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\\n",encoding="utf-8")
+          output.write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\n",encoding="utf-8")
           print(json.dumps({"inventory_state":"not_assessed",
                             "candidate_commit":evidence["assessed_commit"],
                             "tracked_files":evidence["inventory"]["tracked_files"],
