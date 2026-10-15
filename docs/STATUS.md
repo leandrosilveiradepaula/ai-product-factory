@@ -1,3 +1,9 @@
+## 2026-10-15 — Candidate #713: inventario Git existente deterministicamente limitado
+
+- Criado leitor read-only `existing_project_inventory` que compara HEAD do checkout ao SHA candidato e inspeciona apenas `git ls-tree` para contar superficies e localizar lacunas; output sempre `not_assessed` e `inventory_only`. Nao ha conexao ao CRM Supabase por este projeto; nao sao fabricadas aprovacoes de RLS, journeys nem product readiness.
+- CRM PR #56 ainda aponta para `f5f7d91f8e98cfaf482cca72c974abb7a82f6a5e`, 397 arquivos alterados, CI e Preview Vercel concluídos. O projeto de dados do CRM nao esta entre as duas instancias Supabase conectadas, portanto migracoes/RLS remotas permanecem sem evidencia.
+- O modulo agrega testes com Git fixture em CI; nenhum workflow novo, permissao OIDC, job pago, migration ou alteração `apps/console/**`. A suite de CI do candidato, e não esta anotacao, determina se o patch esta apto ao gate humano de merge.
+
 ## 2026-10-15 — Greenfield lifecycle gate audit (#713, candidate Python only)
 
 - A revisão real dos testes achou uma simulação greenfield que chamava `PREVIEW -> RELEASE -> OPERATIONS` sem `HUMAN_GATE` e a maquina de estados também permitia `BLOCKED -> RELEASE/OPERATIONS`. Estes atalhos eram inconsistentes com o contrato obrigatório de merge humano em produção.
