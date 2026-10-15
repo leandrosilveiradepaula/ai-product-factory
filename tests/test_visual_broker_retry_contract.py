@@ -59,6 +59,17 @@ class VisualEvidenceBrokerRetryContract(unittest.TestCase):
         self.assertIn('await cleanupUser(userId, workflowRunId);',BROKER)
         self.assertIn('Never report "expired"', BROKER)
 
+    def test_postdeploy_broker_v2_uses_new_trusted_push_run_without_console_rebuild(self):
+        self.assertIn("OIDC broker v2 functional post-deploy audit", TARGET["purpose"])
+        self.assertIn("issue #822", TARGET["purpose"])
+        self.assertIn('      - ".github/authenticated-visual-target.json"', WORKFLOW)
+        self.assertIn("branches: [main]", WORKFLOW)
+        self.assertNotIn("pull_request_target:", WORKFLOW)
+        self.assertNotIn("issue_comment:", WORKFLOW)
+        self.assertIn('if [ "${GITHUB_RUN_ATTEMPT:-0}" != "1" ]; then', WORKFLOW)
+        self.assertEqual(TARGET["preview_url"], "https://ai-product-factory-console.vercel.app")
+        self.assertEqual(TARGET["candidate_sha"], "34c614be92a544bb52c1b2634fc6c82b1be6d25e")
+
     def test_durable_production_target_matches_verified_console_sha(self):
         self.assertEqual(TARGET["preview_url"],"https://ai-product-factory-console.vercel.app")
         self.assertEqual(TARGET["candidate_sha"],"34c614be92a544bb52c1b2634fc6c82b1be6d25e")

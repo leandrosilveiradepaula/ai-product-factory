@@ -1,3 +1,11 @@
+## 2026-10-15 — Reconciliacao real de producao e gate funcional OIDC v2 (#822)
+
+- `main` reconciliada em `0c206195a8b0a46105be97d64358bb5de3315642` (PR #823 mergeado por humano); `validate` de push #38667957627 SUCCESS. Vercel Console previamente READY no SHA especifico `34c614be92a544bb52c1b2634fc6c82b1be6d25e` (#811); nao atribuir nova imagem Console a merge posterior que apenas alterou Python/workflow.
+- Auditoria autenticada **pre-broker-v2** #38667957692 SUCCESS: 14 telas internas, `/configuration` 390px/390px sem overflow, 0 page/console/resource errors, artefato cifrado `authenticated-console-38667957692`, registry `captured` e 1 operador restante apos limpeza. Esse run terminou antes da publicacao do broker v2, e **nao valida** o OIDC pos-deploy.
+- Edge Function `factory-visual-evidence-broker` no projeto Supabase `fjplmxfcshhbmzgvyqlm` implantada separadamente com autorizacao humana: v2 ACTIVE, SHA bundle `bbcab5567036b1d883bc5362d530b3204762dfed271dc3b8a0fd243676920987`; `index.ts` remoto identico ao versionado, `verify_jwt=false` preservado por verificacao GitHub OIDC explicita. A issue #822 continua aberta ate novo teste funcional contra **v2**.
+- Inventario read-only: 3 projetos, 0 runs ativos, 0 gates humanos pendentes, 10 subtarefas `queued` historicas (5 Factory, 5 CRM), nenhuma root `queued`; elas sao somente diagnostico de reconciliacao, nao despacho autorizado. Nao executar tarefas antigas nem benchmark 63.
+- Este candidato de auditoria atualiza **somente o target autenticado versionado, contrato de testes e documentacao** para disparar *um novo run* pelo `push main` apos merge humano (sem Preview Console, sem nova quota Vercel, sem alteracao de policy OIDC). Confirmar status do run e do broker v2, `captured`, browser mobile e cleanup antes de fechar #822. Se qualquer passo falhar, manter aberto e corrigir o erro real. Nao marcar `product_ready` (#713).
+
 ## 2026-10-15 — Hardening da auditoria autenticada (issue #822, candidato sem deploy)
 
 - **Observado:** `main=0a3e973f`, PR #819 mergeado com CI verde, scheduler schedule #38666112093 sucesso, sem PR aberto na reconciliacao. O Console em producao teve Vercel READY no SHA `34c614be92a544bb52c1b2634fc6c82b1be6d25e` (#811); o PR #819 nao reconstruiu Console.

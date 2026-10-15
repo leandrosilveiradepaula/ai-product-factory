@@ -1,5 +1,5 @@
 {
   "preview_url": "https://ai-product-factory-console.vercel.app",
   "candidate_sha": "34c614be92a544bb52c1b2634fc6c82b1be6d25e",
-  "purpose": "Last production Console deploy verified READY after PR #811 (2026-10-15T00:08:11Z); Python-only PR #819 did not rebuild Console"
+  "purpose": "OIDC broker v2 functional post-deploy audit for issue #822; verify existing READY production Console SHA 34c614be92a544bb52c1b2634fc6c82b1be6d25e without rebuilding Console"
 }

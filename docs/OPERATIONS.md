@@ -1,3 +1,13 @@
+## 2026-10-15 — Auditoria real OIDC da Edge Function broker v2 (#822)
+
+**Escopo:** apos autorizacao humana separada, Supabase `factory-visual-evidence-broker` foi publicado em v2 ACTIVE; o arquivo remoto `index.ts` coincide com `main` `0c206195...`. A captura autenticada #38667957692 anterior ao deploy da v2 nao prova o comportamento do novo broker.
+
+**Gatilho confiavel:** o workflow `.github/workflows/authenticated-visual-evidence.yml` executa codigo confiavel de `main` em `push` que altere `.github/authenticated-visual-target.json` (alem de workflow/script); o arquivo aponta para o ultimo Console READY `34c614be92a544bb52c1b2634fc6c82b1be6d25e` em `https://ai-product-factory-console.vercel.app`. O candidato altera apenas metadado `purpose` e docs/testes; depois do **merge humano** cria um novo ID de workflow para a prova do broker v2. Nao habilitar `pull_request_target`, push de branch nao confiavel, ou auto-merge, e nao usar `rerun failed jobs`: o run ID e unico no ledger. Nao ha mudanca em `apps/console/**`, portanto nenhum Preview/deployment Vercel se aplica.
+
+**Criterios verificaveis:** (1) workflow de `push` em `main`, `run_attempt=1` e passo OIDC de provisioning concluido na v2; (2) captura autenticada nas rotas, inclusive `/runs` sem CSS 404; (3) viewport 390px de `/configuration`, `/projects` e `/` sem overflow; (4) `status=success` no workflow, artefato `authenticated-console-<new_run_id>` presente e registro em `factory_visual_evidence_runs` com `status=captured` ligado ao SHA do run; (5) operador temporario removido, sem vazamento de password/token/key nos logs. `status=prepared`, erro 403, run duplicado, falha HTTP de asset, artefato ausente ou cleanup incompleto mantem o gate fechado.
+
+**Limites:** toda verificacao deve usar o SHA exato do deploy do Console e o SHA real do run GitHub, sem atribuir o commit de documentacao a uma compilacao Vercel inexistente. API key / WIF OpenAI, Codex, benchmark 63, novas migrations e custos pagos estao fora do escopo. Somente apos evidencias funcionais novas fechar a issue #822. O gate de product readiness global #713 permanece independente.
+
 ## 2026-10-15 — Bounded pagination do cooldown Vercel (fix pós-#811)
 
 - Fato verificado: `Promote exact PR candidate to Vercel Preview` run #38657573456 falhou na etapa `scripts.preview_provider_cooldown` com `recent PR inventory exceeds safe bound`. A consulta tinha 52 PRs atualizados nas últimas 24h, ultrapassando o limite artificial de 50. Isso bloqueou a promoção antes de qualquer chamada à Vercel.
