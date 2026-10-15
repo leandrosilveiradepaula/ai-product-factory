@@ -34,6 +34,17 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
         self.assertNotIn("/statuses/{sha}", text)
         self.assertIn("Vercel Preview did not reach READY", text)
 
+    def test_exact_child_correlated_by_nonce_and_sha(self):
+        parent=(ROOT/".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
+        child=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+        self.assertIn("const requestId = randomUUID()",parent)
+        self.assertIn("selectBrowserRun(data.workflow_runs",parent)
+        self.assertIn("request_id:requestId",parent)
+        self.assertNotIn("data.workflow_runs.find(run =>",parent)
+        self.assertIn("run-name: Console evidence",child)
+        self.assertIn("browser_verifier_run_id",parent)
+        self.assertIn("verifier_factory_commit",parent)
+
     def test_browser_never_receives_cross_repo_github_token(self):
         text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
         verifier = text.split("- name: Dispatch trusted Factory browser verifier and wait", 1)[1].split(
