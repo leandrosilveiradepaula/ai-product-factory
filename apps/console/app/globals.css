@@ -829,3 +829,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .configOverviewGrid .compactRow{grid-template-columns:minmax(0,1fr)}
  .configOverviewGrid .badgeLine{max-width:100%}
 }
+
+/* Pending discovery card is vertical content, not a horizontal status banner. */
+.main .pendingProjectNotice{display:block;min-width:0;overflow-wrap:normal;word-break:normal}
+.main .pendingProjectNotice > *{min-width:0;max-width:100%}
+.main .pendingProjectNotice p{white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.55}
+.main .pendingProjectNotice .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+@media(max-width:560px){.main .pendingProjectNotice .actions{align-items:stretch;flex-direction:column}.main .pendingProjectNotice .actions form{width:100%}.main .pendingProjectNotice .actions button{min-height:44px;width:100%}}
