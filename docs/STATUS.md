@@ -1,3 +1,11 @@
+## 2026-10-14 — candidato consolidado, scheduler nativo recuperado e UX de continuacao (reconciliacao atual)
+
+- A `main` verificada permanece em `9eca021e3479458fb4560f35a2de5d045cc726a8` (merge humano #817). Unico PR aberto: #811; os PRs #786 e #789 foram encerrados sem merge porque seus arquivos foram consolidados em #811. O candidate anterior `eb295cd8d39d3eec6ea81c6d845fcef6d1fd517d` tinha `test`, `factory-acceptance`, `postgres-continuation` e `validate` verdes; cada novo HEAD exige novo CI exato.
+- Control Plane: migration de continuation ja instalada sob `20261014192321`; `factory_enqueue_project_continuation(text,text,uuid,integer)` existe e as RPCs sao `SECURITY INVOKER`. **Nao reaplicar** migration. Nenhum job sintetico, dispatch historico, modelo pago, saldo ou permissao foram acionados nesta reconciliacao.
+- GitHub Actions: duas execucoes reais consecutivas de `schedule` (#38646888441 em 22:19 UTC e #38649321800 em 22:41 UTC) concluidas com `success`, inclusive `schedule-probe` e `alerts`. As lanes de dispatch foram `skipped` porque nao houve trabalho elegivel; isto verifica o scheduler nativo, **nao** uma execucao funcional ponta a ponta. Issues #809 e #818 estao encerradas.
+- Console #811: a acao `Pedir alteracao` nao deve ficar oculta devido a descendentes historicos `queued` de pais terminais. O formulario pode ser acessado; a RPC transacional continua bloqueando um novo ciclo quando ha trabalho realmente ativo. Regressao estatico-deterministica impede retornar a guarda visual por contagem bruta de tasks.
+- **Gate aberto**: ainda nao existe `preview/pr-811` nem Vercel READY + Playwright autenticado no SHA candidato. Rate limit relatado em 14/10 19:42:26 UTC com pedido de retry em 24 horas; evitar tentativas repetidas. A correção do overflow mobile de `/configuration` ainda precisa de teste em browser no candidato. Nao realizar merge de producao automaticamente e nao inferir `product_ready` (#713).
+
 ## 2026-10-14 20:12 UTC — reconciliacao pos-merge #807 (estado verificado)
 
 - `main`: `10016635fdd09a87e598220df1b7ecf733fd4d71`, merge humano #807 (issue #804 encerrada). CI de push `38629927087` = SUCCESS; sem Preview porque somente nucleo Python, testes e docs mudaram.

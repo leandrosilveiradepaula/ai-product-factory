@@ -36,11 +36,17 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('- "apps/console/**"',push)
 
     def test_vercel_preview_ignore_command_matches_console_only_policy(self):
-        text=(ROOT/"apps/console/vercel.json").read_text()
-        self.assertIn('preview/*) git diff --quiet HEAD^ HEAD ./',text)
-        self.assertNotIn('preview/*) exit 1',text)
-        self.assertIn('../../config/factory.release-policy.v1.json',text)
-
+        import json
+        config=json.loads((ROOT/"apps/console/vercel.json").read_text())
+        script=(ROOT/"apps/console/vercel-ignore-build.sh").read_text()
+        self.assertEqual(config["ignoreCommand"],"sh ./vercel-ignore-build.sh")
+        self.assertIn('VERCEL_GIT_PREVIOUS_SHA',script)
+        self.assertIn('git diff --quiet "$previous" HEAD -- .',script)
+        self.assertIn('preview/pr-*',script)
+        self.assertIn('preview/*) exit 0',script)
+        self.assertIn('git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json',script)
+        self.assertNotIn('preview/*) exit 1',script)
+        self.assertIn('../../config/factory.release-policy.v1.json',script)
 
     def test_trusted_browser_verifier_is_manual_only_and_requires_url(self):
         workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()

@@ -4,24 +4,26 @@ import {ActionLink,EmptyState,PageHeader,SectionHeader,StatusPill} from "../ui";
 
 export default async function Queue(){
  const items=await getWorkQueue();
- const high=items.filter(x=>x.complexity==="high").length;
- const waitingHuman=items.filter(x=>x.status.includes("human")||x.status.includes("release")).length;
- const executing=items.filter(x=>["running","implementing"].includes(x.status)).length;
- const queued=items.filter(x=>["queued","queued_execution","dispatching"].includes(x.status)).length;
+ const operational=items.filter(x=>!x.requiresReconciliation);
+ const needsReview=items.filter(x=>x.requiresReconciliation);
+ const waitingHuman=operational.filter(x=>x.status.includes("human")||x.status.includes("release")).length;
+ const executing=operational.filter(x=>["running","implementing"].includes(x.status)).length;
+ const queued=operational.filter(x=>["queued","queued_execution","dispatching"].includes(x.status)).length;
+ const high=operational.filter(x=>x.complexity==="high").length;
  return <>
-  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Fila interna que a Factory administra automaticamente. Consulte quando quiser entender o que está esperando, executando ou bloqueado." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
+  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Acompanhe trabalho operacional e tarefas antigas que precisam de reconciliação. Estar na fila não significa autorização de execução." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
   <div className="operationalStrip">
-   <div className="operationalStat"><span>Total na fila</span><strong>{items.length}</strong><small>backlog carregado</small></div>
-   <div className="operationalStat"><span>Em execução</span><strong>{executing}</strong><small>workers ativos</small></div>
-   <div className="operationalStat warning"><span>Aguardando humano</span><strong>{waitingHuman}</strong><small>bloqueio por autoridade</small></div>
-   <div className="operationalStat"><span>Alta complexidade</span><strong>{high}</strong><small>candidatas a rota seletiva</small></div>
+   <div className="operationalStat"><span>Trabalho operacional</span><strong>{operational.length}</strong><small>itens que ainda exigem verificação dos gates</small></div>
+   <div className="operationalStat"><span>Em execução</span><strong>{executing}</strong><small>estado registrado, não prova worker ativo</small></div>
+   <div className="operationalStat warning"><span>Aguardando humano</span><strong>{waitingHuman}</strong><small>autoridade de decisão</small></div>
+   <div className="operationalStat warning"><span>Para conciliar</span><strong>{needsReview.length}</strong><small>filhos de tarefas-pai encerradas</small></div>
   </div>
 
   <section className="section">
-   <SectionHeader title="Backlog operacional" action={<span className="muted">{queued} aguardando despacho</span>}/>
+   <SectionHeader title="Backlog operacional" action={<span className="muted">{queued} marcados para despacho · {high} de alta complexidade</span>}/>
    <div className="table queueTable">
     <div className="tableRow tableHeader"><span>Tarefa / Projeto</span><span>Complexidade</span><span>Estado</span><span>Chave</span><span>Atualizada</span></div>
-    {items.length===0?<EmptyState>Fila vazia. Nenhum trabalho pendente.</EmptyState>:items.map(x=><div className="tableRow" key={x.id}>
+    {operational.length===0?<EmptyState>Nenhum trabalho operacional identificado neste inventário. Verifique também os itens para conciliar abaixo.</EmptyState>:operational.map(x=><div className="tableRow" key={x.id}>
      <div><strong>{x.title}</strong><div><Link className="muted" href={"/projects/"+x.projectKey}>{x.projectName}</Link></div></div>
      <StatusPill status={x.complexity}/>
      <StatusPill status={x.status}/>
@@ -30,6 +32,21 @@ export default async function Queue(){
     </div>)}
    </div>
   </section>
+
+  {needsReview.length>0?<section className="section">
+   <SectionHeader title="Tarefas que exigem reconciliação" action={<span className="muted">{needsReview.length} registros preservados</span>}/>
+   <p className="muted">Estas tarefas continuam registradas como pendentes, mas seus pais foram encerrados. Um pai concluído não comprova que o filho foi implementado nem autoriza executá-lo novamente. A Factory deve reconciliar Work Units, dependências, runs e gates antes de decidir o próximo passo. Esta área é apenas leitura.</p>
+   <div className="table queueTable">
+    <div className="tableRow tableHeader"><span>Tarefa / Projeto</span><span>Complexidade</span><span>Estado</span><span>Chave</span><span>Atualizada</span></div>
+    {needsReview.map(x=><div className="tableRow" key={x.id}>
+     <div><strong>{x.title}</strong><div><Link className="muted" href={"/projects/"+x.projectKey}>{x.projectName}</Link></div><small className="muted">Pai: {x.parentStatus||"desconhecido"} · reconciliação necessária</small></div>
+     <StatusPill status={x.complexity}/>
+     <StatusPill status={x.status}/>
+     <code>{x.externalKey||x.id.slice(0,8)}</code>
+     <span className="muted">{new Date(x.updatedAt).toLocaleString("pt-BR")}</span>
+    </div>)}
+   </div>
+  </section>:null}
 
   <div className="overviewGrid section">
    <div className="card">
@@ -41,7 +58,7 @@ export default async function Queue(){
      <div className="compactRow"><span>Produção</span><span className="muted">gate humano</span></div>
     </div>
    </div>
-   <div className="logPanel">queue.total = {items.length}<br/>queue.waiting = {queued}<br/>queue.running = {executing}<br/>queue.human_gate = {waitingHuman}</div>
+   <div className="logPanel">queue.operational = {operational.length}<br/>queue.reconciliation = {needsReview.length}<br/>queue.queued_status = {queued}<br/>queue.running_status = {executing}<br/>queue.human_gate = {waitingHuman}</div>
   </div>
  </>;
 }

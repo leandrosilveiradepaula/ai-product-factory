@@ -333,6 +333,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261014015500_codex_atomic_mode_isolation.sql",
             "20261014032600_codex_claim_agent_hardening.sql",
             "20261014092500_serialize_agent_scope_claims.sql",
+            "20261014160500_atomic_project_continuation.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -675,10 +676,15 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('"preview/**": true', vercel)
         self.assertNotIn('"console/**": true', vercel)
         self.assertIn('"ignoreCommand"', vercel)
-        self.assertIn('VERCEL_GIT_COMMIT_REF', vercel)
-        self.assertIn('preview/*) git diff --quiet HEAD^ HEAD ./', vercel)
-        self.assertNotIn('preview/*) exit 1', vercel)
-        self.assertIn('git diff --quiet HEAD^ HEAD ./', vercel)
+        ignore=(ROOT/"apps/console/vercel-ignore-build.sh").read_text()
+        self.assertIn('sh ./vercel-ignore-build.sh',vercel)
+        self.assertIn('VERCEL_GIT_COMMIT_REF', ignore)
+        self.assertIn('VERCEL_GIT_PREVIOUS_SHA', ignore)
+        self.assertIn('preview/pr-*', ignore)
+        self.assertIn('preview/*) exit 0', ignore)
+        self.assertIn('git diff --quiet "$previous" HEAD -- .', ignore)
+        self.assertNotIn('preview/*) exit 1', ignore)
+        self.assertIn('git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json', ignore)
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)
         self.assertIn("console/*|ci/*|test/*|security/*|agents/*|intelligence/*|quality/*|policy/*|runtime/*|operations/*|observability/*|audit/*|release/*)", workflow)
         self.assertIn('"heads/preview/pr-"', promote)

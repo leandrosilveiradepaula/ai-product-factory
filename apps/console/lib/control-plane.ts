@@ -1,4 +1,5 @@
-import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
+import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
+import {readCompleteOperationalRows,summarizeOperationalHealth} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
@@ -11,71 +12,31 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  const clean=request.trim();
  if(!clean)throw new Error("Descreva o que você quer mudar ou continuar.");
  if(clean.length>6000)throw new Error("O pedido deve ter no máximo 6000 caracteres.");
+ if(!Number.isInteger(attachmentCount)||attachmentCount<0||attachmentCount>10)throw new Error("Quantidade de anexos inválida.");
+ const requestId=requestedId||crypto.randomUUID();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))throw new Error("Identificador do pedido inválido.");
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control plane credentials are not configured");
- const projectResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_projects?select=id,project_key,project_kind,manifest&project_key=eq.${encodeURIComponent(projectKey)}&is_active=eq.true&limit=1`,
-  {headers:cfg.headers,cache:"no-store"}
- );
- if(!projectResponse.ok)throw new Error("Não foi possível localizar o projeto.");
- const projects=await projectResponse.json();
- if(projects.length!==1)throw new Error("Projeto ativo não encontrado.");
- const project=projects[0];
- const tasksResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_tasks?select=id,status,title,parent_task_id&project_id=eq.${encodeURIComponent(String(project.id))}&order=created_at.desc&limit=101`,
-  {headers:cfg.headers,cache:"no-store"}
- );
- if(!tasksResponse.ok)throw new Error("Não foi possível verificar o trabalho atual do projeto.");
- const tasks=await tasksResponse.json();
- // An incomplete partition cannot prove that no active root or child exists.
- if(!Array.isArray(tasks)||tasks.length>100)throw new Error("Inventário de tarefas incompleto; não é seguro abrir outra execução.");
- const terminal=new Set(["completed","cancelled","failed","merged","integrated"]);
- const unfinished=tasks.filter((task:any)=>!terminal.has(String(task.status)));
- const parentIds=[...new Set(unfinished.map((task:any)=>String(task.parent_task_id||"")).filter(Boolean))];
- let parentStatuses=new Map<string,{status:string;projectId:string}>();
- if(parentIds.length){
-  const parentsResponse=await fetch(
-   `${cfg.url}/rest/v1/factory_tasks?select=id,status,project_id&id=in.(${parentIds.map(encodeURIComponent).join(",")})`,
-   {headers:cfg.headers,cache:"no-store"}
-  );
-  if(!parentsResponse.ok)throw new Error("Não foi possível verificar as tarefas-pai.");
-  const parents=await parentsResponse.json();
-  if(!Array.isArray(parents)||parents.length!==parentIds.length)throw new Error("Tarefas-pai ausentes; continuação bloqueada por segurança.");
-  parentStatuses=new Map(parents.map((parent:any)=>[String(parent.id),{status:String(parent.status),projectId:String(parent.project_id)}]));
- }
- const active=unfinished.find((task:any)=>{
-  if(!task.parent_task_id)return true; // An unfinished root is executable/pending.
-  const parent=parentStatuses.get(String(task.parent_task_id));
-  if(!parent||parent.projectId!==String(project.id))return true; // Fail closed.
-  return !terminal.has(parent.status); // Historical children of terminal parents do not block.
+ // A single Postgres RPC locks the project and commits request, task, run and audit atomically.
+ // Never split the manifest update, audit and enqueue into separate calls: they admit concurrent cycles.
+ const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_continuation`,{
+  method:"POST",
+  headers:{...cfg.headers,"Content-Type":"application/json"},
+  body:JSON.stringify({
+   p_project_key:projectKey,
+   p_request:clean,
+   p_request_id:requestId,
+   p_attachment_count:attachmentCount,
+  }),
+  cache:"no-store",
  });
- if(active)throw new Error(`Já existe trabalho ativo neste projeto: ${String(active.title||active.id)} (${String(active.status)}).`);
- const manifest=project.manifest&&typeof project.manifest==="object"?project.manifest:{};
- const requestId=requestedId||crypto.randomUUID();
- const requestedAt=new Date().toISOString();
- const updatedManifest={
-  ...manifest,
-  reconcile_first:true,
-  continuation_request:{
-   id:requestId,
-   summary:clean,
-   requested_at:requestedAt,
-   source:"factory-console",
-   attachment_count:attachmentCount,
-  },
- };
- const updateResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_projects?id=eq.${encodeURIComponent(String(project.id))}`,
-  {method:"PATCH",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({manifest:updatedManifest}),cache:"no-store"}
- );
- if(!updateResponse.ok)throw new Error("Não foi possível registrar o novo pedido no projeto.");
- const auditResponse=await fetch(
-  `${cfg.url}/rest/v1/factory_audit_events`,
-  {method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({project_id:String(project.id),actor_type:"human",actor_ref:"factory-console",event_type:"project.continuation.requested",payload:{request_id:requestId,summary:clean,requested_at:requestedAt,attachment_count:attachmentCount}}),cache:"no-store"}
- );
- if(!auditResponse.ok)throw new Error("O pedido foi registrado, mas a evidência de auditoria não pôde ser persistida.");
- const enqueue=await enqueueProjectBootstrap(projectKey);
- return {...enqueue,requestId,requestedAt};
+ if(!response.ok){
+  if(response.status===409||response.status===400)throw new Error("Já existe trabalho ativo neste projeto ou o pedido foi repetido com conteúdo divergente. Confira o estado do projeto antes de tentar novamente.");
+  throw new Error("Não foi possível registrar e enfileirar o pedido de forma atômica.");
+ }
+ const result=await response.json();
+ if(!result||result.request_id!==requestId||!result.project_id||!result.task_id||!result.run_id||typeof result.created!=="boolean")throw new Error("Resposta de enfileiramento não corresponde ao pedido. Nenhum sucesso foi presumido.");
+ return {...result,requestId,requestedAt:String(result.requested_at||"")};
 }
 
 export async function getDashboard():Promise<Dashboard>{
@@ -193,6 +154,54 @@ export async function getHumanGates(limit=50):Promise<GateSummary[]>{
 export type ProjectTaskSummary={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string};
 export type ProjectPreviewPolicy={provider:string|null;mode:string|null;required:boolean|null;reason:string|null;evidenceSource:string|null;evidenceCommit:string|null};
 export type ProjectReadinessDomain={status:string;reason?:string;evidence?:unknown[];coverage?:string[];verification_state?:string};
+// Mirror the deterministic product-readiness domain contract at the Console
+// trust boundary. The evaluation JSON is evidence to verify, not an authority
+// to render an unconditional product-ready state.
+const productReadinessCoverage:Record<string,readonly string[]>={
+ security:["authn_authz","data_access_boundaries","secrets_dependencies"],
+ observability_operations:["health","traceability","recovery_alerting"],
+ test_strategy:["unit_integration","critical_e2e","regression_gates"],
+ product_experience:["surface_inventory","responsive","accessibility","states"],
+ documentation:["setup_configuration","operations","release_rollback"],
+ functional_completeness:["requirements_inventory","mock_noop_demo_inventory","critical_journeys"],
+};
+const productReadinessVerification:Record<string,readonly string[]>={
+ security:["executed","reviewed"],
+ observability_operations:["executed","observed"],
+ test_strategy:["executed"],
+ product_experience:["observed","reviewed"],
+ documentation:["reviewed"],
+ functional_completeness:["executed","observed","reviewed"],
+};
+function verifiedProductReadinessDomains(value:unknown):boolean{
+ if(!value||typeof value!=="object"||Array.isArray(value))return false;
+ const domains=value as Record<string,unknown>;
+ return Object.entries(productReadinessCoverage).every(([key,required])=>{
+  const raw=domains[key];
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))return false;
+  const domain=raw as Record<string,unknown>;
+  if(!Array.isArray(domain.evidence)||!domain.evidence.length||
+     !domain.evidence.every(x=>typeof x==="string"&&x.trim().length>0))return false;
+  if(!productReadinessVerification[key].includes(String(domain.verification_state||"")))return false;
+  if(domain.status==="not_applicable"){
+   return key==="product_experience" && typeof domain.reason==="string" &&
+    domain.reason.trim().length>0;
+  }
+  if(domain.status!=="passed"||!Array.isArray(domain.coverage)||
+     !domain.coverage.every(x=>typeof x==="string"&&x.trim().length>0))return false;
+  const coverage=new Set(domain.coverage);
+  return required.every(k=>coverage.has(k));
+ });
+}
+function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record<string,any>,assessedCommit:string|null):boolean{
+ const baseline=String(row.baseline_ref||"");
+ return result.ready===true&&result.status==="passed" &&
+   row.status==="passed" && Array.isArray(result.blockers) && result.blockers.length===0 &&
+   Boolean(assessedCommit) && /^[0-9a-f]{40}$/i.test(String(assessedCommit)) &&
+   assessedCommit===String(row.baseline_ref||"") &&
+   verifiedProductReadinessDomains(result.domains);
+}
+
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
 export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;tasks:ProjectTaskSummary[]};
 
@@ -219,7 +228,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
     const result=row.result&&typeof row.result==="object"?row.result:{};
     const assessedCommit=result.assessed_commit?String(result.assessed_commit):(row.baseline_ref?String(row.baseline_ref):null);
     productReadiness={
-     ready:result.ready===true&&result.status==="passed"&&Boolean(assessedCommit)&&assessedCommit===String(row.baseline_ref||""),
+     ready:verifiedProductReadinessAssessment(row,result,assessedCommit),
      status:String(result.status||row.status||"not_ready"),
      assessedCommit,
      assessmentRef:result.assessment_ref?String(result.assessment_ref):null,
@@ -393,50 +402,116 @@ export async function getProjectOperations(projectId:string):Promise<ProjectOper
 
 export type OperationsHealth={expiredLeases:number;deadLetterRuns:number;failedRuns:number;queuedRuns:number;knownCost:number;unknownCostEvents:number;incidents:{id:string;status:string;route:string|null;attempts:number;error:string|null;leaseExpiresAt:string|null;createdAt:string}[]};
 export async function getOperationsHealth():Promise<OperationsHealth>{
- await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return{expiredLeases:0,deadLetterRuns:0,failedRuns:0,queuedRuns:0,knownCost:0,unknownCostEvents:0,incidents:[]};
- const [runsResponse,usageResponse]=await Promise.all([
-  fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at&order=created_at.desc&limit=200`,{headers:cfg.headers,cache:"no-store"}),
-  fetch(`${cfg.url}/rest/v1/factory_tool_usage?select=tool_family,estimated_cost,created_at&order=created_at.desc&limit=1000`,{headers:cfg.headers,cache:"no-store"})
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg)throw new Error("Control Plane indisponível; não é seguro mostrar indicadores zerados.");
+ const [runs,usage]=await Promise.all([
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_runs",
+   select:"id,task_id,status,execution_route,attempt_count,last_error,lease_expires_at,created_at",idKind:"uuid"}),
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_tool_usage",
+   select:"id,tool_family,estimated_cost,created_at",idKind:"bigint"})
  ]);
- if(!runsResponse.ok)throw new Error("Unable to load operational health");
- const runs=await runsResponse.json();const usage=usageResponse.ok?await usageResponse.json():[];const now=Date.now();
- const failedTaskIds=[...new Set(runs.filter((x:any)=>x.status==="failed"&&x.task_id).map((x:any)=>String(x.task_id)))];
- const failedTaskStatus=new Map<string,string>();
- if(failedTaskIds.length){
-  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,status&id=in.(${failedTaskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
-  if(tasksResponse.ok){const tasks=await tasksResponse.json();tasks.forEach((x:any)=>failedTaskStatus.set(String(x.id),String(x.status||"")));}
- }
- const expired=(x:any)=>x.lease_expires_at&&Date.parse(x.lease_expires_at)<now&&["running","implementing"].includes(x.status);
- const dead=(x:any)=>x.status==="failed"&&String(x.last_error||"").toLowerCase().includes("maximum attempts");
- const actionableFailed=(x:any)=>x.status==="failed"&&failedTaskStatus.get(String(x.task_id||""))==="failed";
- const incidents=runs.filter((x:any)=>expired(x)||dead(x)||actionableFailed(x)).map((x:any)=>({id:x.id,status:x.status,route:x.execution_route||null,attempts:Number(x.attempt_count||0),error:x.last_error||null,leaseExpiresAt:x.lease_expires_at||null,createdAt:x.created_at}));
- const paidFamilies=new Set(["model","openai","llm","paid_provider"]);return{expiredLeases:runs.filter(expired).length,deadLetterRuns:runs.filter(dead).length,failedRuns:runs.filter(actionableFailed).length,queuedRuns:runs.filter((x:any)=>["created","queued"].includes(x.status)).length,knownCost:usage.reduce((s:number,x:any)=>s+Number(x.estimated_cost||0),0),unknownCostEvents:usage.filter((x:any)=>x.estimated_cost==null&&paidFamilies.has(String(x.tool_family||"").toLowerCase())).length,incidents};
-}
-
-
-export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string};
-export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
- await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return[];
- const response=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,project_id,parent_task_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"});
- if(!response.ok)throw new Error("Unable to load work queue");
- const rows=await response.json();
- const parentIds=[...new Set(rows.map((x:any)=>String(x.parent_task_id||"")).filter(Boolean))];
- const completedParents=new Set<string>();
- if(parentIds.length){
-  const parentsResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,status&id=in.(${parentIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
-  if(parentsResponse.ok){
-   const parents=await parentsResponse.json();
-   parents.filter((x:any)=>String(x.status)==="completed").forEach((x:any)=>completedParents.add(String(x.id)));
+ const failedIds=[...new Set(runs.filter(x=>x.status==="failed").map(x=>{
+  const id=x.task_id;
+  if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+   throw new Error("Run falho sem task_id confiável.");
+  return id;
+ }))];
+ const failedTasks=new Map<string,string>();
+ for(let offset=0;offset<failedIds.length;offset+=100){
+  const chunk=failedIds.slice(offset,offset+100);
+  const response=await fetch(
+   cfg.url+"/rest/v1/factory_tasks?select=id,status&id=in.("+chunk.join(",")+")&limit=101",
+   {headers:cfg.headers,cache:"no-store"});
+  if(!response.ok)throw new Error("Falha ao consultar recuperação de tarefas.");
+  const values:unknown=await response.json();
+  if(!Array.isArray(values)||values.length!==chunk.length)
+   throw new Error("Inventário de recuperação incompleto.");
+  const allowed=new Set(chunk);
+  for(const item of values){
+   if(!item||typeof item!=="object"||Array.isArray(item))throw new Error("Tarefa recuperada inválida.");
+   const row=item as Record<string,unknown>;
+   if(typeof row.id!=="string"||!allowed.has(row.id)||failedTasks.has(row.id)||typeof row.status!=="string"||!row.status)
+    throw new Error("Inventário de recuperação inconsistente.");
+   failedTasks.set(row.id,row.status);
   }
  }
- const activeRows=rows.filter((x:any)=>!x.parent_task_id||!completedParents.has(String(x.parent_task_id)));
- const projectIds=[...new Set(activeRows.map((x:any)=>String(x.project_id)).filter(Boolean))];
- let projects=new Map<string,{key:string;name:string}>();
- if(projectIds.length){
-  const p=await fetch(`${cfg.url}/rest/v1/factory_projects?select=id,project_key,name&id=in.(${projectIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
-  if(p.ok){const values=await p.json();projects=new Map(values.map((x:any)=>[String(x.id),{key:String(x.project_key),name:String(x.name)}]));}
+ return summarizeOperationalHealth(runs,usage,failedTasks,Date.now());
+}
+
+export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string;requiresReconciliation:boolean;parentStatus:string|null};
+export async function getWorkQueue(limit=100):Promise<WorkQueueItem[]>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg)throw new Error("Control Plane indisponível; não é seguro declarar fila vazia.");
+ if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error("Limite de inventário de fila inválido.");
+ const response=await fetch(
+  cfg.url+"/rest/v1/factory_tasks?select=id,project_id,parent_task_id,title,status,complexity,external_key,updated_at&status=in.(queued,dispatching,queued_execution,awaiting_human,running,implementing)&order=updated_at.desc,id.desc&limit="+(limit+1),
+  {headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Não foi possível carregar a fila de trabalho.");
+ const rows:unknown=await response.json();
+ if(!Array.isArray(rows)||rows.length>limit||rows.some(x=>!x||typeof x!=="object"||Array.isArray(x)))
+  throw new Error("Inventário de fila incompleto; não é seguro exibir total.");
+ const tasks=rows as Record<string,unknown>[];
+ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ const parentIds=[...new Set(tasks.map(x=>x.parent_task_id).filter(x=>x!==null&&x!==undefined).map(x=>{
+  if(typeof x!=="string"||!uuid.test(x))throw new Error("Inventário contém pai inválido.");
+  return x;
+ }))];
+ const parentMap=new Map<string,{status:string;projectId:string}>();
+ if(parentIds.length){
+  const parentResponse=await fetch(
+   cfg.url+"/rest/v1/factory_tasks?select=id,project_id,status&id=in.("+parentIds.join(",")+")&limit="+(parentIds.length+1),
+   {headers:cfg.headers,cache:"no-store"});
+  if(!parentResponse.ok)throw new Error("Não foi possível verificar tarefas-pai.");
+  const parents:unknown=await parentResponse.json();
+  if(!Array.isArray(parents)||parents.length!==parentIds.length)
+   throw new Error("Inventário de tarefas-pai incompleto.");
+  const expected=new Set(parentIds);
+  for(const value of parents){
+   if(!value||typeof value!=="object"||Array.isArray(value))throw new Error("Pai com estrutura inválida.");
+   const p=value as Record<string,unknown>;
+   if(typeof p.id!=="string"||!expected.has(p.id)||parentMap.has(p.id)||
+      typeof p.status!=="string"||!p.status||typeof p.project_id!=="string"||!uuid.test(p.project_id))
+    throw new Error("Inventário de tarefas-pai inconsistente.");
+   parentMap.set(p.id,{status:p.status,projectId:p.project_id});
+  }
  }
- return activeRows.map((x:any)=>{const p=projects.get(String(x.project_id));return{id:String(x.id),title:String(x.title),status:String(x.status),complexity:String(x.complexity),externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),projectKey:p?.key||"unknown",projectName:p?.name||"Unknown project"};});
+ const projectIds=[...new Set(tasks.map(x=>{
+  if(typeof x.project_id!=="string"||!uuid.test(x.project_id))throw new Error("Inventário contém projeto inválido.");
+  return x.project_id;
+ }))];
+ const projects=new Map<string,{key:string;name:string}>();
+ if(projectIds.length){
+  const response=await fetch(cfg.url+"/rest/v1/factory_projects?select=id,project_key,name&id=in.("+projectIds.join(",")+")&limit="+(projectIds.length+1),
+   {headers:cfg.headers,cache:"no-store"});
+  if(!response.ok)throw new Error("Não foi possível resolver projetos da fila.");
+  const data:unknown=await response.json();
+  if(!Array.isArray(data)||data.length!==projectIds.length)
+   throw new Error("Inventário de projetos da fila incompleto.");
+  const expected=new Set(projectIds);
+  for(const value of data){
+   if(!value||typeof value!=="object"||Array.isArray(value))throw new Error("Projeto da fila inválido.");
+   const p=value as Record<string,unknown>;
+   if(typeof p.id!=="string"||!expected.has(p.id)||projects.has(p.id)||
+      typeof p.project_key!=="string"||!p.project_key||
+      typeof p.name!=="string"||!p.name)throw new Error("Inventário de projetos da fila inconsistente.");
+   projects.set(p.id,{key:p.project_key,name:p.name});
+  }
+ }
+ const terminalParent=new Set(["completed","integrated","cancelled"]);
+ return tasks.map(x=>{
+  const parent=x.parent_task_id?parentMap.get(String(x.parent_task_id)):undefined;
+  const projectId=String(x.project_id);
+  if(parent&&parent.projectId!==projectId)throw new Error("Tarefa-pai pertence a outro projeto.");
+  const project=projects.get(projectId);
+  if(!project||typeof x.id!=="string"||!uuid.test(x.id)||typeof x.status!=="string"||!x.status)
+   throw new Error("Tarefa da fila inválida.");
+  return {id:x.id,title:String(x.title||""),status:x.status,complexity:String(x.complexity||"unknown"),
+   externalKey:x.external_key?String(x.external_key):null,updatedAt:String(x.updated_at),
+   projectKey:project.key,projectName:project.name,
+   requiresReconciliation:!!parent&&terminalParent.has(parent.status),parentStatus:parent?.status||null};
+ });
 }
 
 export type EvaluationRow={id:string;runId:string;type:string;status:string;score:number|null;baselineRef:string|null;createdAt:string;taskTitle:string;projectKey:string;projectName:string};

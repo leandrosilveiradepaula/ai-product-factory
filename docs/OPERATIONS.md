@@ -1,3 +1,36 @@
+## 14/10/2026 — Candidato consolidado de Console: uma promoção de Preview, gate humano preservado
+
+Este PR #811 agrega três candidatos antes separados: #786 (bootstrap/continuação transacional e RPC previamente aplicada), #789 (diff cumulativo de Vercel Preview) e #811 (legibilidade mobile, readiness fail-closed, inventários paginados e diagnóstico da fila). O propósito é validar uma única vez o mesmo SHA com Console CI, PostgreSQL isolado, Preview Vercel e Playwright autenticado, reduzindo a quota consumida por candidatos intermediários.
+
+**Segurança:** a migration `20261014160500_atomic_project_continuation.sql` já foi aplicada anteriormente ao Control Plane com aprovação humana. Este PR NÃO a reaplica nem executa mudanças no banco; o workflow PostgreSQL roda contra instância de CI descartável. PRs originais permanecem abertos até CI do consolidado ficar verde, quando poderão ser encerrados SEM merge como substituídos. Preview em apps/console exige Vercel READY e browser evidence no SHA exato; não herdar evidência dos SHAs anteriores. Publicação de produção exige merge humano.
+## 14/10/2026 — Console: filhos de pais concluídos não somem da fila (#713)
+
+A leitura read-only do Control Plane confirmou 10 tarefas em status queued, sendo 5 da Factory e 5 do CRM, todas descendentes de tarefas-pai completed; nenhuma possuía run ativo. A página de fila descartava esses descendentes por status do pai e podia exibir fila vazia. Essa apresentação não comprova que os filhos foram implementados e escondia um diagnóstico relevante.
+
+O Console agora mantém o inventário completo limitado a 100 tarefas + sentinela de paginação. Ele consulta pais e projetos de forma obrigatória (erro HTTP ou resposta incompleta falha fechado), distingue itens operacionais de tarefas que exigem reconciliação, informa o status do pai e nunca usa essa classificação como autorização de execução. Somente após reconciliação de Work Units, dependências, run e gates um caminho de retomada pode ser decidido; **este patch não reativa trabalhos nem cria migrations**. Os contadores de despacho excluem os registros apenas diagnósticos, mas eles permanecem visíveis em seção própria.
+
+Alteração no Console requer CI/build e Preview/browser SHA-exato; não comprova automaticamente a ausência de overflow mobile. O PR #811 permanece draft e produção é gate humano.
+## 14/10/2026 — Console: relatório operacional completo ou falha explícita (#713)
+
+Após a paginação de runs no backend (#807), o Console ainda consultava apenas 200 runs e 1.000 eventos de uso; quando o ledger falhava, uma resposta vazia podia ser exibida como custo zero. O Console agora pagina ambas as tabelas com ordenação verificada por created_at e id, limites de 200 por página e 4.000 por fonte; IDs de runs são UUIDs e IDs de uso são BIGINTs. A leitura detecta duplicidade, respostas truncadas, quebra de ordem, falha HTTP e valores inválidos, e falha fechada em vez de declarar saúde operacional.
+
+O status de runs falhos é correlacionado com a tarefa atual em lotes de 100, e dead-letters já recuperadas não voltam a contar como incidentes ativos. Custo de modelo pago sem valor registrado permanece explicitamente desconhecido. Nenhuma dessas contagens concede autorização de dispatch ou atesta product_ready.
+
+Offset REST não é snapshot transacional durante concorrência. Falhas detectáveis de deslocamento são bloqueadas; um próximo passo opcional seria RPC de inventário transacional após revisão de schema. Regressões funcionais executam a implementação TypeScript real com Node, compilada localmente pelo TypeScript instalado no npm ci do Console: >200 runs, >1000 custos, BIGINT, HTTP 503, páginas duplicadas/desordenadas, valor desconhecido, status recuperado e limite de 4000. Esta alteração afeta apps/console/** e precisa de Preview com SHA exato antes de merge do #811. Não houve Vercel deployment nem mutation de banco.
+## Auditoria autenticada de viewport 390px: configuracao (14/10/2026)
+
+O run de produção GitHub Actions `38638289607` falhou no Playwright durante a verificação de `/configuration`: `document.documentElement.scrollWidth=458` com `innerWidth=390`. O CI/build #808 foi verde, mas não representa validação visual. Este candidato adiciona classe de grid `configOverviewGrid`, tracks `minmax(0,...)`, wrapping de dados/repositórios longos e empilhamento mobile para cards/configRows/compactRows. O teste de navegador **continua fail-closed**: ao detectar largura excessiva, agora registra tag/classe/width/right dos elementos responsáveis, sem texto, credenciais ou valores de campos. Não esconde overflow via `body{overflow-x:hidden}`.
+
+Trata-se de correção de código e teste de contrato CI; **não** é evidência de que o overflow em produção já foi corrigido. O PR #811 deve ficar draft até Vercel Preview READY + navegador autenticado no seu SHA exato, sem conflitar com #786/#789. Nenhuma migration, token novo ou merge automático.
+
+## Consolidação de auditoria do Console (#795 + #798)
+
+Este candidato combina legibilidade responsiva e avaliação rigorosa da prontidão global, reduzindo para um único Preview SHA-exato após liberação do Vercel. CI de código não substitui verificação visual de navegador, revisão acessível ou gate humano de release. Esta seção não afirma produto pronto.
+
+## Product-readiness evaluation and current HEAD distinction (14/10/2026)
+Audit #713 found that the Console previously treated an evaluation result JSON's own `ready:true` and `status:passed` plus a self-consistent `assessed_commit == baseline_ref` as enough to display **Produto pronto**. This could misrepresent a failed evaluation row, populated blockers, missing coverage, malformed domains, or stale project HEAD. The Console now checks the evaluation row status, empty blockers, exact 40-char SHA and all six mandatory domains with explicit verification state, coverage and evidence before labeling the **evaluation** approved. It no longer says the product is ready globally from this record alone: an audit at SHA N does not prove that the repository's current HEAD is still N or that release gates/Preview/CI are satisfied.
+This is a defensive presentation and read-boundary change, not proof of live E2E readiness. A future authoritative current-head check and full-product release assessment remain part of audit #713; no GitHub credentials are placed in browser code. The latest observed production CRM evaluation was `failed/not_ready`; the patch does not turn it into passing. This PR changes `apps/console/**`, so browser Preview of the exact final SHA is required and remains blocked by the provider's observed deployment rate limit.
+
 ## 14/10/2026 — Draft to Ready desperta Preview sem novo gatilho privilegiado (#797)
 
 O Console CI nao reagia a ready_for_review: tirar Draft nao cria push e nao ativa o workflow de validacao por padrao. O gatilho de pull_request read-only agora enumera opened, synchronize, reopened e ready_for_review, mantendo os mesmos filtros de path/branch e permissions: contents: read. A mesma validacao de typecheck/build volta a rodar, e seu evento workflow_run de sucesso pode acordar o promotor confiavel ja existente em main.
