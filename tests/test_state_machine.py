@@ -21,6 +21,23 @@ class StateMachineTests(unittest.TestCase):
             transition(state, stage)
         self.assertEqual(state.stage, LifecycleStage.OPERATIONS)
 
+    def test_preview_cannot_jump_directly_to_release_or_operations(self):
+        state=ProjectState(project_key="greenfield",stage=LifecycleStage.PREVIEW)
+        for target in (LifecycleStage.RELEASE,LifecycleStage.OPERATIONS):
+            with self.subTest(target=target),self.assertRaises(InvalidTransition):
+                transition(state,target)
+        self.assertEqual(state.stage,LifecycleStage.PREVIEW)
+        transition(state,LifecycleStage.HUMAN_GATE)
+        self.assertEqual(state.stage,LifecycleStage.HUMAN_GATE)
+
+    def test_blocked_cannot_skip_human_gate_to_release_or_operations(self):
+        state=ProjectState(project_key="incident",stage=LifecycleStage.BLOCKED)
+        for target in (LifecycleStage.RELEASE,LifecycleStage.OPERATIONS):
+            with self.subTest(target=target),self.assertRaises(InvalidTransition):
+                transition(state,target)
+        transition(state,LifecycleStage.HUMAN_GATE)
+        self.assertEqual(state.stage,LifecycleStage.HUMAN_GATE)
+
     def test_validation_can_return_to_implementation(self):
         state = ProjectState(project_key="demo", stage=LifecycleStage.VALIDATION)
         transition(state, LifecycleStage.IMPLEMENTATION)
