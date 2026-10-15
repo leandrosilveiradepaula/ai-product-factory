@@ -54,7 +54,7 @@ function active(pathname:string,href:string){
  return pathname===href||pathname.startsWith(href+"/");
 }
 
-export function ConsoleNav(){
+export function ConsoleNav({attentionCount=null}:{attentionCount?:number|null}){
  const pathname=usePathname();
  return <nav className="sidebarNav">
   {groups.map(group=><div className="navGroup" key={group.label}>
@@ -63,6 +63,7 @@ export function ConsoleNav(){
     {group.items.map(item=><Link className={active(pathname,item.href)?"navItem active":"navItem"} href={item.href} key={item.href}>
      <span className="navIcon"><Icon name={item.icon}/></span>
      <span>{item.label}</span>
+     {item.href==="/gates"&&attentionCount!==null&&attentionCount>0?<span className="humanAttentionCount" aria-label={`${attentionCount} pendentes`}>{attentionCount}</span>:null}
     </Link>)}
    </div>
   </div>)}

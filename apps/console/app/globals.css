@@ -836,3 +836,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .main .pendingProjectNotice p{white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.55}
 .main .pendingProjectNotice .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 @media(max-width:560px){.main .pendingProjectNotice .actions{align-items:stretch;flex-direction:column}.main .pendingProjectNotice .actions form{width:100%}.main .pendingProjectNotice .actions button{min-height:44px;width:100%}}
+
+
+/* Durable human-gate attention: visible at every route and on mobile. */
+.humanAttentionCount{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:22px;margin-left:auto;padding:0 6px;border-radius:12px;background:#ffbf4a;color:#1f1600;font-size:12px;font-weight:800;line-height:1}
+.topbarAttention{display:inline-flex;align-items:center;min-height:32px;padding:5px 10px;border:1px solid #454a58;color:#dfe2ef;text-decoration:none;font-size:12px;font-weight:650;white-space:nowrap}
+.topbarAttention.active{border-color:#d69d34;background:#372c16;color:#ffdf8a}
+.topbarAttention:focus-visible,.projectHumanAttention:focus-visible{outline:2px solid #8eb5ff;outline-offset:2px}
+.projectHumanAttention{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;padding:12px 16px;margin:0 0 14px;border:1px solid #d69d34;background:#352b1b;color:#fff0c1;text-decoration:none;font-size:14px}
+.projectHumanAttention span{font-size:13px;color:#fff0c1}
+@media(max-width:860px){
+ .topbarMeta{display:flex}
+ .topbarAttention{font-size:12px;min-height:40px;white-space:normal}
+ .mobileNav>summary>span:first-child{display:flex;align-items:center;gap:9px}
+ .mobileNav .humanAttentionCount{margin-left:0}
+}
+@media(max-width:560px){
+ .topbar{min-width:0}
+ .topbarAttention{padding:5px 7px;font-size:11px}
+ .projectHumanAttention{align-items:flex-start;flex-direction:column}
+}
