@@ -1,3 +1,10 @@
+## 2026-10-15 — Non-starving autonomous CI/release followup (#713)
+
+- After #832 human merge (Factory main `8854d640dcf6e70ed4d40370b145d3c285facb7c`), a concrete fairness gap remained: the bounded CI/release drain intentionally stops when its oldest `ci_pending` run is waiting for external CI or its oldest `awaiting_release` PR has not been human-merged. This could prevent later *independent* ready CI results or human merges being reconciled during the same scheduler wake.
+- Both existing read-only Supabase queue selectors now accept a bounded tuple of previously observed run IDs. An empty tuple retains the original `limit=1` call; non-empty tuples read up to the 12 oldest candidates and select the first not yet observed **in the current wake**. Identifiers are never interpolated into a REST query; no schema/RLS change or Control Plane writes are introduced by selection.
+- New `drain_waiting_followups` scans at most 8 distinct run IDs, completes at most 3 ready CI/release items per native scheduler job and records waits separately. It fails closed on duplicate IDs, malformed worker responses or bounds violations. A waiting human release gate is never approved or merged by the runtime; only an *already existing human merge* may be observed by `run_release_once`. CI keeps its existing SHA/quality checks.
+- All other deterministic lanes, Direct, Codex, product stage, Preview and model/budget gates retain their existing behavior. This is a bounded fairness improvement, not a claim of greenfield full E2E. No historical queued task replay, new cron, paid model calls, Vercel Preview or Supabase migration.
+
 ## 2026-10-15 — Autonomous deterministic continuation within one scheduler wake (#713)
 
 - Live Control Plane read-only check: 3 projects, 0 active runs, 0 pending human gates; 10 historical `queued` children of completed parents, **not eligible for automatic replay**. The native scheduler is active and can legitimately report no work. Never synthesize tasks or mark `product_ready` because CI/Preview passed.

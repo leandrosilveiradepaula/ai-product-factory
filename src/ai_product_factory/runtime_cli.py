@@ -55,7 +55,7 @@ from .release_intelligence import build_release_assessment,load_default_release_
 from .release_policy_store import SupabaseReleasePolicyStore
 from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
-from .bounded_continuation import drain_deterministic_lane
+from .bounded_continuation import drain_deterministic_lane, drain_waiting_followups
 from .delivery_metrics import SupabaseDeliveryMetricsReader
 from .project_release_reconciliation import SupabaseProjectReleaseReconciler
 from .project_github_access import SupabaseProjectGitHubAccessStore
@@ -242,8 +242,9 @@ def run_health_once()->dict:
  codex_missing=[name for name in ("OPENAI_FEDERATION_RULE_ID","OPENAI_WIF_AUDIENCE","OPENAI_IDENTITY_TOKEN_FILE","FACTORY_GITHUB_TOKEN") if not os.getenv(name,"").strip()]
  return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"codex":{"enabled":os.getenv("FACTORY_CODEX_ENABLED")=="true","configured":not codex_missing,"ready":os.getenv("FACTORY_CODEX_ENABLED")=="true" and not codex_missing and os.path.isfile(os.getenv("OPENAI_IDENTITY_TOKEN_FILE","")),"missing":codex_missing},"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
-def run_ci_once()->dict:
- item=SupabaseCIFollowupQueue().next_pending()
+def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
+ queue=SupabaseCIFollowupQueue()
+ item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
  issue=github.get_issue(item.issue_number)
@@ -449,8 +450,9 @@ def run_preview_once()->dict:
   "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
   "release_report_id":recorded.get("report_id")}
 
-def run_release_once()->dict:
- item=SupabaseReleaseFollowupQueue().next_pending()
+def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
+ queue=SupabaseReleaseFollowupQueue()
+ item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
@@ -490,9 +492,11 @@ def run_release_once()->dict:
 
 def run_bounded_deterministic_lane(mode:str,worker_id:str,max_items:int,role:str|None=None)->dict:
  # No new reservations or paid model calls: delegates to existing guarded workers.
- if mode=="ci":callback=run_ci_once;key="run_id"
- elif mode=="release":callback=run_release_once;key="run_id"
- elif mode=="change-set-integration":
+ if mode=="ci":
+  return drain_waiting_followups(lambda ignored:run_ci_once(exclude_run_ids=ignored),max_items=max_items)
+ if mode=="release":
+  return drain_waiting_followups(lambda ignored:run_release_once(exclude_run_ids=ignored),max_items=max_items)
+ if mode=="change-set-integration":
   callback=lambda:run_change_set_integration_once(worker_id);key="change_set_id"
  elif mode=="specialist":
   if role not in {"security","qa","operations"}:raise ValueError("valid specialist role required")
