@@ -10,7 +10,8 @@ class PrimaryModelRunnerGateTests(unittest.TestCase):
         self.assertEqual(workflow.count(strict_opt_in), 3)  # Includes isolated dispatch preclaim
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}', workflow)
         self.assertNotIn("|| 'true'", workflow)
-        self.assertIn("FACTORY_MODEL_RESERVE_USD", workflow)
+        self.assertNotIn("FACTORY_MODEL_RESERVE_USD", workflow)
+        self.assertNotIn("FACTORY_MODEL_BUDGET_USD", workflow)
         self.assertIn("FACTORY_PRIMARY_AUTH_MODE", workflow)
 
 if __name__ == "__main__":

@@ -81,7 +81,6 @@ jobs:
       PYTHONPATH: src
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
-      FACTORY_MODEL_BUDGET_USD: "10.00"
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

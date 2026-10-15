@@ -21,8 +21,8 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"',direct)
   self.assertIn("env.FACTORY_PRIMARY_MODEL_ENABLED != 'true'",direct)
   self.assertIn('FACTORY_PRIMARY_AUTH_MODE: api_key',direct)
-  self.assertIn('FACTORY_MODEL_BUDGET_USD: "10.00"',direct)
-  self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',direct)
+  self.assertNotIn('FACTORY_MODEL_BUDGET_USD:',direct)
+  self.assertNotIn('FACTORY_MODEL_RESERVE_USD:',direct)
  def test_direct_is_inert_without_control_plane_credentials(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   direct=text.split("\n  direct:",1)[1].split("\n\n  codex:",1)[0]

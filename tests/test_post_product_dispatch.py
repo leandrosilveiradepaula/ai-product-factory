@@ -53,8 +53,8 @@ class PostProductDispatchTests(unittest.TestCase):
         workflow=WORKFLOW.read_text()
         product=workflow.split("\n  product-stage:\n",1)[1].split("\n  change-set-integration:\n",1)[0]
         self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}",product)
-        self.assertIn('FACTORY_MODEL_BUDGET_USD: "10.00"',product)
-        self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',product)
+        self.assertNotIn('FACTORY_MODEL_BUDGET_USD:',product)
+        self.assertNotIn('FACTORY_MODEL_RESERVE_USD:',product)
         self.assertNotIn("merge_pull_request",workflow)
         self.assertNotIn("gh pr merge",workflow)
 

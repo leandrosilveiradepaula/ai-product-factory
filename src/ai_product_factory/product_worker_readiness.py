@@ -9,10 +9,10 @@ import os
 import re
 import urllib.request
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Mapping
 
 from .supabase_operational_health import SupabaseOperationalHealthReader
+from .primary_cost_config import SupabasePrimaryCostPolicyReader
 from .supabase_server import resolve_supabase_server_config
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
@@ -21,7 +21,7 @@ AUDIT_LIMIT = 5
 DEDUP_WINDOW = timedelta(minutes=30)
 
 
-def primary_readiness_blocker(env: Mapping[str, str] | None = None, *, health_reader=None) -> str | None:
+def primary_readiness_blocker(env: Mapping[str, str] | None = None, *, health_reader=None, policy_reader=None) -> str | None:
     """Return a normalized code only: no secrets or raw exception details."""
     cfg = os.environ if env is None else env
     if cfg.get("FACTORY_PRIMARY_MODEL_ENABLED") != "true":
@@ -42,11 +42,9 @@ def primary_readiness_blocker(env: Mapping[str, str] | None = None, *, health_re
     if not auth_ready:
         return "primary_auth_missing"
     try:
-        budget = Decimal(cfg.get("FACTORY_MODEL_BUDGET_USD", ""))
-        reserve = Decimal(cfg.get("FACTORY_MODEL_RESERVE_USD", ""))
-        if not all(value.is_finite() and value > 0 for value in (budget, reserve)):
-            return "budget_not_configured"
-    except (InvalidOperation, ValueError):
+        policy = (policy_reader or SupabasePrimaryCostPolicyReader()).read()
+        budget, reserve = policy.budget_usd, policy.reserve_usd
+    except Exception:
         return "budget_not_configured"
     try:
         health = (health_reader or SupabaseOperationalHealthReader()).read(budget=budget)
@@ -179,12 +177,12 @@ class SupabaseProductBlockerAudit:
 
 
 def record_product_worker_readiness(
-    *, env: Mapping[str, str] | None = None, health_reader=None,
+    *, env: Mapping[str, str] | None = None, health_reader=None, policy_reader=None,
     audit: SupabaseProductBlockerAudit | None = None,
     now: datetime | None = None,
 ) -> dict:
     cfg = os.environ if env is None else env
-    reason = primary_readiness_blocker(cfg, health_reader=health_reader)
+    reason = primary_readiness_blocker(cfg, health_reader=health_reader, policy_reader=policy_reader)
     if reason is None:
         return {"ready": True, "status": "ready", "reason_code": None,
                 "recorded": 0, "deduplicated": 0}

@@ -17,8 +17,8 @@ class PreclaimDispatchSafetyContractTests(unittest.TestCase):
     def test_budget_and_switch_default_off(self):
         dispatch=WORKFLOW.split("\n  dispatch:\n",1)[1].split("\n  direct:\n",1)[0]
         self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}",dispatch)
-        self.assertIn('FACTORY_MODEL_BUDGET_USD: "10.00"',dispatch)
-        self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',dispatch)
+        self.assertNotIn('FACTORY_MODEL_BUDGET_USD:',dispatch)
+        self.assertNotIn('FACTORY_MODEL_RESERVE_USD:',dispatch)
 
     def test_dispatch_only_preflight_does_not_invoke_product_model(self):
         product=WORKFLOW.split("\n  product-stage:\n",1)[1].split("\n  change-set-integration:\n",1)[0]

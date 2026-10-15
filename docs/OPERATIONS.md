@@ -1,3 +1,15 @@
+## Operator-configurable paid policy — activation order and rollback
+
+The Source of Truth for total Primary model ceiling and per-call reservation is the `public.factory_primary_cost_policy` singleton in Supabase. The initial `budget_usd=10.0000`, `reserve_usd=0.5000` seed represents the authorized limit, not OpenAI API balance. Admins can change both under `/configuration#orcamento` using an explicit confirmation and written reason; an optimistic policy version prevents stale concurrent updates. Persist an audit event with before/after values in the same transaction. Operator profiles can read but not mutate.
+
+**Production migration first:** apply and verify `20261015231500_factory_primary_cost_policy.sql` via a real human database-migration gate. Confirm RLS on the new table, no policies for anonymous or `authenticated`, exact singleton row/seed and service-role-only privileged RPC. Do **not** deploy the runtime first; the new worker deliberately blocks paid execution when the source of truth is unavailable. Do not backfill anything by deleting/requeuing existing Service Desk runs.
+
+**Console Preview second:** the PR changes `apps/console/**`, so CI alone is insufficient. Obtain Vercel READY at the exact candidate SHA, execute browser evidence with admin and nonadmin UI paths, including form validation, stale-version conflict, a successful audited update and historical usage display. If Vercel is rate-limited, remain pending rather than bypassing Preview.
+
+**Human merge last:** merge to the Factory production `main` only after migration + Preview/quality gates are verified. Confirm `/usage` and `/configuration` reflect the persisted policy. Observe existing Service Desk run and paid ledger without issuing smoke model calls, purchasing API credits, widening GitHub App access or enabling Codex. A decrease may intentionally block new paid execution; an increase is an explicit admin financial decision and does **not** refill OpenAI Platform credits.
+
+Rollback: before merging, no runtime behavior changes. After merge, restore code to the last verified commit **without rolling back the table or erasing audit**; a compatible prior runtime still uses its previously reviewed workflow ceiling. Database writes are append-audited; reversing a policy amount is a new admin transaction with a reason. Do not silently substitute YAML defaults if the runtime cannot read the table. This is independent of the existing release-merge and Preview gates.
+
 ## 2026-10-15 — Reused Preview ref ≠ Vercel deployment (candidato sem Console)
 
 - Caso real #863: a ref `preview/pr-863` aponta para o SHA candidato, mas a Vercel retornou `Deployment rate limited` às 22:23:10 UTC e não publicou Preview. A primeira recuperação (#861) detectou um deployment posterior no SHA #860, mas a tentativa de novo Preview consumiu uma promoção de ref e recebeu nova negativa do provider.
