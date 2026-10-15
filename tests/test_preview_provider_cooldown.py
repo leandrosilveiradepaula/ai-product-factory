@@ -1,4 +1,5 @@
 from datetime import datetime,timedelta,timezone
+from itertools import count
 import unittest
 
 from scripts.preview_provider_cooldown import observe_rate_limit
@@ -7,10 +8,11 @@ NOW=datetime(2026,10,14,16,50,tzinfo=timezone.utc)
 SHA1="a"*40
 SHA2="b"*40
 SHA3="c"*40
+PR_NUMBERS=count(1)
 
 
 def pr(sha=SHA1, *, state="open", updated_at=NOW):
-    return {"state":state,"updated_at":updated_at.isoformat(),"head":{"sha":sha}}
+    return {"number":next(PR_NUMBERS),"state":state,"updated_at":updated_at.isoformat(),"head":{"sha":sha}}
 
 
 class PreviewProviderCooldownTests(unittest.TestCase):
@@ -124,6 +126,20 @@ class PreviewProviderCooldownTests(unittest.TestCase):
   result=self.run_case([],pulls=[pr(SHA1),pr(SHA1,state="closed")])
   self.assertTrue(result["allowed"])
   self.assertEqual(result["checked_prs"],2)
+
+ def test_invalid_pr_number_blocks_closed(self):
+  with self.assertRaisesRegex(RuntimeError,"invalid PR number"):
+   self.run_case([],pulls=[{"number":True,"state":"open","updated_at":NOW.isoformat(),"head":{"sha":SHA1}}])
+
+ def test_duplicate_identity_with_changed_head_blocks_closed(self):
+  same=pr(SHA1)
+  altered={**same,"head":{"sha":SHA2}}
+  def fetch(method,url,headers):
+   if "/pulls?" in url:
+    return [same] if "state=all" in url else [altered]
+   return {"statuses":[]}
+  with self.assertRaisesRegex(RuntimeError,"changed across"):
+   observe_rate_limit(token="token",repository="test/repo",now=NOW,get_json=fetch)
 
  def test_invalid_repository_and_token_rejected(self):
   for token,repo in [("","a/b"),("key","invalid")]:
