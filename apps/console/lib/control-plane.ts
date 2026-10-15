@@ -1,4 +1,5 @@
 import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
+import {requestIntakeWorkerWake} from "./intake-worker-wake";
 import {readCompleteOperationalRows,summarizeOperationalHealth} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
@@ -52,6 +53,7 @@ export async function createProjectIntakeAndBootstrap(
     ||result.request_id!==draftId||result.attachment_count!==expectedCount
     ||typeof result.created!=="boolean")
    throw new Error("Confirmação do ciclo inicial incompleta; nenhum sucesso foi presumido.");
+ if(result.created)await requestIntakeWorkerWake();
  return {projectId:String(result.project_id),projectKey,taskId:String(result.task_id),
          runId:String(result.run_id),created:result.created,attachmentCount:expectedCount};
 }
