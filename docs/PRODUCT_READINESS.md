@@ -1,3 +1,9 @@
+## 2026-10-15 — CRM pinned GitHub tree inventory (#713)
+
+A new read-only GitHub API collector checks repository identity, open CRM PR #56, exact head SHA and complete commit tree, then emits only count-based `inventory_only` evidence. It runs in trusted Factory `main` after a human merge or explicit workflow dispatch, through the existing OIDC/GitHub App credential. The artifact contains no source contents or tokens; the job fails closed on stale PR, truncated tree, unsupported symlink/submodule or missing cross-repo authorization. It never records a passing `factory_evaluations` baseline or changes the CRM database.
+
+The GitHub API preflight found 961 tracked files, 558 sources, 136 test files, 79 migrations, one workflow and 52 route files at `f5f7d91f8e98cfaf482cca72c974abb7a82f6a5e`. These are inventory counts, not evidence of inherited debt review, tenant RLS, remote E2E or product readiness. The CRM database remains unavailable in the connected Supabase account. Further E2E and target database checks are still required.
+
 ## 2026-10-15 — Coletor de inventario existente sem falsa aprovacao (#713)
 
 O comando `python -m ai_product_factory.existing_project_inventory --repo-path /checkout --candidate-sha <40-hex-sha> --repository owner/name` faz uma leitura **apenas da arvore Git commitada** na HEAD local. O SHA deve coincidir exatamente; repositorio ausente, diretório aninhado, identificadores malformados, arvore grande ou caminhos inseguros falham fechado. Relata **somente contagens** de fontes/testes/migrations/workflows/rotas e presenca de runbook de dívida, sem ler conteudo/secret de arquivos.
