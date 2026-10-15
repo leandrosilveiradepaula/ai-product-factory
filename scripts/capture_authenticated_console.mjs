@@ -221,7 +221,7 @@ try {
     badResponses,
   }, null, 2));
 
-  if (consoleErrors.length || pageErrors.length) {
+  if (consoleErrors.length || pageErrors.length || badResponses.length) {
     console.error(JSON.stringify({
       status:"browser_error_diagnostic",
       consoleErrorCount:consoleErrors.length,
@@ -230,7 +230,7 @@ try {
       pageErrors:pageErrors.slice(0,20),
       badResponses:badResponses.slice(0,40)
     }));
-    throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length}`);
+    throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length} failedResources=${badResponses.length}`);
   }
 
   console.log(JSON.stringify({
