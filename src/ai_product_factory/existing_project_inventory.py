@@ -48,7 +48,8 @@ def scan_existing_checkout(*, root: Path, candidate_sha: str, repository: str) -
     """
     if not _SHA.fullmatch(candidate_sha):
         raise BaselineInventoryError("candidate must be an exact lowercase SHA")
-    if not _REPOSITORY.fullmatch(repository):
+    if (not _REPOSITORY.fullmatch(repository)
+        or any(part in {".", ".."} for part in repository.split("/"))):
         raise BaselineInventoryError("repository must use owner/name syntax")
     root = root.resolve()
     if not root.is_dir():
