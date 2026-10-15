@@ -15,9 +15,12 @@ class AtomicProjectStartTests(unittest.TestCase):
    self.assertNotIn(unsafe,PAGE)
 
  def test_replay_and_attachment_security(self):
-  for marker in ("bootstrap_request_id","bootstrap_attachment_count","v_spec IS DISTINCT FROM p_spec","p_draft_id::text","a.operator_user_id", "previous intake lacks initial run","'created',false","draft attachment count changed"):
+  for marker in ("bootstrap_request_id","bootstrap_attachment_count","bootstrap_operator_id","v_spec IS DISTINCT FROM p_spec","p_draft_id::text","a.operator_user_id", "previous intake lacks initial run","'created',false","draft attachment count changed"):
    self.assertIn(marker.lower().replace("a.operator_user_id","operator_user_id"),SQL.lower())
   self.assertIn("countProjectDraftFiles(intake.draftId)",PAGE)
+  self.assertIn("v_manifest->>'bootstrap_operator_id' IS DISTINCT FROM p_operator_user_id::text",SQL)
+  self.assertIn("pg_catalog.pg_advisory_xact_lock",SQL)
+  self.assertIn("p_project_kind IS NULL",SQL)
   self.assertIn("p_operator_user_id:operator.userId",CONTROL)
   self.assertIn("p_draft_id:draftId",CONTROL)
 

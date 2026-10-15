@@ -11,7 +11,7 @@ DECLARE
  v_external text; v_cycle jsonb;
 BEGIN
  IF nullif(btrim(p_project_key),'') IS NULL OR nullif(btrim(p_name),'') IS NULL
-    OR p_project_kind NOT IN ('greenfield','existing')
+    OR p_project_kind IS NULL OR p_project_kind NOT IN ('greenfield','existing')
     OR p_draft_id IS NULL OR p_operator_user_id IS NULL
     OR p_expected_attachments IS NULL OR p_expected_attachments NOT BETWEEN 0 AND 10
     OR jsonb_typeof(p_manifest) IS DISTINCT FROM 'object'
@@ -19,6 +19,11 @@ BEGIN
     OR p_manifest->>'source' IS DISTINCT FROM 'factory-console'
     OR p_manifest->>'onboarding_mode' IS DISTINCT FROM p_project_kind
  THEN RAISE EXCEPTION 'invalid atomic project intake' USING errcode='PT400'; END IF;
+ -- Serialize a not-yet-existing project key: row-level FOR UPDATE is
+ -- insufficient when two starts race before the first INSERT.
+ PERFORM pg_catalog.pg_advisory_xact_lock(
+   pg_catalog.hashtextextended('factory-intake:' || btrim(p_project_key),0)
+ );
  v_external := CASE WHEN p_project_kind='existing' OR p_manifest->>'reconcile_first'='true'
    THEN 'project-reconciliation-v1' ELSE 'product-bootstrap-v1' END;
  -- Exact request retry: an already committed start must never enqueue a second run.
@@ -30,6 +35,7 @@ BEGIN
     WHERE project_id=v_id AND version=1 LIMIT 1;
    IF v_manifest->>'bootstrap_request_id' IS DISTINCT FROM p_draft_id::text
       OR v_manifest->>'bootstrap_attachment_count' IS DISTINCT FROM p_expected_attachments::text
+      OR v_manifest->>'bootstrap_operator_id' IS DISTINCT FROM p_operator_user_id::text
       OR v_name IS DISTINCT FROM btrim(p_name)
       OR coalesce(v_repo,'') IS DISTINCT FROM coalesce(nullif(btrim(p_repository),''),'')
       OR v_kind IS DISTINCT FROM p_project_kind
@@ -56,7 +62,8 @@ BEGIN
    p_project_key,p_name,p_repository,p_project_kind,
    p_manifest || jsonb_build_object(
      'bootstrap_request_id',p_draft_id::text,
-     'bootstrap_attachment_count',p_expected_attachments
+     'bootstrap_attachment_count',p_expected_attachments,
+     'bootstrap_operator_id',p_operator_user_id::text
    ),p_spec
  );
  v_count := public.factory_finalize_project_attachments(
