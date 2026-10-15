@@ -1,4 +1,5 @@
 from datetime import datetime,timedelta,timezone
+from itertools import count
 import unittest
 
 from scripts.preview_provider_cooldown import observe_rate_limit
@@ -7,10 +8,11 @@ NOW=datetime(2026,10,14,16,50,tzinfo=timezone.utc)
 SHA1="a"*40
 SHA2="b"*40
 SHA3="c"*40
+PR_NUMBERS=count(1)
 
 
 def pr(sha=SHA1, *, state="open", updated_at=NOW):
-    return {"state":state,"updated_at":updated_at.isoformat(),"head":{"sha":sha}}
+    return {"number":next(PR_NUMBERS),"state":state,"updated_at":updated_at.isoformat(),"head":{"sha":sha}}
 
 
 class PreviewProviderCooldownTests(unittest.TestCase):
@@ -19,8 +21,14 @@ class PreviewProviderCooldownTests(unittest.TestCase):
    self.assertEqual(method,"GET")
    self.assertTrue(headers["Authorization"].startswith("Bearer "))
    if "/pulls?" in url:
-    self.assertIn("state=all",url)
-    return pulls if pulls is not None else [pr()]
+    self.assertIn("per_page=100",url)
+    page=int(url.rsplit("page=",1)[1])
+    rows=pulls if pulls is not None else [pr()]
+    if not isinstance(rows,list):return rows
+    if "state=open" in url:
+     rows=[row for row in rows if isinstance(row,dict) and row.get("state")=="open"]
+    else:self.assertIn("state=all",url)
+    return rows[(page-1)*100:page*100]
    for sha in (SHA1,SHA2,SHA3):
     if url.endswith("/commits/"+sha+"/status"):
      return {"statuses":status_map[sha] if status_map is not None else statuses}
@@ -77,12 +85,33 @@ class PreviewProviderCooldownTests(unittest.TestCase):
    self.run_case([{"context":"Vercel","state":"failure","description":"Deployment rate limited","created_at":(NOW+timedelta(hours=10)).isoformat()}])
 
  def test_malformed_or_overlong_recent_pr_inventory_blocks_closed(self):
-  with self.assertRaisesRegex(RuntimeError,"safe bound"):
-   self.run_case([],pulls=[pr(SHA1) for _ in range(51)])
+  with self.assertRaisesRegex(RuntimeError,"paginated beyond safe bound"):
+   self.run_case([],pulls=[pr(SHA1) for _ in range(500)])
   with self.assertRaisesRegex(RuntimeError,"candidate SHA"):
    self.run_case([],pulls=[pr("invalid")])
-  with self.assertRaisesRegex(RuntimeError,"paginated"):
-   self.run_case([],pulls=[pr(SHA1) for _ in range(100)])
+
+ def test_real_world_52_recent_prs_do_not_fail_at_previous_limit_of_50(self):
+  result=self.run_case([],pulls=[pr(SHA1) for _ in range(52)])
+  self.assertTrue(result["allowed"])
+  self.assertEqual(result["checked_prs"],52)
+  self.assertFalse(result["authoritative_quota"])
+
+ def test_recent_prs_page_2_is_checked_not_silently_truncated(self):
+  old_rate={"context":"Vercel","state":"failure","description":"Deployment rate limited - retry in 24 hours.","created_at":NOW.isoformat()}
+  result=self.run_case([],pulls=[pr(SHA1) for _ in range(100)]+[pr(SHA2)],status_map={SHA1:[],SHA2:[old_rate],SHA3:[]})
+  self.assertFalse(result["allowed"])
+  self.assertEqual(result["sha"],SHA2)
+
+ def test_older_open_pr_is_checked_independently_of_recent_update_window(self):
+  older_open=pr(SHA2,state="open",updated_at=NOW-timedelta(days=5))
+  rate={"context":"Vercel","state":"failure","description":"Deployment rate limited","created_at":NOW.isoformat()}
+  result=self.run_case([],pulls=[pr(SHA1,state="closed",updated_at=NOW-timedelta(days=5)),older_open],status_map={SHA1:[],SHA2:[rate],SHA3:[]})
+  self.assertFalse(result["allowed"])
+  self.assertEqual(result["sha"],SHA2)
+
+ def test_recent_inventory_requires_descending_update_order(self):
+  with self.assertRaisesRegex(RuntimeError,"descending order"):
+   self.run_case([],pulls=[pr(SHA1,updated_at=NOW-timedelta(hours=2)),pr(SHA2,updated_at=NOW)])
   with self.assertRaisesRegex(RuntimeError,"missing update timestamp"):
    self.run_case([],pulls=[{"state":"open","head":{"sha":SHA1}}])
 
@@ -97,6 +126,20 @@ class PreviewProviderCooldownTests(unittest.TestCase):
   result=self.run_case([],pulls=[pr(SHA1),pr(SHA1,state="closed")])
   self.assertTrue(result["allowed"])
   self.assertEqual(result["checked_prs"],2)
+
+ def test_invalid_pr_number_blocks_closed(self):
+  with self.assertRaisesRegex(RuntimeError,"invalid PR number"):
+   self.run_case([],pulls=[{"number":True,"state":"open","updated_at":NOW.isoformat(),"head":{"sha":SHA1}}])
+
+ def test_duplicate_identity_with_changed_head_blocks_closed(self):
+  same=pr(SHA1)
+  altered={**same,"head":{"sha":SHA2}}
+  def fetch(method,url,headers):
+   if "/pulls?" in url:
+    return [same] if "state=all" in url else [altered]
+   return {"statuses":[]}
+  with self.assertRaisesRegex(RuntimeError,"changed across"):
+   observe_rate_limit(token="token",repository="test/repo",now=NOW,get_json=fetch)
 
  def test_invalid_repository_and_token_rejected(self):
   for token,repo in [("","a/b"),("key","invalid")]:
