@@ -56,7 +56,7 @@ class VisualEvidenceBrokerRetryContract(unittest.TestCase):
         self.assertIn('capture_status=$?', section)
         self.assertIn('cleanup_status=$?', section)
         self.assertIn('if [ "$capture_status" -ne 0 ] || [ "$cleanup_status" -ne 0 ]', section)
-        self.assertIn('await cleanupUser(userId);',BROKER)
+        self.assertIn('await cleanupUser(userId, workflowRunId);',BROKER)
         self.assertIn('Never report "expired"', BROKER)
 
     def test_durable_production_target_matches_verified_console_sha(self):
