@@ -107,7 +107,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
- const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
+ const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
+ const action=observedBlocker?{
+   title:observedBlocker==="budget_exhausted"?"Execução pausada: limite do modelo atingido":"Execução pausada: dependência do modelo",
+   body:productWorkerBlockerMessage(observedBlocker)+" O trabalho permanece preservado na fila; nenhum novo run precisa ser criado.",
+   href:observedBlocker==="budget_exhausted"?"/usage":"/configuration",
+   label:observedBlocker==="budget_exhausted"?"Ver orçamento e uso":"Ver configuração",
+ }:nextAction(p.stage,hasPendingDatabase,activeTasks.length);
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
@@ -127,6 +133,12 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    {p.wakeEvidence?.workerObservedAt?<p>Última observação global do scheduler: {new Date(p.wakeEvidence.workerObservedAt).toLocaleString("pt-BR")}. {p.wakeEvidence.productQueueDetected?"A fila de trabalho de produto foi detectada; isso não confirma que esta execução foi assumida.":"Nenhum trabalho de produto foi indicado nessa observação."} O botão Iniciar desenvolvimento solicita o acionamento imediato do worker existente; não ignora bloqueios de modelo, quota ou orçamento.</p>:<p>Ainda não existe observação do scheduler posterior ao enfileiramento.</p>}
    {p.wakeEvidence?.blockerCode?<p role="status"><strong>Bloqueio registrado para esta execução:</strong> {productWorkerBlockerMessage(p.wakeEvidence.blockerCode)} {p.wakeEvidence.blockedAt?<span className="muted">Evidência de {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. O worker não assumiu o run.</span>:null}</p>:null}
    <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink>{operator.role==="admin"?<form method="POST" action="/api/projects/wake-recovery"><input type="hidden" name="project_key" value={p.key}/><button className="linkButton" type="submit">Iniciar desenvolvimento</button></form>:null}</div>
+  </div>:null}
+  {p.pendingRun&&p.stage!=="discovery"&&observedBlocker?<div className="card pendingProjectNotice" role="status" aria-live="polite">
+   <div className="badgeLine"><StatusPill status="blocked" label="Execução pausada"/><strong>{observedBlocker==="budget_exhausted"?"Orçamento do modelo insuficiente":"Execução aguardando dependência do modelo"}</strong></div>
+   <p><strong>Motivo registrado:</strong> {productWorkerBlockerMessage(observedBlocker)} A execução <code>{p.pendingRun.id.slice(0,8)}</code> não foi assumida e permanece na fila, com {p.pendingRun.attemptCount} tentativas.</p>
+   {p.wakeEvidence?.blockedAt?<p className="muted">Evidência no Control Plane em {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. Não houve chamada ao modelo nesta tentativa.</p>:null}
+   <div className="actions"><ActionLink href="/usage">Ver modelos e consumo</ActionLink><ActionLink href={"/runs/"+p.pendingRun.id}>Ver execução</ActionLink></div>
   </div>:null}
   <div className="projectOrientation">
    <div>
