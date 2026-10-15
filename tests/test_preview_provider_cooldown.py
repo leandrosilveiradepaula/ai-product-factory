@@ -48,6 +48,40 @@ class PreviewProviderCooldownTests(unittest.TestCase):
   result=self.run_case([rate],pulls=[pr(SHA1,state="closed")])
   self.assertFalse(result["allowed"])
 
+ def test_recent_main_merge_commit_rate_limit_blocks_even_if_pr_head_is_green(self):
+  # A squashed PR #856 can be green while Vercel refuses the main commit.
+  merged=pr(SHA1,state="closed")
+  merged.update({"merged_at":NOW.isoformat(),"merge_commit_sha":SHA2})
+  blocked={"context":"Vercel","state":"failure","description":"Deployment rate limited — retry in 24 hours.","updated_at":NOW.isoformat()}
+  result=self.run_case([],pulls=[merged],status_map={SHA1:[],SHA2:[blocked],SHA3:[]})
+  self.assertFalse(result["allowed"])
+  self.assertEqual(result["sha"],SHA2)
+  self.assertEqual(result["earliest_recheck_at"],(NOW+timedelta(hours=24)).isoformat())
+
+ def test_older_merged_commit_is_not_extra_status_lookup(self):
+  old=pr(SHA1,state="closed",updated_at=NOW)
+  old.update({"merged_at":(NOW-timedelta(days=4)).isoformat(),"merge_commit_sha":SHA2})
+  result=self.run_case([],pulls=[old],status_map={SHA1:[],SHA2:None,SHA3:[]})
+  self.assertTrue(result["allowed"])
+
+ def test_recent_merge_sha_must_be_valid_and_timestamps_trusted(self):
+  invalid=pr(SHA1,state="closed")
+  invalid.update({"merged_at":NOW.isoformat(),"merge_commit_sha":"invalid"})
+  with self.assertRaisesRegex(RuntimeError,"merged PR commit SHA"):
+   self.run_case([],pulls=[invalid])
+  invalid["merge_commit_sha"]=SHA2
+  invalid["merged_at"]=(NOW+timedelta(hours=10)).isoformat()
+  with self.assertRaisesRegex(RuntimeError,"merge timestamp exceeds"):
+   self.run_case([],pulls=[invalid])
+
+ def test_newer_success_supersedes_recent_merge_commit_rate_limit(self):
+  merged=pr(SHA1,state="closed")
+  merged.update({"merged_at":NOW.isoformat(),"merge_commit_sha":SHA2})
+  failure={"context":"Vercel","state":"failure","description":"Deployment rate limited","created_at":(NOW-timedelta(minutes=20)).isoformat()}
+  success={"context":"Vercel","state":"success","description":"Deployment ready","created_at":NOW.isoformat()}
+  result=self.run_case([],pulls=[merged],status_map={SHA1:[],SHA2:[failure,success],SHA3:[]})
+  self.assertTrue(result["allowed"])
+
  def test_old_closed_pr_does_not_consume_status_requests(self):
   result=self.run_case([],pulls=[pr(SHA1,state="closed",updated_at=NOW-timedelta(days=3))])
   self.assertTrue(result["allowed"])
