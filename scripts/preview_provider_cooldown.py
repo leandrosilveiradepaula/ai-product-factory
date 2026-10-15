@@ -1,6 +1,6 @@
 """Fail-closed preflight for a known Vercel deployment rate-limit observation.
 
-Reads open and recently closed GitHub PR commit statuses; no Vercel API key, billing or mutations.
+Reads open and recently closed GitHub PR head statuses AND recent merge commit statuses; no Vercel API key, billing or mutations.
 Absence of a rate-limit signal is NOT evidence that provider quota is available.
 """
 from __future__ import annotations
@@ -114,11 +114,33 @@ def observe_rate_limit(
         if len(candidates_by_number) > MAX_RECENT_PRS:
             raise RuntimeError("recent PR inventory exceeds safe bound")
     candidates = list(candidates_by_number.values())
-    seen = set()
+    # A GitHub PR head is not necessarily the deployed production commit:
+    # squash/merge commits on main carry their own Vercel status. Inspect
+    # recent merged PR commits as well, or a fresh production rate limit is
+    # invisible to a PR-head-only cooldown scan.
+    candidate_shas: list[str] = []
     for pull in candidates:
         sha = (pull.get("head") or {}).get("sha")
         if not isinstance(sha, str) or not SHA.fullmatch(sha):
             raise RuntimeError("invalid open or recent PR candidate SHA")
+        candidate_shas.append(sha)
+        merged_raw = pull.get("merged_at")
+        if merged_raw is None:
+            continue
+        if not isinstance(merged_raw, str):
+            raise RuntimeError("invalid PR merge timestamp")
+        merged_at = _parse_timestamp(merged_raw)
+        if merged_at > now_utc + timedelta(minutes=5):
+            raise RuntimeError("PR merge timestamp exceeds clock tolerance")
+        if merged_at < cutoff:
+            continue
+        merge_sha = pull.get("merge_commit_sha")
+        if not isinstance(merge_sha, str) or not SHA.fullmatch(merge_sha):
+            raise RuntimeError("invalid merged PR commit SHA")
+        candidate_shas.append(merge_sha)
+
+    seen = set()
+    for sha in candidate_shas:
         if sha in seen:
             continue
         seen.add(sha)
