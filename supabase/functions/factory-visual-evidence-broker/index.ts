@@ -93,7 +93,22 @@ async function adminFetch(path: string, init: RequestInit = {}) {
   return response;
 }
 
-async function cleanupUser(userId: string) {
+async function cleanupUser(userId: string, workflowRunId: number) {
+  // Destructive Auth admin access must never trust a caller-provided user ID
+  // without checking it belongs to this exact GitHub workflow run.
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(userId) ||
+      !Number.isSafeInteger(workflowRunId) || workflowRunId <= 0) {
+    throw new BrokerFailure(403, "operator_run_mismatch");
+  }
+  const userResponse = await adminFetch(
+    "/auth/v1/admin/users/" + encodeURIComponent(userId),
+  );
+  const user = await userResponse.json();
+  const email = String(user?.email ?? "");
+  if (!/^factory-visual-[0-9]+-[a-f0-9]{16}@example\\.com$/.test(email) ||
+      !email.startsWith("factory-visual-" + workflowRunId + "-")) {
+    throw new BrokerFailure(403, "operator_run_mismatch");
+  }
   try {
     await adminFetch(
       "/rest/v1/factory_console_operators?user_id=eq." +
@@ -223,7 +238,7 @@ Deno.serve(async (req: Request) => {
         });
       } catch (error) {
         try {
-          await cleanupUser(userId);
+          await cleanupUser(userId, workflowRunId);
         } catch {
           throw new BrokerFailure(503, "operator_cleanup_failed");
         }
@@ -255,7 +270,7 @@ Deno.serve(async (req: Request) => {
     if (action === "cleanup") {
       const userId = String(body.userId || "");
       if (userId) {
-        await cleanupUser(userId);
+        await cleanupUser(userId, workflowRunId);
       }
       return json(200, { ok: true });
     }
@@ -264,7 +279,7 @@ Deno.serve(async (req: Request) => {
       const userId = String(body.userId || "");
       if (userId) {
         // Never report "expired" if privileged user deletion failed.
-        await cleanupUser(userId);
+        await cleanupUser(userId, workflowRunId);
       }
 
       await adminFetch(
