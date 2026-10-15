@@ -108,7 +108,7 @@ def seed_old_continuation(conn: psycopg.Connection, project: str, gate: str, *, 
         "values(%s,%s,'created',%s,jsonb_build_object("
         "'source','planning-decision','stages',"
         "jsonb_build_array('reconciliation','gap_analysis','planning'),"
-        "'reconcile_first',true,'decision_gate_id',%s))",
+        "'reconcile_first',true,'decision_gate_id',%s::text))",
         (run, task, attempts, gate),
     )
     return task, run
