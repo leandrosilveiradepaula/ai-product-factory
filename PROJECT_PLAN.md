@@ -54,7 +54,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Pipeline Engine ponta a ponta.
 - [x] Project Memory versionada.
 - [x] Review/evaluation quality gates.
-- [x] Provider OpenAI Responses implementado e ativado via API key com billing real comprovado, budget total de US$ 4.00, reserva de US$ 0.50 e ledger fail-closed por custo.
+- [x] Provider OpenAI Responses implementado e ativado via API key com billing real comprovado, budget total interno aprovado de US$ 10.00 em 15/10/2026 (vigora somente após merge humano), reserva mantida de US$ 0.50 e ledger fail-closed por custo.
 - [x] OpenAI API WIF implementado no runtime e GitHub (`openai-api`); GitHub OIDC real foi validado. O exchange OpenAI continua bloqueado por mapping administrativo incompatível com o subject imutavel (`invalid_grant`, issue #250), mas agora e hardening de autenticacao externo e nao bloqueia o caminho operacional API key.
 - [ ] Provider real do Codex/ChatGPT entitlement (Factory suporta WIF preferencial e fallback oficial `CODEX_ACCESS_TOKEN`; falta criar/configurar a credencial e validar preflight antes de habilitar o worker. WIF beta continua issue #240).
 

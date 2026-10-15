@@ -511,8 +511,8 @@ or WIF configuration does **not** authorize paid requests.
 
 Before an administrator explicitly enables that variable, verify the existing
 approved API billing/quota and model access, plus Control Plane ledger health
-(known spend, no unknown-cost events) and the fixed US$ 4.00 total budget /
-US$ 0.50 reservation. The Python runtime rechecks both the enable flag and
+(known spend, no unknown-cost events) and the operator-approved US$ 10.00 internal Factory total budget /
+US$ 0.50 reservation (effective only after human merge). The Factory ceiling is not prepaid OpenAI API Platform balance; current provider credit/quota has not been independently verified. Provider billing/429 failures remain fail-closed; no automatic purchase, recharge or retries of paid probes. The Python runtime rechecks both the enable flag and
 the ledger *before claiming* a product-stage or Direct run, and the metered
 provider still enforces the real per-run reservation. Do not perform paid
 smoke calls just to poll readiness, and never purchase credit automatically.

@@ -9,3 +9,7 @@ GitHub Actions emits an explicit warning and a summary saying the Product Stage 
 No change to model enablement, quota, budgets, reservation amount, GitHub App access, merges or Preview policy. The existing fixed Factory budget remains US$4.00, reserve US$0.50 per call. The preflight only reads the existing cost ledger; it is not an atomic cost reservation. Concurrent paid workers may still race between budget check and reservation. This requires a separate transactional RPC and reviewed production migration, and is **not** claimed resolved here.
 
 The initial Service Desk work item stays unchanged until an authorized worker actually claims it. GitHub App installation in the Factory repo and the current Vercel dispatch credential remain unverified. Native cron is best-effort, not an immediate delivery guarantee.
+
+## 2026-10-15 — approved internal ceiling adjustment (pending human production merge)
+
+The operator approved a Factory **total internal** model spending ceiling of US$ 10.00 instead of US$ 4.00; reservation remains US$ 0.50 per call/run and runtime/ledger fail-closed semantics remain unchanged. The US$ 4.00 value in the original readiness-only paragraph above is historical. The new configuration takes effect only after human merge of the budget PR. This is **not** a purchase or verification of actual API Platform credit; current provider billing/quota is unverified. No Codex activation, Preview bypass or automatic production merge is introduced.

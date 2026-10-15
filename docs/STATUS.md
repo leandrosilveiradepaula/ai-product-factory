@@ -1,3 +1,10 @@
+## 2026-10-15 — Authorized Factory internal ceiling US$ 10.00 (candidate pending human merge)
+
+- Explicit operator approval at 22:49 UTC: raise the **total internal** model ceiling from US$ 4.00 to US$ 10.00, keep the US$ 0.50 reservation. The PR updates all six autonomous-runner budget environments and the separate quota/alerts preflight, plus regression contracts. It does not enable any new model or change auth, Supabase RLS, GitHub App permissions, Codex, Preview, or release policies.
+- Read-only Control Plane ledger before this PR: cumulative OpenAI cost US$ 3.5887672; 0 OpenAI unknown-cost events. `infodive-service-desk` remains `planning`, with run `d5f1ea54-c388-4266-83b1-b8b06f2fd302` in `created` (0 attempts) and one queued task. Last preflight blocked `budget_exhausted`, did not claim or charge a new call.
+- The US$ 10 Factory limit does **not** purchase or reload OpenAI API credit. Original US$ 5 deposited by the operator on 2026-09-28 is historical. Current actual provider balance is unverified; OpenAI 429/quota/billing failures must remain fail-closed. No paid smoke tests to check the balance and no automatic purchase.
+- After CI and **human production merge only**, rely on the existing scheduler/authorized GitHub App to resume the existing queued task when ledger, auth, and API provider allow. Do not enqueue duplicate work or bypass the human release gate. No `apps/console/**` modifications: Vercel Preview not applicable by policy.
+
 ## 2026-10-15 — Reused Preview ref ≠ Vercel deployment (candidato sem Console)
 
 - Caso real #863: a ref `preview/pr-863` aponta para o SHA candidato, mas a Vercel retornou `Deployment rate limited` às 22:23:10 UTC e não publicou Preview. A primeira recuperação (#861) detectou um deployment posterior no SHA #860, mas a tentativa de novo Preview consumiu uma promoção de ref e recebeu nova negativa do provider.
