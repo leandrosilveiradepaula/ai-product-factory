@@ -43,6 +43,14 @@ class VisualEvidenceBrokerRetryContract(unittest.TestCase):
         for action in ('provision','captured','cleanup','expire'):
             self.assertIn('action:"'+action+'",workflowRunId:Number(process.env.GITHUB_RUN_ID),runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT)',WORKFLOW)
 
+    def test_cleanup_only_deletes_ephemeral_operator_owned_by_oidc_run(self):
+        self.assertIn('async function cleanupUser(userId: string, workflowRunId: number)', BROKER)
+        self.assertIn('"/auth/v1/admin/users/" + encodeURIComponent(userId)', BROKER)
+        self.assertIn('email.startsWith("factory-visual-" + workflowRunId + "-")', BROKER)
+        self.assertIn('new BrokerFailure(403, "operator_run_mismatch")', BROKER)
+        self.assertEqual(BROKER.count('await cleanupUser(userId, workflowRunId);'), 3)
+        self.assertNotIn('await cleanupUser(userId);', BROKER)
+
     def test_cleanup_runs_even_if_captured_state_update_fails(self):
         section=WORKFLOW.split('if [ "$CAPTURE_OUTCOME" = "success" ]',1)[1]
         self.assertIn('capture_status=$?', section)
