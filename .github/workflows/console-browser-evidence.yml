@@ -1,4 +1,5 @@
 name: Console browser evidence
+run-name: Console evidence ${{ inputs.request_id || github.run_id }}
 
 on:
   workflow_dispatch:
@@ -11,6 +12,10 @@ on:
         description: Text that must be rendered by the application
         required: false
         default: "Entrar na Factory"
+        type: string
+      request_id:
+        description: Optional UUID for exact parent-child correlation
+        required: false
         type: string
 
 permissions:
@@ -47,12 +52,15 @@ jobs:
         env:
           INPUT_PREVIEW_URL: ${{ inputs.preview_url }}
           INPUT_EXPECTED_TEXT: ${{ inputs.expected_text }}
+          INPUT_REQUEST_ID: ${{ inputs.request_id }}
         shell: bash
         run: |
           node - <<'NODE'
           const fs = require("fs");
           const previewUrl = process.env.INPUT_PREVIEW_URL || "";
           const expectedText = process.env.INPUT_EXPECTED_TEXT || "Entrar na Factory";
+          const requestId = process.env.INPUT_REQUEST_ID || "";
+          if(requestId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId))throw new Error("invalid correlation identifier");
           if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(previewUrl)) throw new Error("preview target must be an https vercel.app URL");
           fs.appendFileSync(process.env.GITHUB_OUTPUT, "preview_url=" + previewUrl + "\n");
           fs.appendFileSync(process.env.GITHUB_OUTPUT, "expected_text=" + expectedText.replace(/\r?\n/g, " ") + "\n");

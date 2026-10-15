@@ -194,40 +194,32 @@ jobs:
           EXPECTED_TEXT: ${{ env.EXPECTED_TEXT }}
         with:
           script: |
+            const {randomUUID} = require("node:crypto");
+            const {selectBrowserRun} = require(process.env.GITHUB_WORKSPACE + "/scripts/browser_run_correlation.cjs");
             const workflowId = "console-browser-evidence.yml";
+            const requestId = randomUUID();
+            const {data: branch} = await github.rest.repos.getBranch({...context.repo,branch:"main"});
+            const factorySha = branch.commit.sha;
             const started = Date.now();
             await github.rest.actions.createWorkflowDispatch({
-              ...context.repo,
-              workflow_id: workflowId,
-              ref: "main",
-              inputs: {
-                preview_url: process.env.PREVIEW_URL,
-                expected_text: process.env.EXPECTED_TEXT,
-              },
+              ...context.repo,workflow_id:workflowId,ref:"main",
+              inputs:{preview_url:process.env.PREVIEW_URL,expected_text:process.env.EXPECTED_TEXT,request_id:requestId},
             });
-            let selected = null;
-            for (let attempt = 0; attempt < 90; attempt++) {
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              const {data} = await github.rest.actions.listWorkflowRuns({
-                ...context.repo,
-                workflow_id: workflowId,
-                event: "workflow_dispatch",
-                branch: "main",
-                per_page: 20,
+            for(let attempt=0;attempt<90;attempt++){
+              await new Promise(resolve=>setTimeout(resolve,5000));
+              const {data}=await github.rest.actions.listWorkflowRuns({
+                ...context.repo,workflow_id:workflowId,event:"workflow_dispatch",branch:"main",per_page:100,
               });
-              selected = data.workflow_runs.find(run =>
-                Date.parse(run.created_at) >= started - 5000 &&
-                run.event === "workflow_dispatch" &&
-                run.head_branch === "main"
-              ) || null;
-              if (!selected || selected.status !== "completed") continue;
-              core.setOutput("run_url", selected.html_url);
-              if (selected.conclusion !== "success") {
-                core.setFailed("Trusted browser verifier failed: " + selected.html_url);
-              }
+              const selected=selectBrowserRun(data.workflow_runs,{requestId,factorySha,startedAtMs:started});
+              if(!selected||selected.status!=="completed")continue;
+              core.setOutput("run_url",selected.html_url);
+              core.setOutput("run_id",String(selected.id));
+              core.setOutput("request_id",requestId);
+              core.setOutput("factory_sha",factorySha);
+              if(selected.conclusion!=="success")core.setFailed("Correlated browser verifier failed: "+selected.html_url);
               return;
             }
-            core.setFailed("Timed out waiting for trusted Factory browser verifier");
+            core.setFailed("Timed out waiting for exactly correlated browser verification");
 
       - name: Persist cross-repo browser evidence in Control Plane
         if: ${{ always() }}
@@ -236,11 +228,15 @@ jobs:
           EVIDENCE_SUCCESS: ${{ steps.verifier.outcome == 'success' }}
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
           VERIFIER_RUN_URL: ${{ steps.verifier.outputs.run_url }}
+          VERIFIER_RUN_ID: ${{ steps.verifier.outputs.run_id }}
+          VERIFIER_REQUEST_ID: ${{ steps.verifier.outputs.request_id }}
+          VERIFIER_FACTORY_SHA: ${{ steps.verifier.outputs.factory_sha }}
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           import os
+          import re
           from urllib import parse, request
           from ai_product_factory.supabase_server import resolve_supabase_server_config
 
@@ -248,7 +244,14 @@ jobs:
           sha=os.environ["CANDIDATE_SHA"].strip()
           preview_url=os.environ.get("PREVIEW_URL","").strip()
           verifier_url=os.environ.get("VERIFIER_RUN_URL","").strip()
+          verifier_id=os.environ.get("VERIFIER_RUN_ID","").strip()
+          verifier_request_id=os.environ.get("VERIFIER_REQUEST_ID","").strip()
+          verifier_factory_sha=os.environ.get("VERIFIER_FACTORY_SHA","").strip()
           success=os.environ.get("EVIDENCE_SUCCESS","").lower()=="true"
+          if success and (not verifier_url or not verifier_id.isdecimal() or int(verifier_id)<=0
+              or not re.fullmatch(r"[0-9a-f]{40}",verifier_factory_sha)
+              or not re.fullmatch(r"[0-9a-f-]{36}",verifier_request_id)):
+              raise SystemExit("correlated browser provenance incomplete")
 
           cfg=resolve_supabase_server_config()
 
@@ -280,6 +283,9 @@ jobs:
                   "url":preview_url or None,
                   "status":"browser_verified" if success else "browser_failed",
                   "browser_verifier_run_url":verifier_url or None,
+                  "browser_verifier_run_id":int(verifier_id) if verifier_id.isdecimal() else None,
+                  "browser_request_id":verifier_request_id or None,
+                  "verifier_factory_commit":verifier_factory_sha or None,
               },
           }
           gaps=[] if success else [{

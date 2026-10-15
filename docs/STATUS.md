@@ -1,3 +1,8 @@
+## 2026-10-15 — Exact cross-repo browser evidence correlation candidate (#713)
+
+- Defeito reproduzido por inspeção: o workflow cross-repo escolhia qualquer run recente do navegador na main, o que podia associar uma execução concorrente a outro candidato. O patch inclui nonce UUID único por dispatch, run-name do filho, matching exato de workflow/branch/Factory SHA/attempt/URL/id/tempo e falha fechada para ambiguidade.
+- O snapshot carrega provenance de execução filha (ID, UUID, SHA Factory), sem inferir prontidão de produto. Testes Node determinísticos e contrato Python. Sem novos Preview/deploy/permissions, sem RLS/migration ou custo modelo. CI precisa validar este candidato; merge de produção humano.
+
 ## 2026-10-15 — CRM pinned GitHub tree inventory (#713)
 
 A new read-only GitHub API collector checks repository identity, open CRM PR #56, exact head SHA and complete commit tree, then emits only count-based `inventory_only` evidence. It runs as an added step within the **already broker-allowlisted** `crm-cross-repo-preflight.yml` in trusted Factory `main`, after a human merge or explicit workflow dispatch, using the same existing OIDC/GitHub App credential. A separately created workflow was rejected during security review because it would have received HTTP 403 from the broker OIDC workflow allowlist; this design does not expand that allowlist or deploy a new Edge Function. The artifact contains no source contents or tokens; the job fails closed on stale PR, truncated tree, unsupported symlink/submodule or missing cross-repo authorization. It never records a passing `factory_evaluations` baseline or changes the CRM database.
