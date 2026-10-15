@@ -27,7 +27,7 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
 
         self.assertIn('workflowId = "console-browser-evidence.yml"', text)
         self.assertIn('ref:"main"', text)
-        self.assertIn("expected_text: process.env.EXPECTED_TEXT", text)
+        self.assertIn("expected_text:process.env.EXPECTED_TEXT", text)
         self.assertIn("factory_project_state_snapshots", text)
         self.assertIn("browser_visual_validation", text)
         self.assertIn("product_ready_inferred", text)
