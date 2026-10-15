@@ -684,7 +684,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('VERCEL_GIT_PREVIOUS_SHA', ignore)
         self.assertIn('preview/pr-*', ignore)
         self.assertIn('preview/*) exit 0', ignore)
-        self.assertIn('git diff --quiet "$previous" HEAD -- .', ignore)
+        self.assertIn('exit 1', ignore.split('preview/pr-*)',1)[1].split('\n  preview/*)',1)[0])
         self.assertNotIn('preview/*) exit 1', ignore)
         self.assertIn('git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json', ignore)
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)

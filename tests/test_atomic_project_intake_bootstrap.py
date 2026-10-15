@@ -49,7 +49,7 @@ class AtomicProjectStartTests(unittest.TestCase):
 
  def test_promoted_preview_never_skips_the_candidate_build(self):
   script=(ROOT/"apps/console/vercel-ignore-build.sh").read_text()
-  candidate=script.split("preview/pr-*)",1)[1].split("\\n  preview/*)",1)[0]
+  candidate=script.split("preview/pr-*)",1)[1].split("\n  preview/*)",1)[0]
   self.assertIn("exit 1",candidate)
   self.assertNotIn("git diff",candidate)
   self.assertNotIn("VERCEL_GIT_PREVIOUS_SHA-",candidate)
