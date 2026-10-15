@@ -61,6 +61,7 @@ def observe_rate_limit(
 
     def collect_pulls(state: str) -> list[dict[str, Any]]:
         selected: list[dict[str, Any]] = []
+        previous: datetime | None = None
         for page in range(1, MAX_PR_PAGES + 1):
             pulls = get_json(
                 "GET",
@@ -70,7 +71,6 @@ def observe_rate_limit(
             )
             if not isinstance(pulls, list) or len(pulls) > PR_PAGE_SIZE:
                 raise RuntimeError("recent PR inventory is incomplete or malformed")
-            previous: datetime | None = None
             for pull in pulls:
                 if not isinstance(pull, dict):
                     raise RuntimeError("invalid PR inventory item")
@@ -96,9 +96,24 @@ def observe_rate_limit(
                 return selected
         raise RuntimeError("recent PR inventory paginated beyond safe bound")
 
-    candidates = collect_pulls("all") + collect_pulls("open")
-    if len(candidates) > MAX_RECENT_PRS:
-        raise RuntimeError("recent PR inventory exceeds safe bound")
+    # Both queries overlap. Distinguish distinct PRs (even when they share a
+    # commit SHA), while counting the same PR just once across both queries.
+    candidates_by_number: dict[int, dict[str, Any]] = {}
+    for pull in collect_pulls("all") + collect_pulls("open"):
+        number = pull.get("number")
+        if type(number) is not int or number < 1:
+            raise RuntimeError("PR inventory has invalid PR number")
+        prior = candidates_by_number.get(number)
+        if prior is not None:
+            if (prior.get("state") != pull.get("state")
+                or prior.get("updated_at") != pull.get("updated_at")
+                or (prior.get("head") or {}).get("sha") != (pull.get("head") or {}).get("sha")):
+                raise RuntimeError("PR inventory changed across pages/queries")
+            continue
+        candidates_by_number[number] = pull
+        if len(candidates_by_number) > MAX_RECENT_PRS:
+            raise RuntimeError("recent PR inventory exceeds safe bound")
+    candidates = list(candidates_by_number.values())
     seen = set()
     for pull in candidates:
         sha = (pull.get("head") or {}).get("sha")
