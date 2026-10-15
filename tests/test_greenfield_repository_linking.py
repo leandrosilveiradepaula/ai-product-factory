@@ -48,7 +48,7 @@ class GreenfieldRepositoryLinkingTests(unittest.TestCase):
   self.assertIn('https://github.com/new?name=',PAGE)
   self.assertIn('https://github.com/settings/installations',PAGE)
   self.assertIn('operator.role==="admin"?<RepositoryLinkForm projectKey={p.key}/>',PAGE)
-  self.assertIn('"/link-repository"',PAGE)
+  self.assertIn('"/link-repository"',(ROOT/"apps/console/app/projects/[key]/repository-link-form.tsx").read_text())
   self.assertIn("query.repo_link",PAGE)
   self.assertIn('Nenhuma alteração foi feita.',PAGE)
 
