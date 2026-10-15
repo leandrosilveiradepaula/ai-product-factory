@@ -37,7 +37,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    const response=await fetch("/api/human-attention",{cache:"no-store"});
    if(!response.ok)throw new Error("attention unavailable");
    const snapshot:unknown=await response.json();
-   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
+   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
    setAttention({count:Number(snapshot.count),projects:snapshot.projects});setAttentionUnavailable(false);
   }catch{setAttention(null);setAttentionUnavailable(true);}
  },[]);
