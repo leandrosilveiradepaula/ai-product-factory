@@ -215,7 +215,8 @@ begin
    'next_state',
      case
        when v_gate.gate_type='planning_decision' and p_resolution='approved'
-         then 'planning_reconciliation_queued'
+         then case when v_project_kind='greenfield' then 'planning_replan_queued'
+                   else 'planning_reconciliation_queued' end
        when v_decision_only then 'decision_recorded'
        when p_resolution='approved' then 'queued'
        else 'cancelled'
