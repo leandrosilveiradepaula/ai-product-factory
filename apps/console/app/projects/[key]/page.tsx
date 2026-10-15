@@ -107,6 +107,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
+  {p.pendingRun&&p.stage==="discovery"?<div className="card noticeCard" role="status">
+   <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>Descoberta ainda não iniciada</strong></div>
+   <p>O Control Plane preservou a execução <code>{p.pendingRun.id.slice(0,8)}</code>, ainda com {p.pendingRun.attemptCount} tentativas. Criar o projeto não significa que um worker já iniciou o processamento.</p>
+   {p.wakeEvidence?.wakeStatus==="requested"?<p>O Console registrou um pedido de acionamento aceito pelo GitHub. Isso não comprova que o worker executou.</p>:p.wakeEvidence?.wakeStatus==="failed"?<p>O Console registrou falha ao solicitar o acionamento imediato. A execução permanece na fila para recuperação.</p>:p.wakeEvidence?.wakeStatus==="unconfigured"?<p>O Console não encontrou uma identidade autorizada para o acionamento imediato. A execução permanece na fila.</p>:<p>Não há evidência registrada de acionamento imediato para esta execução.</p>}
+   {p.wakeEvidence?.workerObservedAt?<p>Última observação global do scheduler: {new Date(p.wakeEvidence.workerObservedAt).toLocaleString("pt-BR")}. {p.wakeEvidence.productQueueDetected?"A fila de trabalho de produto foi detectada; isso não confirma que esta execução foi assumida.":"Nenhum trabalho de produto foi indicado nessa observação."} A execução pode depender de habilitação do modelo, quota e orçamento.</p>:<p>Ainda não existe observação do scheduler posterior ao enfileiramento.</p>}
+   <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink></div>
+  </div>:null}
   <div className="projectOrientation">
    <div>
     <div className="macroLifecycle" aria-label="Ciclo do produto em cinco macroetapas">
