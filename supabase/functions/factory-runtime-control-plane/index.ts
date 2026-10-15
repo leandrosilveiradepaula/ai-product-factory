@@ -45,6 +45,13 @@ async function verifyGithub(req:Request) {
     if(String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF) {
       throw new Error("GitHub OIDC workflow_run workflow not allowed");
     }
+  } else if(event==="repository_dispatch") {
+    // Console intake can wake only the trusted Factory runner on main.
+    // The workflow independently verifies the exact dispatch type/source.
+    if(String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF ||
+       String(payload.actor??"")!=="infodive-ai-product-factory[bot]") {
+      throw new Error("GitHub OIDC repository_dispatch identity not allowed");
+    }
   } else if(!["schedule","workflow_dispatch","push","issue_comment"].includes(event)) {
     throw new Error("GitHub OIDC event not allowed");
   }
