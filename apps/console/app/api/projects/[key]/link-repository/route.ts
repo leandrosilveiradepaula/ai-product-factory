@@ -38,7 +38,7 @@ export async function POST(request:Request,{params}:{params:Promise<{key:string}
  // Reject linking a repository already owned by another Factory project.
  const existing=await fetch(
   cfg.url+"/rest/v1/factory_projects?select=id&repository=eq."+
-  encodeURIComponent(expected)+"&is_active=eq.true&limit=2",
+  encodeURIComponent(expected)+"&limit=2",
   {headers:cfg.headers,cache:"no-store"}
  );
  if(!existing.ok)return back(url.origin,key,"unavailable");
@@ -60,7 +60,12 @@ export async function POST(request:Request,{params}:{params:Promise<{key:string}
   );
   if(!linked.ok)return back(url.origin,key,"unavailable");
   const rows=(await linked.json()) as {id:string;repository:string}[];
-  if(rows.length!==1||rows[0].id!==project.id||rows[0].repository!==expected){
+  if(rows.length===0){
+   // A concurrent, identical admin POST may have already linked this exact
+   // project. Re-read and verify rather than reporting a false conflict.
+   const current=await getProjectDetail(key);
+   if(current?.repository!==expected)return back(url.origin,key,"already_bound");
+  }else if(rows.length!==1||rows[0].id!==project.id||rows[0].repository!==expected){
    return back(url.origin,key,"already_bound");
   }
  }
