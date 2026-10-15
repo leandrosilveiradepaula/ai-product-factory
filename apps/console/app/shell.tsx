@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {usePathname} from "next/navigation";
+import {useCallback,useEffect,useState} from "react";
 import type {ReactNode} from "react";
 import {signOutAction} from "./auth-actions";
 import {ConsoleNav} from "./nav";
@@ -29,6 +30,18 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const pathname=usePathname();
  const authOnly=pathname==="/login"||pathname==="/unauthorized";
  const context=routeContext(pathname);
+ const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
+ const [attentionUnavailable,setAttentionUnavailable]=useState(false);
+ const refreshAttention=useCallback(async()=>{
+  try{
+   const response=await fetch("/api/human-attention",{cache:"no-store"});
+   if(!response.ok)throw new Error("attention unavailable");
+   const snapshot:unknown=await response.json();
+   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
+   setAttention({count:Number(snapshot.count),projects:snapshot.projects});setAttentionUnavailable(false);
+  }catch{setAttention(null);setAttentionUnavailable(true);}
+ },[]);
+ useEffect(()=>{void refreshAttention();const tick=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshAttention();},60000);const onFocus=()=>{void refreshAttention();};window.addEventListener("focus",onFocus);return()=>{window.clearInterval(tick);window.removeEventListener("focus",onFocus);};},[refreshAttention,pathname]);
  if(authOnly){
   return <div className="authShell">
    <main className="authMain">{children}</main>
@@ -44,14 +57,14 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    </div>
    <div className="workspacePicker"><span className="workspaceGlyph">▦</span><span>Infodive / Autônomos</span></div>
    <div className="desktopSidebarContent">
-    <ConsoleNav/>
+    <ConsoleNav attentionCount={attention?.count??null}/>
     <div className="sidebarFooter">
      <div className="sidebarHealth"><span>AI Product Factory</span></div>
      <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
     </div>
    </div>
    <details className="mobileNav">
-    <summary><span>Menu</span><span className="mobileNavHint">{context.area} / {context.screen}</span></summary>
+    <summary><span>Menu{attention&&attention.count>0?<span className="humanAttentionCount">{attention.count}</span>:null}</span><span className="mobileNavHint">{context.area} / {context.screen}</span></summary>
     <div className="mobileNavBody">
      <Link href="/projects/new" className="mobileNewProject">+ Novo projeto</Link>
      <ConsoleNav/>
@@ -62,13 +75,14 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   <div className="workspace">
    <header className="topbar">
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
-    <div className="topbarMeta"><span>Console</span><span className="topbarDivider"/><span>{environmentLabel}</span><Link href="/projects/new" className="topbarWork">+ Novo projeto</Link></div>
+    <div className="topbarMeta"><Link href="/gates" className={attention?.count?"topbarAttention active":"topbarAttention"} aria-label={attentionUnavailable?"Aprovações humanas: indisponível":attention?`${attention.count} aprovações humanas pendentes`:"Consultando aprovações humanas"}>{attentionUnavailable?"Avisos indisponíveis":attention===null?"Verificando avisos":attention.count>0?`${attention.count} precisam de você`:"Aprovações em dia"}</Link><span>Console</span><span className="topbarDivider"/><span>{environmentLabel}</span><Link href="/projects/new" className="topbarWork">+ Novo projeto</Link></div>
    </header>
    <main className="main">
     <div className={context.advanced?"screenGuide advanced":"screenGuide"}>
      <div><strong>{context.advanced?"Tela de inspeção":"Como usar esta tela"}</strong><span>{context.purpose}</span></div>
      {context.advanced?<Link href="/" className="screenGuideLink">Voltar à visão geral</Link>:null}
     </div>
+    {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
     {children}
    </main>
   </div>
