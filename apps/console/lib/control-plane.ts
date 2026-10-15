@@ -53,7 +53,21 @@ export async function createProjectIntakeAndBootstrap(
     ||result.request_id!==draftId||result.attachment_count!==expectedCount
     ||typeof result.created!=="boolean")
    throw new Error("Confirmação do ciclo inicial incompleta; nenhum sucesso foi presumido.");
- if(result.created)await requestIntakeWorkerWake();
+ if(result.created){
+   const wakeStatus=await requestIntakeWorkerWake();
+   // Write diagnostics after commit. An audit failure never rolls back the intake.
+   try{
+     const audit=await fetch(cfg.url+"/rest/v1/factory_audit_events",{
+       method:"POST",headers:{...cfg.headers,"Content-Type":"application/json",Prefer:"return=minimal"},
+       body:JSON.stringify({
+         project_id:String(result.project_id),task_id:String(result.task_id),
+         run_id:String(result.run_id),actor_type:"system",actor_ref:"console-intake",
+         event_type:"project.bootstrap.wake_attempted",payload:{status:wakeStatus},
+       }),cache:"no-store",
+     });
+     if(!audit.ok)console.warn("intake_worker_wake_audit_failed",{status:audit.status});
+   }catch{console.warn("intake_worker_wake_audit_failed",{reason:"transport"});}
+ }
  return {projectId:String(result.project_id),projectKey,taskId:String(result.task_id),
          runId:String(result.run_id),created:result.created,attachmentCount:expectedCount};
 }
