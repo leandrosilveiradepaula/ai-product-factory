@@ -149,11 +149,11 @@ export async function getRuns(limit=50):Promise<RunSummary[]>{
  return runs.map((x:any)=>({id:x.id,taskId:x.task_id,status:x.status,route:x.execution_route,candidateCommit:x.candidate_commit,createdAt:x.created_at,taskTitle:taskMap.get(String(x.task_id))||"Task",attemptCount:Number(x.attempt_count||0),leaseOwner:x.lease_owner||null,leaseExpiresAt:x.lease_expires_at||null,lastError:x.last_error||null}));
 }
 
-export async function getHumanGates(limit=50):Promise<GateSummary[]>{
+export async function getHumanGates(limit=50,onlyPending=false):Promise<GateSummary[]>{
  const operator=await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)return [];
  const [gatesResponse,releasesResponse]=await Promise.all([
-  fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,run_id,gate_type,status,reasons,requested_at${onlyPending?"&status=eq.pending":""}&order=requested_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"}),
   fetch(`${cfg.url}/rest/v1/factory_release_reports?select=id,run_id,status,candidate_commit,report,created_at&status=eq.ready_for_human_release&order=created_at.desc&limit=${limit}`,{headers:cfg.headers,cache:"no-store"})
  ]);
  if(!gatesResponse.ok)throw new Error("Unable to load human gates");
