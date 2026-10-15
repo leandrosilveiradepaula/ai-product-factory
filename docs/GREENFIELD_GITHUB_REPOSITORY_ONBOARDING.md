@@ -13,7 +13,7 @@ App installation and repository binding are separate operations. A binding is ne
 
 ## Production, cost and acceptance gates
 
-This change modifies `apps/console/**` and must receive exact-SHA Vercel Preview READY and browser evidence before human production merge. The Vercel rate limit observed for PR #857 is not evidence for or against this candidate. Do not bypass preview by merging unverified Console code.
+This change modifies `apps/console/**` and must receive exact-SHA Vercel Preview READY and browser evidence before human production merge. The consolidated candidate includes the budget-blocker visibility fix from PR #857 and repository onboarding. One exact-SHA Preview plus browser evidence validates both UI changes after the provider's rate-limit clears. An ignored build or a completed deployment on another SHA is not evidence for this candidate. Do not bypass preview by merging unverified Console code.
 
 No paid models or API credits are used. The Factory's total model budget US$4.00 and reservation US$0.50 remain unchanged. Service Desk's corrected run `d5f1ea54` stays at `created` until separate cost readiness, and no repo-setup click may trigger or duplicate it. No automatic merge is added.
 
