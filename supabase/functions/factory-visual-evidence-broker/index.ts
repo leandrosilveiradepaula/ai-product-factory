@@ -105,7 +105,7 @@ async function cleanupUser(userId: string, workflowRunId: number) {
   );
   const user = await userResponse.json();
   const email = String(user?.email ?? "");
-  if (!/^factory-visual-[0-9]+-[a-f0-9]{16}@example\\.com$/.test(email) ||
+  if (!/^factory-visual-[0-9]+-[a-f0-9]{16}@example\.com$/.test(email) ||
       !email.startsWith("factory-visual-" + workflowRunId + "-")) {
     throw new BrokerFailure(403, "operator_run_mismatch");
   }
