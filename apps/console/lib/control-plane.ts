@@ -270,7 +270,9 @@ function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record
 }
 
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;tasks:ProjectTaskSummary[]};
+export type ProjectPendingRun={id:string;status:string;attemptCount:number;createdAt:string};
+export type ProjectWakeEvidence={wakeStatus:string|null;wakeAt:string|null;workerObservedAt:string|null;productQueueDetected:boolean};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
@@ -283,9 +285,31 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  const tasks=tasksResponse.ok?await tasksResponse.json():[];
  const taskIds=tasks.map((x:any)=>String(x.id));
  let productReadiness:ProjectReadinessSummary={ready:false,status:"not_assessed",assessedCommit:null,assessmentRef:null,domains:{},blockers:[],createdAt:null};
+ let pendingRun:ProjectPendingRun|null=null;
+ let wakeEvidence:ProjectWakeEvidence|null=null;
  if(taskIds.length){
-  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id&task_id=in.(${taskIds.join(",")})`,{headers:cfg.headers,cache:"no-store"});
+  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
   const runs=runsResponse.ok?await runsResponse.json():[];
+  const waiting=runs.find((x:any)=>x.status==="created"&&x.started_at==null);
+  if(waiting){
+   pendingRun={id:String(waiting.id),status:"created",attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
+   const since=encodeURIComponent(pendingRun.createdAt);
+   const [wakeResponse,probeResponse]=await Promise.all([
+    fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&project_id=eq.${encodeURIComponent(p.id)}&event_type=eq.project.bootstrap.wake_attempted&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
+    fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&event_type=in.(schedule_probe.observed,schedule_probe.native_observed)&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
+   ]);
+   const wakeRows=wakeResponse.ok?await wakeResponse.json():[];
+   const probeRows=probeResponse.ok?await probeResponse.json():[];
+   const wake=wakeRows[0],probe=probeRows[0];
+   const wakeStatus=["requested","failed","unconfigured"].includes(String(wake?.payload?.status||""))?String(wake.payload.status):null;
+   const classes=Array.isArray(probe?.payload?.work_classes)?probe.payload.work_classes:[];
+   wakeEvidence={
+    wakeStatus,
+    wakeAt:wake?.created_at?String(wake.created_at):null,
+    workerObservedAt:probe?.created_at?String(probe.created_at):null,
+    productQueueDetected:classes.includes("product"),
+   };
+  }
   const runIds=runs.map((x:any)=>String(x.id));
   if(runIds.length){
    const evalResponse=await fetch(`${cfg.url}/rest/v1/factory_evaluations?select=status,baseline_ref,result,created_at&run_id=in.(${runIds.join(",")})&eval_type=eq.product_readiness&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"});
@@ -308,7 +332,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  }
  const preview=p.manifest?.preview&&typeof p.manifest.preview==="object"?p.manifest.preview:null;
  const evidence=preview?.evidence&&typeof preview.evidence==="object"?preview.evidence:null;
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export type ProjectContinuationHistoryItem={id:string;summary:string;requestedAt:string;attachmentCount:number};
