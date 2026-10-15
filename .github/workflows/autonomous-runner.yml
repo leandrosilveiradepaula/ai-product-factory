@@ -516,7 +516,9 @@ jobs:
     env:
       PYTHONPATH: src
       # Never pass the OpenAI key to dispatcher. Only the prior auth signal.
-      FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
+      # Trust the protected Product Stage readiness, not a repository-scope variable.
+      # A missing/stale output fails closed; the paid ledger gate remains mandatory.
+      FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}
       FACTORY_DISPATCH_PRIMARY_READY: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED == 'true' && 'true' || 'false' }}
       # No Codex token/WIF claims ever cross into dispatcher.
