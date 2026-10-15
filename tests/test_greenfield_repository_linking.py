@@ -45,8 +45,8 @@ class GreenfieldRepositoryLinkingTests(unittest.TestCase):
   self.assertIn('https://github.com/new?name=',PAGE)
   self.assertIn('https://github.com/settings/installations',PAGE)
   self.assertIn('operator.role==="admin"?<form method="POST"',PAGE)
-  self.assertIn('"link-repository"',PAGE)
-  self.assertIn('"repo_link"',PAGE.replace('query.repo_link','"repo_link"'))
+  self.assertIn('"/link-repository"',PAGE)
+  self.assertIn("query.repo_link",PAGE)
   self.assertIn('Nenhuma alteração foi feita.',PAGE)
 
 if __name__=="__main__":
