@@ -78,7 +78,7 @@ class PreviewProviderCooldownTests(unittest.TestCase):
   merged=pr(SHA1,state="closed")
   merged.update({"merged_at":NOW.isoformat(),"merge_commit_sha":SHA2})
   failure={"context":"Vercel","state":"failure","description":"Deployment rate limited","created_at":(NOW-timedelta(minutes=20)).isoformat()}
-  success={"context":"Vercel","state":"success","description":"Deployment ready","created_at":NOW.isoformat()}
+  success={"context":"Vercel","state":"success","description":"Deployment ready","created_at":NOW.isoformat(),"target_url":"https://vercel.com/team/ai-product-factory-console/dpl_abc"}
   result=self.run_case([],pulls=[merged],status_map={SHA1:[],SHA2:[failure,success],SHA3:[]})
   self.assertTrue(result["allowed"])
 
@@ -96,9 +96,41 @@ class PreviewProviderCooldownTests(unittest.TestCase):
  def test_newer_success_supersedes_older_failure_on_same_commit(self):
   old=(NOW-timedelta(hours=1)).isoformat()
   blocked={"context":"Vercel","state":"failure","description":"Deployment rate limited","created_at":old}
-  restored={"context":"Vercel","state":"success","description":"Deployment has completed","created_at":NOW.isoformat()}
+  restored={"context":"Vercel","state":"success","description":"Deployment has completed","created_at":NOW.isoformat(),"target_url":"https://vercel.com/team/ai-product-factory-console/dpl_def"}
   result=self.run_case([blocked,restored])
   self.assertTrue(result["allowed"])
+
+ def test_actual_newer_deployment_on_another_commit_clears_old_quota_observation(self):
+  # The October 15 rate-limit signal on #857 must not block #860 for a
+  # full day if Vercel actually completed a new deployment in the meantime.
+  failure={"context":"Vercel","state":"failure","description":"Deployment rate limited — retry in 24 hours","created_at":(NOW-timedelta(minutes=25)).isoformat()}
+  recovered={"context":"Vercel","state":"success","description":"Deployment has completed","updated_at":NOW.isoformat(),"target_url":"https://vercel.com/team/ai-product-factory-console/dpl_actual"}
+  result=self.run_case([],pulls=[pr(SHA1),pr(SHA2)],status_map={SHA1:[failure],SHA2:[recovered],SHA3:[]})
+  self.assertTrue(result["allowed"])
+  self.assertEqual(result["state"],"confirmed_deployment_after_rate_limit")
+  self.assertEqual(result["verified_deployment_sha"],SHA2)
+  self.assertEqual(result["superseded_rate_limit_sha"],SHA1)
+  self.assertFalse(result["authoritative_quota"])
+
+ def test_ignored_build_success_does_not_clear_quota_across_commits(self):
+  failure={"context":"Vercel","state":"failure","description":"Deployment rate limited","created_at":(NOW-timedelta(minutes=15)).isoformat()}
+  ignored={"context":"Vercel","state":"success","description":"Canceled by Ignored Build Step","created_at":NOW.isoformat(),"target_url":"https://vercel.com/team/ai-product-factory-console/dpl_skipped"}
+  result=self.run_case([],pulls=[pr(SHA1),pr(SHA2)],status_map={SHA1:[failure],SHA2:[ignored],SHA3:[]})
+  self.assertFalse(result["allowed"])
+  self.assertEqual(result["sha"],SHA1)
+
+ def test_fake_deployment_ready_without_vercel_detail_is_not_proof(self):
+  failure={"context":"Vercel","state":"failure","description":"Deployment rate limited","updated_at":(NOW-timedelta(minutes=15)).isoformat()}
+  for url in (None,"https://example.org/team/project/dpl_abc","https://vercel.com/team?upgradeToPro=build-rate-limit","http://vercel.com/team/project/dpl_abc"):
+   fake={"context":"Vercel","state":"success","description":"Deployment ready","updated_at":NOW.isoformat(),"target_url":url}
+   self.assertFalse(self.run_case([],pulls=[pr(SHA1),pr(SHA2)],status_map={SHA1:[failure],SHA2:[fake],SHA3:[]})["allowed"])
+
+ def test_old_success_cannot_clear_newer_failure_on_another_sha(self):
+  recovered={"context":"Vercel","state":"success","description":"Deployment has completed","updated_at":(NOW-timedelta(minutes=5)).isoformat(),"target_url":"https://vercel.com/team/ai-product-factory-console/dpl_real"}
+  failure={"context":"Vercel","state":"failure","description":"Deployment rate limited","updated_at":NOW.isoformat()}
+  result=self.run_case([],pulls=[pr(SHA1),pr(SHA2)],status_map={SHA1:[recovered],SHA2:[failure],SHA3:[]})
+  self.assertFalse(result["allowed"])
+  self.assertEqual(result["sha"],SHA2)
 
  def test_newer_pending_does_not_clear_rate_limit(self):
   old=(NOW-timedelta(hours=1)).isoformat()
