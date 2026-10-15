@@ -37,6 +37,21 @@ export function PrimaryCostPolicyPanel({
   {feedback==="saved"?<p role="status">Orçamento salvo com auditoria. Próximos workers lerão a política atual.</p>:null}
   {feedback==="stale"?<p role="alert">A versão mudou. Recarregue a tela antes de tentar novamente.</p>:null}
   {feedback==="failed"?<p role="alert">Alteração recusada. Confira os valores, a justificativa e seu acesso de administrador.</p>:null}
+  <section aria-label="Últimas alterações financeiras">
+   <h3>Histórico de alterações (últimas 20)</h3>
+   {policy.history===null?<p className="muted" role="status">Histórico indisponível. Não é possível confirmar as alterações anteriores.</p>
+    :policy.history.length===0?<p className="muted">Nenhuma alteração administrativa após a configuração inicial.</p>
+    :<div className="tableWrap"><table>
+      <thead><tr><th>Data</th><th>Administrador</th><th>Teto</th><th>Reserva</th><th>Justificativa</th></tr></thead>
+      <tbody>{policy.history.map(entry=><tr key={entry.version}>
+       <td>{new Date(entry.createdAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</td>
+       <td><code>{entry.actorRef}</code></td>
+       <td>{money(entry.previousBudgetUsd)} → {money(entry.newBudgetUsd)}</td>
+       <td>{money(entry.previousReserveUsd)} → {money(entry.newReserveUsd)}</td>
+       <td>{entry.reason}</td>
+      </tr>)}</tbody>
+     </table></div>}
+  </section>
   {admin?<form method="POST" action="/api/configuration/cost-policy" className="gateForm">
    <input type="hidden" name="version" value={policy.version}/>
    <label>Teto total interno (US$)

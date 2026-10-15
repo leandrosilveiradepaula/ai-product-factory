@@ -1,3 +1,9 @@
+## Revisão do formulário financeiro (15/10/2026) — antes de Preview
+
+- A seção `Configuração → Orçamento e custos` passa a mostrar as **últimas 20 alterações auditadas** de teto/reserva, com ator, horário, valor anterior/novo e justificativa. O histórico é lido server-side pela chave privilegiada do Control Plane. Falha de leitura **não** aparece como "sem alterações": UI informa "Histórico indisponível".
+- As regras de entrada passam a aceitar o limite máximo de `100000.0000`, igual ao CHECK de banco, sem permitir zero, quantia negativa ou precisão superior a quatro casas. Isso é validação de formulário, **não autorização** para elevar o teto atualmente aprovado de US$ 10,00. Mudanças financeiras exigem administrador, confirmação explícita e auditoria na mesma transação.
+- Esta revisão ainda pertence à PR Draft #866; CI/Preview SHA-exato/merge humano seguem obrigatórios.
+
 ## 2026-10-15 — Service Desk wave 1 dispatch gate fix awaiting human merge
 
 - Production Evidence: GHA [run 38822922959](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38822922959) Product Stage `FACTORY_PRIMARY_MODEL_ENABLED=true` inside protected `openai-api` environment, completed Service Desk planning run `d5f1ea54-c388-4266-83b1-b8b06f2fd302`, materialized change set `effc36be-212c-42f2-928b-97381b6d8a28` with 13 pending work units across eight dependency waves. Dispatcher subsequently logged `FACTORY_PRIMARY_MODEL_ENABLED=false`, `FACTORY_DISPATCH_PRIMARY_READY=true` and returned `blocked_executor_readiness` because unprotected `dispatch` cannot see environment-scoped GitHub vars.
