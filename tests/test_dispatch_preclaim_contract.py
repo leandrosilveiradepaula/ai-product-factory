@@ -16,7 +16,11 @@ class PreclaimDispatchSafetyContractTests(unittest.TestCase):
 
     def test_budget_and_switch_default_off(self):
         dispatch=WORKFLOW.split("\n  dispatch:\n",1)[1].split("\n  direct:\n",1)[0]
-        self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}",dispatch)
+        self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",dispatch)
+        self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED",dispatch)
+        self.assertIn("FACTORY_DISPATCH_PRIMARY_READY: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",dispatch)
+        self.assertNotIn("OPENAI_API_KEY:",dispatch)
+        self.assertIn("needs.product-stage.result != 'failure'",dispatch)
         self.assertIn('FACTORY_MODEL_BUDGET_USD: "10.00"',dispatch)
         self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',dispatch)
 

@@ -15,7 +15,13 @@ class PrimaryActivationWorkflowTests(unittest.TestCase):
     def test_product_and_direct_are_explicit_opt_in_default_false(self):
         workflow=WF.read_text()
         opt_in="FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}"
-        self.assertEqual(workflow.count(opt_in),3)  # Product, Direct, and preclaim dispatcher
+        self.assertEqual(workflow.count(opt_in),2)  # Only protected Product and Direct environments
+        dispatch=workflow.split("\n  dispatch:\n",1)[1].split("\n  direct:\n",1)[0]
+        self.assertIn(
+            "FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",
+            dispatch,
+        )
+        self.assertIn("needs: [schedule-probe, github-access-preflight, product-stage, codex-route-preflight]",dispatch)
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"',workflow)
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "false"',workflow)
 

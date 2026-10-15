@@ -7,7 +7,10 @@ class PrimaryModelRunnerGateTests(unittest.TestCase):
         workflow = (root / ".github/workflows/autonomous-runner.yml").read_text()
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"', workflow)
         strict_opt_in = "FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}"
-        self.assertEqual(workflow.count(strict_opt_in), 3)  # Includes isolated dispatch preclaim
+        self.assertEqual(workflow.count(strict_opt_in), 2)  # Only jobs with protected openai-api environment
+        dispatch=workflow.split("\n  dispatch:\n",1)[1].split("\n  direct:\n",1)[0]
+        self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",dispatch)
+        self.assertNotIn("OPENAI_API_KEY:",dispatch)
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED }}', workflow)
         self.assertNotIn("|| 'true'", workflow)
         self.assertIn("FACTORY_MODEL_RESERVE_USD", workflow)
