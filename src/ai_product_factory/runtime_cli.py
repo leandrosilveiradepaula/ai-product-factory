@@ -56,6 +56,7 @@ from .release_policy_store import SupabaseReleasePolicyStore
 from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
 from .bounded_continuation import drain_deterministic_lane, drain_waiting_followups
+from .product_worker_readiness import record_product_worker_readiness
 from .delivery_metrics import SupabaseDeliveryMetricsReader
 from .project_release_reconciliation import SupabaseProjectReleaseReconciler
 from .project_github_access import SupabaseProjectGitHubAccessStore
@@ -663,9 +664,10 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
+ elif args.mode=="product-readiness-evidence":out=record_product_worker_readiness()
  elif args.mode=="github-preflight":out=run_project_github_preflight(args.project_key)
  elif args.mode=="schedule-probe":out=SupabaseScheduleProbe().probe()
  elif args.mode=="backlog-audit":out=SupabaseBacklogInventoryReader().read()

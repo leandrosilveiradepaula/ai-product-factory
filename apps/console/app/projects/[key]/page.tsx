@@ -84,6 +84,18 @@ async function requestGitHubRecheck(formData:FormData){
  revalidatePath("/projects/"+projectKey);
 }
 
+function productWorkerBlockerMessage(reason:string){
+ const reasons:Record<string,string>={
+  model_disabled:"Modelo principal desabilitado na configuração do GitHub Actions. A tarefa permanece preservada, sem consumo de API.",
+  primary_auth_missing:"Autenticação do modelo principal indisponível ou incompleta no runner.",
+  budget_not_configured:"Orçamento ou reserva por chamada ausente ou inválida.",
+  cost_ledger_unavailable:"Não foi possível verificar com segurança o ledger de custos da Factory.",
+  paid_cost_unknown:"O ledger contém custo pago desconhecido; nenhuma nova execução paga é permitida.",
+  budget_exhausted:"Saldo do orçamento interno insuficiente para a reserva obrigatória.",
+ };
+ return reasons[reason]||"Motivo de bloqueio não reconhecido.";
+}
+
 export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
@@ -113,6 +125,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <p>O Control Plane preservou a execução <code>{p.pendingRun.id.slice(0,8)}</code>, ainda com {p.pendingRun.attemptCount} tentativas. Criar o projeto não significa que um worker já iniciou o processamento.</p>
    {p.wakeEvidence?.wakeStatus==="requested"?<p>O Console registrou um pedido de acionamento aceito pelo GitHub. Isso não comprova que o worker executou.</p>:p.wakeEvidence?.wakeStatus==="failed"?<p>O Console registrou falha ao solicitar o acionamento imediato. A execução permanece na fila para recuperação.</p>:p.wakeEvidence?.wakeStatus==="unconfigured"?<p>O Console não encontrou uma identidade autorizada para o acionamento imediato. A execução permanece na fila.</p>:<p>Não há evidência registrada de acionamento imediato para esta execução.</p>}
    {p.wakeEvidence?.workerObservedAt?<p>Última observação global do scheduler: {new Date(p.wakeEvidence.workerObservedAt).toLocaleString("pt-BR")}. {p.wakeEvidence.productQueueDetected?"A fila de trabalho de produto foi detectada; isso não confirma que esta execução foi assumida.":"Nenhum trabalho de produto foi indicado nessa observação."} A execução pode depender de habilitação do modelo, quota e orçamento.</p>:<p>Ainda não existe observação do scheduler posterior ao enfileiramento.</p>}
+   {p.wakeEvidence?.blockerCode?<p role="status"><strong>Bloqueio registrado para esta execução:</strong> {productWorkerBlockerMessage(p.wakeEvidence.blockerCode)} {p.wakeEvidence.blockedAt?<span className="muted">Evidência de {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. O worker não assumiu o run.</span>:null}</p>:null}
    <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink>{operator.role==="admin"?<form method="POST" action="/api/projects/wake-recovery"><input type="hidden" name="project_key" value={p.key}/><button className="linkButton" type="submit">Solicitar recuperação do worker</button></form>:null}</div>
   </div>:null}
   <div className="projectOrientation">

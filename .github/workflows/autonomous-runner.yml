@@ -254,10 +254,31 @@ jobs:
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
+      - name: Record run-linked Product Stage readiness without paid model calls
+        id: product_readiness_evidence
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && (needs.schedule-probe.outputs.product_work == 'true' || github.event_name == 'workflow_dispatch') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_product_factory.runtime_cli --mode product-readiness-evidence > /tmp/factory-product-readiness-evidence.json
+          cat /tmp/factory-product-readiness-evidence.json
+          python - <<'PY'
+          import json, os
+          data=json.load(open('/tmp/factory-product-readiness-evidence.json'))
+          ready=data.get('ready') is True
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write('ready=' + ('true' if ready else 'false') + '\n')
+          if not ready:
+              reason=str(data.get('reason_code') or 'readiness_unknown')
+              print('::warning title=Product Stage blocked::' + reason)
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+                  out.write('### Product Stage: blocked, not executed\n')
+                  out.write('Reason: ' + reason + '; run audits: ' + str(data.get('recorded', 0)) + '. No paid model call.\n')
+          PY
       - name: Process at most one product-stage run
         id: product_run
         # Do not call the model merely to check dispatch-only readiness.
-        if: ${{ steps.readiness.outputs.control_plane == 'true' && steps.readiness.outputs.primary_model == 'true' && (needs.schedule-probe.outputs.product_work == 'true' || github.event_name == 'workflow_dispatch') }}
+        if: ${{ steps.readiness.outputs.control_plane == 'true' && steps.readiness.outputs.primary_model == 'true' && steps.product_readiness_evidence.outputs.ready == 'true' && (needs.schedule-probe.outputs.product_work == 'true' || github.event_name == 'workflow_dispatch') }}
         shell: bash
         run: |
           set -euo pipefail
