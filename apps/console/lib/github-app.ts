@@ -365,3 +365,32 @@ export async function requestFactoryIntakeWakeViaGitHubApp():Promise<"requested"
   return status===401||status===403?"unavailable":"failed";
  }
 }
+
+
+/**
+ * Read-only authoritative check for the Factory repository. Registration of
+ * the GitHub App, or installation on the CRM, does not prove installation here.
+ * This never mints a repository token or requests additional permissions.
+ */
+export type FactoryWakeAppInstallation="installed_capable"|"not_installed"|"permissions_missing"|"unavailable";
+
+export async function inspectFactoryWakeAppInstallation():Promise<FactoryWakeAppInstallation>{
+ try{
+  const app=await getGitHubAppCredentials();
+  const jwt=createAppJwt(app.app_id,app.private_key);
+  const installation=await githubJson(
+   "https://api.github.com/repos/leandrosilveiradepaula/ai-product-factory/installation",jwt,
+   {signal:AbortSignal.timeout(3500)}
+  );
+  const id=Number(installation?.id);
+  if(!Number.isSafeInteger(id)||id<=0)return "unavailable";
+  const contents=String(installation?.permissions?.contents||"");
+  return contents==="write"||contents==="admin"?"installed_capable":"permissions_missing";
+ }catch(error){
+  const status=Number((error as {status?:number}).status||0);
+  if(status===404)return "not_installed";
+  // A missing Vault secret, invalid App JWT, timeout or GitHub outage is
+  // unknown, not proof that the App was never installed.
+  return "unavailable";
+ }
+}
