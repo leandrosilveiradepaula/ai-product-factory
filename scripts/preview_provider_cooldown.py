@@ -52,7 +52,8 @@ def observe_rate_limit(
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    root = f"https:    # Recently updated PRs are needed because a closed PR may still carry
+    root = f"https://api.github.com/repos/{repository}"
+    # Recently updated PRs are needed because a closed PR may still carry
     # the latest Vercel rate-limit observation. Separately enumerate every
     # open PR: an old open PR can have a recently updated provider status.
     # Use bounded pagination and fail closed on incomplete inventories.
@@ -98,7 +99,6 @@ def observe_rate_limit(
     candidates = collect_pulls("all") + collect_pulls("open")
     if len(candidates) > MAX_RECENT_PRS:
         raise RuntimeError("recent PR inventory exceeds safe bound")
-nt PR inventory exceeds safe bound")
     seen = set()
     for pull in candidates:
         sha = (pull.get("head") or {}).get("sha")
