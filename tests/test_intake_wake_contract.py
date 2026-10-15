@@ -6,6 +6,7 @@ WAKE=(ROOT/"apps/console/lib/intake-worker-wake.ts").read_text()
 APP=(ROOT/"apps/console/lib/github-app.ts").read_text()
 CONTROL=(ROOT/"apps/console/lib/control-plane.ts").read_text()
 RUNNER=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+BROKER=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
 
 class IntakeWakeContract(unittest.TestCase):
  def test_existing_app_fallback_is_scoped_and_short_lived(self):
@@ -24,6 +25,18 @@ class IntakeWakeContract(unittest.TestCase):
   self.assertIn("github.event.client_payload.source == 'console-intake'",RUNNER)
   self.assertIn("needs.schedule-probe.outputs.product_work == 'true'",RUNNER)
   self.assertIn("steps.readiness.outputs.primary_model == 'true'",RUNNER)
+
+ def test_broker_accepts_only_app_owned_runner_dispatch(self):
+  self.assertIn('event==="repository_dispatch"',BROKER)
+  self.assertIn('String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF',BROKER)
+  self.assertIn('String(payload.actor??"")!=="infodive-ai-product-factory[bot]"',BROKER)
+  self.assertIn('GitHub OIDC repository_dispatch identity not allowed',BROKER)
+  self.assertIn('github.event.action == \'factory-intake-wake\'',RUNNER)
+  self.assertIn('github.event.client_payload.source == \'console-intake\'',RUNNER)
+  self.assertIn('github.actor == \'infodive-ai-product-factory[bot]\'',RUNNER)
+  self.assertNotIn('["schedule","workflow_dispatch","push","issue_comment","repository_dispatch"]',BROKER)
+  # A wake event must not mint cross-repo tokens via the privileged endpoint.
+  self.assertIn('if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName))',BROKER)
 
  def test_durable_intake_precedes_optional_wake_audit(self):
   atomic=CONTROL.index('rpc/factory_start_project_intake_v1')
