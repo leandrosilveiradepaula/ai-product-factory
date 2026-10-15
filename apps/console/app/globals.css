@@ -500,6 +500,11 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
   gap:12px;
   margin-bottom:18px;
 }
+/* Grid children must be allowed to shrink; otherwise the observation text
+   collapses into a one-character column on narrow mobile viewports. */
+.projectOrientation > *, .projectOrientation .nextActionCard {min-width:0}
+.projectOrientation .nextActionCard {overflow-wrap:normal;word-break:normal}
+@media(max-width:1180px){.projectOrientation{grid-template-columns:minmax(0,1fr)}}
 .nextActionCard{
   border:1px solid #365890;
   background:#17243a;
