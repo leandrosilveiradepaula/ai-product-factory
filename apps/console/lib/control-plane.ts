@@ -271,7 +271,7 @@ function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record
 
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
 export type ProjectPendingRun={id:string;status:string;attemptCount:number;createdAt:string};
-export type ProjectWakeEvidence={wakeStatus:string|null;wakeAt:string|null;workerObservedAt:string|null;productQueueDetected:boolean};
+export type ProjectWakeEvidence={wakeStatus:string|null;wakeAt:string|null;workerObservedAt:string|null;productQueueDetected:boolean;blockerCode:string|null;blockedAt:string|null;workerRunId:string|null};
 export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
@@ -294,13 +294,18 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
   if(waiting){
    pendingRun={id:String(waiting.id),status:"created",attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
    const since=encodeURIComponent(pendingRun.createdAt);
-   const [wakeResponse,probeResponse]=await Promise.all([
+   const [wakeResponse,probeResponse,blockResponse]=await Promise.all([
     fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&project_id=eq.${encodeURIComponent(p.id)}&event_type=eq.project.bootstrap.wake_attempted&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
     fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&event_type=in.(schedule_probe.observed,schedule_probe.native_observed)&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
+    fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&run_id=eq.${encodeURIComponent(pendingRun.id)}&event_type=eq.product.worker_blocked&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
    ]);
    const wakeRows=wakeResponse.ok?await wakeResponse.json():[];
    const probeRows=probeResponse.ok?await probeResponse.json():[];
-   const wake=wakeRows[0],probe=probeRows[0];
+   if(!blockResponse.ok)throw new Error("Unable to read Product Stage blocker evidence");
+   const blockerRows=await blockResponse.json();
+   const wake=wakeRows[0],probe=probeRows[0],blocker=blockerRows[0];
+   const allowedBlockerCodes=new Set(["model_disabled","primary_auth_missing","budget_not_configured","cost_ledger_unavailable","paid_cost_unknown","budget_exhausted"]);
+   const blockerCode=allowedBlockerCodes.has(String(blocker?.payload?.reason_code||""))?String(blocker.payload.reason_code):null;
    const wakeStatus=["requested","failed","unconfigured"].includes(String(wake?.payload?.status||""))?String(wake.payload.status):null;
    const classes=Array.isArray(probe?.payload?.work_classes)?probe.payload.work_classes:[];
    wakeEvidence={
@@ -308,6 +313,9 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
     wakeAt:wake?.created_at?String(wake.created_at):null,
     workerObservedAt:probe?.created_at?String(probe.created_at):null,
     productQueueDetected:classes.includes("product"),
+    blockerCode,
+    blockedAt:blockerCode&&blocker?.created_at?String(blocker.created_at):null,
+    workerRunId:blockerCode&&typeof blocker?.payload?.workflow_run_id==="string"&&/^[0-9]{1,20}$/.test(blocker.payload.workflow_run_id)?blocker.payload.workflow_run_id:null,
    };
   }
   const runIds=runs.map((x:any)=>String(x.id));
