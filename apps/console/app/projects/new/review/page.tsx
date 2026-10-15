@@ -2,7 +2,8 @@ import {redirect} from "next/navigation";
 import {normalizeIntake,validateIntake,type ProjectIntake} from "../../../../lib/intake";
 import {countProjectDraftFiles} from "../../../../lib/attachments";
 import {createProjectIntakeAndBootstrap} from "../../../../lib/control-plane";
-import {ActionLink,Button,PageHeader} from "../../../ui";
+import {ActionLink,PageHeader} from "../../../ui";
+import {SubmitProjectButton} from "./submit-button";
 
 type ReviewIntake=ProjectIntake&{draftId?:string;attachmentCount?:number};
 function decode(raw:string|undefined):ReviewIntake|null{if(!raw)return null;try{return JSON.parse(Buffer.from(raw,"base64url").toString("utf8"))}catch{return null}}
@@ -34,6 +35,6 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
    <div className="section"><span className="detailLabel">Referências</span>{intake.references?.filter(ref=>/^https:\/\//i.test(ref.value)).length?<div className="stack">{intake.references.filter(ref=>/^https:\/\//i.test(ref.value)).map((ref,i)=><div className="badgeLine" key={ref.value+i}><span className="pill accent">{ref.kind}</span><a href={ref.value} target="_blank" rel="noreferrer">{ref.value}</a></div>)}</div>:<p className="muted">Não informado</p>}</div>
    <div className="intakeReviewNote"><strong>O que acontece ao iniciar</strong><p className="muted">{intake.mode==="existing"?"A Factory registra este briefing, reconcilia as evidências disponíveis do projeto e cria somente o trabalho que falta. O estágio informado é uma pista, não uma verdade presumida.":"A Factory registra este pedido como fonte do projeto, prepara o ciclo inicial e entra em Descoberta. Decisões técnicas comuns seguem autonomamente; dúvidas que mudem materialmente o produto devem voltar como decisão humana."}</p></div>
   </div>
-  <div className="actions"><ActionLink href={"/projects/new?intake="+encodeURIComponent(p.intake||"")}>Editar</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><Button variant="primary">{intake.mode==="existing"?"Importar e iniciar reconciliação":"Criar projeto e iniciar Descoberta"}</Button></form></div>
+  <div className="actions"><ActionLink href={"/projects/new?intake="+encodeURIComponent(p.intake||"")}>Editar</ActionLink><form action={start}><input type="hidden" name="intake" value={p.intake}/><SubmitProjectButton existing={intake.mode==="existing"}/></form></div>
  </>;
 }
