@@ -1,3 +1,13 @@
+## 2026-10-15 — Existing-project whole-repository baseline is independent (#713)
+
+The trusted release reader now loads `factory_projects.project_kind` using the `project_id` returned by the Control Plane RPC, not from an evaluator's `result` JSON. Missing/ambiguous project identity prevents a full-product `product_complete=true` claim. Delivery and the human release gate are unchanged.
+
+For `project_kind=existing`, a six-domain passing `product_readiness` row alone is **not** a full-product sign-off. The same run must also contain a separately recorded `factory_evaluations` row with `eval_type=existing_project_baseline`. The independently selected columns must include `status=passed` and `baseline_ref` equal to the exact candidate SHA. The row's `result` requires `assessed_commit` matching that SHA, `verification_state=executed`, a **real empty array** of `blockers`, non-empty text `evidence`, and coverage keys `repository_inventory`, `inherited_debt` and `critical_journeys`. Self-declared baseline fields inside the normal product-readiness payload cannot substitute for this independent row.
+
+This is a conservative **evidence acceptance boundary**, not an automatic baseline generator or proof that a cited audit actually ran. Assessment producers must perform and store the complete repository scan separately; no fabricated synthetic passing record is written to the Control Plane. In particular, the existing CRM's recorded product-readiness evaluations remain `failed`, and the Factory's global product readiness stays unproven. A later GitHub identity/HEAD verification is still needed before calling an assessment current.
+
+Only Python core, read-only Supabase release facts, deterministic tests and docs change in this patch. No schema migration, policy relaxation, paid-model invocation, new Vercel Preview, or production auto-merge.
+
 ## Release report: durable evaluation row is authoritative (2026-10-14 #713)
 
 A release report that says `product_complete` must corroborate the six-domain assessment against the *durable* `factory_evaluations` row. A `result` JSON containing `ready:true`/`status:passed` does **not** override a row with `status:failed`, an absent row, or a mismatched `baseline_ref`. The read boundary `SupabaseReleasePolicyStore.facts` supplies `evaluation_status` and `baseline_ref` from separate selected columns, and the deterministic `_verified_product_assessment` requires `evaluation_status == 'passed'` and `baseline_ref == candidate_commit` in addition to exact `assessed_commit` and all six domain proofs. Missing or malformed provenance is fail-closed. This never changes the independent human production release gate.

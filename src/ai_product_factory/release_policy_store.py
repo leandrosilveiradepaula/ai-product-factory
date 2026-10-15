@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from urllib.parse import quote
@@ -55,6 +56,35 @@ class SupabaseReleasePolicyStore:
                 "baseline_ref":row.get("baseline_ref"),
                 "created_at":row.get("created_at"),
             }
+            # This identity comes from the trusted Control Plane project record,
+            # never from an evaluation result JSON supplied by the evaluator.
+            project_id=facts.get("project_id")
+            if isinstance(project_id,str) and re.fullmatch(
+                r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",project_id
+            ):
+                project_rows=self._get(
+                    "factory_projects",
+                    "select=project_kind&id=eq."+quote(project_id,safe="")+"&limit=2",
+                )
+                if (isinstance(project_rows,list) and len(project_rows)==1
+                    and isinstance(project_rows[0],dict)):
+                    facts["project_kind"]=project_rows[0].get("project_kind")
+                    if facts["project_kind"]=="existing":
+                        baseline_rows=self._get(
+                            "factory_evaluations",
+                            "select=status,baseline_ref,result,created_at"
+                            f"&run_id=eq.{quote(run_id,safe='')}"
+                            "&eval_type=eq.existing_project_baseline"
+                            "&order=created_at.desc,id.desc&limit=1",
+                        )
+                        if (isinstance(baseline_rows,list) and len(baseline_rows)==1
+                            and isinstance(baseline_rows[0],dict)):
+                            baseline=baseline_rows[0]
+                            facts["existing_project_baseline"]={
+                                "evaluation_status":baseline.get("status"),
+                                "baseline_ref":baseline.get("baseline_ref"),
+                                "result":baseline.get("result"),
+                            }
         return facts
 
     def record(self,*,run_id:str,assessment)->dict:
