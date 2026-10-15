@@ -33,6 +33,14 @@ jobs:
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Reject reused GitHub run ID before allocating credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_RUN_ATTEMPT:-0}" != "1" ]; then
+            echo "::error::Authenticated visual evidence cannot reuse a GitHub run ID. Use a new workflow_dispatch; re-run would overwrite historical registry identity."
+            exit 1
+          fi
       - name: Resolve exact visual target
         shell: bash
         env:
@@ -126,12 +134,29 @@ jobs:
           FACTORY_GITHUB_OIDC: ${{ steps.oidc_provision.outputs.token }}
         run: |
           set -euo pipefail
-          body="$(node -e 'process.stdout.write(JSON.stringify({action:"provision",workflowRunId:Number(process.env.GITHUB_RUN_ID),sourceCommit:process.env.GITHUB_SHA}))')"
-          response="$(curl --fail-with-body --silent --show-error \
+          body="$(node -e 'process.stdout.write(JSON.stringify({action:"provision",workflowRunId:Number(process.env.GITHUB_RUN_ID),runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),sourceCommit:process.env.GITHUB_SHA}))')"
+          umask 077
+          result_file="$(mktemp)"
+          trap 'rm -f "$result_file"' EXIT
+          http_code="$(curl --silent --show-error --output "$result_file" --write-out '%{http_code}' \
             -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
             -H "Content-Type: application/json" \
             --data "$body" \
             "$FACTORY_VISUAL_BROKER_URL")"
+          if [ "$http_code" != "200" ]; then
+            RESULT_FILE="$result_file" HTTP_CODE="$http_code" node - <<'NODE'
+          const fs=require("fs");
+          let code="broker_request_failed";
+          try {
+            const payload=JSON.parse(fs.readFileSync(process.env.RESULT_FILE,"utf8"));
+            const allowed=new Set(["github_oidc_invalid","run_identity_mismatch","rerun_requires_new_workflow_run","duplicate_workflow_run","registry_conflict","registry_unavailable","operator_cleanup_failed","admin_operation_failed","broker_operation_failed"]);
+            if (allowed.has(payload.error)) code=payload.error;
+          } catch {}
+          console.error("::error::Visual evidence broker returned HTTP "+process.env.HTTP_CODE+" ("+code+").");
+          NODE
+            exit 1
+          fi
+          response="$(cat "$result_file")"
           RESPONSE="$response" node - <<'NODE'
           const data=JSON.parse(process.env.RESPONSE);
           for (const key of ["email","password","userId","encryptionKey","artifactName"]) {
@@ -198,16 +223,25 @@ jobs:
           fi
           if [ "$CAPTURE_OUTCOME" = "success" ] && [ "$ENCRYPT_OUTCOME" = "success" ] && [ "$UPLOAD_OUTCOME" = "success" ]; then
             action="captured"
-            body="$(node -e 'process.stdout.write(JSON.stringify({action:"captured",workflowRunId:Number(process.env.GITHUB_RUN_ID)}))')"
+            body="$(node -e 'process.stdout.write(JSON.stringify({action:"captured",workflowRunId:Number(process.env.GITHUB_RUN_ID),runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT)}))')"
+            set +e
             curl --fail-with-body --silent --show-error \
               -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
               -H "Content-Type: application/json" --data "$body" "$FACTORY_VISUAL_BROKER_URL" >/dev/null
-            cleanup="$(node -e 'process.stdout.write(JSON.stringify({action:"cleanup",workflowRunId:Number(process.env.GITHUB_RUN_ID),userId:process.env.FACTORY_VISUAL_USER_ID}))')"
+            capture_status=$?
+            # Cleanup is mandatory even when writing the 'captured' status fails.
+            cleanup="$(node -e 'process.stdout.write(JSON.stringify({action:"cleanup",workflowRunId:Number(process.env.GITHUB_RUN_ID),runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),userId:process.env.FACTORY_VISUAL_USER_ID}))')"
             curl --fail-with-body --silent --show-error \
               -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
               -H "Content-Type: application/json" --data "$cleanup" "$FACTORY_VISUAL_BROKER_URL" >/dev/null
+            cleanup_status=$?
+            set -e
+            if [ "$capture_status" -ne 0 ] || [ "$cleanup_status" -ne 0 ]; then
+              echo "::error::Visual registry finalization or temporary operator deletion failed."
+              exit 1
+            fi
           else
-            body="$(node -e 'process.stdout.write(JSON.stringify({action:"expire",workflowRunId:Number(process.env.GITHUB_RUN_ID),userId:process.env.FACTORY_VISUAL_USER_ID}))')"
+            body="$(node -e 'process.stdout.write(JSON.stringify({action:"expire",workflowRunId:Number(process.env.GITHUB_RUN_ID),runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),userId:process.env.FACTORY_VISUAL_USER_ID}))')"
             curl --fail-with-body --silent --show-error \
               -H "Authorization: Bearer $FACTORY_GITHUB_OIDC" \
               -H "Content-Type: application/json" --data "$body" "$FACTORY_VISUAL_BROKER_URL" >/dev/null

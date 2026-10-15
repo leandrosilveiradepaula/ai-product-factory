@@ -16,6 +16,12 @@ const EXPECTED = {
     "leandrosilveiradepaula/ai-product-factory/.github/workflows/authenticated-visual-evidence.yml@refs/heads/main",
 };
 
+class BrokerFailure extends Error {
+  constructor(public readonly status: number, public readonly code: string) {
+    super(code);
+  }
+}
+
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -78,18 +84,31 @@ async function adminFetch(path: string, init: RequestInit = {}) {
 
   const response = await fetch(url + path, { ...init, headers });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(
-      "Supabase admin request failed " +
-        response.status +
-        ": " +
-        detail.slice(0, 300),
+    // Never copy privileged PostgREST/Auth bodies to a caller or an Actions log.
+    throw new BrokerFailure(
+      response.status === 409 ? 409 : 503,
+      response.status === 409 ? "registry_conflict" : "admin_operation_failed",
     );
   }
   return response;
 }
 
-async function cleanupUser(userId: string) {
+async function cleanupUser(userId: string, workflowRunId: number) {
+  // Destructive Auth admin access must never trust a caller-provided user ID
+  // without checking it belongs to this exact GitHub workflow run.
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(userId) ||
+      !Number.isSafeInteger(workflowRunId) || workflowRunId <= 0) {
+    throw new BrokerFailure(403, "operator_run_mismatch");
+  }
+  const userResponse = await adminFetch(
+    "/auth/v1/admin/users/" + encodeURIComponent(userId),
+  );
+  const user = await userResponse.json();
+  const email = String(user?.email ?? "");
+  if (!/^factory-visual-[0-9]+-[a-f0-9]{16}@example\.com$/.test(email) ||
+      !email.startsWith("factory-visual-" + workflowRunId + "-")) {
+    throw new BrokerFailure(403, "operator_run_mismatch");
+  }
   try {
     await adminFetch(
       "/rest/v1/factory_console_operators?user_id=eq." +
@@ -114,14 +133,28 @@ Deno.serve(async (req: Request) => {
     return json(405, { error: "method_not_allowed" });
   }
 
+  let claims;
   try {
-    const claims = await requireGithub(req);
+    claims = await requireGithub(req);
+  } catch {
+    return json(403, { error: "github_oidc_invalid" });
+  }
+
+  try {
     const body = await req.json();
     const action = String(body.action || "");
     const workflowRunId = Number(body.workflowRunId);
 
+    const runAttempt = Number(body.runAttempt);
     if (!Number.isSafeInteger(workflowRunId) || workflowRunId <= 0) {
       return json(400, { error: "invalid_workflow_run_id" });
+    }
+    if (!Number.isSafeInteger(runAttempt) || runAttempt <= 0) {
+      return json(400, { error: "invalid_workflow_run_attempt" });
+    }
+    if (String(claims.run_id ?? "") !== String(workflowRunId) ||
+        String(claims.run_attempt ?? "") !== String(runAttempt)) {
+      return json(403, { error: "run_identity_mismatch" });
     }
 
     if (action === "provision") {
@@ -131,6 +164,24 @@ Deno.serve(async (req: Request) => {
         sourceCommit !== String(claims.sha || "")
       ) {
         return json(400, { error: "source_commit_mismatch" });
+      }
+
+      // Audit registry uses UNIQUE(workflow_run_id). Re-runs retain the same
+      // GitHub run ID, so never overwrite keys or credentials from attempt 1.
+      // A new workflow_dispatch creates a new, independently auditable run.
+      if (runAttempt !== 1) {
+        return json(409, { error: "rerun_requires_new_workflow_run" });
+      }
+      const existing = await adminFetch(
+        "/rest/v1/factory_visual_evidence_runs?workflow_run_id=eq." +
+        workflowRunId + "&select=workflow_run_id&limit=1",
+      );
+      const rows = await existing.json();
+      if (!Array.isArray(rows)) {
+        throw new BrokerFailure(503, "registry_unavailable");
+      }
+      if (rows.length) {
+        return json(409, { error: "duplicate_workflow_run" });
       }
 
       const artifactName = "authenticated-console-" + workflowRunId;
@@ -172,7 +223,7 @@ Deno.serve(async (req: Request) => {
         await adminFetch("/rest/v1/factory_visual_evidence_runs", {
           method: "POST",
           headers: {
-            Prefer: "return=minimal,resolution=merge-duplicates",
+            Prefer: "return=minimal",
           },
           body: JSON.stringify({
             workflow_run_id: workflowRunId,
@@ -186,7 +237,11 @@ Deno.serve(async (req: Request) => {
           }),
         });
       } catch (error) {
-        await cleanupUser(userId);
+        try {
+          await cleanupUser(userId, workflowRunId);
+        } catch {
+          throw new BrokerFailure(503, "operator_cleanup_failed");
+        }
         throw error;
       }
 
@@ -215,7 +270,7 @@ Deno.serve(async (req: Request) => {
     if (action === "cleanup") {
       const userId = String(body.userId || "");
       if (userId) {
-        await cleanupUser(userId);
+        await cleanupUser(userId, workflowRunId);
       }
       return json(200, { ok: true });
     }
@@ -223,11 +278,8 @@ Deno.serve(async (req: Request) => {
     if (action === "expire") {
       const userId = String(body.userId || "");
       if (userId) {
-        try {
-          await cleanupUser(userId);
-        } catch {
-          // Registry expiry still proceeds.
-        }
+        // Never report "expired" if privileged user deletion failed.
+        await cleanupUser(userId, workflowRunId);
       }
 
       await adminFetch(
@@ -244,10 +296,11 @@ Deno.serve(async (req: Request) => {
 
     return json(400, { error: "unknown_action" });
   } catch (error) {
-    console.error("visual evidence broker rejected request");
-    return json(403, {
-      error: "forbidden",
-      detail: error instanceof Error ? error.message : "unknown",
-    });
+    const safe = error instanceof BrokerFailure
+      ? error
+      : new BrokerFailure(503, "broker_operation_failed");
+    // Only machine-readable codes, never raw Supabase responses, secrets or JWT.
+    console.error("visual evidence broker rejected request: " + safe.code);
+    return json(safe.status, { error: safe.code });
   }
 });
