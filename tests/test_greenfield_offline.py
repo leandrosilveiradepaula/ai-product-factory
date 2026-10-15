@@ -10,12 +10,13 @@ from ai_product_factory.models import (
     TaskProfile,
 )
 from ai_product_factory.orchestrator import decide_execution
-from ai_product_factory.state_machine import transition
+from ai_product_factory.state_machine import InvalidTransition, transition
+from ai_product_factory.release_policy import ReleaseEnvironment, evaluate_release
 from ai_product_factory.usage import summarize_usage
 
 
 class GreenfieldOfflineAutonomyTests(unittest.TestCase):
-    def test_low_risk_greenfield_path_needs_no_model_or_human_gate(self):
+    def test_low_risk_greenfield_reaches_preview_without_paid_model(self):
         state = ProjectState(project_key="greenfield-offline")
         for stage in (
             LifecycleStage.SPECIFICATION,
@@ -52,9 +53,15 @@ class GreenfieldOfflineAutonomyTests(unittest.TestCase):
         self.assertEqual(usage.input_tokens, 0)
         self.assertEqual(usage.output_tokens, 0)
 
-        transition(state, LifecycleStage.RELEASE)
-        transition(state, LifecycleStage.OPERATIONS)
-        self.assertEqual(state.stage, LifecycleStage.OPERATIONS)
+        # Routing a low-risk task to Direct does not waive the entirely
+        # separate human production merge gate.
+        self.assertTrue(evaluate_release(ReleaseEnvironment.PROD, RiskProfile()).human_gate_required)
+        with self.assertRaises(InvalidTransition):
+            transition(state, LifecycleStage.RELEASE)
+        transition(state, LifecycleStage.HUMAN_GATE)
+        self.assertEqual(state.stage, LifecycleStage.HUMAN_GATE)
+        # No release or operations are claimed: this is an offline lifecycle
+        # simulation, not an observed human merge or live greenfield E2E.
 
     def test_production_greenfield_path_stops_at_human_gate(self):
         state = ProjectState(project_key="greenfield-production")

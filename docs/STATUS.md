@@ -1,3 +1,11 @@
+## 2026-10-15 — Greenfield lifecycle gate audit (#713, candidate Python only)
+
+- A revisão real dos testes achou uma simulação greenfield que chamava `PREVIEW -> RELEASE -> OPERATIONS` sem `HUMAN_GATE` e a maquina de estados também permitia `BLOCKED -> RELEASE/OPERATIONS`. Estes atalhos eram inconsistentes com o contrato obrigatório de merge humano em produção.
+- O candidato rejeita estas transições, preserva `PREVIEW -> HUMAN_GATE -> RELEASE -> OPERATIONS` e redireciona testes low-risk/offline para `HUMAN_GATE`. `decide_execution(RiskProfile())` continua Direct/autônomo para tarefas low-risk não-prod; `evaluate_release(PROD)` requer humano em todos os casos.
+- **Limite da evidência:** a transição `HUMAN_GATE -> RELEASE` representa apenas estado lógico. Ela não autentica o operador nem valida o merge; somente o observador GitHub/Control Plane pode fornecer essa evidência. O teste offline não prova que um projeto novo atravessou realmente o pipeline completo.
+- CRM #56 continua aberto em SHA `f5f7d91f8e98cfaf482cca72c974abb7a82f6a5e`, CI verde e Preview Vercel READY já registrados, mas E2E remoto autenticado, schema/RLS real e baseline completo seguem sem comprovação. As avaliações `product_readiness` persistidas no Control Plane eram `failed` em 2026-10-07 (SHA diferente do candidato atual); não reaproveitar esses estados como avaliação do SHA novo.
+- Somente Python, testes e docs são alterados neste candidato; Vercel Preview N/A, sem migrations, modelos pagos, execução de benchmark 63, reativação de tarefas ou auto-merge de produção.
+
 ## 2026-10-15 — Auditoria #713: baseline existente fail-closed (candidato Python sem deploy)
 
 - Leitura do Control Plane: `factory_projects` registra `crm-infodive` como `existing`, e os tres `factory_evaluations` de `eval_type=product_readiness` do CRM estao `failed`. Nenhum registro de `existing_project_baseline` foi observado no inventario de tipos. Greenfield E2E e existing E2E completos seguem **nao comprovados**.

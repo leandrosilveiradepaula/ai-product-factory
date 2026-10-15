@@ -82,6 +82,8 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar lifecycle greenfield offline sem chamadas externas.
 - [x] Validar que fluxo low-risk pode chegar autonomamente ate Preview; producao permanece sempre sob gate humano.
 - [x] Validar greenfield offline com 0 chamadas de Codex/modelo.
+- [x] Rejeitar saltos de Preview/Blocked direto para Release/Operations na maquina de estados; caminho seguro fica em `human_gate` (#713). Este teste offline **nao comprova** merge humano observado ou E2E greenfield real.
+- [ ] Demonstrar o ciclo greenfield completo com issue/branch/Direct/CI/Preview verificado/gate humano/merge observado/release/operacoes, guardando evidencias SHA-exatas. Contrato de estado sozinho nao substitui esta prova.
 - [x] Revisar gates e ampliar autonomia ate o limite seguro: non-prod low-risk autonomo; apenas riscos definidos e producao exigem humano.
 
 ### F7 - Factory Finalization
