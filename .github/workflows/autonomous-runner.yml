@@ -309,11 +309,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Integrate one completed Change Set wave
+      - name: Integrate up to three eligible Change Set waves
         shell: bash
         run: |
           if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
-            python -m ai_product_factory.runtime_cli --mode change-set-integration --worker-id "integrator-${{ github.run_id }}"
+            python -m ai_product_factory.runtime_cli --mode change-set-integration --batch-items 3 --worker-id "integrator-${{ github.run_id }}"
           else
             echo "Change Set integration is inert: Control Plane credentials are not configured."
           fi
@@ -349,10 +349,10 @@ jobs:
           else
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Process at most one pending CI run
+      - name: Process up to three distinct pending CI candidates
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode ci
+        run: python -m ai_product_factory.runtime_cli --mode ci --batch-items 3
 
 
   specialist-security:
@@ -376,11 +376,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Run at most one Security specialist review
+      - name: Run up to three Security specialist reviews
         shell: bash
         run: |
           if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
-            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role security --worker-id "security-${{ github.run_id }}"
+            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role security --batch-items 3 --worker-id "security-${{ github.run_id }}"
           else
             echo "Security specialist lane is inert: Control Plane credentials are not configured."
           fi
@@ -406,11 +406,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Run at most one QA specialist review
+      - name: Run up to three QA specialist reviews
         shell: bash
         run: |
           if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
-            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role qa --worker-id "qa-${{ github.run_id }}"
+            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role qa --batch-items 3 --worker-id "qa-${{ github.run_id }}"
           else
             echo "QA specialist lane is inert: Control Plane credentials are not configured."
           fi
@@ -436,11 +436,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Run at most one Operations specialist review
+      - name: Run up to three Operations specialist reviews
         shell: bash
         run: |
           if [ -n "$SUPABASE_URL" ] && { [ -n "$SUPABASE_SECRET_KEY" ] || [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; }; then
-            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role operations --worker-id "operations-${{ github.run_id }}"
+            python -m ai_product_factory.runtime_cli --mode specialist --specialist-role operations --batch-items 3 --worker-id "operations-${{ github.run_id }}"
           else
             echo "Operations specialist lane is inert: Control Plane credentials are not configured."
           fi
@@ -476,10 +476,10 @@ jobs:
           else
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Observe at most one human release merge
+      - name: Observe up to three already-human-merged releases
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode release
+        run: python -m ai_product_factory.runtime_cli --mode release --batch-items 3
 
   dispatch:
     if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && needs.codex-route-preflight.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}

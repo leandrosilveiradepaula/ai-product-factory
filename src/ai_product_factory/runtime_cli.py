@@ -55,6 +55,7 @@ from .release_intelligence import build_release_assessment,load_default_release_
 from .release_policy_store import SupabaseReleasePolicyStore
 from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
+from .bounded_continuation import drain_deterministic_lane
 from .delivery_metrics import SupabaseDeliveryMetricsReader
 from .project_release_reconciliation import SupabaseProjectReleaseReconciler
 from .project_github_access import SupabaseProjectGitHubAccessStore
@@ -487,6 +488,18 @@ def run_release_once()->dict:
  SupabaseAgentScheduler().release_scopes(item.run_id)
  return {"claimed":True,"status":"merged","run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,"change_set":change_set,"project_state":project_state,"run":merged}
 
+def run_bounded_deterministic_lane(mode:str,worker_id:str,max_items:int,role:str|None=None)->dict:
+ # No new reservations or paid model calls: delegates to existing guarded workers.
+ if mode=="ci":callback=run_ci_once;key="run_id"
+ elif mode=="release":callback=run_release_once;key="run_id"
+ elif mode=="change-set-integration":
+  callback=lambda:run_change_set_integration_once(worker_id);key="change_set_id"
+ elif mode=="specialist":
+  if role not in {"security","qa","operations"}:raise ValueError("valid specialist role required")
+  callback=lambda:run_specialist_once(role,worker_id);key="job_id"
+ else:raise ValueError("batch not permitted for this lane")
+ return drain_deterministic_lane(callback,max_items=max_items,identity=key)
+
 def run_retry_once(source_run_id:str,reason:str)->dict:
  if not source_run_id.strip():raise ValueError("source run id is required")
  if not reason.strip():raise ValueError("retry reason is required")
@@ -646,7 +659,7 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="health":out=run_health_once()
  elif args.mode=="github-preflight":out=run_project_github_preflight(args.project_key)
@@ -668,16 +681,16 @@ def main()->int:
  elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
  elif args.mode=="preview-probe":out=run_preview_probe_once()
  elif args.mode=="preview":out=run_preview_once()
- elif args.mode=="release":out=run_release_once()
- elif args.mode=="ci":out=run_ci_once()
+ elif args.mode=="release":out=run_bounded_deterministic_lane("release",args.worker_id,args.batch_items)
+ elif args.mode=="ci":out=run_bounded_deterministic_lane("ci",args.worker_id,args.batch_items)
  elif args.mode=="specialist":
   if not args.specialist_role:raise ValueError("--specialist-role is required for specialist mode")
-  out=run_specialist_once(args.specialist_role,args.worker_id)
+  out=run_bounded_deterministic_lane("specialist",args.worker_id,args.batch_items,args.specialist_role)
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
  elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key,args.run_id)
- elif args.mode=="change-set-integration":out=run_change_set_integration_once(args.worker_id)
+ elif args.mode=="change-set-integration":out=run_bounded_deterministic_lane("change-set-integration",args.worker_id,args.batch_items)
  elif args.mode=="dispatch":out=run_dispatch_once(args.project_key,args.max_items)
  else:out=run_product_once(args.worker_id)
  print(json.dumps(out));return 0 if not out.get("error") else 2

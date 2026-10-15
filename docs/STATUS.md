@@ -1,3 +1,11 @@
+## 2026-10-15 — Autonomous deterministic continuation within one scheduler wake (#713)
+
+- Live Control Plane read-only check: 3 projects, 0 active runs, 0 pending human gates; 10 historical `queued` children of completed parents, **not eligible for automatic replay**. The native scheduler is active and can legitimately report no work. Never synthesize tasks or mark `product_ready` because CI/Preview passed.
+- Previously, CI followup, Change Set integration, each Security/QA/Operations specialist lane and the release observer handled **one** candidate per scheduler run. The runtime now supports `--batch-items 3` for these **existing deterministic workers only**, processing at most 3 verified independent items per job and stopping on empty queues, unresolved CI, unmerged release, duplicate durable IDs, blocked status, or invalid worker output.
+- `--batch-items` defaults to 1 for manual CLI calls; generic batch helper rejects bounds >4, booleans, non-allowlisted identities, duplicate IDs and malformed responses. GitHub Action permissions, OIDC, required CI/quality, exact SHA, paid budget controls and human release observer semantics do not change.
+- Product/Direct/Codex/Preview remain single-item and governed by their existing cost, identity, quota, safety and release policies. Batch processing neither issues paid model calls nor invokes a merge operation. The scheduled job executes only when the authoritative queue probe signals work; no extra cron, GitHub Actions or Vercel deployments are requested.
+- Regression tests include 8 deterministic batch invariants and workflow contracts. Following a human merge, verify the next *actual eligible work* and not merely the scheduler heartbeat; no newly eligible work is presently live. Do not interpret this implementation as E2E greenfield completion.
+
 ## 2026-10-15 — Exact cross-repo browser evidence correlation candidate (#713)
 
 - Defeito reproduzido por inspeção: o workflow cross-repo escolhia qualquer run recente do navegador na main, o que podia associar uma execução concorrente a outro candidato. O patch inclui nonce UUID único por dispatch, run-name do filho, matching exato de workflow/branch/Factory SHA/attempt/URL/id/tempo e falha fechada para ambiguidade.
