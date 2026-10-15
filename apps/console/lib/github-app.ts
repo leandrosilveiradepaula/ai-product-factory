@@ -326,3 +326,42 @@ export async function verifyProjectGitHubApp(projectKey:string){
     tokenPersisted:false,
   };
 }
+
+/**
+ * Wake the Factory with the already-registered GitHub App, when it is installed
+ * on the Factory repository. A one-hour installation token is scoped to one
+ * repository and Contents:write only; no stored installation token or PAT.
+ */
+export async function requestFactoryIntakeWakeViaGitHubApp():Promise<"requested"|"unavailable"|"failed">{
+ try{
+  const app=await getGitHubAppCredentials();
+  const appJwt=createAppJwt(app.app_id,app.private_key);
+  const repo="leandrosilveiradepaula/ai-product-factory";
+  const installation=await githubJson("https://api.github.com/repos/"+repo+"/installation",appJwt,{
+   signal:AbortSignal.timeout(3500),
+  });
+  if(!Number(installation?.id))return "unavailable";
+  const issued=await githubJson("https://api.github.com/app/installations/"+Number(installation.id)+"/access_tokens",appJwt,{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({repositories:["ai-product-factory"],permissions:{contents:"write"}}),
+   signal:AbortSignal.timeout(3500),
+  });
+  if(typeof issued?.token!=="string"||!issued.token)return "failed";
+  if(issued?.permissions?.contents!=="write")return "failed";
+  const response=await fetch("https://api.github.com/repos/"+repo+"/dispatches",{
+   method:"POST",
+   headers:{Authorization:"Bearer "+issued.token,Accept:"application/vnd.github+json",
+    "X-GitHub-Api-Version":GITHUB_API_VERSION,"Content-Type":"application/json"},
+   body:JSON.stringify({event_type:"factory-intake-wake",client_payload:{source:"console-intake"}}),
+   signal:AbortSignal.timeout(3500),cache:"no-store",
+  });
+  if(response.status===204)return "requested";
+  console.warn("factory_intake_app_wake_failed",{status:response.status});
+  return "failed";
+ }catch(error){
+  const status=Number((error as {status?:number}).status||0);
+  if(status===404)return "unavailable";
+  console.warn("factory_intake_app_wake_failed",{status:status||"transport"});
+  return status===401||status===403?"unavailable":"failed";
+ }
+}
