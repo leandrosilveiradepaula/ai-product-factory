@@ -44,6 +44,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             LifecycleStage.REVIEW,
             LifecycleStage.VALIDATION,
             LifecycleStage.PREVIEW,
+            LifecycleStage.HUMAN_GATE,
             LifecycleStage.RELEASE,
             LifecycleStage.OPERATIONS,
         ):
