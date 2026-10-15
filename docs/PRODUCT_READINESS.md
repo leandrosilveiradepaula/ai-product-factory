@@ -1,3 +1,11 @@
+## 2026-10-15 — Coletor de inventario existente sem falsa aprovacao (#713)
+
+O comando `python -m ai_product_factory.existing_project_inventory --repo-path /checkout --candidate-sha <40-hex-sha> --repository owner/name` faz uma leitura **apenas da arvore Git commitada** na HEAD local. O SHA deve coincidir exatamente; repositorio ausente, diretório aninhado, identificadores malformados, arvore grande ou caminhos inseguros falham fechado. Relata **somente contagens** de fontes/testes/migrations/workflows/rotas e presenca de runbook de dívida, sem ler conteudo/secret de arquivos.
+
+A saida JSON carrega `status=not_assessed`, `verification_state=inventory_only`, `coverage=["repository_inventory"]` e blockers explicitos para divida herdada, journeys autenticados, identidade remota GitHub e schema/RLS de producao. **Nao** escreve `factory_evaluations`, nao afirma `existing_project_baseline=passed`, nao prova que os dados do CRM estão corretos e nao autoriza release. Mesmo forçando indevidamente `evaluation_status=passed` ao consumir a saida, o verificador de prontidao continua a rejeita-la por ausencia de `verification_state=executed` e evidencias complementares. Testes exercitam checkout fixture real, SHA incorreto, paths nao confiaveis, comando e redacao.
+
+A proxima fase exige checkout autorizado do repo existente em executor confiavel, auditoria separada da divida herdada, validação RLS/migrations no banco real CRM (nao presente no conector atual), E2E autenticado do Preview no SHA exato e uma avaliacao duravel ligada ao run que passou os gates. O coletor nao requer chaves, serviços novos, modelos pagos ou Preview Vercel.
+
 ## 2026-10-15 — Existing-project whole-repository baseline is independent (#713)
 
 The trusted release reader now loads `factory_projects.project_kind` using the `project_id` returned by the Control Plane RPC, not from an evaluator's `result` JSON. Missing/ambiguous project identity prevents a full-product `product_complete=true` claim. Delivery and the human release gate are unchanged.
