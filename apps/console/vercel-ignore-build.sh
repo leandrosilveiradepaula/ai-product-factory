@@ -10,17 +10,9 @@ case "${VERCEL_GIT_COMMIT_REF-}" in
       ''|*[!0-9]*) exit 0 ;;
     esac
 
-    previous="${VERCEL_GIT_PREVIOUS_SHA-}"
-    # Compare all changes since the last successful deployment, not only HEAD^.
-    # A shallow clone or unknown previous SHA cannot prove equivalence: build.
-    if printf '%s' "$previous" | grep -Eq '^[0-9a-f]{40}$' \
-      && git cat-file -e "${previous}^{commit}" 2>/dev/null; then
-      git diff --quiet "$previous" HEAD -- .
-      case "$?" in
-        0) exit 0 ;;
-        *) exit 1 ;;
-      esac
-    fi
+    # Exact candidates are promoted after CI and provider-budget gates.
+    # A SHA seen on a skipped source branch is not a READY Preview;
+    # VERCEL_GIT_PREVIOUS_SHA may be equal to the candidate despite no deployment.
     exit 1
     ;;
   preview/*) exit 0 ;;

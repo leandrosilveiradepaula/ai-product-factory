@@ -335,6 +335,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261014032600_codex_claim_agent_hardening.sql",
             "20261014092500_serialize_agent_scope_claims.sql",
             "20261014160500_atomic_project_continuation.sql",
+            "20261015093000_atomic_project_intake_bootstrap.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -683,7 +684,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn('VERCEL_GIT_PREVIOUS_SHA', ignore)
         self.assertIn('preview/pr-*', ignore)
         self.assertIn('preview/*) exit 0', ignore)
-        self.assertIn('git diff --quiet "$previous" HEAD -- .', ignore)
+        self.assertIn('exit 1', ignore.split('preview/pr-*)',1)[1].split('\n  preview/*)',1)[0])
         self.assertNotIn('preview/*) exit 1', ignore)
         self.assertIn('git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json', ignore)
         self.assertIn('case "${GITHUB_HEAD_REF}" in', workflow)

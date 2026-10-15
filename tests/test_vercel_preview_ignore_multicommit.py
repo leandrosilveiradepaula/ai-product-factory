@@ -49,8 +49,8 @@ class VercelPreviewIgnoreTests(unittest.TestCase):
  def test_multi_commit_candidate_detects_earlier_console_change(self):
   self.assertEqual(self.run_gate("preview/pr-123",self.base),1)
 
- def test_repeated_candidate_without_console_changes_is_ignored(self):
-  self.assertEqual(self.run_gate("preview/pr-123",self.head),0)
+ def test_repeated_candidate_is_rebuilt_without_ready_evidence(self):
+  self.assertEqual(self.run_gate("preview/pr-123",self.head),1)
 
  def test_first_preview_is_built_only_on_promoted_candidate_ref(self):
   self.assertEqual(self.run_gate("preview/pr-123"),1)

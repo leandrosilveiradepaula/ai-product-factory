@@ -41,7 +41,7 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         script=(ROOT/"apps/console/vercel-ignore-build.sh").read_text()
         self.assertEqual(config["ignoreCommand"],"sh ./vercel-ignore-build.sh")
         self.assertIn('VERCEL_GIT_PREVIOUS_SHA',script)
-        self.assertIn('git diff --quiet "$previous" HEAD -- .',script)
+        self.assertIn('exit 1',script.split('preview/pr-*)',1)[1].split('\n  preview/*)',1)[0])
         self.assertIn('preview/pr-*',script)
         self.assertIn('preview/*) exit 0',script)
         self.assertIn('git diff --quiet HEAD^ HEAD -- . ../../config/factory.release-policy.v1.json',script)

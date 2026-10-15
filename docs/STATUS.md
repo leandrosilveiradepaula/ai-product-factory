@@ -1,3 +1,11 @@
+## 2026-10-15 — Atomic project intake and first run (#713)
+
+The previous Console submitted create-intake, attachment-finalization and initial-bootstrap as three independent database calls. A failure after creation could strand a project with no initial run; repeating the form then hit the duplicate project key.
+
+A new privileged SECURITY INVOKER function factory_start_project_intake_v1 executes those operations in one PostgreSQL transaction, using the original draft UUID as a stable idempotency key. The server obtains the operator identity and re-counts the private draft attachments (0–10), including finalized records for exact retries, rather than trusting a count in the URL. Any count mismatch, changed intake, conflicting project key, missing task or missing durable run fails closed. The same exact retry returns the existing run rather than starting another cycle, even after it has finished. The Console no longer calls the unsafe three-step sequence on project review.
+
+**Preview validation:** a promoted `preview/pr-*` candidate always builds, even if that SHA was seen on a previously skipped branch. A Vercel status `Canceled by Ignored Build Step` is not READY evidence. Browser verification still requires a real SHA-exact Preview URL.\n\n**Required human gate:** apply and verify the versioned Supabase production migration before merging or deploying the Console change. There is intentionally no fallback to the old non-atomic flow when the RPC is unavailable. The PR's CI and Preview are only candidate evidence; they do not prove production database rollout or complete greenfield product E2E. No RLS widening, paid model calls or automatic production merge is introduced.
+
 ## 2026-10-15 — Non-starving autonomous CI/release followup (#713)
 
 - After #832 human merge (Factory main `8854d640dcf6e70ed4d40370b145d3c285facb7c`), a concrete fairness gap remained: the bounded CI/release drain intentionally stops when its oldest `ci_pending` run is waiting for external CI or its oldest `awaiting_release` PR has not been human-merged. This could prevent later *independent* ready CI results or human merges being reconciled during the same scheduler wake.
