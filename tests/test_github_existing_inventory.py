@@ -89,12 +89,18 @@ class GithubExistingInventoryTests(unittest.TestCase):
 
     def test_privileged_workflow_main_only(self):
         root=Path(__file__).resolve().parents[1]
-        s=(root/".github/workflows/crm-existing-inventory.yml").read_text()
+        s=(root/".github/workflows/crm-cross-repo-preflight.yml").read_text()
         self.assertIn("branches: [main]",s)
         self.assertIn("./.github/actions/control-plane-oidc",s)
         self.assertNotIn("pull_request_target:",s)
         self.assertNotIn("issue_comment:",s)
         self.assertIn("Upload read-only inventory",s)
+        self.assertIn('".github/crm-existing-inventory-target.json"',s)
+        self.assertIn("inventory_candidate(",s)
+        self.assertIn("get_json=lambda path: _get(token,path)",s)
+        broker=(root/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn("crm-cross-repo-preflight.yml@refs/heads/main",broker)
+        self.assertNotIn("crm-existing-inventory.yml@refs/heads/main",broker)
         self.assertNotIn("factory_evaluations",s)
 
 

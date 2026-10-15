@@ -13,6 +13,8 @@ on:
       - ".github/workflows/crm-cross-repo-preflight.yml"
       - "src/ai_product_factory/github_app_runtime.py"
       - "src/ai_product_factory/github_auth.py"
+      - "src/ai_product_factory/existing_project_github_inventory.py"
+      - ".github/crm-existing-inventory-target.json"
       - "supabase/functions/factory-runtime-control-plane/index.ts"
 
 permissions:
@@ -78,4 +80,41 @@ jobs:
               "credential_path":"github_app_only",
               "token_persisted":False,
           }))
+          # The GitHub App token and broker already belong to THIS trusted
+          # workflow's explicit OIDC allowlist. Do not mint a second token or
+          # introduce another privileged workflow with a wider trust boundary.
+          from pathlib import Path
+          from ai_product_factory.existing_project_github_inventory import inventory_candidate, _get
+          target=json.loads(Path(".github/crm-existing-inventory-target.json").read_text(encoding="utf-8"))
+          if not isinstance(target,dict) or set(target)!={"repository","candidate_sha","pr_number"}:
+              raise SystemExit("inventory target metadata is not strictly pinned")
+          if target["repository"] != repository:
+              raise SystemExit("inventory repository differs from credential preflight")
+          evidence=inventory_candidate(
+              repository=repository,
+              candidate_sha=target["candidate_sha"],
+              pr_number=target["pr_number"],
+              get_json=lambda path: _get(token,path),
+          )
+          if (evidence["status"]!="not_assessed" or
+              evidence["verification_state"]!="inventory_only" or
+              evidence["coverage"]!=["repository_inventory"] or
+              not evidence["blockers"] or evidence["evidence"] or
+              evidence["production_schema_verified"] or
+              evidence["authenticated_journeys_verified"]):
+              raise SystemExit("Git inventory cannot be promoted to product readiness")
+          output=Path("audit-evidence/crm-existing-inventory.json")
+          output.parent.mkdir(parents=True,exist_ok=True)
+          output.write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\\n",encoding="utf-8")
+          print(json.dumps({"inventory_state":"not_assessed",
+                            "candidate_commit":evidence["assessed_commit"],
+                            "tracked_files":evidence["inventory"]["tracked_files"],
+                            "existing_project_baseline_passed":False}))
           PY
+      - name: Upload read-only inventory
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: crm-existing-tree-inventory
+          path: audit-evidence/crm-existing-inventory.json
+          retention-days: 7
+          if-no-files-found: error
