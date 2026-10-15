@@ -69,7 +69,9 @@ def _missing_nonhuman(readiness:dict)->tuple[str,...]:
 
 
 
-def _verified_product_assessment(raw:dict, candidate_commit:str)->tuple[dict,bool]:
+def _verified_product_assessment(
+    raw:dict,candidate_commit:str,*,project_kind:object=None,existing_baseline:object=None
+)->tuple[dict,bool]:
     """Never trust a summary flag as evidence of whole-product readiness.
 
     Validate the *full* six-domain product-readiness assessment for this exact
@@ -119,7 +121,51 @@ def _verified_product_assessment(raw:dict, candidate_commit:str)->tuple[dict,boo
     result=verified.as_result()
     if not verified.ready:
         result["reason"]="full product assessment did not satisfy required domains"
-    return result,verified.ready
+        return result,False
+    if not isinstance(project_kind,str) or not project_kind.strip():
+        result.update(ready=False,status="not_ready",
+                      reason="trusted project kind not verified")
+        result["blockers"].append("project_kind: trusted Control Plane metadata required")
+        return result,False
+    if project_kind=="existing":
+        baseline_ok,reason=_verified_existing_baseline(existing_baseline,candidate_commit)
+        if not baseline_ok:
+            result.update(ready=False,status="not_ready",
+                          reason="existing project baseline has not passed")
+            result["blockers"].append(reason)
+            return result,False
+        result["existing_project_baseline"]={"status":"passed","candidate_commit":candidate_commit}
+    return result,True
+
+
+def _verified_existing_baseline(raw:object,candidate_commit:str)->tuple[bool,str]:
+    """Require a separate durable, run-linked full-repository baseline audit.
+
+    A forged baseline nested in product_readiness.result is not evidence.
+    This evaluator does not assert GitHub current HEAD or authorize a merge.
+    """
+    if not isinstance(raw,dict) or raw.get("evaluation_status")!="passed":
+        return False,"existing_project_baseline: independent passed evaluation required"
+    if raw.get("baseline_ref")!=candidate_commit:
+        return False,"existing_project_baseline: durable baseline must match candidate"
+    payload=raw.get("result")
+    if not isinstance(payload,dict) or payload.get("assessed_commit")!=candidate_commit:
+        return False,"existing_project_baseline: current candidate audit is missing"
+    if payload.get("verification_state")!="executed":
+        return False,"existing_project_baseline: executed audit required"
+    if payload.get("blockers")!=[]:
+        return False,"existing_project_baseline: unresolved or malformed blockers"
+    coverage=payload.get("coverage")
+    required={"repository_inventory","inherited_debt","critical_journeys"}
+    if (not isinstance(coverage,list) or
+        any(not isinstance(v,str) or not v.strip() for v in coverage) or
+        not required.issubset(set(coverage))):
+        return False,"existing_project_baseline: full repository coverage missing"
+    evidence=payload.get("evidence")
+    if (not isinstance(evidence,list) or not evidence or
+        any(not isinstance(v,str) or not v.strip() for v in evidence)):
+        return False,"existing_project_baseline: valid evidence references required"
+    return True,""
 
 
 def build_release_assessment(
@@ -150,7 +196,11 @@ def build_release_assessment(
     )
     decision=evaluate_release_policy(policy,context)
     raw_product=facts.get("product_readiness") if isinstance(facts.get("product_readiness"),dict) else {}
-    product_readiness,product_ready=_verified_product_assessment(raw_product,candidate_commit)
+    product_readiness,product_ready=_verified_product_assessment(
+        raw_product,candidate_commit,
+        project_kind=facts.get("project_kind"),
+        existing_baseline=facts.get("existing_project_baseline"),
+    )
     previous=facts.get("previous_production")
     rollback={
         "migration_change":migration_change,

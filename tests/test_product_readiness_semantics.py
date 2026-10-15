@@ -71,7 +71,7 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
             policy=_policy(),candidate_commit=sha,
             changed_files=("src/example.py",),risk={},
             facts={"definition_of_done":{"satisfied":[],"missing":[]},
-                   "product_readiness":product},
+                   "product_readiness":product,"project_kind":"platform"},
             unknown_paid_cost=False,known_cost=Decimal("0"),
         )
 
@@ -80,6 +80,55 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         self.assertTrue(assessment.report["product_complete"])
         self.assertEqual(assessment.report["product_readiness"]["status"],"passed")
         self.assertEqual(len(assessment.report["product_readiness"]["domains"]),6)
+
+    def test_trusted_project_kind_cannot_be_forged_from_evaluation_json(self):
+        product=self._full_evidence()
+        product["project_kind"]="platform"
+        out=build_release_assessment(
+            policy=_policy(),candidate_commit=GIT_COMMIT,
+            changed_files=("src/example.py",),risk={},
+            facts={"definition_of_done":{"satisfied":[],"missing":[]},
+                   "product_readiness":product},
+            unknown_paid_cost=False,known_cost=Decimal("0"),
+        )
+        self.assertFalse(out.report["product_complete"])
+        self.assertIn("project_kind: trusted Control Plane metadata required",
+                      out.report["product_readiness"]["blockers"])
+
+    def test_existing_project_requires_independent_current_full_repository_baseline(self):
+        evidence=self._full_evidence()
+        def assess(baseline):
+            return build_release_assessment(
+                policy=_policy(),candidate_commit=GIT_COMMIT,
+                changed_files=("src/example.py",),risk={},
+                facts={"definition_of_done":{"satisfied":[],"missing":[]},
+                       "project_kind":"existing","product_readiness":evidence,
+                       "existing_project_baseline":baseline},
+                unknown_paid_cost=False,known_cost=Decimal("0"),
+            )
+        self.assertFalse(assess(None).report["product_complete"])
+        baseline={"evaluation_status":"passed","baseline_ref":GIT_COMMIT,
+                  "result":{"assessed_commit":GIT_COMMIT,
+                            "verification_state":"executed","blockers":[],
+                            "coverage":["repository_inventory","inherited_debt","critical_journeys"],
+                            "evidence":["audit:full-repository:"+GIT_COMMIT]}}
+        for field,value in (
+            ("evaluation_status","failed"),("baseline_ref","b"*40),
+        ):
+            bad=dict(baseline,**{field:value})
+            self.assertFalse(assess(bad).report["product_complete"])
+        for override in (
+            {"verification_state":"reviewed"},
+            {"coverage":["repository_inventory"]},
+            {"evidence":[]},{"blockers":["unresolved risk"]},
+            {"assessed_commit":"b"*40},
+        ):
+            bad=dict(baseline,result={**baseline["result"],**override})
+            self.assertFalse(assess(bad).report["product_complete"])
+        result=assess(baseline)
+        self.assertTrue(result.report["product_complete"])
+        self.assertEqual(result.report["product_readiness"]["existing_project_baseline"]["status"],"passed")
+        self.assertNotEqual(result.report["release_state"],"released")
 
     def test_short_sha_can_never_mark_release_product_complete(self):
         evidence=self._full_evidence(sha="abc")

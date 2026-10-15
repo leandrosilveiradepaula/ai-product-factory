@@ -1,3 +1,9 @@
+## 2026-10-15 — Auditoria #713: baseline existente fail-closed (candidato Python sem deploy)
+
+- Leitura do Control Plane: `factory_projects` registra `crm-infodive` como `existing`, e os tres `factory_evaluations` de `eval_type=product_readiness` do CRM estao `failed`. Nenhum registro de `existing_project_baseline` foi observado no inventario de tipos. Greenfield E2E e existing E2E completos seguem **nao comprovados**.
+- Gap encontrado: release intelligence revalidava seis dominios e SHA, mas nao exigia uma linha de baseline independente para projetos existentes; uma avaliacao auto-relatada poderia concluir `product_complete` sem cobertura de heranca. O candidato passa a ler `project_kind` do Control Plane e exige `existing_project_baseline` de avaliacao separada, mesmo run e SHA exato, com inventario de repositorio, divida herdada e jornadas criticas executados. Sem evidencia duravel, `product_complete=false` e gate humano de merge inalterado.
+- Este commit trata apenas a fronteira de leitura e validação; nao cria avaliacao ficticia, nao executa scan privado do CRM, nao altera Supabase/Console e nao declara Factory globalmente pronta. Necessario CI e merge humano; Preview N/A.
+
 ## 2026-10-15 — Reconciliacao real de producao e gate funcional OIDC v2 (#822)
 
 - `main` reconciliada em `0c206195a8b0a46105be97d64358bb5de3315642` (PR #823 mergeado por humano); `validate` de push #38667957627 SUCCESS. Vercel Console previamente READY no SHA especifico `34c614be92a544bb52c1b2634fc6c82b1be6d25e` (#811); nao atribuir nova imagem Console a merge posterior que apenas alterou Python/workflow.
