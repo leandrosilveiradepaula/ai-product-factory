@@ -36,11 +36,16 @@ export async function finalizeProjectDraftFiles(draftId:string,projectId:string)
 export async function countProjectDraftFiles(draftId:string){
  const operator=await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane unavailable");
  const response=await fetch(
-  cfg.url+"/rest/v1/factory_project_attachments?select=id&draft_id=eq."+encodeURIComponent(draftId)+"&operator_user_id=eq."+encodeURIComponent(operator.userId)+"&project_id=is.null",
+  cfg.url+"/rest/v1/factory_project_attachments?select=id&draft_id=eq."+encodeURIComponent(draftId)+"&operator_user_id=eq."+encodeURIComponent(operator.userId),
   {headers:cfg.headers,cache:"no-store"}
  );
  if(!response.ok)throw new Error("Não foi possível consultar os anexos do rascunho.");
- const rows=await response.json();return Array.isArray(rows)?rows.length:0;
+ // Include already-finalized rows so a successful draft retry keeps its original count.
+ // The atomic RPC checks operator ownership and the exact destination on replay.
+ const rows=await response.json();
+ if(!Array.isArray(rows)||rows.some(row=>!row||typeof row.id!=="string"))
+   throw new Error("Resposta inválida na contagem de anexos.");
+ return rows.length;
 }
 
 export async function uploadProjectContinuationFile(projectId:string,requestId:string,file:File){

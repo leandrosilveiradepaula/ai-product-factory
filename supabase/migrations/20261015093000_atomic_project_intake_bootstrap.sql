@@ -18,6 +18,7 @@ BEGIN
     OR jsonb_typeof(p_spec) IS DISTINCT FROM 'object'
     OR p_manifest->>'source' IS DISTINCT FROM 'factory-console'
     OR p_manifest->>'onboarding_mode' IS DISTINCT FROM p_project_kind
+    OR p_manifest ?| ARRAY['bootstrap_request_id','bootstrap_attachment_count','bootstrap_operator_id']
  THEN RAISE EXCEPTION 'invalid atomic project intake' USING errcode='PT400'; END IF;
  -- Serialize a not-yet-existing project key: row-level FOR UPDATE is
  -- insufficient when two starts race before the first INSERT.
@@ -39,6 +40,7 @@ BEGIN
       OR v_name IS DISTINCT FROM btrim(p_name)
       OR coalesce(v_repo,'') IS DISTINCT FROM coalesce(nullif(btrim(p_repository),''),'')
       OR v_kind IS DISTINCT FROM p_project_kind
+      OR (v_manifest - 'bootstrap_request_id' - 'bootstrap_attachment_count' - 'bootstrap_operator_id') IS DISTINCT FROM p_manifest
       OR v_spec IS DISTINCT FROM p_spec
    THEN RAISE EXCEPTION 'project key belongs to different intake' USING errcode='PT409'; END IF;
    SELECT count(*) INTO v_count FROM public.factory_project_attachments

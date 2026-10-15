@@ -33,6 +33,27 @@ class AtomicProjectStartTests(unittest.TestCase):
   for marker in ("result.project_id","result.task_id","result.run_id","result.request_id!==draftId","result.attachment_count!==expectedCount",'typeof result.created!=="boolean"'):
    self.assertIn(marker,CONTROL)
 
+ def test_idempotent_retry_counts_already_finalized_operator_attachments(self):
+  attachments=(ROOT/"apps/console/lib/attachments.ts").read_text()
+  count=attachments.split("export async function countProjectDraftFiles(",1)[1].split("export async function uploadProjectContinuationFile(",1)[0]
+  self.assertIn("draft_id=eq.",count)
+  self.assertIn("operator_user_id=eq.",count)
+  self.assertNotIn("project_id=is.null",count)
+  self.assertIn("!Array.isArray(rows)",count)
+  self.assertIn("bootstrap_attachment_count",SQL)
+  self.assertIn("AND finalized_at IS NOT NULL",SQL)
+
+ def test_divergent_manifest_replay_rejected(self):
+  self.assertIn("IS DISTINCT FROM p_manifest",SQL)
+  self.assertIn("p_manifest ?| ARRAY['bootstrap_request_id'",SQL)
+
+ def test_promoted_preview_never_skips_the_candidate_build(self):
+  script=(ROOT/"apps/console/vercel-ignore-build.sh").read_text()
+  candidate=script.split("preview/pr-*)",1)[1].split("\\n  preview/*)",1)[0]
+  self.assertIn("exit 1",candidate)
+  self.assertNotIn("git diff",candidate)
+  self.assertNotIn("VERCEL_GIT_PREVIOUS_SHA-",candidate)
+
  def test_production_migration_gate_is_explicit(self):
   ops=(ROOT/"docs/OPERATIONS.md").read_text()
   self.assertIn("before merging or deploying the Console change",ops)
