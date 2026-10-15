@@ -77,7 +77,7 @@ jobs:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
-      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_BUDGET_USD: "10.00"
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -194,7 +194,7 @@ jobs:
       FACTORY_PRIMARY_AUTH_MODE: api_key
       # Never imply paid authorization from a secret alone; unset GitHub variable stays off.
       FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
-      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_BUDGET_USD: "10.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -519,7 +519,7 @@ jobs:
       # Never pass the OpenAI key to dispatcher. Only the prior auth signal.
       FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
       FACTORY_DISPATCH_PRIMARY_READY: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}
-      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_BUDGET_USD: "10.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
       FACTORY_CODEX_ENABLED: ${{ vars.FACTORY_CODEX_ENABLED == 'true' && 'true' || 'false' }}
       # No Codex token/WIF claims ever cross into dispatcher.
@@ -601,7 +601,7 @@ jobs:
       FACTORY_PRIMARY_AUTH_MODE: api_key
       # Never imply paid authorization from a secret alone; unset GitHub variable stays off.
       FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}
-      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_BUDGET_USD: "10.00"
       FACTORY_MODEL_RESERVE_USD: "0.50"
       GITHUB_TOKEN: ${{ github.token }}
       FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
@@ -885,7 +885,7 @@ jobs:
       PYTHONPATH: src
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
-      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_BUDGET_USD: "10.00"
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -922,7 +922,7 @@ jobs:
       PYTHONPATH: src
       FACTORY_GITHUB_ALERTS_ENABLED: "true"
       FACTORY_ALERTS_GITHUB_REPOSITORY: ${{ github.repository }}
-      FACTORY_MODEL_BUDGET_USD: "4.00"
+      FACTORY_MODEL_BUDGET_USD: "10.00"
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
