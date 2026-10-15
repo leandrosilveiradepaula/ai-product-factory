@@ -53,6 +53,15 @@ const githubAppMessages:Record<string,{status:string;message:string}>={
  verification_failed:{status:"failed",message:"Não foi possível verificar a instalação da GitHub App para este projeto."},
 };
 
+const repoLinkMessages:Record<string,{status:string;message:string}>={
+ linked:{status:"success",message:"Repositório privado vinculado; permissões da GitHub App verificadas pelo servidor."},
+ not_ready:{status:"attention",message:"Ainda não foi possível validar o repositório privado, a branch main e as permissões da GitHub App. Crie o repositório com README e autorize a App antes de tentar novamente."},
+ already_bound:{status:"failed",message:"O repositório já está associado a outro projeto ou este projeto possui outro vínculo. Nenhuma alteração foi feita."},
+ not_eligible:{status:"failed",message:"A vinculação está disponível apenas para projetos novos ativos."},
+ verify_pending:{status:"attention",message:"O repositório foi encontrado, mas a verificação final ainda não foi concluída. Consulte o estado GitHub abaixo ou tente verificar novamente."},
+ unavailable:{status:"failed",message:"O Control Plane não conseguiu registrar o vínculo. Nenhuma execução paga foi solicitada."},
+};
+
 const githubCapabilityLabels:Record<string,string>={
  metadata_read:"Repositório conectado",
  contents_read:"Leitura do código",
@@ -96,7 +105,7 @@ function productWorkerBlockerMessage(reason:string){
  return reasons[reason]||"Motivo de bloqueio não reconhecido.";
 }
 
-export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string}>}){
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string;repo_link?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
   const jar=await cookies();
@@ -107,10 +116,15 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
- const action=nextAction(p.stage,hasPendingDatabase,activeTasks.length);
+ const action=!p.repository&&p.kind==="greenfield"?{
+  title:"Vincular repositório GitHub",
+  body:"O projeto possui planejamento, mas precisa de um repositório privado autorizado pela GitHub App para iniciar a implementação. O orçamento do modelo permanece independente.",
+  href:"#repository-setup",label:"Preparar repositório",
+ }:nextAction(p.stage,hasPendingDatabase,activeTasks.length);
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
+ const repositoryNotice=query.repo_link?repoLinkMessages[query.repo_link]:undefined;
  const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
@@ -119,6 +133,22 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
+  {repositoryNotice?<div className={repositoryNotice.status==="success"?"card pendingProjectNotice success":repositoryNotice.status==="attention"?"card pendingProjectNotice":"card pendingProjectNotice danger"} role="status"><strong>Repositório GitHub:</strong><p>{repositoryNotice.message}</p></div>:null}
+  {!p.repository&&p.kind==="greenfield"?<section className="section" id="repository-setup">
+   <SectionHeader title="Preparar repositório para implementação" action={<StatusPill status="attention" label="Ação administrativa"/>}/>
+   <div className="card denseStack">
+    <p>O Service Desk precisa de um repositório GitHub próprio antes de receber issues, branches e código. A Factory não criará repositórios usando credenciais que não possua, nem ampliará a instalação da GitHub App sem sua autorização.</p>
+    <p><strong>Nome previsto:</strong> <code>{"leandrosilveiradepaula/"+p.key}</code>. Crie um repositório <strong>privado</strong>, com README e branch <code>main</code>.</p>
+    <div className="actions">
+     <a className="linkButton primary" href={"https://github.com/new?name="+encodeURIComponent(p.key)+"&visibility=private"} target="_blank" rel="noreferrer">1. Criar repositório privado no GitHub</a>
+     <a className="linkButton" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">2. Autorizar repositório na GitHub App</a>
+    </div>
+    {operator.role==="admin"?<form method="POST" action={"/api/projects/"+encodeURIComponent(p.key)+"/link-repository"}>
+      <button className="linkButton" type="submit">3. Verificar e vincular repositório</button>
+    </form>:<p className="muted">Somente um administrador pode concluir a vinculação.</p>}
+    <p className="muted">O servidor exige repositório privado, identidade exata, branch inicializada e token temporário com permissões de implementação. Esta ação não inicia modelos pagos nem libera merge automático.</p>
+   </div>
+  </section>:null}
   {query.wake_recovery?<div className="card noticeCard" role="status"><strong>Recuperação do worker:</strong> {query.wake_recovery==="requested"?"Solicitação aceita pelo GitHub; aguarde a execução real.":query.wake_recovery==="cooldown"?"Já houve uma tentativa recente. Aguarde pelo menos 15 minutos.":query.wake_recovery==="unconfigured"?"A integração de disparo não está configurada para a Factory.":query.wake_recovery==="not_eligible"?"Não foi encontrada uma execução inicial pendente elegível.":query.wake_recovery==="failed"?"Falha no acionamento. A tarefa continua preservada.":"Não foi possível verificar a recuperação."}</div>:null}
   {p.pendingRun&&p.stage==="discovery"?<div className="card pendingProjectNotice" role="status">
    <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>Descoberta ainda não iniciada</strong></div>

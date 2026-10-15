@@ -327,6 +327,57 @@ export async function verifyProjectGitHubApp(projectKey:string){
   };
 }
 
+
+/** Read-only GitHub App probe before a new private project repository is linked.
+ * Never use a PAT, create a repository, persist a token, or widen installation access.
+ */
+export async function inspectPrivateProjectRepositoryBeforeLink(
+ repository:string
+):Promise<{repositoryId:number;installationId:number;mainSha:string}>{
+ const match=/^(leandrosilveiradepaula)\/([a-z0-9][a-z0-9-]{0,99})$/.exec(repository);
+ if(!match)throw new Error("Project repository must use the approved personal account and slug");
+ const owner=match[1],name=match[2];
+ const app=await getGitHubAppCredentials();
+ const jwt=createAppJwt(app.app_id,app.private_key);
+ const installation=await githubJson(
+  "https://api.github.com/repos/"+owner+"/"+name+"/installation",jwt
+ );
+ const installationId=Number(installation?.id||0);
+ if(!Number.isSafeInteger(installationId)||installationId<=0||
+    String(installation?.account?.login||"").toLowerCase()!==owner){
+  throw new Error("GitHub App installation does not match project owner");
+ }
+ const issued=await githubJson(
+  "https://api.github.com/app/installations/"+installationId+"/access_tokens",
+  jwt,
+  {method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({repositories:[name],permissions:APP_PERMISSIONS})}
+ );
+ const token=String(issued?.token||"");
+ if(!token)throw new Error("GitHub App token unavailable");
+ const perms=issued?.permissions||{};
+ if(!permissionAllowsWrite(perms.contents)||!permissionAllowsWrite(perms.issues)||
+    !permissionAllowsWrite(perms.pull_requests)||
+    perms.actions!=="read"||perms.statuses!=="read"||perms.checks!=="read"){
+  throw new Error("GitHub App capabilities insufficient for product implementation");
+ }
+ const metadata=await githubJson("https://api.github.com/repos/"+owner+"/"+name,token);
+ const repositoryId=Number(metadata?.id||0);
+ if(!Number.isSafeInteger(repositoryId)||repositoryId<=0||
+    String(metadata?.full_name||"").toLowerCase()!==repository||
+    String(metadata?.owner?.login||"").toLowerCase()!==owner||
+    metadata?.private!==true||metadata?.archived===true||metadata?.disabled===true||
+    metadata?.default_branch!=="main"){
+  throw new Error("Expected an initialized private, active main-branch repository");
+ }
+ const ref=await githubJson(
+  "https://api.github.com/repos/"+owner+"/"+name+"/git/ref/heads/main",token
+ );
+ const mainSha=String(ref?.object?.sha||"");
+ if(!/^[a-f0-9]{40}$/.test(mainSha))throw new Error("Repository main ref is not initialized");
+ return{repositoryId,installationId,mainSha};
+}
+
 /**
  * Wake the Factory with the already-registered GitHub App, when it is installed
  * on the Factory repository. A one-hour installation token is scoped to one
