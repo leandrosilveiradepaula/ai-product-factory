@@ -1,0 +1,189 @@
+name: Service Desk isolated cross-repo QA
+
+# Owner-initiated QA for the private pilot while its Actions runners fail.
+# Evidence is NOT a substitute for pilot checks, tenant RLS or Preview.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-desk-qa-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-private-candidate:
+    if: >-
+      ${{
+        github.repository == 'leandrosilveiradepaula/ai-product-factory' &&
+        github.event.issue.number == 841 &&
+        github.event.comment.user.login == 'leandrosilveiradepaula' &&
+        github.event.comment.author_association == 'OWNER' &&
+        startsWith(github.event.comment.body, '/service-desk-qa ')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verify owner request, same-repository PR and exact head SHA
+        id: candidate
+        shell: bash
+        env:
+          REQUEST_BODY: ${{ github.event.comment.body }}
+          PILOT_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from urllib import request
+
+          # Repository is fixed by the trusted main-branch workflow. Never
+          # let a GitHub issue comment choose a repository or named ref.
+          repository = "leandrosilveiradepaula/infodive-service-desk"
+          command = os.environ.get("REQUEST_BODY", "").strip()
+          match = re.fullmatch(r"/service-desk-qa\s+pr=([1-9][0-9]{0,5})\s+sha=([0-9a-f]{40})", command)
+          if not match:
+              raise SystemExit("Expected exact owner command: /service-desk-qa pr=N sha=<40-hex>")
+          pr_number, sha = match.groups()
+          token = os.environ.get("PILOT_GITHUB_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("Explicit cross-repo credential absent; no GITHUB_TOKEN fallback")
+          req = request.Request(
+              f"https://api.github.com/repos/{repository}/pulls/{pr_number}",
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2026-03-10",
+              },
+          )
+          with request.urlopen(req, timeout=30) as response:
+              pr = json.loads(response.read().decode())
+          head = pr.get("head") or {}
+          base = pr.get("base") or {}
+          if (pr.get("number") != int(pr_number)
+                  or pr.get("state") != "open"
+                  or head.get("sha") != sha
+                  or (head.get("repo") or {}).get("full_name") != repository
+                  or base.get("ref") != "main"
+                  or (base.get("repo") or {}).get("full_name") != repository):
+              raise SystemExit("Candidate is not exact current head of an open pilot PR to main")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"sha={sha}\n")
+              output.write(f"pr_number={pr_number}\n")
+          print(json.dumps({
+              "status": "exact_head_verified",
+              "repository": repository,
+              "pr_number": int(pr_number),
+              "sha": sha,
+              "token_logged": False,
+          }))
+          PY
+
+      # Secret is present only in the trusted preflight and the checkout
+      # action; never at job level, in npm scripts or in output artifacts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: leandrosilveiradepaula/infodive-service-desk
+          ref: ${{ steps.candidate.outputs.sha }}
+          token: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 1
+
+      - name: Assert detached checkout matches the authorized SHA
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          if git config --get remote.origin.url | grep -Eq '(x-access-token|ghp_|github_pat_)'; then
+            echo "::error::Checkout credentials persisted in remote URL"
+            exit 1
+          fi
+          mkdir -p .qa-evidence
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22"
+
+      - name: Require lockfile or generate non-verifying lockfile artifact
+        id: lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f package-lock.json ]; then
+            echo "::warning::The SHA lacks a committed lockfile; CI cannot pass."
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            cp package-lock.json .qa-evidence/package-lock.json
+            echo "::error::Review and commit generated lockfile; generated installs are NOT CI success."
+            exit 1
+          fi
+          node - <<'JS'
+          const fs = require("node:fs");
+          const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+          if (!p.scripts || typeof p.scripts.ci !== "string" || !p.scripts.ci.trim()) {
+            throw Error("No real npm CI script in candidate");
+          }
+          if (lock.lockfileVersion < 2 || lock.name !== p.name) {
+            throw Error("Invalid committed dependency lockfile");
+          }
+          JS
+
+      - name: Verify exact candidate with npm ci, TS/TSX and tests
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run ci
+
+      - name: Write exact-SHA evidence (no release assertion)
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          PR_NUMBER: ${{ steps.candidate.outputs.pr_number }}
+          LOCKFILE_RESULT: ${{ steps.lockfile.outcome }}
+          VERIFY_RESULT: ${{ steps.verify.outcome }}
+          FACTORY_RUN_ID: ${{ github.run_id }}
+          FACTORY_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p .qa-evidence
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          evidence = {
+              "repository": "leandrosilveiradepaula/infodive-service-desk",
+              "candidate_sha": os.environ["CANDIDATE_SHA"],
+              "pr_number": int(os.environ["PR_NUMBER"]),
+              "factory_actions_run_id": os.environ["FACTORY_RUN_ID"],
+              "factory_actions_attempt": os.environ["FACTORY_RUN_ATTEMPT"],
+              "lockfile_committed": os.environ["LOCKFILE_RESULT"] == "success",
+              "npm_ci_tsx_tests_passed": os.environ["VERIFY_RESULT"] == "success",
+              "postgres_rls_isolation_passed": False,
+              "preview_verified": False,
+              "release_authorized": False,
+              "cross_repo_status_posted": False,
+              "paid_model_calls_performed": False,
+          }
+          Path(".qa-evidence/provenance.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(evidence))
+          PY
+
+      - name: Retain provenance and optional bootstrap lockfile
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: service-desk-qa-pr-${{ steps.candidate.outputs.pr_number }}-${{ steps.candidate.outputs.sha }}
+          path: .qa-evidence/
+          retention-days: 7
+          if-no-files-found: error

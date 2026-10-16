@@ -265,14 +265,24 @@ export async function verifyProjectGitHubApp(projectKey:string){
   const repoBody=metadata.body||{};
   const repositoryId=Number(repoBody.id||0)||null;
   const defaultBranch=String(repoBody.default_branch||"main");
-  const contents=await safeGithubGet("/repos/"+repository+"/contents?ref="+encodeURIComponent(defaultBranch)+"&per_page=1",token);
-  const issues=await safeGithubGet("/repos/"+repository+"/issues?state=open&per_page=1",token);
-  const pulls=await safeGithubGet("/repos/"+repository+"/pulls?state=open&per_page=1",token);
-  const actions=await safeGithubGet("/repos/"+repository+"/actions/runs?per_page=1",token);
-  const ref=await safeGithubGet("/repos/"+repository+"/git/ref/heads/"+encodeURIComponent(defaultBranch),token);
+  // These GitHub GETs are independent, read-only capability probes. Preserve
+  // every result and the existing fail-closed required-capability evaluation.
+  const [contents,issues,pulls,actions,ref]=await Promise.all([
+    safeGithubGet("/repos/"+repository+"/contents?ref="+encodeURIComponent(defaultBranch)+"&per_page=1",token),
+    safeGithubGet("/repos/"+repository+"/issues?state=open&per_page=1",token),
+    safeGithubGet("/repos/"+repository+"/pulls?state=open&per_page=1",token),
+    safeGithubGet("/repos/"+repository+"/actions/runs?per_page=1",token),
+    safeGithubGet("/repos/"+repository+"/git/ref/heads/"+encodeURIComponent(defaultBranch),token),
+  ]);
   const sha=String(ref.body?.object?.sha||"");
-  const statuses=sha?await safeGithubGet("/repos/"+repository+"/commits/"+sha+"/status",token):{state:"missing",body:null,status:404};
-  const checks=sha?await safeGithubGet("/repos/"+repository+"/commits/"+sha+"/check-runs?per_page=100",token):{state:"missing",body:null,status:404};
+  // Commit status and check-runs share the exact ref SHA, but are independent
+  // of each other once the branch ref is known.
+  const evidence=sha?await Promise.all([
+    safeGithubGet("/repos/"+repository+"/commits/"+sha+"/status",token),
+    safeGithubGet("/repos/"+repository+"/commits/"+sha+"/check-runs?per_page=100",token),
+  ]):null;
+  const statuses=evidence?.[0]||{state:"missing",body:null,status:404};
+  const checks=evidence?.[1]||{state:"missing",body:null,status:404};
 
   const observed:Record<string,string>={
     metadata_read:metadata.state,

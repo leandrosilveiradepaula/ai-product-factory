@@ -21,7 +21,10 @@ class HumanAttentionNotificationTests(unittest.TestCase):
 
  def test_navigation_shows_actionable_count_including_mobile(self):
   self.assertIn("attentionCount",NAV)
-  self.assertIn('item.href==="/gates"',NAV)
+  self.assertIn('href==="/gates"&&count!==null&&count!==undefined&&count>0',NAV)
+  self.assertIn('primaryItems.map(item=><NavLink',NAV)
+  self.assertIn('className="mobileQuickNav"',SHELL)
+  self.assertIn('attention&&attention.count>0?',SHELL)
   self.assertIn("humanAttentionCount",NAV)
   self.assertIn('<ConsoleNav attentionCount={attention?.count??null}/>',SHELL)
   self.assertIn('className="mobileNav"',SHELL)

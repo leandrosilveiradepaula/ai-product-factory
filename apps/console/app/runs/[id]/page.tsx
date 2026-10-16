@@ -1,5 +1,6 @@
 import {notFound} from "next/navigation";
 import {getRunDetail} from "../../../lib/control-plane";
+import {isProviderCreditExhausted} from "../../../lib/operational-health-inventory";
 import {EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
@@ -29,6 +30,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
       <div className="detailItem"><span className="detailLabel">Branch</span><code>{r.branchName||"—"}</code></div>
       <div className="detailItem"><span className="detailLabel">Commit candidato</span><code>{r.candidateCommit||"—"}</code></div>
      </div>
+     {r.status==="blocked"&&isProviderCreditExhausted(r.lastError)?<div className="errorText runError" role="alert"><strong>Execução recusada pela API OpenAI por crédito insuficiente.</strong> Esta evidência se refere à tentativa registrada e não comprova o saldo atual. O orçamento interno da Factory não adiciona créditos ao provedor; a recuperação da run original exige validação de faturamento e reconciliação auditada.</div>:null}
      {r.lastError?<div className="errorText runError">{r.lastError}</div>:null}
     </div>
 

@@ -28,6 +28,160 @@ class ChangeSetBuilderWorker:
     _DISCOVERY_STOP={"application","implementation","remediation","coverage","regression","route","task","change","update","fix","feature","work"}
     _TEXT_EXTENSIONS=(".py",".ts",".tsx",".js",".jsx",".mjs",".cjs",".json",".sql",".md",".yaml",".yml",".toml")
 
+    # No arbitrary root write scope is granted to an empty repository. Only
+    # these structural locations can be created for the FIRST foundation wave,
+    # and only when every requested scope has an explicit deterministic map.
+    # No .github/, live .env, credentials, deployment or production paths.
+    _GREENFIELD_EXISTING={"README.md","LICENSE","LICENSE.md",".gitignore","AGENTS.md","docs/codex/CURRENT_TASK.md"}
+    _GREENFIELD_SCOPES={
+        "application-foundation":(
+            "package.json","package-lock.json","tsconfig.json",".gitignore",
+            "src/**","app/**","tests/**","test/**",
+        ),
+        "database-migrations":("supabase/migrations/**","db/migrations/**","migrations/**"),
+        "environment-template":("src/config/**","config/**"),
+        "domain-shared":("src/domain/**","src/shared/**","src/lib/**"),
+    }
+
+    @classmethod
+    def _greenfield_scopes(cls,*,source:dict,all_paths:tuple[str,...],
+                           assignment:dict)->tuple[str,...]|None:
+        """Recognize only an empty-code first foundation wave from the plan.
+
+        The original README is mandatory context; neither the model nor a
+        semantic scope can invent broad repository access. Populated repos,
+        arbitrary task keys, unrecognized scopes, and later waves remain
+        subject to the strict repository-context discovery path.
+        """
+        if source.get("wave") != 1 or "README.md" not in all_paths:
+            return None
+        if not set(all_paths).issubset(cls._GREENFIELD_EXISTING):
+            return None
+        task_key=cls._tokens(source.get("plan_task_key"))
+        if not (task_key & {"foundation","bootstrap","scaffold"}):
+            return None
+        requested=assignment.get("scope_keys")
+        if not isinstance(requested,list) or not requested:
+            return None
+        if any(not isinstance(scope,str) or scope not in cls._GREENFIELD_SCOPES
+               for scope in requested):
+            return None
+        if "application-foundation" not in requested:
+            return None
+        return tuple(dict.fromkeys(
+            safe_path
+            for key in requested
+            for safe_path in cls._GREENFIELD_SCOPES[key]
+        ))
+
+
+    # These are structural namespaces, not unrestricted filesystem prefixes.
+    # Project kind comes from the privileged Control Plane project record, not
+    # a model answer or repository README. Unknown semantic keys remain blocked.
+    _GREENFIELD_CONTINUATION_ROOTS={
+        "auth":("src/auth","src/security/auth","src/interface/auth","src/integrations/identity-provider",
+                "tests/auth","tests/session"),
+        "authorization":("src/authorization","src/security/authorization","src/security/rbac",
+                         "src/security/permissions","src/application/authorization",
+                         "tests/authorization","tests/rbac"),
+        "frontend-app":("app","src/app","src/ui","src/components","src/styles","tests/ui"),
+        "design-system":("src/components/ui","src/styles","src/theme","app/globals.css",
+                         "src/app/globals.css","tests/ui/design"),
+        "navigation":("src/navigation","src/components/navigation","app/layout.tsx",
+                      "src/app/layout.tsx","tests/ui/navigation"),
+        "search":("src/search","src/application/search","tests/search"),
+        "search-and-filters":("src/application/search","src/application/filters",
+                              "src/interface/search","tests/search","tests/filters"),
+        "openapi":("docs/openapi","openapi.yaml","openapi.json","src/interface/openapi",
+                   "tests/openapi"),
+        "webhooks":("src/integrations/webhooks","src/interface/webhooks",
+                    "app/api/webhooks","tests/webhooks"),
+        "outbox":("src/integrations/outbox","src/domain/outbox",
+                  "src/application/outbox","tests/outbox"),
+        "notifications":("src/notifications","src/application/notifications",
+                         "tests/notifications"),
+        "dashboards":("src/ui/dashboards","src/components/dashboard","app/dashboard",
+                      "tests/ui/dashboards"),
+        "exports":("src/export","src/application/exports","tests/exports"),
+        "queues":("src/domain/queues","src/ui/queues","tests/queues"),
+        "saved-views":("src/domain/saved-views","src/ui/saved-views","tests/saved-views"),
+        "time-tracking":("src/domain/time-tracking","src/application/time-tracking",
+                         "tests/time-tracking"),
+        "data-lifecycle":("src/domain/data-lifecycle","src/application/data-lifecycle",
+                          "tests/data-lifecycle"),
+        "analytics-queries":("src/analytics","src/reporting/queries","tests/analytics"),
+    }
+    _GREENFIELD_CONTINUATION_MIGRATIONS=("supabase/migrations","db/migrations","migrations")
+
+    @staticmethod
+    def _structural_scopes(*roots:str)->tuple[str,...]:
+        result=[]
+        for root in roots:
+            if root.endswith((".ts",".tsx",".py",".sql",".json",".yaml",".yml",".css")):
+                result.append(root)
+            else:
+                result.extend((f"{root}/**",f"{root}.ts",f"{root}.tsx",f"{root}.py"))
+        return tuple(dict.fromkeys(result))
+
+    @classmethod
+    def _continuation_semantic_scopes(cls,scope:str,all_paths:tuple[str,...])->tuple[str,...]|None:
+        """Map a declared semantic scope only to its bounded architectural namespace.
+
+        Supports future product domains without granting src/**, repo root,
+        .github/**, credentials, arbitrary deployment files, or unrecognized keys.
+        Migration writes require evidence that a versioned migration root exists.
+        """
+        if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*",scope) or len(scope)>64:
+            return None
+        migration_root=next((
+            root for root in cls._GREENFIELD_CONTINUATION_MIGRATIONS
+            if any(path.startswith(root+"/") for path in all_paths)
+        ),None)
+        if scope=="database-migrations":
+            return (migration_root+"/**",) if migration_root else None
+        if scope in ("rls-policies","storage-policies"):
+            if not migration_root:
+                return None
+            roots=("tests/rls","tests/tenant-isolation") if scope=="rls-policies" else (
+                "src/storage/policies","tests/storage",
+            )
+            return (migration_root+"/**",*cls._structural_scopes(*roots),
+                    "tests/tenant-isolation.test.ts" if scope=="rls-policies"
+                    else "tests/storage-policies.test.ts")
+        if scope in cls._GREENFIELD_CONTINUATION_ROOTS:
+            return cls._structural_scopes(*cls._GREENFIELD_CONTINUATION_ROOTS[scope])
+        for suffix,roots in (
+            ("-domain",("src/domain","src/application","src/persistence","tests")),
+            ("-ui",("src/ui","src/components","app","tests/ui")),
+            ("-api",("src/interface/api","src/api","app/api","tests/api")),
+            ("-services",("src/services","src/application","tests")),
+            ("-jobs",("src/jobs","src/automation","tests/jobs")),
+            ("-workspace",("src/ui","src/components","app","tests/ui")),
+            ("-portal",("src/ui","src/components","app","tests/ui")),
+            ("-layouts",("src/layouts","src/components/layouts","tests/ui")),
+            ("-queries",("src/analytics","src/reporting","tests/analytics")),
+        ):
+            if scope.endswith(suffix):
+                stem=scope[:-len(suffix)]
+                if not stem:
+                    return None
+                branches=[f"{root}/{stem}" for root in roots]
+                if scope=="tenant-domain":
+                    branches.extend((
+                        "src/domain/tenancy","src/application/tenancy",
+                        "src/persistence/tenancy","tests/tenancy",
+                    ))
+                return cls._structural_scopes(*branches)
+        return None
+
+    @staticmethod
+    def _has_greenfield_foundation(all_paths:tuple[str,...])->bool:
+        return (
+            "README.md" in all_paths
+            and ("package.json" in all_paths or "pyproject.toml" in all_paths)
+            and any(path.startswith("src/") for path in all_paths)
+        )
+
     def __init__(self,*,github:GitHubRestAdapter,store:SupabaseChangeSetStore,producer:ImplementationProducer,
                  impact_engine:SupabaseImpactEngine|None=None,provenance:SupabaseProvenanceStore|None=None,
                  execution_route:str="direct")->None:
@@ -73,6 +227,29 @@ class ChangeSetBuilderWorker:
         explicit=assignment.get("context_paths") if isinstance(assignment.get("context_paths"),list) else []
         all_paths=self.github.list_file_paths(ref=base_commit)
         governance=self._governance_paths(all_paths)
+        continuation=(
+            source.get("project_kind")=="greenfield"
+            and isinstance(source.get("wave"),int)
+            and source["wave"]>=2
+        )
+        if continuation and not self._has_greenfield_foundation(all_paths):
+            raise RuntimeError("greenfield continuation requires an existing, verified foundation")
+
+        # Greenfield bootstrap: the README is the only existing source, so
+        # keyword-ranked repository context would otherwise be empty. Require
+        # the explicit foundation task + first wave + fully-known semantic
+        # scope map before permitting narrowly bounded file creation.
+        if not explicit:
+            scaffold_scopes=self._greenfield_scopes(
+                source=source,all_paths=all_paths,assignment=assignment,
+            )
+            if scaffold_scopes:
+                context_paths=list(dict.fromkeys([*governance,"README.md"]))
+                assignment["context_paths"]=context_paths
+                assignment["scope_keys"]=list(scaffold_scopes)
+                enriched=dict(source)
+                enriched["assignment"]=assignment
+                return enriched,tuple(context_paths)
 
         if explicit:
             context_paths=[self._normalize_path(path) for path in explicit]
@@ -94,6 +271,15 @@ class ChangeSetBuilderWorker:
             ranked=[row for row in ranked if row[0]>0]
             ranked.sort(key=lambda row:(-row[0],len(row[1]),row[1]))
             context_paths=[path for _,path in ranked[:8]]
+            if not context_paths and continuation:
+                # A new bounded feature may have no same-named files yet. Read
+                # existing foundational code, not fabricated paths or metadata.
+                context_paths=[
+                    path for path in ("package.json","pyproject.toml","tsconfig.json","README.md")
+                    if path in all_paths
+                ]
+                context_paths.extend(sorted(path for path in all_paths
+                    if path.startswith("src/") and path.endswith(self._TEXT_EXTENSIONS))[:3])
             if not context_paths:
                 raise RuntimeError("repository context discovery found no relevant files; replan with explicit context_paths")
 
@@ -117,8 +303,15 @@ class ChangeSetBuilderWorker:
             if not scope:
                 continue
             prefix=scope[:-3].rstrip("/") if scope.endswith("/**") else scope.rstrip("/")
+            if continuation and scope==".":
+                raise PermissionError("greenfield continuation cannot use repository-root write scope")
             if scope=="." or any(path==prefix or path.startswith(prefix+"/") for path in all_paths):
                 resolved_scopes.append(scope)
+            elif continuation:
+                mapped=self._continuation_semantic_scopes(scope,all_paths)
+                if not mapped:
+                    raise RuntimeError(f"greenfield semantic scope is not safely mapped: {scope}")
+                resolved_scopes.extend(mapped)
             else:
                 semantic_scopes.append(scope)
 
@@ -254,7 +447,17 @@ class ChangeSetBuilderWorker:
                 blocker_type="implementation_producer_error",
             )
             raise ValueError("implementation producer returned no files")
-        enforce_write_scopes(artifact.files.keys(),write_scopes)
+        try:
+            enforce_write_scopes(artifact.files.keys(),write_scopes)
+        except (PermissionError, ValueError) as exc:
+            # A model-produced patch outside the approved frozen-plan scopes
+            # must never be committed or left silently leased/running.
+            self.store.block_work_unit(
+                run_id=item.run_id,
+                reason=f"{type(exc).__name__}: {str(exc)}",
+                blocker_type="repository_governance",
+            )
+            raise
         commit_message=provenance_commit_message(artifact.commit_message,{
             "Factory-Run":item.run_id,
             "Factory-Change-Set":binding.change_set_id,

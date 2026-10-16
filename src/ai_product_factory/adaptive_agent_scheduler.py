@@ -52,6 +52,34 @@ class SupabaseAdaptiveConcurrencyController:
         if not latest:return "unknown"
         return max(latest.values(),key=lambda status:_STATUS_RANK.get(status,2))
 
+
+    @classmethod
+    def _execution_quota_status(cls, rows:list[dict])->str:
+        """Only provider limits relevant to Direct/Codex execution gate the matrix.
+
+        Vercel *deployments_daily* is a Preview/Release quota, not a condition
+        for a GitHub Direct/Codex code-writing job. Other providers and other
+        Vercel metrics retain their current conservative blocked semantics.
+        If no applicable provider has a snapshot, quota is unknown and limits
+        concurrency to one; it never authorizes a paid provider call.
+        """
+        applicable=[
+            row for row in rows
+            if not (
+                str(row.get("provider") or "").strip().lower()=="vercel"
+                and str(row.get("metric_key") or "").strip().lower()=="deployments_daily"
+            )
+        ]
+        return cls._worst_quota(applicable)
+
+    @classmethod
+    def _preview_deployment_quota_status(cls, rows:list[dict])->str:
+        return cls._worst_quota([
+            row for row in rows
+            if str(row.get("provider") or "").strip().lower()=="vercel"
+            and str(row.get("metric_key") or "").strip().lower()=="deployments_daily"
+        ])
+
     def _global_pressure(self)->dict:
         limits=self._get(
             "factory_resource_limit_snapshots?select=provider,resource_key,metric_key,status,observed_at"
@@ -77,7 +105,10 @@ class SupabaseAdaptiveConcurrencyController:
             created=datetime.fromisoformat(str(raw).replace("Z","+00:00"))
             ci_ages.append(max(0.0,(now-created).total_seconds()/60))
         return {
-            "quota_status":self._worst_quota(limits),
+            "quota_status":self._execution_quota_status(limits),
+            # Diagnostic only for specialist dispatch: Preview always keeps
+            # its separate, authoritative Vercel rate-limit gate.
+            "preview_deployment_quota_status":self._preview_deployment_quota_status(limits),
             "unknown_paid_cost":health.unknown_cost_events>0,
             "repair_rate":min(1.0,repair_rate),
             "first_pass_yield":min(1.0,max(0.0,first_pass)),
@@ -117,6 +148,7 @@ class SupabaseAdaptiveConcurrencyController:
             allowed[agent_key]=decision.effective_concurrency
             payload={
                 "quota_status":pressure.quota_status,
+                "preview_deployment_quota_status":global_pressure["preview_deployment_quota_status"],
                 "unknown_paid_cost":pressure.unknown_paid_cost,
                 "conflict_rate":pressure.conflict_rate,
                 "repair_rate":pressure.repair_rate,

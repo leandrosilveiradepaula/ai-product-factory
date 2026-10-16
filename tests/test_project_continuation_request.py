@@ -8,7 +8,7 @@ class ProjectContinuationRequestTests(unittest.TestCase):
     def test_console_exposes_project_scoped_continuation_action(self):
         detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
         page=(ROOT/"apps/console/app/projects/[key]/request/page.tsx").read_text()
-        self.assertIn('Pedir alteração',detail)
+        self.assertIn('Solicitar alteração',detail)
         self.assertIn('href={"/projects/"+p.key+"/request"}',detail)
         self.assertIn('enqueueProjectContinuation',page)
         self.assertIn('A Factory não abre dois ciclos concorrentes',page)
@@ -20,7 +20,9 @@ class ProjectContinuationRequestTests(unittest.TestCase):
         # authoritative concurrency gate. Historical queued descendants of
         # terminal parents must not hide the continuation entry point.
         detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
-        self.assertIn('<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir alteração</ActionLink>',detail)
+        self.assertIn('<ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink>',detail)
+        self.assertNotIn('activeTasks.length===0?<ActionLink',detail)
+        self.assertIn('humanActionNeeded',detail)
         self.assertNotIn('activeTasks.length===0?<ActionLink',detail)
         self.assertIn('enqueueProjectContinuation', (ROOT/"apps/console/app/projects/[key]/request/page.tsx").read_text())
 

@@ -5,6 +5,7 @@ import {revalidatePath} from "next/cache";
 import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
+import {RepositoryLinkForm} from "./repository-link-form";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
@@ -17,13 +18,12 @@ const macroStages=[
  {label:"Validar",detail:"Testes, avaliações e prévia",members:["validation","preview"]},
  {label:"Liberar",detail:"Aprovação, release e operação",members:["human_gate","release","operations"]},
 ];
-function progress(stage:string){const i=stages.indexOf(stage);return i<0?0:Math.round(((i+1)/stages.length)*100)}
-function macroStageIndex(stage:string){const i=macroStages.findIndex(item=>item.members.includes(stage));return i<0?0:i}
+function macroStageIndex(stage:string){return macroStages.findIndex(item=>item.members.includes(stage))}
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
 function nextAction(stage:string,hasPendingDatabase:boolean,activeTasks:number){
  if(hasPendingDatabase)return {title:"Conectar o banco de dados",body:"A Factory está aguardando a conexão mínima necessária para reconciliar e executar o trabalho com evidência real.",href:"#databases",label:"Ver banco de dados"};
  if(stage==="human_gate")return {title:"Tomar a decisão pendente",body:"A automação chegou a um gate humano. Revise o motivo e decida antes de a Factory continuar.",href:"/gates",label:"Abrir aprovações"};
- if(stage==="release")return {title:"Revisar e fazer o merge de produção",body:"Os gates automáticos terminaram. Produção continua dependendo de um merge humano explícito.",href:"/deployments",label:"Ver release"};
+ if(stage==="release")return {title:"Verificar as condições do release",body:"A etapa registrada não comprova CI, auditoria ou Preview. Verifique as evidências antes de qualquer merge humano de produção.",href:"/deployments",label:"Ver implantações"};
  if(stage==="operations")return {title:"Acompanhar a operação",body:"O projeto já está em operação. Use as evidências e implantações para acompanhar saúde e novos trabalhos.",href:"/deployments",label:"Ver implantações"};
  if(activeTasks===0)return {title:"Nenhuma ação necessária agora",body:"Não há tarefas abertas neste projeto. Acompanhe novas evidências ou inicie um novo trabalho quando necessário.",href:"/projects",label:"Voltar aos projetos"};
  if(["discovery","specification"].includes(stage))return {title:"Descoberta registrada; verificar execução",body:"O projeto pode estar apenas enfileirado. O processamento depende de um worker ativo e, para etapas semânticas, de autenticação, quota e orçamento de modelo aprovados. A existência da tarefa não comprova que a Descoberta começou.",href:"/runs",label:"Ver execuções"};
@@ -134,8 +134,10 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
+ const humanActionNeeded=Boolean(observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||["human_gate","release"].includes(p.stage));
+ const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
  return <>
-  <PageHeader eyebrow="Detalhes do projeto" title={p.name} subtitle={p.repository||p.key} actions={<><StatusPill status={p.stage} tone="accent"/><ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir alteração</ActionLink>{p.kind==="existing"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}<ActionLink href="/queue">Fila de trabalho</ActionLink></>}/>
+  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<><ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
@@ -149,9 +151,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
      <a className="linkButton primary" href={"https://github.com/new?name="+encodeURIComponent(p.key)+"&visibility=private"} target="_blank" rel="noreferrer">1. Criar repositório privado no GitHub</a>
      <a className="linkButton" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">2. Autorizar repositório na GitHub App</a>
     </div>
-    {operator.role==="admin"?<form method="POST" action={"/api/projects/"+encodeURIComponent(p.key)+"/link-repository"}>
-      <button className="linkButton" type="submit">3. Verificar e vincular repositório</button>
-    </form>:<p className="muted">Somente um administrador pode concluir a vinculação.</p>}
+    {operator.role==="admin"?<RepositoryLinkForm projectKey={p.key}/>:<p className="muted">Somente um administrador pode concluir a vinculação.</p>}
     <p className="muted">O servidor exige repositório privado, identidade exata, branch inicializada e token temporário com permissões de implementação. Esta ação não inicia modelos pagos nem libera merge automático.</p>
    </div>
   </section>:null}
@@ -177,23 +177,25 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     </div>
     <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>
    </div>
-   <aside className="nextActionCard" aria-label="Próxima ação">
-    <span className="detailLabel">O que você precisa fazer agora</span>
+   <aside className={humanActionNeeded?"nextActionCard needsHuman":"nextActionCard routine"} aria-label="Próxima etapa">
+    <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"A Factory está cuidando desta etapa"}</span>
     <h2>{action.title}</h2>
     <p>{action.body}</p>
-    <div className="actions"><ActionLink href={action.href} variant="primary">{action.label}</ActionLink></div>
+    <div className="actions"><ActionLink href={action.href} variant={humanActionNeeded?"primary":"secondary"}>{action.label}</ActionLink></div>
    </aside>
   </div>
   <div className="grid compact projectPrimaryMetrics">
-   <MetricCard label="Ciclo de vida" value={progress(p.stage)+"%"} note={<div className="progressTrack"><div className="progressFill" style={{width:progress(p.stage)+"%"}}/></div>}/>
+   <MetricCard label="Etapa do fluxo" value={currentMacro>=0?(currentMacro+1)+" de 5":"—"} note="Posição registrada, não prontidão ou release verificado."/>
    <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" no total"}/>
    <MetricCard label="Evidências" value={ops.evaluations+ops.deployments} note={ops.evaluations+" avaliações · "+ops.deployments+" implantações"}/>
   </div>
   <section className="section" id="product-readiness"><SectionHeader title="Prontidão global do produto" action={<StatusPill status={p.productReadiness.ready?"verified":p.productReadiness.status==="not_assessed"?"unverified":"blocked"} label={p.productReadiness.ready?"Auditoria aprovada":p.productReadiness.status==="not_assessed"?"Não avaliado":"Produto não pronto"}/>}/>
    <div className="card denseStack">
     <div className="badgeLine"><strong>{p.productReadiness.ready?"A avaliação global passou para o SHA registrado. Isso não comprova que o HEAD atual permanece igual nem libera produção.":p.productReadiness.status==="not_assessed"?"Nenhuma auditoria global de produto foi registrada ainda.":"Existem domínios ou blockers que impedem declarar o produto pronto."}</strong>{p.productReadiness.assessedCommit?<span className="muted mono">{p.productReadiness.assessedCommit.slice(0,12)}</span>:null}</div>
+    {p.productReadiness.blockers.length?<div><span className="detailLabel">Bloqueios que impedem a liberação</span><ul>{p.productReadiness.blockers.map((item,i)=><li key={i}>{item}</li>)}</ul></div>:null}
+    <details className="readinessEvidence"><summary>Ver avaliação detalhada e evidências</summary>
     {Object.keys(p.productReadiness.domains).length?<div className="detailGrid">{Object.entries(p.productReadiness.domains).map(([key,value])=><div className="detailItem" key={key}><span className="detailLabel">{humanizeStatus(key)}</span><StatusPill status={value.status} label={humanizeStatus(value.status)}/>{value.verification_state?<span className="muted">verificação · {humanizeStatus(value.verification_state)}</span>:null}{value.coverage?.length?<span className="muted">cobertura · {value.coverage.map(humanizeStatus).join(" · ")}</span>:null}{value.reason?<span className="muted">{value.reason}</span>:null}</div>)}</div>:<p className="muted" style={{margin:0}}>A Factory não infere prontidão a partir de CI, Preview, release ou ausência de issues. É necessária uma avaliação global explícita.</p>}
-    {p.productReadiness.blockers.length?<div><span className="detailLabel">Blockers</span><ul>{p.productReadiness.blockers.map((item,i)=><li key={i}>{item}</li>)}</ul></div>:null}
+    </details>
     <div className="badgeLine"><span className="muted">{p.productReadiness.assessmentRef||"Sem assessment_ref"}</span>{p.productReadiness.createdAt?<span className="muted">avaliado em {new Date(p.productReadiness.createdAt).toLocaleString("pt-BR")}</span>:null}</div>
    </div>
   </section>
@@ -208,6 +210,9 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <summary><span><strong>Pedidos anteriores</strong><small>Histórico durável registrado pela Factory.</small></span><span className="muted">{continuationHistory.length-1} pedido{continuationHistory.length===2?"":"s"} anterior{continuationHistory.length===2?"":"es"}</span></summary>
    <div className="projectTechnicalBody"><div className="timeline">{continuationHistory.slice(1).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><strong>{item.summary}</strong><span className="muted">{new Date(item.requestedAt).toLocaleString("pt-BR")}</span></div><div className="timelineMeta"><span>{item.attachmentCount+" anexo"+(item.attachmentCount===1?"":"s")}</span></div></div>)}</div></div>
   </details>:null}
+  <details className="projectTechnicalDetails projectIntegrations" open={integrationNeedsAttention}>
+   <summary><span><strong>Configurações e integrações</strong><small>Política de Preview e acesso ao GitHub. Pendências permanecem visíveis.</small></span><span className="muted">{integrationNeedsAttention?"Precisa de verificação":"Configuradas · ver detalhes"}</span></summary>
+   <div className="projectTechnicalBody">
   <section className="section" id="preview-policy"><SectionHeader title="Prévia · política do projeto" action={<StatusPill status={previewPolicy?.required===false?"not_applicable":previewConfigured?"verified":"blocked"} label={previewPolicy?.required===false?"Não aplicável":previewConfigured?"Configurada":"Pendente"}/>}/>
    <div className="card denseStack">
     {previewConfigured?<><div className="detailGrid">
@@ -242,6 +247,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <p className="muted" style={{margin:0}}>A Factory só executa uma etapa quando as capacidades exigidas por aquela etapa estão comprovadas. A GitHub App usa tokens temporários, limitados ao repositório; a chave privada fica server-side no Vault e nunca é enviada ao navegador. Instalar ou ampliar acesso continua sendo uma ação humana no GitHub.</p>
    </div>
   </section>:null}
+   </div>
+  </details>
   {state.objective?<section className="section"><SectionHeader title="Objetivo atual"/><div className="card"><p style={{margin:0}}>{state.objective}</p></div></section>:null}
   {p.kind==="existing"?<section className="section"><SectionHeader title="Estado reconciliado" action={state.snapshot?<span className="muted">atualizado em {new Date(state.snapshot.createdAt).toLocaleString("pt-BR")}</span>:undefined}/>
    {!state.snapshot?<EmptyState>A reconciliação ainda não foi concluída. A Factory vai registrar aqui o estado real confirmado, as evidências e o trabalho que ainda falta.</EmptyState>:<div className="card stack">

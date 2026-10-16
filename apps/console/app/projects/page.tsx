@@ -11,7 +11,7 @@ const macroStages=[
  {label:"Validar",members:["validation","preview"]},
  {label:"Liberar",members:["human_gate","release","operations"]},
 ];
-function macroProgress(stage:string){const i=macroStages.findIndex(item=>item.members.includes(stage));return i<0?10:Math.round(((i+1)/macroStages.length)*100)}
+function macroIndex(stage:string){return macroStages.findIndex(item=>item.members.includes(stage))}
 function macroLabel(stage:string){return macroStages.find(item=>item.members.includes(stage))?.label||humanizeStatus(stage)}
 
 const notices:Record<string,string>={
@@ -30,16 +30,21 @@ export default async function Projects({searchParams}:{searchParams:Promise<{sup
  }
  const d=await getDashboard();const notice=query.supabase?notices[query.supabase]:undefined;
  return <>
-  <PageHeader eyebrow="Projetos" title="Portfólio de produtos" subtitle="Produtos novos e projetos existentes conduzidos pela Factory." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
+  <PageHeader eyebrow="Área de trabalho" title="Seus projetos" subtitle="Acesse cada produto para ver a etapa registrada, a próxima ação e as evidências. Estar em uma etapa não significa que seus testes foram aprovados." actions={<ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink>}/>
   {notice?<div className="card noticeCard danger" role="status"><StatusPill status="failed"/><span>{notice}</span></div>:null}
   <div className="projectCards">
-   {d.projects.length===0?<EmptyState>Nenhum projeto registrado.</EmptyState>:d.projects.map(p=><Link className="card projectCard" href={"/projects/"+p.key} key={p.key}>
-    <div className="cardTop"><div><h2 className="cardTitle">{p.name}</h2><p className="cardMeta mono">{p.key}</p></div><StatusPill status={p.stage} tone="accent"/></div>
-    <div className="projectStageLabel"><span>Etapa atual</span><strong>{macroLabel(p.stage)}</strong></div>
-    <div className="progressTrack"><div className="progressFill" style={{width:macroProgress(p.stage)+"%"}}/></div>
-    <div className="valueRow"><span className="muted">Progresso pelas 5 macroetapas</span><strong>{macroProgress(p.stage)}%</strong></div>
-    <div className="projectCardFooter"><div className="badgeLine"><span className="status"><i className="statusDot"/>{humanizeStatus(p.status)}</span><span className="muted">atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")}</span></div><strong className="cardAction">Abrir projeto →</strong></div>
-   </Link>)}
+   {d.projects.length===0?<div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Inicie um produto ou importe um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Criar primeiro projeto</ActionLink></div>
+   :d.projects.map(p=>{
+    const current=macroIndex(p.stage);
+    return <Link className="card projectCard" href={"/projects/"+p.key} key={p.key}>
+     <div className="cardTop"><div><h2 className="cardTitle">{p.name}</h2><p className="cardMeta mono">{p.key}</p></div><StatusPill status={p.status}/></div>
+     <div className="projectStageLabel"><span>Etapa registrada</span><strong>{macroLabel(p.stage)}</strong></div>
+     <div className="projectMiniRail" role="img" aria-label={current>=0?`Etapa ${current+1} de 5: ${macroLabel(p.stage)}. Indicador de posição, não de prontidão.`:"Etapa ainda não classificada; nenhuma prontidão inferida."}>
+      {macroStages.map((step,i)=><span key={step.label} className={i===current?"projectMiniStep current":i<current?"projectMiniStep done":"projectMiniStep"}>{step.label}</span>)}
+     </div>
+     <div className="projectCardFooter"><span className="muted">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")}</span><strong className="cardAction">Abrir acompanhamento →</strong></div>
+    </Link>;
+   })}
   </div>
  </>;
 }

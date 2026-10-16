@@ -856,3 +856,195 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .topbarAttention{padding:5px 7px;font-size:11px}
  .projectHumanAttention{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Operational UX simplification (16 Oct 2026).
+   Preserve every route and security gate; prioritize projects and decisions.
+   Unlike legacy microtext, actions keep touch-friendly hit targets. */
+.sidebarNav{min-height:0;gap:18px;padding:4px 2px 14px;overflow-y:auto;overscroll-behavior:contain}
+.sidebar .navGroupItems{display:grid;gap:4px}
+.sidebar .navItem{min-height:46px;padding:10px 12px;border-radius:9px;gap:11px;font-size:14px}
+.sidebar .navItem.active{background:#283754;box-shadow:inset 3px 0 0 #6ca2ff}
+.sidebar .navItemLabel{min-width:0;flex:1;line-height:1.4}
+.sidebar .navGroupLabel{font-size:12px;letter-spacing:.04em}
+.sidebar .navIcon{flex:0 0 22px}
+.sidebar .navAdvanced{min-width:0;padding-top:14px;border-top:1px solid #303643}
+.sidebar .navAdvancedToggle{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;list-style:none;color:#dfe2ef;padding:9px 10px;border:1px solid #303643;background:#202530;border-radius:8px;font-size:14px;font-weight:650}
+.sidebar .navAdvancedToggle::-webkit-details-marker{display: none}
+.sidebar .navAdvancedToggle:hover,.sidebar .navAdvancedToggle:focus-visible{border-color:#6ca2ff;background:#273148}
+.sidebar .navAdvancedChevron{font-size:20px;line-height:1;color:#adc6ff;transform:rotate(-90deg);transition:transform .18s ease}
+.sidebar .navAdvanced[open] .navAdvancedChevron{transform:rotate(0)}
+.sidebar .navAdvancedTitle{flex:1}
+.sidebar .navAdvancedCurrent{font-size:11px;color:#adc6ff;font-weight:600}
+.sidebar .navAdvancedContent{display:grid;gap:16px;padding:15px 2px 4px}
+.sidebar .navAdvancedContent .navGroupLabel{font-size:12px;color:#98a4b7}
+.sidebar .navAdvancedContent .navItem{min-height:42px}
+.sidebar .navAdvancedContent .navItem.active{box-shadow:inset 3px 0 0 #6ca2ff}
+.desktopSidebarContent{min-height:0;overflow-y:auto}
+.sidebarFooter{flex:0 0 auto}
+.sidebar .humanAttentionCount{flex:0 0 auto}
+.topbar{padding:0 22px}
+.topbarMeta{min-width:0}
+.topbarEnvironment{font-size:12px;color:#a9b2c4}
+.main{width:100%;max-width:1480px;margin:0 auto;padding:28px 28px 64px}
+.main .pageHeader{align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:22px}
+.main .pageHeader .toolbar{align-items:center;gap:10px;flex-wrap:wrap}
+.main .title{font-size:clamp(25px,2.6vw,32px);letter-spacing:-.03em;line-height:1.12}
+.main .subtitle{max-width:780px;font-size:14px;line-height:1.55}
+.technicalRouteHelp{margin:0 0 16px;border:1px solid #2b3341;background:#141922;border-radius:8px}
+.technicalRouteHelp>summary{cursor:pointer;padding:12px 16px;color:#c4d5f6;font-size:13px;min-height:44px}
+.technicalRouteHelp[open]{padding-bottom:12px}
+.technicalRouteHelp p{margin:0 16px 8px;color:#aab6c9;font-size:13px;line-height:1.5}
+.technicalRouteHelp .screenGuideLink{display:inline-block;margin:0 16px}
+
+/* Home: one clear next step, real projects, operational exceptions.
+   All technical detail stays present inside explicitly named disclosures. */
+.homeFocus{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:24px 26px;border:1px solid #354663;border-radius:12px;background:linear-gradient(120deg,#1b2740 0%,#17202f 100%)}
+.homeFocus.warning{border-color:#7c622b;background:linear-gradient(120deg,#2c2419,#1d1c20)}
+.homeFocusContent{min-width:0;flex:1}
+.homeFocusEyebrow{display:block;color:#adc6ff;font-size:12px;font-weight:750;letter-spacing:.045em;margin-bottom:7px}
+.homeFocus.warning .homeFocusEyebrow{color:#ffdf8a}
+.homeFocus h2{margin:0;color:#f1f5fd;font-size:clamp(18px,2.3vw,24px);line-height:1.28;letter-spacing:-.015em}
+.homeFocus p{margin:8px 0 0;max-width:760px;color:#b8c4d6;font-size:14px;line-height:1.55}
+.homeFocus .linkButton{min-height:44px;flex:0 0 auto;white-space:normal;text-align:center;display:inline-flex;align-items:center;justify-content:center}
+.homeProjects{margin-top:26px}
+.homeSectionLink{color:#adc6ff;text-decoration:none;font-size:13px;font-weight:650}
+.homeSectionLink:hover{text-decoration:underline;text-underline-offset:4px}
+.homeProjectGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.homeProjectCard{display:grid;gap:12px;min-width:0;padding:20px 22px;border:1px solid #303c4c;border-radius:10px;background:#181e29;transition:background .14s ease,border-color .14s ease}
+.homeProjectCard:hover,.homeProjectCard:focus-visible{background:#212b3b;border-color:#669eff}
+.homeProjectHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;flex-wrap:wrap}
+.homeProjectHeading strong{font-size:16px;line-height:1.4;color:#f0f2f8;overflow-wrap:anywhere}
+.homeProjectStage{color:#aebacc;font-size:13px}
+.homeProjectStage b{color:#e0e8f5}
+.homeProjectFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:13px;border-top:1px solid #303747;color:#9faabc;font-size:12px;flex-wrap:wrap}
+.homeProjectFooter b{color:#adc6ff;font-size:13px}
+.homeEmptyProject{padding:22px;border:1px solid #303c4c;background:#171c26;border-radius:10px}
+.homeEmptyProject .emptyState{margin-bottom:10px}
+.homeSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:20px}
+.homeSummaryItem{display:flex;flex-direction:column;gap:9px;min-width:0;padding:17px 18px;border:1px solid #2d3440;border-radius:9px;background:#151a23}
+.homeSummaryItem:hover,.homeSummaryItem:focus-visible{border-color:#669eff}
+.homeSummaryItem span{color:#9faabb;font-size:12px;line-height:1.4}
+.homeSummaryItem strong{color:#f0f3fa;font-size:27px;line-height:1.1}
+.homeSummaryItem.warning{border-color:#68552e}
+.homeAttention .attentionGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.homeQuietStatus{padding:15px 18px;border:1px solid #263a38;border-radius:9px;background:#15201f;color:#bfd9d1;font-size:13px;line-height:1.55}
+.homeTechnicalDetails{margin-top:24px;border-radius:9px}
+.homeTechnicalNote{padding:12px 16px;border-top:1px solid #303643;font-size:12px;color:#b2bfd0}
+.overviewActivityDetails{border-radius:9px}
+.homeProjects .sectionHeader,.homeAttention .sectionHeader{align-items:center;gap:12px;flex-wrap:wrap}
+
+/* Project cards show stage position, never a fabricated completion score. */
+.projectCards{gap:14px}
+.projectCard{border-radius:10px;min-width:0}
+.projectStageLabel{align-items:flex-start}
+.projectMiniRail{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;margin:12px 0}
+.projectMiniStep{min-width:0;padding:10px 5px;border:1px solid #313847;background:#121723;border-radius:5px;color:#8390a1;font-size:11px;text-align:center;line-height:1.25;overflow-wrap:anywhere}
+.projectMiniStep.done{background:#153029;border-color:#275a49;color:#92dbc3}
+.projectMiniStep.current{background:#203a60;border-color:#6ca2ff;color:#ecf4ff;font-weight:750}
+.projectCardFooter{padding-top:14px;border-top:1px solid #303747}
+.projectCardFooter .cardAction{color:#adc6ff}
+
+/* Project actions and evidence: prominent only when human input is actually needed. */
+.projectMoreActions{position:relative;min-width:0}
+.projectMoreActions>summary{display:flex;align-items:center;justify-content:center;min-height:44px;cursor:pointer;padding:10px 14px;border:1px solid #414c5d;border-radius:8px;background:#1c2430;color:#dbe5f5;font-size:14px;font-weight:600;white-space:nowrap}
+.projectMoreActions>summary:hover{border-color:#669eff}
+.projectMoreActionsMenu{position:absolute;z-index:24;right:0;top:calc(100% + 6px);width:max-content;min-width:230px;max-width:min(90vw,320px);display:grid;gap:7px;padding:12px;border:1px solid #414f63;border-radius:9px;background:#1d2735;box-shadow:0 12px 32px rgba(0,0,0,.3)}
+.projectMoreActionsMenu .linkButton,.projectMoreActionsMenu button{display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;white-space:normal;text-align:center;font-size:13px}
+.projectMoreActionsMenu form{min-width:0;margin:0}
+.projectOrientation .nextActionCard.routine{background:#161d26;border-color:#303c4c}
+.projectOrientation .nextActionCard.routine .detailLabel{color:#aab6c8}
+.projectOrientation .nextActionCard.needsHuman{background:#1b2941;border-color:#608ada}
+.readinessEvidence{border-top:1px solid #303643;padding-top:12px}
+.readinessEvidence>summary{font-size:13px;font-weight:650;color:#adc6ff;cursor:pointer;min-height:36px}
+.readinessEvidence .detailGrid{margin-top:14px}
+.projectIntegrations{margin-top:22px}
+.projectIntegrations .projectTechnicalBody{min-width:0}
+.projectIntegrations .projectTechnicalBody>.section:first-child{margin-top:14px}
+.projectIntegrations summary{scroll-margin-top:90px}
+
+/* One-touch mobile destinations and a compact drop-down for technical tools. */
+.mobileQuickNav{display: none}
+@media(max-width:1180px){
+ .homeSummary{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .homeProjectGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:860px){
+ .consoleShell{padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+ .sidebar{position:relative;height:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:8px 14px}
+ .brandBlock{padding:5px 0;min-height:46px}
+ .brandMark{flex:0 0 32px}
+ .mobileNav{display:block;border:0;position:static;min-width:0}
+ .mobileNav>summary{min-height:44px;padding:10px 12px;border:1px solid #323b4a;border-radius:8px;background:#242c3b;justify-content:center;gap:10px}
+ .mobileNav>summary:before{margin-right:0}
+ .mobileNavHint{display: none}
+ .mobileNavBody{position:absolute;right:12px;left:12px;top:calc(100% + 1px);max-height:min(70vh,660px);overflow-y:auto;padding:16px;border:1px solid #43546f;border-radius:10px;background:#181f2a;box-shadow:0 18px 40px rgba(0,0,0,.45);z-index:50}
+ .mobileNav .sidebarNav{gap:16px}
+ .mobileNav .navItem{min-height:44px}
+ .topbar:not(.hasAttention){display: none}
+ .topbar.hasAttention{display:flex;padding:10px 14px;min-height:46px}
+ .topbar.hasAttention .topbarTrail,.topbar.hasAttention .topbarEnvironment{display: none}
+ .topbar.hasAttention .topbarMeta{width:100%}
+ .topbarAttention{width:100%;justify-content:center}
+ .main{padding:20px 16px 40px}
+ .mobileQuickNav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;position:fixed;left:0;right:0;bottom:0;z-index:60;padding:7px 9px calc(8px + env(safe-area-inset-bottom));border-top:1px solid #3a4557;background:#171e29;box-shadow:0 -6px 18px rgba(0,0,0,.28)}
+ .mobileQuickLink{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:50px;padding:8px 5px;border-radius:8px;color:#c1cbd9;font-size:13px;font-weight:650}
+ .mobileQuickLink span{font-size:18px;line-height:1}
+ .mobileQuickLink.active{background:#273b5d;color:#f0f5ff;box-shadow:inset 0 0 0 1px #527bb7}
+ .mobileQuickCount{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;border-radius:50%;background:#fbbf24;color:#251900;font-size:11px;flex:0 0 auto}
+ .homeFocus{padding:20px;align-items:flex-start;flex-direction:column;gap:15px}
+ .homeFocus .linkButton{width:100%}
+ .homeProjectGrid{grid-template-columns:1fr}
+ .projectMoreActionsMenu{right:0}
+}
+@media(max-width:560px){
+ .main{padding:17px 14px 35px}
+ .main .pageHeader{gap:12px}
+ .main .pageHeader .toolbar{width:100%}
+ .main .pageHeader .toolbar>.linkButton{flex:1;justify-content:center;text-align:center}
+ .homeProjectGrid{grid-template-columns:1fr}
+ .homeSummary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .homeSummaryItem{padding:13px 12px}
+ .homeSummaryItem strong{font-size:24px}
+ .homeProjectCard{padding:17px}
+ .homeFocus p{font-size:13px}
+ .homeAttention .attentionGrid{grid-template-columns:1fr}
+ .mobileQuickLink{flex-direction:column;gap:2px;font-size:12px}
+ .mobileQuickLink span{font-size:18px}
+ .projectMiniRail{display:flex;flex-wrap:wrap;gap:6px}
+ .projectMiniStep{flex:1 1 29%;min-width:86px;font-size:12px}
+ .projectMoreActions{flex:0 0 auto}
+ .projectMoreActions>summary{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+ .sidebar .navAdvancedChevron{transition:none}
+ .homeProjectCard{transition:none}
+}
+
+
+/* Intake UX: keep the actual product prompt above the fold, while preserving
+   every optional field (including private attachments) behind a disclosure. */
+.intakeSteps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.intakeSteps span{min-width:0;padding:12px 14px;background:#171c27;border:1px solid #313847;border-radius:8px;font-size:13px;color:#9caabc;text-align:center}
+.intakeSteps .current{border-color:#6ca2ff;background:#1e3252;color:#f1f5fd;font-weight:750}
+.intakeSteps .done{border-color:#326b56;background:#192d28;color:#9be1c9}
+.intakeIntro{margin:0 0 16px;color:#adb9c8;font-size:13px;line-height:1.5}
+.intakeForm{max-width:1080px}
+.intakeForm .intakePrompt textarea{min-height:130px}
+.intakeForm .intakeEssentials{margin-bottom:8px}
+.intakeOptional{margin:12px 0;border:1px solid #343e4f;border-radius:9px;background:#131b26}
+.intakeOptional>summary{display:flex;align-items:center;gap:7px;min-height:48px;padding:13px 16px;cursor:pointer;color:#dce9fa;font-size:14px;font-weight:650}
+.intakeOptional>summary .muted{font-size:12px}
+.intakeOptional[open]>summary{border-bottom:1px solid #343e4f}
+.intakeOptionalBody{display:grid;gap:16px;padding:18px}
+.intakeSubmit{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px;flex-wrap:wrap}
+.intakeSubmit p{margin:0;flex:1;min-width:200px;font-size:13px}
+.intakeSubmit button{flex:0 0 auto;min-height:46px}
+@media(max-width:860px){
+ .intakeSteps{gap:6px}
+ .intakeSteps span{font-size:12px;padding:11px 6px}
+ .intakeOptionalBody{padding:15px}
+ .intakeSubmit{flex-direction:column;align-items:stretch}
+ .intakeSubmit p{min-width:0}
+ .intakeSubmit button{width:100%;min-height:48px}
+}

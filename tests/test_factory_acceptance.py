@@ -339,6 +339,9 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261015093000_atomic_project_intake_bootstrap.sql",
             "20261015210000_greenfield_planning_decision_resume.sql",
             "20261015231500_factory_primary_cost_policy.sql",
+            "20261016023000_change_set_per_wave_attempts.sql",
+            "20261016040600_reconcile_openai_credit_denial.sql",
+            "20261016120000_block_early_merged_ci_candidates.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -565,8 +568,10 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Resolve exact visual target", workflow)
         self.assertIn("target_url:", workflow)
         self.assertIn("target_commit:", workflow)
-        self.assertIn('url.hostname.endsWith(".vercel.app")', workflow)
-        self.assertIn('url.protocol !== "https:"', workflow)
+        resolver = (ROOT / "scripts/resolve_console_visual_target.mjs").read_text()
+        self.assertIn('url.hostname.endsWith(".vercel.app")', resolver)
+        self.assertIn("node scripts/resolve_console_visual_target.mjs",workflow)
+        self.assertIn('url.protocol!=="https:"', resolver)
         self.assertIn("github.rest.repos.getCommit", workflow)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
         self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN", workflow)
@@ -1211,4 +1216,10 @@ class CodeProvenanceAcceptanceTests(unittest.TestCase):
         self.assertIn("invalid provenance trailer value",module)
         self.assertIn("64-character lowercase hex hash",module)
         self.assertNotIn("context_packet",module)
-        self.assertNotIn("authorization",worker.lower())
+        # Inspect only the commit metadata operation. Authorization is a
+        # legitimate domain in repository scope policy but must not be
+        # included as a secret-bearing commit provenance field.
+        provenance_call=worker.split("commit_message=provenance_commit_message(",1)[1].split(
+            "output=self.github.commit_files",1
+        )[0]
+        self.assertNotIn("authorization",provenance_call.lower())

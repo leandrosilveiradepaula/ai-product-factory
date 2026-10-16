@@ -55,36 +55,45 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <div className="brandText"><strong>AI Product Factory</strong><span>PAINEL DE CONTROLE</span></div>
     </Link>
    </div>
-   <div className="workspacePicker"><span className="workspaceGlyph">▦</span><span>Infodive / Autônomos</span></div>
+   <div className="workspacePicker"><span className="workspaceGlyph">▦</span><span>Infodive</span></div>
    <div className="desktopSidebarContent">
     <ConsoleNav attentionCount={attention?.count??null}/>
     <div className="sidebarFooter">
-     <div className="sidebarHealth"><span>AI Product Factory</span></div>
+     <div className="sidebarHealth"><span>Ambiente de trabalho</span></div>
      <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
     </div>
    </div>
-   <details className="mobileNav">
-    <summary><span>Menu{attention&&attention.count>0?<span className="humanAttentionCount">{attention.count}</span>:null}</span><span className="mobileNavHint">{context.area} / {context.screen}</span></summary>
+   <details className="mobileNav" key={pathname}>
+    <summary><span>Menu completo</span><span className="mobileNavHint">{context.screen}</span></summary>
     <div className="mobileNavBody">
-     <Link href="/projects/new" className="mobileNewProject">+ Novo projeto</Link>
-     <ConsoleNav/>
+     <ConsoleNav attentionCount={attention?.count??null}/>
      <div className="mobileNavFooter"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
     </div>
    </details>
   </aside>
   <div className="workspace">
-   <header className="topbar">
+   <header className={attentionUnavailable||(attention&&attention.count>0)?"topbar hasAttention":"topbar"}>
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
-    <div className="topbarMeta"><Link href="/gates" className={attention?.count?"topbarAttention active":"topbarAttention"} aria-label={attentionUnavailable?"Aprovações humanas: indisponível":attention?`${attention.count} aprovações humanas pendentes`:"Consultando aprovações humanas"}>{attentionUnavailable?"Avisos indisponíveis":attention===null?"Verificando avisos":attention.count>0?`${attention.count} precisam de você`:"Aprovações em dia"}</Link><span>Console</span><span className="topbarDivider"/><span>{environmentLabel}</span><Link href="/projects/new" className="topbarWork">+ Novo projeto</Link></div>
+    <div className="topbarMeta">
+     {attentionUnavailable?<Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active" aria-label={`${attention.count} aprovações humanas pendentes`}>{attention.count} decisão{attention.count===1?"":"ões"} pendente{attention.count===1?"":"s"}</Link>:null}
+     <span className="topbarEnvironment">{environmentLabel}</span>
+    </div>
    </header>
    <main className="main">
-    <div className={context.advanced?"screenGuide advanced":"screenGuide"}>
-     <div><strong>{context.advanced?"Tela de inspeção":"Como usar esta tela"}</strong><span>{context.purpose}</span></div>
-     {context.advanced?<Link href="/" className="screenGuideLink">Voltar à visão geral</Link>:null}
-    </div>
+    {context.advanced?<details className="technicalRouteHelp">
+     <summary>Sobre esta área técnica</summary>
+     <p>{context.purpose}</p>
+     <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
+    </details>:null}
     {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
     {children}
    </main>
   </div>
+  <nav className="mobileQuickNav" aria-label="Navegação rápida">
+   <Link href="/" aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><span aria-hidden>⌂</span>Início</Link>
+   <Link href="/projects" aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><span aria-hidden>▤</span>Projetos</Link>
+   <Link href="/gates" aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><span aria-hidden>✓</span>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
+  </nav>
  </div>;
 }
