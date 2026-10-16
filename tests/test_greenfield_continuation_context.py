@@ -110,6 +110,7 @@ class GreenfieldContinuationScopeTests(unittest.TestCase):
     def test_remaining_architectural_scope_groups_are_supported(self):
         worker=ChangeSetBuilderWorker(
             github=MagicMock(),store=MagicMock(),producer=MagicMock(),
+            impact_engine=MagicMock(),provenance=MagicMock(),
         )
         for group in PLANNED_SCOPE_GROUPS:
             for key in group:

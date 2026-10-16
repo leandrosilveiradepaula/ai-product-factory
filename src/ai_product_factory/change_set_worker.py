@@ -145,7 +145,9 @@ class ChangeSetBuilderWorker:
             roots=("tests/rls","tests/tenant-isolation") if scope=="rls-policies" else (
                 "src/storage/policies","tests/storage",
             )
-            return (migration_root+"/**",*cls._structural_scopes(*roots))
+            return (migration_root+"/**",*cls._structural_scopes(*roots),
+                    "tests/tenant-isolation.test.ts" if scope=="rls-policies"
+                    else "tests/storage-policies.test.ts")
         if scope in cls._GREENFIELD_CONTINUATION_ROOTS:
             return cls._structural_scopes(*cls._GREENFIELD_CONTINUATION_ROOTS[scope])
         for suffix,roots in (
