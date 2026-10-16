@@ -18,9 +18,13 @@ on:
       - ".github/authenticated-visual-target.json"
       - ".github/workflows/authenticated-visual-evidence.yml"
       - "scripts/capture_authenticated_console.mjs"
+      - "scripts/resolve_console_visual_target.mjs"
+      - "scripts/verify_console_deployed_sha.mjs"
+      - "apps/console/**"
 
 permissions:
   contents: read
+  statuses: read
   id-token: write
 
 jobs:
@@ -33,6 +37,8 @@ jobs:
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2 # compare the exact Console main push to its first parent
       - name: Reject reused GitHub run ID before allocating credentials
         shell: bash
         run: |
@@ -46,37 +52,7 @@ jobs:
         env:
           DISPATCH_TARGET_URL: ${{ inputs.target_url || '' }}
           DISPATCH_TARGET_COMMIT: ${{ inputs.target_commit || '' }}
-        run: |
-          set -euo pipefail
-          node - <<'NODE'
-          const fs=require("fs");
-          const targetFile=".github/authenticated-visual-target.json";
-          let target={};
-          if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch" && process.env.DISPATCH_TARGET_URL) {
-            target.preview_url=process.env.DISPATCH_TARGET_URL;
-            target.candidate_sha=process.env.DISPATCH_TARGET_COMMIT || process.env.GITHUB_SHA;
-            target.source="workflow_dispatch";
-          } else {
-            target=JSON.parse(fs.readFileSync(targetFile,"utf8"));
-            target.source="source_control";
-          }
-          if (typeof target.preview_url !== "string" || !target.preview_url) throw new Error("preview_url missing");
-          if (!/^[0-9a-f]{40}$/.test(String(target.candidate_sha||""))) throw new Error("candidate_sha must be exact 40-char SHA");
-          const url=new URL(target.preview_url);
-          if (url.protocol !== "https:" || !(url.hostname === "ai-product-factory-console.vercel.app" || url.hostname.endsWith(".vercel.app"))) {
-            throw new Error("visual target host not allowed");
-          }
-          if (url.username || url.password || url.search || url.hash) throw new Error("visual target must not contain credentials/query/fragment");
-          for (const value of Object.values(target)) {
-            if (typeof value === "string" && /(token|secret|password|apikey|authorization)/i.test(value)) throw new Error("secret-like target metadata forbidden");
-          }
-          fs.appendFileSync(process.env.GITHUB_ENV,
-            "FACTORY_CONSOLE_URL="+url.toString().replace(/\/$/,"")+"\n"+
-            "FACTORY_VISUAL_TARGET_COMMIT="+target.candidate_sha+"\n");
-          console.log("visual_target_source="+target.source);
-          console.log("visual_target_host="+url.hostname);
-          console.log("visual_target_commit="+target.candidate_sha);
-          NODE
+        run: node scripts/resolve_console_visual_target.mjs
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
@@ -106,11 +82,6 @@ jobs:
               repo: context.repo.repo,
               ref: process.env.FACTORY_VISUAL_TARGET_COMMIT,
             });
-      - name: Install pinned Playwright browser
-        shell: bash
-        run: |
-          npm install --no-save --no-package-lock playwright@1.63.0
-          npx playwright install --with-deps chromium
       - name: Mint short-lived Vercel Trusted Source OIDC token
         id: vercel_oidc
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -119,6 +90,41 @@ jobs:
             const token = await core.getIDToken();
             core.setSecret(token);
             core.setOutput("token", token)
+      - name: Require Vercel success for the exact candidate SHA
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          TARGET_SHA: ${{ env.FACTORY_VISUAL_TARGET_COMMIT }}
+        with:
+          script: |
+            const sha = String(process.env.TARGET_SHA || "");
+            if (!/^[0-9a-f]{40}$/.test(sha)) return core.setFailed("invalid exact candidate");
+            for (let attempt = 0; attempt < 24; attempt++) {
+              const {data} = await github.rest.repos.getCombinedStatusForRef({
+                ...context.repo, ref:sha, per_page:100,
+              });
+              const vercel = (data.statuses || []).find(s =>
+                String(s.context || "").toLowerCase() === "vercel"
+              );
+              if (vercel && vercel.state === "success") {
+                core.notice("Vercel reported success for exact visual target " + sha);
+                return;
+              }
+              if (vercel && ["error","failure"].includes(vercel.state)) {
+                return core.setFailed("Vercel failed for exact visual target " + sha);
+              }
+              if (attempt < 23) await new Promise(resolve=>setTimeout(resolve,5000));
+            }
+            core.setFailed("No Vercel READY status for exact visual target " + sha);
+      - name: Verify exact Console deployment before browser or account provisioning
+        shell: bash
+        env:
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
+        run: node scripts/verify_console_deployed_sha.mjs
+      - name: Install pinned Playwright browser
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
       - name: Mint provisioning GitHub OIDC token
         id: oidc_provision
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -179,6 +185,13 @@ jobs:
         env:
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
         run: node scripts/capture_authenticated_console.mjs
+      - name: Reconfirm exact served SHA before accepting browser evidence
+        if: steps.capture_console.outcome == 'success'
+        shell: bash
+        env:
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
+          FACTORY_VISUAL_VERIFY_ATTEMPTS: "1"
+        run: node scripts/verify_console_deployed_sha.mjs
       - name: Encrypt visual evidence
         id: encrypt
         shell: bash
