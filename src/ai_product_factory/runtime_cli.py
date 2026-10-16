@@ -248,10 +248,22 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
- issue=github.get_issue(item.issue_number)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches durable candidate commit")
  store=SupabaseDeliveryStore()
+ # A human may merge an exact PR before CI/Preview/quality gates pass. This
+ # must never be interpreted as successful CI or a production release.
+ if getattr(pr,"merged",False):
+  merge_sha=str(getattr(pr,"merge_commit_sha",None) or "")
+  if not merge_sha:raise RuntimeError("merged PR has no verifiable merge SHA")
+  result=store.block_early_merged_ci_candidate(
+   run_id=item.run_id,repository=item.repository,pr_number=item.pr_number,
+   candidate_commit=item.candidate_commit,merge_sha=merge_sha,
+  )
+  return {"claimed":True,"status":"merged_before_readiness_blocked",
+   "run_id":item.run_id,"pr_number":item.pr_number,"merge_sha":merge_sha,
+   "change_set_id":result.get("change_set_id"),"idempotent":bool(result.get("idempotent"))}
+ issue=github.get_issue(item.issue_number)
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  decision=loop.evaluate(session,human_gate_required=item.human_gate_required)

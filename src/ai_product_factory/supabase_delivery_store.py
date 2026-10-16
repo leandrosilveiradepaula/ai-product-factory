@@ -21,6 +21,25 @@ class SupabaseDeliveryStore:
  def update_run_status(self,run_id:str,status:str,*,candidate_commit:str|None=None)->DurableRunRecord:
   d=self._rpc("factory_update_run_delivery_status",{"p_run_id":run_id,"p_status":status,"p_candidate_commit":candidate_commit})
   return DurableRunRecord(d["run_id"],d["task_id"],d["status"],d.get("candidate_commit"))
+ def block_early_merged_ci_candidate(self,*,run_id:str,repository:str,pr_number:int,candidate_commit:str,merge_sha:str)->dict:
+  """Atomic fail-closed reconciliation; only after exact GitHub merge observation.
+
+  The RPC preserves CI evidence, candidate SHA, project stage and human gate.
+  In particular it never calls a release observer or grants merge authority.
+  """
+  if not run_id.strip() or not repository.strip() or pr_number<1 or not candidate_commit.strip() or not merge_sha.strip():
+   raise ValueError("missing exact early-merge identity")
+  result=self._rpc("factory_block_early_merged_ci_candidate",{
+   "p_run_id":run_id,
+   "p_repository":repository,
+   "p_pr_number":pr_number,
+   "p_candidate_commit":candidate_commit,
+   "p_merge_sha":merge_sha,
+  })
+  if not isinstance(result,dict) or result.get("status")!="blocked" or result.get("run_id")!=run_id or result.get("merge_sha")!=merge_sha:
+   raise RuntimeError("early-merge reconciliation returned inconsistent evidence")
+  return result
+
  def reconcile_closed_preview_candidate(self,run_id:str,*,candidate_commit:str,pr_number:int,github_state:str,github_merged:bool)->dict:
   if github_state!="closed" or github_merged is not False or pr_number<=0:
    raise ValueError("only a verified closed, unmerged PR may be superseded")
