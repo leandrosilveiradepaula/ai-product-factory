@@ -28,6 +28,52 @@ class ChangeSetBuilderWorker:
     _DISCOVERY_STOP={"application","implementation","remediation","coverage","regression","route","task","change","update","fix","feature","work"}
     _TEXT_EXTENSIONS=(".py",".ts",".tsx",".js",".jsx",".mjs",".cjs",".json",".sql",".md",".yaml",".yml",".toml")
 
+    # No arbitrary root write scope is granted to an empty repository. Only
+    # these structural locations can be created for the FIRST foundation wave,
+    # and only when every requested scope has an explicit deterministic map.
+    # No .github/, live .env, credentials, deployment or production paths.
+    _GREENFIELD_EXISTING={"README.md","LICENSE","LICENSE.md",".gitignore","AGENTS.md","docs/codex/CURRENT_TASK.md"}
+    _GREENFIELD_SCOPES={
+        "application-foundation":(
+            "package.json","package-lock.json","tsconfig.json",".gitignore",
+            "src/**","app/**","tests/**","test/**",
+        ),
+        "database-migrations":("supabase/migrations/**","db/migrations/**","migrations/**"),
+        "environment-template":("src/config/**","config/**"),
+        "domain-shared":("src/domain/**","src/shared/**","src/lib/**"),
+    }
+
+    @classmethod
+    def _greenfield_scopes(cls,*,source:dict,all_paths:tuple[str,...],
+                           assignment:dict)->tuple[str,...]|None:
+        """Recognize only an empty-code first foundation wave from the plan.
+
+        The original README is mandatory context; neither the model nor a
+        semantic scope can invent broad repository access. Populated repos,
+        arbitrary task keys, unrecognized scopes, and later waves remain
+        subject to the strict repository-context discovery path.
+        """
+        if source.get("wave") != 1 or "README.md" not in all_paths:
+            return None
+        if not set(all_paths).issubset(cls._GREENFIELD_EXISTING):
+            return None
+        task_key=cls._tokens(source.get("plan_task_key"))
+        if not (task_key & {"foundation","bootstrap","scaffold"}):
+            return None
+        requested=assignment.get("scope_keys")
+        if not isinstance(requested,list) or not requested:
+            return None
+        if any(not isinstance(scope,str) or scope not in cls._GREENFIELD_SCOPES
+               for scope in requested):
+            return None
+        if "application-foundation" not in requested:
+            return None
+        return tuple(dict.fromkeys(
+            safe_path
+            for key in requested
+            for safe_path in cls._GREENFIELD_SCOPES[key]
+        ))
+
     def __init__(self,*,github:GitHubRestAdapter,store:SupabaseChangeSetStore,producer:ImplementationProducer,
                  impact_engine:SupabaseImpactEngine|None=None,provenance:SupabaseProvenanceStore|None=None,
                  execution_route:str="direct")->None:
@@ -73,6 +119,22 @@ class ChangeSetBuilderWorker:
         explicit=assignment.get("context_paths") if isinstance(assignment.get("context_paths"),list) else []
         all_paths=self.github.list_file_paths(ref=base_commit)
         governance=self._governance_paths(all_paths)
+
+        # Greenfield bootstrap: the README is the only existing source, so
+        # keyword-ranked repository context would otherwise be empty. Require
+        # the explicit foundation task + first wave + fully-known semantic
+        # scope map before permitting narrowly bounded file creation.
+        if not explicit:
+            scaffold_scopes=self._greenfield_scopes(
+                source=source,all_paths=all_paths,assignment=assignment,
+            )
+            if scaffold_scopes:
+                context_paths=list(dict.fromkeys([*governance,"README.md"]))
+                assignment["context_paths"]=context_paths
+                assignment["scope_keys"]=list(scaffold_scopes)
+                enriched=dict(source)
+                enriched["assignment"]=assignment
+                return enriched,tuple(context_paths)
 
         if explicit:
             context_paths=[self._normalize_path(path) for path in explicit]
@@ -254,7 +316,17 @@ class ChangeSetBuilderWorker:
                 blocker_type="implementation_producer_error",
             )
             raise ValueError("implementation producer returned no files")
-        enforce_write_scopes(artifact.files.keys(),write_scopes)
+        try:
+            enforce_write_scopes(artifact.files.keys(),write_scopes)
+        except (PermissionError, ValueError) as exc:
+            # A model-produced patch outside the approved frozen-plan scopes
+            # must never be committed or left silently leased/running.
+            self.store.block_work_unit(
+                run_id=item.run_id,
+                reason=f"{type(exc).__name__}: {str(exc)}",
+                blocker_type="repository_governance",
+            )
+            raise
         commit_message=provenance_commit_message(artifact.commit_message,{
             "Factory-Run":item.run_id,
             "Factory-Change-Set":binding.change_set_id,
