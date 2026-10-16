@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {isProviderCreditExhausted} from "../lib/operational-health-inventory";
 import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getRuns,getUsageOverview} from "../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "./ui";
 
@@ -9,7 +10,7 @@ export default async function Home(){
  // Historical or superseded pending rows are not operator actions.
  const pending=gates.filter(g=>g.status==="pending"&&g.actionable);
  const incidents=health.incidents.slice(0,2);
- const blocked=health.failedRuns+health.deadLetterRuns;
+ const blocked=health.failedRuns+health.blockedRuns;
  const recentRuns=runs.slice(0,8);
  const recentAudit=audit.slice(0,8);
  const requiresDecision=pending.length>0;
@@ -71,8 +72,8 @@ export default async function Home(){
      </article>)}
      {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
       <div className="attentionBanner"><StatusPill status={i.status}/><span className="muted">Ocorrência operacional</span></div>
-      <h3>Execução exige investigação</h3>
-      <p>{i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio."}</p>
+      <h3>{isProviderCreditExhausted(i.error)?"Execução bloqueada por crédito da API":"Execução exige investigação"}</h3>
+      <p>{isProviderCreditExhausted(i.error)?"A API OpenAI recusou esta tentativa por crédito insuficiente. O registro é histórico e não comprova o saldo atual. Verifique o faturamento do provedor antes de solicitar recuperação auditada; o teto interno da Factory não adiciona créditos.":i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio."}</p>
       <div className="attentionFooter"><span>{i.route?humanizeStatus(i.route):"Sem rota"}</span><ActionLink href={"/runs/"+i.id} variant="ghostButton">Ver execução</ActionLink></div>
      </article>)}
     </div>}

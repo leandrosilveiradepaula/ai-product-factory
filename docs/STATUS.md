@@ -1,3 +1,10 @@
+## 2026-10-16 — Console: falhas por crédito OpenAI no painel (PR #875 reconciliada)
+
+- O Control Plane mantém execuções `blocked` que não estavam entrando no resumo operacional; o operador precisava visitar telas técnicas para encontrar o incidente. Esta alteração torna o bloqueio visível na página inicial e no detalhe da run, sem confundir o total de falhas com dead letters ou com a quantidade de aprovações humanas.
+- A classificação é baseada em erro de provedor `credit_balance_exhausted`/rejeição de quota com mensagem inequívoca; orçamento interno da Factory e rate limit genérico não acionam o mesmo aviso.
+- O aviso informa **quando ocorreu o bloqueio**, não afirma saldo atual zero. Reposição de crédito, status atual de billing, reconciliação de ledger e retomada são verificações/gates separados. Nenhum crédito é comprado ou retry é disparado nesta PR.
+- A proposta preserva a nova arquitetura da #882 (3 destinos principais, mobile e disclosure técnico). É candidata: requer CI, Vercel Preview do SHA exato, teste browser autenticado e merge humano para produção.
+
 ## 2026-10-16 — Authenticated Console visual audit targeted stale SHA after #882 (candidate)
 
 - PR #882 was human-merged at 13:01:15 UTC in `53bd03b274129925f713f614243093e165f03ed1`; merge-SHA `validate`, `factory-acceptance` and `Console validation` all green. Vercel commit status reported successful deployment at 13:02:40 UTC. Neither check asserts `/api/health` is serving this exact commit.

@@ -66,12 +66,18 @@ export function parseRecordedCost(value:unknown):number|null{
  if(!Number.isFinite(amount)||amount<0)throw new Error("Custo operacional fora do limite.");
  return amount;
 }
+/** Provider credit exhaustion is independent of the Factory's configured budget. */
+export function isProviderCreditExhausted(error:string|null|undefined):boolean{
+ if(!error)return false;
+ return error.includes("credit_balance_exhausted")||
+   (error.includes("insufficient_quota")&&/no credits remaining/i.test(error));
+}
 export function summarizeOperationalHealth(
  runs:OperationalRow[],usage:OperationalRow[],failedTasks:Map<string,string>,now:number
 ){
  if(!Number.isFinite(now))throw new Error("Relógio operacional inválido.");
  const incidents:{id:string;status:string;route:string|null;attempts:number;error:string|null;leaseExpiresAt:string|null;createdAt:string}[]=[];
- let expiredLeases=0,deadLetterRuns=0,failedRuns=0,queuedRuns=0,knownCost=0,unknownCostEvents=0;
+ let expiredLeases=0,deadLetterRuns=0,failedRuns=0,blockedRuns=0,queuedRuns=0,knownCost=0,unknownCostEvents=0;
  for(const row of runs){
   const id=verifiedId(row.id,"uuid"),status=row.status,taskId=row.task_id;
   if(typeof status!=="string"||!status||typeof taskId!=="string"||!UUID.test(taskId))
@@ -80,12 +86,14 @@ export function summarizeOperationalHealth(
   const expires=row.lease_expires_at==null?null:verifiedTime(row.lease_expires_at);
   const expired=(status==="running"||status==="implementing")&&expires!==null&&expires<now;
   const failed=status==="failed"&&failedTasks.get(taskId)==="failed";
+  const blocked=status==="blocked";
   const dead=failed&&!!error&&error.toLowerCase().includes("maximum attempts");
   if(expired)expiredLeases++;
   if(failed)failedRuns++;
+  if(blocked)blockedRuns++;
   if(dead)deadLetterRuns++;
   if(status==="created"||status==="queued")queuedRuns++;
-  if(expired||failed){
+  if(expired||failed||blocked){
    const attempts=Number(row.attempt_count??0);
    if(!Number.isSafeInteger(attempts)||attempts<0)throw new Error("Run com tentativas inválidas.");
    incidents.push({id,status,route:row.execution_route==null?null:String(row.execution_route),
@@ -104,5 +112,5 @@ export function summarizeOperationalHealth(
    if(!Number.isFinite(knownCost))throw new Error("Total de custos sem limite confiável.");
   }
  }
- return {expiredLeases,deadLetterRuns,failedRuns,queuedRuns,knownCost,unknownCostEvents,incidents};
+ return {expiredLeases,deadLetterRuns,failedRuns,blockedRuns,queuedRuns,knownCost,unknownCostEvents,incidents};
 }

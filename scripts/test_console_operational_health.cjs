@@ -15,7 +15,7 @@ const js=ts.transpileModule(source,{
 }).outputText;
 const sandboxExports={};
 vm.runInNewContext(js,{exports:sandboxExports,console},{timeout:10000});
-const {readCompleteOperationalRows,parseRecordedCost,summarizeOperationalHealth}=sandboxExports;
+const {readCompleteOperationalRows,parseRecordedCost,summarizeOperationalHealth,isProviderCreditExhausted}=sandboxExports;
 const runId=n=>"00000000-0000-0000-0000-"+String(n+1).padStart(12,"0");
 const time=n=>new Date(Date.parse("2026-10-14T23:00:00Z")-n*1000).toISOString();
 const run=n=>({id:runId(n),created_at:time(n),task_id:runId(9000),status:"completed",attempt_count:0,last_error:null,lease_expires_at:null,execution_route:null});
@@ -108,4 +108,29 @@ test("recovered historical run is not actionable dead-letter",()=>{
  assert.equal(active.failedRuns,1);
  assert.equal(active.deadLetterRuns,1);
  assert.equal(active.incidents.length,1);
+});
+
+test("blocked OpenAI credit exhaustion appears as actionable incident without confusing Factory budget",()=>{
+ const blocked={...run(0),status:"blocked",attempt_count:1,last_error:"RuntimeError: HTTP 429; type=insufficient_quota; code=credit_balance_exhausted; message=You have no credits remaining."};
+ const summary=summarizeOperationalHealth([blocked],[],new Map(),Date.now());
+ assert.equal(summary.blockedRuns,1);
+ assert.equal(summary.failedRuns,0);
+ assert.equal(summary.deadLetterRuns,0);
+ assert.equal(summary.incidents.length,1);
+ assert.equal(summary.incidents[0].status,"blocked");
+ assert.equal(summary.incidents[0].error,blocked.last_error);
+ assert.equal(isProviderCreditExhausted(blocked.last_error),true);
+ assert.equal(isProviderCreditExhausted("budget_exhausted internal cap"),false);
+ assert.equal(isProviderCreditExhausted("HTTP 429 rate_limit_exceeded"),false);
+ assert.equal(isProviderCreditExhausted(null),false);
+});
+
+test("historical failed run plus blocked run counted exactly once each",()=>{
+ const failed={...run(0),status:"failed",last_error:"maximum attempts exceeded"};
+ const blocked={...run(1),status:"blocked",last_error:"credit_balance_exhausted"};
+ const summary=summarizeOperationalHealth([failed,blocked],[],new Map([[failed.task_id,"failed"]]),Date.now());
+ assert.equal(summary.failedRuns,1);
+ assert.equal(summary.blockedRuns,1);
+ assert.equal(summary.deadLetterRuns,1);
+ assert.equal(summary.incidents.length,2);
 });
