@@ -1207,4 +1207,10 @@ class CodeProvenanceAcceptanceTests(unittest.TestCase):
         self.assertIn("invalid provenance trailer value",module)
         self.assertIn("64-character lowercase hex hash",module)
         self.assertNotIn("context_packet",module)
-        self.assertNotIn("authorization",worker.lower())
+        # Inspect only the commit metadata operation. Authorization is a
+        # legitimate domain in repository scope policy but must not be
+        # included as a secret-bearing commit provenance field.
+        provenance_call=worker.split("commit_message=provenance_commit_message(",1)[1].split(
+            "output=self.github.commit_files",1
+        )[0]
+        self.assertNotIn("authorization",provenance_call.lower())
