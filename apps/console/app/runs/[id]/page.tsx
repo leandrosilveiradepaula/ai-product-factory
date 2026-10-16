@@ -30,7 +30,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
       <div className="detailItem"><span className="detailLabel">Branch</span><code>{r.branchName||"—"}</code></div>
       <div className="detailItem"><span className="detailLabel">Commit candidato</span><code>{r.candidateCommit||"—"}</code></div>
      </div>
-     {r.status==="blocked"&&isProviderCreditExhausted(r.lastError)?<div className="errorText runError" role="alert"><strong>Créditos reais da API OpenAI esgotados.</strong> O limite interno da Factory não adiciona créditos ao provedor. Não haverá retry ou recarga automática; após uma decisão humana de custo e saldo confirmado, a execução original exige recuperação auditada.</div>:null}
+     {r.status==="blocked"&&isProviderCreditExhausted(r.lastError)?<div className="errorText runError" role="alert"><strong>Execução recusada pela API OpenAI por crédito insuficiente.</strong> Esta evidência se refere à tentativa registrada e não comprova o saldo atual. O orçamento interno da Factory não adiciona créditos ao provedor; a recuperação da run original exige validação de faturamento e reconciliação auditada.</div>:null}
      {r.lastError?<div className="errorText runError">{r.lastError}</div>:null}
     </div>
 

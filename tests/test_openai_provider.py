@@ -3,7 +3,7 @@ import unittest
 
 from ai_product_factory.model_executor import ModelRequest, ModelRole
 from ai_product_factory.models import Complexity
-from ai_product_factory.openai_provider import OpenAIModelPolicy, OpenAIResponsesProvider
+from ai_product_factory.openai_provider import OpenAIModelPolicy, OpenAIResponsesProvider, OpenAICreditBalanceRejected
 
 
 class FakeTransport:
@@ -156,6 +156,52 @@ class OpenAIResponsesProviderTests(unittest.TestCase):
         self.assertIn("req_wif_123", message)
         self.assertNotIn("sensitive-github-oidc-token", message)
         self.assertNotIn("sensitive-github-request-token", message)
+
+    def test_credit_denial_is_typed_only_without_response_or_usage(self):
+        denied = {
+            "error": {
+                "type": "insufficient_quota",
+                "code": "credit_balance_exhausted",
+                "message": "You have no credits remaining",
+            },
+            "_request_id": "req_c83153187db74f209bf372a1f42d4f5b",
+        }
+        provider = OpenAIResponsesProvider(
+            api_key="placeholder-key",
+            transport=lambda *args: (429, denied),
+        )
+        with self.assertRaises(OpenAICreditBalanceRejected) as result:
+            provider.execute(self.request)
+        self.assertEqual(result.exception.http_status, 429)
+        self.assertEqual(result.exception.request_id, denied["_request_id"])
+        self.assertIn("credit_balance_exhausted", str(result.exception))
+
+    def test_ambiguous_rejections_do_not_claim_nonbillable_result(self):
+        original = {
+            "error": {
+                "type": "insufficient_quota",
+                "code": "credit_balance_exhausted",
+                "message": "You have no credits remaining",
+            },
+            "_request_id": "req_c83153187db74f209bf372a1f42d4f5b",
+        }
+        cases = [
+            (429, {**original, "usage": {"input_tokens": 2}}),
+            (429, {**original, "id": "resp_unverified"}),
+            (429, {**original, "_request_id": None}),
+            (429, {**original, "error": {**original["error"], "type": "rate_limit_error"}}),
+            (429, {**original, "error": {**original["error"], "code": "rate_limit_exceeded"}}),
+            (500, original),
+        ]
+        for status, payload in cases:
+            with self.subTest(status=status, payload=payload):
+                provider = OpenAIResponsesProvider(
+                    api_key="placeholder-key",
+                    transport=lambda *args, status=status, payload=payload: (status, payload),
+                )
+                with self.assertRaises(RuntimeError) as result:
+                    provider.execute(self.request)
+                self.assertNotIsInstance(result.exception, OpenAICreditBalanceRejected)
 
     def test_missing_auth_fails_fast(self):
         from unittest.mock import patch

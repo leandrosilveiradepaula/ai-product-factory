@@ -1,5 +1,5 @@
 {
   "preview_url": "https://ai-product-factory-console.vercel.app",
-  "candidate_sha": "34c614be92a544bb52c1b2634fc6c82b1be6d25e",
-  "purpose": "OIDC broker v2 functional post-deploy audit for issue #822; verify existing READY production Console SHA 34c614be92a544bb52c1b2634fc6c82b1be6d25e without rebuilding Console"
+  "candidate_sha": "53bd03b274129925f713f614243093e165f03ed1",
+  "purpose": "Manual post-merge Console UX audit for PR #882. Non-Console pushes may reuse this exact production target only after Vercel status and /api/health independently confirm the served commit. Future Console changes automatically target their own main push SHA."
 }

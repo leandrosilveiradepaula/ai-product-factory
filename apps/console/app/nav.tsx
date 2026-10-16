@@ -27,45 +27,73 @@ function Icon({name}:{name:IconName}){
  return <svg viewBox="0 0 24 24" aria-hidden {...common}>{body}</svg>;
 }
 
-const groups=[
- {label:"Operações",items:[
-  {href:"/",label:"Visão geral",icon:"overview" as IconName},
-  {href:"/projects",label:"Projetos",icon:"projects" as IconName},
+// Three destinations for day-to-day work; all technical routes remain one click away.
+const primaryItems=[
+ {href:"/",label:"Visão geral",icon:"overview" as IconName},
+ {href:"/projects",label:"Projetos",icon:"projects" as IconName},
+ {href:"/gates",label:"Aprovações",icon:"gates" as IconName},
+];
+const advancedGroups=[
+ {label:"Acompanhar execução",items:[
   {href:"/runs",label:"Execuções",icon:"runs" as IconName},
   {href:"/queue",label:"Fila de trabalho",icon:"queue" as IconName},
-  {href:"/agents",label:"Agentes da Factory",icon:"agents" as IconName},
+  {href:"/agents",label:"Agentes",icon:"agents" as IconName},
   {href:"/orchestration",label:"Orquestração",icon:"orchestration" as IconName},
-  {href:"/gates",label:"Aprovações humanas",icon:"gates" as IconName},
  ]},
- {label:"Qualidade e liberação",items:[
+ {label:"Qualidade e entrega",items:[
   {href:"/evals",label:"Avaliações e testes",icon:"evals" as IconName},
   {href:"/deployments",label:"Implantações",icon:"deployments" as IconName},
  ]},
- {label:"Governança e observação",items:[
-  {href:"/usage",label:"Modelos e uso",icon:"usage" as IconName},
-  {href:"/audit",label:"Log de auditoria",icon:"audit" as IconName},
-  {href:"/configuration",label:"Configuração",icon:"configuration" as IconName},
+ {label:"Administração",items:[
+  {href:"/usage",label:"Modelos e custos",icon:"usage" as IconName},
+  {href:"/audit",label:"Auditoria",icon:"audit" as IconName},
+  {href:"/configuration",label:"Configurações",icon:"configuration" as IconName},
   {href:"/admin/operators",label:"Operadores",icon:"operators" as IconName},
  ]},
 ];
+export const primaryDestinations=primaryItems.map(({href})=>href);
 
 function active(pathname:string,href:string){
  if(href==="/")return pathname==="/";
  return pathname===href||pathname.startsWith(href+"/");
 }
+function NavLink({href,label,icon,pathname,count}:{
+ href:string;label:string;icon:IconName;pathname:string;count?:number|null;
+}){
+ const isActive=active(pathname,href);
+ return <Link className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
+  <span className="navIcon"><Icon name={icon}/></span>
+  <span className="navItemLabel">{label}</span>
+  {href==="/gates"&&count!==null&&count!==undefined&&count>0
+   ?<span className="humanAttentionCount" aria-label={`${count} aprovações pendentes`}>{count}</span>
+   :null}
+ </Link>;
+}
 
 export function ConsoleNav({attentionCount=null}:{attentionCount?:number|null}){
  const pathname=usePathname();
- return <nav className="sidebarNav">
-  {groups.map(group=><div className="navGroup" key={group.label}>
-   <div className="navGroupLabel">{group.label}</div>
+ const advancedActive=advancedGroups.some(group=>group.items.some(item=>active(pathname,item.href)));
+ return <nav className="sidebarNav" aria-label="Navegação da Factory">
+  <div className="navGroup">
+   <div className="navGroupLabel">Seu trabalho</div>
    <div className="navGroupItems">
-    {group.items.map(item=><Link className={active(pathname,item.href)?"navItem active":"navItem"} href={item.href} key={item.href}>
-     <span className="navIcon"><Icon name={item.icon}/></span>
-     <span>{item.label}</span>
-     {item.href==="/gates"&&attentionCount!==null&&attentionCount>0?<span className="humanAttentionCount" aria-label={`${attentionCount} pendentes`}>{attentionCount}</span>:null}
-    </Link>)}
+    {primaryItems.map(item=><NavLink key={item.href} {...item} pathname={pathname} count={attentionCount}/>)}
    </div>
-  </div>)}
+  </div>
+  <details key={pathname} className="navAdvanced" open={advancedActive}>
+   <summary className="navAdvancedToggle">
+    <span className="navAdvancedChevron" aria-hidden>⌄</span>
+    <span className="navAdvancedTitle">Ferramentas avançadas</span>
+    {advancedActive?<span className="navAdvancedCurrent">Você está aqui</span>:null}
+   </summary>
+   <div className="navAdvancedContent">
+    {advancedGroups.map(group=><div className="navGroup" key={group.label}>
+     <div className="navGroupLabel">{group.label}</div>
+     <div className="navGroupItems">
+      {group.items.map(item=><NavLink key={item.href} {...item} pathname={pathname}/>)}
+     </div>
+    </div>)}
+   </div>
+  </details>
  </nav>;
 }

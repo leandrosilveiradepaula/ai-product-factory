@@ -1,8 +1,30 @@
-## 2026-10-16 — Real provider credit-exhaustion visibility (candidate; NOT deployed)
+## 2026-10-16 — Console: falhas por crédito OpenAI no painel (PR #875 reconciliada)
 
-- Service Desk run `fffee538-9781-4905-a69d-f3427d6f66b3` hit an authentic OpenAI HTTP 429 `insufficient_quota / credit_balance_exhausted`, leaving the existing wave-7 Change Set durably `blocked`. **Do not** buy API credit, retry or recover until a human provider-billing decision; the internal US$ 10 budget and US$ 0.50 reserve are separate.
-- Console `summarizeOperationalHealth` only surfaced expired leases or `failed` runs, silently omitting durable `blocked` runs. The home page additionally double-counted dead letters (subset of failed) while labelling the metric "Falhas / bloqueios". Candidate fix includes the blocked status as an attention incident, adds `blockedRuns` independently and counts each failed/blocked run once. Run detail and home distinguish observed provider credit exhaustion from Factory internal budget exhaustion, with no speculative balance value.
-- Offline behavior regression adds the exact real 429 case and confirms no internal budget or generic HTTP 429 is classified as provider credit exhaustion. No runtime, model billing, migrations or release changes. Console files changed -> **Preview/browser evidence required**, not N/A; do not merge absent human release gate and verified Preview.
+- O Control Plane mantém execuções `blocked` que não estavam entrando no resumo operacional; o operador precisava visitar telas técnicas para encontrar o incidente. Esta alteração torna o bloqueio visível na página inicial e no detalhe da run, sem confundir o total de falhas com dead letters ou com a quantidade de aprovações humanas.
+- A classificação é baseada em erro de provedor `credit_balance_exhausted`/rejeição de quota com mensagem inequívoca; orçamento interno da Factory e rate limit genérico não acionam o mesmo aviso.
+- O aviso informa **quando ocorreu o bloqueio**, não afirma saldo atual zero. Reposição de crédito, status atual de billing, reconciliação de ledger e retomada são verificações/gates separados. Nenhum crédito é comprado ou retry é disparado nesta PR.
+- A proposta preserva a nova arquitetura da #882 (3 destinos principais, mobile e disclosure técnico). É candidata: requer CI, Vercel Preview do SHA exato, teste browser autenticado e merge humano para produção.
+
+## 2026-10-16 — Authenticated Console visual audit targeted stale SHA after #882 (candidate)
+
+- PR #882 was human-merged at 13:01:15 UTC in `53bd03b274129925f713f614243093e165f03ed1`; merge-SHA `validate`, `factory-acceptance` and `Console validation` all green. Vercel commit status reported successful deployment at 13:02:40 UTC. Neither check asserts `/api/health` is serving this exact commit.
+- Real authenticated audit run [#38904687637](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38904687637) incorrectly selected historical pinned SHA `34c614be...` from `.github/authenticated-visual-target.json`. The run failed on React hydration `#418` at `/configuration`; post-failure cleanup succeeded. No authenticated browser evidence for #882 was accepted, and the cause of hydration remains unverified.
+- Candidate follow-up guards `push main` changed Console paths to exact `GITHUB_SHA`; retains manual pinned audit for workflow-only change; requires Vercel success status on full SHA and live `/api/health` `commit === SHA.slice(0,12)` before Playwright/user creation and after capture. Test mismatch fail-closed. Source-controlled pinned target now refers to #882 for a focused follow-up, without new deployment. Independent incident + details: `docs/CONSOLE_VISUAL_SHA_GUARD_20261016.md`.
+- Human gate remains for merge of any production-publishing PR. This preparation makes no production change, creates no paid model request, bypass, Preview or migration. A repaired audit is **not** evidence that the React hydration issue was fixed; resolve/reproduce separately.
+
+## 2026-10-16 — Console UX: operação e aprovações à frente da infraestrutura (PR candidata)
+
+- Revisão da `main` `5710b9d64797cc9199d120766245916ad002a982`: 13 destinos visíveis, ações redundantes, instruções permanentes antes dos projetos, experiência móvel confusa, percentuais de etapa potencialmente interpretados como prontidão. O formulário de intake possuía dois campos `name="users"` na criação greenfield.
+- Candidato UI: 3 entradas principais (Visão geral, Projetos, Aprovações), 10 ferramentas técnicas preservadas em disclosure; barra inferior mobile, menu completo; home com projetos reais e decisões acionáveis; edição com uma CTA principal, integrações/evidências colapsáveis; etapa do fluxo sem falso percentual; intake simplificado sem duplicação de campo.
+- Mudanças limitadas a Console, capture visual autenticado, testes e documentação. Nenhuma migração, autorização de custo, alteração de Control Plane ou auto-merge. A checagem de Preview **é obrigatória** para `apps/console/**`, somente com deployment READY e browser evidence no SHA exato; política fail-closed se não estiver disponível.
+- Plano e critérios de aceite detalhados em `docs/CONSOLE_UX_REVIEW_20261016.md`. **Mudança candidata, não publicada.** O release continua condicionado a CI, Preview verificado e merge humano.
+
+## 2026-10-16 — Reposição de crédito OpenAI e reconciliação de chamada rejeitada (candidate, não publicado)
+
+- O operador confirmou novo crédito pré-pago. Ainda não houve chamada de modelo para sondar saldo. O Change Set do Service Desk segue bloqueado na onda 7; a mesma run `fffee538-9781-4905-a69d-f3427d6f66b3` mantém tentativa 1 e o ledger possui **exatamente um** evento pago de custo desconhecido (usage #117) oriundo de HTTP 429 `credit_balance_exhausted`.
+- O runtime `require_paid_runtime_budget` e Product Stage `primary_readiness_blocker` corretamente bloqueiam qualquer execução paga se `unknown_cost_events > 0`. Reposição de saldo não remove o guard financeiro.
+- Candidato: tipar exclusivamente rejeição estruturada de crédito sem Response/tokens; manter outras falhas como `cost_unknown`. Migration versionada separada e idempotente classifica somente a evidência histórica exata, mediante **revisão humana de faturamento e aplicação administrativa de produção**. Nada foi alterado no banco nesta preparação, nem compra/retry disparado.
+- Procedimento e provas em `docs/CREDIT_DENIAL_RECONCILIATION.md`. Após migration auditada e gate financeiro novamente verde, recupera-se a **mesma** run e depois um único wake; merge de produção sempre humano.
 
 ## 2026-10-16 — Integration attempt counter per wave (candidate, not deployed)
 

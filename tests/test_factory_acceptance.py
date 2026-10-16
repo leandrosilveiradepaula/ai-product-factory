@@ -338,6 +338,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261015093000_atomic_project_intake_bootstrap.sql",
             "20261015210000_greenfield_planning_decision_resume.sql",
             "20261016023000_change_set_per_wave_attempts.sql",
+            "20261016040600_reconcile_openai_credit_denial.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
@@ -562,8 +563,10 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("Resolve exact visual target", workflow)
         self.assertIn("target_url:", workflow)
         self.assertIn("target_commit:", workflow)
-        self.assertIn('url.hostname.endsWith(".vercel.app")', workflow)
-        self.assertIn('url.protocol !== "https:"', workflow)
+        resolver = (ROOT / "scripts/resolve_console_visual_target.mjs").read_text()
+        self.assertIn('url.hostname.endsWith(".vercel.app")', resolver)
+        self.assertIn("node scripts/resolve_console_visual_target.mjs",workflow)
+        self.assertIn('url.protocol!=="https:"', resolver)
         self.assertIn("github.rest.repos.getCommit", workflow)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
         self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN", workflow)

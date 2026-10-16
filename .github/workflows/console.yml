@@ -62,6 +62,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: npm ci
+      - name: Test exact Console visual target and deployment identity guards
+        run: node ../../scripts/test_console_visual_deployment.mjs
       - name: Test complete operational health reader
         run: node ../../scripts/test_console_operational_health.cjs
       - name: Capture production dependency audit

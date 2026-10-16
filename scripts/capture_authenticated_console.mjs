@@ -130,6 +130,24 @@ try {
 
   await page.setViewportSize({width:1296,height:900});
   await page.goto(`${consoleUrl}/`, {waitUntil:"networkidle", timeout:60000});
+  // Daily navigation must be limited to the three operator destinations.
+  // Advanced tools are still real links, accessible after opening disclosure.
+  const primaryNavHrefs = await page.locator(".desktopSidebarContent .sidebarNav > .navGroup a").evaluateAll(links =>
+    links.map(link => new URL(link.href).pathname)
+  );
+  if (JSON.stringify(primaryNavHrefs) !== JSON.stringify(["/","/projects","/gates"])) {
+    throw new Error(`unexpected primary navigation: ${JSON.stringify(primaryNavHrefs)}`);
+  }
+  const advancedMenu = page.locator(".desktopSidebarContent .navAdvanced");
+  if (await advancedMenu.count() !== 1 || await advancedMenu.getAttribute("open") !== null) {
+    throw new Error("advanced navigation must start collapsed on overview");
+  }
+  await advancedMenu.locator("summary").click();
+  const advancedRoutes = await advancedMenu.locator("a").evaluateAll(links => links.map(link => new URL(link.href).pathname));
+  for (const href of ["/runs","/queue","/agents","/orchestration","/evals","/deployments","/usage","/audit","/configuration","/admin/operators"]) {
+    if (!advancedRoutes.includes(href)) throw new Error(`advanced route missing: ${href}`);
+  }
+  interactionEvidence.navigationArchitecture = {primaryNavHrefs,advancedRoutes,advancedInitiallyCollapsed:true};
   const navHrefs = await page.locator("nav.sidebarNav a").evaluateAll(links =>
     [...new Set(links.map(link => new URL(link.href).pathname))]
   );
@@ -203,8 +221,35 @@ try {
         .slice(0,12));
       throw new Error(`mobile horizontal overflow on ${route.path}: ${layout.scrollWidth} > ${layout.innerWidth}; offenders=${JSON.stringify(offenders)}`);
     }
+    const quickNavHrefs = await page.locator("nav.mobileQuickNav a").evaluateAll(links =>
+      links.map(link => new URL(link.href).pathname)
+    );
+    if (JSON.stringify(quickNavHrefs) !== JSON.stringify(["/","/projects","/gates"])) {
+      throw new Error(`mobile quick navigation is incomplete on ${route.path}: ${JSON.stringify(quickNavHrefs)}`);
+    }
+    const expectedCurrent = route.path.startsWith("/projects") ? "/projects" : route.path === "/" ? "/" : null;
+    if (expectedCurrent) {
+      const active = await page.locator('nav.mobileQuickNav a[aria-current="page"]').getAttribute("href");
+      if (active !== expectedCurrent) throw new Error(`mobile active navigation mismatched on ${route.path}`);
+    }
+    const menuSummary = page.locator(".mobileNav > summary");
+    await menuSummary.click();
+    if (await page.locator(".mobileNav .navAdvanced > summary").count() !== 1) {
+      throw new Error("mobile full menu does not retain advanced routes");
+    }
+    const expandedLayout = await page.evaluate(() => ({
+      width:document.documentElement.scrollWidth,
+      viewport:window.innerWidth,
+    }));
+    if (expandedLayout.width > expandedLayout.viewport + 2) {
+      throw new Error(`mobile full menu overflow on ${route.path}: ${expandedLayout.width} > ${expandedLayout.viewport}`);
+    }
+    if (route.path === "/") {
+      await page.screenshot({path:path.join(outDir,"overview-mobile-menu.png"),fullPage:true});
+    }
+    await menuSummary.click();
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
-    interactionEvidence.mobile.push({...route,status:response.status(),layout});
+    interactionEvidence.mobile.push({...route,status:response.status(),layout,quickNavHrefs,expandedLayout});
   }
 
   await fs.writeFile(path.join(outDir,"manifest.json"), JSON.stringify({
