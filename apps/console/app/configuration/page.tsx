@@ -1,4 +1,6 @@
 import {getConsoleConfiguration} from "../../lib/control-plane";
+import {getPrimaryCostPolicyView} from "../../lib/primary-cost-policy";
+import {PrimaryCostPolicyPanel} from "./cost-policy-panel";
 import {requireConsoleOperator} from "../../lib/auth-server";
 import {ActionLink,PageHeader,SectionHeader,StatusPill} from "../ui";
 
@@ -10,13 +12,16 @@ function previewLabel(manifest:unknown){
  return typeof mode==="string"?mode:"configurado";
 }
 
-export default async function Configuration(){
- const [c,operator]=await Promise.all([getConsoleConfiguration(),requireConsoleOperator()]);
+export default async function Configuration({searchParams}:{searchParams:Promise<{cost_policy?:string}>}){
+ const [c,operator,policy,params]=await Promise.all([
+  getConsoleConfiguration(),requireConsoleOperator(),getPrimaryCostPolicyView(),searchParams,
+ ]);
  return <>
   <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Políticas e estado administrativo da Factory. Use para governança e diagnóstico; projetos são conduzidos pelas telas de Projeto e Aprovações." actions={operator.role==="admin"?<ActionLink href="/admin/operators">Operadores</ActionLink>:<StatusPill status="active" label="perfil operador"/>}/>
   <nav className="configTabs" aria-label="Seções de configuração">
    <a href="#governanca">Governança</a>
    <a href="#modelos">Modelos</a>
+   <a href="#orcamento">Orçamento e custos</a>
    <a href="#execucao">Execução</a>
    <a href="#preview">Preview</a>
    <a href="#seguranca">Segurança</a>
@@ -33,6 +38,7 @@ export default async function Configuration(){
      </div>
     </div>
 
+    <PrimaryCostPolicyPanel policy={policy} admin={operator.role==="admin"} feedback={params?.cost_policy}/>
     <div className="card" id="execucao">
      <SectionHeader title="Manifestos dos projetos" action={<span className="muted">{c.projects.length} projetos</span>}/>
      <div className="denseStack">{c.projects.map(p=><article className="detailItem" key={p.key}>

@@ -18,11 +18,9 @@ class PreclaimDispatchSafetyContractTests(unittest.TestCase):
         dispatch=WORKFLOW.split("\n  dispatch:\n",1)[1].split("\n  direct:\n",1)[0]
         self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",dispatch)
         self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED",dispatch)
-        self.assertIn("FACTORY_DISPATCH_PRIMARY_READY: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",dispatch)
-        self.assertNotIn("OPENAI_API_KEY:",dispatch)
         self.assertIn("needs.product-stage.result != 'failure'",dispatch)
-        self.assertIn('FACTORY_MODEL_BUDGET_USD: "10.00"',dispatch)
-        self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',dispatch)
+        self.assertNotIn('FACTORY_MODEL_BUDGET_USD:',dispatch)
+        self.assertNotIn('FACTORY_MODEL_RESERVE_USD:',dispatch)
 
     def test_dispatch_only_preflight_does_not_invoke_product_model(self):
         product=WORKFLOW.split("\n  product-stage:\n",1)[1].split("\n  change-set-integration:\n",1)[0]

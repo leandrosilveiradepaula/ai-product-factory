@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from decimal import Decimal
 from typing import Protocol
 
@@ -39,10 +38,15 @@ class MeteredPrimaryProvider:
         if not request.run_id:
             raise ValueError("paid primary request requires run_id for cost ledger")
         store = self.store or SupabaseControlPlaneStore()
-        raw = os.getenv("FACTORY_MODEL_RESERVE_USD", "").strip()
-        reserve_usd = self.reserve_usd if self.reserve_usd is not None else (Decimal(raw) if raw else None)
-        if reserve_usd is None or reserve_usd <= 0:
-            raise ValueError("FACTORY_MODEL_RESERVE_USD must be a positive amount")
+        if self.reserve_usd is not None:
+            # Only the explicitly injected unit-test adapter bypasses the
+            # network policy reader. Production constructs with no override.
+            reserve_usd = self.reserve_usd
+        else:
+            from .primary_cost_config import require_primary_cost_capacity
+            reserve_usd = require_primary_cost_capacity().reserve_usd
+        if reserve_usd <= 0:
+            raise ValueError("primary cost policy reservation must be positive")
         auth = RuntimeAuthResolver().resolve_primary_api()
         reservation = store.record_tool_usage(
             run_id=request.run_id,

@@ -15,13 +15,9 @@ class PrimaryActivationWorkflowTests(unittest.TestCase):
     def test_product_and_direct_are_explicit_opt_in_default_false(self):
         workflow=WF.read_text()
         opt_in="FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}"
-        self.assertEqual(workflow.count(opt_in),2)  # Only protected Product and Direct environments
+        self.assertEqual(workflow.count(opt_in),2)  # Protected Product Stage and Direct only
         dispatch=workflow.split("\n  dispatch:\n",1)[1].split("\n  direct:\n",1)[0]
-        self.assertIn(
-            "FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",
-            dispatch,
-        )
-        self.assertIn("needs: [schedule-probe, github-access-preflight, product-stage, codex-route-preflight]",dispatch)
+        self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ needs.product-stage.outputs.primary_ready == 'true' && 'true' || 'false' }}",dispatch)
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"',workflow)
         self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "false"',workflow)
 
@@ -31,8 +27,8 @@ class PrimaryActivationWorkflowTests(unittest.TestCase):
         direct=workflow.split("\n  direct:\n",1)[1].split("\n  codex:\n",1)[0]
         for job in (product,direct):
             self.assertIn("environment: openai-api",job)
-            self.assertIn('FACTORY_MODEL_BUDGET_USD: "10.00"',job)
-            self.assertIn('FACTORY_MODEL_RESERVE_USD: "0.50"',job)
+            self.assertNotIn("FACTORY_MODEL_BUDGET_USD:",job)
+            self.assertNotIn("FACTORY_MODEL_RESERVE_USD:",job)
             self.assertIn("OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}",job)
             self.assertIn("vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true'",job)
         self.assertIn("steps.readiness.outputs.primary_model == 'true'",product)
@@ -44,7 +40,9 @@ class PrimaryActivationWorkflowTests(unittest.TestCase):
             body=source.split(mode,1)[1].split("\ndef ",1)[0]
             self.assertIn("require_primary_runtime_enabled()",body)
             self.assertIn("require_paid_runtime_budget()",body)
-        self.assertIn("health.unknown_cost_events>0",source)
+        policy=(ROOT/"src/ai_product_factory/primary_cost_config.py").read_text()
+        self.assertIn("health.unknown_cost_events > 0",policy)
+        self.assertIn("require_primary_cost_capacity",source)
         self.assertIn('os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true"',source)
 
     def test_never_introduce_runtime_merge_or_paid_probe(self):

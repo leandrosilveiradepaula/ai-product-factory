@@ -23,7 +23,7 @@ from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
 from .supabase_delivery_store import SupabaseDeliveryStore
-from .cost_policy import require_cost_ceiling
+from .primary_cost_config import SupabasePrimaryCostPolicyReader, require_primary_cost_capacity
 from .integration_readiness import github_alerts_readiness,github_vercel_preview_readiness,vercel_preview_readiness,verified_preview_readiness
 from .operational_alerts import OPERATIONAL_ALERT_CODES,evaluate_operational_alerts
 from .supabase_operational_health import SupabaseOperationalHealthReader
@@ -65,19 +65,9 @@ from .github_capability_preflight import run_project_github_preflight
 def require_primary_runtime_enabled()->None:
  if os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")!="true":raise PermissionError("primary model execution is disabled")
 
-def require_paid_runtime_budget(*, health_reader=None)->None:
- budget_raw=os.getenv("FACTORY_MODEL_BUDGET_USD")
- reserve_raw=os.getenv("FACTORY_MODEL_RESERVE_USD")
- budget=Decimal(budget_raw) if budget_raw else None
- reserve=Decimal(reserve_raw) if reserve_raw else None
- if budget is None or reserve is None:
-  require_cost_ceiling(budget=budget,known_spend=Decimal("0"),reserved_cost=reserve,strict=True)
-  return
- reader=health_reader or SupabaseOperationalHealthReader()
- health=reader.read(budget=budget)
- if health.unknown_cost_events>0:
-  raise PermissionError("paid usage ledger contains unknown-cost events")
- require_cost_ceiling(budget=budget,known_spend=health.known_cost,reserved_cost=reserve,strict=True)
+def require_paid_runtime_budget(*, health_reader=None, policy_reader=None)->None:
+ # Fail closed: never use stale GitHub workflow environment ceilings.
+ require_primary_cost_capacity(policy_reader=policy_reader,health_reader=health_reader)
 
 def require_codex_runtime_enabled()->None:
  """Validate one official Codex auth mode without performing a paid request.
@@ -241,7 +231,14 @@ def run_health_once()->dict:
  auth=RuntimeAuthResolver().resolve()
  vercel=vercel_preview_readiness();github_vercel=github_vercel_preview_readiness();alerts=github_alerts_readiness()
  codex_missing=[name for name in ("OPENAI_FEDERATION_RULE_ID","OPENAI_WIF_AUDIENCE","OPENAI_IDENTITY_TOKEN_FILE","FACTORY_GITHUB_TOKEN") if not os.getenv(name,"").strip()]
- return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":bool(os.getenv("FACTORY_MODEL_BUDGET_USD")),"reservation_configured":bool(os.getenv("FACTORY_MODEL_RESERVE_USD")),"codex":{"enabled":os.getenv("FACTORY_CODEX_ENABLED")=="true","configured":not codex_missing,"ready":os.getenv("FACTORY_CODEX_ENABLED")=="true" and not codex_missing and os.path.isfile(os.getenv("OPENAI_IDENTITY_TOKEN_FILE","")),"missing":codex_missing},"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
+ policy_ready=False
+ if os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")):
+  try:
+   SupabasePrimaryCostPolicyReader().read()
+   policy_ready=True
+  except (RuntimeError,ValueError):
+   policy_ready=False
+ return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":policy_ready,"reservation_configured":policy_ready,"codex":{"enabled":os.getenv("FACTORY_CODEX_ENABLED")=="true","configured":not codex_missing,"ready":os.getenv("FACTORY_CODEX_ENABLED")=="true" and not codex_missing and os.path.isfile(os.getenv("OPENAI_IDENTITY_TOKEN_FILE","")),"missing":codex_missing},"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
 def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  queue=SupabaseCIFollowupQueue()
@@ -539,9 +536,8 @@ def run_replay_once(source_run_id:str,mode:str="offline")->dict:
 def run_alerts_once()->dict:
  readiness=github_alerts_readiness()
  if not readiness.ready:return {"status":"blocked","published":0,"resolved":0,"missing":list(readiness.missing)}
- budget_raw=os.getenv("FACTORY_MODEL_BUDGET_USD")
- budget=Decimal(budget_raw) if budget_raw else None
- health=SupabaseOperationalHealthReader().read(budget=budget)
+ policy=SupabasePrimaryCostPolicyReader().read()
+ health=SupabaseOperationalHealthReader().read(budget=policy.budget_usd)
  liveness=SupabaseSchedulerLivenessReader().read()
  repository=os.environ["FACTORY_ALERTS_GITHUB_REPOSITORY"]
  github=GitHubRestAdapter(repository=repository)

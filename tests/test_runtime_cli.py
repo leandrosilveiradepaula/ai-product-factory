@@ -209,35 +209,34 @@ class RuntimeCliTests(unittest.TestCase):
 
     def test_paid_runtime_budget_is_fail_closed_when_unconfigured(self):
         with patch.dict("os.environ", {}, clear=True):
-            with self.assertRaises(PermissionError):
+            with self.assertRaises(RuntimeError):
                 require_paid_runtime_budget()
 
     def test_paid_runtime_budget_accepts_ledger_known_spend(self):
-        env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
+        policy=MagicMock()
+        policy.read.return_value=SimpleNamespace(budget_usd=Decimal("10"),reserve_usd=Decimal("0.50"))
         reader=MagicMock()
         reader.read.return_value=SimpleNamespace(known_cost=Decimal("1"),unknown_cost_events=0)
-        with patch.dict("os.environ", env, clear=True):
-            require_paid_runtime_budget(health_reader=reader)
-        reader.read.assert_called_once()
+        with patch.dict("os.environ", {"FACTORY_MODEL_BUDGET_USD":"0.01"}, clear=True):
+            require_paid_runtime_budget(health_reader=reader,policy_reader=policy)
+        reader.read.assert_called_once_with(budget=Decimal("10"))
+        policy.read.assert_called_once()
 
     def test_paid_runtime_budget_blocks_unknown_paid_cost(self):
-        env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
+        policy=MagicMock()
+        policy.read.return_value=SimpleNamespace(budget_usd=Decimal("10"),reserve_usd=Decimal("0.50"))
         reader=MagicMock()
         reader.read.return_value=SimpleNamespace(known_cost=Decimal("1"),unknown_cost_events=1)
-        with patch.dict("os.environ", env, clear=True):
-            with self.assertRaises(PermissionError):
-                require_paid_runtime_budget(health_reader=reader)
+        with self.assertRaises(PermissionError):
+            require_paid_runtime_budget(health_reader=reader,policy_reader=policy)
 
     def test_paid_runtime_budget_blocks_when_ledger_exhausts_budget(self):
-        env={"FACTORY_MODEL_BUDGET_USD":"5","FACTORY_MODEL_RESERVE_USD":"0.25"}
+        policy=MagicMock()
+        policy.read.return_value=SimpleNamespace(budget_usd=Decimal("10"),reserve_usd=Decimal("0.50"))
         reader=MagicMock()
-        reader.read.return_value=SimpleNamespace(known_cost=Decimal("4.9"),unknown_cost_events=0)
-        with patch.dict("os.environ", env, clear=True):
-            with self.assertRaises(PermissionError):
-                require_paid_runtime_budget(health_reader=reader)
-
-
-
+        reader.read.return_value=SimpleNamespace(known_cost=Decimal("9.9"),unknown_cost_events=0)
+        with self.assertRaises(PermissionError):
+            require_paid_runtime_budget(health_reader=reader,policy_reader=policy)
 
     def test_recovery_resumes_decisions_without_model_calls(self):
         queue=MagicMock()
@@ -420,7 +419,8 @@ class RuntimeCliTests(unittest.TestCase):
         github.dispatch_workflow.assert_not_called()
 
     def test_health_is_side_effect_free_configuration_report(self):
-        with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True):
+        with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePrimaryCostPolicyReader",side_effect=RuntimeError("unavailable")):
             out=run_health_once()
         self.assertEqual(out["status"],"healthy")
         self.assertTrue(out["control_plane_configured"])
@@ -1193,6 +1193,7 @@ class RuntimeCliTests(unittest.TestCase):
         adapter.resolve_inactive.return_value=(SimpleNamespace(code="failed_runs",issue_number=61),)
         with patch.dict("os.environ", {"FACTORY_ALERTS_GITHUB_REPOSITORY":"owner/repo"}, clear=True), \
              patch("ai_product_factory.runtime_cli.github_alerts_readiness",return_value=readiness), \
+              patch("ai_product_factory.runtime_cli.SupabasePrimaryCostPolicyReader"), \
              patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader",return_value=reader), \
              patch("ai_product_factory.runtime_cli.SupabaseSchedulerLivenessReader") as scheduler, \
              patch("ai_product_factory.runtime_cli.evaluate_scheduler_liveness",return_value=()), \
@@ -1220,6 +1221,7 @@ class RuntimeCliTests(unittest.TestCase):
         gap=OperationalAlert("scheduler_gap","warning","missed scheduler wakes")
         with patch.dict("os.environ", {"FACTORY_ALERTS_GITHUB_REPOSITORY":"owner/repo"}, clear=True), \
              patch("ai_product_factory.runtime_cli.github_alerts_readiness",return_value=readiness), \
+              patch("ai_product_factory.runtime_cli.SupabasePrimaryCostPolicyReader"), \
              patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader"), \
              patch("ai_product_factory.runtime_cli.SupabaseSchedulerLivenessReader"), \
              patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=()), \

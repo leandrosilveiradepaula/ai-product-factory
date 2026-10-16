@@ -1,8 +1,9 @@
 import {getResourceLimits,getUsageOverview} from "../../lib/control-plane";
+import {getPrimaryCostPolicyView} from "../../lib/primary-cost-policy";
 import {EmptyState,PageHeader,SectionHeader,StatusPill} from "../ui";
 
 export default async function Usage(){
- const [u,limits]=await Promise.all([getUsageOverview(),getResourceLimits()]);
+ const [u,limits,policy]=await Promise.all([getUsageOverview(),getResourceLimits(),getPrimaryCostPolicyView()]);
  const maxEvents=Math.max(1,...u.byFamily.map(x=>x.events));
  return <>
   <PageHeader eyebrow="Governança · custos e modelos" title="Modelos e uso" subtitle="Acompanhe custos, limites e uso dos provedores. Esta é uma tela de governança, não uma etapa do desenvolvimento." actions={<StatusPill status={u.unknownPaidCostEvents?"blocked":"healthy"} label={u.unknownPaidCostEvents?"execução paga bloqueada":"budget operacional"}/>}/>
@@ -42,8 +43,10 @@ export default async function Usage(){
      <div className="panelHeading"><strong>Prontidão operacional</strong><StatusPill status={u.unknownPaidCostEvents?"blocked":"healthy"} label={u.unknownPaidCostEvents?"bloqueado":"operacional"}/></div>
      <div className="compactList">
       <div className="compactRow"><span>Primary</span><StatusPill status="active" label="API key ativa"/></div>
-      <div className="compactRow"><span>Budget Factory</span><span className="muted">US$ 4,00</span></div>
-      <div className="compactRow"><span>Reserva por run</span><span className="muted">US$ 0,50</span></div>
+      <div className="compactRow"><span>Orçamento Factory</span><span className="muted">{policy?"US$ "+policy.budgetUsd.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4}):"indisponível"}</span></div>
+      <div className="compactRow"><span>Reserva por run</span><span className="muted">{policy?"US$ "+policy.reserveUsd.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4}):"indisponível"}</span></div>
+      <div className="compactRow"><span>Saldo interno verificável</span><span className="muted">{policy&&policy.knownSpendUsd!==null?"US$ "+(policy.budgetUsd-policy.knownSpendUsd).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4}):"indisponível"}</span></div>
+      <div className="compactRow"><a href="/configuration#orcamento">Editar limites financeiros</a></div>
       <div className="compactRow"><span>Codex automático</span><StatusPill status="pending" label="desligado"/></div>
      </div>
     </div>

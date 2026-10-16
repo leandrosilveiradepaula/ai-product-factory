@@ -1,3 +1,9 @@
+## 2026-10-16 — Policy UI reconciliation, migration already applied (candidate #866)
+
+- The privileged Supabase migration `factory_primary_cost_policy` is already present in production migration history as version `20261015232347` (verified 16 October). It seeds the previously authorized internal budget USD 10.00 and reservation USD 0.50; this does **not** prove OpenAI Platform credits or permit automatic purchases.
+- This branch rebases the staged admin-configurable budget UI/runtime onto the live post-#881/#863 Factory code. Exact merged GitHub fixes for early-human-merged CI and OpenAI pre-response credit rejection are preserved. Both the production merge and exact-SHA Console Preview/browser evidence remain mandatory.
+- Do not reapply the policy migration, auto-merge, requeue Service Desk, run paid model probes, or infer current OpenAI credit from the internal ledger.
+
 ## 2026-10-16 — Service Desk: human merge before CI + cross-repo QA credential incident (candidate, not deployed)
 
 - GitHub **verified** PR #7 of `leandrosilveiradepaula/infodive-service-desk` was human-merged at 10:59:11 UTC into `main` `412f24d6dc7d0805b231ce91f12874ced743eebb`, from candidate `60be648ef78a2fba4971f227c8d49c026834c580`, before real CI/quality/Preview. Factory run `605212cf-b47e-418a-b4c4-79ad1efc6f59` and Change Set `effc36be-212c-42f2-928b-97381b6d8a28` remain `ci_pending`. Control Plane incident audit #1041 documents the observed external merge without pretending it was a verified release; pilot issue #8 tracks remediation.
@@ -74,6 +80,15 @@
 - Candidate fixes only `dispatch` to use the **trusted, fail-closed output of protected Product Stage** for both the primary flag and prior authentication readiness signal. If Product Stage is absent/blocked the output is not `true` and dispatch stays disabled. The Python gate `require_dispatch_claim_readiness` still requires both booleans and rechecks the real ledger/reserve before any atomic claim. No secrets are passed into dispatcher; Direct itself still checks opt-in + credentials + cost with protected `openai-api` environment.
 - Regression contracts assert the source is the protected job, that the dispatcher cannot depend on repository-level vars for this decision, that the protected jobs retain strict explicit opt-in, and that no API token appears in dispatch. No Console path changes: Preview **not applicable** for this patch.
 - No runtime merge or paid probe, no change to total US$10/reserve US$0.50, no API purchase, no Codex token, no changes in #866 Draft. Publish to main only by human review/merge.
+
+## 2026-10-15 — Primary paid budget configurable in Console (candidate, NOT deployed)
+
+- The operator identified a verified split-brain: PR #865 was merged and `main` runner used a US$ 10.00 cumulative total with US$ 0.50 reservation, but `/usage` still rendered a fixed US$ 4.00.
+- This candidate introduces a **singleton, versioned** `factory_primary_cost_policy` row in Supabase seeded to the already authorized 10.00/0.50 at migration, with no anonymous/authenticated RLS policy. All subsequent changes require a privileged Console admin POST with exact Origin check, an explicit confirmation, a reason, optimistic version check, row lock and an append-only audit entry in the same PostgreSQL transaction.
+- Runtime `Product Stage`, Direct preclaim, per-model-call metered reservation, no-model readiness and cost alerts **read the same Control Plane policy**. No environment fallback: missing/malformed policy/ledger or unknown paid costs blocks execution. Provider quota and actual OpenAI API credit remain independent and **unverified** until normal guarded real work occurs; no billing probes or purchases.
+- Configuration screen provides the editable admin form, spend and remaining internal ceiling, ledger unknown-cost state and policy version. `/usage` now reads the real persisted budget instead of advertising stale US$ 4.00. Operator read-only view remains.
+- **Human gates:** (1) apply and verify `supabase/migrations/20261015231500_factory_primary_cost_policy.sql` in production before any runtime promotion; (2) verify CI and SHA-exact Vercel Preview/browser evidence for `apps/console/**` change; (3) a human merges the code PR to publish production only after the migration and gates. Preview may be rate-limited; do not bypass it or claim READY.
+- The metered reservation continues to record a durable before-call usage row. The existing separate-check/read and usage-row write are not an atomic global budget reservation across simultaneous paid workers; this candidate does not claim to solve that pre-existing concurrency risk. Keep conservative concurrency/quotas and fail closed.
 
 ## 2026-10-15 — Authorized Factory internal ceiling US$ 10.00 (candidate pending human merge)
 

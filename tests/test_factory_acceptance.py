@@ -214,8 +214,9 @@ class FactoryAcceptanceTests(unittest.TestCase):
         codex = (ROOT / "src/ai_product_factory/codex_cli_producer.py").read_text()
 
         self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED", workflow)
-        self.assertIn("FACTORY_MODEL_BUDGET_USD", workflow)
-        self.assertIn("FACTORY_MODEL_RESERVE_USD", workflow)
+        self.assertNotIn("FACTORY_MODEL_BUDGET_USD", workflow)
+        self.assertNotIn("FACTORY_MODEL_RESERVE_USD", workflow)
+        self.assertIn("require_primary_cost_capacity", runtime)
         self.assertIn("OPENAI_IDENTITY_PROVIDER_ID", workflow)
         self.assertIn("OPENAI_SERVICE_ACCOUNT_ID", workflow)
         self.assertIn("OPENAI_WIF_AUDIENCE", workflow)
@@ -337,6 +338,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261014160500_atomic_project_continuation.sql",
             "20261015093000_atomic_project_intake_bootstrap.sql",
             "20261015210000_greenfield_planning_decision_resume.sql",
+            "20261015231500_factory_primary_cost_policy.sql",
             "20261016023000_change_set_per_wave_attempts.sql",
             "20261016040600_reconcile_openai_credit_denial.sql",
             "20261016120000_block_early_merged_ci_candidates.sql",
@@ -499,7 +501,9 @@ class FactoryAcceptanceTests(unittest.TestCase):
         runtime = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
         self.assertIn("MeteredPrimaryProvider", runtime)
         self.assertIn("require_paid_runtime_budget", runtime)
-        self.assertIn('FACTORY_MODEL_RESERVE_USD', runtime)
+        self.assertIn('require_primary_cost_capacity', runtime)
+        primary=(ROOT/"src/ai_product_factory/metered_provider.py").read_text()
+        self.assertIn('require_primary_cost_capacity()', primary)
 
     def test_api_wif_preflight_is_manual_and_non_model(self):
         workflow = (ROOT / ".github/workflows/openai-api-wif-preflight.yml").read_text()

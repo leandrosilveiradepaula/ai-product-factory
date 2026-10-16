@@ -1,3 +1,7 @@
+## 2026-10-15 — Planned switch to authoritative console-managed cost ceilings
+
+Pending human-approved database migration and candidate CI/Preview/production merge, the current hardcoded workflow cost variables will be replaced by a versioned, service-role-only Control Plane policy. Initial persisted values use the already approved **US$ 10.00 total / US$ 0.50 per call**, with no fallback if unavailable. The identity enable switch, billing/key/quota gates, unknown-cost hard stop, real ledger and human production merge remain unchanged. This does not change OpenAI Platform funding or Codex WIF.
+
 # Authentication activation readiness
 
 The Factory treats OpenAI API authentication and Codex workspace authentication as independent gates. Neither gate is inferred from the presence of a secret alone.

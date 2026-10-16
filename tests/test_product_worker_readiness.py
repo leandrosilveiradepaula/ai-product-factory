@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_worker_readiness import (
     primary_readiness_blocker, record_product_worker_readiness,
@@ -20,8 +20,6 @@ READY = {
     "FACTORY_PRIMARY_MODEL_ENABLED": "true",
     "FACTORY_PRIMARY_AUTH_MODE": "api_key",
     "OPENAI_API_KEY": "NEVER_LOG_THIS_VALUE",
-    "FACTORY_MODEL_BUDGET_USD": "4.00",
-    "FACTORY_MODEL_RESERVE_USD": "0.50",
 }
 CANDIDATE = {"run_id": RUN, "task_id": TASK, "project_id": PROJECT}
 
@@ -49,6 +47,15 @@ class FakeAudit:
 
 
 class ProductWorkerReadinessTests(unittest.TestCase):
+    def setUp(self):
+        self.policy=SimpleNamespace(budget_usd=Decimal("10"),reserve_usd=Decimal("0.50"),version=1)
+        self.policy_patch=patch(
+            "ai_product_factory.product_worker_readiness.SupabasePrimaryCostPolicyReader",
+            return_value=SimpleNamespace(read=lambda:self.policy),
+        )
+        self.policy_patch.start()
+        self.addCleanup(self.policy_patch.stop)
+
     def test_flag_disabled_blocks_before_auth_or_cost_reader(self):
         reader = MagicMock()
         self.assertEqual(primary_readiness_blocker(
@@ -65,12 +72,12 @@ class ProductWorkerReadinessTests(unittest.TestCase):
             "OPENAI_IDENTITY_PROVIDER_ID": "partial",
         }), "primary_auth_missing")
 
-    def test_missing_negative_or_invalid_budget_blocks(self):
-        for budget in ("", "-1", "NaN", "Infinity"):
-            with self.subTest(budget=budget):
-                self.assertEqual(primary_readiness_blocker(
-                    {**READY, "FACTORY_MODEL_BUDGET_USD": budget}
-                ), "budget_not_configured")
+    def test_missing_invalid_or_unavailable_policy_blocks(self):
+        with patch(
+            "ai_product_factory.product_worker_readiness.SupabasePrimaryCostPolicyReader",
+            return_value=SimpleNamespace(read=MagicMock(side_effect=RuntimeError("policy unavailable"))),
+        ):
+            self.assertEqual(primary_readiness_blocker(READY), "budget_not_configured")
 
     def test_unknown_cost_is_blocked(self):
         reader = MagicMock()
@@ -78,12 +85,12 @@ class ProductWorkerReadinessTests(unittest.TestCase):
             known_cost=Decimal("1"), unknown_cost_events=1
         )
         self.assertEqual(primary_readiness_blocker(READY, health_reader=reader), "paid_cost_unknown")
-        reader.read.assert_called_once_with(budget=Decimal("4.00"))
+        reader.read.assert_called_once_with(budget=Decimal("10"))
 
     def test_insufficient_reserve_is_blocked(self):
         reader = MagicMock()
         reader.read.return_value = SimpleNamespace(
-            known_cost=Decimal("3.75"), unknown_cost_events=0
+            known_cost=Decimal("9.75"), unknown_cost_events=0
         )
         self.assertEqual(primary_readiness_blocker(READY, health_reader=reader), "budget_exhausted")
 

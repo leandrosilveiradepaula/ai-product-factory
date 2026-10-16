@@ -1,3 +1,9 @@
+## 2026-10-16 — Policy UI reconciliation, migration already applied (candidate #866)
+
+- The privileged Supabase migration `factory_primary_cost_policy` is already present in production migration history as version `20261015232347` (verified 16 October). It seeds the previously authorized internal budget USD 10.00 and reservation USD 0.50; this does **not** prove OpenAI Platform credits or permit automatic purchases.
+- This branch rebases the staged admin-configurable budget UI/runtime onto the live post-#881/#863 Factory code. Exact merged GitHub fixes for early-human-merged CI and OpenAI pre-response credit rejection are preserved. Both the production merge and exact-SHA Console Preview/browser evidence remain mandatory.
+- Do not reapply the policy migration, auto-merge, requeue Service Desk, run paid model probes, or infer current OpenAI credit from the internal ledger.
+
 ## 2026-10-16 — Fail-closed early-merged CI release candidates (candidate, not applied)
 
 - **Incident:** Service Desk PR #7 was merged by a human into the private repo's `main` before CI, quality-gate or Preview evidence. GitHub evidence: PR merged at `2026-10-16T10:59:11Z` into `412f24d6dc7d0805b231ce91f12874ced743eebb`. Factory run `605212cf-b47e-418a-b4c4-79ad1efc6f59` and Change Set `effc36be-212c-42f2-928b-97381b6d8a28` remained `ci_pending`; this should not be promoted to `released` automatically. Incident audit `release.external_human_merge_observed_before_ci` #1041 was recorded with verified GitHub identity.
@@ -41,12 +47,30 @@
 - New deterministic tests replay the exact `vercel/deployments_daily/blocked` case and verify a single runnable Direct item; prove independent OpenAI/GitHub/other blocked quotas and unknown paid costs still enforce concurrency=0. No API calls, Vercel deploys, schema migrations, fresh tasks or credits.
 - The patch is **not deployed** until human merge of its green CI PR; next native/authorized wake should resume the existing queued run without duplicating it. Check a real Direct job, commit, PR and cost ledger before claiming implementation succeeded. Preview N/A for the Python-only Factory patch. PR #866 Console remains Draft until exact-SHA Preview/browser evidence.
 
+## Revisão do formulário financeiro (15/10/2026) — antes de Preview
+
+- A seção `Configuração → Orçamento e custos` passa a mostrar as **últimas 20 alterações auditadas** de teto/reserva, com ator, horário, valor anterior/novo e justificativa. O histórico é lido server-side pela chave privilegiada do Control Plane. Falha de leitura **não** aparece como "sem alterações": UI informa "Histórico indisponível".
+- As regras de entrada passam a aceitar o limite máximo de `100000.0000`, igual ao CHECK de banco, sem permitir zero, quantia negativa ou precisão superior a quatro casas. Isso é validação de formulário, **não autorização** para elevar o teto atualmente aprovado de US$ 10,00. Mudanças financeiras exigem administrador, confirmação explícita e auditoria na mesma transação.
+- Esta revisão ainda pertence à PR Draft #866; CI/Preview SHA-exato/merge humano seguem obrigatórios.
+
 ## 2026-10-15 — Service Desk wave 1 dispatch gate fix awaiting human merge
 
 - Production Evidence: GHA [run 38822922959](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38822922959) Product Stage `FACTORY_PRIMARY_MODEL_ENABLED=true` inside protected `openai-api` environment, completed Service Desk planning run `d5f1ea54-c388-4266-83b1-b8b06f2fd302`, materialized change set `effc36be-212c-42f2-928b-97381b6d8a28` with 13 pending work units across eight dependency waves. Dispatcher subsequently logged `FACTORY_PRIMARY_MODEL_ENABLED=false`, `FACTORY_DISPATCH_PRIMARY_READY=true` and returned `blocked_executor_readiness` because unprotected `dispatch` cannot see environment-scoped GitHub vars.
 - Candidate fixes only `dispatch` to use the **trusted, fail-closed output of protected Product Stage** for both the primary flag and prior authentication readiness signal. If Product Stage is absent/blocked the output is not `true` and dispatch stays disabled. The Python gate `require_dispatch_claim_readiness` still requires both booleans and rechecks the real ledger/reserve before any atomic claim. No secrets are passed into dispatcher; Direct itself still checks opt-in + credentials + cost with protected `openai-api` environment.
 - Regression contracts assert the source is the protected job, that the dispatcher cannot depend on repository-level vars for this decision, that the protected jobs retain strict explicit opt-in, and that no API token appears in dispatch. No Console path changes: Preview **not applicable** for this patch.
 - No runtime merge or paid probe, no change to total US$10/reserve US$0.50, no API purchase, no Codex token, no changes in #866 Draft. Publish to main only by human review/merge.
+
+## Operator-configurable paid policy — activation order and rollback
+
+The Source of Truth for total Primary model ceiling and per-call reservation is the `public.factory_primary_cost_policy` singleton in Supabase. The initial `budget_usd=10.0000`, `reserve_usd=0.5000` seed represents the authorized limit, not OpenAI API balance. Admins can change both under `/configuration#orcamento` using an explicit confirmation and written reason; an optimistic policy version prevents stale concurrent updates. Persist an audit event with before/after values in the same transaction. Operator profiles can read but not mutate.
+
+**Production migration first:** apply and verify `20261015231500_factory_primary_cost_policy.sql` via a real human database-migration gate. Confirm RLS on the new table, no policies for anonymous or `authenticated`, exact singleton row/seed and service-role-only privileged RPC. Do **not** deploy the runtime first; the new worker deliberately blocks paid execution when the source of truth is unavailable. Do not backfill anything by deleting/requeuing existing Service Desk runs.
+
+**Console Preview second:** the PR changes `apps/console/**`, so CI alone is insufficient. Obtain Vercel READY at the exact candidate SHA, execute browser evidence with admin and nonadmin UI paths, including form validation, stale-version conflict, a successful audited update and historical usage display. If Vercel is rate-limited, remain pending rather than bypassing Preview.
+
+**Human merge last:** merge to the Factory production `main` only after migration + Preview/quality gates are verified. Confirm `/usage` and `/configuration` reflect the persisted policy. Observe existing Service Desk run and paid ledger without issuing smoke model calls, purchasing API credits, widening GitHub App access or enabling Codex. A decrease may intentionally block new paid execution; an increase is an explicit admin financial decision and does **not** refill OpenAI Platform credits.
+
+Rollback: before merging, no runtime behavior changes. After merge, restore code to the last verified commit **without rolling back the table or erasing audit**; a compatible prior runtime still uses its previously reviewed workflow ceiling. Database writes are append-audited; reversing a policy amount is a new admin transaction with a reason. Do not silently substitute YAML defaults if the runtime cannot read the table. This is independent of the existing release-merge and Preview gates.
 
 ## 2026-10-15 — Reused Preview ref ≠ Vercel deployment (candidato sem Console)
 
