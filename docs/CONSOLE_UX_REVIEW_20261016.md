@@ -1,0 +1,77 @@
+# Console UX — revisão operacional e redução de complexidade (16/10/2026)
+
+## Problema e evidências do código antes da alteração
+
+Auditoria sobre a `main` em `5710b9d64797cc9199d120766245916ad002a982`.
+A interface apresentava as 13 telas de operação, diagnóstico, qualidade e
+administração simultaneamente no menu, repetia o atalho “Novo projeto” em
+diversas telas e exibia um banner explicativo em praticamente todas as páginas.
+A entrada do produto era dominada por três cartões educativos permanentes,
+antes dos projetos reais. A criação de um novo produto possuía **dois inputs
+`name="users"` diferentes no mesmo formulário**, podendo produzir
+ambiguidade ao submeter o briefing. Nos cartões de projeto, o indicador
+percentual representava apenas a posição da etapa, mas podia ser interpretado
+como percentual de implementação ou prontidão.
+
+Este trabalho é **reorganização da experiência e correção de apresentação**;
+não altera autenticação, papéis, chamadas de modelo, gastos, Supabase RPCs,
+gate humano nem capacidades do adapter GitHub.
+
+## Experiência-alvo (sem ocultar funções)
+
+1. **Área de trabalho:** Visão geral, Projetos, Aprovações. As demais dez
+   páginas continuam com **links reais, intactos**, dentro de
+   “Ferramentas avançadas”, que abre automaticamente ao navegar para uma
+   dessas rotas. Cada destino tem `aria-current`.
+2. **Home:** ação contextual baseada somente em evidência consultada,
+   projetos reais, indicadores operacionais compactos e casos que exigem
+   investigação. Auditoria, custos, execuções e atividade detalhada continuam
+   disponíveis em detalhes colapsáveis. `getHumanGates(30,true)` e
+   `g.actionable` impedem apresentar gates históricos como decisões.
+3. **Celular:** cabeçalho curto, menu completo em disclosure e navegação
+   inferior de três destinos fixos; contagem de decisões permanece visível.
+   O menu fecha após mudança de rota; áreas avançadas nunca deixam de existir.
+   Área útil recebe reserva de espaço para a barra inferior; sem esconder
+   overflow horizontal do documento.
+4. **Projeto:** uma ação de continuação por vez; “Solicitar alteração” é
+   secundária quando há intervenção humana prioritária. Reconciliação e
+   fila continuam acessíveis em “Mais opções”. A revisão de domínios de
+   qualidade e as integrações prontas entram em disclosures, mas **avisos,
+   motivos e blockers reais continuam expostos**.
+5. **Prontidão, não percentuais:** os cartões e detalhes mostram etapa
+   de fluxo (1 a 5), nunca um falso “80% pronto”. Gate de produção exige
+   CI, auditoria, Preview/evidência ou não aplicabilidade explícita, e
+   merge humano; nenhuma etapa de UI implica release verificado.
+6. **Novo projeto:** entrada por prompt e nome acima da dobra,
+   complementos/anexos em disclosure com preservação de valores do
+   rascunho, etapa de revisão antes do envio, sem duplicar `users`.
+   Campos existentes e payload continuam com os mesmos nomes e contratos.
+
+## Critérios de validação
+
+- Testes offline de arquitetura da interface: todas as rotas preservadas,
+  gating/bloqueios intactos, decisão acionável, formulário sem campos
+  duplicados, menu mobile e ausência de percentual enganoso.
+- `validate`, `factory-acceptance`, `Console validation` com `npm ci`,
+  `tsc --noEmit` e `next build`, todos no SHA da PR.
+- GitHub check-run da Vercel indicando Preview **exato** do candidato,
+  quando o provedor e quota permitirem. Verificar o SHA, URL e status READY.
+- Evidência Playwright autenticada vinculada ao Preview e SHA:
+  `overview`, `projects`, `new-project`, `human-gates`, detalhes,
+  `overview-mobile`, `projects-mobile`, `configuration-mobile`,
+  `overview-mobile-menu`, foco, rotas avançadas e ausência de overflow
+  a 390px. Screenshot/render não substitui validação dos estados de
+  acesso e ações de servidor.
+- Revisão humana da UI, principalmente celular, antes de merge da Factory.
+  Qualquer quota/credencial de Preview indisponível bloqueia publicação,
+  **não** justifica marcar Preview validado nem burlar o gate.
+
+## Não objetivo
+
+Não redesenhar toda a identidade visual, apagar páginas, esconder estados de
+segurança, reestruturar o banco ou liberar novas permissões. Futuras mudanças
+nos formulários de gates ou comunicação de incidentes exigem evidência própria
+e não devem desativar controles de aprovação existentes.
+
+**Estado:** documento de mudança proposta; implementação, CI e Preview precisam
+ser verificados na respectiva PR. Não publicado até merge humano.

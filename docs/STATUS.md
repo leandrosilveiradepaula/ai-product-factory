@@ -1,3 +1,10 @@
+## 2026-10-16 — Console UX: operação e aprovações à frente da infraestrutura (PR candidata)
+
+- Revisão da `main` `5710b9d64797cc9199d120766245916ad002a982`: 13 destinos visíveis, ações redundantes, instruções permanentes antes dos projetos, experiência móvel confusa, percentuais de etapa potencialmente interpretados como prontidão. O formulário de intake possuía dois campos `name="users"` na criação greenfield.
+- Candidato UI: 3 entradas principais (Visão geral, Projetos, Aprovações), 10 ferramentas técnicas preservadas em disclosure; barra inferior mobile, menu completo; home com projetos reais e decisões acionáveis; edição com uma CTA principal, integrações/evidências colapsáveis; etapa do fluxo sem falso percentual; intake simplificado sem duplicação de campo.
+- Mudanças limitadas a Console, capture visual autenticado, testes e documentação. Nenhuma migração, autorização de custo, alteração de Control Plane ou auto-merge. A checagem de Preview **é obrigatória** para `apps/console/**`, somente com deployment READY e browser evidence no SHA exato; política fail-closed se não estiver disponível.
+- Plano e critérios de aceite detalhados em `docs/CONSOLE_UX_REVIEW_20261016.md`. **Mudança candidata, não publicada.** O release continua condicionado a CI, Preview verificado e merge humano.
+
 ## 2026-10-16 — Reposição de crédito OpenAI e reconciliação de chamada rejeitada (candidate, não publicado)
 
 - O operador confirmou novo crédito pré-pago. Ainda não houve chamada de modelo para sondar saldo. O Change Set do Service Desk segue bloqueado na onda 7; a mesma run `fffee538-9781-4905-a69d-f3427d6f66b3` mantém tentativa 1 e o ledger possui **exatamente um** evento pago de custo desconhecido (usage #117) oriundo de HTTP 429 `credit_balance_exhausted`.
