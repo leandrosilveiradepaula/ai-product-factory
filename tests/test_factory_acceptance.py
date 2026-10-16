@@ -337,6 +337,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261014160500_atomic_project_continuation.sql",
             "20261015093000_atomic_project_intake_bootstrap.sql",
             "20261015210000_greenfield_planning_decision_resume.sql",
+            "20261016023000_change_set_per_wave_attempts.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
