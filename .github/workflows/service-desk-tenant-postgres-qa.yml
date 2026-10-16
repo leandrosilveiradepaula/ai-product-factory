@@ -1,0 +1,184 @@
+name: Service Desk isolated PostgreSQL tenant QA
+
+# Owner-initiated QA for the private pilot while its Actions runners fail.
+# Evidence is NOT a substitute for pilot checks, tenant RLS or Preview.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-desk-postgres-qa-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-private-postgres-candidate:
+    if: >-
+      ${{
+        github.repository == 'leandrosilveiradepaula/ai-product-factory' &&
+        github.event.issue.number == 841 &&
+        github.event.comment.user.login == 'leandrosilveiradepaula' &&
+        github.event.comment.author_association == 'OWNER' &&
+        startsWith(github.event.comment.body, '/service-desk-pg-qa ')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_DB: service_desk_security_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-qa-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d service_desk_security_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Verify owner request, same-repository PR and exact head SHA
+        id: candidate
+        shell: bash
+        env:
+          REQUEST_BODY: ${{ github.event.comment.body }}
+          PILOT_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from urllib import request
+
+          # Repository is fixed by the trusted main-branch workflow. Never
+          # let a GitHub issue comment choose a repository or named ref.
+          repository = "leandrosilveiradepaula/infodive-service-desk"
+          command = os.environ.get("REQUEST_BODY", "").strip()
+          match = re.fullmatch(r"/service-desk-pg-qa\s+pr=(5)\s+sha=([0-9a-f]{40})", command)
+          if not match:
+              raise SystemExit("Expected exact owner command: /service-desk-pg-qa pr=N sha=<40-hex>")
+          pr_number, sha = match.groups()
+          token = os.environ.get("PILOT_GITHUB_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("Explicit cross-repo credential absent; no GITHUB_TOKEN fallback")
+          req = request.Request(
+              f"https://api.github.com/repos/{repository}/pulls/{pr_number}",
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2026-03-10",
+              },
+          )
+          with request.urlopen(req, timeout=30) as response:
+              pr = json.loads(response.read().decode())
+          head = pr.get("head") or {}
+          base = pr.get("base") or {}
+          if (pr.get("number") != int(pr_number)
+                  or pr.get("state") != "open"
+                  or head.get("sha") != sha
+                  or (head.get("repo") or {}).get("full_name") != repository
+                  or base.get("ref") != "main"
+                  or (base.get("repo") or {}).get("full_name") != repository):
+              raise SystemExit("Candidate is not exact current head of an open pilot PR to main")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"sha={sha}\n")
+              output.write(f"pr_number={pr_number}\n")
+          print(json.dumps({
+              "status": "exact_head_verified",
+              "repository": repository,
+              "pr_number": int(pr_number),
+              "sha": sha,
+              "token_logged": False,
+          }))
+          PY
+
+      # Secret is present only in the trusted preflight and the checkout
+      # action; never at job level, in npm scripts or in output artifacts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: leandrosilveiradepaula/infodive-service-desk
+          ref: ${{ steps.candidate.outputs.sha }}
+          token: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 1
+
+      - name: Assert detached checkout matches the authorized SHA
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          if git config --get remote.origin.url | grep -Eq '(x-access-token|ghp_|github_pat_)'; then
+            echo "::error::Checkout credentials persisted in remote URL"
+            exit 1
+          fi
+          mkdir -p .qa-evidence
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Validate migrations and two-tenant RLS in disposable PostgreSQL
+        id: postgres
+        shell: bash
+        env:
+          ISOLATED_PG_ONLY: "1"
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGDATABASE: service_desk_security_test
+          PGUSER: postgres
+          PGPASSWORD: disposable-qa-only-password
+        run: |
+          set -euo pipefail
+          bash tests/security/run_isolated_postgres.sh 2>&1 | tee .qa-evidence/postgres-isolation.log
+          grep -Fx 'ISOLATED_POSTGRES_RLS_PASS=1' .qa-evidence/postgres-isolation.log
+
+      - name: Record exact SHA evidence without claiming release
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          PR_NUMBER: ${{ steps.candidate.outputs.pr_number }}
+          PG_RESULT: ${{ steps.postgres.outcome }}
+          FACTORY_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          log = Path(".qa-evidence/postgres-isolation.log")
+          passed = os.environ["PG_RESULT"] == "success" and log.is_file() and "ISOLATED_POSTGRES_RLS_PASS=1" in log.read_text()
+          evidence = {
+              "repository": "leandrosilveiradepaula/infodive-service-desk",
+              "pr_number": int(os.environ["PR_NUMBER"]),
+              "candidate_sha": os.environ["CANDIDATE_SHA"],
+              "factory_actions_run_id": os.environ["FACTORY_RUN_ID"],
+              "postgres_rls_isolation_passed": passed,
+              "database": "disposable PostgreSQL service container",
+              "preview_verified": False,
+              "release_authorized": False,
+              "cross_repo_status_posted": False,
+              "paid_model_calls_performed": False,
+          }
+          Path(".qa-evidence/postgres-provenance.json").write_text(json.dumps(evidence, sort_keys=True, indent=2)+"\n")
+          print(json.dumps(evidence))
+          PY
+
+      - name: Upload exact SHA PostgreSQL evidence
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: service-desk-postgres-qa-pr-${{ steps.candidate.outputs.pr_number }}-${{ steps.candidate.outputs.sha }}
+          path: .qa-evidence/
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: true
