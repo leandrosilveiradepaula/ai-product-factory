@@ -1,3 +1,10 @@
+## 2026-10-16 — Authenticated Console visual audit targeted stale SHA after #882 (candidate)
+
+- PR #882 was human-merged at 13:01:15 UTC in `53bd03b274129925f713f614243093e165f03ed1`; merge-SHA `validate`, `factory-acceptance` and `Console validation` all green. Vercel commit status reported successful deployment at 13:02:40 UTC. Neither check asserts `/api/health` is serving this exact commit.
+- Real authenticated audit run [#38904687637](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38904687637) incorrectly selected historical pinned SHA `34c614be...` from `.github/authenticated-visual-target.json`. The run failed on React hydration `#418` at `/configuration`; post-failure cleanup succeeded. No authenticated browser evidence for #882 was accepted, and the cause of hydration remains unverified.
+- Candidate follow-up guards `push main` changed Console paths to exact `GITHUB_SHA`; retains manual pinned audit for workflow-only change; requires Vercel success status on full SHA and live `/api/health` `commit === SHA.slice(0,12)` before Playwright/user creation and after capture. Test mismatch fail-closed. Source-controlled pinned target now refers to #882 for a focused follow-up, without new deployment. Independent incident + details: `docs/CONSOLE_VISUAL_SHA_GUARD_20261016.md`.
+- Human gate remains for merge of any production-publishing PR. This preparation makes no production change, creates no paid model request, bypass, Preview or migration. A repaired audit is **not** evidence that the React hydration issue was fixed; resolve/reproduce separately.
+
 ## 2026-10-16 — Console UX: operação e aprovações à frente da infraestrutura (PR candidata)
 
 - Revisão da `main` `5710b9d64797cc9199d120766245916ad002a982`: 13 destinos visíveis, ações redundantes, instruções permanentes antes dos projetos, experiência móvel confusa, percentuais de etapa potencialmente interpretados como prontidão. O formulário de intake possuía dois campos `name="users"` na criação greenfield.
