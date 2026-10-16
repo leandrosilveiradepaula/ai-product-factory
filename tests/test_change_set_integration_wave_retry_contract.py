@@ -74,6 +74,8 @@ class PerWaveIntegrationAttempts(unittest.TestCase):
         self.assertIn("if not found then return; end if;",repair)
         self.assertIn("if v_set.current_wave>4",repair)
         self.assertIn("if not found then",repair)
+        self.assertIn("min(task_id::text)::uuid",repair)
+        self.assertNotIn("max(task_id)",repair)
 
     def test_repair_has_no_runtime_automerge_or_silent_production_rollout(self):
         self.assertNotIn("merge_pull_request(",self.sql)

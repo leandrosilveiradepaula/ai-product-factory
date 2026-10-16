@@ -156,7 +156,7 @@ begin
     raise exception 'integration repair aborted: prior integrations inconsistent';
   end if;
 
-  select count(*),max(task_id) into v_current_units,v_current_task
+  select count(*),min(task_id::text)::uuid into v_current_units,v_current_task
   from public.factory_change_set_work_units
   where change_set_id=v_target and wave=4
     and run_id=v_current_run and status='completed'
