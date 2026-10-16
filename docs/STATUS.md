@@ -1,3 +1,9 @@
+## 2026-10-16 — Real provider credit-exhaustion visibility (candidate; NOT deployed)
+
+- Service Desk run `fffee538-9781-4905-a69d-f3427d6f66b3` hit an authentic OpenAI HTTP 429 `insufficient_quota / credit_balance_exhausted`, leaving the existing wave-7 Change Set durably `blocked`. **Do not** buy API credit, retry or recover until a human provider-billing decision; the internal US$ 10 budget and US$ 0.50 reserve are separate.
+- Console `summarizeOperationalHealth` only surfaced expired leases or `failed` runs, silently omitting durable `blocked` runs. The home page additionally double-counted dead letters (subset of failed) while labelling the metric "Falhas / bloqueios". Candidate fix includes the blocked status as an attention incident, adds `blockedRuns` independently and counts each failed/blocked run once. Run detail and home distinguish observed provider credit exhaustion from Factory internal budget exhaustion, with no speculative balance value.
+- Offline behavior regression adds the exact real 429 case and confirms no internal budget or generic HTTP 429 is classified as provider credit exhaustion. No runtime, model billing, migrations or release changes. Console files changed -> **Preview/browser evidence required**, not N/A; do not merge absent human release gate and verified Preview.
+
 ## 2026-10-16 — Integration attempt counter per wave (candidate, not deployed)
 
 - Real greenfield Service Desk eight-wave Change Set `effc36be-212c-42f2-928b-97381b6d8a28`: wave 4 `knowledge-base` Direct run `28497089-9415-43e8-b8e4-06bf754b5607` completed and produced `dc044aaaf23f64ca6a3df818430ec1e2a1fa3df5`, but Factory GHA [#38839037505](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38839037505) Change Set integration logged `claimed:false, processed:0` even though its job was green.

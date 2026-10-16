@@ -1,11 +1,12 @@
 import Link from "next/link";
+import {isProviderCreditExhausted} from "../lib/operational-health-inventory";
 import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getRuns,getUsageOverview} from "../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "./ui";
 
 export default async function Home(){
  const [d,health,usage,gates,runs,audit]=await Promise.all([getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(8),getRuns(12),getAuditEvents(12)]);
  const pending=gates.filter(g=>g.status==="pending");
- const blocked=health.failedRuns+health.deadLetterRuns;
+ const blocked=health.failedRuns+health.blockedRuns;
  const recentRuns=runs.slice(0,8);
  const recentAudit=audit.slice(0,8);
  const incidents=health.incidents.slice(0,2);
@@ -73,8 +74,8 @@ export default async function Home(){
     </article>)}
     {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
      <div className="attentionBanner"><StatusPill status={i.status}/><span className="mono">run {i.id.slice(0,8)}</span></div>
-     <h3>Execução requer atenção</h3>
-     <p>{i.error||"A execução está bloqueada ou excedeu a janela operacional esperada."}</p>
+     <h3>{isProviderCreditExhausted(i.error)?"Créditos da API OpenAI esgotados":"Execução requer atenção"}</h3>
+     <p>{isProviderCreditExhausted(i.error)?"A API confirmou ausência de créditos. O teto interno da Factory não recarrega o saldo real. Não há retry automático nem compra: uma decisão humana de custo e recuperação auditada são necessárias.":i.error||"A execução está bloqueada ou excedeu a janela operacional esperada."}</p>
      <div className="attentionFooter"><span>{i.route?humanizeStatus(i.route):"sem rota"}</span><ActionLink href={"/runs/"+i.id} variant="ghostButton">Inspecionar</ActionLink></div>
     </article>)}
    </div>}

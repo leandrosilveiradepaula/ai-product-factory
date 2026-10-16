@@ -1,5 +1,6 @@
 import {notFound} from "next/navigation";
 import {getRunDetail} from "../../../lib/control-plane";
+import {isProviderCreditExhausted} from "../../../lib/operational-health-inventory";
 import {EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
@@ -29,6 +30,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
       <div className="detailItem"><span className="detailLabel">Branch</span><code>{r.branchName||"—"}</code></div>
       <div className="detailItem"><span className="detailLabel">Commit candidato</span><code>{r.candidateCommit||"—"}</code></div>
      </div>
+     {r.status==="blocked"&&isProviderCreditExhausted(r.lastError)?<div className="errorText runError" role="alert"><strong>Créditos reais da API OpenAI esgotados.</strong> O limite interno da Factory não adiciona créditos ao provedor. Não haverá retry ou recarga automática; após uma decisão humana de custo e saldo confirmado, a execução original exige recuperação auditada.</div>:null}
      {r.lastError?<div className="errorText runError">{r.lastError}</div>:null}
     </div>
 

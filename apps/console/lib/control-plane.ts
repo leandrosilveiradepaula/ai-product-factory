@@ -499,7 +499,7 @@ export async function getProjectOperations(projectId:string):Promise<ProjectOper
 }
 
 
-export type OperationsHealth={expiredLeases:number;deadLetterRuns:number;failedRuns:number;queuedRuns:number;knownCost:number;unknownCostEvents:number;incidents:{id:string;status:string;route:string|null;attempts:number;error:string|null;leaseExpiresAt:string|null;createdAt:string}[]};
+export type OperationsHealth={expiredLeases:number;deadLetterRuns:number;failedRuns:number;blockedRuns:number;queuedRuns:number;knownCost:number;unknownCostEvents:number;incidents:{id:string;status:string;route:string|null;attempts:number;error:string|null;leaseExpiresAt:string|null;createdAt:string}[]};
 export async function getOperationsHealth():Promise<OperationsHealth>{
  await requireConsoleOperator();
  const cfg=serverHeaders();
