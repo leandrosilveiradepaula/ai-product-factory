@@ -5,6 +5,7 @@ import {revalidatePath} from "next/cache";
 import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
+import {RepositoryLinkForm} from "./repository-link-form";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
@@ -150,9 +151,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
      <a className="linkButton primary" href={"https://github.com/new?name="+encodeURIComponent(p.key)+"&visibility=private"} target="_blank" rel="noreferrer">1. Criar repositório privado no GitHub</a>
      <a className="linkButton" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">2. Autorizar repositório na GitHub App</a>
     </div>
-    {operator.role==="admin"?<form method="POST" action={"/api/projects/"+encodeURIComponent(p.key)+"/link-repository"}>
-      <button className="linkButton" type="submit">3. Verificar e vincular repositório</button>
-    </form>:<p className="muted">Somente um administrador pode concluir a vinculação.</p>}
+    {operator.role==="admin"?<RepositoryLinkForm projectKey={p.key}/>:<p className="muted">Somente um administrador pode concluir a vinculação.</p>}
     <p className="muted">O servidor exige repositório privado, identidade exata, branch inicializada e token temporário com permissões de implementação. Esta ação não inicia modelos pagos nem libera merge automático.</p>
    </div>
   </section>:null}

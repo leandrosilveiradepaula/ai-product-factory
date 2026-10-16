@@ -18,3 +18,9 @@ This change modifies `apps/console/**` and must receive exact-SHA Vercel Preview
 No paid models or API credits are used. The Factory's total model budget US$4.00 and reservation US$0.50 remain unchanged. Service Desk's corrected run `d5f1ea54` stays at `created` until separate cost readiness, and no repo-setup click may trigger or duplicate it. No automatic merge is added.
 
 This endpoint is narrowly scoped to the existing personal owner `leandrosilveiradepaula` and a repository slug equal to the greenfield project's immutable key. Other owners, aliases and existing-project remapping require separate, explicitly reviewed requirements; do not silently widen access.
+
+## Slow-link operator feedback (15/10/2026)
+
+The Service Desk was linked and its GitHub App capabilities recorded as `ready` with audit evidence at 22:11:21 UTC, but the operator reported a noticeable wait after pressing the verification button. The original handler deliberately performs a pre-write installation/repository check and then an authoritative post-link capability check; it includes multiple remote GitHub API reads. No end-to-end request-duration measurement is available, so the exact bottleneck is not established.
+
+The post-link verification now performs only independent read-only GitHub capability probes in parallel (with a second parallel pair after reading the exact default-branch SHA). Missing capabilities, GitHub failures, token scope checks, audit RPC, admin authorization and conditional repository update remain unchanged and fail closed. The browser retains native HTML POST/303 navigation and displays an immediate progress label, screen-reader status and a same-page duplicate-click guard; server-side idempotency remains mandatory when JS is unavailable. No automatic retry, paid API, deployment, policy widening or model execution is introduced. Changes to the Console require SHA-exact Preview and human release merge before production claims.
