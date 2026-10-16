@@ -6,6 +6,7 @@ from typing import Protocol
 
 from .model_executor import ModelProvider, ModelRequest, ModelResult
 from .openai_costs import estimate_openai_text_cost_usd
+from .openai_provider import OpenAICreditBalanceRejected
 from .runtime_auth import RuntimeAuthResolver
 from .supabase_store import SupabaseControlPlaneStore
 
@@ -57,6 +58,29 @@ class MeteredPrimaryProvider:
         )
         try:
             result = self.provider.execute(request)
+        except OpenAICreditBalanceRejected as exc:
+            # An exact, structured 429 credit denial contains no Responses
+            # object or token usage. Preserve the refusal receipt alongside
+            # a known-zero pre-response operation in the *same* usage record.
+            # All ambiguous failures still remain cost_unknown/fail-closed.
+            store.update_tool_usage(
+                reservation.id,
+                operation="model_call_rejected_credit_exhausted",
+                usage_units=0,
+                estimated_cost=0.0,
+                metadata={
+                    "status": "provider_rejected_before_response",
+                    "provider": "openai",
+                    "auth_kind": auth.kind.value,
+                    "http_status": exc.http_status,
+                    "error_code": exc.error_code,
+                    "request_id": exc.request_id,
+                    "reserve_usd": str(reserve_usd),
+                    "usage_observed": False,
+                    "cost_basis": "structured_http_429_without_responses_object",
+                },
+            )
+            raise
         except Exception as exc:
             store.update_tool_usage(
                 reservation.id,
