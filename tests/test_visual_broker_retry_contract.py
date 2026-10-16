@@ -59,22 +59,43 @@ class VisualEvidenceBrokerRetryContract(unittest.TestCase):
         self.assertIn('await cleanupUser(userId, workflowRunId);',BROKER)
         self.assertIn('Never report "expired"', BROKER)
 
-    def test_postdeploy_broker_v2_uses_new_trusted_push_run_without_console_rebuild(self):
-        self.assertIn("OIDC broker v2 functional post-deploy audit", TARGET["purpose"])
-        self.assertIn("issue #822", TARGET["purpose"])
-        self.assertIn('      - ".github/authenticated-visual-target.json"', WORKFLOW)
-        self.assertIn("branches: [main]", WORKFLOW)
-        self.assertNotIn("pull_request_target:", WORKFLOW)
-        self.assertNotIn("issue_comment:", WORKFLOW)
-        self.assertIn('if [ "${GITHUB_RUN_ATTEMPT:-0}" != "1" ]; then', WORKFLOW)
-        self.assertEqual(TARGET["preview_url"], "https://ai-product-factory-console.vercel.app")
-        self.assertEqual(TARGET["candidate_sha"], "34c614be92a544bb52c1b2634fc6c82b1be6d25e")
-
-    def test_durable_production_target_matches_verified_console_sha(self):
+    def test_visual_audit_provenance_and_read_only_identity_checks(self):
         self.assertEqual(TARGET["preview_url"],"https://ai-product-factory-console.vercel.app")
-        self.assertEqual(TARGET["candidate_sha"],"34c614be92a544bb52c1b2634fc6c82b1be6d25e")
-        self.assertIn(".github/authenticated-visual-target.json",WORKFLOW)
-        self.assertIn('id-token: write',WORKFLOW)
+        self.assertRegex(TARGET["candidate_sha"],r"^[0-9a-f]{40}$")
+        self.assertIn("PR #882",TARGET["purpose"])
+        self.assertIn('      - "apps/console/**"',WORKFLOW)
+        self.assertIn('      - ".github/authenticated-visual-target.json"',WORKFLOW)
+        self.assertIn("branches: [main]",WORKFLOW)
+        self.assertNotIn("pull_request_target:",WORKFLOW)
+        self.assertNotIn("issue_comment:",WORKFLOW)
+        self.assertIn('if [ "${GITHUB_RUN_ATTEMPT:-0}" != "1" ]; then',WORKFLOW)
+        self.assertIn("id-token: write",WORKFLOW)
+        self.assertIn("statuses: read",WORKFLOW)
+        self.assertIn("fetch-depth: 2",WORKFLOW)
+
+    def test_deployed_sha_guard_precedes_playwright_and_operator_creation(self):
+        self.assertIn("node scripts/resolve_console_visual_target.mjs",WORKFLOW)
+        self.assertIn("node scripts/verify_console_deployed_sha.mjs",WORKFLOW)
+        self.assertIn("Require Vercel success for the exact candidate SHA",WORKFLOW)
+        self.assertIn("Reconfirm exact served SHA before accepting browser evidence",WORKFLOW)
+        self.assertLess(WORKFLOW.index("Require Vercel success for the exact candidate SHA"),
+                        WORKFLOW.index("Install pinned Playwright browser"))
+        self.assertLess(WORKFLOW.index("Verify exact Console deployment before browser or account provisioning"),
+                        WORKFLOW.index("Provision ephemeral visual operator"))
+        self.assertLess(WORKFLOW.index("Reconfirm exact served SHA before accepting browser evidence"),
+                        WORKFLOW.index("Encrypt visual evidence"))
+        source=(ROOT/"scripts/resolve_console_visual_target.mjs").read_text()
+        verifier=(ROOT/"scripts/verify_console_deployed_sha.mjs").read_text()
+        self.assertIn("changedConsoleInPush()",source)
+        self.assertIn('production_console_push',source)
+        self.assertIn("candidate_sha:headSha",source)
+        self.assertIn("source_control_pinned",source)
+        self.assertIn("isMatchingHealth",verifier)
+        self.assertIn('payload.commit===expectedPrefix',verifier)
+        self.assertIn('response',verifier)
+        self.assertNotIn("suppressHydrationWarning",verifier)
+        self.assertIn("node ../../scripts/test_console_visual_deployment.mjs",
+                      (ROOT/".github/workflows/console.yml").read_text())
 
     def test_authenticated_capture_fails_on_http_errors_and_mobile_overflow(self):
         self.assertIn('consoleErrors.length || pageErrors.length || badResponses.length',CAPTURE)

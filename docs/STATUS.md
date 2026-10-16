@@ -5,6 +5,28 @@
 - **This candidate** adds a deterministic early-human-merge CI follow-up branch and service-role-only transactional RPC `factory_block_early_merged_ci_candidate`. An exact GitHub PR head + merge SHA causes the existing `ci_pending` run and linked Change Set to transition atomically to `blocked`, with an audit event and explicit `quality_gate_passed=false` / `preview_verified=false` / `release_authorized=false`. The candidate SHA is preserved. Repeated evidence is idempotent; changed heads, missing merge SHAs, stale states, missing create-PR proof or released reports fail closed.
 - This is **code/migration proposal, not applied**. The original Service Desk run has not been mutated by this candidate. Human merge of the Factory PR and a separately approved, verified Supabase production migration remain gates. With the function deployed, the existing CI follow-up can observe and block the stale PR #7 once; it does not bypass product QA. The pilot PRs #3/#5 remain Draft and cannot be considered release-ready until real TSX/CI/build, two-tenant RLS, Preview applicability/evidence, and human release policy are satisfied.
 
+
+## 2026-10-16 — Console: falhas por crédito OpenAI no painel (PR #875 reconciliada)
+
+- O Control Plane mantém execuções `blocked` que não estavam entrando no resumo operacional; o operador precisava visitar telas técnicas para encontrar o incidente. Esta alteração torna o bloqueio visível na página inicial e no detalhe da run, sem confundir o total de falhas com dead letters ou com a quantidade de aprovações humanas.
+- A classificação é baseada em erro de provedor `credit_balance_exhausted`/rejeição de quota com mensagem inequívoca; orçamento interno da Factory e rate limit genérico não acionam o mesmo aviso.
+- O aviso informa **quando ocorreu o bloqueio**, não afirma saldo atual zero. Reposição de crédito, status atual de billing, reconciliação de ledger e retomada são verificações/gates separados. Nenhum crédito é comprado ou retry é disparado nesta PR.
+- A proposta preserva a nova arquitetura da #882 (3 destinos principais, mobile e disclosure técnico). É candidata: requer CI, Vercel Preview do SHA exato, teste browser autenticado e merge humano para produção.
+
+## 2026-10-16 — Authenticated Console visual audit targeted stale SHA after #882 (candidate)
+
+- PR #882 was human-merged at 13:01:15 UTC in `53bd03b274129925f713f614243093e165f03ed1`; merge-SHA `validate`, `factory-acceptance` and `Console validation` all green. Vercel commit status reported successful deployment at 13:02:40 UTC. Neither check asserts `/api/health` is serving this exact commit.
+- Real authenticated audit run [#38904687637](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38904687637) incorrectly selected historical pinned SHA `34c614be...` from `.github/authenticated-visual-target.json`. The run failed on React hydration `#418` at `/configuration`; post-failure cleanup succeeded. No authenticated browser evidence for #882 was accepted, and the cause of hydration remains unverified.
+- Candidate follow-up guards `push main` changed Console paths to exact `GITHUB_SHA`; retains manual pinned audit for workflow-only change; requires Vercel success status on full SHA and live `/api/health` `commit === SHA.slice(0,12)` before Playwright/user creation and after capture. Test mismatch fail-closed. Source-controlled pinned target now refers to #882 for a focused follow-up, without new deployment. Independent incident + details: `docs/CONSOLE_VISUAL_SHA_GUARD_20261016.md`.
+- Human gate remains for merge of any production-publishing PR. This preparation makes no production change, creates no paid model request, bypass, Preview or migration. A repaired audit is **not** evidence that the React hydration issue was fixed; resolve/reproduce separately.
+
+## 2026-10-16 — Console UX: operação e aprovações à frente da infraestrutura (PR candidata)
+
+- Revisão da `main` `5710b9d64797cc9199d120766245916ad002a982`: 13 destinos visíveis, ações redundantes, instruções permanentes antes dos projetos, experiência móvel confusa, percentuais de etapa potencialmente interpretados como prontidão. O formulário de intake possuía dois campos `name="users"` na criação greenfield.
+- Candidato UI: 3 entradas principais (Visão geral, Projetos, Aprovações), 10 ferramentas técnicas preservadas em disclosure; barra inferior mobile, menu completo; home com projetos reais e decisões acionáveis; edição com uma CTA principal, integrações/evidências colapsáveis; etapa do fluxo sem falso percentual; intake simplificado sem duplicação de campo.
+- Mudanças limitadas a Console, capture visual autenticado, testes e documentação. Nenhuma migração, autorização de custo, alteração de Control Plane ou auto-merge. A checagem de Preview **é obrigatória** para `apps/console/**`, somente com deployment READY e browser evidence no SHA exato; política fail-closed se não estiver disponível.
+- Plano e critérios de aceite detalhados em `docs/CONSOLE_UX_REVIEW_20261016.md`. **Mudança candidata, não publicada.** O release continua condicionado a CI, Preview verificado e merge humano.
+
 ## 2026-10-16 — Reposição de crédito OpenAI e reconciliação de chamada rejeitada (candidate, não publicado)
 
 - O operador confirmou novo crédito pré-pago. Ainda não houve chamada de modelo para sondar saldo. O Change Set do Service Desk segue bloqueado na onda 7; a mesma run `fffee538-9781-4905-a69d-f3427d6f66b3` mantém tentativa 1 e o ledger possui **exatamente um** evento pago de custo desconhecido (usage #117) oriundo de HTTP 429 `credit_balance_exhausted`.
