@@ -1,3 +1,10 @@
+## 2026-10-16 — Reposição de crédito OpenAI e reconciliação de chamada rejeitada (candidate, não publicado)
+
+- O operador confirmou novo crédito pré-pago. Ainda não houve chamada de modelo para sondar saldo. O Change Set do Service Desk segue bloqueado na onda 7; a mesma run `fffee538-9781-4905-a69d-f3427d6f66b3` mantém tentativa 1 e o ledger possui **exatamente um** evento pago de custo desconhecido (usage #117) oriundo de HTTP 429 `credit_balance_exhausted`.
+- O runtime `require_paid_runtime_budget` e Product Stage `primary_readiness_blocker` corretamente bloqueiam qualquer execução paga se `unknown_cost_events > 0`. Reposição de saldo não remove o guard financeiro.
+- Candidato: tipar exclusivamente rejeição estruturada de crédito sem Response/tokens; manter outras falhas como `cost_unknown`. Migration versionada separada e idempotente classifica somente a evidência histórica exata, mediante **revisão humana de faturamento e aplicação administrativa de produção**. Nada foi alterado no banco nesta preparação, nem compra/retry disparado.
+- Procedimento e provas em `docs/CREDIT_DENIAL_RECONCILIATION.md`. Após migration auditada e gate financeiro novamente verde, recupera-se a **mesma** run e depois um único wake; merge de produção sempre humano.
+
 ## 2026-10-16 — Integration attempt counter per wave (candidate, not deployed)
 
 - Real greenfield Service Desk eight-wave Change Set `effc36be-212c-42f2-928b-97381b6d8a28`: wave 4 `knowledge-base` Direct run `28497089-9415-43e8-b8e4-06bf754b5607` completed and produced `dc044aaaf23f64ca6a3df818430ec1e2a1fa3df5`, but Factory GHA [#38839037505](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/38839037505) Change Set integration logged `claimed:false, processed:0` even though its job was green.

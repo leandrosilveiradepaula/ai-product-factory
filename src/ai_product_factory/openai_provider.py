@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -36,6 +37,16 @@ def _default_transport(
         if request_id:
             data["_request_id"] = request_id
         return exc.code, data
+
+
+class OpenAICreditBalanceRejected(RuntimeError):
+    """Typed refusal for a structured, pre-Response credit-balance denial."""
+
+    def __init__(self, message: str, request_id: str) -> None:
+        super().__init__(message)
+        self.http_status = 429
+        self.error_code = "credit_balance_exhausted"
+        self.request_id = request_id
 
 
 class GitHubActionsOpenAIWorkloadIdentity:
@@ -259,7 +270,18 @@ class OpenAIResponsesProvider(ModelProvider):
                 f"message={message}" if message else None,
                 f"request_id={request_id}" if request_id else None,
             ]
-            raise RuntimeError("OpenAI request failed: " + "; ".join(x for x in details if x))
+            safe_message = "OpenAI request failed: " + "; ".join(x for x in details if x)
+            if (
+                status == 429
+                and error_type == "insufficient_quota"
+                and error_code == "credit_balance_exhausted"
+                and isinstance(request_id, str)
+                and re.fullmatch(r"req_[A-Za-z0-9_-]{12,128}", request_id)
+                and isinstance(data, dict)
+                and not any(key in data for key in ("id", "usage", "output", "output_text"))
+            ):
+                raise OpenAICreditBalanceRejected(safe_message, request_id)
+            raise RuntimeError(safe_message)
 
         output_text = self._extract_output_text(data)
         usage_raw = data.get("usage") or {}

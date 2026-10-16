@@ -8,6 +8,7 @@ from unittest.mock import patch
 from ai_product_factory.metered_provider import MeteredPrimaryProvider
 from ai_product_factory.model_executor import ModelRequest, ModelResult, ModelRole
 from ai_product_factory.openai_costs import estimate_openai_text_cost_usd
+from ai_product_factory.openai_provider import OpenAICreditBalanceRejected
 
 
 class _UsageRow:
@@ -47,6 +48,14 @@ class _Provider:
 class _FailingProvider:
     def execute(self, request):
         raise RuntimeError("provider failed")
+
+
+class _CreditRejectedProvider:
+    def execute(self, request):
+        raise OpenAICreditBalanceRejected(
+            "OpenAI request failed: HTTP 429; code=credit_balance_exhausted",
+            "req_c83153187db74f209bf372a1f42d4f5b",
+        )
 
 
 class OpenAICostLedgerTests(unittest.TestCase):
@@ -91,6 +100,28 @@ class OpenAICostLedgerTests(unittest.TestCase):
         self.assertEqual(update["estimated_cost"], 0.000302)
         self.assertEqual(update["metadata"]["input_tokens"], 1000)
         self.assertEqual(update["metadata"]["cached_input_tokens"], 100)
+
+    def test_structured_credit_denial_is_recorded_as_pre_response_rejection(self):
+        store = _Store()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False):
+            metered = MeteredPrimaryProvider(
+                _CreditRejectedProvider(), store=store,
+                reserve_usd=Decimal("0.50"),
+            )
+            with self.assertRaises(OpenAICreditBalanceRejected):
+                metered.execute(ModelRequest(task_id="task", objective="x", context="", run_id="run-1"))
+        self.assertEqual(len(store.recorded), 1)
+        self.assertEqual(len(store.updated), 1)
+        self.assertEqual(store.recorded[0]["operation"], "model_call_reserved")
+        self.assertEqual(store.recorded[0]["estimated_cost"], 0.5)
+        usage_id, update = store.updated[0]
+        self.assertEqual(usage_id, "77")
+        self.assertEqual(update["operation"], "model_call_rejected_credit_exhausted")
+        self.assertEqual(update["estimated_cost"], 0.0)
+        self.assertEqual(update["metadata"]["status"], "provider_rejected_before_response")
+        self.assertEqual(update["metadata"]["http_status"], 429)
+        self.assertEqual(update["metadata"]["error_code"], "credit_balance_exhausted")
+        self.assertEqual(update["metadata"]["usage_observed"], False)
 
     def test_failed_provider_marks_cost_unknown(self):
         store = _Store()
