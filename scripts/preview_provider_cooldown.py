@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
-from urllib import request
+from urllib import request, parse
 
 JSONRequest = Callable[[str, str, dict[str, str]], Any]
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -36,6 +36,33 @@ def _parse_timestamp(raw: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise RuntimeError("GitHub status timestamp has no timezone")
     return parsed.astimezone(timezone.utc)
+
+
+def _is_confirmed_deployment(item: dict[str, Any]) -> bool:
+    """Do not confuse Vercel's success for an ignored build with READY.
+
+    A successful commit status only supersedes a quota error when it is
+    explicitly a completed deployment and points to a concrete Vercel
+    deployment detail, not the team upgrade/cancelled-build page.
+    This proves an actual later deployment, not guaranteed future quota.
+    """
+    if item.get("state") != "success":
+        return False
+    description = str(item.get("description") or "").strip().casefold()
+    if description not in {"deployment has completed", "deployment ready"}:
+        return False
+    url = item.get("target_url")
+    if not isinstance(url, str):
+        return False
+    parsed = parse.urlparse(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    return (
+        parsed.scheme == "https" and parsed.hostname == "vercel.com"
+        and parsed.username is None and parsed.password is None
+        and parsed.port is None and not parsed.query and not parsed.fragment
+        and len(parts) == 3
+        and all(part not in (".", "..") for part in parts)
+    )
 
 
 def observe_rate_limit(
@@ -140,6 +167,8 @@ def observe_rate_limit(
         candidate_shas.append(merge_sha)
 
     seen = set()
+    rate_limit_events: list[tuple[datetime, str]] = []
+    completed_deployments: list[tuple[datetime, str]] = []
     for sha in candidate_shas:
         if sha in seen:
             continue
@@ -161,28 +190,42 @@ def observe_rate_limit(
             if at > now_utc + timedelta(minutes=5):
                 raise RuntimeError("Vercel status timestamp exceeds clock tolerance")
             vercel.append((at, item))
-        # GitHub statuses contain historical states for a context. A newer
-        # success clears a previous failure on that SHA; pending does not.
-        vercel.sort(key=lambda value: value[0], reverse=True)
-        latest_success = next(
-            (stamp for stamp, row in vercel if row.get("state") == "success"), None
-        )
+        # Read ALL recent commits before making the quota decision. An actual
+        # deployment that completed after a rate limit may belong to another
+        # PR head or squash merge SHA of the same GitHub repository.
         for recorded, item in vercel:
-            if item.get("state") != "failure":
-                continue
             description = str(item.get("description") or "").casefold()
-            if "deployment rate limited" not in description:
-                continue
-            if latest_success is not None and latest_success > recorded:
-                continue
-            if now_utc < recorded + WINDOW:
-                return {
-                    "allowed": False, "state": "provider_rate_limited",
-                    "source": "github_vercel_commit_status",
-                    "observed_at": recorded.isoformat(),
-                    "earliest_recheck_at": (recorded + WINDOW).isoformat(),
-                    "sha": sha,
-                }
+            if item.get("state") == "failure" and "deployment rate limited" in description:
+                if now_utc < recorded + WINDOW:
+                    rate_limit_events.append((recorded, sha))
+            elif _is_confirmed_deployment(item):
+                completed_deployments.append((recorded, sha))
+
+    if rate_limit_events:
+        newest_failure, failed_sha = max(rate_limit_events, key=lambda event: event[0])
+        newer_completed = [
+            event for event in completed_deployments if event[0] > newest_failure
+        ]
+        if not newer_completed:
+            return {
+                "allowed": False, "state": "provider_rate_limited",
+                "source": "github_vercel_commit_status",
+                "observed_at": newest_failure.isoformat(),
+                # Recheck is an upper-bound window, NOT the next mandatory poll.
+                "earliest_recheck_at": (newest_failure + WINDOW).isoformat(),
+                "sha": failed_sha,
+            }
+        verified_at, verified_sha = max(newer_completed, key=lambda event: event[0])
+        return {
+            "allowed": True, "state": "confirmed_deployment_after_rate_limit",
+            "source": "github_vercel_commit_status",
+            "authoritative_quota": False,
+            "observed_at": verified_at.isoformat(),
+            "verified_deployment_sha": verified_sha,
+            "superseded_rate_limit_sha": failed_sha,
+            "checked_prs": len(candidates),
+        }
+
     return {
         "allowed": True, "state": "no_recent_rate_limit_observed",
         "source": "github_vercel_commit_status",

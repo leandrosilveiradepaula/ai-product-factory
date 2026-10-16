@@ -10,12 +10,12 @@ export default async function NewProject({searchParams}:{searchParams:Promise<{i
  const p=await searchParams;const initial=decode(p.intake);
  return <>
   <PageHeader eyebrow="Novo projeto" title="Iniciar ou importar projeto" subtitle="Comece uma ideia nova ou traga um projeto em andamento. A Factory inicia Descoberta ou reconcilia o estado real antes de continuar."/>
-  <div className="gettingStarted" aria-label="Etapas para iniciar um projeto">
-   <div className="guideStep current"><span className="guideStepNumber">1</span><strong>Descreva o projeto</strong><p>Escolha novo produto ou projeto em andamento e conte o resultado que você quer alcançar.</p></div>
-   <div className="guideStep"><span className="guideStepNumber">2</span><strong>Revise o briefing</strong><p>A Factory mostra um resumo antes de criar qualquer ciclo de trabalho.</p></div>
-   <div className="guideStep"><span className="guideStepNumber">3</span><strong>Acompanhe a execução</strong><p>Depois de iniciar, você acompanha o projeto e age apenas quando existir uma decisão necessária.</p></div>
+  <div className="intakeSteps" aria-label="Etapas para iniciar um projeto">
+   <span className="current" aria-current="step">1. Descrever</span>
+   <span>2. Revisar</span>
+   <span>3. Acompanhar</span>
   </div>
-  <div className="flowIntro"><strong>Comece pelo resultado, não pela tecnologia.</strong><p>Você não precisa decidir stack, modelo, agente ou sequência técnica. Essas decisões pertencem à Factory, dentro dos gates configurados.</p></div>
+  <p className="intakeIntro">Conte o resultado que deseja alcançar. A escolha das ferramentas e dos agentes fica com a Factory, respeitando os gates configurados.</p>
   <IntakeForm initial={initial}/>
  </>;
 }
