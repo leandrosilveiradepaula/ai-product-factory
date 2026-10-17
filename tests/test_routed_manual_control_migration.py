@@ -31,3 +31,23 @@ class RoutedControlMigrationTests(unittest.TestCase):
         self.assertIn("grant execute on function public.factory_assert_routed_run_epoch", SQL.lower())
         self.assertNotIn("disable row level security", SQL.lower())
         self.assertNotIn("service_role_key", SQL.lower())
+
+    def test_claimed_epoch_requires_matching_generation_lease_and_route(self):
+        body = SQL.split("create or replace function public.factory_assert_routed_run_epoch(", 1)[1]
+        for required in (
+            "v_generation is distinct from p_generation",
+            "v_state not in ('running','pausing','stopping')",
+            "v_run.status is distinct from 'implementing'",
+            "v_run.execution_route not in ('direct','codex')",
+            "v_run.lease_owner is distinct from p_worker_id",
+            "v_run.lease_expires_at<=now()",
+            "v_run.metadata->>'execution_generation' is distinct from p_generation::text",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, body)
+
+    def test_new_claims_are_fenced_independently_of_owned_run_drain(self):
+        self.assertEqual(SQL.count("perform public.factory_assert_project_running("), 5)
+        body = SQL.split("create or replace function public.factory_assert_routed_run_epoch(", 1)[1]
+        self.assertIn("('running','pausing','stopping')", body)
+        self.assertIn("raise exception 'routed run epoch revoked'", body)
