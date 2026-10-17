@@ -15,8 +15,7 @@ new claim or new paid work. All human release gates remain in force.
 
 - Unit contract: `python -m unittest tests.test_routed_manual_control_migration -v`.
 - Full CI: `test` and `factory-acceptance` must succeed on the exact PR head.
-- SQL execution in an isolated disposable PostgreSQL instance is still
-  required before production rollout. Static tests are **not** SQL integration tests.
+- The existing isolated-postgres CI job passes, but it must be verified that\n  the new migration itself is exercised before relying on this as SQL coverage.
 - No Console path changes: Preview is explicitly not applicable.
 - The migration must be separately approved for production after merge.
 - Do not merge this PR until integration testing and review of in-flight
@@ -24,8 +23,4 @@ new claim or new paid work. All human release gates remain in force.
 
 ## Known remaining boundary
 
-The database rejects *new* claims; Direct/Codex worker external GitHub writes
-and model invocations are not yet uniformly fenced with a per-run
-generation/lease checkpoint. A worker already holding a claim can continue
-through a pause/stop until those checkpoints are added. Treat this as a
-separate security-sensitive blocker, not as completed functionality.
+The database rejects new claims. Routed workers check their lease and project\nexecution generation before starting work, before each producer invocation and\nbefore mutating GitHub via the supported adapter. A pause/stop deliberately\nallows an already-owned run to drain; stopping/restarting revokes its epoch.\nA checkpoint is not a cancellation of an already-started remote operation.\nThis is an explicit residual limitation, not an auto-merge authorization.
