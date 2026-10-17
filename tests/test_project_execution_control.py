@@ -113,6 +113,16 @@ class ProjectExecutionControlTests(unittest.TestCase):
         self.assertEqual(snap.state,ProjectExecutionState.RUNNING)
         self.assertEqual(snap.generation,3)
 
+    def test_claim_rechecks_task_and_run_after_acquiring_row_locks(self):
+        from pathlib import Path
+        sql=(Path(__file__).resolve().parents[1]/
+            "supabase/migrations/20261017111500_factory_manual_project_execution_controls.sql").read_text()
+        claim=sql.split("create or replace function public.factory_claim_next_run",1)[1]
+        self.assertIn("if v_task.status is distinct from 'queued' then return null",claim)
+        self.assertIn("if v_run.status not in ('created','queued') then return null",claim)
+        self.assertLess(claim.index("where id=v_run.id for update"),
+                        claim.index("update public.factory_runs set status='running'"))
+
     def test_invalid_snapshot_is_denied(self):
         for version, gen in ((-1, 0), (0, -1), (True, 0)):
             with self.assertRaises(ValueError):
