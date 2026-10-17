@@ -83,14 +83,18 @@ begin
      (new.status is distinct from old.status and
       new.status not in ('completed','cancelled','failed','merged','blocked','superseded')) or
      (new.lease_owner is not null and
-      (tg_op='INSERT' or new.lease_owner is distinct from old.lease_owner));
+      (tg_op='INSERT' or new.lease_owner is distinct from old.lease_owner)) or
+     (tg_op='UPDATE' and new.lease_expires_at is distinct from old.lease_expires_at
+      and new.lease_expires_at > now());
  elsif tg_table_name='factory_change_sets' then
    v_project_id:=new.project_id;
    v_guard := tg_op='INSERT' or
      (new.status is distinct from old.status and
       new.status not in ('completed','cancelled','failed','merged','blocked','superseded')) or
      (new.lease_owner is not null and
-      (tg_op='INSERT' or new.lease_owner is distinct from old.lease_owner));
+      (tg_op='INSERT' or new.lease_owner is distinct from old.lease_owner)) or
+     (tg_op='UPDATE' and new.lease_expires_at is distinct from old.lease_expires_at
+      and new.lease_expires_at > now());
  elsif tg_table_name='factory_run_agent_assignments' then
    select t.project_id into v_project_id from public.factory_runs r
     join public.factory_tasks t on t.id=r.task_id where r.id=new.run_id;
@@ -191,18 +195,20 @@ grant execute on function public.factory_register_project_intake_v2(
 revoke execute on function public.factory_start_project_intake_v1(
  text,text,text,text,jsonb,jsonb,uuid,uuid,integer) from service_role;
 
+-- An owned lease with unknown expiry cannot prove quiescence. The worker
+-- must release it or take an explicitly audited recovery path.
 create function public.factory_control_quiescent(p_project_id uuid)
 returns boolean language sql stable security invoker set search_path to '' as $f$
  select not exists (
   select 1 from public.factory_runs r
   join public.factory_tasks t on t.id=r.task_id
   where t.project_id=p_project_id and r.lease_owner is not null
-    and r.lease_expires_at>now() and
+    and (r.lease_expires_at is null or r.lease_expires_at>now()) and
     r.status not in ('completed','cancelled','failed','merged','blocked','superseded')
  ) and not exists (
   select 1 from public.factory_change_sets cs
   where cs.project_id=p_project_id and cs.lease_owner is not null
-    and cs.lease_expires_at>now()
+    and (cs.lease_expires_at is null or cs.lease_expires_at>now())
     and cs.status not in ('completed','cancelled','failed','merged','blocked','superseded')
  )
 $f$;

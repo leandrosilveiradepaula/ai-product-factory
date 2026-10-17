@@ -71,18 +71,32 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     started=call("start",0,start_id)
     assert started["state"]=="running" and started["run_id"],started
     assert call("start",0,start_id)==started
+    # An unbounded worker lease prevents false PAUSED.
+    run_id=started["run_id"]
+    conn.execute("update public.factory_runs set lease_owner='worker-a', lease_expires_at=null where id=%s",(run_id,))
     pause=call("pause",1)
-    assert pause["state"]=="paused",pause
+    assert pause["state"]=="pausing",pause
+    pending=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    assert pending["state"]=="pausing" and pending["changed"] is False,pending
+    # Reuse of the same lease owner must not extend work while pausing.
+    try:
+        with conn.transaction():
+            conn.execute("update public.factory_runs set lease_expires_at=now()+interval '10 minutes' where id=%s",(run_id,))
+    except psycopg.Error: pass
+    else: raise AssertionError("pausing project admitted lease renewal")
+    conn.execute("update public.factory_runs set lease_owner=null, lease_expires_at=null where id=%s",(run_id,))
+    settled=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    assert settled["state"]=="paused" and settled["version"]==3,settled
     try:
         with conn.transaction():
             conn.execute("insert into public.factory_tasks(project_id,title) values (%s,'bad')",(pid,))
     except psycopg.Error: pass
     else: raise AssertionError("paused admitted work")
-    resume=call("resume",2)
+    resume=call("resume",3)
     assert resume["state"]=="running" and resume["generation"]==2
-    stopped=call("stop",3)
+    stopped=call("stop",4)
     assert stopped["state"]=="stopped",stopped
-    restarted=call("restart",4)
+    restarted=call("restart",5)
     assert restarted["state"]=="running" and restarted["generation"]==3
     assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==2
     acl=conn.execute("""select has_function_privilege('anon','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
