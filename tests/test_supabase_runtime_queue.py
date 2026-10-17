@@ -45,15 +45,15 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_terminal_and_stage_rpcs(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("discovery","completed",{"ok":True}))
             q.complete(item);q.fail(item,"x")
-        self.assertEqual(call.call_count,4)
+        self.assertEqual(call.call_count,6)
 
     def test_reconciliation_and_gap_analysis_use_product_stage_persistence(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","crm-infodive",(),{})
+        item=WorkItem("r","t","p","crm-infodive",(),{},3)
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("reconciliation","completed",{"summary":"ok"}))
             q.record_stage(item,StageEvidence("gap_analysis","completed",{"gaps":[]}))
@@ -63,7 +63,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_stage_lifecycle_event_uses_existing_runtime_stage_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage_event(item,"planning","started")
         req=call.call_args.args[0]
@@ -75,7 +75,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_stage_lifecycle_event_rejects_unknown_status(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         with self.assertRaises(ValueError):
             q.record_stage_event(item,"planning","mystery")
 
@@ -133,7 +133,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_planning_stage_persists_execution_team_plan(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         output={"tasks":[],"_team_plan":{"version":1,"status":"ready","profiles_selected":0,"planned_worker_peak":0,"blockers":[]}}
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("planning","completed",output))

@@ -25,7 +25,7 @@ create table public.factory_tasks(
 create table public.factory_runs(
  id uuid primary key default gen_random_uuid(),task_id uuid references public.factory_tasks(id),
  status text default 'created',execution_route text,metadata jsonb,
- lease_owner text,lease_expires_at timestamptz,created_at timestamptz default now());
+ lease_owner text,lease_expires_at timestamptz,started_at timestamptz,created_at timestamptz default now());
 create table public.factory_change_sets(
  id uuid primary key default gen_random_uuid(),project_id uuid references public.factory_projects(id),
  status text,lease_owner text,lease_expires_at timestamptz);

@@ -45,3 +45,7 @@ The migration defines `factory_assert_project_execution_epoch(project_id, genera
 ## Runtime worker candidate integration
 
 The Supabase runtime adapter now requires an explicit positive execution generation and invokes the privileged epoch RPC at stage start, before stage persistence and before successful completion. The stage worker checks before and after handler execution. Missing claim generation fails closed. **The existing claim RPC must still be upgraded to return a trustworthy generation, and other executor routes need their own side-effect fences before this is deployable.** This candidate intentionally blocks old claims rather than silently treating them as authorized.
+
+## Isolated CI remediation
+
+The initial candidate failed the unit suite because older test fixtures lacked execution generations and failed isolated PostgreSQL QA because its disposable schema omitted the existing production `factory_runs.started_at` column. The candidate fixtures now provide explicit generations for permitted actions, preserve a missing-generation rejection test, and mirror the required column. These fixes require fresh CI confirmation.
