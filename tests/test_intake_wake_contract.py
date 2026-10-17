@@ -38,17 +38,14 @@ class IntakeWakeContract(unittest.TestCase):
   # A wake event must not mint cross-repo tokens via the privileged endpoint.
   self.assertIn('if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName))',BROKER)
 
- def test_durable_intake_precedes_optional_wake_audit(self):
-  atomic=CONTROL.index('rpc/factory_start_project_intake_v1')
-  confirmation=CONTROL.index('result.request_id!==draftId')
-  wake=CONTROL.index("const wakeStatus=await requestIntakeWorkerWake()")
-  audit=CONTROL.index('event_type:"project.bootstrap.wake_attempted"')
-  self.assertLess(atomic,confirmation)
-  self.assertLess(confirmation,wake)
-  self.assertLess(wake,audit)
-  self.assertIn("if(result.created)",CONTROL)
-  self.assertIn("if(!audit.ok)",CONTROL)
-  self.assertIn("return {projectId:String(result.project_id)",CONTROL)
+ def test_registration_does_not_wake_or_create_runnable_work(self):
+  registration=CONTROL.split("export async function createProjectIntakeAndBootstrap(",1)[1].split("export type ProjectExecutionControl",1)[0]
+  self.assertIn("rpc/factory_register_project_intake_v2",registration)
+  self.assertIn('result.state!=="draft"',registration)
+  self.assertNotIn("requestIntakeWorkerWake()",registration)
+  self.assertNotIn('event_type:"project.bootstrap.wake_attempted"',registration)
+  self.assertNotIn("enqueueProjectBootstrap(",registration)
+  self.assertIn("return {projectId:String(result.project_id)",registration)
 
  def test_no_cost_or_merge_bypass(self):
   self.assertNotIn("merge_pull_request",WAKE+APP[-2500:])
