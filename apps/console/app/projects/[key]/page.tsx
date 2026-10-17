@@ -167,6 +167,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
        <ProjectControlSubmit command={command} label={label}/>
       </form>
     )}</div>
+    {executionControl.state==="unavailable"?<p role="alert">O controle de execução não está disponível. Nenhum comando foi liberado; verifique a ativação da migração e as permissões do Control Plane.</p>:null}
     {["pausing","stopping"].includes(executionControl.state)?<p role="status">Aguardando conclusão segura dos trabalhos em andamento. Nenhuma tarefa nova deve ser iniciada.</p>:null}
    </div>
   </section>
