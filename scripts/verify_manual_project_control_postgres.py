@@ -47,6 +47,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     conn.execute((root/"supabase/migrations/20261014160500_atomic_project_continuation.sql").read_text())
     legacy=conn.execute("insert into public.factory_projects(project_key) values ('legacy') returning id").fetchone()[0]
     conn.execute((root/"supabase/migrations/20261017111500_factory_manual_project_execution_controls.sql").read_text())
+    conn.execute((root/"supabase/migrations/20261017193000_factory_graceful_stop_preserve_queue.sql").read_text())
     assert conn.execute("select state from public.factory_project_execution_controls where project_id=%s",(legacy,)).fetchone()[0]=="running"
     request_id=uuid.uuid4()
     actor=uuid.uuid4()
@@ -169,6 +170,8 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert fresh_run is not None
     conn.execute("update public.factory_runs set status='running' where id=%s",(fresh_run[0],))
     conn.execute("update public.factory_runs set lease_owner='stop-test-worker',lease_expires_at=null where id=%s",(fresh_run[0],))
+    queued_task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'preserved queued work','queued') returning id",(pid,)).fetchone()[0]
+    queued_run=conn.execute("insert into public.factory_runs(task_id,status) values (%s,'queued') returning id",(queued_task,)).fetchone()[0]
     command_id=uuid.uuid4()
     pending_stop=call("stop",current_version,command_id)
     assert pending_stop["state"]=="stopping",pending_stop
@@ -181,9 +184,17 @@ with psycopg.connect(dsn,autocommit=True) as conn:
             conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,4))
     except psycopg.Error: pass
     else: raise AssertionError("stopping admitted side effect")
+    conn.execute("update public.factory_runs set lease_expires_at=now()+interval '10 minutes' where id=%s",(fresh_run[0],))
+    try:
+        with conn.transaction():
+            conn.execute("update public.factory_runs set lease_owner='intruder' where id=%s",(fresh_run[0],))
+    except psycopg.Error: pass
+    else: raise AssertionError("stopping allowed lease takeover")
     conn.execute("update public.factory_runs set lease_owner=null,lease_expires_at=null where id=%s",(fresh_run[0],))
     done_stop=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
     assert done_stop["state"]=="stopped" and done_stop["changed"] is True,done_stop
+    assert conn.execute("select status from public.factory_tasks where id=%s",(queued_task,)).fetchone()[0]=="queued"
+    assert conn.execute("select status from public.factory_runs where id=%s",(queued_run,)).fetchone()[0]=="queued"
     assert conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]==before+1
     # A command replay with a different actor or payload is forbidden.
     assert call("stop",current_version,command_id)==pending_stop

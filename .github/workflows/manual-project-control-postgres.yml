@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/*manual_project_execution_controls.sql"
+      - "supabase/migrations/*graceful_stop_preserve_queue.sql"
       - "scripts/verify_manual_project_control_postgres.py"
       - "src/ai_product_factory/project_control_settlement.py"
       - "src/ai_product_factory/project_execution_control.py"
