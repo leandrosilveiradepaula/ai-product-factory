@@ -37,3 +37,27 @@ class RoutedExecutionCheckpointTests(unittest.TestCase):
   guarded=_CheckpointedGitHub(github,lambda:(_ for _ in ()).throw(PermissionError("revoked")))
   guarded.get_branch_sha("main")
   github.get_branch_sha.assert_called_once_with("main")
+
+ def test_all_known_github_mutations_are_revocation_fenced(self):
+  github=MagicMock()
+  def deny():raise PermissionError("project stopped")
+  guarded=_CheckpointedGitHub(github,deny)
+  names=("commit_files","create_issue","create_pull_request","create_branch",
+         "create_branch_at_sha","ensure_branch_at_sha","dispatch_workflow",
+         "close_issue")
+  for name in names:
+   with self.subTest(method=name):
+    with self.assertRaises(PermissionError):
+     getattr(guarded,name)("sample")
+    getattr(github,name).assert_not_called()
+
+ def test_revoked_checkpoint_prevents_subsequent_model_invocations(self):
+  producer=MagicMock()
+  state={"active":True}
+  def checkpoint():
+   if not state["active"]:raise PermissionError("project paused")
+  guarded=_CheckpointedProducer(producer,checkpoint)
+  guarded.produce("first")
+  state["active"]=False
+  with self.assertRaises(PermissionError):guarded.produce("second")
+  producer.produce.assert_called_once_with("first")
