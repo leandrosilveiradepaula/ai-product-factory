@@ -12,6 +12,11 @@ from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_
 
 
 class RuntimeCliTests(unittest.TestCase):
+    def setUp(self):
+        self._routed_epoch_patch=patch("ai_product_factory.runtime_cli.assert_routed_epoch")
+        self._routed_epoch_patch.start()
+        self.addCleanup(self._routed_epoch_patch.stop)
+
     def test_runtime_builds_primary_handler_for_api_key(self):
         scheduler=MagicMock();scheduler.profiles.return_value=()
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test","FACTORY_PRIMARY_MODEL_ENABLED":"true"}, clear=True), \
