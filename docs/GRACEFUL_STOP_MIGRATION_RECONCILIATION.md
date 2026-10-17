@@ -39,7 +39,7 @@ migration nao aparece no historico.
    ```sh
    supabase login
    supabase link --project-ref fjplmxfcshhbmzgvyqlm
-   supabase migration list --linked
+   supabase migration list
    ```
 
    A CLI pode solicitar a senha PostgreSQL: digitar localmente, nunca colar em
@@ -49,8 +49,8 @@ migration nao aparece no historico.
    aplicada, executar **somente**:
 
    ```sh
-   supabase migration repair 20261017193000 --status applied --linked
-   supabase migration list --linked
+   supabase migration repair 20261017193000 --status applied
+   supabase migration list
    ```
 
    Isso atualiza o registro de migration sem executar novamente as cinco funcoes.
