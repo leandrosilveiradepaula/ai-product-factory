@@ -328,3 +328,28 @@ $f$;
 revoke all on function public.factory_settle_project_control_v1(text)
  from public,anon,authenticated;
 grant execute on function public.factory_settle_project_control_v1(text) to service_role;
+
+-- A worker must revalidate its execution epoch immediately before every
+-- model, network, GitHub or deployment side effect. A stale generation fails
+-- closed even if the project was paused and later resumed.
+create function public.factory_assert_project_execution_epoch(
+ p_project_id uuid,p_generation bigint
+) returns void language plpgsql security invoker set search_path to '' as $f$
+declare v_state text;v_generation bigint;
+begin
+ if p_project_id is null or p_generation is null or p_generation < 1 then
+   raise exception 'invalid execution epoch' using errcode='PT400';
+ end if;
+ select state,generation into v_state,v_generation
+ from public.factory_project_execution_controls
+ where project_id=p_project_id for share;
+ if v_state is distinct from 'running'
+    or v_generation is distinct from p_generation then
+   raise exception 'project execution epoch revoked' using errcode='PT409';
+ end if;
+end;
+$f$;
+revoke all on function public.factory_assert_project_execution_epoch(uuid,bigint)
+ from public,anon,authenticated;
+grant execute on function public.factory_assert_project_execution_epoch(uuid,bigint)
+ to service_role;

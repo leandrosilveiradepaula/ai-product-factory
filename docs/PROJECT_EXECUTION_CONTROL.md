@@ -37,3 +37,7 @@ Control Plane migration** enforcing the durable state.
 Note that actions already in flight cannot be assumed cancelled synchronously:
 the system must first block *new* claims and collect quiescence evidence before
 announcing `paused` or `stopped`.
+
+## Worker side-effect checkpoint (candidate)
+
+The migration defines `factory_assert_project_execution_epoch(project_id, generation)` as a service-role-only transactional checkpoint. Executors must capture the generation at claim time and invoke this RPC **immediately before** model/API calls, GitHub writes, workflow dispatch and deployments. A successful check does not reserve a lease or prevent a later pause: workers must also maintain a lease and record quiescence. The RPC is currently a contract, **not proof that all executor paths invoke it**. Production rollout remains blocked until those integrations and exact-SHA Preview are verified.

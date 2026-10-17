@@ -99,6 +99,14 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     restarted=call("restart",5)
     assert restarted["state"]=="running" and restarted["generation"]==3
     assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==2
+    # Side-effect checkpoints fail closed after pause and after resume
+    # with a stale generation; this is independent of task/run status.
+    conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,3))
+    try:
+        with conn.transaction():
+            conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,2))
+    except psycopg.Error: pass
+    else: raise AssertionError("stale execution epoch admitted")
     # Reject a stale operator command without mutating state.
     try:
         with conn.transaction():
@@ -120,7 +128,18 @@ with psycopg.connect(dsn,autocommit=True) as conn:
             conn.execute("update public.factory_runs set lease_owner='worker-new' where id=%s",(run_id,))
     except psycopg.Error: pass
     else: raise AssertionError("paused project admitted run claim")
+    try:
+        with conn.transaction():
+            conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,3))
+    except psycopg.Error: pass
+    else: raise AssertionError("paused project admitted external side effect")
     assert call("resume",7)["state"]=="running"
+    conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,4))
+    try:
+        with conn.transaction():
+            conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,3))
+    except psycopg.Error: pass
+    else: raise AssertionError("previous generation admitted after resume")
 
     acl=conn.execute("""select has_function_privilege('anon','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('authenticated','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
