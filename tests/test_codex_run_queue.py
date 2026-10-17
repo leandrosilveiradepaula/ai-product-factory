@@ -23,6 +23,8 @@ class CodexRunQueueTests(unittest.TestCase):
     def test_claim_maps_codex_item(self):
         payload = {
             "run_id": "r",
+            "project_id": "project-uuid",
+            "execution_generation": 1,
             "task_id": "t",
             "project_key": "p",
             "repository": "owner/repo",
