@@ -157,7 +157,7 @@ class _CheckpointedGitHub:
  def __getattr__(self,name):
   attr=getattr(self._adapter,name)
   if not callable(attr):return attr
-  if name in ('commit_files','create_issue','create_pull_request','create_branch','ensure_branch_at_sha','update_file','open_pull_request','dispatch_workflow','create_ref','update_ref','post_comment','create_review'):
+  if name in ('commit_files','create_issue','create_pull_request','create_branch','create_branch_at_sha','ensure_branch_at_sha','update_file','open_pull_request','dispatch_workflow','create_ref','update_ref','post_comment','create_review'):
    def guarded(*args,**kwargs):
     self._checkpoint()
     return attr(*args,**kwargs)
