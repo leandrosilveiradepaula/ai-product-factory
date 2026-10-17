@@ -70,3 +70,27 @@ class RoutedExecutionCheckpointTests(unittest.TestCase):
    with self.subTest(name=name):
     with self.assertRaises(PermissionError):getattr(guarded,name)("test")
     getattr(github,name).assert_not_called()
+
+ def test_integration_control_plane_mutations_are_revocation_fenced(self):
+  from ai_product_factory.runtime_cli import _CheckpointedIntegrationStore
+  store=MagicMock()
+  state={"running":True}
+  def checkpoint():
+   if not state["running"]:raise PermissionError("project paused")
+  guarded=_CheckpointedIntegrationStore(store,checkpoint)
+  guarded.complete_integration(change_set_id="one",candidate_commit="sha",changed_files=())
+  state["running"]=False
+  for name in ("complete_integration","mark_repair_wave_integrated","prepare_release"):
+   with self.subTest(method=name):
+    with self.assertRaises(PermissionError):getattr(guarded,name)("sample")
+  store.complete_integration.assert_called_once()
+  store.mark_repair_wave_integrated.assert_not_called()
+  store.prepare_release.assert_not_called()
+
+ def test_integration_store_read_methods_remain_available_after_revocation(self):
+  from ai_product_factory.runtime_cli import _CheckpointedIntegrationStore
+  store=MagicMock()
+  def deny():raise PermissionError("stopped")
+  guarded=_CheckpointedIntegrationStore(store,deny)
+  guarded.frozen_source_commit("change-set")
+  store.frozen_source_commit.assert_called_once_with("change-set")
