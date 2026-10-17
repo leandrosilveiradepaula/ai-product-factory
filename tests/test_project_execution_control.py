@@ -71,6 +71,21 @@ class ProjectExecutionControlTests(unittest.TestCase):
         for state in ProjectExecutionState:
             self.assertEqual(can_claim_new_work(state),state is ProjectExecutionState.RUNNING)
 
+    def test_all_operator_transitions_increment_version_once(self):
+        snap=ProjectControlSnapshot(ProjectExecutionState.DRAFT,0,0)
+        for command in (ProjectCommand.START,ProjectCommand.PAUSE,ProjectCommand.STOP):
+            previous=snap
+            snap=transition_control(snap,command,expected_version=snap.version,actor_kind="operator")
+            self.assertEqual(snap.version,previous.version+1)
+        self.assertEqual(snap.state,ProjectExecutionState.STOPPING)
+        self.assertEqual(snap.generation,1)
+
+    def test_operator_cannot_acknowledge_quiescence_even_with_flag(self):
+        snap=ProjectControlSnapshot(ProjectExecutionState.STOPPING,3,1)
+        with self.assertRaises(ControlTransitionDenied):
+            transition_control(snap,ProjectCommand.CONFIRM_STOPPED,
+                expected_version=3,actor_kind="operator",acknowledged_quiescent=True)
+
     def test_invalid_snapshot_is_denied(self):
         for version, gen in ((-1, 0), (0, -1), (True, 0)):
             with self.assertRaises(ValueError):
