@@ -57,13 +57,26 @@ export async function createProjectIntakeAndBootstrap(
 }
 
 
-export type ProjectExecutionControl={state:string;version:number;generation:number};
+export type ProjectExecutionControl={
+ state:"draft"|"running"|"pausing"|"paused"|"stopping"|"stopped"|"unavailable";
+ version:number;
+ generation:number;
+};
+const unavailableProjectExecutionControl:ProjectExecutionControl={state:"unavailable",version:-1,generation:0};
+const projectControlStates=new Set(["draft","running","pausing","paused","stopping","stopped"]);
 export async function getProjectExecutionControl(projectId:string):Promise<ProjectExecutionControl>{
  await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
  const response=await fetch(cfg.url+"/rest/v1/factory_project_execution_controls?select=state,version,generation&project_id=eq."+encodeURIComponent(projectId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
- if(!response.ok)return {state:"unavailable",version:-1,generation:0};
- const rows=await response.json();if(!Array.isArray(rows)||rows.length!==1)return {state:"unavailable",version:-1,generation:0};
- return {state:String(rows[0].state),version:Number(rows[0].version),generation:Number(rows[0].generation)};
+ if(!response.ok)return unavailableProjectExecutionControl;
+ const rows=await response.json();
+ if(!Array.isArray(rows)||rows.length!==1||!rows[0]||typeof rows[0]!=="object")return unavailableProjectExecutionControl;
+ const {state,version,generation}=rows[0];
+ if(typeof state!=="string"||!projectControlStates.has(state)||
+    !Number.isSafeInteger(version)||version<0||
+    !Number.isSafeInteger(generation)||generation<0||
+    (state==="draft"&&generation!==0)||
+    (state!=="draft"&&generation<1))return unavailableProjectExecutionControl;
+ return {state:state as ProjectExecutionControl["state"],version,generation};
 }
 export async function commandProjectExecution(projectKey:string,command:"start"|"pause"|"resume"|"stop"|"restart",expectedVersion:number,commandId:string){
  const operator=await requireConsoleOperator();if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(projectKey)||!Number.isSafeInteger(expectedVersion)||expectedVersion<0||!/^[0-9a-f-]{36}$/i.test(commandId))throw new Error("Comando inválido.");
@@ -72,8 +85,16 @@ export async function commandProjectExecution(projectKey:string,command:"start"|
  if(!response.ok)throw new Error("Comando não autorizado ou estado alterado. Atualize a página.");
  const result=await response.json();
  if(!result||result.command!==command||!Number.isSafeInteger(result.version)||!Number.isSafeInteger(result.generation)||result.generation<0||!["draft","running","pausing","paused","stopping","stopped"].includes(result.state))throw new Error("Confirmação de controle inválida.");
- if(["start","restart"].includes(command)&&result.state==="running"&&result.run_id){
-   try{await requestIntakeWorkerWake()}catch{console.warn("project_control_wake_failed")}
+ // Operator command is durable before any best-effort scheduling signal.
+ // START/RESUME/RESTART can release preserved queued work. PAUSE/STOP only
+ // wake the controller if a claimed run still needs graceful settlement.
+ const shouldWake=(result.state==="running"&&["start","resume","restart"].includes(command))
+    ||["pausing","stopping"].includes(result.state);
+ if(shouldWake){
+   try{
+     const wake=await requestIntakeWorkerWake();
+     if(wake!=="requested")console.warn("project_control_wake_unavailable",{status:wake});
+   }catch{console.warn("project_control_wake_failed")}
  }
  return result as {state:string;version:number;generation:number;command:string};
 }
