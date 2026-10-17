@@ -178,6 +178,38 @@ try {
     }
   }
 
+  // Read-only production lifecycle gate: inspect real control state and available
+  // commands without issuing a POST or modifying any existing project.
+  if (interactionEvidence.projectDetail) {
+    await page.goto(interactionEvidence.projectDetail.finalUrl, {waitUntil:"networkidle", timeout:60000});
+    const controlSection=page.getByRole("region", {name:"Controle de execução do projeto"});
+    if (await controlSection.count()!==1) throw new Error("project lifecycle control section missing");
+    const controls=await controlSection.locator("form").evaluateAll(forms => forms.map(form => ({
+      command:form.querySelector('input[name="command"]')?.value,
+      version:form.querySelector('input[name="version"]')?.value,
+      projectKey:form.querySelector('input[name="project_key"]')?.value,
+      commandId:form.querySelector('input[name="command_id"]')?.value,
+      label:form.querySelector('button[type="submit"]')?.textContent?.trim(),
+    })));
+    const validSets=[["start"],["pause","stop"],["resume","stop"],["restart"],[]];
+    const actual=controls.map(x=>x.command).sort();
+    if (!validSets.some(set=>JSON.stringify([...set].sort())===JSON.stringify(actual))) {
+      throw new Error("invalid lifecycle action set: "+JSON.stringify(actual));
+    }
+    for (const control of controls) {
+      if (!control.projectKey || !/^[0-9]+$/.test(control.version||"") ||
+          !/^[0-9a-f-]{36}$/i.test(control.commandId||"")) {
+        throw new Error("lifecycle form missing project/version/idempotency identity");
+      }
+    }
+    interactionEvidence.projectLifecycleReadOnly={
+      projectHref:interactionEvidence.projectDetail.href,
+      availableCommands:actual,
+      version:controls[0]?.version??null,
+      verifiedWithoutMutation:true,
+    };
+  }
+
   await page.goto(`${consoleUrl}/projects/new`, {waitUntil:"networkidle", timeout:60000});
   const auditName = `Audit sem persistência ${runId}`;
   const auditSummary = "Validar revisão e edição do intake sem iniciar Descoberta nem criar projeto real.";
