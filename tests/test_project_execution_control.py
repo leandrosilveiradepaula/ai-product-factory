@@ -43,6 +43,19 @@ class ProjectExecutionControlTests(unittest.TestCase):
         self.assertEqual(restarted.generation, 5)
         self.assertNotEqual(restarted.generation, snap.generation)
 
+    def test_pausing_operator_can_request_stop_without_reopening_claims(self):
+        running = ProjectControlSnapshot(ProjectExecutionState.RUNNING, 6, 3)
+        pausing = transition_control(running, ProjectCommand.PAUSE,
+                                     expected_version=6, actor_kind="operator")
+        self.assertEqual(pausing.state, ProjectExecutionState.PAUSING)
+        stopping = transition_control(pausing, ProjectCommand.STOP,
+                                      expected_version=7, actor_kind="operator")
+        self.assertEqual(stopping, ProjectControlSnapshot(ProjectExecutionState.STOPPING, 8, 3))
+        self.assertFalse(can_claim_new_work(stopping.state))
+        with self.assertRaises(ControlTransitionDenied):
+            transition_control(stopping, ProjectCommand.RESUME,
+                               expected_version=8, actor_kind="operator")
+
     def test_stale_or_unauthenticated_commands_denied(self):
         snap = ProjectControlSnapshot(ProjectExecutionState.RUNNING, 4, 9)
         for command, version, actor in [
