@@ -110,6 +110,12 @@ class SupabaseRuntimeQueue(RuntimeQueue):
     def claim_next(self, worker_id: str) -> WorkItem | None:
         data=self._rpc("factory_claim_next_run",{"p_worker_id":worker_id})
         if data is None: return None
+        if not isinstance(data,dict):
+            raise RuntimeError("claim RPC returned an invalid response")
+        if not isinstance(data.get("stages",[]),list) or not all(isinstance(stage,str) and stage.strip() for stage in data.get("stages",[])):
+            raise RuntimeError("claim RPC returned invalid stages")
+        if not isinstance(data.get("context",{}),dict):
+            raise RuntimeError("claim RPC returned invalid context")
         return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}),execution_generation=data.get("execution_generation"))
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
