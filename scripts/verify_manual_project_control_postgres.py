@@ -103,6 +103,12 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     claim=conn.execute("select public.factory_claim_next_run(%s)",("qa-worker",)).fetchone()[0]
     assert claim is not None and claim["execution_generation"]==3,claim
     assert conn.execute("select metadata->>'execution_generation' from public.factory_runs where id=%s",(claim["run_id"],)).fetchone()[0]=="3"
+    # Claim must not reuse a run that is already running.
+    duplicate=conn.execute("select public.factory_claim_next_run(%s)",("qa-worker-2",)).fetchone()[0]
+    assert duplicate is None,duplicate
+    # The claim captures the generation in durable metadata.
+    assert conn.execute("select status from public.factory_runs where id=%s",
+                        (claim["run_id"],)).fetchone()[0]=="running"
     # Side-effect checkpoints fail closed after pause and after resume
     # with a stale generation; this is independent of task/run status.
     conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,3))
