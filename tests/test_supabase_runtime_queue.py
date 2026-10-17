@@ -92,6 +92,17 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_claim_next_run"))
         self.assertNotIn(b"secret",req.data)
 
+    def test_claim_rejects_missing_or_blank_identifiers(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+              "stages":["discovery"],"context":{},"execution_generation":2}
+        for key in ("run_id","task_id","project_id","project_key"):
+            for invalid in (None,"","  ",42):
+                with self.subTest(key=key,invalid=invalid):
+                    q._rpc=lambda name,args: {**base,key:invalid}
+                    with self.assertRaisesRegex(RuntimeError,"identifiers"):
+                        q.claim_next("worker")
+
     def test_claim_rejects_missing_or_invalid_generation(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
