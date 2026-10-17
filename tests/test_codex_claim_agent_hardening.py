@@ -68,7 +68,7 @@ class CodexClientContracts(unittest.TestCase):
 
     @staticmethod
     def _claimed(**overrides):
-        payload = dict(run_id="run-one", task_id="task", project_key="p", repository="owner/repo",
+        payload = dict(run_id="run-one", project_id="project-uuid", execution_generation=1, task_id="task", project_key="p", repository="owner/repo",
                        title="Implement", description="", branch="factory/cs-x/t",
                        codex_level=1, agent_key="codex-dev")
         payload.update(overrides)
