@@ -103,6 +103,23 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertFalse(any(e[0]=="complete" for e in q.events))
         self.assertTrue(any(e[0]=="fail" for e in q.events))
 
+    def test_handler_must_return_mapping_before_stage_persistence(self):
+        class InvalidHandler:
+            def execute(self,item,stage):
+                return ["not", "a", "mapping"]
+        q=Queue(item())
+        result=RuntimeWorker(queue=q,handler=InvalidHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("must return a mapping",result.error)
+        self.assertFalse(any(event[0] in ("stage","complete") for event in q.events))
+
+    def test_missing_stage_sequence_never_reports_success(self):
+        malformed=WorkItem("r","t","p","demo",None,{})
+        q=Queue(malformed)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(event[0]=="complete" for event in q.events))
+
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
