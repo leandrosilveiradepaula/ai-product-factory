@@ -58,14 +58,8 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             "run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
             "stages":["discovery"],"context":{}
         })):
-            item=q.claim_next("worker")
-        self.assertIsNone(item.execution_generation)
-        with patch("urllib.request.urlopen") as network:
             with self.assertRaisesRegex(RuntimeError,"generation"):
-                q.record_stage_event(item,"discovery","started")
-            with self.assertRaisesRegex(RuntimeError,"generation"):
-                q.complete(item)
-            network.assert_not_called()
+                q.claim_next("worker")
 
     def test_noncompleted_stage_evidence_never_persists_product_data(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
@@ -88,7 +82,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertNotIn(b"secret",req.data)
 
     def test_claim_maps_rpc_payload_without_leaking_key(self):
-        payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","stages":["discovery"],"context":{"x":1}}
+        payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","stages":["discovery"],"context":{"x":1},"execution_generation":1}
         with patch("urllib.request.urlopen",return_value=Response(payload)) as call:
             q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
             item=q.claim_next("w")
