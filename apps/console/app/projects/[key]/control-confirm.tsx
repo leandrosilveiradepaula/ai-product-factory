@@ -4,7 +4,7 @@ import {useFormStatus} from "react-dom";
 export function ProjectControlSubmit({command,label}:{command:string;label:string}){
  const {pending}=useFormStatus();
  const destructive=command==="stop";
- const needsConfirmation=destructive||command==="start";
+ const needsConfirmation=destructive||command==="start"||command==="restart";
  return <button type="submit" className={destructive?"danger":"primary"}
   disabled={pending} aria-disabled={pending} aria-busy={pending}
   onClick={event=>{
