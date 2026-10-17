@@ -71,8 +71,8 @@ export async function commandProjectExecution(projectKey:string,command:"start"|
  const response=await fetch(cfg.url+"/rest/v1/rpc/factory_control_project_v1",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_command:command,p_command_id:commandId,p_expected_version:expectedVersion,p_actor_id:operator.userId}),cache:"no-store"});
  if(!response.ok)throw new Error("Comando não autorizado ou estado alterado. Atualize a página.");
  const result=await response.json();
- if(!result||result.command!==command||!Number.isInteger(result.version))throw new Error("Confirmação de controle inválida.");
- if(["start","resume","restart"].includes(command)&&result.state==="running"){
+ if(!result||result.command!==command||!Number.isSafeInteger(result.version)||!Number.isSafeInteger(result.generation)||result.generation<0||!["draft","running","pausing","paused","stopping","stopped"].includes(result.state))throw new Error("Confirmação de controle inválida.");
+ if(["start","restart"].includes(command)&&result.state==="running"&&result.run_id){
    try{await requestIntakeWorkerWake()}catch{console.warn("project_control_wake_failed")}
  }
  return result as {state:string;version:number;generation:number;command:string};
