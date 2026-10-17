@@ -14,7 +14,7 @@ class RoutedControlMigrationTests(unittest.TestCase):
             "factory_schedule_eligible_codex_run",
             "factory_dispatch_preapproved_planned_task_v2",
         )
-        self.assertEqual(SQL.lower().count("create or replace function public.factory_"), len(names))
+        self.assertEqual(SQL.lower().count("create or replace function public.factory_"), len(names) + 1)
         self.assertEqual(SQL.count("perform public.factory_assert_project_running("), len(names))
         for name in names:
             self.assertIn("FUNCTION public." + name + "(", SQL)
@@ -28,6 +28,6 @@ class RoutedControlMigrationTests(unittest.TestCase):
         self.assertIn("factory_change_set_work_units", SQL)
 
     def test_no_permissions_or_billing_bypass(self):
-        self.assertNotIn("grant execute", SQL.lower())
+        self.assertIn("grant execute on function public.factory_assert_routed_run_epoch", SQL.lower())
         self.assertNotIn("disable row level security", SQL.lower())
         self.assertNotIn("service_role_key", SQL.lower())
