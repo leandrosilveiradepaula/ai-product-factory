@@ -33,6 +33,30 @@ function nextAction(stage:string,hasPendingDatabase:boolean,activeTasks:number){
  return {title:"Acompanhar validação e prévia",body:"A Factory está validando qualidade e preparando evidências antes do gate humano de produção.",href:"/runs",label:"Ver execuções"};
 }
 
+function controlNextAction(state:string){
+ switch(state){
+  case "draft":
+   return {title:"Projeto cadastrado, aguardando seu início",body:"Nenhuma tarefa de desenvolvimento foi iniciada pelo cadastro. Use Iniciar projeto quando decidir colocar o trabalho em execução.",href:"#project-control",label:"Ver controle do projeto"};
+  case "paused":
+   return {title:"Projeto pausado por você",body:"Novas execuções estão bloqueadas e a fila foi preservada. Você pode retomar o trabalho quando desejar, mantendo os gates existentes.",href:"#project-control",label:"Retomar quando quiser"};
+  case "stopped":
+   return {title:"Projeto parado por você",body:"Nenhuma execução nova está autorizada. As tarefas pendentes continuam registradas; reiniciar depende de seu comando explícito.",href:"#project-control",label:"Ver opção de reiniciar"};
+  case "pausing":
+   return {title:"Pausa sendo concluída",body:"A Factory não aceita novas execuções para este projeto. Os trabalhos já assumidos podem finalizar antes de o estado mudar para Pausado.",href:"#project-control",label:"Acompanhar pausa"};
+  case "stopping":
+   return {title:"Parada sendo concluída",body:"A Factory não aceita novas execuções para este projeto. Trabalhos já assumidos podem finalizar antes de o estado mudar para Parado. A fila não é descartada.",href:"#project-control",label:"Acompanhar parada"};
+  case "unavailable":
+   return {title:"Controle de execução indisponível",body:"Por segurança, nenhum comando foi liberado. Aguarde o Control Plane voltar a responder com um estado válido.",href:"#project-control",label:"Ver diagnóstico"};
+  default:return null;
+ }
+}
+
+const controlMessages:Record<string,{status:"success"|"attention";message:string}>={
+ requested:{status:"success",message:"Comando salvo. A Factory recebeu um sinal para verificar o estado e a fila, sem dispensar os gates de execução."},
+ delayed:{status:"attention",message:"Comando salvo, mas não foi possível solicitar a verificação imediata. A próxima execução agendada poderá reconciliar o estado."},
+ recorded:{status:"success",message:"Comando salvo no Control Plane. Nenhuma nova execução foi iniciada por esta confirmação."},
+};
+
 const supabaseMessages:Record<string,{status:string;message:string}>={
  connected:{status:"success",message:"Supabase conectado e acesso somente leitura verificado."},
  oauth_invalid:{status:"failed",message:"A autorização do Supabase expirou ou não corresponde ao fluxo iniciado. Tente conectar novamente."},
@@ -87,8 +111,10 @@ async function controlProject(formData:FormData){
  const version=Number(rawVersion);
  const id=String(formData.get("command_id")||"");
  if(!["start","pause","resume","stop","restart"].includes(cmd))throw new Error("Comando não permitido.");
- await commandProjectExecution(key,cmd as "start"|"pause"|"resume"|"stop"|"restart",version,id);
+ const result=await commandProjectExecution(key,cmd as "start"|"pause"|"resume"|"stop"|"restart",version,id);
  revalidatePath("/projects/"+key);
+ const notice=result.wakeStatus==="requested"?"requested":result.wakeStatus==="not_needed"?"recorded":"delayed";
+ redirect("/projects/"+key+"?control="+notice);
 }
 async function reconcileProject(formData:FormData){
  "use server";
@@ -119,7 +145,7 @@ function productWorkerBlockerMessage(reason:string){
  return reasons[reason]||"Motivo de bloqueio não reconhecido.";
 }
 
-export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string;repo_link?:string}>}){
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string;repo_link?:string;control?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
   const jar=await cookies();
@@ -131,7 +157,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
- const action=observedBlocker?{
+ const focusedControlAction=controlNextAction(executionControl.state);
+ const action=focusedControlAction|| (observedBlocker?{
    title:observedBlocker==="budget_exhausted"?"Execução pausada: limite do modelo atingido":"Execução pausada: dependência do modelo",
    body:productWorkerBlockerMessage(observedBlocker)+" O trabalho permanece preservado na fila; nenhum novo run precisa ser criado.",
    href:observedBlocker==="budget_exhausted"?"/usage":"/configuration",
@@ -140,24 +167,26 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   title:"Vincular repositório GitHub",
   body:"O projeto possui planejamento, mas precisa de um repositório privado autorizado pela GitHub App para iniciar a implementação. O orçamento do modelo permanece independente.",
   href:"#repository-setup",label:"Preparar repositório",
- }:nextAction(p.stage,hasPendingDatabase,activeTasks.length);
+ }:nextAction(p.stage,hasPendingDatabase,activeTasks.length));
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
  const repositoryNotice=query.repo_link?repoLinkMessages[query.repo_link]:undefined;
+ const controlNotice=query.control?controlMessages[query.control]:undefined;
  const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
- const humanActionNeeded=Boolean(observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||["human_gate","release"].includes(p.stage));
+ const humanActionNeeded=Boolean(["draft","paused","stopped","unavailable"].includes(executionControl.state)
+   ||observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||["human_gate","release"].includes(p.stage));
  const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
  return <>
-  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<><ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
-  <section className="section" aria-label="Controle de execução do projeto">
+  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<>{executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink>:null}<details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <section className="section" id="project-control" aria-label="Controle de execução do projeto">
    <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
     <p>O cadastro não inicia o desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar.</p>
     <div className="actions">{([
      ["draft","start","Iniciar projeto"],["running","pause","Pausar"],["running","stop","Parar"],
-     ["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"]
+     ["pausing","stop","Parar"],["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"]
     ] as const).filter(([state])=>state===executionControl.state).map(([,command,label])=>
       <form action={controlProject} key={command}>
        <input type="hidden" name="project_key" value={p.key}/>
@@ -171,6 +200,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     {["pausing","stopping"].includes(executionControl.state)?<p role="status">Aguardando conclusão segura dos trabalhos em andamento. Nenhuma tarefa nova deve ser iniciada.</p>:null}
    </div>
   </section>
+  {controlNotice?<div className={controlNotice.status==="success"?"card noticeCard success":"card noticeCard"} role="status"><StatusPill status={controlNotice.status}/><span>{controlNotice.message}</span></div>:null}
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
