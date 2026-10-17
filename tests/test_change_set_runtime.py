@@ -18,12 +18,12 @@ class ChangeSetRuntimeTests(unittest.TestCase):
             {"change_set_id":"cs","builder_work_units":2,"status":"planned"},
             {"id":"dod","version":1,"check_count":2},
         ])
-        item=WorkItem("run","task","project","demo",(),{},3)
+        item=WorkItem("run","task","project","demo",(),{},3,"worker")
         output={"_team_plan":{"status":"ready","profiles_selected":2,"planned_worker_peak":2}}
         queue.record_stage(item,StageEvidence("planning","completed",output))
         names=[call.args[0] for call in queue._rpc.call_args_list]
         self.assertEqual(names,[
-            "factory_assert_project_execution_epoch",
+            "factory_assert_claimed_run_epoch",
             "factory_record_runtime_stage",
             "factory_persist_product_stage",
             "factory_record_requirement_trace",
@@ -42,7 +42,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
             {"id":"team-plan","status":"blocked"},
             {"id":"dod","version":1,"check_count":2},
         ])
-        item=WorkItem("run","task","project","demo",(),{},3)
+        item=WorkItem("run","task","project","demo",(),{},3,"worker")
         queue.record_stage(item,StageEvidence("planning","completed",{"_team_plan":{"status":"blocked"}}))
         names=[call.args[0] for call in queue._rpc.call_args_list]
         self.assertNotIn("factory_materialize_change_set",names)

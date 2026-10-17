@@ -135,7 +135,10 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert conn.execute("select state,version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()==("running",6)
     # A paused project must reject a fresh change-set claim, not just task insertion.
     paused_again=call("pause",6)
-    assert paused_again["state"]=="paused",paused_again
+    assert paused_again["state"]=="pausing",paused_again
+    conn.execute("update public.factory_runs set lease_owner=null,lease_expires_at=null where id=%s",(claim["run_id"],))
+    settled_again=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    assert settled_again["state"]=="paused",settled_again
     try:
         with conn.transaction():
             conn.execute("insert into public.factory_change_sets(project_id,status) values (%s,'queued')",(pid,))
