@@ -81,7 +81,9 @@ begin
         'execution_worker_id',p_worker_id,
         'execution_claimed_at',now(),
         'agent_key',v_agent_key
-      )
+      ,'project_id',v_project.id,
+    'execution_generation',(select generation from public.factory_project_execution_controls where project_id=v_project.id)
+  )
   where id=v_run.id and status='queued' and execution_route='codex'
     and metadata->>'codex_execution_mode'='automatic';
   if not found then raise exception 'automatic Codex claim lost mode guard'; end if;
@@ -192,7 +194,9 @@ begin
         'execution_worker_id',p_worker_id,
         'execution_claimed_at',now(),
         'agent_key',v_agent_key
-      )
+      ,'project_id',v_project.id,
+    'execution_generation',(select generation from public.factory_project_execution_controls where project_id=v_project.id)
+  )
   where id=v_run.id;
 
   update public.factory_tasks
