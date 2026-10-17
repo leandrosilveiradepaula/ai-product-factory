@@ -51,6 +51,9 @@ class ChangeSetIntegrator:
                 {"Factory-Change-Set":item.change_set_id,"Factory-Wave":str(item.current_wave)},
             ),
         )
+        # Verify the branch still points at the commit we are about to persist.
+        if self.github.get_branch_sha(item.integration_branch)!=candidate:
+            raise RuntimeError("integration branch moved before candidate persistence")
         completed=self.store.complete_integration(
             change_set_id=item.change_set_id,candidate_commit=candidate,
             changed_files=tuple(sorted(files)),

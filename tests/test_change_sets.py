@@ -281,6 +281,7 @@ class ChangeSetTests(unittest.TestCase):
         github=MagicMock()
         github.get_file_text.side_effect=["A","B"]
         github.commit_files.return_value="integrated"
+        github.get_branch_sha.return_value="integrated"
         github.find_open_issue_containing.return_value=None
         github.create_issue.return_value=SimpleNamespace(number=7,html_url="https://github/issue/7")
         github.find_open_pull_request_containing.return_value=None
@@ -306,6 +307,22 @@ class ChangeSetTests(unittest.TestCase):
             change_set_id="cs12345678",wave=1,candidate_commit="integrated"
         )
         self.assertEqual(store.prepare_release.call_args.kwargs["candidate_commit"],"integrated")
+
+    def test_integrator_rejects_branch_movement_before_control_plane_persistence(self):
+        github=MagicMock()
+        github.get_file_text.return_value="data"
+        github.commit_files.return_value="candidate"
+        github.get_branch_sha.return_value="different-commit"
+        store=MagicMock()
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","base","base","factory/change-set-cs",1,(
+                {"plan_task_key":"a","base_commit":"base","output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        with self.assertRaisesRegex(RuntimeError,"branch moved"):
+            ChangeSetIntegrator(github=github,store=store).integrate(item)
+        store.complete_integration.assert_not_called()
+        store.prepare_release.assert_not_called()
 
     def test_integrator_requires_each_unit_to_share_current_base(self):
         github=MagicMock();store=MagicMock()

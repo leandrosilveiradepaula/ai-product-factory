@@ -94,3 +94,20 @@ class RoutedExecutionCheckpointTests(unittest.TestCase):
   guarded=_CheckpointedIntegrationStore(store,deny)
   guarded.frozen_source_commit("change-set")
   store.frozen_source_commit.assert_called_once_with("change-set")
+
+ def test_revoked_routed_worker_cannot_mark_run_completed(self):
+  from ai_product_factory.runtime_cli import _release_routed_run
+  from unittest.mock import patch
+  scheduler=MagicMock()
+  item=MagicMock();item.run_id="run"
+  with patch("ai_product_factory.runtime_cli._routed_checkpoint",side_effect=PermissionError("epoch revoked")):
+   with self.assertRaises(PermissionError):
+    _release_routed_run(scheduler,item,"worker","completed")
+  scheduler.release.assert_not_called()
+
+ def test_blocked_routed_run_can_be_released_after_revocation(self):
+  from ai_product_factory.runtime_cli import _release_routed_run
+  scheduler=MagicMock()
+  item=MagicMock();item.run_id="run"
+  _release_routed_run(scheduler,item,"worker","blocked")
+  scheduler.release.assert_called_once_with("run","blocked")
