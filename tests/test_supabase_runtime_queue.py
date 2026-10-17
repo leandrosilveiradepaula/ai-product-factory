@@ -57,7 +57,15 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("discovery","completed",{"ok":True}))
             q.complete(item);q.fail(item,"x")
-        self.assertEqual(call.call_count,6)
+        self.assertEqual(call.call_count,7)
+
+    def test_terminal_failure_without_generation_never_writes(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.fail(item,"error")
+            call.assert_not_called()
 
     def test_reconciliation_and_gap_analysis_use_product_stage_persistence(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
