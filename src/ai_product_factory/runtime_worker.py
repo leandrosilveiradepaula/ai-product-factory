@@ -66,8 +66,15 @@ class RuntimeWorker:
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
-        if not isinstance(item.stages, (tuple, list)) or not item.stages:
+        if not isinstance(item.stages, (tuple, list)) or not item.stages or not all(isinstance(stage,str) and stage.strip() for stage in item.stages):
             message = "claimed run has no executable stages"
+            try:
+                self.queue.fail(item, message)
+            except Exception:
+                pass
+            return WorkResult(WorkStatus.FAILED, (), message)
+        if len(item.stages) != len(set(item.stages)):
+            message = "claimed run has duplicate stages"
             try:
                 self.queue.fail(item, message)
             except Exception:

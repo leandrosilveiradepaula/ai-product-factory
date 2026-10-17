@@ -124,6 +124,39 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 with self.assertRaises((RuntimeError,KeyError,TypeError)):
                     q.claim_next("worker")
 
+    def test_claim_rejects_empty_duplicate_or_whitespace_stages(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+              "context":{},"execution_generation":1}
+        for stages in ([],["planning","planning"],[" planning"],["planning "],None):
+            with self.subTest(stages=stages):
+                q._rpc=lambda name,args: {**base,"stages":stages}
+                with self.assertRaisesRegex(RuntimeError,"stages"):
+                    q.claim_next("worker")
+
+    def test_claim_rejects_invalid_worker_id_before_network(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen") as network:
+            for worker in ("","  ",None,12):
+                with self.subTest(worker=worker):
+                    with self.assertRaisesRegex(ValueError,"worker id"):
+                        q.claim_next(worker)
+            network.assert_not_called()
+
+    def test_invalid_stage_name_and_output_never_write(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},2)
+        with patch("urllib.request.urlopen") as network:
+            for stage in ("", "  ",None):
+                with self.assertRaisesRegex(ValueError,"stage name"):
+                    q.record_stage_event(item,stage,"started")
+                with self.assertRaisesRegex(ValueError,"stage name"):
+                    q.record_stage(item,StageEvidence(stage,"completed",{}))
+            for output in (None,[], "invalid"):
+                with self.assertRaisesRegex(ValueError,"mapping"):
+                    q.record_stage(item,StageEvidence("planning","completed",output))
+            network.assert_not_called()
+
     def test_claim_carries_generation_from_database(self):
         payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
                  "stages":["discovery"],"context":{},"execution_generation":7}

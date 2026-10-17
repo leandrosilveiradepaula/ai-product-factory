@@ -108,12 +108,17 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         })
 
     def claim_next(self, worker_id: str) -> WorkItem | None:
+        if not isinstance(worker_id,str) or not worker_id.strip():
+            raise ValueError("worker id is required")
         data=self._rpc("factory_claim_next_run",{"p_worker_id":worker_id})
         if data is None: return None
         if not isinstance(data,dict):
             raise RuntimeError("claim RPC returned an invalid response")
-        if not isinstance(data.get("stages",[]),list) or not all(isinstance(stage,str) and stage.strip() for stage in data.get("stages",[])):
+        stages=data.get("stages")
+        if not isinstance(stages,list) or not stages or not all(isinstance(stage,str) and stage.strip() and stage==stage.strip() for stage in stages):
             raise RuntimeError("claim RPC returned invalid stages")
+        if len(stages)!=len(set(stages)):
+            raise RuntimeError("claim RPC returned duplicate stages")
         if not isinstance(data.get("context",{}),dict):
             raise RuntimeError("claim RPC returned invalid context")
         if not all(isinstance(data.get(key),str) and data[key].strip() for key in ("run_id","task_id","project_id","project_key")):
@@ -125,6 +130,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
         if status not in {"started","failed"}:
             raise ValueError("unsupported runtime stage event status")
+        if not isinstance(stage,str) or not stage.strip():
+            raise ValueError("invalid stage name")
         self.assert_execution_epoch(item)
         self._rpc("factory_record_runtime_stage",{
             "p_run_id":item.run_id,"p_stage":stage,"p_status":status,"p_output":{}
@@ -133,6 +140,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
         if evidence.status != "completed":
             raise ValueError("only completed stage evidence may be persisted")
+        if not isinstance(evidence.stage,str) or not evidence.stage.strip():
+            raise ValueError("invalid stage name")
+        if not isinstance(evidence.output,dict):
+            raise ValueError("stage output must be a mapping")
         self.assert_execution_epoch(item)
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         persisted=self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output}) or {}

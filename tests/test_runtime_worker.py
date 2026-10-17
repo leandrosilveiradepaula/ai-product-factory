@@ -120,6 +120,22 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertEqual(result.status,WorkStatus.FAILED)
         self.assertFalse(any(event[0]=="complete" for event in q.events))
 
+    def test_worker_rejects_duplicate_stage_sequence_without_completion(self):
+        duplicate=WorkItem("r","t","p","demo",("discovery","discovery"),{})
+        q=Queue(duplicate)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("duplicate",result.error)
+        self.assertFalse(any(e[0] in ("stage","complete") for e in q.events))
+
+    def test_worker_rejects_malformed_stage_entries(self):
+        for stages in ((None,),("  ",),(123,)):
+            with self.subTest(stages=stages):
+                q=Queue(WorkItem("r","t","p","demo",stages,{}))
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertFalse(any(e[0]=="complete" for e in q.events))
+
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
