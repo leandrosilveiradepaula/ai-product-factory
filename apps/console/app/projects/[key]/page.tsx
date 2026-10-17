@@ -6,6 +6,7 @@ import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDa
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {RepositoryLinkForm} from "./repository-link-form";
+import {ProjectControlSubmit} from "./control-confirm";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
@@ -149,7 +150,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  return <>
   <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<><ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
   <section className="section" aria-label="Controle de execução do projeto">
-   <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":"Parado"}</strong>
+   <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
     <p>O cadastro não inicia o desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar.</p>
     <div className="actions">{([
      ["draft","start","Iniciar projeto"],["running","pause","Pausar"],["running","stop","Parar"],
@@ -160,7 +161,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
        <input type="hidden" name="command" value={command}/>
        <input type="hidden" name="version" value={executionControl.version}/>
        <input type="hidden" name="command_id" value={crypto.randomUUID()}/>
-       <button type="submit" className={command==="stop"?"danger":"primary"}>{label}</button>
+       <ProjectControlSubmit command={command} label={label}/>
       </form>
     )}</div>
     {["pausing","stopping"].includes(executionControl.state)?<p role="status">Aguardando conclusão segura dos trabalhos em andamento. Nenhuma tarefa nova deve ser iniciada.</p>:null}
