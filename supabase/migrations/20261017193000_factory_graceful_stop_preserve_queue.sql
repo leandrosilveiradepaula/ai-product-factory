@@ -94,7 +94,7 @@ begin
  if not found then raise exception 'lost control version lock' using errcode='PT409';end if;
  if p_command in ('start','restart') then
    v_run:=public.factory_enqueue_project_bootstrap(p_project_key);
-   if v_run->>'created' is distinct from 'true' then
+   if v_run->>'created' is distinct from 'true' and p_command='start' then
      raise exception 'start did not create new bootstrap' using errcode='PT409';
    end if;
  end if;
