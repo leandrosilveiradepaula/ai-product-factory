@@ -423,6 +423,33 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["ci_dispatched"])
         github.dispatch_workflow.assert_not_called()
 
+    def test_stopped_project_blocks_integration_before_github_access(self):
+        item=SimpleNamespace(repository="owner/factory",project_key="stopped",integration_branch="factory/cs")
+        store=MagicMock();store.claim_integration.return_value=item
+        store.assert_project_running=MagicMock(side_effect=PermissionError("project stopped"))
+        with patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
+             patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
+            with self.assertRaises(PermissionError):
+                run_change_set_integration_once("worker")
+        github.assert_not_called()
+        integrator.assert_not_called()
+
+    def test_integration_revocation_blocks_ci_dispatch_after_candidate(self):
+        item=SimpleNamespace(repository="owner/factory",project_key="factory",integration_branch="factory/cs")
+        store=MagicMock();store.claim_integration.return_value=item
+        store.assert_project_running=MagicMock(side_effect=[None,PermissionError("project stopped")])
+        result=SimpleNamespace(status="ci_pending",change_set_id="cs",wave=1,candidate_commit="sha",pull_request=SimpleNamespace(number=3))
+        github=MagicMock()
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
+            integrator.return_value.integrate.return_value=result
+            with self.assertRaises(PermissionError):
+                run_change_set_integration_once("worker")
+        github.dispatch_workflow.assert_not_called()
+
     def test_health_is_side_effect_free_configuration_report(self):
         with patch.dict("os.environ", {"SUPABASE_URL":"https://example.supabase.co","SUPABASE_SERVICE_ROLE_KEY":"secret"}, clear=True), \
              patch("ai_product_factory.runtime_cli.SupabasePrimaryCostPolicyReader",side_effect=RuntimeError("unavailable")):
