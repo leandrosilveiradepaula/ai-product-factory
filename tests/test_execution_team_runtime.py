@@ -56,7 +56,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
             is_active=True,
         )
         handler=ProductStageExecutor(ModelExecutor(primary=provider),team_profiles=(ui,))
-        item=WorkItem("r","t","p","demo",("planning",),{"summary":"build x"},3)
+        item=WorkItem("r","t","p","demo",("planning",),{"summary":"build x"}, 3,"worker")
         out=handler.execute(item,"planning")
         self.assertEqual(out["_team_plan"]["status"],"ready")
         self.assertEqual(out["_team_plan"]["selected_agents"][0]["agent_key"],"ui")
@@ -64,7 +64,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
 
     def test_planning_stage_persists_versioned_team_plan_rpc(self):
         queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{},3)
+        item=WorkItem("r","t","p","demo",(),{}, 3,"worker")
         output={
             "tasks":[],
             "_team_plan":{
@@ -79,7 +79,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
             queue.record_stage(item,StageEvidence("planning","completed",output))
         urls=[entry.args[0].full_url for entry in call.call_args_list]
         self.assertEqual(len(urls),7)
-        self.assertTrue(urls[0].endswith("/rest/v1/rpc/factory_assert_project_execution_epoch"))
+        self.assertTrue(urls[0].endswith("/rest/v1/rpc/factory_assert_claimed_run_epoch"))
         self.assertTrue(urls[1].endswith("/rest/v1/rpc/factory_record_runtime_stage"))
         self.assertTrue(urls[2].endswith("/rest/v1/rpc/factory_persist_product_stage"))
         self.assertTrue(urls[3].endswith("/rest/v1/rpc/factory_record_requirement_trace"))
