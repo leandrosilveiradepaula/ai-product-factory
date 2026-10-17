@@ -249,4 +249,40 @@ with psycopg.connect(dsn,autocommit=True) as conn:
      has_function_privilege('authenticated','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('service_role','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE')""").fetchone()
     assert acl==(False,False,True),acl
+
+    # Execute the actual routed checkpoint SQL in the disposable local fixture.
+    import re
+    sql=(root/"supabase/migrations/20261017224500_guard_routed_claims_manual_control.sql").read_text()
+    match=re.search(r"create or replace function public\\.factory_assert_routed_run_epoch\\([\\s\\S]*?\\$f\\$;",sql,re.I)
+    assert match is not None
+    conn.execute(match.group(0))
+    generation,version=conn.execute("select generation,version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()
+    task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'routed epoch fixture','running') returning id",(pid,)).fetchone()[0]
+    run=conn.execute("""insert into public.factory_runs(task_id,status,execution_route,lease_owner,lease_expires_at,metadata)
+      values (%s,'implementing','direct','routed-worker',now()+interval '10 minutes',jsonb_build_object('execution_generation',%s)) returning id""",(task,generation)).fetchone()[0]
+    def check_epoch(gen,owner,allowed):
+        try:
+            with conn.transaction():
+                conn.execute("select public.factory_assert_routed_run_epoch(%s,%s,%s,%s)",(pid,gen,run,owner))
+        except psycopg.Error:
+            if allowed:raise
+        else:
+            if not allowed:raise AssertionError("revoked routed capability accepted")
+    check_epoch(generation,"routed-worker",True)
+    check_epoch(generation-1,"routed-worker",False)
+    check_epoch(generation,"intruder",False)
+    conn.execute("update public.factory_runs set lease_expires_at=now()-interval '1 second' where id=%s",(run,))
+    check_epoch(generation,"routed-worker",False)
+    conn.execute("update public.factory_runs set lease_expires_at=now()+interval '10 minutes' where id=%s",(run,))
+    pausing=call("pause",version)
+    assert pausing["state"]=="pausing",pausing
+    check_epoch(generation,"routed-worker",True)
+    conn.execute("update public.factory_runs set lease_owner=null,lease_expires_at=null where id=%s",(run,))
+    paused=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    assert paused["state"]=="paused",paused
+    check_epoch(generation,"routed-worker",False)
+    resumed=call("resume",paused["version"])
+    assert resumed["generation"]==generation+1,resumed
+    check_epoch(generation,"routed-worker",False)
+
 print("PROJECT_MANUAL_CONTROL_POSTGRES_PASS=1")
