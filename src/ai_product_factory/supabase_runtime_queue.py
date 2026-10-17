@@ -169,4 +169,5 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         self._rpc("factory_finish_run",{"p_run_id":item.run_id,"p_status":"completed","p_error":None})
 
     def fail(self,item:WorkItem,error:str)->None:
+        self.assert_execution_epoch(item)
         self._rpc("factory_finish_run",{"p_run_id":item.run_id,"p_status":"failed","p_error":error[:2000]})
