@@ -61,3 +61,12 @@ class RoutedExecutionCheckpointTests(unittest.TestCase):
   state["active"]=False
   with self.assertRaises(PermissionError):guarded.produce("second")
   producer.produce.assert_called_once_with("first")
+
+ def test_integration_mutations_are_fenced(self):
+  github=MagicMock()
+  def deny():raise PermissionError("project stopped")
+  guarded=_CheckpointedGitHub(github,deny)
+  for name in ("ensure_branch_at_sha","commit_files","create_issue","create_pull_request","dispatch_workflow"):
+   with self.subTest(name=name):
+    with self.assertRaises(PermissionError):getattr(guarded,name)("test")
+    getattr(github,name).assert_not_called()

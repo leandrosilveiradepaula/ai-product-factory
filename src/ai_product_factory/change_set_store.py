@@ -67,6 +67,14 @@ class SupabaseChangeSetStore:
             raise RuntimeError(f"control-plane update failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
+    def assert_project_running(self,project_key:str)->None:
+        if not isinstance(project_key,str) or not project_key.strip():
+            raise PermissionError("missing project key for integration")
+        rows=self._get("factory_projects?select=id&project_key=eq."+quote(project_key,safe="")+"&limit=1")
+        if len(rows)!=1 or not rows[0].get("id"):
+            raise PermissionError("integration project not found")
+        self._rpc("factory_assert_project_running",{"p_project_id":rows[0]["id"]})
+
     def recover_expired(self,max_attempts:int=3)->dict:
         return self._rpc("factory_recover_change_sets",{"p_max_attempts":max_attempts}) or {}
 

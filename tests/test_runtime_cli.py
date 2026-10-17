@@ -396,8 +396,8 @@ class RuntimeCliTests(unittest.TestCase):
         store.create_replay.assert_called_once_with("run","shadow")
 
     def test_same_repo_change_set_integration_dispatches_validate_workflow(self):
-        item=SimpleNamespace(repository="owner/factory",integration_branch="factory/change-set-cs")
-        store=MagicMock();store.claim_integration.return_value=item
+        item=SimpleNamespace(repository="owner/factory",project_key="factory",integration_branch="factory/change-set-cs")
+        store=MagicMock();store.claim_integration.return_value=item;store.assert_project_running=MagicMock()
         result=SimpleNamespace(status="ci_pending",change_set_id="cs",wave=1,candidate_commit="abc",pull_request=SimpleNamespace(number=9))
         github=MagicMock()
         with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
@@ -410,8 +410,8 @@ class RuntimeCliTests(unittest.TestCase):
         github.dispatch_workflow.assert_called_once_with("validate.yml",ref="factory/change-set-cs")
 
     def test_cross_repo_change_set_integration_does_not_dispatch_factory_workflow(self):
-        item=SimpleNamespace(repository="owner/crm",integration_branch="factory/change-set-cs")
-        store=MagicMock();store.claim_integration.return_value=item
+        item=SimpleNamespace(repository="owner/crm",project_key="crm",integration_branch="factory/change-set-cs")
+        store=MagicMock();store.claim_integration.return_value=item;store.assert_project_running=MagicMock()
         result=SimpleNamespace(status="ci_pending",change_set_id="cs",wave=1,candidate_commit="abc",pull_request=SimpleNamespace(number=9))
         github=MagicMock()
         with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
