@@ -101,6 +101,7 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertEqual(result.status,WorkStatus.FAILED)
         self.assertIn("no executable stages",result.error)
         self.assertFalse(any(e[0]=="complete" for e in q.events))
+        self.assertTrue(any(e[0]=="fail" for e in q.events))
 
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
