@@ -25,6 +25,7 @@ class Tests(unittest.TestCase):
             ({"execution_generation":0},"invalid execution generation"),
             ({"execution_generation":True},"invalid execution generation"),
             ({"execution_generation":"2"},"invalid execution generation"),
+            ({"project_id":""},"missing project capability"),
         ]
         for override,message in cases:
             with self.subTest(override=override),patch("urllib.request.urlopen",return_value=Response({**base,**override})):
