@@ -103,6 +103,31 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  }
  const result=await response.json();
  if(!result||result.request_id!==requestId||!result.project_id||!result.task_id||!result.run_id||typeof result.created!=="boolean")throw new Error("Resposta de enfileiramento não corresponde ao pedido. Nenhum sucesso foi presumido.");
+ // The atomic RPC is already committed. A wake is only a prompt to the
+ // existing guarded scheduler, never proof of an execution or permission to
+ // bypass model, quota, cost or production gates.
+ // Retries of the same request_id return created=false and never wake twice.
+ if(result.created){
+   let wakeStatus:"requested"|"unconfigured"|"failed"="failed";
+   try{wakeStatus=await requestIntakeWorkerWake();}
+   catch{console.warn("continuation_worker_wake_failed",{reason:"transport"});}
+   // Audit only after the durable commit; even audit/network failure cannot
+   // turn an accepted request into an apparent failed submission.
+   try{
+     const audit=await fetch(cfg.url+"/rest/v1/factory_audit_events",{
+       method:"POST",
+       headers:{...cfg.headers,"Content-Type":"application/json",Prefer:"return=minimal"},
+       body:JSON.stringify({
+         project_id:String(result.project_id),task_id:String(result.task_id),
+         run_id:String(result.run_id),actor_type:"system",actor_ref:"console-continuation",
+         event_type:"project.continuation.wake_attempted",
+         payload:{status:wakeStatus,request_id:requestId,source:"console-continuation"},
+       }),
+       cache:"no-store",
+     });
+     if(!audit.ok)console.warn("continuation_worker_wake_audit_failed",{status:audit.status});
+   }catch{console.warn("continuation_worker_wake_audit_failed",{reason:"transport"});}
+ }
  return {...result,requestId,requestedAt:String(result.requested_at||"")};
 }
 
