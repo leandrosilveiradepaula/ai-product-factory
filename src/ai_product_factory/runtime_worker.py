@@ -90,9 +90,25 @@ class RuntimeWorker:
             self.queue.complete(item)
             return WorkResult(WorkStatus.COMPLETED, tuple(evidence))
         except Exception as exc:
+            # A revoked epoch must never be turned into a new write by error handling.
+            # Check again because the project may have paused while the handler ran.
+            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+            if callable(checkpoint):
+                try:
+                    checkpoint(item)
+                except Exception:
+                    return WorkResult(WorkStatus.FAILED, tuple(evidence), str(exc))
             if current_stage is not None:
                 recorder = getattr(self.queue, "record_stage_event", None)
                 if callable(recorder):
-                    recorder(item, current_stage, "failed")
-            self.queue.fail(item, str(exc))
+                    try:
+                        recorder(item, current_stage, "failed")
+                    except Exception:
+                        # Do not mask the original handler failure.
+                        pass
+            try:
+                self.queue.fail(item, str(exc))
+            except Exception:
+                # A concurrent pause may revoke the epoch between checks.
+                pass
             return WorkResult(WorkStatus.FAILED, tuple(evidence), str(exc))
