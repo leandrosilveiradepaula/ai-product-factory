@@ -32,6 +32,26 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                         q.assert_execution_epoch(item)
             network.assert_not_called()
 
+    def test_stale_epoch_backend_rejection_blocks_stage_and_terminal_writes(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},2)
+        calls=[]
+        def rpc(name,payload):
+            calls.append(name)
+            if name=="factory_assert_project_execution_epoch":
+                raise RuntimeError("project execution epoch revoked")
+            raise AssertionError("side effect admitted: "+name)
+        q._rpc=rpc
+        for operation in (
+            lambda: q.record_stage_event(item,"planning","started"),
+            lambda: q.record_stage(item,StageEvidence("planning","completed",{})),
+            lambda: q.complete(item),
+            lambda: q.fail(item,"failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError,"revoked"):
+                operation()
+        self.assertEqual(calls,["factory_assert_project_execution_epoch"]*4)
+
     def test_execution_epoch_calls_privileged_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{},3)
