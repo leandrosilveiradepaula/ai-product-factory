@@ -116,6 +116,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("claim RPC returned invalid stages")
         if not isinstance(data.get("context",{}),dict):
             raise RuntimeError("claim RPC returned invalid context")
+        if type(data.get("execution_generation")) is not int or data["execution_generation"] < 1:
+            raise RuntimeError("claim RPC returned invalid execution generation")
         return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}),execution_generation=data.get("execution_generation"))
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
