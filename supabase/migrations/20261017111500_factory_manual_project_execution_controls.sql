@@ -369,8 +369,9 @@ begin
  join public.factory_project_execution_controls c on c.project_id=t.project_id
  where r.status in ('created','queued') and t.status='queued'
    and c.state='running'
- order by r.created_at for update of r skip locked limit 1;
+ order by r.created_at for update of c skip locked limit 1;
  if v_run.id is null then return null;end if;
+ -- Acquire control first, then the task and run rows, matching operator lock order.
  select * into v_task from public.factory_tasks where id=v_run.task_id for update;
  select * into v_project from public.factory_projects where id=v_task.project_id;
  select generation into v_generation from public.factory_project_execution_controls
