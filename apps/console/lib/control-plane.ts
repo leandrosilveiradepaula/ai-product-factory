@@ -61,8 +61,8 @@ export type ProjectExecutionControl={state:string;version:number;generation:numb
 export async function getProjectExecutionControl(projectId:string):Promise<ProjectExecutionControl>{
  await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
  const response=await fetch(cfg.url+"/rest/v1/factory_project_execution_controls?select=state,version,generation&project_id=eq."+encodeURIComponent(projectId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
- if(!response.ok)throw new Error("Controle de execução ainda não instalado; nenhuma ação autorizada.");
- const rows=await response.json();if(!Array.isArray(rows)||rows.length!==1)throw new Error("Controle de execução ausente.");
+ if(!response.ok)return {state:"unavailable",version:-1,generation:0};
+ const rows=await response.json();if(!Array.isArray(rows)||rows.length!==1)return {state:"unavailable",version:-1,generation:0};
  return {state:String(rows[0].state),version:Number(rows[0].version),generation:Number(rows[0].generation)};
 }
 export async function commandProjectExecution(projectKey:string,command:"start"|"pause"|"resume"|"stop"|"restart",expectedVersion:number,commandId:string){
