@@ -6,7 +6,7 @@ import urllib.request
 from .supabase_server import resolve_supabase_server_config
 
 def assert_routed_epoch(project_id: str, generation: int, run_id: str, worker_id: str) -> None:
-    if not project_id or not run_id or not worker_id or generation < 1:
+    if not project_id or not run_id or not worker_id or not isinstance(generation, int) or isinstance(generation, bool) or generation < 1:
         raise PermissionError("missing routed run capability")
     cfg = resolve_supabase_server_config()
     req = urllib.request.Request(
@@ -22,7 +22,7 @@ def assert_routed_epoch(project_id: str, generation: int, run_id: str, worker_id
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
-            if response.status != 200:
+            if response.status not in (200, 204):
                 raise PermissionError("routed execution checkpoint denied")
     except (urllib.error.URLError, TimeoutError) as exc:
         raise PermissionError("routed execution checkpoint unavailable") from exc
