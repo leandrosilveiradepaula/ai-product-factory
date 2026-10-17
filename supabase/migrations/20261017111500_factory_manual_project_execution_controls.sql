@@ -373,6 +373,10 @@ begin
  if v_run.id is null then return null;end if;
  -- Acquire control first, then the task and run rows, matching operator lock order.
  select * into v_task from public.factory_tasks where id=v_run.task_id for update;
+ -- Another claimant may have won while we waited for the task lock.
+ if v_task.status is distinct from 'queued' then return null;end if;
+ select * into v_run from public.factory_runs where id=v_run.id for update;
+ if v_run.status not in ('created','queued') then return null;end if;
  select * into v_project from public.factory_projects where id=v_task.project_id;
  select generation into v_generation from public.factory_project_execution_controls
  where project_id=v_project.id for share;
