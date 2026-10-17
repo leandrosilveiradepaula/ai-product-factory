@@ -843,7 +843,7 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         assert "required_capabilities" in migration
         assert "scope_keys" in migration
         assert "Do not assume a fixed number of agents" in planner
-        assert 'scheduler.release(item.run_id,"blocked")' in runtime
+        assert '_release_routed_run(scheduler,item,worker_id,"blocked")' in runtime
         assert "recover_expired" in scheduler
 
     def test_specialist_workers_fan_out_from_control_plane_matrix(self):
