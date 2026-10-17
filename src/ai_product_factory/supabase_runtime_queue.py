@@ -102,9 +102,13 @@ class SupabaseRuntimeQueue(RuntimeQueue):
     def assert_execution_epoch(self, item: WorkItem) -> None:
         if type(item.execution_generation) is not int or item.execution_generation < 1:
             raise RuntimeError("missing project execution generation; refusing side effects")
-        self._rpc("factory_assert_project_execution_epoch",{
+        if not item.worker_id:
+            raise RuntimeError("missing claimed worker identity")
+        self._rpc("factory_assert_claimed_run_epoch",{
             "p_project_id":item.project_id,
             "p_generation":item.execution_generation,
+            "p_run_id":item.run_id,
+            "p_worker_id":item.worker_id,
         })
 
     def claim_next(self, worker_id: str) -> WorkItem | None:
@@ -125,7 +129,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("claim RPC returned invalid identifiers")
         if type(data.get("execution_generation")) is not int or data["execution_generation"] < 1:
             raise RuntimeError("claim RPC returned invalid execution generation")
-        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}),execution_generation=data.get("execution_generation"))
+        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}),execution_generation=data.get("execution_generation"),worker_id=worker_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
         if status not in {"started","failed"}:

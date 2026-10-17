@@ -136,3 +136,26 @@ begin
   'changed',true,'version',v_version+1);
 end;
 $f$;
+
+-- Authorize only the original owner of a claimed run while draining.
+create function public.factory_assert_claimed_run_epoch(p_project_id uuid,p_generation bigint,p_run_id uuid,p_worker_id text)
+returns void language plpgsql security invoker set search_path to '' as $f$
+declare v_state text;v_generation bigint;v_run record;
+begin
+ if p_project_id is null or p_generation is null or p_generation<1 or p_run_id is null or nullif(btrim(p_worker_id),'') is null then
+  raise exception 'invalid claimed run capability' using errcode='PT400';end if;
+ select state,generation into v_state,v_generation from public.factory_project_execution_controls where project_id=p_project_id for share;
+ if v_generation is distinct from p_generation or v_state not in ('running','pausing','stopping') then
+  raise exception 'claimed run epoch revoked' using errcode='PT409';end if;
+ select r.status,r.lease_owner,r.lease_expires_at,r.metadata into v_run
+ from public.factory_runs r join public.factory_tasks t on t.id=r.task_id
+ where r.id=p_run_id and t.project_id=p_project_id;
+ if not found or v_run.status is distinct from 'running'
+ or v_run.lease_owner is distinct from p_worker_id
+ or (v_run.lease_expires_at is not null and v_run.lease_expires_at<=now())
+ or v_run.metadata->>'execution_generation' is distinct from p_generation::text then
+  raise exception 'claimed run capability revoked' using errcode='PT409';end if;
+end;
+$f$;
+revoke all on function public.factory_assert_claimed_run_epoch(uuid,bigint,uuid,text) from public,anon,authenticated;
+grant execute on function public.factory_assert_claimed_run_epoch(uuid,bigint,uuid,text) to service_role;

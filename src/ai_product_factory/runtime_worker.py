@@ -20,6 +20,7 @@ class WorkItem:
     stages: tuple[str, ...]
     context: dict = field(default_factory=dict)
     execution_generation: int | None = None
+    worker_id: str | None = None
 
 
 @dataclass(frozen=True)
