@@ -65,6 +65,8 @@ class ProjectControlSnapshot:
             raise ValueError("invalid control version")
         if type(self.generation) is not int or self.generation < 0:
             raise ValueError("invalid execution generation")
+        if not isinstance(self.state, ProjectExecutionState):
+            raise ValueError("invalid execution state")
 
 
 def can_claim_new_work(state: ProjectExecutionState | str) -> bool:
