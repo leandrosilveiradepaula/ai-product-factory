@@ -11,6 +11,17 @@ class Queue:
     def fail(self,item,error): self.events.append(("fail",item.run_id,error))
 
 
+class FencedQueue(Queue):
+    def __init__(self, item, fail_at):
+        super().__init__(item)
+        self.checks = 0
+        self.fail_at = fail_at
+    def assert_execution_epoch(self, item):
+        self.checks += 1
+        if self.checks >= self.fail_at:
+            raise RuntimeError("execution epoch revoked")
+
+
 class InstrumentedQueue(Queue):
     def record_stage_event(self,item,stage,status):
         self.events.append(("stage_event",stage,status))
@@ -28,6 +39,102 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertEqual([x.stage for x in result.evidence],["discovery","specification","planning"])
         self.assertEqual(q.events[-1],("complete","r1"))
         self.assertTrue(all(x.output["requires_model"] is True for x in result.evidence))
+
+    def test_revocation_before_first_stage_prevents_handler(self):
+        q=FencedQueue(item(),1)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(e[0] in {"stage","fail"} for e in q.events))
+
+    def test_revocation_after_first_stage_prevents_persistence(self):
+        q=FencedQueue(item(),2)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(e[0] in {"stage","fail"} for e in q.events))
+
+    def test_revoked_epoch_never_records_failed_stage_or_terminal_failure(self):
+        class Revoked(FencedQueue):
+            def record_stage_event(self, item, stage, status):
+                self.events.append(("stage_event", stage, status))
+        q=Revoked(item(),2)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertNotIn(("stage_event","discovery","failed"),q.events)
+        self.assertFalse(any(event[0]=="fail" for event in q.events))
+
+    def test_error_reporter_failure_does_not_mask_handler_failure(self):
+        class FailingReporter(InstrumentedQueue):
+            def record_stage_event(self,item,stage,status):
+                if status=="failed":
+                    raise RuntimeError("reporting unavailable")
+                super().record_stage_event(item,stage,status)
+            def fail(self,item,error):
+                raise RuntimeError("terminal RPC unavailable")
+        bad=WorkItem("r","t","p","demo",("unknown",),{})
+        result=RuntimeWorker(queue=FailingReporter(bad),handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("unsupported bootstrap stage",result.error)
+
+    def test_pause_between_stage_completion_and_next_stage_blocks_next_handler(self):
+        class PausedBetweenStages(FencedQueue):
+            def __init__(self, item):
+                super().__init__(item, 100)
+            def record_stage(self, item, evidence):
+                super().record_stage(item, evidence)
+                self.fail_at = self.checks + 1
+        q=PausedBetweenStages(item())
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertEqual([e.stage for e in result.evidence],["discovery"])
+        self.assertFalse(any(e[0]=="fail" for e in q.events))
+
+    def test_revocation_at_final_completion_checkpoint_does_not_complete(self):
+        q=FencedQueue(item(),7)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(e[0] in {"complete","fail"} for e in q.events))
+
+    def test_claimed_run_without_stages_does_not_complete(self):
+        empty=WorkItem("r","t","p","demo",(),{})
+        q=Queue(empty)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("no executable stages",result.error)
+        self.assertFalse(any(e[0]=="complete" for e in q.events))
+        self.assertTrue(any(e[0]=="fail" for e in q.events))
+
+    def test_handler_must_return_mapping_before_stage_persistence(self):
+        class InvalidHandler:
+            def execute(self,item,stage):
+                return ["not", "a", "mapping"]
+        q=Queue(item())
+        result=RuntimeWorker(queue=q,handler=InvalidHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("must return a mapping",result.error)
+        self.assertFalse(any(event[0] in ("stage","complete") for event in q.events))
+
+    def test_missing_stage_sequence_never_reports_success(self):
+        malformed=WorkItem("r","t","p","demo",None,{})
+        q=Queue(malformed)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(event[0]=="complete" for event in q.events))
+
+    def test_worker_rejects_duplicate_stage_sequence_without_completion(self):
+        duplicate=WorkItem("r","t","p","demo",("discovery","discovery"),{})
+        q=Queue(duplicate)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("duplicate",result.error)
+        self.assertFalse(any(e[0] in ("stage","complete") for e in q.events))
+
+    def test_worker_rejects_malformed_stage_entries(self):
+        for stages in ((None,),("  ",),(123,)):
+            with self.subTest(stages=stages):
+                q=Queue(WorkItem("r","t","p","demo",stages,{}))
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertFalse(any(e[0]=="complete" for e in q.events))
 
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)

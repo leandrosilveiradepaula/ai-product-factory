@@ -9,7 +9,7 @@ class AtomicProjectStartTests(unittest.TestCase):
  def test_one_transaction_instead_of_split_console_writes(self):
   for marker in ("factory_start_project_intake_v1(","public.factory_create_project_intake(","public.factory_finalize_project_attachments(","public.factory_enqueue_project_bootstrap(","v_count IS DISTINCT FROM p_expected_attachments","v_cycle->>'run_id'"):
    self.assertIn(marker,SQL)
-  self.assertIn("rpc/factory_start_project_intake_v1",CONTROL)
+  self.assertIn("rpc/factory_register_project_intake_v2",CONTROL)
   self.assertIn("createProjectIntakeAndBootstrap(clean,intake.draftId,expectedCount)",PAGE)
   for unsafe in ("await createProjectIntake(clean)","await enqueueProjectBootstrap(","await finalizeProjectDraftFiles("):
    self.assertNotIn(unsafe,PAGE)
@@ -30,7 +30,7 @@ class AtomicProjectStartTests(unittest.TestCase):
    self.assertIn(marker,lowered)
   self.assertNotIn("security definer",lowered)
   self.assertNotIn("merge_pull_request",lowered)
-  for marker in ("result.project_id","result.task_id","result.run_id","result.request_id!==draftId","result.attachment_count!==expectedCount",'typeof result.created!=="boolean"'):
+  for marker in ("result.project_id",'result.state!=="draft"',"result.request_id!==draftId","result.attachment_count!==expectedCount",'typeof result.created!=="boolean"'):
    self.assertIn(marker,CONTROL)
 
  def test_idempotent_retry_counts_already_finalized_operator_attachments(self):

@@ -56,7 +56,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
             is_active=True,
         )
         handler=ProductStageExecutor(ModelExecutor(primary=provider),team_profiles=(ui,))
-        item=WorkItem("r","t","p","demo",("planning",),{"summary":"build x"})
+        item=WorkItem("r","t","p","demo",("planning",),{"summary":"build x"},3)
         out=handler.execute(item,"planning")
         self.assertEqual(out["_team_plan"]["status"],"ready")
         self.assertEqual(out["_team_plan"]["selected_agents"][0]["agent_key"],"ui")
@@ -64,7 +64,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
 
     def test_planning_stage_persists_versioned_team_plan_rpc(self):
         queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         output={
             "tasks":[],
             "_team_plan":{
@@ -78,13 +78,14 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             queue.record_stage(item,StageEvidence("planning","completed",output))
         urls=[entry.args[0].full_url for entry in call.call_args_list]
-        self.assertEqual(len(urls),6)
-        self.assertTrue(urls[0].endswith("/rest/v1/rpc/factory_record_runtime_stage"))
-        self.assertTrue(urls[1].endswith("/rest/v1/rpc/factory_persist_product_stage"))
-        self.assertTrue(urls[2].endswith("/rest/v1/rpc/factory_record_requirement_trace"))
-        self.assertTrue(urls[3].endswith("/rest/v1/rpc/factory_record_project_brain_snapshot"))
-        self.assertTrue(urls[4].endswith("/rest/v1/rpc/factory_record_execution_team_plan"))
-        self.assertTrue(urls[5].endswith("/rest/v1/rpc/factory_record_definition_of_done"))
+        self.assertEqual(len(urls),7)
+        self.assertTrue(urls[0].endswith("/rest/v1/rpc/factory_assert_project_execution_epoch"))
+        self.assertTrue(urls[1].endswith("/rest/v1/rpc/factory_record_runtime_stage"))
+        self.assertTrue(urls[2].endswith("/rest/v1/rpc/factory_persist_product_stage"))
+        self.assertTrue(urls[3].endswith("/rest/v1/rpc/factory_record_requirement_trace"))
+        self.assertTrue(urls[4].endswith("/rest/v1/rpc/factory_record_project_brain_snapshot"))
+        self.assertTrue(urls[5].endswith("/rest/v1/rpc/factory_record_execution_team_plan"))
+        self.assertTrue(urls[6].endswith("/rest/v1/rpc/factory_record_definition_of_done"))
 
     def test_offline_new_work_flows_from_planner_through_materializer_without_paid_model(self):
         provider=Provider()
@@ -101,7 +102,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
         item=WorkItem("run-new","task-new","project-new","factory-e2e",("planning",),{
             "manifest":{"preview":{"required_paths":["apps/console/**"]}},
             "summary":"Create a safe UI view",
-        })
+        },3)
         output=ProductStageExecutor(
             ModelExecutor(primary=provider),team_profiles=(ui,)
         ).execute(item,"planning")

@@ -14,8 +14,75 @@ class Response:
 
 
 class SupabaseRuntimeQueueTests(unittest.TestCase):
+    def test_execution_epoch_requires_positive_generation(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.assert_execution_epoch(item)
+            call.assert_not_called()
+
+    def test_execution_epoch_rejects_bool_zero_negative_and_string(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen") as network:
+            for generation in (True, False, 0, -1, "3", 3.0):
+                with self.subTest(generation=generation):
+                    item=WorkItem("r","t","p","demo",(),{},generation)
+                    with self.assertRaisesRegex(RuntimeError,"generation"):
+                        q.assert_execution_epoch(item)
+            network.assert_not_called()
+
+    def test_stale_epoch_backend_rejection_blocks_stage_and_terminal_writes(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},2)
+        calls=[]
+        def rpc(name,payload):
+            calls.append(name)
+            if name=="factory_assert_project_execution_epoch":
+                raise RuntimeError("project execution epoch revoked")
+            raise AssertionError("side effect admitted: "+name)
+        q._rpc=rpc
+        for operation in (
+            lambda: q.record_stage_event(item,"planning","started"),
+            lambda: q.record_stage(item,StageEvidence("planning","completed",{})),
+            lambda: q.complete(item),
+            lambda: q.fail(item,"failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError,"revoked"):
+                operation()
+        self.assertEqual(calls,["factory_assert_project_execution_epoch"]*4)
+
+    def test_claimed_run_without_epoch_cannot_write_stage_or_finish(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen",return_value=Response({
+            "run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+            "stages":["discovery"],"context":{}
+        })):
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.claim_next("worker")
+
+    def test_noncompleted_stage_evidence_never_persists_product_data(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},2)
+        with patch("urllib.request.urlopen") as network:
+            for status in ("started","failed","pending"):
+                with self.subTest(status=status):
+                    with self.assertRaises(ValueError):
+                        q.record_stage(item,StageEvidence("planning",status,{}))
+            network.assert_not_called()
+
+    def test_execution_epoch_calls_privileged_rpc(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},3)
+        with patch("urllib.request.urlopen",return_value=Response(None)) as call:
+            q.assert_execution_epoch(item)
+        req=call.call_args.args[0]
+        self.assertTrue(req.full_url.endswith("/rpc/factory_assert_project_execution_epoch"))
+        self.assertEqual(json.loads(req.data),{"p_project_id":"p","p_generation":3})
+        self.assertNotIn(b"secret",req.data)
+
     def test_claim_maps_rpc_payload_without_leaking_key(self):
-        payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","stages":["discovery"],"context":{"x":1}}
+        payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","stages":["discovery"],"context":{"x":1},"execution_generation":1}
         with patch("urllib.request.urlopen",return_value=Response(payload)) as call:
             q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
             item=q.claim_next("w")
@@ -25,17 +92,98 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_claim_next_run"))
         self.assertNotIn(b"secret",req.data)
 
+    def test_claim_rejects_missing_or_blank_identifiers(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+              "stages":["discovery"],"context":{},"execution_generation":2}
+        for key in ("run_id","task_id","project_id","project_key"):
+            for invalid in (None,"","  ",42):
+                with self.subTest(key=key,invalid=invalid):
+                    q._rpc=lambda name,args: {**base,key:invalid}
+                    with self.assertRaisesRegex(RuntimeError,"identifiers"):
+                        q.claim_next("worker")
+
+    def test_claim_rejects_missing_or_invalid_generation(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+              "stages":["discovery"],"context":{}}
+        for generation in (None,0,-1,True,"2"):
+            with self.subTest(generation=generation):
+                q._rpc=lambda name,args: {**base,"execution_generation":generation}
+                with self.assertRaisesRegex(RuntimeError,"generation"):
+                    q.claim_next("worker")
+
+    def test_claim_rejects_malformed_rpc_payloads(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        for payload in ([], "unexpected", {"stages":"planning"},
+                        {"stages":[None]}, {"stages":[""]},
+                        {"stages":[],"context":[]}, {"stages":{}},
+                        {"stages":[42]}):
+            with self.subTest(payload=payload):
+                q._rpc=lambda name,args: payload
+                with self.assertRaises((RuntimeError,KeyError,TypeError)):
+                    q.claim_next("worker")
+
+    def test_claim_rejects_empty_duplicate_or_whitespace_stages(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+              "context":{},"execution_generation":1}
+        for stages in ([],["planning","planning"],[" planning"],["planning "],None):
+            with self.subTest(stages=stages):
+                q._rpc=lambda name,args: {**base,"stages":stages}
+                with self.assertRaisesRegex(RuntimeError,"stages"):
+                    q.claim_next("worker")
+
+    def test_claim_rejects_invalid_worker_id_before_network(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen") as network:
+            for worker in ("","  ",None,12):
+                with self.subTest(worker=worker):
+                    with self.assertRaisesRegex(ValueError,"worker id"):
+                        q.claim_next(worker)
+            network.assert_not_called()
+
+    def test_invalid_stage_name_and_output_never_write(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},2)
+        with patch("urllib.request.urlopen") as network:
+            for stage in ("", "  ",None):
+                with self.assertRaisesRegex(ValueError,"stage name"):
+                    q.record_stage_event(item,stage,"started")
+                with self.assertRaisesRegex(ValueError,"stage name"):
+                    q.record_stage(item,StageEvidence(stage,"completed",{}))
+            for output in (None,[], "invalid"):
+                with self.assertRaisesRegex(ValueError,"mapping"):
+                    q.record_stage(item,StageEvidence("planning","completed",output))
+            network.assert_not_called()
+
+    def test_claim_carries_generation_from_database(self):
+        payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+                 "stages":["discovery"],"context":{},"execution_generation":7}
+        with patch("urllib.request.urlopen",return_value=Response(payload)):
+            q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+            item=q.claim_next("worker")
+        self.assertEqual(item.execution_generation,7)
+
     def test_terminal_and_stage_rpcs(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("discovery","completed",{"ok":True}))
             q.complete(item);q.fail(item,"x")
-        self.assertEqual(call.call_count,4)
+        self.assertEqual(call.call_count,7)
+
+    def test_terminal_failure_without_generation_never_writes(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.fail(item,"error")
+            call.assert_not_called()
 
     def test_reconciliation_and_gap_analysis_use_product_stage_persistence(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","crm-infodive",(),{})
+        item=WorkItem("r","t","p","crm-infodive",(),{},3)
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("reconciliation","completed",{"summary":"ok"}))
             q.record_stage(item,StageEvidence("gap_analysis","completed",{"gaps":[]}))
@@ -45,7 +193,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_stage_lifecycle_event_uses_existing_runtime_stage_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage_event(item,"planning","started")
         req=call.call_args.args[0]
@@ -57,10 +205,26 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_stage_lifecycle_event_rejects_unknown_status(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         with self.assertRaises(ValueError):
             q.record_stage_event(item,"planning","mystery")
 
+
+    def test_invalid_stage_event_never_contacts_backend(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},3)
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaises(ValueError):
+                q.record_stage_event(item,"planning","invalid")
+            call.assert_not_called()
+
+    def test_missing_generation_blocks_stage_write(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.record_stage(item,StageEvidence("planning","completed",{}))
+            call.assert_not_called()
 
     def test_retry_failed_run_uses_privileged_rpc_without_leaking_secret_in_body(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
@@ -115,7 +279,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_planning_stage_persists_execution_team_plan(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         output={"tasks":[],"_team_plan":{"version":1,"status":"ready","profiles_selected":0,"planned_worker_peak":0,"blockers":[]}}
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("planning","completed",output))
@@ -126,7 +290,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_planning_decision_gate_skips_team_plan_and_change_set_materialization(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","crm-infodive",(),{"manifest":{}})
+        item=WorkItem("r","t","p","crm-infodive",(),{"manifest":{}},3)
         output={
             "tasks":[{"task_key":"debug","title":"Debug","required_capabilities":["implementation"],"scope_keys":["src"],"depends_on":[]}],
             "decisions_needed":[{"decision_key":"approve_debug_contract","question":"What may remain visible?"}],
@@ -140,6 +304,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             if name=="factory_record_definition_of_done":
                 return {"id":"dod-1"}
             if name in {
+                "factory_assert_project_execution_epoch",
                 "factory_record_runtime_stage",
                 "factory_record_requirement_trace",
                 "factory_record_project_brain_snapshot",

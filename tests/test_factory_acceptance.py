@@ -342,6 +342,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261016023000_change_set_per_wave_attempts.sql",
             "20261016040600_reconcile_openai_credit_denial.sql",
             "20261016120000_block_early_merged_ci_candidates.sql",
+            "20261017111500_factory_manual_project_execution_controls.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

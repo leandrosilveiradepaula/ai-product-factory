@@ -19,6 +19,7 @@ class WorkItem:
     project_key: str
     stages: tuple[str, ...]
     context: dict = field(default_factory=dict)
+    execution_generation: int | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class RuntimeQueue(Protocol):
     def record_stage(self, item: WorkItem, evidence: StageEvidence) -> None: ...
     def complete(self, item: WorkItem) -> None: ...
     def fail(self, item: WorkItem, error: str) -> None: ...
+    def assert_execution_epoch(self, item: WorkItem) -> None: ...
 
 
 class StageHandler(Protocol):
@@ -64,25 +66,65 @@ class RuntimeWorker:
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
+        if not isinstance(item.stages, (tuple, list)) or not item.stages or not all(isinstance(stage,str) and stage.strip() for stage in item.stages):
+            message = "claimed run has no executable stages"
+            try:
+                self.queue.fail(item, message)
+            except Exception:
+                pass
+            return WorkResult(WorkStatus.FAILED, (), message)
+        if len(item.stages) != len(set(item.stages)):
+            message = "claimed run has duplicate stages"
+            try:
+                self.queue.fail(item, message)
+            except Exception:
+                pass
+            return WorkResult(WorkStatus.FAILED, (), message)
         evidence: list[StageEvidence] = []
         current_stage: str | None = None
         try:
             for stage in item.stages:
                 current_stage = stage
+                checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+                if callable(checkpoint):
+                    checkpoint(item)
                 recorder = getattr(self.queue, "record_stage_event", None)
                 if callable(recorder):
                     recorder(item, stage, "started")
                 output = self.handler.execute(item, stage)
+                if not isinstance(output, dict):
+                    raise ValueError("stage handler must return a mapping")
+                if callable(checkpoint):
+                    checkpoint(item)
                 ev = StageEvidence(stage=stage, status="completed", output=output)
                 self.queue.record_stage(item, ev)
                 evidence.append(ev)
                 current_stage = None
+            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+            if callable(checkpoint):
+                checkpoint(item)
             self.queue.complete(item)
             return WorkResult(WorkStatus.COMPLETED, tuple(evidence))
         except Exception as exc:
+            # A revoked epoch must never be turned into a new write by error handling.
+            # Check again because the project may have paused while the handler ran.
+            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+            if callable(checkpoint):
+                try:
+                    checkpoint(item)
+                except Exception:
+                    return WorkResult(WorkStatus.FAILED, tuple(evidence), str(exc))
             if current_stage is not None:
                 recorder = getattr(self.queue, "record_stage_event", None)
                 if callable(recorder):
-                    recorder(item, current_stage, "failed")
-            self.queue.fail(item, str(exc))
+                    try:
+                        recorder(item, current_stage, "failed")
+                    except Exception:
+                        # Do not mask the original handler failure.
+                        pass
+            try:
+                self.queue.fail(item, str(exc))
+            except Exception:
+                # A concurrent pause may revoke the epoch between checks.
+                pass
             return WorkResult(WorkStatus.FAILED, tuple(evidence), str(exc))

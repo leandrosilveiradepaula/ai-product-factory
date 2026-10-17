@@ -86,3 +86,18 @@ A Factory deve distinguir explicitamente quatro escopos:
 `release_candidate_ready` e `release_completed` **nao implicam** `product_ready`. A ausencia de issues abertas tambem nao prova prontidao do produto. Quando nao houver uma auditoria global recente e duravel, o estado de produto deve ser `not_assessed` ou `not_ready`, nunca inferido como pronto.
 
 Antes de declarar um app/projeto pronto, reconciliar o produto como um todo e registrar explicitamente os blockers e as evidencias. Para produtos existentes importados, a auditoria inicial deve procurar divida herdada (mocks/no-ops, seguranca/RBAC/RLS, observabilidade, testes/E2E, UX/a11y/responsividade, documentacao e operacao), mesmo que a tarefa atual nao toque essas areas.
+
+## Regra obrigatoria: cinco blocos por ciclo de desenvolvimento
+
+Ao receber "prossiga", "continue" ou pedido equivalente para desenvolver a Factory, tratar a rodada como um **ciclo de entrega**, nunca como um unico commit, teste ou ajuste.
+
+1. Antes de editar, identificar **cinco blocos substanciais** ligados a prioridade atual (por exemplo: fluxo operacional, workers, seguranca/concorrencia, interface, testes/evidencias).
+2. Executar os cinco blocos na mesma rodada, de forma autonoma. Um bloco deve produzir mudanca funcional, integracao, correcao ou evidencia verificavel; consultar status de CI, isoladamente, nao conta como bloco.
+3. Agrupar mudancas relacionadas em uma PR e minimizar commits/workflows desnecessarios. Nao abrir PR para cada pequena correcao.
+4. Validar testes e CI, investigar falhas e corrigir quando possivel. Para Console, exigir Preview verificado no SHA exato quando aplicavel.
+5. **Nao encerrar a rodada apos o primeiro commit, primeira verificacao ou primeiro bloco.** Entregar um relatorio consolidado apenas apos os cinco blocos ou diante de um bloqueio externo real.
+6. Se um bloco depender de credencial, permissao, custo ou gate humano, registrar o impedimento e prosseguir nos blocos independentes.
+7. Nunca afirmar que os cinco blocos foram concluidos sem evidencias. Distinguir claramente implementado, testado, pendente e bloqueado.
+8. Os gates existentes prevalecem: nao realizar merge de producao, migration de producao, ampliacao sensivel de acesso, compra ou outra acao irreversivel sem autorizacao humana especifica.
+
+**Criterio de encerramento:** cinco blocos substanciais concluidos e verificados, ou impossibilidade real de continuar com seguranca. Respostas de progresso e commits isolados nao substituem esse criterio.
