@@ -166,6 +166,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             if name=="factory_record_definition_of_done":
                 return {"id":"dod-1"}
             if name in {
+                "factory_assert_project_execution_epoch",
                 "factory_record_runtime_stage",
                 "factory_record_requirement_trace",
                 "factory_record_project_brain_snapshot",
