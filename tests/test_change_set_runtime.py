@@ -11,6 +11,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
         queue._rpc=MagicMock(side_effect=[
             None,
             None,
+            None,
             {"requirements":0,"linked":0,"unlinked":0},
             {"snapshot_id":"brain","version":1,"status":"current"},
             {"id":"team-plan","status":"ready"},
@@ -22,6 +23,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
         queue.record_stage(item,StageEvidence("planning","completed",output))
         names=[call.args[0] for call in queue._rpc.call_args_list]
         self.assertEqual(names,[
+            "factory_assert_project_execution_epoch",
             "factory_record_runtime_stage",
             "factory_persist_product_stage",
             "factory_record_requirement_trace",
@@ -30,12 +32,12 @@ class ChangeSetRuntimeTests(unittest.TestCase):
             "factory_materialize_change_set",
             "factory_record_definition_of_done",
         ])
-        self.assertEqual(queue._rpc.call_args_list[5].args[1],{"p_team_plan_id":"team-plan"})
+        self.assertEqual(queue._rpc.call_args_list[6].args[1],{"p_team_plan_id":"team-plan"})
 
     def test_blocked_team_plan_does_not_materialize_change_set(self):
         queue=SupabaseRuntimeQueue.__new__(SupabaseRuntimeQueue)
         queue._rpc=MagicMock(side_effect=[
-            None,None,{"requirements":0,"linked":0,"unlinked":0},
+            None,None,None,{"requirements":0,"linked":0,"unlinked":0},
             {"snapshot_id":"brain","version":1,"status":"current"},
             {"id":"team-plan","status":"blocked"},
             {"id":"dod","version":1,"check_count":2},
