@@ -11,6 +11,17 @@ class Queue:
     def fail(self,item,error): self.events.append(("fail",item.run_id,error))
 
 
+class FencedQueue(Queue):
+    def __init__(self, item, fail_at):
+        super().__init__(item)
+        self.checks = 0
+        self.fail_at = fail_at
+    def assert_execution_epoch(self, item):
+        self.checks += 1
+        if self.checks == self.fail_at:
+            raise RuntimeError("execution epoch revoked")
+
+
 class InstrumentedQueue(Queue):
     def record_stage_event(self,item,stage,status):
         self.events.append(("stage_event",stage,status))
@@ -28,6 +39,19 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertEqual([x.stage for x in result.evidence],["discovery","specification","planning"])
         self.assertEqual(q.events[-1],("complete","r1"))
         self.assertTrue(all(x.output["requires_model"] is True for x in result.evidence))
+
+    def test_revocation_before_first_stage_prevents_handler(self):
+        q=FencedQueue(item(),1)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertEqual(q.events[-1][0],"fail")
+        self.assertFalse(any(e[0]=="stage" for e in q.events))
+
+    def test_revocation_after_first_stage_prevents_persistence(self):
+        q=FencedQueue(item(),2)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(e[0]=="stage" for e in q.events))
 
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)

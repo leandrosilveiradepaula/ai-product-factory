@@ -14,6 +14,24 @@ class Response:
 
 
 class SupabaseRuntimeQueueTests(unittest.TestCase):
+    def test_execution_epoch_requires_positive_generation(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.assert_execution_epoch(item)
+            call.assert_not_called()
+
+    def test_execution_epoch_calls_privileged_rpc(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},3)
+        with patch("urllib.request.urlopen",return_value=Response(None)) as call:
+            q.assert_execution_epoch(item)
+        req=call.call_args.args[0]
+        self.assertTrue(req.full_url.endswith("/rpc/factory_assert_project_execution_epoch"))
+        self.assertEqual(json.loads(req.data),{"p_project_id":"p","p_generation":3})
+        self.assertNotIn(b"secret",req.data)
+
     def test_claim_maps_rpc_payload_without_leaking_key(self):
         payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo","stages":["discovery"],"context":{"x":1}}
         with patch("urllib.request.urlopen",return_value=Response(payload)) as call:

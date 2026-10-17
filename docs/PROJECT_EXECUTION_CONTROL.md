@@ -41,3 +41,7 @@ announcing `paused` or `stopped`.
 ## Worker side-effect checkpoint (candidate)
 
 The migration defines `factory_assert_project_execution_epoch(project_id, generation)` as a service-role-only transactional checkpoint. Executors must capture the generation at claim time and invoke this RPC **immediately before** model/API calls, GitHub writes, workflow dispatch and deployments. A successful check does not reserve a lease or prevent a later pause: workers must also maintain a lease and record quiescence. The RPC is currently a contract, **not proof that all executor paths invoke it**. Production rollout remains blocked until those integrations and exact-SHA Preview are verified.
+
+## Runtime worker candidate integration
+
+The Supabase runtime adapter now requires an explicit positive execution generation and invokes the privileged epoch RPC at stage start, before stage persistence and before successful completion. The stage worker checks before and after handler execution. Missing claim generation fails closed. **The existing claim RPC must still be upgraded to return a trustworthy generation, and other executor routes need their own side-effect fences before this is deployable.** This candidate intentionally blocks old claims rather than silently treating them as authorized.

@@ -99,12 +99,21 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("terminal descendant reconciliation returned an invalid response")
         return data
 
+    def assert_execution_epoch(self, item: WorkItem) -> None:
+        if type(item.execution_generation) is not int or item.execution_generation < 1:
+            raise RuntimeError("missing project execution generation; refusing side effects")
+        self._rpc("factory_assert_project_execution_epoch",{
+            "p_project_id":item.project_id,
+            "p_generation":item.execution_generation,
+        })
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         data=self._rpc("factory_claim_next_run",{"p_worker_id":worker_id})
         if data is None: return None
-        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}))
+        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}),execution_generation=data.get("execution_generation"))
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
+        self.assert_execution_epoch(item)
         if status not in {"started","failed"}:
             raise ValueError("unsupported runtime stage event status")
         self._rpc("factory_record_runtime_stage",{
@@ -112,6 +121,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         })
 
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
+        self.assert_execution_epoch(item)
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         persisted=self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output}) or {}
         if evidence.stage=="planning":
@@ -155,6 +165,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             })
 
     def complete(self,item:WorkItem)->None:
+        self.assert_execution_epoch(item)
         self._rpc("factory_finish_run",{"p_run_id":item.run_id,"p_status":"completed","p_error":None})
 
     def fail(self,item:WorkItem,error:str)->None:

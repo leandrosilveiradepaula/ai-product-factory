@@ -19,6 +19,7 @@ class WorkItem:
     project_key: str
     stages: tuple[str, ...]
     context: dict = field(default_factory=dict)
+    execution_generation: int | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class RuntimeQueue(Protocol):
     def record_stage(self, item: WorkItem, evidence: StageEvidence) -> None: ...
     def complete(self, item: WorkItem) -> None: ...
     def fail(self, item: WorkItem, error: str) -> None: ...
+    def assert_execution_epoch(self, item: WorkItem) -> None: ...
 
 
 class StageHandler(Protocol):
@@ -69,14 +71,22 @@ class RuntimeWorker:
         try:
             for stage in item.stages:
                 current_stage = stage
+                checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+                if callable(checkpoint):
+                    checkpoint(item)
                 recorder = getattr(self.queue, "record_stage_event", None)
                 if callable(recorder):
                     recorder(item, stage, "started")
                 output = self.handler.execute(item, stage)
+                if callable(checkpoint):
+                    checkpoint(item)
                 ev = StageEvidence(stage=stage, status="completed", output=output)
                 self.queue.record_stage(item, ev)
                 evidence.append(ev)
                 current_stage = None
+            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+            if callable(checkpoint):
+                checkpoint(item)
             self.queue.complete(item)
             return WorkResult(WorkStatus.COMPLETED, tuple(evidence))
         except Exception as exc:
