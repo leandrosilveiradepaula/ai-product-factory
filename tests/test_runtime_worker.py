@@ -75,6 +75,25 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertEqual(result.status,WorkStatus.FAILED)
         self.assertIn("unsupported bootstrap stage",result.error)
 
+    def test_pause_between_stage_completion_and_next_stage_blocks_next_handler(self):
+        class PausedBetweenStages(FencedQueue):
+            def __init__(self, item):
+                super().__init__(item, 3)
+            def record_stage(self, item, evidence):
+                super().record_stage(item, evidence)
+                self.fail_at = self.checks + 1
+        q=PausedBetweenStages(item())
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertEqual([e.stage for e in result.evidence],["discovery"])
+        self.assertFalse(any(e[0]=="fail" for e in q.events))
+
+    def test_revocation_at_final_completion_checkpoint_does_not_complete(self):
+        q=FencedQueue(item(),7)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertFalse(any(e[0] in {"complete","fail"} for e in q.events))
+
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
