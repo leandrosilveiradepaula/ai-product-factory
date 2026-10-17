@@ -86,6 +86,16 @@ class ProjectExecutionControlTests(unittest.TestCase):
             transition_control(snap,ProjectCommand.CONFIRM_STOPPED,
                 expected_version=3,actor_kind="operator",acknowledged_quiescent=True)
 
+    def test_claim_migration_locks_control_before_run(self):
+        from pathlib import Path
+        sql=(Path(__file__).resolve().parents[1]/
+            "supabase/migrations/20261017111500_factory_manual_project_execution_controls.sql").read_text()
+        claim=sql.split("create or replace function public.factory_claim_next_run",1)[1]
+        self.assertIn("for update of c skip locked",claim)
+        self.assertNotIn("for update of r skip locked",claim)
+        self.assertLess(claim.index("for update of c skip locked"),
+                        claim.index("where id=v_run.task_id for update"))
+
     def test_invalid_snapshot_is_denied(self):
         for version, gen in ((-1, 0), (0, -1), (True, 0)):
             with self.assertRaises(ValueError):
