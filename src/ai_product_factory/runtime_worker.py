@@ -66,7 +66,7 @@ class RuntimeWorker:
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
-        if not item.stages:
+        if not isinstance(item.stages, (tuple, list)) or not item.stages:
             message = "claimed run has no executable stages"
             try:
                 self.queue.fail(item, message)
@@ -85,6 +85,8 @@ class RuntimeWorker:
                 if callable(recorder):
                     recorder(item, stage, "started")
                 output = self.handler.execute(item, stage)
+                if not isinstance(output, dict):
+                    raise ValueError("stage handler must return a mapping")
                 if callable(checkpoint):
                     checkpoint(item)
                 ev = StageEvidence(stage=stage, status="completed", output=output)
