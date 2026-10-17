@@ -96,6 +96,23 @@ class ProjectExecutionControlTests(unittest.TestCase):
         self.assertLess(claim.index("for update of c skip locked"),
                         claim.index("where id=v_run.task_id for update"))
 
+    def test_generation_advances_only_on_authorized_start_resume_restart(self):
+        snap=ProjectControlSnapshot(ProjectExecutionState.DRAFT,0,0)
+        for command in (ProjectCommand.START,ProjectCommand.PAUSE,ProjectCommand.CONFIRM_PAUSED,
+                        ProjectCommand.RESUME,ProjectCommand.STOP,ProjectCommand.CONFIRM_STOPPED,
+                        ProjectCommand.RESTART):
+            previous=snap
+            snap=transition_control(snap,command,expected_version=snap.version,
+                actor_kind="controller" if command in (
+                    ProjectCommand.CONFIRM_PAUSED,ProjectCommand.CONFIRM_STOPPED) else "operator",
+                acknowledged_quiescent=command in (
+                    ProjectCommand.CONFIRM_PAUSED,ProjectCommand.CONFIRM_STOPPED))
+            delta=1 if command in (ProjectCommand.START,ProjectCommand.RESUME,ProjectCommand.RESTART) else 0
+            self.assertEqual(snap.generation,previous.generation+delta)
+            self.assertEqual(snap.version,previous.version+1)
+        self.assertEqual(snap.state,ProjectExecutionState.RUNNING)
+        self.assertEqual(snap.generation,3)
+
     def test_invalid_snapshot_is_denied(self):
         for version, gen in ((-1, 0), (0, -1), (True, 0)):
             with self.assertRaises(ValueError):
