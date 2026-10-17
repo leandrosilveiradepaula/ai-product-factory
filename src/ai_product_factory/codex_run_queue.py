@@ -11,6 +11,8 @@ from .supabase_server import resolve_supabase_server_config
 @dataclass(frozen=True)
 class CodexExecutionItem:
     run_id: str
+    project_id: str
+    execution_generation: int
     task_id: str
     project_key: str
     repository: str
@@ -63,6 +65,8 @@ class SupabaseCodexRunQueue:
             raise RuntimeError('Codex claim returned a different assigned agent')
         return CodexExecutionItem(
             run_id=data["run_id"],
+            project_id=data["project_id"],
+            execution_generation=int(data["execution_generation"]),
             task_id=data["task_id"],
             project_key=data["project_key"],
             repository=data["repository"],
