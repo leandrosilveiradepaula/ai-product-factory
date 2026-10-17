@@ -99,6 +99,29 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     restarted=call("restart",5)
     assert restarted["state"]=="running" and restarted["generation"]==3
     assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==2
+    # Reject a stale operator command without mutating state.
+    try:
+        with conn.transaction():
+            call("pause",4)
+    except psycopg.Error: pass
+    else: raise AssertionError("stale version accepted")
+    assert conn.execute("select state,version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()==("running",6)
+    # A paused project must reject a fresh change-set claim, not just task insertion.
+    paused_again=call("pause",6)
+    assert paused_again["state"]=="paused",paused_again
+    try:
+        with conn.transaction():
+            conn.execute("insert into public.factory_change_sets(project_id,status) values (%s,'queued')",(pid,))
+    except psycopg.Error: pass
+    else: raise AssertionError("paused project admitted change set")
+    # Existing runs cannot acquire a new lease after pause.
+    try:
+        with conn.transaction():
+            conn.execute("update public.factory_runs set lease_owner='worker-new' where id=%s",(run_id,))
+    except psycopg.Error: pass
+    else: raise AssertionError("paused project admitted run claim")
+    assert call("resume",7)["state"]=="running"
+
     acl=conn.execute("""select has_function_privilege('anon','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('authenticated','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('service_role','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE')""").fetchone()
