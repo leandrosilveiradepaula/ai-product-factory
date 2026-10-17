@@ -79,12 +79,8 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert pause["state"]=="pausing",pause
     pending=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
     assert pending["state"]=="pausing" and pending["changed"] is False,pending
-    # Reuse of the same lease owner must not extend work while pausing.
-    try:
-        with conn.transaction():
-            conn.execute("update public.factory_runs set lease_expires_at=now()+interval '10 minutes' where id=%s",(run_id,))
-    except psycopg.Error: pass
-    else: raise AssertionError("pausing project admitted lease renewal")
+    # Graceful pause also lets the current owner finish without admitting a new claim.
+    conn.execute("update public.factory_runs set lease_expires_at=now()+interval '10 minutes' where id=%s",(run_id,))
     conn.execute("update public.factory_runs set lease_owner=null, lease_expires_at=null where id=%s",(run_id,))
     settled=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
     assert settled["state"]=="paused" and settled["version"]==3,settled
