@@ -99,6 +99,15 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     restarted=call("restart",5)
     assert restarted["state"]=="running" and restarted["generation"]==3
     assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==2
+    # A concurrent operator lock must prevent a new claim without deadlock.
+    # Use an independent connection: the primary session owns the control lock.
+    with psycopg.connect(dsn,autocommit=True) as contender:
+        with conn.transaction():
+            conn.execute("select 1 from public.factory_project_execution_controls where project_id=%s for update",(pid,))
+            contender.execute("set statement_timeout='3000ms'")
+            blocked=contender.execute("select public.factory_claim_next_run(%s)",("blocked-worker",)).fetchone()[0]
+            assert blocked is None,blocked
+    # Releasing the operator lock makes the queued run claimable again.
     # Runtime claim returns the same generation used for external side-effect fencing.
     claim=conn.execute("select public.factory_claim_next_run(%s)",("qa-worker",)).fetchone()[0]
     assert claim is not None and claim["execution_generation"]==3,claim
