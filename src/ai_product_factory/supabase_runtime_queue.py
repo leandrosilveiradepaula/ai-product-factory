@@ -121,6 +121,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         })
 
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
+        if evidence.status != "completed":
+            raise ValueError("only completed stage evidence may be persisted")
         self.assert_execution_epoch(item)
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         persisted=self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output}) or {}
