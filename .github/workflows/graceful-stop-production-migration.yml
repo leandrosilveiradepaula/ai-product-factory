@@ -1,0 +1,40 @@
+name: Authorized graceful STOP database migration
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type APPLY_GRACEFUL_STOP_20261017193000
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: factory-graceful-stop-production-migration
+  cancel-in-progress: false
+jobs:
+  migrate:
+    if: ${{ inputs.confirmation == 'APPLY_GRACEFUL_STOP_20261017193000' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Check database credential and execute exact reviewed migration
+        env:
+          FACTORY_PRODUCTION_DATABASE_URL: ${{ secrets.FACTORY_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FACTORY_PRODUCTION_DATABASE_URL:-}" ]; then
+            echo "::error::Missing FACTORY_PRODUCTION_DATABASE_URL in production environment"
+            exit 1
+          fi
+          psql "$FACTORY_PRODUCTION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "select current_database()" >/dev/null
+          psql "$FACTORY_PRODUCTION_DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/20261017193000_factory_graceful_stop_preserve_queue.sql
+          psql "$FACTORY_PRODUCTION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "select case when to_regprocedure('public.factory_assert_claimed_run_epoch(uuid,bigint,uuid,text)') is not null and has_function_privilege('service_role','public.factory_assert_claimed_run_epoch(uuid,bigint,uuid,text)','EXECUTE') and not has_function_privilege('anon','public.factory_assert_claimed_run_epoch(uuid,bigint,uuid,text)','EXECUTE') and not has_function_privilege('authenticated','public.factory_assert_claimed_run_epoch(uuid,bigint,uuid,text)','EXECUTE') then 'VERIFIED' else 'FAILED' end" | grep -qx VERIFIED
+          echo "Graceful STOP function and role privileges verified"
