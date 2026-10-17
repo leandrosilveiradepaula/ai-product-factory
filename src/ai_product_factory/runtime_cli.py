@@ -245,6 +245,19 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
  scheduler.release(item.run_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
+class _CheckpointedIntegrationStore:
+ """Fence integration metadata mutations after pause/stop, not just GitHub writes."""
+ _mutations=frozenset(("complete_integration","mark_repair_wave_integrated","prepare_release"))
+ def __init__(self,store,checkpoint):
+  self._store=store;self._checkpoint=checkpoint
+ def __getattr__(self,name):
+  attr=getattr(self._store,name)
+  if name not in self._mutations or not callable(attr):return attr
+  def guarded(*args,**kwargs):
+   self._checkpoint()
+   return attr(*args,**kwargs)
+  return guarded
+
 def run_change_set_integration_once(worker_id:str)->dict:
  store=SupabaseChangeSetStore()
  item=store.claim_integration(worker_id)
@@ -252,7 +265,7 @@ def run_change_set_integration_once(worker_id:str)->dict:
  checkpoint=lambda:store.assert_project_running(item.project_key)
  checkpoint()
  github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
- result=ChangeSetIntegrator(github=github,store=store).integrate(item)
+ result=ChangeSetIntegrator(github=github,store=_CheckpointedIntegrationStore(store,checkpoint)).integrate(item)
  ci_dispatched=False
  if result.pull_request and item.repository==os.getenv("GITHUB_REPOSITORY","").strip():
   github.dispatch_workflow("validate.yml",ref=item.integration_branch)
