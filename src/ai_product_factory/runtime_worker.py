@@ -66,6 +66,8 @@ class RuntimeWorker:
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
+        if not item.stages:
+            return WorkResult(WorkStatus.FAILED, (), "claimed run has no executable stages")
         evidence: list[StageEvidence] = []
         current_stage: str | None = None
         try:
