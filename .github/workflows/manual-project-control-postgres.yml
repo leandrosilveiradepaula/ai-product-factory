@@ -5,6 +5,10 @@ on:
     paths:
       - "supabase/migrations/*manual_project_execution_controls.sql"
       - "scripts/verify_manual_project_control_postgres.py"
+      - "src/ai_product_factory/project_control_settlement.py"
+      - "src/ai_product_factory/project_execution_control.py"
+      - "src/ai_product_factory/runtime_cli.py"
+      - ".github/workflows/autonomous-runner.yml"
       - ".github/workflows/manual-project-control-postgres.yml"
 permissions:
   contents: read
