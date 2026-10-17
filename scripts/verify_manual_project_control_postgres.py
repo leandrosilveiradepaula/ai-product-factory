@@ -251,11 +251,11 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert acl==(False,False,True),acl
 
     # Execute the actual routed checkpoint SQL in the disposable local fixture.
-    import re
     sql=(root/"supabase/migrations/20261017224500_guard_routed_claims_manual_control.sql").read_text()
-    match=re.search(r"create or replace function public\\.factory_assert_routed_run_epoch\\([\\s\\S]*?\\$f\\$;",sql,re.I)
-    assert match is not None
-    conn.execute(match.group(0))
+    marker="create or replace function public.factory_assert_routed_run_epoch("
+    assert sql.count(marker)==1
+    definition=marker+sql.split(marker,1)[1].split("$f$;",1)[0]+"$f$;"
+    conn.execute(definition)
     generation,version=conn.execute("select generation,version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()
     task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'routed epoch fixture','running') returning id",(pid,)).fetchone()[0]
     run=conn.execute("""insert into public.factory_runs(task_id,status,execution_route,lease_owner,lease_expires_at,metadata)
