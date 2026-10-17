@@ -164,6 +164,12 @@ class _CheckpointedGitHub:
    return guarded
   return attr
 
+def _release_routed_run(scheduler,item,worker_id,status):
+ # Completed runs require a still-valid capability; revoked workers must not report success.
+ if status=="completed":
+  _routed_checkpoint(item,worker_id)
+ scheduler.release(item.run_id,status)
+
 def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
@@ -193,18 +199,18 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
    try:
     result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="direct").execute(item)
    except ImplementationBlocked as exc:
-    scheduler.release(item.run_id,"blocked")
+    _release_routed_run(scheduler,item,worker_id,"blocked")
     return {"claimed":True,"status":"blocked","run_id":item.run_id,"error":str(exc)}
-   scheduler.release(item.run_id,"completed")
+   _release_routed_run(scheduler,item,worker_id,"completed")
    return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
   materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
   session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
   if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
  except Exception:
-  scheduler.release(item.run_id,"blocked")
+  _release_routed_run(scheduler,item,worker_id,"blocked")
   raise
- scheduler.release(item.run_id,"completed")
+ _release_routed_run(scheduler,item,worker_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
@@ -232,7 +238,7 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):
    result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="codex").execute(item)
-   scheduler.release(item.run_id,"completed")
+   _release_routed_run(scheduler,item,worker_id,"completed")
    return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   store=SupabaseDeliveryStore()
   loop=AutonomousGitHubLoop(github,store)
@@ -240,9 +246,9 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   session=DirectExecutionWorker(loop=loop,producer=producer,issue_materializer=materializer).execute(item)
   if session.pull_request is None:raise RuntimeError("GitHub delivery did not open a pull request")
  except Exception:
-  scheduler.release(item.run_id,"blocked")
+  _release_routed_run(scheduler,item,worker_id,"blocked")
   raise
- scheduler.release(item.run_id,"completed")
+ _release_routed_run(scheduler,item,worker_id,"completed")
  return {"claimed":True,"status":"pr_open","run_id":item.run_id,"pr_number":session.pull_request.number}
 
 class _CheckpointedIntegrationStore:
