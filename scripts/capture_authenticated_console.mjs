@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import path from "node:path";
+import {validateProjectLifecycleReadOnly} from "./project_control_readonly_contract.mjs";
 
 const required = [
   "FACTORY_CONSOLE_URL",
@@ -178,6 +179,51 @@ try {
     }
   }
 
+  // Read-only lifecycle contract: reject any mutation attempt to project detail.
+  if (!interactionEvidence.projectDetail) {
+    throw new Error("lifecycle audit requires an existing accessible project");
+  }
+  const detailUrl = new URL(interactionEvidence.projectDetail.finalUrl);
+  const expectedProjectKey = detailUrl.pathname.split("/").filter(Boolean)[1] || "";
+  const blockedProjectMutations = [];
+  const projectMutationGuard = async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin === detailUrl.origin && request.method() !== "GET" &&
+        (url.pathname === `/projects/${expectedProjectKey}` ||
+         url.pathname.startsWith(`/projects/${expectedProjectKey}/`))) {
+      blockedProjectMutations.push({method:request.method(),path:url.pathname});
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.continue();
+  };
+  const mutationGuardPattern = "**/projects/**";
+  const readProjectControl = async () => {
+    const region = page.getByRole("region", {name:"Controle de execução do projeto"});
+    if (await region.count() !== 1) throw new Error("project lifecycle control section missing");
+    const heading = await region.locator("strong").first().innerText();
+    const forms = await region.locator("form").evaluateAll(nodes => nodes.map(form => ({
+      command:form.querySelector('input[name="command"]')?.value,
+      version:form.querySelector('input[name="version"]')?.value,
+      projectKey:form.querySelector('input[name="project_key"]')?.value,
+      commandId:form.querySelector('input[name="command_id"]')?.value,
+      label:form.querySelector('button[type="submit"]')?.textContent?.trim(),
+    })));
+    return validateProjectLifecycleReadOnly({heading,forms,expectedProjectKey});
+  };
+  await page.route(mutationGuardPattern,projectMutationGuard);
+  const detailResponse = await page.goto(detailUrl.toString(), {waitUntil:"networkidle",timeout:60000});
+  if (!detailResponse || detailResponse.status() >= 400) throw new Error("lifecycle detail unavailable");
+  const lifecycleDesktop = await readProjectControl();
+  await page.unroute(mutationGuardPattern,projectMutationGuard);
+  if (blockedProjectMutations.length) throw new Error("blocked project mutation request in read-only audit");
+  interactionEvidence.projectLifecycleReadOnly = {
+    projectHref:interactionEvidence.projectDetail.href,
+    ...lifecycleDesktop,
+    mutationRequestsBlocked:blockedProjectMutations.length,
+  };
+
   await page.goto(`${consoleUrl}/projects/new`, {waitUntil:"networkidle", timeout:60000});
   const auditName = `Audit sem persistência ${runId}`;
   const auditSummary = "Validar revisão e edição do intake sem iniciar Descoberta nem criar projeto real.";
@@ -251,6 +297,37 @@ try {
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
     interactionEvidence.mobile.push({...route,status:response.status(),layout,quickNavHrefs,expandedLayout});
   }
+
+  // A real project-detail route must remain usable on a phone, not just /projects.
+  await page.setViewportSize({width:390,height:844});
+  await page.route(mutationGuardPattern,projectMutationGuard);
+  const mobileDetailResponse = await page.goto(detailUrl.toString(), {waitUntil:"networkidle",timeout:60000});
+  if (!mobileDetailResponse || mobileDetailResponse.status() >= 400) {
+    throw new Error("mobile project detail unavailable");
+  }
+  const lifecycleMobile = await readProjectControl();
+  const mobileDetailLayout = await page.evaluate(() => ({
+    innerWidth:window.innerWidth,
+    scrollWidth:document.documentElement.scrollWidth,
+    height:document.documentElement.scrollHeight,
+  }));
+  if (mobileDetailLayout.scrollWidth > mobileDetailLayout.innerWidth + 2) {
+    throw new Error("mobile project detail horizontal overflow: " +
+      mobileDetailLayout.scrollWidth + " > " + mobileDetailLayout.innerWidth);
+  }
+  if (JSON.stringify(lifecycleMobile) !== JSON.stringify(lifecycleDesktop)) {
+    throw new Error("mobile/desktop lifecycle controls disagree");
+  }
+  await page.screenshot({path:path.join(outDir,"project-detail-mobile.png"),fullPage:true});
+  await page.unroute(mutationGuardPattern,projectMutationGuard);
+  if (blockedProjectMutations.length) throw new Error("blocked project mutation request in mobile audit");
+  interactionEvidence.mobile.push({
+    name:"project-detail-mobile",
+    status:mobileDetailResponse.status(),
+    layout:mobileDetailLayout,
+    lifecycle:lifecycleMobile,
+    verifiedWithoutMutation:true,
+  });
 
   await fs.writeFile(path.join(outDir,"manifest.json"), JSON.stringify({
     status:"success",
