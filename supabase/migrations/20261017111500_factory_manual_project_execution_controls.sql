@@ -353,3 +353,43 @@ revoke all on function public.factory_assert_project_execution_epoch(uuid,bigint
  from public,anon,authenticated;
 grant execute on function public.factory_assert_project_execution_epoch(uuid,bigint)
  to service_role;
+
+-- Claim-time generation stamping. This replaces the old claim RPC atomically
+-- with the project lock so a concurrent pause cannot admit a fresh claim.
+create or replace function public.factory_claim_next_run(p_worker_id text)
+returns jsonb language plpgsql security invoker set search_path='' as $f$
+declare v_run public.factory_runs%rowtype;v_task public.factory_tasks%rowtype;
+ v_project public.factory_projects%rowtype;v_generation bigint;
+begin
+ if nullif(btrim(p_worker_id),'') is null then
+  raise exception 'worker_id is required' using errcode='PT400';
+ end if;
+ select r.* into v_run from public.factory_runs r
+ join public.factory_tasks t on t.id=r.task_id
+ join public.factory_project_execution_controls c on c.project_id=t.project_id
+ where r.status in ('created','queued') and t.status='queued'
+   and c.state='running'
+ order by r.created_at for update of r skip locked limit 1;
+ if v_run.id is null then return null;end if;
+ select * into v_task from public.factory_tasks where id=v_run.task_id for update;
+ select * into v_project from public.factory_projects where id=v_task.project_id;
+ select generation into v_generation from public.factory_project_execution_controls
+ where project_id=v_project.id for share;
+ perform public.factory_assert_project_execution_epoch(v_project.id,v_generation);
+ update public.factory_runs set status='running',started_at=coalesce(started_at,now()),
+  metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+   'worker_id',p_worker_id,'claimed_at',now(),'execution_generation',v_generation)
+ where id=v_run.id;
+ update public.factory_tasks set status='running',updated_at=now() where id=v_task.id;
+ insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+ values(v_project.id,v_task.id,v_run.id,'system',p_worker_id,'run.claimed',
+ jsonb_build_object('execution_generation',v_generation));
+ return jsonb_build_object('run_id',v_run.id,'task_id',v_task.id,
+  'project_id',v_project.id,'project_key',v_project.project_key,
+  'execution_generation',v_generation,
+  'stages',coalesce(v_run.metadata->'stages','[]'::jsonb),
+  'context',jsonb_build_object('task',v_task.description,'manifest',v_project.manifest));
+end;
+$f$;
+revoke all on function public.factory_claim_next_run(text) from public,anon,authenticated;
+grant execute on function public.factory_claim_next_run(text) to service_role;

@@ -99,6 +99,10 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     restarted=call("restart",5)
     assert restarted["state"]=="running" and restarted["generation"]==3
     assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==2
+    # Runtime claim returns the same generation used for external side-effect fencing.
+    claim=conn.execute("select public.factory_claim_next_run(%s)",("qa-worker",)).fetchone()[0]
+    assert claim is not None and claim["execution_generation"]==3,claim
+    assert conn.execute("select metadata->>'execution_generation' from public.factory_runs where id=%s",(claim["run_id"],)).fetchone()[0]=="3"
     # Side-effect checkpoints fail closed after pause and after resume
     # with a stale generation; this is independent of task/run status.
     conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,3))
