@@ -169,7 +169,8 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert fresh_run is not None
     conn.execute("update public.factory_runs set status='running' where id=%s",(fresh_run[0],))
     conn.execute("update public.factory_runs set lease_owner='stop-test-worker',lease_expires_at=null where id=%s",(fresh_run[0],))
-    pending_stop=call("stop",current_version)
+    command_id=uuid.uuid4()
+    pending_stop=call("stop",current_version,command_id)
     assert pending_stop["state"]=="stopping",pending_stop
     before=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]
     blocked_settlement=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
@@ -185,17 +186,15 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert done_stop["state"]=="stopped" and done_stop["changed"] is True,done_stop
     assert conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]==before+1
     # A command replay with a different actor or payload is forbidden.
-    command_id=uuid.uuid4()
-    restarted_again=call("restart",before+1,command_id)
-    assert restarted_again["state"]=="running"
+    assert call("stop",current_version,command_id)==pending_stop
     try:
         with conn.transaction():
-            conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("new-qa","restart",command_id,before+1,uuid.uuid4()))
+            conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("new-qa","stop",command_id,current_version,uuid.uuid4()))
     except psycopg.Error: pass
     else: raise AssertionError("command ID reused by another actor")
     try:
         with conn.transaction():
-            call("resume",before+2)
+            call("resume",before+1)
     except psycopg.Error: pass
     else: raise AssertionError("invalid transition admitted")
 
