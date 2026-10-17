@@ -256,6 +256,9 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert sql.count(marker)==1
     definition=marker+sql.split(marker,1)[1].split("$f$;",1)[0]+"$f$;"
     conn.execute(definition)
+    # Earlier scenarios deliberately leave new-qa stopped; use a fresh fixture.
+    pid=conn.execute("insert into public.factory_projects(project_key) values ('routed-epoch-qa') returning id").fetchone()[0]
+    conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("routed-epoch-qa","start",uuid.uuid4(),0,actor))
     generation,version=conn.execute("select generation,version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()
     task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'routed epoch fixture','running') returning id",(pid,)).fetchone()[0]
     run=conn.execute("""insert into public.factory_runs(task_id,status,execution_route,lease_owner,lease_expires_at,metadata)
@@ -274,14 +277,14 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     conn.execute("update public.factory_runs set lease_expires_at=now()-interval '1 second' where id=%s",(run,))
     check_epoch(generation,"routed-worker",False)
     conn.execute("update public.factory_runs set lease_expires_at=now()+interval '10 minutes' where id=%s",(run,))
-    pausing=call("pause",version)
+    pausing=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("routed-epoch-qa","pause",uuid.uuid4(),version,actor)).fetchone()[0]
     assert pausing["state"]=="pausing",pausing
     check_epoch(generation,"routed-worker",True)
     conn.execute("update public.factory_runs set lease_owner=null,lease_expires_at=null where id=%s",(run,))
-    paused=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    paused=conn.execute("select public.factory_settle_project_control_v1(%s)",("routed-epoch-qa",)).fetchone()[0]
     assert paused["state"]=="paused",paused
     check_epoch(generation,"routed-worker",False)
-    resumed=call("resume",paused["version"])
+    resumed=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("routed-epoch-qa","resume",uuid.uuid4(),paused["version"],actor)).fetchone()[0]
     assert resumed["generation"]==generation+1,resumed
     check_epoch(generation,"routed-worker",False)
 
