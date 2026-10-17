@@ -11,6 +11,7 @@ from .supabase_runtime_queue import SupabaseRuntimeQueue
 from .supabase_backlog_dispatch import SupabaseBacklogDispatch
 from .direct_run_queue import SupabaseDirectRunQueue
 from .codex_run_queue import SupabaseCodexRunQueue
+from .routed_execution_epoch import assert_routed_epoch
 from .codex_cli_producer import CodexCLIProducer
 from .codex_usage import SupabaseCodexUsageRecorder
 from .implementation_producer import ModelImplementationProducer
@@ -158,6 +159,7 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
+  assert_routed_epoch(item.project_id,item.execution_generation,item.run_id,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
@@ -195,6 +197,7 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
  item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
+  assert_routed_epoch(item.project_id,item.execution_generation,item.run_id,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   usage=SupabaseCodexUsageRecorder()
