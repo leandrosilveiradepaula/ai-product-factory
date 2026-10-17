@@ -11,6 +11,7 @@ from .supabase_runtime_queue import SupabaseRuntimeQueue
 from .supabase_backlog_dispatch import SupabaseBacklogDispatch
 from .direct_run_queue import SupabaseDirectRunQueue
 from .codex_run_queue import SupabaseCodexRunQueue
+from .routed_execution_epoch import assert_routed_epoch
 from .codex_cli_producer import CodexCLIProducer
 from .codex_usage import SupabaseCodexUsageRecorder
 from .implementation_producer import ModelImplementationProducer
@@ -140,6 +141,29 @@ def _select_assigned_route_run(scheduler:SupabaseAgentScheduler,route:str,
    return row_run,row_agent
  return None
 
+def _routed_checkpoint(item,worker_id):
+ assert_routed_epoch(getattr(item,'project_id',None),getattr(item,'execution_generation',0),item.run_id,worker_id)
+
+class _CheckpointedProducer:
+ def __init__(self,producer,checkpoint):
+  self._producer=producer;self._checkpoint=checkpoint
+ def produce(self,item):
+  self._checkpoint()
+  return self._producer.produce(item)
+
+class _CheckpointedGitHub:
+ def __init__(self,adapter,checkpoint):
+  self._adapter=adapter;self._checkpoint=checkpoint
+ def __getattr__(self,name):
+  attr=getattr(self._adapter,name)
+  if not callable(attr):return attr
+  if name in ('commit_files','create_issue','create_pull_request','create_branch','create_branch_at_sha','ensure_branch_at_sha','update_file','open_pull_request','dispatch_workflow','create_ref','update_ref','post_comment','create_review'):
+   def guarded(*args,**kwargs):
+    self._checkpoint()
+    return attr(*args,**kwargs)
+   return guarded
+  return attr
+
 def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
@@ -158,10 +182,13 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
+  _routed_checkpoint(item,worker_id)
+  checkpoint=lambda:_routed_checkpoint(item,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
-  github=GitHubRestAdapter(repository=item.repository)
+  producer=_CheckpointedProducer(producer,checkpoint)
+  github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):
    try:
     result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="direct").execute(item)
@@ -195,11 +222,14 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
  item=SupabaseCodexRunQueue().claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
+  _routed_checkpoint(item,worker_id)
+  checkpoint=lambda:_routed_checkpoint(item,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   usage=SupabaseCodexUsageRecorder()
   producer=CodexCLIProducer(on_invoke=lambda:usage.record_invocation(run_id=item.run_id,reported_usage={"status":"started","policy_level":item.codex_level}))
-  github=GitHubRestAdapter(repository=item.repository)
+  producer=_CheckpointedProducer(producer,checkpoint)
+  github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):
    result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="codex").execute(item)
    scheduler.release(item.run_id,"completed")
