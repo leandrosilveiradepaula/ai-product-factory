@@ -88,6 +88,22 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             q.record_stage_event(item,"planning","mystery")
 
 
+    def test_invalid_stage_event_never_contacts_backend(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},3)
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaises(ValueError):
+                q.record_stage_event(item,"planning","invalid")
+            call.assert_not_called()
+
+    def test_missing_generation_blocks_stage_write(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{})
+        with patch("urllib.request.urlopen") as call:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.record_stage(item,StageEvidence("planning","completed",{}))
+            call.assert_not_called()
+
     def test_retry_failed_run_uses_privileged_rpc_without_leaking_secret_in_body(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         payload={"source_run_id":"old","run_id":"new","status":"queued","task_status":"queued"}
