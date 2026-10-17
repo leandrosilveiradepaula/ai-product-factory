@@ -61,6 +61,16 @@ class ProjectExecutionControlTests(unittest.TestCase):
         for state in ProjectExecutionState:
             self.assertEqual(can_claim_new_work(state), state == ProjectExecutionState.RUNNING)
 
+    def test_snapshot_rejects_unknown_or_untyped_states(self):
+        for state in ("running", "RUNNING", "", None, True):
+            with self.subTest(state=state):
+                with self.assertRaises(ValueError):
+                    ProjectControlSnapshot(state, 1, 1)
+
+    def test_every_nonrunning_state_denies_claim(self):
+        for state in ProjectExecutionState:
+            self.assertEqual(can_claim_new_work(state),state is ProjectExecutionState.RUNNING)
+
     def test_invalid_snapshot_is_denied(self):
         for version, gen in ((-1, 0), (0, -1), (True, 0)):
             with self.assertRaises(ValueError):
