@@ -163,6 +163,41 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     except psycopg.Error: pass
     else: raise AssertionError("previous generation admitted after resume")
 
+    # A STOP with a live lease must remain pending until the worker quiesces.
+    current_version=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]
+    fresh_run=conn.execute("select id from public.factory_runs r join public.factory_tasks t on t.id=r.task_id where t.project_id=%s and r.status in ('created','queued') order by r.created_at desc limit 1",(pid,)).fetchone()
+    assert fresh_run is not None
+    conn.execute("update public.factory_runs set lease_owner='stop-test-worker',lease_expires_at=null where id=%s",(fresh_run[0],))
+    pending_stop=call("stop",current_version)
+    assert pending_stop["state"]=="stopping",pending_stop
+    before=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]
+    blocked_settlement=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    assert blocked_settlement["state"]=="stopping" and blocked_settlement["changed"] is False
+    assert conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]==before
+    try:
+        with conn.transaction():
+            conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,4))
+    except psycopg.Error: pass
+    else: raise AssertionError("stopping admitted side effect")
+    conn.execute("update public.factory_runs set lease_owner=null,lease_expires_at=null where id=%s",(fresh_run[0],))
+    done_stop=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
+    assert done_stop["state"]=="stopped" and done_stop["changed"] is True,done_stop
+    assert conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]==before+1
+    # A command replay with a different actor or payload is forbidden.
+    command_id=uuid.uuid4()
+    restarted_again=call("restart",before+1,command_id)
+    assert restarted_again["state"]=="running"
+    try:
+        with conn.transaction():
+            conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("new-qa","restart",command_id,before+1,uuid.uuid4()))
+    except psycopg.Error: pass
+    else: raise AssertionError("command ID reused by another actor")
+    try:
+        with conn.transaction():
+            call("resume",before+2)
+    except psycopg.Error: pass
+    else: raise AssertionError("invalid transition admitted")
+
     acl=conn.execute("""select has_function_privilege('anon','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('authenticated','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('service_role','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE')""").fetchone()
