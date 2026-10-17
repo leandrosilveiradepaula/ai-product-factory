@@ -108,6 +108,10 @@ jobs:
         if: ${{ github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
+      - name: Settle quiescent manual project controls
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode project-control-settle
       - name: Probe durable work queues without side effects
         if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && (github.event_name != 'workflow_run' || steps.backup_wake.outputs.wake == 'true') }}
         id: probe
