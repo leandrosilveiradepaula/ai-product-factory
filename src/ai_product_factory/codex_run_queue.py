@@ -67,6 +67,15 @@ class SupabaseCodexRunQueue:
             raise RuntimeError("Codex claim returned an invalid execution generation")
         if not isinstance(data.get("project_id"), str) or not data["project_id"].strip():
             raise RuntimeError("Codex claim missing project capability")
+        for field in ("run_id","task_id","project_key","repository","title","branch"):
+            if not isinstance(data.get(field),str) or not data[field].strip():
+                raise RuntimeError("routed claim missing required "+field)
+        if not isinstance(data.get("human_gate_required",False),bool):
+            raise RuntimeError("routed claim has invalid human gate")
+        if data.get("wave") is not None and (isinstance(data["wave"],bool) or not isinstance(data["wave"],int) or data["wave"]<1):
+            raise RuntimeError("routed claim has invalid wave")
+        if bool(data.get("change_set_id")) != bool(data.get("work_unit_id")):
+            raise RuntimeError("routed claim has incomplete change set binding")
         return CodexExecutionItem(
             run_id=data["run_id"],
             project_id=data["project_id"],
