@@ -94,6 +94,14 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertEqual(result.status,WorkStatus.FAILED)
         self.assertFalse(any(e[0] in {"complete","fail"} for e in q.events))
 
+    def test_claimed_run_without_stages_does_not_complete(self):
+        empty=WorkItem("r","t","p","demo",(),{})
+        q=Queue(empty)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("no executable stages",result.error)
+        self.assertFalse(any(e[0]=="complete" for e in q.events))
+
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
