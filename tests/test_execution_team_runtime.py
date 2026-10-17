@@ -102,7 +102,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
         item=WorkItem("run-new","task-new","project-new","factory-e2e",("planning",),{
             "manifest":{"preview":{"required_paths":["apps/console/**"]}},
             "summary":"Create a safe UI view",
-        },3)
+        },3,"worker")
         output=ProductStageExecutor(
             ModelExecutor(primary=provider),team_profiles=(ui,)
         ).execute(item,"planning")
