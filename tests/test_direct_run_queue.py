@@ -8,7 +8,7 @@ class Response:
  def read(self):return json.dumps(self.data).encode() if self.data is not None else b""
 class Tests(unittest.TestCase):
  def test_claim_maps_direct_item(self):
-  d={"run_id":"r","task_id":"t","project_key":"p","repository":"owner/repo","issue_number":None,"title":"x","description":"y","branch":"factory/task-t","human_gate_required":False}
+  d={"run_id":"r","project_id":"project-uuid","execution_generation":1,"task_id":"t","project_key":"p","repository":"owner/repo","issue_number":None,"title":"x","description":"y","branch":"factory/task-t","human_gate_required":False}
   with patch("urllib.request.urlopen",return_value=Response(d)):
    item=SupabaseDirectRunQueue(url="https://x.supabase.co",service_role_key="secret").claim_next("w")
   self.assertEqual(item.repository,"owner/repo");self.assertIsNone(item.issue_number)
