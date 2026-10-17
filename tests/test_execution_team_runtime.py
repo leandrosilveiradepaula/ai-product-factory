@@ -56,7 +56,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
             is_active=True,
         )
         handler=ProductStageExecutor(ModelExecutor(primary=provider),team_profiles=(ui,))
-        item=WorkItem("r","t","p","demo",("planning",),{"summary":"build x"})
+        item=WorkItem("r","t","p","demo",("planning",),{"summary":"build x"},3)
         out=handler.execute(item,"planning")
         self.assertEqual(out["_team_plan"]["status"],"ready")
         self.assertEqual(out["_team_plan"]["selected_agents"][0]["agent_key"],"ui")
@@ -64,7 +64,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
 
     def test_planning_stage_persists_versioned_team_plan_rpc(self):
         queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","demo",(),{})
+        item=WorkItem("r","t","p","demo",(),{},3)
         output={
             "tasks":[],
             "_team_plan":{
@@ -101,7 +101,7 @@ class ExecutionTeamRuntimeTests(unittest.TestCase):
         item=WorkItem("run-new","task-new","project-new","factory-e2e",("planning",),{
             "manifest":{"preview":{"required_paths":["apps/console/**"]}},
             "summary":"Create a safe UI view",
-        })
+        },3)
         output=ProductStageExecutor(
             ModelExecutor(primary=provider),team_profiles=(ui,)
         ).execute(item,"planning")

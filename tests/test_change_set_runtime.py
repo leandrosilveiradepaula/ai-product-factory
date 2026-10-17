@@ -17,7 +17,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
             {"change_set_id":"cs","builder_work_units":2,"status":"planned"},
             {"id":"dod","version":1,"check_count":2},
         ])
-        item=WorkItem("run","task","project","demo",(),{})
+        item=WorkItem("run","task","project","demo",(),{},3)
         output={"_team_plan":{"status":"ready","profiles_selected":2,"planned_worker_peak":2}}
         queue.record_stage(item,StageEvidence("planning","completed",output))
         names=[call.args[0] for call in queue._rpc.call_args_list]
@@ -40,7 +40,7 @@ class ChangeSetRuntimeTests(unittest.TestCase):
             {"id":"team-plan","status":"blocked"},
             {"id":"dod","version":1,"check_count":2},
         ])
-        item=WorkItem("run","task","project","demo",(),{})
+        item=WorkItem("run","task","project","demo",(),{},3)
         queue.record_stage(item,StageEvidence("planning","completed",{"_team_plan":{"status":"blocked"}}))
         names=[call.args[0] for call in queue._rpc.call_args_list]
         self.assertNotIn("factory_materialize_change_set",names)
