@@ -22,6 +22,16 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 q.assert_execution_epoch(item)
             call.assert_not_called()
 
+    def test_execution_epoch_rejects_bool_zero_negative_and_string(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen") as network:
+            for generation in (True, False, 0, -1, "3", 3.0):
+                with self.subTest(generation=generation):
+                    item=WorkItem("r","t","p","demo",(),{},generation)
+                    with self.assertRaisesRegex(RuntimeError,"generation"):
+                        q.assert_execution_epoch(item)
+            network.assert_not_called()
+
     def test_execution_epoch_calls_privileged_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{},3)
