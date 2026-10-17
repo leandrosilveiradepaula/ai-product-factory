@@ -183,7 +183,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_reconciliation_and_gap_analysis_use_product_stage_persistence(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","crm-infodive",(),{},3)
+        item=WorkItem("r","t","p","crm-infodive",(),{}, 3,"worker")
         with patch("urllib.request.urlopen",return_value=Response(None)) as call:
             q.record_stage(item,StageEvidence("reconciliation","completed",{"summary":"ok"}))
             q.record_stage(item,StageEvidence("gap_analysis","completed",{"gaps":[]}))
@@ -290,7 +290,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_planning_decision_gate_skips_team_plan_and_change_set_materialization(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        item=WorkItem("r","t","p","crm-infodive",(),{"manifest":{}},3)
+        item=WorkItem("r","t","p","crm-infodive",(),{"manifest":{}}, 3,"worker")
         output={
             "tasks":[{"task_key":"debug","title":"Debug","required_capabilities":["implementation"],"scope_keys":["src"],"depends_on":[]}],
             "decisions_needed":[{"decision_key":"approve_debug_contract","question":"What may remain visible?"}],
