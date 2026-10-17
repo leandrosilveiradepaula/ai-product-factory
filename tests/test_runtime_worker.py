@@ -78,7 +78,7 @@ class RuntimeWorkerTests(unittest.TestCase):
     def test_pause_between_stage_completion_and_next_stage_blocks_next_handler(self):
         class PausedBetweenStages(FencedQueue):
             def __init__(self, item):
-                super().__init__(item, 3)
+                super().__init__(item, 100)
             def record_stage(self, item, evidence):
                 super().record_stage(item, evidence)
                 self.fail_at = self.checks + 1
