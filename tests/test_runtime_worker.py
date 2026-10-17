@@ -44,14 +44,36 @@ class RuntimeWorkerTests(unittest.TestCase):
         q=FencedQueue(item(),1)
         result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
         self.assertEqual(result.status,WorkStatus.FAILED)
-        self.assertEqual(q.events[-1][0],"fail")
-        self.assertFalse(any(e[0]=="stage" for e in q.events))
+        self.assertFalse(any(e[0] in {"stage","fail"} for e in q.events))
 
     def test_revocation_after_first_stage_prevents_persistence(self):
         q=FencedQueue(item(),2)
         result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
         self.assertEqual(result.status,WorkStatus.FAILED)
-        self.assertFalse(any(e[0]=="stage" for e in q.events))
+        self.assertFalse(any(e[0] in {"stage","fail"} for e in q.events))
+
+    def test_revoked_epoch_never_records_failed_stage_or_terminal_failure(self):
+        class Revoked(FencedQueue):
+            def record_stage_event(self, item, stage, status):
+                self.events.append(("stage_event", stage, status))
+        q=Revoked(item(),2)
+        result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertNotIn(("stage_event","discovery","failed"),q.events)
+        self.assertFalse(any(event[0]=="fail" for event in q.events))
+
+    def test_error_reporter_failure_does_not_mask_handler_failure(self):
+        class FailingReporter(InstrumentedQueue):
+            def record_stage_event(self,item,stage,status):
+                if status=="failed":
+                    raise RuntimeError("reporting unavailable")
+                super().record_stage_event(item,stage,status)
+            def fail(self,item,error):
+                raise RuntimeError("terminal RPC unavailable")
+        bad=WorkItem("r","t","p","demo",("unknown",),{})
+        result=RuntimeWorker(queue=FailingReporter(bad),handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("unsupported bootstrap stage",result.error)
 
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
