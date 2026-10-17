@@ -165,7 +165,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
 
     # A STOP with a live lease must remain pending until the worker quiesces.
     current_version=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]
-    fresh_run=conn.execute("select id from public.factory_runs r join public.factory_tasks t on t.id=r.task_id where t.project_id=%s and r.status in ('created','queued') order by r.created_at desc limit 1",(pid,)).fetchone()
+    fresh_run=conn.execute("select r.id from public.factory_runs r join public.factory_tasks t on t.id=r.task_id where t.project_id=%s and r.status in ('created','queued') order by r.created_at desc limit 1",(pid,)).fetchone()
     assert fresh_run is not None
     conn.execute("update public.factory_runs set lease_owner='stop-test-worker',lease_expires_at=null where id=%s",(fresh_run[0],))
     pending_stop=call("stop",current_version)
