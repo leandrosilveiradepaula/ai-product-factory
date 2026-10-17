@@ -708,7 +708,7 @@ def main()->int:
   out=run_bounded_deterministic_lane("specialist",args.worker_id,args.batch_items,args.specialist_role)
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
-  elif args.mode=="project-control-settle":out=run_project_control_settlement()
+ elif args.mode=="project-control-settle":out=run_project_control_settlement()
  elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
  elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key,args.run_id)
  elif args.mode=="change-set-integration":out=run_bounded_deterministic_lane("change-set-integration",args.worker_id,args.batch_items)
