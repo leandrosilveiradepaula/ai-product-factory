@@ -878,6 +878,13 @@ export async function enqueueProjectReconciliation(projectKey:string):Promise<Pr
  const key=projectKey.trim();
  if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key))throw new Error("Projeto inválido para reconciliação.");
  const cfg=serverHeaders();if(!cfg)throw new Error("Control Plane não configurado.");
+ // Do not allow the legacy reconciliation action to bypass manual project control.
+ const projectResponse=await fetch(cfg.url+"/rest/v1/factory_projects?select=id&project_key=eq."+encodeURIComponent(key)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!projectResponse.ok)throw new Error("Não foi possível verificar o estado do projeto.");
+ const projects=await projectResponse.json();
+ if(!Array.isArray(projects)||projects.length!==1||!projects[0].id)throw new Error("Projeto não encontrado.");
+ const control=await getProjectExecutionControl(String(projects[0].id));
+ if(control.state!=="running")throw new Error("Inicie ou retome o projeto antes de solicitar reconciliação.");
  const response=await fetch(cfg.url+"/rest/v1/rpc/factory_enqueue_project_bootstrap",{
   method:"POST",
   headers:{...cfg.headers,"Content-Type":"application/json"},
