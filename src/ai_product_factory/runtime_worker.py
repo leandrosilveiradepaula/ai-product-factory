@@ -67,7 +67,12 @@ class RuntimeWorker:
         if item is None:
             return None
         if not item.stages:
-            return WorkResult(WorkStatus.FAILED, (), "claimed run has no executable stages")
+            message = "claimed run has no executable stages"
+            try:
+                self.queue.fail(item, message)
+            except Exception:
+                pass
+            return WorkResult(WorkStatus.FAILED, (), message)
         evidence: list[StageEvidence] = []
         current_stage: str | None = None
         try:
