@@ -168,9 +168,22 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     conn.execute("update public.factory_runs set lease_owner='stop-test-worker',lease_expires_at=null where id=%s",(fresh_run[0],))
     queued_task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'preserved queued work','queued') returning id",(pid,)).fetchone()[0]
     queued_run=conn.execute("insert into public.factory_runs(task_id,status) values (%s,'queued') returning id",(queued_task,)).fetchone()[0]
+    conn.execute("update public.factory_runs set metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object('execution_generation',4) where id=%s",(fresh_run[0],))
     command_id=uuid.uuid4()
     pending_stop=call("stop",current_version,command_id)
     assert pending_stop["state"]=="stopping",pending_stop
+    conn.execute("select public.factory_assert_claimed_run_epoch(%s,%s,%s,%s)",(pid,4,fresh_run[0],"stop-test-worker"))
+    for bad_worker in ("intruder",""):
+        try:
+            with conn.transaction():
+                conn.execute("select public.factory_assert_claimed_run_epoch(%s,%s,%s,%s)",(pid,4,fresh_run[0],bad_worker))
+        except psycopg.Error: pass
+        else: raise AssertionError("stopping admitted unclaimed worker")
+    try:
+        with conn.transaction():
+            conn.execute("select public.factory_assert_claimed_run_epoch(%s,%s,%s,%s)",(pid,3,fresh_run[0],"stop-test-worker"))
+    except psycopg.Error: pass
+    else: raise AssertionError("stopping admitted stale generation")
     before=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()[0]
     blocked_settlement=conn.execute("select public.factory_settle_project_control_v1(%s)",("new-qa",)).fetchone()[0]
     assert blocked_settlement["state"]=="stopping" and blocked_settlement["changed"] is False
