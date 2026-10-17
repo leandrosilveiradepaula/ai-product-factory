@@ -80,8 +80,11 @@ function githubCapabilityLabel(status:string){return status==="verified"?"Verifi
 async function controlProject(formData:FormData){
  "use server";
  const key=String(formData.get("project_key")||"");
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key))throw new Error("Projeto inválido.");
  const cmd=String(formData.get("command")||"");
- const version=Number(formData.get("version"));
+ const rawVersion=formData.get("version");
+ if(typeof rawVersion!=="string"||!/^(0|[1-9][0-9]*)$/.test(rawVersion))throw new Error("Versão do projeto inválida.");
+ const version=Number(rawVersion);
  const id=String(formData.get("command_id")||"");
  if(!["start","pause","resume","stop","restart"].includes(cmd))throw new Error("Comando não permitido.");
  await commandProjectExecution(key,cmd as "start"|"pause"|"resume"|"stop"|"restart",version,id);
