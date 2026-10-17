@@ -43,6 +43,14 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_claim_next_run"))
         self.assertNotIn(b"secret",req.data)
 
+    def test_claim_carries_generation_from_database(self):
+        payload={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+                 "stages":["discovery"],"context":{},"execution_generation":7}
+        with patch("urllib.request.urlopen",return_value=Response(payload)):
+            q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+            item=q.claim_next("worker")
+        self.assertEqual(item.execution_generation,7)
+
     def test_terminal_and_stage_rpcs(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{},3)
