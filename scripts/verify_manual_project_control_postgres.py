@@ -111,6 +111,13 @@ with psycopg.connect(dsn,autocommit=True) as conn:
             blocked=contender.execute("select public.factory_claim_next_run(%s)",("blocked-worker",)).fetchone()[0]
             assert blocked is None,blocked
     # Releasing the operator lock makes the queued run claimable again.
+    # Multiple workers must never claim the same queued run.
+    with psycopg.connect(dsn,autocommit=True) as second:
+        competing=second.execute("select public.factory_claim_next_run(%s)",("qa-worker-2",)).fetchone()[0]
+        assert competing is not None and competing["run_id"]==restarted["run_id"],competing
+        assert second.execute("select public.factory_claim_next_run(%s)",("qa-worker-3",)).fetchone()[0] is None
+        second.execute("update public.factory_runs set status='queued',started_at=null where id=%s",(competing["run_id"],))
+        second.execute("update public.factory_tasks set status='queued' where id=%s",(competing["task_id"],))
     # Runtime claim returns the same generation used for external side-effect fencing.
     claim=conn.execute("select public.factory_claim_next_run(%s)",("qa-worker",)).fetchone()[0]
     assert claim is not None and claim["execution_generation"]==3,claim
