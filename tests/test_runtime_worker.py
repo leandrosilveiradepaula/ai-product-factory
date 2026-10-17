@@ -18,7 +18,7 @@ class FencedQueue(Queue):
         self.fail_at = fail_at
     def assert_execution_epoch(self, item):
         self.checks += 1
-        if self.checks == self.fail_at:
+        if self.checks >= self.fail_at:
             raise RuntimeError("execution epoch revoked")
 
 
