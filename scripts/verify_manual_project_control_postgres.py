@@ -108,6 +108,9 @@ with psycopg.connect(dsn,autocommit=True) as conn:
             blocked=contender.execute("select public.factory_claim_next_run(%s)",("blocked-worker",)).fetchone()[0]
             assert blocked is None,blocked
     # Releasing the operator lock makes the queued run claimable again.
+    # Replayed commands must not create a second bootstrap or bump the epoch.
+    before=conn.execute("select version,generation from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()
+    assert conn.execute("select version,generation from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()==before
     # Runtime claim returns the same generation used for external side-effect fencing.
     claim=conn.execute("select public.factory_claim_next_run(%s)",("qa-worker",)).fetchone()[0]
     assert claim is not None and claim["execution_generation"]==3,claim
