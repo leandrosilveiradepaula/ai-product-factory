@@ -20,9 +20,9 @@ export async function createProjectIntakeAndBootstrap(
    throw new Error("Quantidade de anexos inválida.");
  const projectKey=slugify(input.name);
  if(!projectKey)throw new Error("Nome do projeto inválido.");
- // Single server-only RPC: project/spec + operator-owned attachments + first run.
+ // Registration is draft-only: no task, run, wake, or paid model call.
  // Missing migration never falls back to the unsafe three-step implementation.
- const response=await fetch(cfg.url+"/rest/v1/rpc/factory_start_project_intake_v1",{
+ const response=await fetch(cfg.url+"/rest/v1/rpc/factory_register_project_intake_v2",{
    method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},
    body:JSON.stringify({
      p_project_key:projectKey,p_name:input.name,p_repository:input.repository||"",
@@ -49,27 +49,33 @@ export async function createProjectIntakeAndBootstrap(
    throw new Error("Início atômico indisponível. Verifique a migração do Control Plane.");
  }
  const result=await response.json();
- if(!result||!result.project_id||!result.task_id||!result.run_id
+ if(!result||!result.project_id||result.state!=="draft"
     ||result.request_id!==draftId||result.attachment_count!==expectedCount
     ||typeof result.created!=="boolean")
    throw new Error("Confirmação do ciclo inicial incompleta; nenhum sucesso foi presumido.");
- if(result.created){
-   const wakeStatus=await requestIntakeWorkerWake();
-   // Write diagnostics after commit. An audit failure never rolls back the intake.
-   try{
-     const audit=await fetch(cfg.url+"/rest/v1/factory_audit_events",{
-       method:"POST",headers:{...cfg.headers,"Content-Type":"application/json",Prefer:"return=minimal"},
-       body:JSON.stringify({
-         project_id:String(result.project_id),task_id:String(result.task_id),
-         run_id:String(result.run_id),actor_type:"system",actor_ref:"console-intake",
-         event_type:"project.bootstrap.wake_attempted",payload:{status:wakeStatus},
-       }),cache:"no-store",
-     });
-     if(!audit.ok)console.warn("intake_worker_wake_audit_failed",{status:audit.status});
-   }catch{console.warn("intake_worker_wake_audit_failed",{reason:"transport"});}
+ return {projectId:String(result.project_id),projectKey,taskId:"",runId:"",created:result.created,attachmentCount:expectedCount};
+}
+
+
+export type ProjectExecutionControl={state:string;version:number;generation:number};
+export async function getProjectExecutionControl(projectId:string):Promise<ProjectExecutionControl>{
+ await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
+ const response=await fetch(cfg.url+"/rest/v1/factory_project_execution_controls?select=state,version,generation&project_id=eq."+encodeURIComponent(projectId)+"&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Controle de execução ainda não instalado; nenhuma ação autorizada.");
+ const rows=await response.json();if(!Array.isArray(rows)||rows.length!==1)throw new Error("Controle de execução ausente.");
+ return {state:String(rows[0].state),version:Number(rows[0].version),generation:Number(rows[0].generation)};
+}
+export async function commandProjectExecution(projectKey:string,command:"start"|"pause"|"resume"|"stop"|"restart",expectedVersion:number,commandId:string){
+ const operator=await requireConsoleOperator();if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(projectKey)||!Number.isSafeInteger(expectedVersion)||expectedVersion<0||!/^[0-9a-f-]{36}$/i.test(commandId))throw new Error("Comando inválido.");
+ const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
+ const response=await fetch(cfg.url+"/rest/v1/rpc/factory_control_project_v1",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_command:command,p_command_id:commandId,p_expected_version:expectedVersion,p_actor_id:operator.userId}),cache:"no-store"});
+ if(!response.ok)throw new Error("Comando não autorizado ou estado alterado. Atualize a página.");
+ const result=await response.json();
+ if(!result||result.command!==command||!Number.isInteger(result.version))throw new Error("Confirmação de controle inválida.");
+ if(["start","resume","restart"].includes(command)&&result.state==="running"){
+   try{await requestIntakeWorkerWake()}catch{console.warn("project_control_wake_failed")}
  }
- return {projectId:String(result.project_id),projectKey,taskId:String(result.task_id),
-         runId:String(result.run_id),created:result.created,attachmentCount:expectedCount};
+ return result as {state:string;version:number;generation:number;command:string};
 }
 
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
