@@ -67,6 +67,16 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 q.complete(item)
             network.assert_not_called()
 
+    def test_noncompleted_stage_evidence_never_persists_product_data(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},2)
+        with patch("urllib.request.urlopen") as network:
+            for status in ("started","failed","pending"):
+                with self.subTest(status=status):
+                    with self.assertRaises(ValueError):
+                        q.record_stage(item,StageEvidence("planning",status,{}))
+            network.assert_not_called()
+
     def test_execution_epoch_calls_privileged_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{},3)
