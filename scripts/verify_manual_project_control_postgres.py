@@ -221,6 +221,30 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     except psycopg.Error: pass
     else: raise AssertionError("invalid transition admitted")
 
+    # An operator can upgrade PAUSING to STOPPING while a run is still
+    # owned, without discarding queued work or granting a fresh claim.
+    legacy_task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'already claimed','running') returning id",(legacy,)).fetchone()[0]
+    legacy_run=conn.execute("""insert into public.factory_runs(task_id,status,lease_owner,metadata)
+     values (%s,'running','legacy-worker',jsonb_build_object('execution_generation',1))
+     returning id""",(legacy_task,)).fetchone()[0]
+    pending_task=conn.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'preserved after pause-to-stop','queued') returning id",(legacy,)).fetchone()[0]
+    pending_run=conn.execute("insert into public.factory_runs(task_id,status) values (%s,'queued') returning id",(pending_task,)).fetchone()[0]
+    def legacy_command(command,version):
+        return conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",("legacy",command,uuid.uuid4(),version,actor)).fetchone()[0]
+    pausing_legacy=legacy_command("pause",0)
+    assert pausing_legacy["state"]=="pausing",pausing_legacy
+    stopping_legacy=legacy_command("stop",1)
+    assert stopping_legacy["state"]=="stopping",stopping_legacy
+    assert conn.execute("select public.factory_settle_project_control_v1(%s)",("legacy",)).fetchone()[0]["changed"] is False
+    assert conn.execute("select status from public.factory_runs where id=%s",(pending_run,)).fetchone()[0]=="queued"
+    assert conn.execute("select status from public.factory_tasks where id=%s",(pending_task,)).fetchone()[0]=="queued"
+    conn.execute("update public.factory_runs set status='completed',lease_owner=null,lease_expires_at=null where id=%s",(legacy_run,))
+    conn.execute("update public.factory_tasks set status='completed' where id=%s",(legacy_task,))
+    stopped_legacy=conn.execute("select public.factory_settle_project_control_v1(%s)",("legacy",)).fetchone()[0]
+    assert stopped_legacy["state"]=="stopped" and stopped_legacy["version"]==3,stopped_legacy
+    assert conn.execute("select status from public.factory_runs where id=%s",(pending_run,)).fetchone()[0]=="queued"
+    assert conn.execute("select status from public.factory_tasks where id=%s",(pending_task,)).fetchone()[0]=="queued"
+
     acl=conn.execute("""select has_function_privilege('anon','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('authenticated','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE'),
      has_function_privilege('service_role','public.factory_control_project_v1(text,text,uuid,bigint,uuid)','EXECUTE')""").fetchone()
