@@ -98,6 +98,16 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_claim_next_run"))
         self.assertNotIn(b"secret",req.data)
 
+    def test_claim_rejects_missing_or_invalid_generation(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        base={"run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+              "stages":["discovery"],"context":{}}
+        for generation in (None,0,-1,True,"2"):
+            with self.subTest(generation=generation):
+                q._rpc=lambda name,args: {**base,"execution_generation":generation}
+                with self.assertRaisesRegex(RuntimeError,"generation"):
+                    q.claim_next("worker")
+
     def test_claim_rejects_malformed_rpc_payloads(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         for payload in ([], "unexpected", {"stages":"planning"},
