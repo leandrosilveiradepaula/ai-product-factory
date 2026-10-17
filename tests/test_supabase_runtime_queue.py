@@ -52,6 +52,21 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 operation()
         self.assertEqual(calls,["factory_assert_project_execution_epoch"]*4)
 
+    def test_claimed_run_without_epoch_cannot_write_stage_or_finish(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        with patch("urllib.request.urlopen",return_value=Response({
+            "run_id":"r","task_id":"t","project_id":"p","project_key":"demo",
+            "stages":["discovery"],"context":{}
+        })):
+            item=q.claim_next("worker")
+        self.assertIsNone(item.execution_generation)
+        with patch("urllib.request.urlopen") as network:
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.record_stage_event(item,"discovery","started")
+            with self.assertRaisesRegex(RuntimeError,"generation"):
+                q.complete(item)
+            network.assert_not_called()
+
     def test_execution_epoch_calls_privileged_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         item=WorkItem("r","t","p","demo",(),{},3)
