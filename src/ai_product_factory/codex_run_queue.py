@@ -63,6 +63,10 @@ class SupabaseCodexRunQueue:
             raise RuntimeError('Codex claim returned a different run ID')
         if agent_key is not None and data.get('agent_key') != agent_key:
             raise RuntimeError('Codex claim returned a different assigned agent')
+        if isinstance(data.get("execution_generation"), bool) or not isinstance(data.get("execution_generation"), int) or data["execution_generation"] < 1:
+            raise RuntimeError("Codex claim returned an invalid execution generation")
+        if not isinstance(data.get("project_id"), str) or not data["project_id"].strip():
+            raise RuntimeError("Codex claim missing project capability")
         return CodexExecutionItem(
             run_id=data["run_id"],
             project_id=data["project_id"],
