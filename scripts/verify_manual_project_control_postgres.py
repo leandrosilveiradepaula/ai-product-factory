@@ -155,7 +155,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
             conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,3))
     except psycopg.Error: pass
     else: raise AssertionError("paused project admitted external side effect")
-    assert call("resume",7)["state"]=="running"
+    assert call("resume",8)["state"]=="running"
     conn.execute("select public.factory_assert_project_execution_epoch(%s,%s)",(pid,4))
     try:
         with conn.transaction():
