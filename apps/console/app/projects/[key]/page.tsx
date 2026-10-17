@@ -2,7 +2,7 @@ import {cookies} from "next/headers";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
-import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation} from "../../../lib/control-plane";
+import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation,getProjectExecutionControl,commandProjectExecution} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {RepositoryLinkForm} from "./repository-link-form";
@@ -76,6 +76,16 @@ const githubCapabilityLabels:Record<string,string>={
  ci_evidence_read:"Checks / evidência de CI",
 };
 function githubCapabilityLabel(status:string){return status==="verified"?"Verificado":status==="missing"?"Permissão faltando":status==="unverified"?"Ainda não verificado":humanizeStatus(status)}
+async function controlProject(formData:FormData){
+ "use server";
+ const key=String(formData.get("project_key")||"");
+ const cmd=String(formData.get("command")||"");
+ const version=Number(formData.get("version"));
+ const id=String(formData.get("command_id")||"");
+ if(!["start","pause","resume","stop","restart"].includes(cmd))throw new Error("Comando não permitido.");
+ await commandProjectExecution(key,cmd as "start"|"pause"|"resume"|"stop"|"restart",version,id);
+ revalidatePath("/projects/"+key);
+}
 async function reconcileProject(formData:FormData){
  "use server";
  const projectKey=String(formData.get("project_key")||"");
@@ -113,7 +123,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   if(project===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(project))redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project));
  }
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id)]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
@@ -138,6 +148,24 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
  return <>
   <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<><ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <section className="section" aria-label="Controle de execução do projeto">
+   <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":"Parado"}</strong>
+    <p>O cadastro não inicia o desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar.</p>
+    <div className="actions">{([
+     ["draft","start","Iniciar projeto"],["running","pause","Pausar"],["running","stop","Parar"],
+     ["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"]
+    ] as const).filter(([state])=>state===executionControl.state).map(([,command,label])=>
+      <form action={controlProject} key={command}>
+       <input type="hidden" name="project_key" value={p.key}/>
+       <input type="hidden" name="command" value={command}/>
+       <input type="hidden" name="version" value={executionControl.version}/>
+       <input type="hidden" name="command_id" value={crypto.randomUUID()}/>
+       <button type="submit" className={command==="stop"?"danger":"primary"}>{label}</button>
+      </form>
+    )}</div>
+    {["pausing","stopping"].includes(executionControl.state)?<p role="status">Aguardando conclusão segura dos trabalhos em andamento. Nenhuma tarefa nova deve ser iniciada.</p>:null}
+   </div>
+  </section>
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
