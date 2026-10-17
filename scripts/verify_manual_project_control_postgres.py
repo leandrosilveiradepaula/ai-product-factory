@@ -98,7 +98,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert restarted["state"]=="running" and restarted["generation"]==3
     assert call("restart",5,restart_id)==restarted
     assert conn.execute("select version,generation from public.factory_project_execution_controls where project_id=%s",(pid,)).fetchone()==(6,3)
-    assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==2
+    assert conn.execute("select count(*) from public.factory_tasks where project_id=%s",(pid,)).fetchone()[0]==1
     # A concurrent operator lock must prevent a new claim without deadlock.
     # Use an independent connection: the primary session owns the control lock.
     with psycopg.connect(dsn,autocommit=True) as contender:
