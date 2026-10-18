@@ -177,7 +177,11 @@ class SupabaseChangeSetStore:
             "version":1,"atomic_completion":True,
             "atomic_release":True,"phase_checkpoints":True,
         }
-        if self._rpc("factory_integration_epoch_write_readiness",{})!=expected:
+        response=self._rpc("factory_integration_epoch_write_readiness",{})
+        if (response!=expected or not isinstance(response,dict)
+            or type(response.get("version")) is not int
+            or any(type(response.get(key)) is not bool
+                   for key in ("atomic_completion","atomic_release","phase_checkpoints"))):
             raise RuntimeError("atomic integration SQL migration is not ready")
 
     def claim_integration(self,worker_id:str)->ChangeSetIntegrationItem|None:
