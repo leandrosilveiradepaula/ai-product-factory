@@ -64,6 +64,8 @@ class RuntimeWorker:
         self.worker_id = worker_id
 
     def run_once(self) -> WorkResult | None:
+        if not isinstance(self.worker_id,str) or not self.worker_id.strip():
+            raise ValueError("runtime worker identity is required")
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
@@ -127,6 +129,13 @@ class RuntimeWorker:
                 output = self.handler.execute(item, stage)
                 if not isinstance(output, dict):
                     raise ValueError("stage handler must return a mapping")
+                if any(not isinstance(key,str) for key in output):
+                    raise ValueError("stage handler output keys must be strings")
+                if output.get("requires_model") is True and output.get("mode")=="deterministic":
+                    # A placeholder is evidence of deferred work, never completed product work.
+                    if not isinstance(output.get("project_key"),str):
+                        raise ValueError("deterministic stage evidence missing project key")
+
                 if callable(checkpoint):
                     checkpoint(item)
                 ev = StageEvidence(stage=stage, status="completed", output=output)
