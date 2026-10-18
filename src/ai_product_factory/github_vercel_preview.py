@@ -135,7 +135,12 @@ class GitHubVercelPreviewAdapter:
             comments=self._vercel_comments()
             if self._quota_blocked(comments):
                 return DeploymentResult(self.name,request_.environment,"blocked_quota","vercel-daily-deployment-quota",None)
-            checks=[row for row in self._checks(request_.candidate_commit) if str((row.get("app") or {}).get("slug") or "").lower()=="vercel"]
+            # Feedback-only checks do not attest that a deployment is ready.
+            all_checks=[row for row in self._checks(request_.candidate_commit)
+                        if str((row.get("app") or {}).get("slug") or "").lower()=="vercel"]
+            feedback_checks=[row for row in all_checks
+                             if str(row.get("name") or "").lower()=="vercel preview comments"]
+            checks=[row for row in all_checks if row not in feedback_checks]
             for row in checks:
                 if str(row.get("status") or "").lower()!="completed":
                     continue
@@ -154,7 +159,13 @@ class GitHubVercelPreviewAdapter:
                 return DeploymentResult(self.name,request_.environment,"failure",str(completed[0].get("id") or "vercel-check"),None)
 
             statuses=[row for row in self._statuses(request_.candidate_commit) if "vercel" in str(row.get("context") or "").lower()]
+            # A feedback-check URL is only an address hint. A successful exact
+            # commit *deployment status* is still required before browser E2E.
             preview_url=self._comment_preview_url(comments)
+            if not preview_url:
+                for feedback in feedback_checks:
+                    preview_url=self._preview_url(feedback)
+                    if preview_url:break
             for row in statuses:
                 if self._quota_signal(row.get("description"),row.get("target_url")):
                     return DeploymentResult(self.name,request_.environment,"blocked_quota",f"vercel-status-{row.get('id') or 'unknown'}",None)

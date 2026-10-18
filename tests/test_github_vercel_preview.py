@@ -158,6 +158,36 @@ class Tests(unittest.TestCase):
         self.assertEqual(out.status,"failure")
         self.assertEqual(out.deployment_ref,"vercel-status-78")
 
+    def test_feedback_only_vercel_check_never_authorizes_preview(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0)
+        checks=Response({"check_runs":[{
+            "id":99,"name":"Vercel Preview Comments","status":"completed",
+            "conclusion":"success","app":{"slug":"vercel"},
+            "output":{"summary":"No unresolved feedback https://demo-git-branch.vercel.app"},
+        }]})
+        statuses=Response({"statuses":[{"id":100,"context":"Vercel","state":"pending"}]})
+        def fake_urlopen(req,timeout=30):
+            return checks if "/check-runs" in req.full_url else statuses
+        with patch("urllib.request.urlopen",side_effect=fake_urlopen):
+            with self.assertRaisesRegex(TimeoutError,"not discoverable"):
+                GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
+
+    def test_feedback_url_requires_exact_successful_vercel_commit_status(self):
+        cfg=GitHubVercelPreviewConfig(repository="owner/repo",token="token",poll_attempts=1,poll_interval_seconds=0)
+        checks=Response({"check_runs":[{
+            "id":99,"name":"Vercel Preview Comments","status":"completed",
+            "conclusion":"success","app":{"slug":"vercel"},
+            "output":{"summary":"No unresolved feedback https://demo-git-branch.vercel.app"},
+        }]})
+        statuses=Response({"statuses":[{"id":100,"context":"Vercel","state":"success"}]})
+        def fake_urlopen(req,timeout=30):
+            return checks if "/check-runs" in req.full_url else statuses
+        with patch("urllib.request.urlopen",side_effect=fake_urlopen):
+            out=GitHubVercelPreviewAdapter(cfg,sleeper=lambda _:None).deploy(request())
+        self.assertEqual(out.status,"success")
+        self.assertEqual(out.preview_url,"https://demo-git-branch.vercel.app")
+        self.assertEqual(out.deployment_ref,"vercel-status-100")
+
     def test_refuses_production(self):
         with self.assertRaises(PermissionError):
             GitHubVercelPreviewAdapter(self.config()).deploy(request(ReleaseEnvironment.PROD))

@@ -37,6 +37,7 @@ class Tests(unittest.TestCase):
             "PATH":"/usr/bin",
             "HOME":"/home/runner",
             "FACTORY_PREVIEW_EXPECTED_TEXT":"Visão geral",
+            "FACTORY_BROWSER_EXECUTABLE_PATH":"/usr/bin/google-chrome",
             "FACTORY_VERCEL_TRUSTED_OIDC_TOKEN":"short-lived-oidc",
             **sensitive,
         }
@@ -51,6 +52,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(seen["FACTORY_PREVIEW_EXPECTED_TEXT"],"Visão geral")
         self.assertEqual(seen["FACTORY_VERCEL_TRUSTED_OIDC_TOKEN"],"short-lived-oidc")
         self.assertEqual(seen["PATH"],"/usr/bin")
+        self.assertEqual(seen["FACTORY_BROWSER_EXECUTABLE_PATH"],"/usr/bin/google-chrome")
         self.assertEqual(seen["HOME"],"/home/runner")
         for forbidden in sensitive:
             self.assertNotIn(forbidden,seen)
