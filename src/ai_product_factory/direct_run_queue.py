@@ -28,6 +28,15 @@ class SupabaseDirectRunQueue:
       raise RuntimeError("routed claim has invalid wave")
   if bool(d.get("change_set_id")) != bool(d.get("work_unit_id")):
       raise RuntimeError("routed claim has incomplete change set binding")
+  if d.get("issue_number") is not None and (isinstance(d["issue_number"],bool) or not isinstance(d["issue_number"],int) or d["issue_number"]<1):
+      raise RuntimeError("routed claim has invalid issue number")
+  if d.get("wave") is not None and not d.get("change_set_id"):
+      raise RuntimeError("routed claim wave requires change set binding")
+  for field in ("change_set_id","work_unit_id"):
+      if d.get(field) is not None and (not isinstance(d[field],str) or not d[field].strip()):
+          raise RuntimeError("routed claim has invalid "+field)
+  if d.get("description") is not None and not isinstance(d["description"],str):
+      raise RuntimeError("routed claim has invalid description")
   item=DirectExecutionItem(d["run_id"],d["task_id"],d["project_key"],d["repository"],d.get("issue_number"),d["title"],d.get("description") or "",d["branch"],bool(d.get("human_gate_required",False)),str(d["change_set_id"]) if d.get("change_set_id") else None,str(d["work_unit_id"]) if d.get("work_unit_id") else None,int(d["wave"]) if d.get("wave") is not None else None)
   object.__setattr__(item,"project_id",d["project_id"])
   object.__setattr__(item,"execution_generation",int(d["execution_generation"]))
