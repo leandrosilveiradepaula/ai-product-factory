@@ -179,6 +179,22 @@ class RuntimeWorkerTests(unittest.TestCase):
                 self.assertIn("revoked",result.error)
                 self.assertFalse(any(event[0] in ("fail","stage","complete") for event in q.events))
 
+    def test_missing_worker_identity_does_not_claim(self):
+        q=Queue(item())
+        with self.assertRaisesRegex(ValueError,"worker identity"):
+            RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="").run_once()
+        self.assertFalse(q.events)
+
+    def test_non_string_evidence_key_rejected(self):
+        class InvalidHandler:
+            def execute(self,item,stage):
+                return {1:"invalid"}
+        q=Queue(item())
+        result=RuntimeWorker(queue=q,handler=InvalidHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("keys must be strings",result.error)
+        self.assertFalse(any(event[0]=="stage" for event in q.events))
+
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
