@@ -196,8 +196,6 @@ class SupabaseChangeSetStore:
                 raise RuntimeError("integration work unit has invalid changed files")
             if unit["base_commit"]!=data["candidate_commit"]:
                 raise RuntimeError("integration work unit has stale candidate base")
-        if data["source_commit"]==data["candidate_commit"] and wave>1:
-            raise RuntimeError("integration repair wave lacks advanced candidate")
         if data["repository"].count("/")!=1 or any(not part.strip() for part in data["repository"].split("/")):
             raise RuntimeError("integration claim has invalid repository")
         if data["integration_branch"].startswith("refs/") or data["integration_branch"] in ("main","master"):
