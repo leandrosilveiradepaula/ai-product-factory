@@ -89,7 +89,8 @@ class TargetTests(unittest.TestCase):
 
     def test_integration_uses_pinned_base_not_main(self):
         g = github()
-        g.get_file_text.return_value = "value=1"\n        g.get_branch_sha.side_effect = lambda ref: SHA if ref == TARGET["branch"] else "integrated"
+        g.get_file_text.return_value = "value=1"
+        g.get_branch_sha.side_effect = lambda ref: SHA if ref == TARGET["branch"] else "integrated"
         g.commit_files.return_value = "integrated"
         g.find_open_issue_containing.return_value = SimpleNamespace(
             number=9, html_url="https://example.test/issues/9")
