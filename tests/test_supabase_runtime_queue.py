@@ -2,6 +2,9 @@ import json
 import unittest
 from unittest.mock import patch
 
+from ai_product_factory.model_executor import ModelExecutor, ModelResult, ModelRole
+from ai_product_factory.product_stage_executor import ProductStageExecutor
+
 from ai_product_factory.runtime_worker import StageEvidence,WorkItem
 from ai_product_factory.supabase_runtime_queue import SupabaseRuntimeQueue
 
@@ -91,6 +94,95 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         req=call.call_args.args[0]
         self.assertTrue(req.full_url.endswith("/rest/v1/rpc/factory_claim_next_run"))
         self.assertNotIn(b"secret",req.data)
+
+    def test_real_reconciliation_claim_hydrates_project_scoped_snapshot_and_fresh_facts(self):
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        q._rpc = lambda name, payload: {
+            "run_id": "run-crm", "task_id": "task-crm",
+            "project_id": "11111111-1111-4111-8111-111111111111",
+            "project_key": "crm-infodive", "stages": ["reconciliation", "gap_analysis", "planning"],
+            "context": {"manifest": {"continuation_request": {"summary": "CRM PR #56"}}},
+            "execution_generation": 1,
+        }
+        queries = []
+        def scoped_get(path):
+            queries.append(path)
+            if "factory_project_state_snapshots?" in path:
+                return [{
+                    "id": "snapshot-old", "observed_stage": "operations",
+                    "created_at": "2026-10-02T21:47:38Z",
+                    "summary": "Reviewed historical CRM baseline",
+                    "evidence": [{"source": "github", "commit": "old"}],
+                    "gaps": [], "constraints": [],
+                    "source_status": {"github_repository": "verified_earlier"},
+                }]
+            if "factory_tasks?" in path:
+                return [{"external_key": "present-in-usd", "title": "historical fix",
+                         "status": "completed", "updated_at": "2026-10-15T10:00:00Z"}]
+            if "factory_project_github_access?" in path:
+                return [{"status": "ready", "repository": "owner/crm",
+                         "observed_capabilities": {"contents_write": "verified"},
+                         "last_verified_at": "2026-10-15T12:00:00Z"}]
+            raise AssertionError("unexpected read " + path)
+        q._get = scoped_get
+        item = q.claim_next("worker-test")
+        self.assertEqual(item.context["state_snapshot"]["summary"], "Reviewed historical CRM baseline")
+        self.assertEqual(item.context["state_snapshot"]["provenance"],
+                         "historical_control_plane_snapshot_not_live_github")
+        self.assertEqual(item.context["state_snapshot"]["recorded_at"], "2026-10-02T21:47:38Z")
+        self.assertEqual(item.context["current_state_facts"]["recent_tasks"][0]["status"], "completed")
+        self.assertFalse(item.context["current_state_facts"]["github_access"]["live_github_head_verified"])
+        self.assertEqual(len(queries), 3)
+        self.assertTrue(all("project_id=eq.11111111-1111-4111-8111-111111111111" in v for v in queries))
+        self.assertIn("observed_stage=neq.verification", queries[0])
+        self.assertIn("limit=24", queries[1])
+        self.assertIn("limit=1", queries[2])
+        class Provider:
+            requests = []
+            def execute(self, request):
+                self.requests.append(request)
+                return ModelResult(ModelRole.PRIMARY, '{"summary":"ok"}', provider_ref="mock", usage={})
+        provider = Provider()
+        output = ProductStageExecutor(ModelExecutor(primary=provider)).execute(item, "reconciliation")
+        self.assertEqual(output["summary"], "ok")
+        self.assertEqual(len(provider.requests), 1)
+        self.assertIn("historical_control_plane_snapshot_not_live_github", provider.requests[0].context)
+
+    def test_missing_snapshot_or_failed_snapshot_read_cannot_use_paid_model(self):
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        q._rpc = lambda *_: {
+            "run_id": "r", "task_id": "t", "project_id": "project", "project_key": "existing",
+            "stages": ["reconciliation"], "context": {"manifest": {"reconcile_first": True}},
+            "execution_generation": 2,
+        }
+        for snapshot_rows in (
+            [{"observed_stage": "operations", "summary": "", "evidence": [{"source": "x"}]}],
+            [{"observed_stage": "verification", "summary": "browser", "evidence": [{"source": "x"}]}],
+            [{"observed_stage": "operations", "summary": "historical", "evidence": [],
+              "source_status": {}}],
+        ):
+            q._get = lambda path: snapshot_rows if "factory_project_state_snapshots?" in path else []
+            item = q.claim_next("worker")
+            self.assertNotIn("state_snapshot", item.context)
+            class ForbiddenProvider:
+                def execute(self, request):
+                    raise AssertionError("paid provider must never be called")
+            with self.assertRaisesRegex(ValueError, "durable state snapshot"):
+                ProductStageExecutor(ModelExecutor(primary=ForbiddenProvider())).execute(item, "reconciliation")
+        q._get = lambda path: (_ for _ in ()).throw(RuntimeError("temporarily unavailable"))
+        item = q.claim_next("worker")
+        self.assertNotIn("state_snapshot", item.context)
+
+    def test_greenfield_claim_does_not_fetch_existing_project_snapshot(self):
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        q._rpc = lambda *_: {
+            "run_id": "r", "task_id": "t", "project_id": "p", "project_key": "demo",
+            "stages": ["discovery", "specification"], "context": {"summary": "new system"},
+            "execution_generation": 1,
+        }
+        q._get = lambda *_: (_ for _ in ()).throw(AssertionError("greenfield must not load snapshot"))
+        item = q.claim_next("worker")
+        self.assertEqual(item.context, {"summary": "new system"})
 
     def test_claim_rejects_missing_or_blank_identifiers(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
