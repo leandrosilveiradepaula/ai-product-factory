@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 from ai_product_factory.runtime_worker import DeterministicBootstrapHandler, RuntimeWorker, WorkItem, WorkStatus
 
@@ -135,6 +136,67 @@ class RuntimeWorkerTests(unittest.TestCase):
                 result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
                 self.assertEqual(result.status,WorkStatus.FAILED)
                 self.assertFalse(any(e[0]=="complete" for e in q.events))
+
+    def test_revoked_malformed_claim_does_not_persist_failure(self):
+        for stages in ((), ("discovery", "discovery")):
+            with self.subTest(stages=stages):
+                q=FencedQueue(WorkItem("r","t","p","demo",stages,{}),1)
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertIn("revoked",result.error)
+                self.assertFalse(any(event[0] in {"fail","complete","stage"} for event in q.events))
+
+    def test_malformed_claim_contracts_are_fenced_before_persistence(self):
+        baseline=item()
+        cases=[
+            ({"run_id":""},"run identity"),
+            ({"task_id":""},"task identity"),
+            ({"project_id":""},"project identity"),
+            ({"project_key":""},"project key"),
+            ({"context":None},"context"),
+            ({"execution_generation":True},"execution generation"),
+            ({"execution_generation":-1},"execution generation"),
+            ({"worker_id":" "},"worker lease owner mismatch"),
+            ({"worker_id":"other"},"worker lease owner mismatch"),
+            ({"stages":None},"stage container"),
+
+            ({"stages":tuple("s"+str(i) for i in range(33))},"stage limit"),
+            ({"stages":("s"*129,)},"oversized stage"),
+            ({"stages":(" discovery",)},"unnormalized stage"),
+        ]
+        for overrides,expected in cases:
+            with self.subTest(expected=expected):
+                claimed=replace(baseline,**overrides)
+                q=Queue(claimed)
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertIn(expected,result.error)
+                self.assertFalse(any(event[0] in ("stage","complete") for event in q.events))
+
+    def test_malformed_claim_revocation_suppresses_terminal_write(self):
+        for overrides in ({"run_id":""},{"context":None},{"stages":("discovery","discovery")}):
+            with self.subTest(overrides=overrides):
+                q=FencedQueue(replace(item(),**overrides),1)
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertIn("revoked",result.error)
+                self.assertFalse(any(event[0] in ("fail","stage","complete") for event in q.events))
+
+    def test_missing_worker_identity_does_not_claim(self):
+        q=Queue(item())
+        with self.assertRaisesRegex(ValueError,"worker identity"):
+            RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="").run_once()
+        self.assertFalse(q.events)
+
+    def test_non_string_evidence_key_rejected(self):
+        class InvalidHandler:
+            def execute(self,item,stage):
+                return {1:"invalid"}
+        q=Queue(item())
+        result=RuntimeWorker(queue=q,handler=InvalidHandler(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.FAILED)
+        self.assertIn("keys must be strings",result.error)
+        self.assertFalse(any(event[0]=="stage" for event in q.events))
 
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)

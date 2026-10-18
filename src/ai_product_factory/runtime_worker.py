@@ -64,23 +64,61 @@ class RuntimeWorker:
         self.worker_id = worker_id
 
     def run_once(self) -> WorkResult | None:
+        if not isinstance(self.worker_id,str) or not self.worker_id.strip():
+            raise ValueError("runtime worker identity is required")
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
-        if not isinstance(item.stages, (tuple, list)) or not item.stages or not all(isinstance(stage,str) and stage.strip() for stage in item.stages):
-            message = "claimed run has no executable stages"
+        # Reject malformed claims before executing handlers or recording evidence.
+        malformed = None
+        if not isinstance(item.run_id,str) or not item.run_id.strip():
+            malformed = "claimed run has invalid run identity"
+        elif not isinstance(item.task_id,str) or not item.task_id.strip():
+            malformed = "claimed run has invalid task identity"
+        elif not isinstance(item.project_id,str) or not item.project_id.strip():
+            malformed = "claimed run has invalid project identity"
+        elif not isinstance(item.project_key,str) or not item.project_key.strip():
+            malformed = "claimed run has invalid project key"
+        elif not isinstance(item.stages,(tuple,list)):
+            malformed = "claimed run has invalid stage container"
+        elif not isinstance(item.context,dict):
+            malformed = "claimed run has invalid context"
+        elif item.execution_generation is not None and (
+            isinstance(item.execution_generation,bool)
+            or not isinstance(item.execution_generation,int)
+            or item.execution_generation<0
+        ):
+            malformed = "claimed run has invalid execution generation"
+        elif item.worker_id is not None and item.worker_id!=self.worker_id:
+            malformed = "claimed run worker lease owner mismatch"
+        elif item.worker_id is not None and (
+            not isinstance(item.worker_id,str) or not item.worker_id.strip()
+        ):
+            malformed = "claimed run has invalid worker identity"
+        elif not isinstance(item.stages,(tuple,list)) or not item.stages or not all(
+            isinstance(stage,str) and stage.strip() for stage in item.stages
+        ):
+            malformed = "claimed run has no executable stages"
+        elif len(item.stages)>32:
+            malformed = "claimed run exceeds stage limit"
+        elif any(len(stage)>128 for stage in item.stages):
+            malformed = "claimed run has oversized stage name"
+        elif any(stage!=stage.strip() for stage in item.stages):
+            malformed = "claimed run has unnormalized stage name"
+        elif len(item.stages)!=len(set(item.stages)):
+            malformed = "claimed run has duplicate stages"
+        if malformed is not None:
+            checkpoint=getattr(self.queue,"assert_execution_epoch",None)
+            if callable(checkpoint):
+                try:
+                    checkpoint(item)
+                except Exception as exc:
+                    return WorkResult(WorkStatus.FAILED,(),str(exc))
             try:
-                self.queue.fail(item, message)
+                self.queue.fail(item,malformed)
             except Exception:
                 pass
-            return WorkResult(WorkStatus.FAILED, (), message)
-        if len(item.stages) != len(set(item.stages)):
-            message = "claimed run has duplicate stages"
-            try:
-                self.queue.fail(item, message)
-            except Exception:
-                pass
-            return WorkResult(WorkStatus.FAILED, (), message)
+            return WorkResult(WorkStatus.FAILED,(),malformed)
         evidence: list[StageEvidence] = []
         current_stage: str | None = None
         try:
@@ -95,6 +133,13 @@ class RuntimeWorker:
                 output = self.handler.execute(item, stage)
                 if not isinstance(output, dict):
                     raise ValueError("stage handler must return a mapping")
+                if any(not isinstance(key,str) for key in output):
+                    raise ValueError("stage handler output keys must be strings")
+                if output.get("requires_model") is True and output.get("mode")=="deterministic":
+                    # A placeholder is evidence of deferred work, never completed product work.
+                    if not isinstance(output.get("project_key"),str):
+                        raise ValueError("deterministic stage evidence missing project key")
+
                 if callable(checkpoint):
                     checkpoint(item)
                 ev = StageEvidence(stage=stage, status="completed", output=output)
