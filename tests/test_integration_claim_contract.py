@@ -48,6 +48,28 @@ class IntegrationClaimContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,message):
                     self.store.claim_integration("worker")
 
+    def test_ten_more_path_ambiguity_classes(self):
+        unit=self.base["work_units"][0]
+        cases=[
+            ("src/.gitignore","protected git metadata"),
+            ("src/name:stream","colon"),
+            ("src/file?.py","wildcard"),
+            ("src/file*.py","wildcard"),
+            ("src/a|b.py","forbidden character"),
+            ("src/CON.txt","reserved device name"),
+            ("src/~config","home alias"),
+            ("src/-rf","option-like segment"),
+            ("src/cache.lock","lock file"),
+            ("src/.private/key","hidden segment"),
+        ]
+        for path,message in cases:
+            with self.subTest(path=path):
+                self.store._rpc=MagicMock(return_value={
+                    **self.base,"work_units":[{**unit,"changed_files":[path]}],
+                })
+                with self.assertRaisesRegex(RuntimeError,message):
+                    self.store.claim_integration("worker")
+
     def test_epoch_checkpoint_rejects_boolean_generation(self):
         from dataclasses import replace
         self.store._rpc=MagicMock(return_value=self.base)
