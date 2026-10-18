@@ -26,3 +26,10 @@
 | CI/QA/Preview/release do produto | Merge precoce, credencial QA ausente, blocked auditável | Não comprovado, release negado corretamente |
 
 **Experimento prioritário depois da correção:** registrar projeto de teste como draft, verificar que não iniciou, dar Start humano, deixar fila e trabalhadores prosseguirem, exigir uma PR com CI e Preview aplicáveis validados, efetuar merge humano só então observar release. Isso requer credenciais/provider/billing legítimos disponíveis e não autoriza chamadas pagas só para sondagem. Migration da PR #931 é gate independente, não aplicado automaticamente.
+
+## 18/10 — Real CRM Product Stage failed after claim (root cause verified)
+
+- 04:22 UTC GHA #39096833200 claimed the CRM run `a5e3a491-f6cb-43d8-9a6a-9d180b071f00`. The run failed at 04:23:05 UTC, with `existing-project reconciliation requires a durable state snapshot`. No assertion about current API credit follows from this failure.
+- Postgres `factory_claim_next_run` returns `context={task,manifest}`; ProductStageExecutor requires `context.state_snapshot` and refuses provider call otherwise. Independently verified historical CRM snapshot id `18a4c573-2ec5-4a52-840f-c14cd46c5dbd` (2026-10-02, observed stage `operations`) exists and includes source evidence. Latest verification-only snapshots do not represent project baselines.
+- The server-side Supabase RuntimeQueue now enriches a **claimed reconciliation** with a bounded, exact-project historical snapshot and separately sourced task-status/GitHub App readiness data, preserving provenance/date and refusing to invent current live GitHub HEAD. On missing, malformed or unavailable evidence the original pre-model guard still rejects; greenfield runs do not acquire these extra reads.
+- This code corrects the verified missing-context cause. It does **not** yet prove a completed CRM reconciliation, candidate-branch writes or an end-to-end PR. A failed run may be retried only through `factory_retry_failed_run` after production-publishing human merge, with full preflight, no duplicate run, budget, and source baseline gates.
