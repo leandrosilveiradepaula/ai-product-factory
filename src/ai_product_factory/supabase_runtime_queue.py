@@ -15,6 +15,7 @@ from .execution_team_planner import build_execution_team_plan
 from .supabase_server import resolve_supabase_server_config
 from .github_rest import GitHubRestAdapter
 from .pinned_nonproduction_target import PinnedNonproductionTarget
+from .candidate_source_evidence import collect_candidate_source_evidence
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -239,6 +240,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             if not text.strip() or len(text.encode("utf-8")) > 65536:
                 raise PermissionError("repository governance missing or oversized")
             governance[path] = text
+        source_evidence = collect_candidate_source_evidence(
+            governance["docs/codex/CURRENT_TASK.md"], github, sha=target.sha
+        )
         candidate = {
             "repository": repo,
             "pr_number": target.candidate_pr_number,
@@ -246,10 +250,21 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             "sha": target.sha,
             "main_sha": main_sha,
             "observed_from": "live_github_app_exact_candidate",
+            "verified_open_pr": {
+                "state": "open", "base_ref": "main", "head_ref": target.branch,
+                "head_sha": target.sha, "verified": True,
+            },
             "governance": governance,
+            "source_evidence": source_evidence,
         }
         enriched = dict(context)
         facts = dict(enriched.get("current_state_facts") or {})
+        access = facts.get("github_access")
+        if isinstance(access, dict):
+            facts["github_access"] = {
+                **access, "live_github_head_verified": True,
+                "verified_candidate_sha": target.sha,
+            }
         facts["live_candidate"] = candidate
         enriched["current_state_facts"] = facts
         return enriched
