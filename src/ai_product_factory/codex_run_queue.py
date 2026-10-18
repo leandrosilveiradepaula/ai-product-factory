@@ -87,8 +87,6 @@ class SupabaseCodexRunQueue:
             raise RuntimeError("routed claim has invalid description")
         if data.get("change_set_id") is not None and data.get("wave") is None:
             raise RuntimeError("routed claim change set requires wave")
-        if data.get("issue_number") is not None and data.get("human_gate_required") is None:
-            raise RuntimeError("routed claim missing human gate decision")
         if isinstance(data.get("codex_level",1),bool) or not isinstance(data.get("codex_level",1),int) or data.get("codex_level",1)<1 or data.get("codex_level",1)>4:
             raise RuntimeError("Codex claim has invalid complexity level")
         return CodexExecutionItem(
