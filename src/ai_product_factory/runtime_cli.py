@@ -1,5 +1,5 @@
-from .project_control_wake_outbox import ControlWakeOutbox
 from __future__ import annotations
+from .project_control_wake_outbox import ControlWakeOutbox
 import argparse,json,os,socket
 from decimal import Decimal, InvalidOperation
 from .model_executor import ModelExecutor
