@@ -168,13 +168,39 @@ class SupabaseChangeSetStore:
         }) or {}
 
     def claim_integration(self,worker_id:str)->ChangeSetIntegrationItem|None:
+        if not isinstance(worker_id,str) or not worker_id.strip():
+            raise ValueError("integration worker ID is required")
         data=self._rpc("factory_claim_change_set_integration",{"p_worker_id":worker_id,"p_lease_seconds":600})
-        if data is None:return None
+        if data is None:
+            return None
+        if not isinstance(data,dict):
+            raise RuntimeError("integration claim returned a non-object payload")
+        required=("change_set_id","project_key","repository","source_commit","candidate_commit","integration_branch")
+        for field in required:
+            if not isinstance(data.get(field),str) or not data[field].strip():
+                raise RuntimeError("integration claim missing "+field)
+        wave=data.get("current_wave")
+        if isinstance(wave,bool) or not isinstance(wave,int) or wave<1:
+            raise RuntimeError("integration claim has invalid wave")
+        units=data.get("work_units")
+        if not isinstance(units,list) or not units:
+            raise RuntimeError("integration claim has no work units")
+        for unit in units:
+            if not isinstance(unit,dict):
+                raise RuntimeError("integration claim has invalid work unit")
+            for field in ("plan_task_key","base_commit","output_commit"):
+                if not isinstance(unit.get(field),str) or not unit[field].strip():
+                    raise RuntimeError("integration work unit missing "+field)
+            paths=unit.get("changed_files")
+            if not isinstance(paths,list) or not paths or any(not isinstance(p,str) or not p.strip() for p in paths):
+                raise RuntimeError("integration work unit has invalid changed files")
+            if unit["base_commit"]!=data["candidate_commit"]:
+                raise RuntimeError("integration work unit has stale candidate base")
         return ChangeSetIntegrationItem(
-            change_set_id=str(data["change_set_id"]),project_key=str(data["project_key"]),
-            repository=str(data["repository"]),source_commit=str(data["source_commit"]),
-            candidate_commit=str(data["candidate_commit"]),integration_branch=str(data["integration_branch"]),
-            current_wave=int(data["current_wave"]),work_units=tuple(data.get("work_units") or ()),
+            change_set_id=data["change_set_id"],project_key=data["project_key"],
+            repository=data["repository"],source_commit=data["source_commit"],
+            candidate_commit=data["candidate_commit"],integration_branch=data["integration_branch"],
+            current_wave=wave,work_units=tuple(units),
         )
 
     def complete_integration(self,*,change_set_id:str,candidate_commit:str,changed_files:tuple[str,...])->dict:
