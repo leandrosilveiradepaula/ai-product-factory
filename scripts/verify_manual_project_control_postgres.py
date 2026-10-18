@@ -535,7 +535,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
         conn.execute("""insert into public.factory_change_set_work_units(
           change_set_id,wave,status,plan_task_key,base_commit,output_commit,changed_files)
           values (%s,%s,%s,%s,'candidate','out',%s::jsonb)""",
-          (future_set,wave,f"task-{wave}",'["'+path+'"]'))
+          (future_set,wave,status,f"task-{wave}",'["'+path+'"]'))
     next_result=conn.execute("""select public.factory_complete_change_set_integration_epoch(
       %s,%s,%s,%s,%s,%s,%s::jsonb)""",
       (future_set,future_project,future_epoch,"next-worker",1,"next-sha",'["src/one.py"]')).fetchone()[0]
