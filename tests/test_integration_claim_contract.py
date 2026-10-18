@@ -105,5 +105,58 @@ class IntegrationClaimContractTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.store.assert_integration_epoch(item,"stale-worker")
 
+
+    def test_atomic_integration_rpc_receives_exact_epoch_capability(self):
+        self.store._rpc=MagicMock(return_value=self.base)
+        item=self.store.claim_integration("worker")
+        self.store._rpc=MagicMock(return_value={
+            "change_set_id":item.change_set_id,"status":"review_ready",
+            "candidate_commit":"next","current_wave":1,"repair_jobs_integrated":0,
+        })
+        self.store.complete_integration(item=item,candidate_commit="next",changed_files=("src/a.py",))
+        self.store._rpc.assert_called_once_with("factory_complete_change_set_integration_epoch",{
+            "p_change_set_id":item.change_set_id,
+            "p_project_id":item.project_id,"p_generation":3,"p_worker_id":"worker",
+            "p_wave":1,"p_candidate_commit":"next","p_changed_files":["src/a.py"],
+        })
+        self.store._rpc=MagicMock(return_value={
+            "change_set_id":item.change_set_id,"status":"ci_pending","release_run_id":"run",
+        })
+        self.store.prepare_release(item=item,issue_number=7,
+            issue_url="https://github.com/owner/repo/issues/7",pr_number=9,
+            candidate_commit="next",branch=item.integration_branch)
+        self.store._rpc.assert_called_once_with("factory_prepare_change_set_release_epoch",{
+            "p_change_set_id":item.change_set_id,
+            "p_project_id":item.project_id,"p_generation":3,"p_worker_id":"worker",
+            "p_wave":1,"p_issue_number":7,
+            "p_issue_url":"https://github.com/owner/repo/issues/7",
+            "p_pr_number":9,"p_candidate_commit":"next","p_branch":item.integration_branch,
+        })
+
+    def test_legacy_repair_mutation_always_rejected(self):
+        self.store._rpc=MagicMock()
+        with self.assertRaises(PermissionError):
+            self.store.mark_repair_wave_integrated(
+                change_set_id="cs",wave=1,candidate_commit="candidate")
+        self.store._rpc.assert_not_called()
+
+    def test_epochless_mutation_fails_before_network(self):
+        from dataclasses import replace
+        self.store._rpc=MagicMock(return_value=self.base)
+        item=self.store.claim_integration("worker")
+        for malformed in (replace(item,project_id=None),replace(item,execution_generation=None),
+                          replace(item,lease_owner=None)):
+            self.store._rpc=MagicMock()
+            with self.subTest(malformed=malformed):
+                with self.assertRaises(PermissionError):
+                    self.store.complete_integration(
+                        item=malformed,candidate_commit="next",changed_files=("src/a.py",))
+                with self.assertRaises(PermissionError):
+                    self.store.prepare_release(
+                        item=malformed,issue_number=1,
+                        issue_url="https://github.com/owner/repo/issues/1",
+                        pr_number=2,candidate_commit="next",branch="factory/cs")
+                self.store._rpc.assert_not_called()
+
 if __name__=="__main__":
     unittest.main()
