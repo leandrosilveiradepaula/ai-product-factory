@@ -306,7 +306,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
   # Emit an actionable diagnostic without mutating any release or CI state.
   return {"claimed":False,"status":"candidate_drift_blocked",
    "run_id":item.run_id,"pr_number":item.pr_number,
-   "change_set_id":item.change_set_id,
+   "change_set_id":getattr(item,"change_set_id",None),
    "recorded_candidate_commit":item.candidate_commit,
    "observed_pr_head":pr.head_sha,
    "requires":"atomic_candidate_reconciliation"}
