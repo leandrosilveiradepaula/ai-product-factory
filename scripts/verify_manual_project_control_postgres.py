@@ -392,7 +392,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
       ("factory_prepare_change_set_release","uuid,integer,text,integer,text,text"),
     )
     for name,args in legacy_functions:
-        conn.execute(f"create function public.{name}({args}) returns jsonb language sql as $ select '{{}}'::jsonb $")
+        conn.execute(f"create function public.{name}({args}) returns jsonb language sql as $body$ select '{{}}'::jsonb $body$")
         conn.execute(f"grant execute on function public.{name}({args}) to service_role")
     new_sql=(root/"supabase/migrations/20261018013000_atomic_change_set_integration_epoch_writes.sql").read_text()
     conn.execute(new_sql)
