@@ -7,6 +7,12 @@ class SupabaseDirectRunQueue:
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
   cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers
  def claim_next(self,worker_id:str,agent_key:str|None=None,run_id:str|None=None)->DirectExecutionItem|None:
+  if not isinstance(worker_id,str) or not worker_id.strip():
+      raise ValueError("worker ID is required to claim routed work")
+  if run_id is not None and (not isinstance(run_id,str) or not run_id.strip()):
+      raise ValueError("run ID must be non-empty")
+  if agent_key is not None and (not isinstance(agent_key,str) or not agent_key.strip()):
+      raise ValueError("agent key must be non-empty")
   req=urllib.request.Request(f"{self.url}/rest/v1/rpc/factory_claim_next_agent_direct_run",data=json.dumps({"p_worker_id":worker_id,"p_agent_key":agent_key,"p_run_id":run_id}).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
@@ -37,6 +43,8 @@ class SupabaseDirectRunQueue:
           raise RuntimeError("routed claim has invalid "+field)
   if d.get("description") is not None and not isinstance(d["description"],str):
       raise RuntimeError("routed claim has invalid description")
+  if d.get("change_set_id") is not None and d.get("wave") is None:
+      raise RuntimeError("routed claim change set requires wave")
   item=DirectExecutionItem(d["run_id"],d["task_id"],d["project_key"],d["repository"],d.get("issue_number"),d["title"],d.get("description") or "",d["branch"],bool(d.get("human_gate_required",False)),str(d["change_set_id"]) if d.get("change_set_id") else None,str(d["work_unit_id"]) if d.get("work_unit_id") else None,int(d["wave"]) if d.get("wave") is not None else None)
   object.__setattr__(item,"project_id",d["project_id"])
   object.__setattr__(item,"execution_generation",int(d["execution_generation"]))

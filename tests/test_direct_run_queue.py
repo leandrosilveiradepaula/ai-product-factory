@@ -68,4 +68,23 @@ class Tests(unittest.TestCase):
     with self.assertRaisesRegex(RuntimeError,message):
      queue.claim_next("worker")
 
+ def test_claim_requires_coherent_wave_and_codex_level(self):
+  base={"run_id":"run","project_id":"project","execution_generation":1,"task_id":"task","project_key":"demo","repository":"owner/repo","title":"Work","branch":"factory/work"}
+  cases=[
+   ({"change_set_id":"cs","work_unit_id":"wu"},"change set requires wave"),
+  ]
+  queue=SupabaseDirectRunQueue(url="https://x.supabase.co",service_role_key="secret")
+  for override,message in cases:
+   with self.subTest(override=override),patch("urllib.request.urlopen",return_value=Response({**base,**override})):
+    with self.assertRaisesRegex(RuntimeError,message):
+     queue.claim_next("worker")
+
+ def test_invalid_claim_filters_do_not_contact_control_plane(self):
+  queue=SupabaseDirectRunQueue(url="https://x.supabase.co",service_role_key="secret")
+  with patch("urllib.request.urlopen") as request:
+   for args in [("",None,None),("worker","",None),("worker",None,"")]:
+    with self.subTest(args=args),self.assertRaises(ValueError):
+     queue.claim_next(args[0],agent_key=args[1],run_id=args[2])
+   request.assert_not_called()
+
 if __name__=="__main__":unittest.main()
