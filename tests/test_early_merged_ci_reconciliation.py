@@ -62,8 +62,9 @@ class MergedBeforeReadinessTests(unittest.TestCase):
 
     def test_untrusted_changed_head_blocks_without_any_rpc(self):
         result, _, github, store = self.run_once(candidate(sha="c" * 40))
-        self.assertIsInstance(result, RuntimeError)
-        self.assertIn("head no longer matches", str(result))
+        self.assertEqual(result["status"], "candidate_drift_blocked")
+        self.assertEqual(result["recorded_candidate_commit"], "a" * 40)
+        self.assertEqual(result["observed_pr_head"], "c" * 40)
         store.block_early_merged_ci_candidate.assert_not_called()
         github.get_ci_state.assert_not_called()
 
