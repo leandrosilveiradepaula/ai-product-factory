@@ -51,9 +51,12 @@ class TrustedWakeContinuation(unittest.TestCase):
 
     def test_routed_workers_never_start_from_event_alone(self):
         direct, codex = job("direct"), job("codex")
+        for event in AUTONOMOUS:
+            self.assertIn("github.event_name == '" + event + "'", direct)
+        for event in ("schedule", "repository_dispatch", "workflow_run"):
+            self.assertIn("github.event_name == '" + event + "'", codex)
+        self.assertNotIn("github.event_name == 'issue_comment'", codex)
         for lane in (direct, codex):
-            for event in AUTONOMOUS:
-                self.assertIn("github.event_name == '" + event + "'", lane)
             self.assertIn("needs.dispatch.result == 'success'", lane)
         self.assertIn("needs.dispatch.outputs.direct_count != '0'", direct)
         self.assertIn("needs.dispatch.outputs.codex_count != '0'", codex)
@@ -77,9 +80,12 @@ class TrustedWakeContinuation(unittest.TestCase):
 
     def test_manual_codex_and_preview_stay_opt_in_and_evidence_gated(self):
         manual, preview = job("codex-manual"), job("preview")
+        for event in ("schedule", "repository_dispatch", "workflow_run"):
+            self.assertIn("github.event_name == '" + event + "'", manual)
+        self.assertNotIn("github.event_name == 'issue_comment'", manual)
+        for event in AUTONOMOUS:
+            self.assertIn("github.event_name == '" + event + "'", preview)
         for lane in (manual, preview):
-            for event in AUTONOMOUS:
-                self.assertIn("github.event_name == '" + event + "'", lane)
             self.assertIn("needs.schedule-probe.result == 'success'", lane)
         for marker in (
             "needs.schedule-probe.outputs.codex_manual_work == 'true'",
