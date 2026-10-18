@@ -15,7 +15,7 @@ class PreviewBrowserInfrastructureRecoveryContract(unittest.TestCase):
             "v_set.status<>'ci_pending'",
             "v_set.candidate_commit is distinct from p_candidate_commit",
             "v_control.state is distinct from 'running'",
-            "j.required and j.status<>'passed'",
+            "and (j.status<>'passed'",
             "e.eval_type='quality_gate'",
             "e.baseline_ref=p_candidate_commit",
             "e.eval_type='browser_e2e'",
