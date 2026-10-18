@@ -7,6 +7,7 @@ from ai_product_factory.change_set_store import SupabaseChangeSetStore
 class IntegrationClaimContractTests(unittest.TestCase):
     def setUp(self):
         self.store=SupabaseChangeSetStore(url="https://example.supabase.co",service_role_key="secret")
+        self.store._get=lambda path: [{"project_kind":"greenfield","manifest":{},"repository":"owner/repo"}]
         self.base={
             "change_set_id":"11111111-1111-4111-8111-111111111111","project_id":"22222222-2222-4222-8222-222222222222","execution_generation":3,"lease_owner":"worker","project_key":"demo","repository":"owner/repo",
             "source_commit":"source","candidate_commit":"candidate",
