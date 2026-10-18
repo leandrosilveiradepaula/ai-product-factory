@@ -396,6 +396,17 @@ with psycopg.connect(dsn,autocommit=True) as conn:
         conn.execute(f"grant execute on function public.{name}({args}) to service_role")
     new_sql=(root/"supabase/migrations/20261018013000_atomic_change_set_integration_epoch_writes.sql").read_text()
     conn.execute(new_sql)
+    readiness=conn.execute("select public.factory_integration_epoch_write_readiness()").fetchone()[0]
+    assert readiness=={
+        "version":1,"atomic_completion":True,"atomic_release":True,"phase_checkpoints":True,
+    },readiness
+    try:
+        with conn.transaction():
+            conn.execute("""grant execute on function
+              public.factory_complete_change_set_integration(uuid,text,jsonb) to service_role""")
+            conn.execute("select public.factory_integration_epoch_write_readiness()")
+    except psycopg.Error: pass
+    else: raise AssertionError("readiness ignored an unsafe legacy mutation grant")
     for name,args in legacy_functions:
         acl=conn.execute(f"""select
           has_function_privilege('service_role','public.{name}({args})','EXECUTE'),
