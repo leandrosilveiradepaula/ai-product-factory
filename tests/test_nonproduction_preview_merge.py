@@ -93,6 +93,11 @@ class NonproductionMergeObserverTests(unittest.TestCase):
         g=github()
         g.get_pull_request.return_value=pr()
         store=MagicMock()
+        store.find_verified_nonproduction_browser_snapshot.return_value={
+            "snapshot_id":"12345678-1234-1234-1234-123456789012",
+            "preview_url":"https://example-git-preview.vercel.app",
+            "verifier_run_id":12345,
+        }
         store.observe_nonproduction_preview_merge.return_value={
             "run_id":"r","status":"integrated","merge_sha":MERGE,"release_completed":False,
         }
@@ -104,9 +109,26 @@ class NonproductionMergeObserverTests(unittest.TestCase):
         self.assertEqual(result["status"],"integrated_nonproduction")
         self.assertIs(result["release_completed"],False)
         store.observe_nonproduction_preview_merge.assert_called_once()
+        observed=store.observe_nonproduction_preview_merge.call_args.kwargs["verified_evidence"]
+        self.assertEqual(observed["postmerge_browser_snapshot_id"],
+                         "12345678-1234-1234-1234-123456789012")
+        self.assertEqual(observed["verifier_run_id"],"12345")
         store.finalize_console_human_release.assert_not_called()
         store.update_run_status.assert_not_called()
         g.close_issue.assert_not_called()
+
+    def test_missing_merged_sha_browser_evidence_waits_without_mutation(self):
+        g=github()
+        g.get_pull_request.return_value=pr()
+        store=MagicMock()
+        store.find_verified_nonproduction_browser_snapshot.return_value=None
+        with patch("ai_product_factory.runtime_cli.SupabaseReleaseFollowupQueue") as queue_cls,patch(
+            "ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=g),patch(
+            "ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store):
+            queue_cls.return_value.next_pending.return_value=item()
+            result=run_release_once()
+        self.assertEqual(result["status"],"wait_postmerge_browser_evidence")
+        store.observe_nonproduction_preview_merge.assert_not_called()
 
     def test_open_preview_pr_waits_and_never_mutates(self):
         g=github()
@@ -119,6 +141,39 @@ class NonproductionMergeObserverTests(unittest.TestCase):
             result=run_release_once()
         self.assertEqual(result["status"],"awaiting_nonproduction_merge")
         store.observe_nonproduction_preview_merge.assert_not_called()
+
+    def test_snapshot_reader_requires_exact_sha_and_verified_browser(self):
+        import json
+        from unittest.mock import patch
+        from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
+        class Response:
+            def __init__(self,data):self.data=data
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+            def read(self):return json.dumps(self.data).encode()
+        row={
+            "id":"12345678-1234-1234-1234-123456789012",
+            "evidence":{
+                "candidate_commit":MERGE,"target_repository":"owner/crm",
+                "preview":{"url":"https://demo.vercel.app","provider":"vercel",
+                           "status":"browser_verified","browser_verifier_run_id":4321}},
+            "source_status":{"vercel_preview":"resolved","browser_visual_validation":"success"},
+            "constraints":{"production_merge_authorized":False},"gaps":[],
+        }
+        with patch("urllib.request.urlopen",return_value=Response([row])):
+            store=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret")
+            found=store.find_verified_nonproduction_browser_snapshot(
+                project_id="p",repository="owner/crm",merge_sha=MERGE)
+        self.assertEqual(found["snapshot_id"],row["id"])
+        invalid={**row,"evidence":{**row["evidence"],"candidate_commit":HEAD}}
+        with patch("urllib.request.urlopen",return_value=Response([invalid])):
+            self.assertIsNone(store.find_verified_nonproduction_browser_snapshot(
+                project_id="p",repository="owner/crm",merge_sha=MERGE))
+        bad={**row,"source_status":{"vercel_preview":"resolved","browser_visual_validation":"failure"}}
+        with patch("urllib.request.urlopen",return_value=Response([bad])):
+            with self.assertRaisesRegex(RuntimeError,"not a verified"):
+                store.find_verified_nonproduction_browser_snapshot(
+                    project_id="p",repository="owner/crm",merge_sha=MERGE)
 
     def test_contract_keeps_production_path_independent(self):
         from pathlib import Path

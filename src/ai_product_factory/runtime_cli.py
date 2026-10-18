@@ -603,7 +603,22 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
       or checked.head_ref!=item.branch
       or checked.head_repository!=item.repository):
    raise RuntimeError("nonproduction PR identity changed during observation")
-  result=SupabaseDeliveryStore().observe_nonproduction_preview_merge(
+  store=SupabaseDeliveryStore()
+  postmerge=store.find_verified_nonproduction_browser_snapshot(
+   project_id=item.project_id,repository=item.repository,merge_sha=receipt["merge_sha"])
+  if postmerge is None:
+   return {"claimed":True,"status":"wait_postmerge_browser_evidence",
+    "run_id":item.run_id,"pr_number":item.pr_number}
+  receipt={**receipt,
+   "postmerge_browser_snapshot_id":postmerge["snapshot_id"],
+   "postmerge_preview_url":postmerge["preview_url"],
+   "verifier_run_id":str(postmerge["verifier_run_id"])}
+  final_pr=github.get_pull_request(item.pr_number)
+  if (not final_pr.merged or final_pr.merge_commit_sha!=receipt["merge_sha"]
+      or final_pr.head_sha!=item.candidate_commit
+      or final_pr.base_ref!=receipt["base_ref"]):
+   raise RuntimeError("nonproduction PR identity changed after browser receipt")
+  result=store.observe_nonproduction_preview_merge(
    run_id=item.run_id,pr_number=item.pr_number,candidate_commit=item.candidate_commit,
    merge_sha=receipt["merge_sha"],base_ref=receipt["base_ref"],
    verified_evidence=receipt)
