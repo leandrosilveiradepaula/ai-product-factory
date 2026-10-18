@@ -61,8 +61,19 @@ class ChangeSetIntegrator:
         if not isinstance(completed,dict):
             raise RuntimeError("integration completion returned an invalid result")
         status=completed.get("status")
-        if not isinstance(status,str) or not status.strip():
-            raise RuntimeError("integration completion returned an invalid status")
+        if status not in ("building","review_ready"):
+            raise RuntimeError("integration completion returned an unsupported status")
+        if completed.get("change_set_id")!=item.change_set_id:
+            raise RuntimeError("integration completion changed Change Set identity")
+        if completed.get("candidate_commit")!=candidate:
+            raise RuntimeError("integration completion changed candidate commit")
+        completed_wave=completed.get("current_wave")
+        if isinstance(completed_wave,bool) or not isinstance(completed_wave,int):
+            raise RuntimeError("integration completion returned an invalid wave")
+        if status=="building" and completed_wave<=item.current_wave:
+            raise RuntimeError("integration completion did not advance the wave")
+        if status=="review_ready" and completed_wave!=item.current_wave:
+            raise RuntimeError("integration completion changed final wave")
         self.store.mark_repair_wave_integrated(
             change_set_id=item.change_set_id,wave=item.current_wave,candidate_commit=candidate,
         )
@@ -84,10 +95,17 @@ class ChangeSetIntegrator:
                 )
             if pull_request.head_sha!=candidate:
                 raise RuntimeError("final Change Set PR head does not match integrated candidate")
-            self.store.prepare_release(
+            release=self.store.prepare_release(
                 change_set_id=item.change_set_id,issue_number=issue.number,issue_url=issue.html_url,
                 pr_number=pull_request.number,candidate_commit=candidate,branch=item.integration_branch,
             )
+            if not isinstance(release,dict) or release.get("status")!="ci_pending":
+                raise RuntimeError("integration release returned an invalid status")
+            if release.get("change_set_id")!=item.change_set_id:
+                raise RuntimeError("integration release changed Change Set identity")
+            release_run_id=release.get("release_run_id")
+            if not isinstance(release_run_id,str) or not release_run_id.strip():
+                raise RuntimeError("integration release missing durable run")
             status="ci_pending"
         return ChangeSetIntegrationResult(
             change_set_id=item.change_set_id,wave=item.current_wave,status=status,
