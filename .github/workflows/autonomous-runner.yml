@@ -658,7 +658,7 @@ jobs:
 
   codex:
     environment: openai-codex
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0' && vars.FACTORY_CODEX_ENABLED == 'true' && ((github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.dispatch.result == 'success' && needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0' && vars.FACTORY_CODEX_ENABLED == 'true' && ((github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: dispatch
     strategy:
       fail-fast: false
@@ -759,7 +759,7 @@ jobs:
 
 
   codex-manual:
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (((github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') && (needs.schedule-probe.outputs.codex_manual_work == 'true' || (needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0'))) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (needs.dispatch.result == 'success' || needs.dispatch.result == 'skipped') && (((github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') && (needs.schedule-probe.outputs.codex_manual_work == 'true' || (needs.dispatch.outputs.codex_count != '' && needs.dispatch.outputs.codex_count != '0'))) || (github.event_name == 'workflow_dispatch' && inputs.run_codex == true)) }}
     needs: [schedule-probe, dispatch]
     runs-on: ubuntu-latest
     timeout-minutes: 8
