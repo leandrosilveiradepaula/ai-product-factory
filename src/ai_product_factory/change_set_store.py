@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import uuid
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -199,10 +201,28 @@ class SupabaseChangeSetStore:
                 raise RuntimeError("integration work unit has invalid changed files")
             if unit["base_commit"]!=data["candidate_commit"]:
                 raise RuntimeError("integration work unit has stale candidate base")
-        if data["repository"].count("/")!=1 or any(not part.strip() for part in data["repository"].split("/")):
+        # The claim is an untrusted privileged RPC response. Never let malformed
+        # repository, ref or file identities reach the GitHub write adapter.
+        repo_parts=data["repository"].split("/")
+        if len(repo_parts)!=2 or any(not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}",part) or part in (".","..") for part in repo_parts):
             raise RuntimeError("integration claim has invalid repository")
-        if data["integration_branch"].startswith("refs/") or data["integration_branch"] in ("main","master"):
-            raise RuntimeError("integration claim targets protected branch")
+        branch=data["integration_branch"]
+        if (len(branch)>200 or not branch.startswith("factory/") or
+            not re.fullmatch(r"[A-Za-z0-9_./-]+",branch) or
+            branch.endswith(("/", ".")) or ".." in branch or "//" in branch or
+            "/." in branch or "@{" in branch or branch.endswith(".lock")):
+            raise RuntimeError("integration claim targets unsafe branch")
+        if len(data["project_key"])>150 or any(ord(c)<33 or ord(c)==127 for c in data["project_key"]):
+            raise RuntimeError("integration claim has unsafe project key")
+        for field in ("source_commit","candidate_commit"):
+            value=data[field]
+            if len(value)>128 or any(ord(c)<33 or ord(c)==127 for c in value):
+                raise RuntimeError("integration claim has unsafe commit reference")
+        try:
+            uuid.UUID(data["change_set_id"])
+            uuid.UUID(data["project_id"])
+        except (ValueError,TypeError,AttributeError) as exc:
+            raise RuntimeError("integration claim has invalid UUID capability") from exc
         if len(units)>100:
             raise RuntimeError("integration claim exceeds work unit limit")
         seen_tasks=set()
@@ -212,6 +232,10 @@ class SupabaseChangeSetStore:
             if task_key in seen_tasks:
                 raise RuntimeError("integration claim repeats plan task")
             seen_tasks.add(task_key)
+            if len(unit["plan_task_key"])>200 or any(ord(c)<33 or ord(c)==127 for c in unit["plan_task_key"]):
+                raise RuntimeError("integration work unit has unsafe task key")
+            if len(unit["output_commit"])>128 or any(ord(c)<33 or ord(c)==127 for c in unit["output_commit"]):
+                raise RuntimeError("integration work unit has unsafe output reference")
             if unit["output_commit"]==unit["base_commit"]:
                 raise RuntimeError("integration work unit has unchanged output")
             if len(unit["changed_files"])>200:
