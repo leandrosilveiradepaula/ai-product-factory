@@ -74,7 +74,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
         cases=[
             ({"source_commit":"candidate"},"unchanged candidate"),
             ({"work_units":[{**self.base["work_units"][0],
-                "changed_files":["src/a.py","src/a.py"]}]},"repeats changed file"),
+                "changed_files":["src/a.py","src/a.py"]}]},"conflicting file owners"),
         ]
         for override,message in cases:
             with self.subTest(message=message):
