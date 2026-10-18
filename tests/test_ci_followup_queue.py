@@ -86,7 +86,7 @@ class Tests(unittest.TestCase):
         task=[{"project_id":"p"}]
         project=[{"project_key":"demo","repository":"owner/repo"}]
         usage=[{"metadata":{"pr":9,"head_sha":"other"}}]
-        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(usage)]):
+        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(usage),Response([])]):
             q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
             with self.assertRaises(RuntimeError): q.next_pending()
 
