@@ -521,6 +521,8 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches verified release candidate")
+ if getattr(pr,"base_ref",None) not in (None,"main"):
+  return {"claimed":True,"status":"nonproduction_candidate_not_released","run_id":item.run_id,"pr_number":item.pr_number}
  store=SupabaseDeliveryStore()
  if item.merge_sha:
   if not pr.merged or not pr.merge_commit_sha:
