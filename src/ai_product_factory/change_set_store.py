@@ -254,6 +254,31 @@ class SupabaseChangeSetStore:
                     raise RuntimeError("integration work unit has unsafe path suffix")
                 if path.startswith("/") or "\\" in path or any(part in ("",".","..") for part in path.split("/")):
                     raise RuntimeError("integration work unit has unsafe path")
+                # Reject special filesystem names and Git path ambiguity before any remote read/write.
+                segments=path.split("/")
+                if any(part.casefold() in (".git", ".gitmodules", ".gitattributes", ".gitignore") for part in segments):
+                    raise RuntimeError("integration path targets protected git metadata")
+                if any(":" in part for part in segments):
+                    raise RuntimeError("integration path contains colon")
+                if any("?" in part or "*" in part for part in segments):
+                    raise RuntimeError("integration path contains wildcard")
+                if any('"' in part or "<" in part or ">" in part or "|" in part for part in segments):
+                    raise RuntimeError("integration path contains forbidden character")
+                if any(part.upper().split(".")[0] in (
+                    "CON","PRN","AUX","NUL","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+                    "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9",
+                ) for part in segments):
+                    raise RuntimeError("integration path contains reserved device name")
+                if any(part.startswith("~") for part in segments):
+                    raise RuntimeError("integration path contains home alias")
+                if any(part.startswith("-") for part in segments):
+                    raise RuntimeError("integration path contains option-like segment")
+                if any(part.endswith(".lock") for part in segments):
+                    raise RuntimeError("integration path contains lock file")
+                if any("\\u202e" in part or "\\u202d" in part for part in segments):
+                    raise RuntimeError("integration path contains bidi override")
+                if any(part.startswith(".") and part not in (".github",) for part in segments):
+                    raise RuntimeError("integration path contains hidden segment")
                 if path in seen_paths:
                     raise RuntimeError("integration claim has conflicting file owners")
                 seen_paths.add(path)
