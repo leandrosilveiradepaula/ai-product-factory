@@ -34,6 +34,8 @@ class ChangeSetIntegrationItem:
     project_id:str|None=None
     execution_generation:int|None=None
     lease_owner:str|None=None
+    project_kind:str|None=None
+    delivery_target:dict|None=None
 
 
 class SupabaseChangeSetStore:
@@ -110,6 +112,7 @@ class SupabaseChangeSetStore:
         project_key=str(data.get("project_key") or "").strip()
         decisions=[]
         project_kind=""
+        delivery_target=None
         if project_key:
             rows=self._get(
                 "factory_projects?select=manifest,project_kind&project_key=eq."+quote(project_key)+"&limit=1"
@@ -120,6 +123,7 @@ class SupabaseChangeSetStore:
                     value=rows[0]["manifest"].get("human_decisions")
                     if isinstance(value,list):
                         decisions=value
+                    delivery_target=rows[0]["manifest"].get("delivery_target")
 
         assignment=dict(data.get("assignment") if isinstance(data.get("assignment"),dict) else {})
         work_unit_id=str(data.get("work_unit_id") or "").strip()
@@ -148,6 +152,7 @@ class SupabaseChangeSetStore:
         enriched["assignment"]=assignment
         enriched["human_decisions"]=decisions
         enriched["project_kind"]=project_kind
+        enriched["delivery_target"]=delivery_target
         return enriched
 
     def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
@@ -309,12 +314,22 @@ class SupabaseChangeSetStore:
             raise RuntimeError("integration claim missing project capability")
         if data.get("lease_owner")!=worker_id:
             raise RuntimeError("integration claim lease owner mismatch")
+        projects=self._get("factory_projects?select=project_kind,manifest,repository&id=eq."+quote(data["project_id"],safe="")+"&limit=1")
+        if not isinstance(projects,list) or len(projects)!=1 or projects[0].get("repository")!=data["repository"]:
+            raise PermissionError("integration project identity unavailable or mismatched")
+        row=projects[0]
+        kind=row.get("project_kind")
+        if kind not in ("greenfield","existing"):
+            raise PermissionError("unrecognized integration project kind")
+        manifest=row.get("manifest")
+        target=manifest.get("delivery_target") if isinstance(manifest,dict) else None
         return ChangeSetIntegrationItem(
             change_set_id=data["change_set_id"],project_key=data["project_key"],
             repository=data["repository"],source_commit=data["source_commit"],
             candidate_commit=data["candidate_commit"],integration_branch=data["integration_branch"],
             current_wave=wave,work_units=tuple(units),
             project_id=data["project_id"],execution_generation=generation,lease_owner=worker_id,
+            project_kind=kind,delivery_target=target,
         )
 
     def assert_integration_epoch(self,item:ChangeSetIntegrationItem,worker_id:str)->None:
