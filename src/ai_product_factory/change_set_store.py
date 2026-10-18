@@ -251,7 +251,7 @@ class SupabaseChangeSetStore:
                 if any(part.lower()==".git" for part in path.split("/")):
                     raise RuntimeError("integration path targets git internals")
                 if path.endswith(("/", " ", ".")) or any(part.endswith((" ", ".")) for part in path.split("/")):
-                    raise RuntimeError("integration path has unsafe suffix")
+                    raise RuntimeError("integration work unit has unsafe path suffix")
                 if path.startswith("/") or "\\" in path or any(part in ("",".","..") for part in path.split("/")):
                     raise RuntimeError("integration work unit has unsafe path")
                 if path in seen_paths:
