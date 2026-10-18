@@ -21,6 +21,17 @@ class SupabaseDeliveryStore:
  def update_run_status(self,run_id:str,status:str,*,candidate_commit:str|None=None)->DurableRunRecord:
   d=self._rpc("factory_update_run_delivery_status",{"p_run_id":run_id,"p_status":status,"p_candidate_commit":candidate_commit})
   return DurableRunRecord(d["run_id"],d["task_id"],d["status"],d.get("candidate_commit"))
+ def reconcile_change_set_ci_candidate(self,*,change_set_id:str,run_id:str,pr_number:int,previous_commit:str,new_commit:str,verified_evidence:dict)->dict:
+  """Atomic, audited SHA update; caller must first verify GitHub identity/ancestry."""
+  if not change_set_id or not run_id or pr_number<1 or not isinstance(verified_evidence,dict):
+   raise ValueError("missing reconciliation identity")
+  result=self._rpc("factory_reconcile_change_set_ci_candidate",{
+   "p_change_set_id":change_set_id,"p_run_id":run_id,
+   "p_pr_number":pr_number,"p_previous_commit":previous_commit,
+   "p_new_commit":new_commit,"p_verified_evidence":verified_evidence})
+  if not isinstance(result,dict) or result.get("candidate_commit")!=new_commit or result.get("previous_commit")!=previous_commit or result.get("run_id")!=run_id:
+   raise RuntimeError("inconsistent atomic candidate reconciliation receipt")
+  return result
  def block_early_merged_ci_candidate(self,*,run_id:str,repository:str,pr_number:int,candidate_commit:str,merge_sha:str)->dict:
   """Atomic fail-closed reconciliation; only after exact GitHub merge observation.
 

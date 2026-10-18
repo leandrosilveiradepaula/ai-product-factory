@@ -137,6 +137,16 @@ class GitHubRestAdapter:
             raise ValueError(f"#{issue_number} is a pull request, not an issue")
         return GitHubIssue(row["number"], row["title"], row.get("body") or "", row["html_url"])
 
+    def compare_commits(self, previous_commit: str, new_commit: str) -> dict[str, Any]:
+        """GitHub comparison evidence; never assume a moved head is trusted."""
+        import re
+        if not re.fullmatch(r"[0-9a-f]{40}", previous_commit) or not re.fullmatch(r"[0-9a-f]{40}", new_commit):
+            raise ValueError("comparison requires full lowercase commit SHAs")
+        comparison=self._call("GET",f"/repos/{self.repository}/compare/{previous_commit}...{new_commit}")
+        return {"status":comparison.get("status"),"ahead_by":comparison.get("ahead_by"),
+                "behind_by":comparison.get("behind_by"),
+                "files":[row.get("filename") for row in comparison.get("files",[])]}
+
     def get_branch_sha(self, branch: str) -> str:
         encoded = parse.quote(branch, safe="")
         row = self._call("GET", f"/repos/{self.repository}/git/ref/heads/{encoded}")

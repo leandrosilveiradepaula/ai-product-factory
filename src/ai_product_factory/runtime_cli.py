@@ -294,6 +294,44 @@ def run_health_once()->dict:
    policy_ready=False
  return {"status":"healthy","control_plane_configured":bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))),"primary_auth":auth.kind.value,"primary_enabled":os.getenv("FACTORY_PRIMARY_MODEL_ENABLED")=="true","budget_configured":policy_ready,"reservation_configured":policy_ready,"codex":{"enabled":os.getenv("FACTORY_CODEX_ENABLED")=="true","configured":not codex_missing,"ready":os.getenv("FACTORY_CODEX_ENABLED")=="true" and not codex_missing and os.path.isfile(os.getenv("OPENAI_IDENTITY_TOKEN_FILE","")),"missing":codex_missing},"vercel_preview_api":{"enabled":vercel.enabled,"configured":vercel.configured,"ready":vercel.ready,"missing":list(vercel.missing)},"vercel_preview_github":{"enabled":github_vercel.enabled,"configured":github_vercel.configured,"ready":github_vercel.ready,"missing":list(github_vercel.missing)},"github_alerts":{"enabled":alerts.enabled,"configured":alerts.configured,"ready":alerts.ready,"missing":list(alerts.missing)}}
 
+def reconcile_ci_candidate_once(*,expected_run_id:str,expected_pr_number:int,allowed_paths:tuple[str,...]=(".github/workflows/crm-validation.yml",))->dict:
+ """Explicit operator-invoked reconciliation; never run on a normal CI poll.
+
+ Requires an exact run/PR, same-repository branch, clean fast-forward and an
+ allowlisted change set. No release or merge action is performed.
+ """
+ import re
+ item=SupabaseCIFollowupQueue().next_pending(allow_unreconciled_receipt=True)
+ if item is None or item.run_id!=expected_run_id or item.pr_number!=expected_pr_number:
+  raise RuntimeError("requested candidate is not the next durable CI item")
+ if not item.change_set_id:
+  raise RuntimeError("only change-set candidates support atomic reconciliation")
+ github=GitHubRestAdapter(repository=item.repository)
+ pr=github.get_pull_request(item.pr_number)
+ if (pr.merged or pr.state!="open" or pr.head_ref!=item.branch
+     or pr.head_repository!=item.repository or not pr.base_ref):
+  raise RuntimeError("GitHub PR identity or open state mismatch")
+ old=item.candidate_commit
+ new=pr.head_sha
+ if not re.fullmatch(r"[0-9a-f]{40}",old) or not re.fullmatch(r"[0-9a-f]{40}",new) or old==new:
+  raise RuntimeError("candidate SHA drift is not a valid update")
+ comparison=github.compare_commits(old,new)
+ changed=comparison.get("files")
+ if (comparison.get("status")!="ahead" or comparison.get("behind_by")!=0
+     or not isinstance(comparison.get("ahead_by"),int) or comparison["ahead_by"]<1
+     or not isinstance(changed,list) or not changed
+     or len(changed)>300 or any(path not in allowed_paths for path in changed)):
+  raise RuntimeError("GitHub candidate ancestry or changed-path policy rejected")
+ if github.get_branch_sha(item.branch)!=new:
+  raise RuntimeError("candidate branch moved during reconciliation")
+ evidence={"old_sha":old,"new_sha":new,"pr_number":str(item.pr_number),
+           "compare_status":"ahead","ahead_by":str(comparison["ahead_by"]),
+           "changed_files":changed,"branch":item.branch,"repository":item.repository}
+ return SupabaseDeliveryStore().reconcile_change_set_ci_candidate(
+  change_set_id=item.change_set_id,run_id=item.run_id,pr_number=item.pr_number,
+  previous_commit=old,new_commit=new,verified_evidence=evidence)
+
+
 def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  queue=SupabaseCIFollowupQueue()
  item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
@@ -743,9 +781,12 @@ def run_project_control_settlement()->dict:
     return SupabaseProjectControlSettlement().settle_pending()
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
- if args.mode=="health":out=run_health_once()
+ if args.mode=="reconcile-ci-candidate":
+  if not args.source_run_id or not args.pr_number:raise ValueError("--source-run-id and --pr-number required")
+  out=reconcile_ci_candidate_once(expected_run_id=args.source_run_id,expected_pr_number=args.pr_number)
+ elif args.mode=="health":out=run_health_once()
  elif args.mode=="product-readiness-evidence":out=record_product_worker_readiness()
  elif args.mode=="github-preflight":out=run_project_github_preflight(args.project_key)
  elif args.mode=="schedule-probe":out=SupabaseScheduleProbe().probe()
