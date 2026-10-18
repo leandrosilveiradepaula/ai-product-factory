@@ -202,12 +202,24 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         github.get_pull_request.return_value = SimpleNamespace(
             state="open", merged=False, head_sha=sha, head_ref="preview/candidate",
             head_repository="owner/crm", base_ref="main")
-        github.get_file_text.side_effect = lambda path, ref: "governance for " + path
+        tick = chr(96)
+        github.get_file_text.side_effect = lambda path, ref: (
+            "## Authorized task (2026-10-10): test scope\n"
+            + tick + "src/services/SettingsService.ts" + tick
+            if path == "docs/codex/CURRENT_TASK.md"
+            else ("code evidence" if path.endswith(".ts") else "governance for " + path)
+        )
+        github.list_file_paths.return_value = ("src/services/SettingsService.ts",)
         with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
             evidence = q._live_candidate_context("project-id", {"current_state_facts": {}})
         observed = evidence["current_state_facts"]["live_candidate"]
         self.assertEqual(observed["sha"], sha)
         self.assertIn("AGENTS.md", observed["governance"])
+        self.assertTrue(observed["verified_open_pr"]["verified"])
+        self.assertEqual(
+            observed["source_evidence"]["inspected_files"][0]["path"],
+            "src/services/SettingsService.ts"
+        )
         github.get_file_text.assert_any_call("AGENTS.md", ref=sha)
         github.get_branch_sha.side_effect = lambda ref: "b" * 40
         with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):

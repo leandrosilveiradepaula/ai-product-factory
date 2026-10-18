@@ -1,0 +1,108 @@
+"""Bounded exact-SHA code evidence for the latest authorized existing-project task.
+
+The repository's task record is governance, not proof that a listed defect remains.
+This reader never writes to GitHub, guesses code paths, or certifies product readiness.
+"""
+from __future__ import annotations
+
+import re
+
+_AUTHORIZED = re.compile(
+    r"^##[ \t]+(?:Additional[ \t]+)?Authorized[ \t]+task\b[^\n]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_H2 = re.compile(r"^##[ \t]+", re.MULTILINE)
+_BACKTICK = re.compile(r"\x60([^\x60\r\n]{1,240})\x60")
+_CODE_PATH = re.compile(
+    r"^(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
+    r"[A-Za-z0-9_./()\-]+\.(?:py|tsx?|jsx?|cjs|mjs)$"
+)
+_SECRET_MATERIAL = re.compile(
+    r"(?i)(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|"
+    r"(?:sk-proj-|sb_secret_|github_pat_|ghp_)[A-Za-z0-9_-]{10,})"
+)
+_MAX_FILES = 3
+_MAX_BYTES = 24000
+_MAX_FILE_BYTES = 14000
+
+
+def _latest_scope(task_record: str) -> tuple[str | None, list[str]]:
+    if not isinstance(task_record, str):
+        raise ValueError("candidate task record must be text")
+    headings = list(_AUTHORIZED.finditer(task_record))
+    if not headings:
+        return None, []
+    latest = headings[-1]
+    end = _H2.search(task_record, latest.end())
+    section = task_record[latest.end():end.start() if end else len(task_record)]
+    paths: list[str] = []
+    for raw in _BACKTICK.findall(section):
+        path = raw.strip()
+        if (_CODE_PATH.fullmatch(path)
+            and ".." not in path.split("/")
+            and path not in paths):
+            paths.append(path)
+    return latest.group().strip(), paths
+
+
+def _bounded_excerpt(source: str, limit: int) -> tuple[str, bool]:
+    encoded = source.encode("utf-8")
+    if len(encoded) <= limit:
+        return source, True
+    prefix = encoded[:limit * 2 // 3].decode("utf-8", "ignore")
+    suffix = encoded[-(limit // 3):].decode("utf-8", "ignore")
+    return prefix + "\n\n[OMITTED MIDDLE: partial source evidence]\n\n" + suffix, False
+
+
+def collect_candidate_source_evidence(task_record: str, github: object, *, sha: str) -> dict:
+    """Inspect current task's code/test files at the *verified* pinned GitHub SHA.
+
+    Source snippets are untrusted evidence, not executable instructions or a whole
+    repository audit. Missing or truncated files are explicit; there is no fallback
+    to main or a floating branch.
+    """
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise PermissionError("candidate source evidence requires exact SHA")
+    heading, requested = _latest_scope(task_record)
+    if not requested:
+        return {
+            "status": "no_scoped_source_paths", "scope_heading": heading,
+            "assessed_commit": sha, "inspected_files": [], "missing_paths": [],
+            "limitation": "No repository code was inspected; do not infer missing implementation.",
+        }
+    all_paths = github.list_file_paths(ref=sha)
+    if not isinstance(all_paths, (tuple, list)) or not all(
+        isinstance(path, str) for path in all_paths
+    ):
+        raise PermissionError("candidate committed path inventory is invalid")
+    existing = set(all_paths)
+    missing = [path for path in requested if path not in existing]
+    available = [path for path in requested if path in existing]
+    inspected = []
+    used = 0
+    for path in available[:_MAX_FILES]:
+        source = github.get_file_text(path, ref=sha)
+        if not isinstance(source, str) or not source.strip():
+            raise PermissionError("candidate source is blank or invalid")
+        if _SECRET_MATERIAL.search(source):
+            raise PermissionError("candidate source contains potential secret material")
+        excerpt, complete = _bounded_excerpt(source, min(_MAX_FILE_BYTES, _MAX_BYTES - used))
+        inspected.append({
+            "path": path, "assessed_commit": sha, "content": excerpt,
+            "complete": complete, "total_lines": source.count("\n") + 1,
+        })
+        used += len(excerpt.encode("utf-8"))
+        if used >= _MAX_BYTES:
+            break
+    return {
+        "status": "bounded_source_inspected" if inspected else "scoped_source_missing",
+        "scope_heading": heading,
+        "assessed_commit": sha, "inspected_files": inspected,
+        "missing_paths": missing,
+        "omitted_paths": available[len(inspected):],
+        "limitation": (
+            "Only the named task-scope files above were inspected. "
+            "An open issue, previous task description, or truncated excerpt does "
+            "not prove a defect remains. Do not infer product-wide readiness."
+        ),
+    }
