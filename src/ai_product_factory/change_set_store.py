@@ -196,6 +196,33 @@ class SupabaseChangeSetStore:
                 raise RuntimeError("integration work unit has invalid changed files")
             if unit["base_commit"]!=data["candidate_commit"]:
                 raise RuntimeError("integration work unit has stale candidate base")
+        if data["source_commit"]==data["candidate_commit"] and wave>1:
+            raise RuntimeError("integration repair wave lacks advanced candidate")
+        if data["repository"].count("/")!=1 or any(not part.strip() for part in data["repository"].split("/")):
+            raise RuntimeError("integration claim has invalid repository")
+        if data["integration_branch"].startswith("refs/") or data["integration_branch"] in ("main","master"):
+            raise RuntimeError("integration claim targets protected branch")
+        if len(units)>100:
+            raise RuntimeError("integration claim exceeds work unit limit")
+        seen_tasks=set()
+        seen_paths=set()
+        for unit in units:
+            task_key=unit["plan_task_key"]
+            if task_key in seen_tasks:
+                raise RuntimeError("integration claim repeats plan task")
+            seen_tasks.add(task_key)
+            if unit["output_commit"]==unit["base_commit"]:
+                raise RuntimeError("integration work unit has unchanged output")
+            if len(unit["changed_files"])>200:
+                raise RuntimeError("integration work unit exceeds changed file limit")
+            for path in unit["changed_files"]:
+                if path.startswith("/") or "\\" in path or any(part in ("",".","..") for part in path.split("/")):
+                    raise RuntimeError("integration work unit has unsafe path")
+                if path in seen_paths:
+                    raise RuntimeError("integration claim has conflicting file owners")
+                seen_paths.add(path)
+        if len(seen_paths)>500:
+            raise RuntimeError("integration claim exceeds file limit")
         return ChangeSetIntegrationItem(
             change_set_id=data["change_set_id"],project_key=data["project_key"],
             repository=data["repository"],source_commit=data["source_commit"],
