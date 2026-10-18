@@ -161,14 +161,14 @@ class IntegrationClaimContractTests(unittest.TestCase):
     def test_atomic_write_readiness_requires_exact_versioned_contract(self):
         good={"version":1,"atomic_completion":True,"atomic_release":True,"phase_checkpoints":True}
         self.store._rpc=MagicMock(return_value=good)
-        self.store.assert_epoch_mutation_ready()
+        self.store.require_epoch_mutation_ready()
         self.store._rpc.assert_called_once_with("factory_integration_epoch_write_readiness",{})
         for invalid in (None,{},{"version":2},dict(good,atomic_release=False),
                         dict(good,phase_checkpoints=None),dict(good,version=True)):
             with self.subTest(response=invalid):
                 self.store._rpc=MagicMock(return_value=invalid)
                 with self.assertRaisesRegex(RuntimeError,"not ready"):
-                    self.store.assert_epoch_mutation_ready()
+                    self.store.require_epoch_mutation_ready()
 
 if __name__=="__main__":
     unittest.main()
