@@ -23,6 +23,40 @@ class IntegrationClaimContractTests(unittest.TestCase):
             self.store.claim_integration(" ")
         self.store._rpc.assert_not_called()
 
+    def test_worker_identity_rejects_three_unsafe_forms(self):
+        for worker in ("x"*129, " worker", "worker\\n"):
+            with self.subTest(worker=repr(worker)):
+                self.store._rpc=MagicMock()
+                with self.assertRaisesRegex(ValueError,"worker ID"):
+                    self.store.claim_integration(worker)
+                self.store._rpc.assert_not_called()
+
+    def test_six_unsafe_path_classes_are_rejected(self):
+        unit=self.base["work_units"][0]
+        cases=[
+            ("src/"+"a"*1021,"length limit"),
+            ("src/a\\nb.py","control character"),
+            ("src/"+"a"*256,"segment exceeds limit"),
+            ("src/.git/config","git internals"),
+            ("src/a.py ","unsafe suffix"),
+            ("src/a. /file","unsafe suffix"),
+        ]
+        for path,message in cases:
+            with self.subTest(message=message):
+                payload={**self.base,"work_units":[{**unit,"changed_files":[path]}]}
+                self.store._rpc=MagicMock(return_value=payload)
+                with self.assertRaisesRegex(RuntimeError,message):
+                    self.store.claim_integration("worker")
+
+    def test_epoch_checkpoint_rejects_boolean_generation(self):
+        from dataclasses import replace
+        self.store._rpc=MagicMock(return_value=self.base)
+        item=self.store.claim_integration("worker")
+        self.store._rpc.reset_mock()
+        with self.assertRaises(PermissionError):
+            self.store.assert_integration_epoch(replace(item,execution_generation=True),"worker")
+        self.store._rpc.assert_not_called()
+
     def test_empty_queue_is_not_an_error(self):
         self.store._rpc=MagicMock(return_value=None)
         self.assertIsNone(self.store.claim_integration("worker"))
