@@ -24,8 +24,6 @@ class ChangeSetIntegrator:
     def integrate(self,item:ChangeSetIntegrationItem)->ChangeSetIntegrationResult:
         if not item.work_units:
             raise ValueError("integration requires completed work units")
-        self.github.ensure_branch_at_sha(item.integration_branch,item.candidate_commit)
-
         owners={}
         files={}
         for unit in item.work_units:
@@ -44,6 +42,8 @@ class ChangeSetIntegrator:
 
         if not files:
             raise RuntimeError("integration produced no files")
+        # Do not create or reset an integration branch until every unit is verified.
+        self.github.ensure_branch_at_sha(item.integration_branch,item.candidate_commit)
         candidate=self.github.commit_files(
             item.integration_branch,files,
             message=provenance_commit_message(
@@ -61,7 +61,11 @@ class ChangeSetIntegrator:
         self.store.mark_repair_wave_integrated(
             change_set_id=item.change_set_id,wave=item.current_wave,candidate_commit=candidate,
         )
-        status=str(completed.get("status") or "")
+        if not isinstance(completed,dict):
+            raise RuntimeError("integration completion returned an invalid result")
+        status=completed.get("status")
+        if status not in ("review_ready","integrating","repair_pending","ci_pending"):
+            raise RuntimeError("integration completion returned an unexpected status")
         pull_request=None
         if status=="review_ready":
             marker=f"Factory change set: {item.change_set_id}"
