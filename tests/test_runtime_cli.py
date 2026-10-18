@@ -428,7 +428,7 @@ class RuntimeCliTests(unittest.TestCase):
     def test_stopped_project_blocks_integration_before_github_access(self):
         item=SimpleNamespace(repository="owner/factory",project_key="stopped",integration_branch="factory/cs")
         store=MagicMock();store.claim_integration.return_value=item
-        store.assert_project_running=MagicMock(side_effect=PermissionError("project stopped"))
+        store.assert_integration_epoch=MagicMock(side_effect=PermissionError("project stopped"))
         with patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
              patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
@@ -440,7 +440,7 @@ class RuntimeCliTests(unittest.TestCase):
     def test_integration_revocation_blocks_ci_dispatch_after_candidate(self):
         item=SimpleNamespace(repository="owner/factory",project_key="factory",integration_branch="factory/cs")
         store=MagicMock();store.claim_integration.return_value=item
-        store.assert_project_running=MagicMock(side_effect=[None,PermissionError("project stopped")])
+        store.assert_integration_epoch=MagicMock(side_effect=[None,PermissionError("project stopped")])
         result=SimpleNamespace(status="ci_pending",change_set_id="cs",wave=1,candidate_commit="sha",pull_request=SimpleNamespace(number=3))
         github=MagicMock()
         with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
