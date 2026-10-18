@@ -144,6 +144,10 @@ class ChangeSetIntegrator:
                     body=f"{marker}\n\nIntegrated candidate: {candidate}\n\nDo not merge until CI, specialist review and Preview evidence pass.",
                     head=item.integration_branch,base=destination,
                 )
+            if getattr(pull_request,"base_ref",None) not in (None,destination):
+                raise PermissionError("integration PR targets a different delivery branch")
+            if item.project_kind == "existing" and getattr(pull_request,"base_ref",None) != destination:
+                raise PermissionError("existing-project PR must expose the pinned destination branch")
             if not isinstance(pull_request.number,int) or isinstance(pull_request.number,bool) or pull_request.number<1:
                 raise RuntimeError("integration PR number is invalid")
             if pull_request.head_sha!=candidate:
