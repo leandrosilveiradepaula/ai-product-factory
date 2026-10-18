@@ -34,6 +34,7 @@ class ChangeSetIntegrator:
             raise ValueError("integration candidate identity is missing")
         owners={}
         files={}
+        pending_reads=[]
         for unit in item.work_units:
             if not isinstance(unit,dict):
                 raise ValueError("integration work unit must be an object")
@@ -55,17 +56,17 @@ class ChangeSetIntegrator:
                 if path in owners:
                     raise RuntimeError(f"Change Set file conflict: {path} changed by {owners[path]} and {task_key}")
                 owners[path]=task_key
-                content=self.github.get_file_text(path,ref=output)
-                if not isinstance(content,str):
-                    raise RuntimeError("integration source file is not text")
-                files[path]=content
+                pending_reads.append((path,output))
 
-        if not files:
+        if not pending_reads:
             raise RuntimeError("integration produced no files")
+        for path,output in pending_reads:
+            content=self.github.get_file_text(path,ref=output)
+            if not isinstance(content,str):
+                raise RuntimeError("integration source file is not text")
+            files[path]=content
         # Do not create or reset an integration branch until every unit is verified.
         self.github.ensure_branch_at_sha(item.integration_branch,item.candidate_commit)
-        if self.github.get_branch_sha(item.integration_branch)!=item.candidate_commit:
-            raise RuntimeError("integration branch is not at expected base")
         candidate=self.github.commit_files(
             item.integration_branch,files,
             message=provenance_commit_message(
