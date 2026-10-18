@@ -287,7 +287,7 @@ class ChangeSetTests(unittest.TestCase):
         github.find_open_pull_request_containing.return_value=None
         github.create_pull_request.return_value=SimpleNamespace(number=9,head_sha="integrated")
         store=MagicMock()
-        store.complete_integration.return_value={"status":"review_ready","change_set_id":"cs12345678","candidate_commit":"integrated","current_wave":1}
+        store.complete_integration.return_value={"status":"review_ready","change_set_id":"cs12345678","candidate_commit":"integrated","current_wave":1,"repair_jobs_integrated":0}
         store.prepare_release.return_value={"status":"ci_pending","change_set_id":"cs12345678","release_run_id":"release-run"}
         item=ChangeSetIntegrationItem(
             "cs12345678","demo","owner/repo","base","base","factory/change-set-cs12345678",1,(
@@ -304,9 +304,11 @@ class ChangeSetTests(unittest.TestCase):
         self.assertIn("Factory-Change-Set: cs12345678",integration_message)
         self.assertIn("Factory-Wave: 1",integration_message)
         store.prepare_release.assert_called_once()
-        store.mark_repair_wave_integrated.assert_called_once_with(
-            change_set_id="cs12345678",wave=1,candidate_commit="integrated"
+        store.mark_repair_wave_integrated.assert_not_called()
+        store.complete_integration.assert_called_once_with(
+            item=item,candidate_commit="integrated",changed_files=("src/a.py","src/b.py")
         )
+        self.assertEqual(store.prepare_release.call_args.kwargs["item"],item)
         self.assertEqual(store.prepare_release.call_args.kwargs["candidate_commit"],"integrated")
 
     def test_integrator_rejects_branch_movement_before_control_plane_persistence(self):
@@ -384,7 +386,7 @@ class ChangeSetTests(unittest.TestCase):
                 {"plan_task_key":"task","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]},
             )
         )
-        valid={"status":"review_ready","change_set_id":"cs","candidate_commit":"integrated","current_wave":2}
+        valid={"status":"review_ready","change_set_id":"cs","candidate_commit":"integrated","current_wave":2,"repair_jobs_integrated":0}
         malformed=(
             ("unknown status",dict(valid,status="completed")),
             ("wrong identity",dict(valid,change_set_id="other")),
@@ -411,6 +413,30 @@ class ChangeSetTests(unittest.TestCase):
                 store.prepare_release.assert_not_called()
                 github.create_issue.assert_not_called()
                 github.create_pull_request.assert_not_called()
+
+    def test_atomic_integration_requires_repair_outcome_before_git_hub_issue(self):
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","source","base","factory/cs",1,(
+                {"plan_task_key":"task","base_commit":"base","output_commit":"out","changed_files":["src/a.py"]},
+            ),
+        )
+        for outcome in (None,False,-1,"zero"):
+            with self.subTest(repair_outcome=outcome):
+                github=MagicMock()
+                github.get_file_text.return_value="content"
+                github.commit_files.return_value="new"
+                github.get_branch_sha.return_value="new"
+                store=MagicMock()
+                store.complete_integration.return_value={
+                    "status":"review_ready","change_set_id":"cs",
+                    "candidate_commit":"new","current_wave":1,
+                    "repair_jobs_integrated":outcome,
+                }
+                with self.assertRaisesRegex(RuntimeError,"repair outcome"):
+                    ChangeSetIntegrator(github=github,store=store).integrate(item)
+                github.create_issue.assert_not_called()
+                github.create_pull_request.assert_not_called()
+                store.prepare_release.assert_not_called()
 
     def test_integration_release_rpc_rejects_invalid_durable_results(self):
         item=ChangeSetIntegrationItem(
