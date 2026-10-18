@@ -17,6 +17,15 @@ class Tests(unittest.TestCase):
   self.assertIn("productQueueDetected",CONTROL)
   self.assertIn("Aguardando execução",PAGE)
   self.assertIn("não confirma que esta execução foi assumida",PAGE)
+ def test_wake_receipt_is_linked_to_exact_pending_run_and_other_stages(self):
+  self.assertIn('event_type=in.(project.bootstrap.wake_attempted,project.continuation.wake_attempted)',CONTROL)
+  self.assertIn('run_id=eq.${encodeURIComponent(pendingRun.id)}',CONTROL)
+  self.assertIn('p.pendingRun&&(p.stage==="discovery"||!observedBlocker)',PAGE)
+  self.assertIn('Reconciliação aguardando o worker',PAGE)
+  self.assertIn('Solicitar recuperação do worker',PAGE)
+  self.assertIn('continuationNotice=query.continuation==="requested"',PAGE)
+  self.assertIn('O worker ainda precisa assumir a execução',PAGE)
+
  def test_no_paid_or_merge_bypass(self):
   self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED=true",PAGE)
   self.assertNotIn("merge_pull_request",PAGE)

@@ -26,6 +26,26 @@ class ProjectContinuationRequestTests(unittest.TestCase):
         self.assertNotIn('activeTasks.length===0?<ActionLink',detail)
         self.assertIn('enqueueProjectContinuation', (ROOT/"apps/console/app/projects/[key]/request/page.tsx").read_text())
 
+    def test_continuation_post_commit_wake_respects_lifecycle_and_replay(self):
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        section=control.split("export async function enqueueProjectContinuation",1)[1].split("export async function getDashboard",1)[0]
+        self.assertLess(section.index("if(!response.ok)"),section.index("if(result.created)"))
+        self.assertLess(section.index("if(result.created)"),section.index("requestIntakeWorkerWake()"))
+        self.assertIn('getProjectExecutionControl(String(result.project_id))',section)
+        self.assertIn('if(control.state==="running")',section)
+        self.assertIn('else if(control.state==="unavailable")',section)
+        self.assertIn('wakeStatus="failed"',section)
+        self.assertIn('event_type:"project.continuation.wake_attempted"',section)
+        self.assertIn('run_id:String(result.run_id)',section)
+        self.assertIn('task_id:String(result.task_id)',section)
+        self.assertIn('return {...result,requestId,requestedAt:String(result.requested_at||""),wakeStatus}',section)
+        page=(ROOT/"apps/console/app/projects/[key]/request/page.tsx").read_text()
+        self.assertIn('!result.created?"replayed"',page)
+        self.assertIn('result.wakeStatus==="requested"',page)
+        self.assertIn('result.wakeStatus==="not_needed"',page)
+        registration=control.split("export async function createProjectIntakeAndBootstrap(",1)[1].split("export type ProjectExecutionControl",1)[0]
+        self.assertNotIn("requestIntakeWorkerWake()",registration)
+
     def test_continuation_uses_one_atomic_rpc_with_idempotency(self):
         control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
         self.assertIn('export async function enqueueProjectContinuation',control)

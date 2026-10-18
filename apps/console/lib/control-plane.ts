@@ -132,7 +132,36 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  }
  const result=await response.json();
  if(!result||result.request_id!==requestId||!result.project_id||!result.task_id||!result.run_id||typeof result.created!=="boolean")throw new Error("Resposta de enfileiramento não corresponde ao pedido. Nenhum sucesso foi presumido.");
- return {...result,requestId,requestedAt:String(result.requested_at||"")};
+ // The request is committed. Dispatch is only a best-effort hint after durable write.
+ // Replays and paused/stopped/draft projects must never be woken by this path.
+ let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
+ if(result.created){
+  let controlState:ProjectExecutionControl["state"]="unavailable";
+  try{
+   const control=await getProjectExecutionControl(String(result.project_id));
+   controlState=control.state;
+   if(control.state==="running"){
+    wakeStatus=await requestIntakeWorkerWake();
+    if(wakeStatus!=="requested")console.warn("project_continuation_wake_unavailable",{status:wakeStatus});
+   }else if(control.state==="unavailable"){
+    wakeStatus="failed";
+    console.warn("project_continuation_control_unavailable");
+   }
+  }catch{wakeStatus="failed";console.warn("project_continuation_wake_failed");}
+  // Keep an exact-run receipt. Telemetry failures never un-commit the queue.
+  try{
+   const audit=await fetch(cfg.url+"/rest/v1/factory_audit_events",{
+    method:"POST",headers:{...cfg.headers,"Content-Type":"application/json","Prefer":"return=minimal"},
+    body:JSON.stringify({
+     project_id:String(result.project_id),task_id:String(result.task_id),run_id:String(result.run_id),
+     actor_type:"system",actor_ref:"factory-console",event_type:"project.continuation.wake_attempted",
+     payload:{status:wakeStatus,source:"console-continuation",execution_state:controlState},
+    }),cache:"no-store",
+   });
+   if(!audit.ok)console.warn("project_continuation_wake_audit_failed",{status:audit.status});
+  }catch{console.warn("project_continuation_wake_audit_failed",{reason:"transport"});}
+ }
+ return {...result,requestId,requestedAt:String(result.requested_at||""),wakeStatus};
 }
 
 export async function getDashboard():Promise<Dashboard>{
@@ -324,7 +353,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
    pendingRun={id:String(waiting.id),status:"created",attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
    const since=encodeURIComponent(pendingRun.createdAt);
    const [wakeResponse,probeResponse,blockResponse]=await Promise.all([
-    fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&project_id=eq.${encodeURIComponent(p.id)}&event_type=eq.project.bootstrap.wake_attempted&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
+    fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&project_id=eq.${encodeURIComponent(p.id)}&run_id=eq.${encodeURIComponent(pendingRun.id)}&event_type=in.(project.bootstrap.wake_attempted,project.continuation.wake_attempted)&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
     fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&event_type=in.(schedule_probe.observed,schedule_probe.native_observed)&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
     fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&run_id=eq.${encodeURIComponent(pendingRun.id)}&event_type=eq.product.worker_blocked&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
    ]);
