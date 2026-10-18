@@ -282,6 +282,29 @@ class Tests(unittest.TestCase):
                     url="https://x.supabase.co",secret_key="sb_secret_x"
                 ).read()
 
+    def test_specialist_and_repair_run_phases_are_known_operational_states(self):
+        # Both statuses are emitted by the production specialist pipeline. The
+        # operations reviewer must be able to inventory them without masking
+        # genuine unknown statuses or inventing successful releases.
+        for active_status in ("specialist_review_pending", "repair_pending"):
+            with self.subTest(status=active_status), patch(
+                "urllib.request.urlopen", side_effect=[
+                    Response([{"id":"crm-run","task_id":"crm-task",
+                               "status":active_status,
+                               "created_at":"2026-10-18T20:29:00Z"}]),
+                    Response([]),
+                    Response([]),
+                ]
+            ):
+                result=SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read(now=datetime(2026,10,18,20,30,tzinfo=timezone.utc))
+            self.assertEqual(result.failed_runs,0)
+            self.assertEqual(result.dead_letter_runs,0)
+            self.assertEqual(result.expired_leases,0)
+            self.assertEqual(result.unknown_cost_events,0)
+            self.assertEqual(result.known_cost,Decimal("0"))
+
     def test_malformed_and_unknown_run_statuses_fail_closed(self):
         for invalid in ({"id":"x","status":"unexpected"}, {"id":"x","status":None},
                         {"id":None,"status":"completed"}, "malformed"):
