@@ -284,6 +284,49 @@ class SupabaseChangeSetStore:
                 seen_paths.add(path)
         if len(seen_paths)>500:
             raise RuntimeError("integration claim exceeds file limit")
+        # Validate identity and consistency before an integration can reach GitHub.
+        if len(data["source_commit"])<7 or len(data["candidate_commit"])<7:
+            raise RuntimeError("integration claim has short commit identity")
+        if data["source_commit"]==data["candidate_commit"]:
+            raise RuntimeError("integration claim has unchanged candidate")
+        if not re.fullmatch(r"[A-Za-z0-9._/-]+",data["project_key"]):
+            raise RuntimeError("integration claim has invalid project key")
+        if not data["integration_branch"].startswith("factory/"):
+            raise RuntimeError("integration claim has invalid integration namespace")
+        for unit in units:
+            if len(unit["base_commit"])<7 or len(unit["output_commit"])<7:
+                raise RuntimeError("integration work unit has short commit identity")
+            if unit["plan_task_key"].startswith(("/", "-")):
+                raise RuntimeError("integration work unit has unsafe task prefix")
+            if len(unit["changed_files"])!=len(set(unit["changed_files"])):
+                raise RuntimeError("integration work unit repeats changed file")
+            for path in unit["changed_files"]:
+                if path.startswith(("vendor/", "node_modules/", ".venv/")):
+                    raise RuntimeError("integration work unit targets dependency directory")
+                if path.endswith((".pyc", ".pyo", ".class")):
+                    raise RuntimeError("integration work unit targets generated binary")
+                if path in ("package-lock.json.lock", "pnpm-lock.yaml.lock"):
+                    raise RuntimeError("integration work unit targets transient lock")
+                if path.startswith(("dist/", "build/", "__pycache__/")):
+                    raise RuntimeError("integration work unit targets generated directory")
+                if path.startswith(("tmp/", "temp/")):
+                    raise RuntimeError("integration work unit targets temporary directory")
+                if path.endswith(("~", ".swp", ".swo", ".tmp")):
+                    raise RuntimeError("integration work unit targets temporary file")
+                if path.startswith(("secrets/", "credentials/")):
+                    raise RuntimeError("integration work unit targets credential directory")
+                if path.endswith((".pem", ".p12", ".pfx", ".key")):
+                    raise RuntimeError("integration work unit targets private key material")
+                if path.endswith((".env", ".env.local", ".env.production")):
+                    raise RuntimeError("integration work unit targets environment secrets")
+                if path.startswith(("terraform.tfstate", "terraform.tfstate.")):
+                    raise RuntimeError("integration work unit targets terraform state")
+                if path.endswith((".sqlite", ".sqlite3", ".db")):
+                    raise RuntimeError("integration work unit targets local database")
+                if path.startswith(("coverage/", ".pytest_cache/")):
+                    raise RuntimeError("integration work unit targets test artifacts")
+                if path.startswith(("logs/", "log/")):
+                    raise RuntimeError("integration work unit targets runtime logs")
         generation=data.get("execution_generation")
         if isinstance(generation,bool) or not isinstance(generation,int) or generation<1:
             raise RuntimeError("integration claim missing execution generation")
