@@ -33,6 +33,18 @@ class NonproductionMergeMigrationContract(unittest.TestCase):
         ):
             with self.subTest(term=term):self.assertIn(term,sql)
 
+    def test_migration_is_one_transaction_and_one_function(self):
+        sql=PATH.read_text()
+        self.assertEqual(sql.count("create or replace function public.factory_observe_nonproduction_preview_merge("),1)
+        self.assertEqual(sql.count("$fn$;"),1)
+        self.assertEqual(sql.count("\ncommit;"),1)
+        self.assertEqual(sql.count("then raise exception 'invalid nonproduction GitHub merge evidence'"),1)
+        self.assertEqual(sql.count("select * into v_change"),1)
+        self.assertTrue(sql.strip().endswith("commit;"))
+        self.assertIn("exact merged Preview browser evidence missing",sql)
+        self.assertIn("scripts/verify_nonproduction_preview_merge_postgres.py",(
+            ROOT/".github/workflows/manual-project-control-postgres.yml").read_text())
+
     def test_never_stamps_release_or_automerge(self):
         sql=PATH.read_text().lower()
         for forbidden in ("security definer", "status='released'", "status='merged'",
