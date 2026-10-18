@@ -172,7 +172,7 @@ class SupabaseChangeSetStore:
             "p_run_id":run_id,"p_output_commit":output_commit,"p_changed_files":list(changed_files),
         }) or {}
 
-    def assert_epoch_mutation_ready(self)->None:
+    def require_epoch_mutation_ready(self)->None:
         expected={
             "version":1,"atomic_completion":True,
             "atomic_release":True,"phase_checkpoints":True,
