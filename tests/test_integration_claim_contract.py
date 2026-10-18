@@ -73,7 +73,6 @@ class IntegrationClaimContractTests(unittest.TestCase):
 
     def test_candidate_and_unit_identity_invariants(self):
         cases=[
-            ({"source_commit":"candidate"},"unchanged candidate"),
             ({"work_units":[{**self.base["work_units"][0],
                 "changed_files":["src/a.py","src/a.py"]}]},"conflicting file owners"),
         ]
@@ -82,6 +81,12 @@ class IntegrationClaimContractTests(unittest.TestCase):
                 self.store._rpc=MagicMock(return_value={**self.base,**override})
                 with self.assertRaisesRegex(RuntimeError,message):
                     self.store.claim_integration("worker")
+
+    def test_first_wave_allows_source_equal_candidate_with_real_output(self):
+        self.store._rpc=MagicMock(return_value={**self.base,"source_commit":"candidate"})
+        item=self.store.claim_integration("worker")
+        self.assertEqual(item.source_commit,item.candidate_commit)
+        self.assertNotEqual(item.work_units[0]["output_commit"],item.candidate_commit)
 
     def test_epoch_checkpoint_rejects_boolean_generation(self):
         from dataclasses import replace

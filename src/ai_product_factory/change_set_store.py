@@ -302,8 +302,10 @@ class SupabaseChangeSetStore:
         if len(seen_paths)>500:
             raise RuntimeError("integration claim exceeds file limit")
         # These are exact payload invariants, not project-specific directory policy.
-        if data["source_commit"]==data["candidate_commit"]:
-            raise RuntimeError("integration claim has unchanged candidate")
+        # On the first integration wave the candidate legitimately equals the source.
+        # Completed work units carry the changed output commits, validated above.
+        # Later waves likewise use the current candidate as their common base.
+        # Never reject a first-wave claim merely because no integration commit exists yet.
         for unit in units:
             if len(unit["changed_files"])!=len(set(unit["changed_files"])):
                 raise RuntimeError("integration work unit repeats changed file")
