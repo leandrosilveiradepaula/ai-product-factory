@@ -13,6 +13,8 @@ from .traceability import build_requirement_trace
 from .definition_of_done import compile_definition_of_done
 from .execution_team_planner import build_execution_team_plan
 from .supabase_server import resolve_supabase_server_config
+from .github_rest import GitHubRestAdapter
+from .pinned_nonproduction_target import PinnedNonproductionTarget
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -211,6 +213,47 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         context["current_state_facts"] = facts
         return context
 
+    def _live_candidate_context(self, project_id: str, context: dict) -> dict:
+        """Read live candidate evidence before paid reconciliation; no GitHub writes."""
+        rows = self._get(
+            "factory_projects?select=id,repository,project_kind,manifest"
+            "&id=eq." + quote(project_id, safe="") + "&limit=1"
+        )
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise PermissionError("reconciliation requires exact durable project identity")
+        project = rows[0]
+        if project.get("project_kind") != "existing":
+            raise PermissionError("live candidate reconciliation requires an existing project")
+        repo = project.get("repository")
+        manifest = project.get("manifest")
+        target = PinnedNonproductionTarget.parse(
+            manifest.get("delivery_target") if isinstance(manifest, dict) else None,
+            repository=repo,
+        )
+        github = GitHubRestAdapter(repository=repo)
+        target.verify(github)
+        main_sha = github.get_branch_sha("main")
+        governance = {}
+        for path in ("AGENTS.md", "docs/codex/CURRENT_TASK.md"):
+            text = github.get_file_text(path, ref=target.sha)
+            if not text.strip() or len(text.encode("utf-8")) > 65536:
+                raise PermissionError("repository governance missing or oversized")
+            governance[path] = text
+        candidate = {
+            "repository": repo,
+            "pr_number": target.candidate_pr_number,
+            "branch": target.branch,
+            "sha": target.sha,
+            "main_sha": main_sha,
+            "observed_from": "live_github_app_exact_candidate",
+            "governance": governance,
+        }
+        enriched = dict(context)
+        facts = dict(enriched.get("current_state_facts") or {})
+        facts["live_candidate"] = candidate
+        enriched["current_state_facts"] = facts
+        return enriched
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -232,6 +275,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         context = data.get("context", {})
         if "reconciliation" in stages:
             context = self._reconciliation_context(data["project_id"], context)
+            context = self._live_candidate_context(data["project_id"], context)
         return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:

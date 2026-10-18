@@ -97,6 +97,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_real_reconciliation_claim_hydrates_project_scoped_snapshot_and_fresh_facts(self):
         q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        q._live_candidate_context = lambda project_id, context: context
         q._rpc = lambda name, payload: {
             "run_id": "run-crm", "task_id": "task-crm",
             "project_id": "11111111-1111-4111-8111-111111111111",
@@ -150,6 +151,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
 
     def test_missing_snapshot_or_failed_snapshot_read_cannot_use_paid_model(self):
         q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        q._live_candidate_context = lambda project_id, context: context
         q._rpc = lambda *_: {
             "run_id": "r", "task_id": "t", "project_id": "project", "project_key": "existing",
             "stages": ["reconciliation"], "context": {"manifest": {"reconcile_first": True}},
@@ -183,6 +185,37 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         q._get = lambda *_: (_ for _ in ()).throw(AssertionError("greenfield must not load snapshot"))
         item = q.claim_next("worker")
         self.assertEqual(item.context, {"summary": "new system"})
+
+    def test_live_candidate_context_and_sha_drift(self):
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        sha = "f5f7d91f8e98cfaf482cca72c974abb7a82f6a5e"
+        target = {"schema_version": 1, "mode": "open_pr_candidate",
+                  "repository": "owner/crm", "branch": "preview/candidate",
+                  "sha": sha, "candidate_pr_number": 56}
+        q._get = lambda path: [{"project_kind": "existing", "repository": "owner/crm",
+                                "manifest": {"delivery_target": target}}]
+        from unittest.mock import MagicMock
+        from types import SimpleNamespace
+        github = MagicMock()
+        github.repository = "owner/crm"
+        github.get_branch_sha.side_effect = lambda ref: sha if ref == "preview/candidate" else "a" * 40
+        github.get_pull_request.return_value = SimpleNamespace(
+            state="open", merged=False, head_sha=sha, head_ref="preview/candidate",
+            head_repository="owner/crm", base_ref="main")
+        github.get_file_text.side_effect = lambda path, ref: "governance for " + path
+        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
+            evidence = q._live_candidate_context("project-id", {"current_state_facts": {}})
+        observed = evidence["current_state_facts"]["live_candidate"]
+        self.assertEqual(observed["sha"], sha)
+        self.assertIn("AGENTS.md", observed["governance"])
+        github.get_file_text.assert_any_call("AGENTS.md", ref=sha)
+        github.get_branch_sha.side_effect = lambda ref: "b" * 40
+        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
+            with self.assertRaises(PermissionError):
+                q._live_candidate_context("project-id", {})
+        q._get = lambda path: []
+        with self.assertRaises(PermissionError):
+            q._live_candidate_context("project-id", {})
 
     def test_claim_rejects_missing_or_blank_identifiers(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
