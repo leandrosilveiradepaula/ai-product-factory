@@ -57,5 +57,26 @@ class IntegrationClaimContractTests(unittest.TestCase):
                     self.store.claim_integration("worker")
 
 
+    def test_ten_integration_safety_invariants(self):
+        unit={"plan_task_key":"a","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]}
+        cases=[
+            ({"repository":"invalid"},"invalid repository"),
+            ({"integration_branch":"main"},"protected branch"),
+            ({"integration_branch":"refs/heads/main"},"protected branch"),
+            ({"work_units":[unit]*101},"work unit limit"),
+            ({"work_units":[unit,dict(unit,changed_files=["src/b.py"])]},"repeats plan task"),
+            ({"work_units":[dict(unit,output_commit="candidate")]},"unchanged output"),
+            ({"work_units":[dict(unit,changed_files=[f"src/{n}.py" for n in range(201)])]},"changed file limit"),
+            ({"work_units":[dict(unit,changed_files=["../secret"])]},"unsafe path"),
+            ({"work_units":[dict(unit,changed_files=["/etc/passwd"])]},"unsafe path"),
+            ({"work_units":[dict(unit,changed_files=["src\\\\unsafe.py"])]},"unsafe path"),
+            ({"work_units":[unit,dict(unit,plan_task_key="b")]},"conflicting file owners"),
+        ]
+        for override,message in cases:
+            with self.subTest(message=message,override=str(override)[:100]):
+                self.store._rpc=MagicMock(return_value={**self.base,**override})
+                with self.assertRaisesRegex(RuntimeError,message):
+                    self.store.claim_integration("worker")
+
 if __name__=="__main__":
     unittest.main()
