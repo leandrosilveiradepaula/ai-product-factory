@@ -301,7 +301,7 @@ def reconcile_ci_candidate_once(*,expected_run_id:str,expected_pr_number:int,all
  allowlisted change set. No release or merge action is performed.
  """
  import re
- item=SupabaseCIFollowupQueue().next_pending()
+ item=SupabaseCIFollowupQueue().next_pending(allow_unreconciled_receipt=True)
  if item is None or item.run_id!=expected_run_id or item.pr_number!=expected_pr_number:
   raise RuntimeError("requested candidate is not the next durable CI item")
  if not item.change_set_id:
