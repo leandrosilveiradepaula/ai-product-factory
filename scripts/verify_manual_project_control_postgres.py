@@ -373,4 +373,165 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert acl==(False,False,True),acl
     print("INTEGRATION_EPOCH_POSTGRES_PASS=1")
 
+    # Apply the new atomic SQL against this disposable local PostgreSQL service.
+    # Production migrations are always gated independently of a code merge.
+    conn.execute("""alter table public.factory_change_sets
+      add column root_task_id uuid, add column release_run_id uuid,
+      add column metadata jsonb not null default '{}'::jsonb""")
+    conn.execute("""alter table public.factory_change_set_work_units
+      add column updated_at timestamptz default now()""")
+    conn.execute("""alter table public.factory_runs
+      add column candidate_commit text, add column branch_name text""")
+    conn.execute("""create table public.factory_repair_jobs(
+      id uuid primary key default gen_random_uuid(),change_set_id uuid,
+      work_unit_id uuid,status text,candidate_commit text,
+      updated_at timestamptz default now())""")
+    legacy_functions=(
+      ("factory_complete_change_set_integration","uuid,text,jsonb"),
+      ("factory_mark_repair_wave_integrated","uuid,integer,text"),
+      ("factory_prepare_change_set_release","uuid,integer,text,integer,text,text"),
+    )
+    for name,args in legacy_functions:
+        conn.execute(f"create function public.{name}({args}) returns jsonb language sql as $ select '{{}}'::jsonb $")
+        conn.execute(f"grant execute on function public.{name}({args}) to service_role")
+    new_sql=(root/"supabase/migrations/20261018013000_atomic_change_set_integration_epoch_writes.sql").read_text()
+    conn.execute(new_sql)
+    for name,args in legacy_functions:
+        acl=conn.execute(f"""select
+          has_function_privilege('service_role','public.{name}({args})','EXECUTE'),
+          has_function_privilege('anon','public.{name}({args})','EXECUTE'),
+          has_function_privilege('authenticated','public.{name}({args})','EXECUTE')""").fetchone()
+        assert acl==(False,False,False),(name,acl)
+    for name,args in (
+        ("factory_complete_change_set_integration_epoch","uuid,uuid,bigint,text,integer,text,jsonb"),
+        ("factory_prepare_change_set_release_epoch","uuid,uuid,bigint,text,integer,integer,text,integer,text,text"),
+    ):
+        acl=conn.execute(f"""select
+          has_function_privilege('service_role','public.{name}({args})','EXECUTE'),
+          has_function_privilege('anon','public.{name}({args})','EXECUTE'),
+          has_function_privilege('authenticated','public.{name}({args})','EXECUTE')""").fetchone()
+        assert acl==(True,False,False),(name,acl)
+
+    # The previous claim was resumed at generation+1 and still has a live lease.
+    latest_epoch=epoch+1
+    release_task=conn.execute(
+      "insert into public.factory_tasks(project_id,title,status) values (%s,'integration release root','completed') returning id",
+      (integration_project,)).fetchone()[0]
+    conn.execute("update public.factory_change_sets set root_task_id=%s where id=%s",
+      (release_task,change_set))
+    work_unit_id=conn.execute(
+      "update public.factory_change_set_work_units set task_id=%s where change_set_id=%s returning id",
+      (release_task,change_set)).fetchone()[0]
+    repair_id=conn.execute("""insert into public.factory_repair_jobs(
+      change_set_id,work_unit_id,status,candidate_commit)
+      values (%s,%s,'running','candidate') returning id""",
+      (change_set,work_unit_id)).fetchone()[0]
+    def finish(project=integration_project,generation=latest_epoch,owner="resumed-worker",
+               wave=1,candidate="new-sha",paths='["src/a.py"]'):
+        return conn.execute("""select public.factory_complete_change_set_integration_epoch(
+          %s,%s,%s,%s,%s,%s,%s::jsonb)""",
+          (change_set,project,generation,owner,wave,candidate,paths)).fetchone()[0]
+    def rejected(callable_,message):
+        try:
+            with conn.transaction():
+                callable_()
+        except psycopg.Error:
+            return
+        raise AssertionError(message)
+    rejected(lambda:finish(generation=epoch),"stale completion generation accepted")
+    rejected(lambda:finish(owner="stolen-worker"),"stale completion owner accepted")
+    rejected(lambda:finish(wave=2),"wrong completion wave accepted")
+    rejected(lambda:finish(project=pid),"cross-project completion accepted")
+    rejected(lambda:finish(paths='["src/foreign.py"]'),"unproven file change accepted")
+    rejected(lambda:finish(paths='["src/a.py","src/a.py"]'),"duplicate file accepted")
+    rejected(lambda:finish(paths='[]'),"empty file set accepted")
+    rejected(lambda:finish(candidate="candidate"),"unchanged commit accepted")
+    conn.execute("update public.factory_change_sets set lease_expires_at=now()-interval '1 second' where id=%s",(change_set,))
+    rejected(finish,"expired integration lease accepted")
+    conn.execute("update public.factory_change_sets set lease_expires_at=now()+interval '10 minutes' where id=%s",(change_set,))
+    assert conn.execute("select status from public.factory_change_sets where id=%s",(change_set,)).fetchone()[0]=="integrating"
+    assert conn.execute("select status from public.factory_repair_jobs where id=%s",(repair_id,)).fetchone()[0]=="running"
+    result=finish()
+    assert result["status"]=="review_ready" and result["repair_jobs_integrated"]==1,result
+    assert result["change_set_id"]==str(change_set) and result["current_wave"]==1,result
+    assert conn.execute("select status from public.factory_repair_jobs where id=%s",(repair_id,)).fetchone()[0]=="integrated"
+    assert conn.execute("select status from public.factory_tasks where id=%s",(release_task,)).fetchone()[0]=="integrated"
+    assert conn.execute("select status from public.factory_change_set_work_units where id=%s",(work_unit_id,)).fetchone()[0]=="integrated"
+    integration_checkpoint(generation=latest_epoch,owner="resumed-worker")
+    integration_checkpoint(generation=latest_epoch,owner="stolen-worker",allowed=False)
+    rejected(finish,"replayed integration completion accepted")
+
+    def release(project=integration_project,generation=latest_epoch,owner="resumed-worker",wave=1,
+                issue=7,url="https://github.com/owner/repo/issues/7",
+                pr=9,candidate="new-sha",branch="factory/integration-qa"):
+        return conn.execute("""select public.factory_prepare_change_set_release_epoch(
+          %s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+          (change_set,project,generation,owner,wave,issue,url,pr,candidate,branch)).fetchone()[0]
+    before_runs=conn.execute("select count(*) from public.factory_runs").fetchone()[0]
+    rejected(lambda:release(generation=epoch),"stale release epoch accepted")
+    rejected(lambda:release(owner="wrong"),"wrong release owner accepted")
+    rejected(lambda:release(wave=2),"wrong release wave accepted")
+    rejected(lambda:release(candidate="foreign"),"foreign release SHA accepted")
+    rejected(lambda:release(branch="factory/wrong"),"foreign release branch accepted")
+    rejected(lambda:release(url="https://github.com/attacker/repo/issues/7"),"foreign release issue accepted")
+    rejected(lambda:release(project=pid),"foreign release project accepted")
+    assert conn.execute("select count(*) from public.factory_runs").fetchone()[0]==before_runs
+    prepared=release()
+    assert prepared["status"]=="ci_pending" and prepared["idempotent"] is False,prepared
+    assert release()["idempotent"] is True
+    assert release()["release_run_id"]==prepared["release_run_id"]
+    rejected(lambda:release(pr=10),"conflicting release retry accepted")
+    assert conn.execute("select count(*) from public.factory_runs").fetchone()[0]==before_runs+1
+    assert conn.execute("select count(*) from public.factory_tool_usage where run_id=%s",
+      (prepared["release_run_id"],)).fetchone()[0]==1
+    assert conn.execute("select count(*) from public.factory_audit_events where run_id=%s",
+      (prepared["release_run_id"],)).fetchone()[0]==1
+    integration_checkpoint(generation=latest_epoch,owner="resumed-worker")
+
+    # Operator pause invalidates GitHub writes even after completion and CI registration.
+    current_version=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",
+      (integration_project,)).fetchone()[0]
+    pause_result=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",
+      ("integration-epoch-qa","pause",uuid.uuid4(),current_version,actor)).fetchone()[0]
+    assert pause_result["state"] in ("pausing","paused"),pause_result
+    integration_checkpoint(generation=latest_epoch,owner="resumed-worker",allowed=False)
+    rejected(release,"paused project reissued release")
+    if pause_result["state"]=="pausing":
+        settled=conn.execute("select public.factory_settle_project_control_v1(%s)",
+          ("integration-epoch-qa",)).fetchone()[0]
+        assert settled["state"]=="paused",settled
+    else:
+        settled=pause_result
+    resumed=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",
+      ("integration-epoch-qa","resume",uuid.uuid4(),settled["version"],actor)).fetchone()[0]
+    assert resumed["generation"]==latest_epoch+1,resumed
+    integration_checkpoint(generation=latest_epoch,owner="resumed-worker",allowed=False)
+    rejected(release,"stale release generation after resume accepted")
+
+    # A multi-wave completion must retain the next wave but revoke the old lease.
+    future_project=conn.execute("insert into public.factory_projects(project_key,repository) values ('integration-next-qa','owner/repo') returning id").fetchone()[0]
+    started_future=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",
+      ("integration-next-qa","start",uuid.uuid4(),0,actor)).fetchone()[0]
+    future_epoch=started_future["generation"]
+    future_set=conn.execute("""insert into public.factory_change_sets(
+      project_id,status,source_commit,candidate_commit,integration_branch,current_wave,attempt_count)
+      values (%s,'integrating','source','candidate','factory/next-wave-qa',1,1) returning id""",
+      (future_project,)).fetchone()[0]
+    conn.execute("""update public.factory_change_sets
+      set lease_owner='next-worker',lease_expires_at=now()+interval '10 minutes'
+      where id=%s""",(future_set,))
+    for wave,status,path in ((1,"completed","src/one.py"),(2,"pending","src/two.py")):
+        conn.execute("""insert into public.factory_change_set_work_units(
+          change_set_id,wave,status,plan_task_key,base_commit,output_commit,changed_files)
+          values (%s,%s,%s,%s,'candidate','out',%s::jsonb)""",
+          (future_set,wave,f"task-{wave}",'["'+path+'"]'))
+    next_result=conn.execute("""select public.factory_complete_change_set_integration_epoch(
+      %s,%s,%s,%s,%s,%s,%s::jsonb)""",
+      (future_set,future_project,future_epoch,"next-worker",1,"next-sha",'["src/one.py"]')).fetchone()[0]
+    assert next_result["status"]=="building" and next_result["current_wave"]==2,next_result
+    assert conn.execute("""select attempt_count,lease_owner,metadata?'integration_epoch_receipt'
+      from public.factory_change_sets where id=%s""",(future_set,)).fetchone()==(0,None,False)
+    print("ATOMIC_INTEGRATION_EPOCH_POSTGRES_PASS=1")
+
+
 print("PROJECT_MANUAL_CONTROL_POSTGRES_PASS=1")
