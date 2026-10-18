@@ -460,7 +460,7 @@ class ChangeSetTests(unittest.TestCase):
                 github.create_pull_request.return_value=SimpleNamespace(number=9,head_sha="integrated")
                 store=MagicMock()
                 store.complete_integration.return_value={
-                    "status":"review_ready","change_set_id":"cs","candidate_commit":"integrated","current_wave":1
+                    "status":"review_ready","change_set_id":"cs","candidate_commit":"integrated","current_wave":1,"repair_jobs_integrated":0
                 }
                 store.prepare_release.return_value=response
                 with self.assertRaises(RuntimeError):
