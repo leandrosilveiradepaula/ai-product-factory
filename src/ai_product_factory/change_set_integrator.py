@@ -64,6 +64,8 @@ class ChangeSetIntegrator:
             raise RuntimeError("integration produced no files")
         # Do not create or reset an integration branch until every unit is verified.
         self.github.ensure_branch_at_sha(item.integration_branch,item.candidate_commit)
+        if self.github.get_branch_sha(item.integration_branch)!=item.candidate_commit:
+            raise RuntimeError("integration branch is not at expected base")
         candidate=self.github.commit_files(
             item.integration_branch,files,
             message=provenance_commit_message(
