@@ -79,4 +79,12 @@ class Tests(unittest.TestCase):
     with self.assertRaisesRegex(RuntimeError,message):
      queue.claim_next("worker")
 
+ def test_invalid_claim_filters_do_not_contact_control_plane(self):
+  queue=SupabaseDirectRunQueue(url="https://x.supabase.co",service_role_key="secret")
+  with patch("urllib.request.urlopen") as request:
+   for args in [("",None,None),("worker","",None),("worker",None,"")]:
+    with self.subTest(args=args),self.assertRaises(ValueError):
+     queue.claim_next(args[0],agent_key=args[1],run_id=args[2])
+   request.assert_not_called()
+
 if __name__=="__main__":unittest.main()
