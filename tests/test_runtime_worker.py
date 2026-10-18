@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 from ai_product_factory.runtime_worker import DeterministicBootstrapHandler, RuntimeWorker, WorkItem, WorkStatus
 
@@ -144,6 +145,39 @@ class RuntimeWorkerTests(unittest.TestCase):
                 self.assertEqual(result.status,WorkStatus.FAILED)
                 self.assertIn("revoked",result.error)
                 self.assertFalse(any(event[0] in {"fail","complete","stage"} for event in q.events))
+
+    def test_malformed_claim_contracts_are_fenced_before_persistence(self):
+        baseline=item()
+        cases=[
+            ({"run_id":""},"run identity"),
+            ({"task_id":""},"task identity"),
+            ({"project_id":""},"project identity"),
+            ({"project_key":""},"project key"),
+            ({"context":None},"context"),
+            ({"execution_generation":True},"execution generation"),
+            ({"execution_generation":-1},"execution generation"),
+            ({"worker_id":" "},"worker identity"),
+            ({"stages":tuple("s"+str(i) for i in range(33))},"stage limit"),
+            ({"stages":("s"*129,)},"oversized stage"),
+            ({"stages":(" discovery",)},"unnormalized stage"),
+        ]
+        for overrides,expected in cases:
+            with self.subTest(expected=expected):
+                claimed=replace(baseline,**overrides)
+                q=Queue(claimed)
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertIn(expected,result.error)
+                self.assertFalse(any(event[0] in ("stage","complete") for event in q.events))
+
+    def test_malformed_claim_revocation_suppresses_terminal_write(self):
+        for overrides in ({"run_id":""},{"context":None},{"stages":("discovery","discovery")}):
+            with self.subTest(overrides=overrides):
+                q=FencedQueue(replace(item(),**overrides),1)
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertIn("revoked",result.error)
+                self.assertFalse(any(event[0] in ("fail","stage","complete") for event in q.events))
 
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
