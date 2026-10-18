@@ -288,4 +288,89 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert resumed["generation"]==generation+1,resumed
     check_epoch(generation,"routed-worker",False)
 
+    # Integration fencing: execute the actual production candidate migration in this
+    # disposable PostgreSQL fixture, never in the connected production project.
+    conn.execute("""alter table public.factory_change_sets
+      add column source_commit text, add column candidate_commit text,
+      add column integration_branch text, add column current_wave integer default 1,
+      add column attempt_count integer default 0,
+      add column created_at timestamptz default now(),
+      add column updated_at timestamptz default now()""")
+    conn.execute("""create table public.factory_change_set_work_units(
+      id uuid primary key default gen_random_uuid(),
+      change_set_id uuid references public.factory_change_sets(id),
+      wave integer, status text, task_id uuid, plan_task_key text,
+      agent_key text, base_commit text, branch_name text,
+      output_commit text, changed_files jsonb)""")
+    migration=(root/"supabase/migrations/20261018003000_fence_change_set_integration_epoch.sql").read_text()
+    conn.execute(migration)
+    # A fresh running project and completed work unit make a genuine claim possible.
+    integration_project=conn.execute(
+      "insert into public.factory_projects(project_key,repository) values ('integration-epoch-qa','owner/repo') returning id"
+    ).fetchone()[0]
+    conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",
+      ("integration-epoch-qa","start",uuid.uuid4(),0,actor))
+    epoch=conn.execute("select generation from public.factory_project_execution_controls where project_id=%s",
+      (integration_project,)).fetchone()[0]
+    change_set=conn.execute("""insert into public.factory_change_sets(
+      project_id,status,source_commit,candidate_commit,integration_branch,current_wave)
+      values (%s,'building','source','candidate','factory/integration-qa',1) returning id""",
+      (integration_project,)).fetchone()[0]
+    conn.execute("""insert into public.factory_change_set_work_units(
+      change_set_id,wave,status,plan_task_key,base_commit,output_commit,changed_files)
+      values (%s,1,'completed','task-a','candidate','output','["src/a.py"]'::jsonb)""",(change_set,))
+    def claim(worker="integration-worker"):
+        return conn.execute("select public.factory_claim_change_set_integration(%s,%s)",
+          (worker,600)).fetchone()[0]
+    claimed=claim()
+    assert claimed and claimed["change_set_id"]==str(change_set),claimed
+    assert claimed["execution_generation"]==epoch and claimed["lease_owner"]=="integration-worker",claimed
+    assert claimed["project_id"]==str(integration_project),claimed
+    assert claim("second-worker") is None
+    def integration_checkpoint(generation=epoch,owner="integration-worker",wave=1,allowed=True):
+        try:
+            with conn.transaction():
+                conn.execute("select public.factory_assert_change_set_integration_epoch(%s,%s,%s,%s,%s)",
+                  (change_set,integration_project,generation,owner,wave))
+        except psycopg.Error:
+            if allowed:raise
+        else:
+            if not allowed:raise AssertionError("revoked integration capability accepted")
+    integration_checkpoint()
+    integration_checkpoint(epoch-1,allowed=False)
+    integration_checkpoint(owner="intruder",allowed=False)
+    integration_checkpoint(wave=2,allowed=False)
+    conn.execute("update public.factory_change_sets set lease_expires_at=now()-interval '1 second' where id=%s",(change_set,))
+    integration_checkpoint(allowed=False)
+    # A stale lease may be reclaimed only by a running project.
+    reclaimed=claim("replacement-worker")
+    assert reclaimed and reclaimed["lease_owner"]=="replacement-worker",reclaimed
+    integration_checkpoint(allowed=False)
+    integration_checkpoint(owner="replacement-worker")
+    conn.execute("update public.factory_change_sets set lease_expires_at=now()-interval '1 second' where id=%s",(change_set,))
+    current_version=conn.execute("select version from public.factory_project_execution_controls where project_id=%s",
+      (integration_project,)).fetchone()[0]
+    pausing=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",
+      ("integration-epoch-qa","pause",uuid.uuid4(),current_version,actor)).fetchone()[0]
+    assert pausing["state"] in ("pausing","paused"),pausing
+    integration_checkpoint(owner="replacement-worker",allowed=False)
+    assert claim("paused-worker") is None
+    if pausing["state"]=="pausing":
+        settled=conn.execute("select public.factory_settle_project_control_v1(%s)",("integration-epoch-qa",)).fetchone()[0]
+        assert settled["state"]=="paused",settled
+    else:
+        settled=pausing
+    resumed=conn.execute("select public.factory_control_project_v1(%s,%s,%s,%s,%s)",
+      ("integration-epoch-qa","resume",uuid.uuid4(),settled["version"],actor)).fetchone()[0]
+    assert resumed["generation"]==epoch+1,resumed
+    integration_checkpoint(owner="replacement-worker",allowed=False)
+    assert claim("resumed-worker") is not None
+    integration_checkpoint(generation=epoch+1,owner="resumed-worker")
+    acl=conn.execute("""select
+      has_function_privilege('anon','public.factory_assert_change_set_integration_epoch(uuid,uuid,bigint,text,integer)','EXECUTE'),
+      has_function_privilege('authenticated','public.factory_assert_change_set_integration_epoch(uuid,uuid,bigint,text,integer)','EXECUTE'),
+      has_function_privilege('service_role','public.factory_assert_change_set_integration_epoch(uuid,uuid,bigint,text,integer)','EXECUTE')""").fetchone()
+    assert acl==(False,False,True),acl
+    print("INTEGRATION_EPOCH_POSTGRES_PASS=1")
+
 print("PROJECT_MANUAL_CONTROL_POSTGRES_PASS=1")
