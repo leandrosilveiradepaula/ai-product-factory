@@ -7,6 +7,12 @@ class SupabaseDirectRunQueue:
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
   cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers
  def claim_next(self,worker_id:str,agent_key:str|None=None,run_id:str|None=None)->DirectExecutionItem|None:
+  if not isinstance(worker_id,str) or not worker_id.strip():
+      raise ValueError("worker ID is required to claim routed work")
+  if run_id is not None and (not isinstance(run_id,str) or not run_id.strip()):
+      raise ValueError("run ID must be non-empty")
+  if agent_key is not None and (not isinstance(agent_key,str) or not agent_key.strip()):
+      raise ValueError("agent key must be non-empty")
   req=urllib.request.Request(f"{self.url}/rest/v1/rpc/factory_claim_next_agent_direct_run",data=json.dumps({"p_worker_id":worker_id,"p_agent_key":agent_key,"p_run_id":run_id}).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
