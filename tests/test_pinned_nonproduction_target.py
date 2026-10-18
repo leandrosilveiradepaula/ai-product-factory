@@ -62,7 +62,8 @@ class TargetTests(unittest.TestCase):
             "project_key": "crm", "repository": "owner/crm",
             "project_kind": "existing", "delivery_target": None}
         builder = ChangeSetBuilderWorker(
-            github=g, store=store, producer=MagicMock(),\n            impact_engine=MagicMock(), provenance=MagicMock())
+            github=g, store=store, producer=MagicMock(),
+            impact_engine=MagicMock(), provenance=MagicMock())
         item = DirectExecutionItem(
             "run", "task", "crm", "owner/crm", None, "A", "B",
             "factory/cs/a", False, "cs", "wu", 1)
