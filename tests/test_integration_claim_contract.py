@@ -35,11 +35,11 @@ class IntegrationClaimContractTests(unittest.TestCase):
         unit=self.base["work_units"][0]
         cases=[
             ("src/"+"a"*1021,"length limit"),
-            ("src/a\nb.py","unsafe path"),
+            ("src/a\nb.py","control character"),
             ("src/"+"a"*256,"segment exceeds limit"),
             ("src/.git/config","git internals"),
-            ("src/a.py ","unsafe suffix"),
-            ("src/a. /file","unsafe suffix"),
+            ("src/a.py ","unsafe path suffix"),
+            ("src/a. /file","unsafe path suffix"),
         ]
         for path,message in cases:
             with self.subTest(message=message):
