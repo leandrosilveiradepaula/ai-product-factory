@@ -172,6 +172,14 @@ class SupabaseChangeSetStore:
             "p_run_id":run_id,"p_output_commit":output_commit,"p_changed_files":list(changed_files),
         }) or {}
 
+    def assert_epoch_mutation_ready(self)->None:
+        expected={
+            "version":1,"atomic_completion":True,
+            "atomic_release":True,"phase_checkpoints":True,
+        }
+        if self._rpc("factory_integration_epoch_write_readiness",{})!=expected:
+            raise RuntimeError("atomic integration SQL migration is not ready")
+
     def claim_integration(self,worker_id:str)->ChangeSetIntegrationItem|None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("integration worker ID is required")
