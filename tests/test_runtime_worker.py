@@ -136,6 +136,15 @@ class RuntimeWorkerTests(unittest.TestCase):
                 self.assertEqual(result.status,WorkStatus.FAILED)
                 self.assertFalse(any(e[0]=="complete" for e in q.events))
 
+    def test_revoked_malformed_claim_does_not_persist_failure(self):
+        for stages in ((), ("discovery", "discovery")):
+            with self.subTest(stages=stages):
+                q=FencedQueue(WorkItem("r","t","p","demo",stages,{}),1)
+                result=RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w").run_once()
+                self.assertEqual(result.status,WorkStatus.FAILED)
+                self.assertIn("revoked",result.error)
+                self.assertFalse(any(event[0] in {"fail","complete","stage"} for event in q.events))
+
     def test_worker_returns_none_when_queue_empty(self):
         q=Queue(None)
         self.assertIsNone(RuntimeWorker(queue=q,handler=DeterministicBootstrapHandler(),worker_id="w1").run_once())
