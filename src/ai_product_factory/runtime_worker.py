@@ -67,34 +67,52 @@ class RuntimeWorker:
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
-        if not isinstance(item.stages, (tuple, list)) or not item.stages or not all(isinstance(stage,str) and stage.strip() for stage in item.stages):
-            message = "claimed run has no executable stages"
-            # A claim may have been revoked before local payload validation.
-            # Never persist a failure against a paused or restarted generation.
-            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+        # Reject malformed claims before executing handlers or recording evidence.
+        malformed = None
+        if not isinstance(item.run_id,str) or not item.run_id.strip():
+            malformed = "claimed run has invalid run identity"
+        elif not isinstance(item.task_id,str) or not item.task_id.strip():
+            malformed = "claimed run has invalid task identity"
+        elif not isinstance(item.project_id,str) or not item.project_id.strip():
+            malformed = "claimed run has invalid project identity"
+        elif not isinstance(item.project_key,str) or not item.project_key.strip():
+            malformed = "claimed run has invalid project key"
+        elif not isinstance(item.context,dict):
+            malformed = "claimed run has invalid context"
+        elif item.execution_generation is not None and (
+            isinstance(item.execution_generation,bool)
+            or not isinstance(item.execution_generation,int)
+            or item.execution_generation<0
+        ):
+            malformed = "claimed run has invalid execution generation"
+        elif item.worker_id is not None and (
+            not isinstance(item.worker_id,str) or not item.worker_id.strip()
+        ):
+            malformed = "claimed run has invalid worker identity"
+        elif not isinstance(item.stages,(tuple,list)) or not item.stages or not all(
+            isinstance(stage,str) and stage.strip() for stage in item.stages
+        ):
+            malformed = "claimed run has no executable stages"
+        elif len(item.stages)>32:
+            malformed = "claimed run exceeds stage limit"
+        elif any(len(stage)>128 for stage in item.stages):
+            malformed = "claimed run has oversized stage name"
+        elif any(stage!=stage.strip() for stage in item.stages):
+            malformed = "claimed run has unnormalized stage name"
+        elif len(item.stages)!=len(set(item.stages)):
+            malformed = "claimed run has duplicate stages"
+        if malformed is not None:
+            checkpoint=getattr(self.queue,"assert_execution_epoch",None)
             if callable(checkpoint):
                 try:
                     checkpoint(item)
                 except Exception as exc:
-                    return WorkResult(WorkStatus.FAILED, (), str(exc))
+                    return WorkResult(WorkStatus.FAILED,(),str(exc))
             try:
-                self.queue.fail(item, message)
+                self.queue.fail(item,malformed)
             except Exception:
                 pass
-            return WorkResult(WorkStatus.FAILED, (), message)
-        if len(item.stages) != len(set(item.stages)):
-            message = "claimed run has duplicate stages"
-            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
-            if callable(checkpoint):
-                try:
-                    checkpoint(item)
-                except Exception as exc:
-                    return WorkResult(WorkStatus.FAILED, (), str(exc))
-            try:
-                self.queue.fail(item, message)
-            except Exception:
-                pass
-            return WorkResult(WorkStatus.FAILED, (), message)
+            return WorkResult(WorkStatus.FAILED,(),malformed)
         evidence: list[StageEvidence] = []
         current_stage: str | None = None
         try:
