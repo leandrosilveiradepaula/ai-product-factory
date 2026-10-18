@@ -376,5 +376,69 @@ class ChangeSetTests(unittest.TestCase):
         store.mark_repair_wave_integrated.assert_not_called()
         store.prepare_release.assert_not_called()
 
+
+    def test_integration_ten_adversarial_rpc_contracts(self):
+        """Ten independent malformed responses must fail closed at the boundary."""
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","source","candidate","factory/cs",2,(
+                {"plan_task_key":"task","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        valid={"status":"review_ready","change_set_id":"cs","candidate_commit":"integrated","current_wave":2}
+        malformed=(
+            ("unknown status",dict(valid,status="completed")),
+            ("wrong identity",dict(valid,change_set_id="other")),
+            ("missing identity",{k:v for k,v in valid.items() if k!="change_set_id"}),
+            ("wrong candidate",dict(valid,candidate_commit="wrong")),
+            ("missing candidate",{k:v for k,v in valid.items() if k!="candidate_commit"}),
+            ("boolean wave",dict(valid,current_wave=True)),
+            ("missing wave",{k:v for k,v in valid.items() if k!="current_wave"}),
+            ("wrong final wave",dict(valid,current_wave=3)),
+            ("backward next wave",dict(valid,status="building",current_wave=2)),
+            ("negative next wave",dict(valid,status="building",current_wave=-1)),
+        )
+        for label,response in malformed:
+            with self.subTest(label=label):
+                github=MagicMock()
+                github.get_file_text.return_value="content"
+                github.commit_files.return_value="integrated"
+                github.get_branch_sha.return_value="integrated"
+                store=MagicMock()
+                store.complete_integration.return_value=response
+                with self.assertRaises(RuntimeError):
+                    ChangeSetIntegrator(github=github,store=store).integrate(item)
+                store.mark_repair_wave_integrated.assert_not_called()
+                store.prepare_release.assert_not_called()
+                github.create_issue.assert_not_called()
+                github.create_pull_request.assert_not_called()
+
+    def test_integration_release_rpc_rejects_invalid_durable_results(self):
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","source","candidate","factory/cs",1,(
+                {"plan_task_key":"task","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        responses=(
+            None,{},{"status":"review_ready"},{"status":"ci_pending"},
+            {"status":"ci_pending","change_set_id":"other","release_run_id":"run"},
+            {"status":"ci_pending","change_set_id":"cs","release_run_id":""},
+            {"status":"ci_pending","change_set_id":"cs","release_run_id":42},
+        )
+        for response in responses:
+            with self.subTest(response=response):
+                github=MagicMock()
+                github.get_file_text.return_value="content"
+                github.commit_files.return_value="integrated"
+                github.get_branch_sha.return_value="integrated"
+                github.create_issue.return_value=SimpleNamespace(number=7,html_url="https://github/issue/7")
+                github.create_pull_request.return_value=SimpleNamespace(number=9,head_sha="integrated")
+                store=MagicMock()
+                store.complete_integration.return_value={
+                    "status":"review_ready","change_set_id":"cs","candidate_commit":"integrated","current_wave":1
+                }
+                store.prepare_release.return_value=response
+                with self.assertRaises(RuntimeError):
+                    ChangeSetIntegrator(github=github,store=store).integrate(item)
+
 if __name__=="__main__":
     unittest.main()
