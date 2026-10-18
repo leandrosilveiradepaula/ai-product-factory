@@ -9,6 +9,56 @@ from ai_product_factory.execution_worker import DirectExecutionItem,Implementati
 
 
 class ChangeSetTests(unittest.TestCase):
+    def test_integration_preflight_fails_without_github_mutations(self):
+        from dataclasses import replace
+        item=ChangeSetIntegrationItem(
+            change_set_id="cs",project_key="demo",repository="owner/repo",
+            source_commit="source",candidate_commit="candidate",
+            integration_branch="factory/cs",current_wave=1,
+            work_units=({"plan_task_key":"a","base_commit":"candidate",
+                "output_commit":"output","changed_files":["src/a.py"]},),
+        )
+        cases=[
+            (replace(item,current_wave=0),"wave"),
+            (replace(item,current_wave=True),"wave"),
+            (replace(item,integration_branch="main"),"branch"),
+            (replace(item,project_key=""),"project identity"),
+            (replace(item,repository="invalid"),"repository identity"),
+            (replace(item,source_commit=""),"source identity"),
+            (replace(item,change_set_id=""),"identity"),
+            (replace(item,candidate_commit=""),"identity"),
+            (replace(item,work_units=(None,)),"object"),
+            (replace(item,work_units=({**item.work_units[0],"plan_task_key":""},)),"task identity"),
+            (replace(item,work_units=({**item.work_units[0],"changed_files":["src/a.py"]*201},)),"path limit"),
+            (replace(item,work_units=(item.work_units[0],)*101),"work unit limit"),
+
+            (replace(item,work_units=({**item.work_units[0],"output_commit":"candidate"},)),"equals candidate"),
+            (replace(item,work_units=({**item.work_units[0],"changed_files":[]},)),"changed files"),
+            (replace(item,work_units=({**item.work_units[0],"changed_files":[None]},)),"nonempty string"),
+        ]
+        for candidate,message in cases:
+            with self.subTest(message=message):
+                github=MagicMock()
+                store=MagicMock()
+                with self.assertRaisesRegex((ValueError,RuntimeError),message):
+                    ChangeSetIntegrator(github=github,store=store).integrate(candidate)
+                github.ensure_branch_at_sha.assert_not_called()
+                github.commit_files.assert_not_called()
+
+    def test_integration_rejects_non_text_source_before_branch_write(self):
+        item=ChangeSetIntegrationItem(
+            change_set_id="cs",project_key="demo",repository="owner/repo",
+            source_commit="source",candidate_commit="candidate",
+            integration_branch="factory/cs",current_wave=1,
+            work_units=({"plan_task_key":"a","base_commit":"candidate",
+                "output_commit":"output","changed_files":["src/a.py"]},),
+        )
+        github=MagicMock()
+        github.get_file_text.return_value=None
+        with self.assertRaisesRegex(RuntimeError,"not text"):
+            ChangeSetIntegrator(github=github,store=MagicMock()).integrate(item)
+        github.ensure_branch_at_sha.assert_not_called()
+
     def test_builder_commits_isolated_work_unit_without_pr(self):
         github=MagicMock()
         github.get_branch_sha.return_value="base"

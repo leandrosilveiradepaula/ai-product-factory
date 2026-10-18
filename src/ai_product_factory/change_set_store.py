@@ -284,6 +284,12 @@ class SupabaseChangeSetStore:
                 seen_paths.add(path)
         if len(seen_paths)>500:
             raise RuntimeError("integration claim exceeds file limit")
+        # These are exact payload invariants, not project-specific directory policy.
+        if data["source_commit"]==data["candidate_commit"]:
+            raise RuntimeError("integration claim has unchanged candidate")
+        for unit in units:
+            if len(unit["changed_files"])!=len(set(unit["changed_files"])):
+                raise RuntimeError("integration work unit repeats changed file")
         generation=data.get("execution_generation")
         if isinstance(generation,bool) or not isinstance(generation,int) or generation<1:
             raise RuntimeError("integration claim missing execution generation")

@@ -70,6 +70,18 @@ class IntegrationClaimContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,message):
                     self.store.claim_integration("worker")
 
+    def test_candidate_and_unit_identity_invariants(self):
+        cases=[
+            ({"source_commit":"candidate"},"unchanged candidate"),
+            ({"work_units":[{**self.base["work_units"][0],
+                "changed_files":["src/a.py","src/a.py"]}]},"conflicting file owners"),
+        ]
+        for override,message in cases:
+            with self.subTest(message=message):
+                self.store._rpc=MagicMock(return_value={**self.base,**override})
+                with self.assertRaisesRegex(RuntimeError,message):
+                    self.store.claim_integration("worker")
+
     def test_epoch_checkpoint_rejects_boolean_generation(self):
         from dataclasses import replace
         self.store._rpc=MagicMock(return_value=self.base)
