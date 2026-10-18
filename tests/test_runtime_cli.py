@@ -395,6 +395,16 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertFalse(out["model_calls_allowed"])
         store.create_replay.assert_called_once_with("run","shadow")
 
+    def test_missing_atomic_integration_migration_rejects_before_claim_or_github(self):
+        store=MagicMock()
+        store.require_epoch_mutation_ready.side_effect=RuntimeError("migration not ready")
+        with patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+            with self.assertRaisesRegex(RuntimeError,"migration not ready"):
+                run_change_set_integration_once("worker")
+        store.claim_integration.assert_not_called()
+        github.assert_not_called()
+
     def test_same_repo_change_set_integration_dispatches_validate_workflow(self):
         item=SimpleNamespace(repository="owner/factory",project_key="factory",integration_branch="factory/change-set-cs")
         store=MagicMock();store.claim_integration.return_value=item;store.assert_project_running=MagicMock()

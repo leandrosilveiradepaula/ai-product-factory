@@ -96,8 +96,7 @@ class ChangeSetIntegrator:
         if self.github.get_branch_sha(item.integration_branch)!=candidate:
             raise RuntimeError("integration branch moved before candidate persistence")
         completed=self.store.complete_integration(
-            change_set_id=item.change_set_id,candidate_commit=candidate,
-            changed_files=tuple(sorted(files)),
+            item=item,candidate_commit=candidate,changed_files=tuple(sorted(files)),
         )
         if not isinstance(completed,dict):
             raise RuntimeError("integration completion returned an invalid result")
@@ -115,9 +114,9 @@ class ChangeSetIntegrator:
             raise RuntimeError("integration completion did not advance the wave")
         if status=="review_ready" and completed_wave!=item.current_wave:
             raise RuntimeError("integration completion changed final wave")
-        self.store.mark_repair_wave_integrated(
-            change_set_id=item.change_set_id,wave=item.current_wave,candidate_commit=candidate,
-        )
+        repairs=completed.get("repair_jobs_integrated")
+        if isinstance(repairs,bool) or not isinstance(repairs,int) or repairs<0:
+            raise RuntimeError("atomic integration completion missing repair outcome")
         pull_request=None
         if status=="review_ready":
             marker=f"Factory change set: {item.change_set_id}"
@@ -141,7 +140,7 @@ class ChangeSetIntegrator:
             if not isinstance(issue.number,int) or isinstance(issue.number,bool) or issue.number<1:
                 raise RuntimeError("integration issue number is invalid")
             release=self.store.prepare_release(
-                change_set_id=item.change_set_id,issue_number=issue.number,issue_url=issue.html_url,
+                item=item,issue_number=issue.number,issue_url=issue.html_url,
                 pr_number=pull_request.number,candidate_commit=candidate,branch=item.integration_branch,
             )
             if not isinstance(release,dict) or release.get("status")!="ci_pending":

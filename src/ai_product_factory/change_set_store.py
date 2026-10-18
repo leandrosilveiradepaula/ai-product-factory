@@ -172,6 +172,18 @@ class SupabaseChangeSetStore:
             "p_run_id":run_id,"p_output_commit":output_commit,"p_changed_files":list(changed_files),
         }) or {}
 
+    def require_epoch_mutation_ready(self)->None:
+        expected={
+            "version":1,"atomic_completion":True,
+            "atomic_release":True,"phase_checkpoints":True,
+        }
+        response=self._rpc("factory_integration_epoch_write_readiness",{})
+        if (response!=expected or not isinstance(response,dict)
+            or type(response.get("version")) is not int
+            or any(type(response.get(key)) is not bool
+                   for key in ("atomic_completion","atomic_release","phase_checkpoints"))):
+            raise RuntimeError("atomic integration SQL migration is not ready")
+
     def claim_integration(self,worker_id:str)->ChangeSetIntegrationItem|None:
         if (not isinstance(worker_id,str) or not worker_id.strip() or len(worker_id)>128 or
             worker_id!=worker_id.strip() or any(ord(c)<33 or ord(c)==127 for c in worker_id)):
@@ -316,22 +328,36 @@ class SupabaseChangeSetStore:
             "p_wave":item.current_wave,
         })
 
-    def complete_integration(self,*,change_set_id:str,candidate_commit:str,changed_files:tuple[str,...])->dict:
-        return self._rpc("factory_complete_change_set_integration",{
-            "p_change_set_id":change_set_id,"p_candidate_commit":candidate_commit,
+    def complete_integration(self,*,item:ChangeSetIntegrationItem,candidate_commit:str,changed_files:tuple[str,...])->dict:
+        if not item.project_id or not item.execution_generation or not item.lease_owner:
+            raise PermissionError("integration completion requires claimed epoch capability")
+        result=self._rpc("factory_complete_change_set_integration_epoch",{
+            "p_change_set_id":item.change_set_id,"p_project_id":item.project_id,
+            "p_generation":item.execution_generation,"p_worker_id":item.lease_owner,
+            "p_wave":item.current_wave,"p_candidate_commit":candidate_commit,
             "p_changed_files":list(changed_files),
-        }) or {}
+        })
+        if not isinstance(result,dict):
+            raise RuntimeError("atomic integration completion returned no result")
+        return result
 
     def mark_repair_wave_integrated(self,*,change_set_id:str,wave:int,candidate_commit:str)->dict:
-        return self._rpc("factory_mark_repair_wave_integrated",{
-            "p_change_set_id":change_set_id,"p_wave":wave,"p_candidate_commit":candidate_commit,
-        }) or {}
+        # Legacy endpoint has no epoch capability. Repair jobs are now mutated in
+        # the same transaction as completion; no second unguarded write is allowed.
+        raise PermissionError("repair wave completion is part of atomic integration")
 
-    def prepare_release(self,*,change_set_id:str,issue_number:int,issue_url:str,pr_number:int,candidate_commit:str,branch:str)->dict:
-        return self._rpc("factory_prepare_change_set_release",{
-            "p_change_set_id":change_set_id,"p_issue_number":issue_number,"p_issue_url":issue_url,
+    def prepare_release(self,*,item:ChangeSetIntegrationItem,issue_number:int,issue_url:str,pr_number:int,candidate_commit:str,branch:str)->dict:
+        if not item.project_id or not item.execution_generation or not item.lease_owner:
+            raise PermissionError("release preparation requires claimed epoch capability")
+        result=self._rpc("factory_prepare_change_set_release_epoch",{
+            "p_change_set_id":item.change_set_id,"p_project_id":item.project_id,
+            "p_generation":item.execution_generation,"p_worker_id":item.lease_owner,
+            "p_wave":item.current_wave,"p_issue_number":issue_number,"p_issue_url":issue_url,
             "p_pr_number":pr_number,"p_candidate_commit":candidate_commit,"p_branch":branch,
-        }) or {}
+        })
+        if not isinstance(result,dict):
+            raise RuntimeError("atomic release preparation returned no result")
+        return result
 
     def finalize_released_run(self,run_id:str,merge_sha:str)->dict:
         if not run_id.strip() or not merge_sha.strip():

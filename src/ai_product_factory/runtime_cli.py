@@ -266,6 +266,9 @@ class _CheckpointedIntegrationStore:
 
 def run_change_set_integration_once(worker_id:str)->dict:
  store=SupabaseChangeSetStore()
+ # Code merged before its production SQL migration must not claim a lease or
+ # create GitHub commits. The DB readiness probe also rejects legacy write grants.
+ store.require_epoch_mutation_ready()
  item=store.claim_integration(worker_id)
  if item is None:return {"claimed":False,"status":"empty"}
  checkpoint=lambda:store.assert_integration_epoch(item,worker_id)
