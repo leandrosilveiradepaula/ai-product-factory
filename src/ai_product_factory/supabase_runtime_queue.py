@@ -136,6 +136,11 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 for row in rows[:6]:
                     if not isinstance(row, dict):
                         continue
+                    # Recheck the returned stage, even when SQL was filtered:
+                    # a mocked/corrupted response must not promote a browser-only
+                    # verification record into a durable project baseline.
+                    if row.get("observed_stage") == "verification":
+                        continue
                     summary = row.get("summary")
                     evidence = row.get("evidence")
                     source_status = row.get("source_status")
