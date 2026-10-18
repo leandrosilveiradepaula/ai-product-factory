@@ -368,8 +368,12 @@ class ChangeSetBuilderWorker:
             if not path or path.startswith("/") or path.startswith("../") or "/../" in path:
                 raise ValueError("invalid repository context path")
             text=redact_repository_text(self.github.get_file_text(path,ref=base_commit))
+            # Large source files are common in established projects. Keep a bounded,
+            # deterministic excerpt rather than blocking the entire work unit.
             if len(text.encode("utf-8"))>32768:
-                raise ValueError("repository context file too large")
+                marker="\n[TRUNCATED: repository context exceeds 32768 bytes; inspect the exact-SHA source before editing]\n"
+                budget=32768-len(marker.encode("utf-8"))
+                text=text.encode("utf-8")[:budget].decode("utf-8",errors="ignore")+marker
             total+=len(text.encode("utf-8"))
             if total>131072:
                 raise ValueError("repository context snapshot too large")
