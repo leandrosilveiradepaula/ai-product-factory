@@ -62,7 +62,7 @@ class TargetTests(unittest.TestCase):
             "project_key": "crm", "repository": "owner/crm",
             "project_kind": "existing", "delivery_target": None}
         builder = ChangeSetBuilderWorker(
-            github=g, store=store, producer=MagicMock())
+            github=g, store=store, producer=MagicMock(),\n            impact_engine=MagicMock(), provenance=MagicMock())
         item = DirectExecutionItem(
             "run", "task", "crm", "owner/crm", None, "A", "B",
             "factory/cs/a", False, "cs", "wu", 1)
@@ -88,7 +88,7 @@ class TargetTests(unittest.TestCase):
 
     def test_integration_uses_pinned_base_not_main(self):
         g = github()
-        g.get_file_text.return_value = "value=1"
+        g.get_file_text.return_value = "value=1"\n        g.get_branch_sha.side_effect = lambda ref: SHA if ref == TARGET["branch"] else "integrated"
         g.commit_files.return_value = "integrated"
         g.find_open_issue_containing.return_value = SimpleNamespace(
             number=9, html_url="https://example.test/issues/9")
