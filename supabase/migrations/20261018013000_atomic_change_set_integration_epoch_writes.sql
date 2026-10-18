@@ -2,6 +2,65 @@
 -- New atomic RPCs supersede the legacy unfenced metadata mutation endpoints.
 begin;
 
+-- The same checkpoint now guards all three legitimate integration phases:
+-- integrating (live lease), review_ready (durable completion receipt), and
+-- ci_pending (exact release request and CI run). Pauses revoke every phase.
+create or replace function public.factory_assert_change_set_integration_epoch(
+ p_change_set_id uuid,p_project_id uuid,p_generation bigint,p_worker_id text,p_wave integer
+) returns void language plpgsql security invoker set search_path='' as $f$
+declare
+ v_state text;v_generation bigint;v_set record;v_receipt jsonb;v_request jsonb;v_run record;
+begin
+ if p_change_set_id is null or p_project_id is null or p_generation is null or p_generation<1
+    or nullif(btrim(p_worker_id),'') is null or p_wave is null or p_wave<1 then
+  raise exception 'invalid integration checkpoint' using errcode='PT400';
+ end if;
+ select state,generation into v_state,v_generation
+ from public.factory_project_execution_controls where project_id=p_project_id for share;
+ if not found or v_state is distinct from 'running' or v_generation is distinct from p_generation then
+  raise exception 'integration epoch revoked' using errcode='PT409';
+ end if;
+ select s.project_id,s.status,s.current_wave,s.lease_owner,s.lease_expires_at,
+        s.candidate_commit,s.integration_branch,s.release_run_id,s.metadata
+ into v_set from public.factory_change_sets s where s.id=p_change_set_id for share;
+ if not found or v_set.project_id is distinct from p_project_id
+    or v_set.current_wave is distinct from p_wave then
+  raise exception 'integration checkpoint identity revoked' using errcode='PT409';
+ end if;
+ if v_set.status='integrating' then
+  if v_set.lease_owner is distinct from p_worker_id
+      or v_set.lease_expires_at is null or v_set.lease_expires_at<=clock_timestamp() then
+   raise exception 'integration worker lease revoked' using errcode='PT409';
+  end if;
+  return;
+ end if;
+ v_receipt:=jsonb_build_object(
+  'project_id',p_project_id,'generation',p_generation,'worker_id',p_worker_id,
+  'wave',p_wave,'candidate_commit',v_set.candidate_commit);
+ if v_set.metadata->'integration_epoch_receipt' is distinct from v_receipt
+    or nullif(btrim(v_set.candidate_commit),'') is null then
+  raise exception 'integration completion receipt revoked' using errcode='PT409';
+ end if;
+ if v_set.status='review_ready' then return; end if;
+ if v_set.status='ci_pending' and v_set.release_run_id is not null then
+  v_request:=v_set.metadata->'integration_release_request';
+  if jsonb_typeof(v_request) is distinct from 'object'
+     or v_request->>'candidate_commit' is distinct from v_set.candidate_commit
+     or v_request->>'branch' is distinct from v_set.integration_branch then
+   raise exception 'integration release checkpoint revoked' using errcode='PT409';
+  end if;
+  select status,candidate_commit,branch_name into v_run
+  from public.factory_runs where id=v_set.release_run_id;
+  if found and v_run.status='ci_pending'
+     and v_run.candidate_commit=v_set.candidate_commit
+     and v_run.branch_name=v_set.integration_branch then
+   return;
+  end if;
+ end if;
+ raise exception 'integration checkpoint status revoked' using errcode='PT409';
+end;
+$f$;
+
 create or replace function public.factory_complete_change_set_integration_epoch(
  p_change_set_id uuid,p_project_id uuid,p_generation bigint,p_worker_id text,
  p_wave integer,p_candidate_commit text,p_changed_files jsonb
