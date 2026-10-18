@@ -50,4 +50,22 @@ class Tests(unittest.TestCase):
     with self.assertRaisesRegex(RuntimeError,message):
      queue.claim_next("worker")
 
+ def test_rejects_incoherent_claim_metadata(self):
+  base={"run_id":"run","project_id":"project","execution_generation":1,"task_id":"task","project_key":"demo","repository":"owner/repo","title":"Work","branch":"factory/work"}
+  cases=[
+   ({"issue_number":True},"invalid issue number"),
+   ({"issue_number":0},"invalid issue number"),
+   ({"wave":2},"wave requires change set binding"),
+   ({"change_set_id":"cs","work_unit_id":"wu","wave":2},""),
+   ({"change_set_id":123,"work_unit_id":"wu"},"invalid change_set_id"),
+   ({"change_set_id":"cs","work_unit_id":123},"invalid work_unit_id"),
+   ({"description":[]},"invalid description"),
+  ]
+  queue=SupabaseDirectRunQueue(url="https://x.supabase.co",service_role_key="secret")
+  for override,message in cases:
+   if not message:continue
+   with self.subTest(override=override),patch("urllib.request.urlopen",return_value=Response({**base,**override})):
+    with self.assertRaisesRegex(RuntimeError,message):
+     queue.claim_next("worker")
+
 if __name__=="__main__":unittest.main()
