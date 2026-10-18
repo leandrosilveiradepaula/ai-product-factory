@@ -4,6 +4,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 from .runtime_worker import RuntimeQueue, StageEvidence, WorkItem
 from .agent_scheduler import AgentProfile
@@ -111,6 +112,105 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             "p_worker_id":item.worker_id,
         })
 
+    def _reconciliation_context(self, project_id: str, original: dict) -> dict:
+        """Resolve an existing project's *durable* snapshot after a claimed run.
+
+        This is strictly scoped to the claimed project. Historical verification
+        events (e.g. browser-only observations) are not a full project baseline.
+        Database-read failure or absent evidence must NOT fabricate a snapshot:
+        the ProductStageExecutor will reject before making a model call.
+        """
+        context = dict(original)
+        project_ref = quote(project_id, safe="")
+        if not isinstance(context.get("state_snapshot"), dict):
+            try:
+                rows = self._get(
+                    "factory_project_state_snapshots?"
+                    "select=id,observed_stage,summary,evidence,gaps,constraints,source_status,created_at"
+                    "&project_id=eq." + project_ref
+                    + "&observed_stage=neq.verification&order=created_at.desc&limit=6"
+                )
+            except (RuntimeError, ValueError, TypeError):
+                rows = []
+            if isinstance(rows, list):
+                for row in rows[:6]:
+                    if not isinstance(row, dict):
+                        continue
+                    # Recheck the returned stage, even when SQL was filtered:
+                    # a mocked/corrupted response must not promote a browser-only
+                    # verification record into a durable project baseline.
+                    if row.get("observed_stage") == "verification":
+                        continue
+                    summary = row.get("summary")
+                    evidence = row.get("evidence")
+                    source_status = row.get("source_status")
+                    if not isinstance(summary, str) or not summary.strip():
+                        continue
+                    if not (
+                        (isinstance(evidence, (dict, list)) and bool(evidence))
+                        or (isinstance(source_status, dict) and bool(source_status))
+                    ):
+                        continue
+                    snapshot = {
+                        "snapshot_id": row.get("id"),
+                        "observed_stage": row.get("observed_stage"),
+                        "recorded_at": row.get("created_at"),
+                        "summary": summary,
+                        "evidence": evidence if isinstance(evidence, (dict, list)) else [],
+                        "gaps": row.get("gaps") if isinstance(row.get("gaps"), (dict, list)) else [],
+                        "constraints": row.get("constraints") if isinstance(row.get("constraints"), (dict, list)) else [],
+                        "source_status": source_status if isinstance(source_status, dict) else {},
+                        "provenance": "historical_control_plane_snapshot_not_live_github",
+                    }
+                    # A single product prompt must not absorb an unbounded audit payload.
+                    if len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8")) <= 32768:
+                        context["state_snapshot"] = snapshot
+                        break
+
+        # Current Control Plane task statuses take precedence over historical
+        # 'known_pending' guesses. App capabilities retain their verification
+        # timestamp and are *not* proof of the present GitHub PR head.
+        facts = {"source": "durable_control_plane_not_live_github"}
+        try:
+            tasks = self._get(
+                "factory_tasks?select=external_key,title,status,updated_at"
+                "&project_id=eq." + project_ref
+                + "&order=created_at.desc&limit=24"
+            )
+        except (RuntimeError, ValueError, TypeError):
+            tasks = None
+        if isinstance(tasks, list):
+            facts["recent_tasks"] = [
+                {
+                    "external_key": row.get("external_key"),
+                    "title": row.get("title"),
+                    "status": row.get("status"),
+                    "updated_at": row.get("updated_at"),
+                }
+                for row in tasks[:24]
+                if isinstance(row, dict) and isinstance(row.get("status"), str)
+            ]
+        try:
+            access = self._get(
+                "factory_project_github_access?"
+                "select=status,repository,observed_capabilities,last_verified_at"
+                "&project_id=eq." + project_ref + "&limit=1"
+            )
+        except (RuntimeError, ValueError, TypeError):
+            access = None
+        if isinstance(access, list) and len(access) == 1 and isinstance(access[0], dict):
+            row = access[0]
+            facts["github_access"] = {
+                "status": row.get("status"),
+                "repository": row.get("repository"),
+                "observed_capabilities": row.get("observed_capabilities")
+                    if isinstance(row.get("observed_capabilities"), dict) else {},
+                "last_verified_at": row.get("last_verified_at"),
+                "live_github_head_verified": False,
+            }
+        context["current_state_facts"] = facts
+        return context
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -129,7 +229,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("claim RPC returned invalid identifiers")
         if type(data.get("execution_generation")) is not int or data["execution_generation"] < 1:
             raise RuntimeError("claim RPC returned invalid execution generation")
-        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(data.get("stages",[])),context=data.get("context",{}),execution_generation=data.get("execution_generation"),worker_id=worker_id)
+        context = data.get("context", {})
+        if "reconciliation" in stages:
+            context = self._reconciliation_context(data["project_id"], context)
+        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
         if status not in {"started","failed"}:

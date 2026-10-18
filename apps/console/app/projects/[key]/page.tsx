@@ -145,7 +145,7 @@ function productWorkerBlockerMessage(reason:string){
  return reasons[reason]||"Motivo de bloqueio não reconhecido.";
 }
 
-export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string;repo_link?:string;control?:string}>}){
+export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string;repo_link?:string;control?:string;continuation?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
  if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
   const jar=await cookies();
@@ -173,6 +173,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
  const repositoryNotice=query.repo_link?repoLinkMessages[query.repo_link]:undefined;
  const controlNotice=query.control?controlMessages[query.control]:undefined;
+ const continuationNotice=query.continuation==="requested"?"Pedido registrado e acionamento solicitado ao GitHub. O worker ainda precisa assumir a execução.":query.continuation==="delayed"?"Pedido registrado, mas não foi possível confirmar o acionamento imediato. A execução continua na fila.":query.continuation==="recorded"?"Pedido registrado sem iniciar o projeto pausado/parado. Retomar exige comando explícito.":query.continuation==="replayed"?"Pedido já registrado anteriormente; nenhuma execução duplicada foi criada.":undefined;
  const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
@@ -201,6 +202,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    </div>
   </section>
   {controlNotice?<div className={controlNotice.status==="success"?"card noticeCard success":"card noticeCard"} role="status"><StatusPill status={controlNotice.status}/><span>{controlNotice.message}</span></div>:null}
+  {continuationNotice?<div className="card noticeCard" role="status"><StatusPill status="queued" label="Pedido registrado"/><span>{continuationNotice}</span></div>:null}
   {supabaseNotice?<div className={supabaseNotice.status==="success"?"card noticeCard success":"card noticeCard danger"} role="status"><StatusPill status={supabaseNotice.status}/><span>{supabaseNotice.message}</span></div>:null}
   {reconciliationNotice?<div className="card noticeCard success" role="status"><StatusPill status="success"/><span>{reconciliationNotice}</span></div>:null}
   {githubAppNotice?<div className={githubAppNotice.status==="success"?"card noticeCard success":githubAppNotice.status==="attention"?"card noticeCard":"card noticeCard danger"} role="status"><StatusPill status={githubAppNotice.status}/><span>{githubAppNotice.message}</span></div>:null}
@@ -219,13 +221,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    </div>
   </section>:null}
   {query.wake_recovery?<div className="card noticeCard" role="status"><strong>Recuperação do worker:</strong> {query.wake_recovery==="requested"?"Solicitação aceita pelo GitHub; aguarde a execução real.":query.wake_recovery==="cooldown"?"Já houve uma tentativa recente. Aguarde pelo menos 15 minutos.":query.wake_recovery==="unconfigured"?"A integração de disparo não está configurada para a Factory.":query.wake_recovery==="not_eligible"?"Não foi encontrada uma execução inicial pendente elegível.":query.wake_recovery==="failed"?"Falha no acionamento. A tarefa continua preservada.":"Não foi possível verificar a recuperação."}</div>:null}
-  {p.pendingRun&&p.stage==="discovery"?<div className="card pendingProjectNotice" role="status">
-   <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>Descoberta ainda não iniciada</strong></div>
-   <p>O Control Plane preservou a execução <code>{p.pendingRun.id.slice(0,8)}</code>, ainda com {p.pendingRun.attemptCount} tentativas. Criar o projeto não significa que um worker já iniciou o processamento.</p>
+  {p.pendingRun&&(p.stage==="discovery"||!observedBlocker)?<div className="card pendingProjectNotice" role="status">
+   <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>{p.stage==="discovery"?"Descoberta ainda não iniciada":"Reconciliação aguardando o worker"}</strong></div>
+   <p>O Control Plane preservou a execução <code>{p.pendingRun.id.slice(0,8)}</code>, ainda com {p.pendingRun.attemptCount} tentativas. Registrar o pedido não significa que um worker já iniciou o processamento.</p>
    {p.wakeEvidence?.wakeStatus==="requested"?<p>O Console registrou um pedido de acionamento aceito pelo GitHub. Isso não comprova que o worker executou.</p>:p.wakeEvidence?.wakeStatus==="failed"?<p>O Console registrou falha ao solicitar o acionamento imediato. A execução permanece na fila para recuperação.</p>:p.wakeEvidence?.wakeStatus==="unconfigured"?<p>O Console não encontrou uma identidade autorizada para o acionamento imediato. A execução permanece na fila.</p>:<p>Não há evidência registrada de acionamento imediato para esta execução.</p>}
-   {p.wakeEvidence?.workerObservedAt?<p>Última observação global do scheduler: {new Date(p.wakeEvidence.workerObservedAt).toLocaleString("pt-BR")}. {p.wakeEvidence.productQueueDetected?"A fila de trabalho de produto foi detectada; isso não confirma que esta execução foi assumida.":"Nenhum trabalho de produto foi indicado nessa observação."} O botão Iniciar desenvolvimento solicita o acionamento imediato do worker existente; não ignora bloqueios de modelo, quota ou orçamento.</p>:<p>Ainda não existe observação do scheduler posterior ao enfileiramento.</p>}
+   {p.wakeEvidence?.workerObservedAt?<p>Última observação global do scheduler: {new Date(p.wakeEvidence.workerObservedAt).toLocaleString("pt-BR")}. {p.wakeEvidence.productQueueDetected?"A fila de trabalho de produto foi detectada; isso não confirma que esta execução foi assumida.":"Nenhum trabalho de produto foi indicado nessa observação."} O wake solicita o acionamento do worker existente, sem ignorar bloqueios de modelo, quota ou orçamento.</p>:<p>Ainda não existe observação do scheduler posterior ao enfileiramento.</p>}
    {p.wakeEvidence?.blockerCode?<p role="status"><strong>Bloqueio registrado para esta execução:</strong> {productWorkerBlockerMessage(p.wakeEvidence.blockerCode)} {p.wakeEvidence.blockedAt?<span className="muted">Evidência de {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. O worker não assumiu o run.</span>:null}</p>:null}
-   <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink>{operator.role==="admin"?<form method="POST" action="/api/projects/wake-recovery"><input type="hidden" name="project_key" value={p.key}/><button className="linkButton" type="submit">Iniciar desenvolvimento</button></form>:null}</div>
+   <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink>{operator.role==="admin"?<form method="POST" action="/api/projects/wake-recovery"><input type="hidden" name="project_key" value={p.key}/><button className="linkButton" type="submit">{p.stage==="discovery"?"Iniciar desenvolvimento":"Solicitar recuperação do worker"}</button></form>:null}</div>
   </div>:null}
   {p.pendingRun&&p.stage!=="discovery"&&observedBlocker?<div className="card pendingProjectNotice" role="status" aria-live="polite">
    <div className="badgeLine"><StatusPill status="blocked" label="Execução pausada"/><strong>{observedBlocker==="budget_exhausted"?"Orçamento do modelo insuficiente":"Execução aguardando dependência do modelo"}</strong></div>

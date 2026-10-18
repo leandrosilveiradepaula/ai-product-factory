@@ -25,8 +25,9 @@ async function submit(formData:FormData){
  // After RPC submission, even a 409 can refer to an already committed request_id.
  // Never delete files based on an ambiguous response; a separate verified cleanup
  // policy must handle private orphan uploads without risking legitimate attachments.
- await enqueueProjectContinuation(projectKey,request,files.length,requestId);
- redirect("/projects/"+encodeURIComponent(projectKey));
+ const result=await enqueueProjectContinuation(projectKey,request,files.length,requestId);
+ const notice=!result.created?"replayed":result.wakeStatus==="requested"?"requested":result.wakeStatus==="not_needed"?"recorded":"delayed";
+ redirect("/projects/"+encodeURIComponent(projectKey)+"?continuation="+notice);
 }
 
 export default async function ProjectRequest({params}:{params:Promise<{key:string}>}){
