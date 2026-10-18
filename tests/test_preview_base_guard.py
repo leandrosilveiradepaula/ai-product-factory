@@ -48,6 +48,29 @@ class PreviewBaseGuardTests(unittest.TestCase):
         self.assertEqual(github.get_branch_sha.call_count, 2)
         self.assertEqual(github.get_file_text.call_count, 3)
 
+    def test_preview_probe_handles_benign_workflow_base_advance(self):
+        from unittest.mock import patch
+        from ai_product_factory.runtime_cli import run_preview_probe_once
+        github, pr = github_for()
+        pr.state = "open"
+        pr.merged = False
+        github.get_pull_request.return_value = pr
+        github.get_pull_request_files.return_value = ("src/services/SettingsService.ts",)
+        queue = MagicMock()
+        queue.next_pending.return_value = SimpleNamespace(
+            run_id="crm-run", repository="owner/crm", pr_number=180,
+            candidate_commit=HEAD,
+            manifest={"preview":{"required":False,"reason":"backend-only"}},
+        )
+        with patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",
+                   return_value=queue), patch(
+                   "ai_product_factory.runtime_cli.GitHubRestAdapter",
+                   return_value=github):
+            result = run_preview_probe_once()
+        self.assertEqual(result["status"],"ready")
+        self.assertFalse(result["preview_required"])
+        github.get_pull_request_files.assert_called_once_with(180)
+
     def test_non_preview_base_remains_fail_closed(self):
         github, pr = github_for("main")
         with self.assertRaisesRegex(RuntimeError, "PR base is stale"):

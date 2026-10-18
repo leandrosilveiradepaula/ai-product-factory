@@ -498,6 +498,12 @@ def run_preview_once()->dict:
   if assessment.decision.blocked:
    return {"claimed":True,"status":"release_policy_blocked","run_id":item.run_id,"pr_number":item.pr_number,
     "preview_required":False,"reason":applicability.reason,"policy_reasons":list(assessment.decision.reasons)}
+  refreshed_pr=github.get_pull_request(item.pr_number)
+  if (getattr(refreshed_pr,"merged",False)
+      or getattr(refreshed_pr,"state","open")!="open"
+      or refreshed_pr.head_sha!=item.candidate_commit):
+   raise RuntimeError("GitHub PR identity changed before non-Preview release readiness")
+  _require_current_preview_base(github,refreshed_pr)
   status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
   return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
    "preview_required":False,"reason":applicability.reason,"release_report_id":recorded.get("report_id")}
@@ -534,6 +540,14 @@ def run_preview_once()->dict:
   if str(exc)=="preview requires successful browser/e2e evidence":
    store.fail_preview(item.run_id,candidate_commit=item.candidate_commit,reason=str(exc))
   raise
+ # A successful browser check does not authorize release if the PR or
+ # its base moved while the deployment was being verified.
+ refreshed_pr=github.get_pull_request(item.pr_number)
+ if (getattr(refreshed_pr,"merged",False)
+     or getattr(refreshed_pr,"state","open")!="open"
+     or refreshed_pr.head_sha!=item.candidate_commit):
+  raise RuntimeError("GitHub PR identity changed during verified Preview")
+ _require_current_preview_base(github,refreshed_pr)
  store.record_resource_limit_signal(
   provider="vercel",resource_key="team",metric_key="deployments_daily",
   quality="unknown",source="preview-runtime-recovered",unit="deployments",window_key="rolling_24h",
