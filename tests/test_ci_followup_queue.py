@@ -29,6 +29,15 @@ class Tests(unittest.TestCase):
         self.assertEqual(item.pr_number,9)
         self.assertEqual(item.candidate_commit,"abc")
 
+    def test_change_set_identity_is_preserved_for_drift_diagnostics(self):
+        run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"source":"change-set","change_set_id":"change-123","github_issue":{"number":7}}}]
+        task=[{"project_id":"p"}]
+        project=[{"project_key":"crm","repository":"owner/crm"}]
+        usage=[{"metadata":{"pr":9,"head_sha":"abc"}}]
+        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(usage)]):
+            item=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x").next_pending()
+        self.assertEqual(item.change_set_id,"change-123")
+
     def test_operator_reconciled_dogfood_can_use_metadata_pr_number(self):
         run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"source":"operator_reconciled_dogfood","pr_number":16,"github_issue":{"number":15}}}]
         task=[{"project_id":"p"}]

@@ -19,6 +19,7 @@ class CIFollowupItem:
     pr_number: int
     candidate_commit: str
     human_gate_required: bool
+    change_set_id: str | None = None
 
 
 class SupabaseCIFollowupQueue:
@@ -90,6 +91,9 @@ class SupabaseCIFollowupQueue:
             raise RuntimeError("ci_pending run has no durable create_pr evidence")
 
         project=projects[0]
+        change_set_id = metadata.get("change_set_id") if metadata.get("source") == "change-set" else None
+        if change_set_id is not None and (not isinstance(change_set_id, str) or not change_set_id.strip()):
+            raise RuntimeError("invalid durable change-set identity")
         return CIFollowupItem(
             run_id=run_id,
             project_key=str(project["project_key"]),
@@ -99,4 +103,5 @@ class SupabaseCIFollowupQueue:
             pr_number=pr_number,
             candidate_commit=candidate,
             human_gate_required=human_gate,
+            change_set_id=change_set_id,
         )
