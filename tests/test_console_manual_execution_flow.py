@@ -40,7 +40,7 @@ class ManualProjectControlConsoleContract(unittest.TestCase):
         command = CONTROL.split("export async function commandProjectExecution(", 1)[1].split(
             "\nexport async function enqueueProjectBootstrap", 1)[0]
         self.assertLess(command.index("if(!response.ok)throw"), command.index("const shouldWake="))
-        self.assertLess(command.index("const shouldWake="), command.index("requestIntakeWorkerWake()"))
+        self.assertLess(command.index("const shouldWake="), command.index("deliverProjectControlWake(commandId)"))
         self.assertIn('result.state==="running"&&["start","resume","restart"].includes(command)', command)
         self.assertIn('["pausing","stopping"].includes(result.state)', command)
         self.assertIn('wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"', command)
@@ -49,7 +49,7 @@ class ManualProjectControlConsoleContract(unittest.TestCase):
         self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED", command)
 
     def test_wake_is_best_effort_and_does_not_bypass_guards(self):
-        self.assertIn('if(wakeStatus!=="requested")', CONTROL)
+        self.assertIn("project_control_wake_will_retry", CONTROL)
         self.assertIn('return {state:result.state', CONTROL)
         self.assertIn("requestFactoryIntakeWakeViaGitHubApp", WAKE)
         self.assertIn('github.event.client_payload.source == \'console-intake\'', RUNNER)

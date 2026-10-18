@@ -87,12 +87,14 @@ export async function commandProjectExecution(projectKey:string,command:"start"|
  if(!result||result.command!==command||!Number.isSafeInteger(result.version)||!Number.isSafeInteger(result.generation)||result.generation<0||!["draft","running","pausing","paused","stopping","stopped"].includes(result.state))throw new Error("Confirmação de controle inválida.");
  // The committed command writes a wake intent through the database trigger.
  // Failure or disconnect leaves a retryable record; no paid call is bypassed.
+ const shouldWake=(result.state==="running"&&["start","resume","restart"].includes(command))
+    ||["pausing","stopping"].includes(result.state);
  let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
- if(result.state==="running"&&["start","resume","restart"].includes(command)){
+ if(shouldWake && result.state==="running"&&["start","resume","restart"].includes(command)){
   try{
    wakeStatus=await (await import("./project-control-wake-outbox")).deliverProjectControlWake(commandId);
   }catch{wakeStatus="failed";console.warn("project_control_wake_will_retry");}
- }else if(["pausing","stopping"].includes(result.state)){
+ }else if(shouldWake && ["pausing","stopping"].includes(result.state)){
   try{wakeStatus=await requestIntakeWorkerWake();}catch{wakeStatus="failed";}
  }
  return {state:result.state as ProjectExecutionControl["state"],version:result.version as number,

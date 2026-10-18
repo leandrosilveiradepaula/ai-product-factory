@@ -1,3 +1,4 @@
+from .project_control_wake_outbox import ControlWakeOutbox
 from __future__ import annotations
 import argparse,json,os,socket
 from decimal import Decimal, InvalidOperation
@@ -836,7 +837,6 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
 def run_project_control_settlement()->dict:
     """Settle only already-quiescent projects; never change a running project."""
     from .project_control_settlement import SupabaseProjectControlSettlement
-from .project_control_wake_outbox import ControlWakeOutbox
     return SupabaseProjectControlSettlement().settle_pending()
 
 def main()->int:
