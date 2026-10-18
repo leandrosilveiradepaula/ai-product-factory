@@ -51,6 +51,79 @@ class SupabaseDeliveryStore:
    raise RuntimeError("early-merge reconciliation returned inconsistent evidence")
   return result
 
+ def find_verified_nonproduction_browser_snapshot(
+  self,*,project_id:str,repository:str,merge_sha:str,
+ )->dict|None:
+  """Read authoritative cross-repo browser evidence at exact merged SHA.
+
+  Missing evidence means wait, never treat a deployment status/feedback check
+  as equivalent to successful Playwright on the integrated branch.
+  """
+  import re
+  from urllib.parse import urlparse
+  if not project_id or not re.fullmatch(r"[0-9a-f]{40}",merge_sha) or "/" not in repository:
+   raise ValueError("invalid postmerge browser snapshot identity")
+  path=(
+   f"/rest/v1/factory_project_state_snapshots?select=id,evidence,gaps,constraints,source_status"
+   f"&project_id=eq.{quote(project_id)}&order=created_at.desc&limit=50"
+  )
+  req=urllib.request.Request(f"{self.url}{path}",headers=self.headers,method="GET")
+  try:
+   with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
+  except urllib.error.HTTPError as exc:
+   raise RuntimeError(f"postmerge browser receipt read failed ({exc.code})") from exc
+  rows=json.loads(raw) if raw else []
+  if not isinstance(rows,list):
+   raise RuntimeError("invalid cross-repo browser receipt inventory")
+  for row in rows:
+   if not isinstance(row,dict):raise RuntimeError("malformed cross-repo browser receipt")
+   evidence=row.get("evidence") or {}
+   if not isinstance(evidence,dict):
+    raise RuntimeError("malformed cross-repo browser evidence payload")
+   if evidence.get("candidate_commit")!=merge_sha or evidence.get("target_repository")!=repository:
+    continue
+   preview=evidence.get("preview") or {}
+   status=row.get("source_status") or {}
+   constraints=row.get("constraints") or {}
+   url=str(preview.get("url") or "")
+   parsed=urlparse(url)
+   verifier_id=preview.get("browser_verifier_run_id")
+   if (not isinstance(preview,dict) or not isinstance(status,dict)
+       or not isinstance(constraints,dict)
+       or preview.get("provider")!="vercel"
+       or preview.get("status")!="browser_verified"
+       or status.get("browser_visual_validation")!="success"
+       or status.get("vercel_preview")!="resolved"
+       or constraints.get("production_merge_authorized") is not False
+       or row.get("gaps") != []
+       or parsed.scheme!="https" or not str(parsed.hostname or "").endswith(".vercel.app")
+       or parsed.username is not None or parsed.password is not None
+       or not isinstance(verifier_id,int) or isinstance(verifier_id,bool) or verifier_id<=0
+       or not isinstance(row.get("id"),str) or len(row["id"])!=36):
+    raise RuntimeError("cross-repo browser receipt is not a verified exact merge")
+   return {"snapshot_id":row["id"],"preview_url":url,"verifier_run_id":verifier_id}
+  return None
+
+ def observe_nonproduction_preview_merge(
+  self,*,run_id:str,pr_number:int,candidate_commit:str,merge_sha:str,
+  base_ref:str,verified_evidence:dict,
+ )->dict:
+  """Atomic preview-only merge observation. Does NOT authorize production."""
+  if not run_id or pr_number<=0 or not base_ref.startswith("preview/"):
+   raise ValueError("preview integration requires exact run, PR and preview base")
+  if not isinstance(verified_evidence,dict) or verified_evidence.get("production_released") is not False:
+   raise ValueError("preview integration must explicitly reject production release")
+  data=self._rpc("factory_observe_nonproduction_preview_merge",{
+   "p_run_id":run_id,"p_pr_number":pr_number,
+   "p_candidate_commit":candidate_commit,"p_merge_sha":merge_sha,
+   "p_base_ref":base_ref,"p_verified_github":verified_evidence,
+  })
+  if (not isinstance(data,dict) or data.get("run_id")!=run_id
+      or data.get("status")!="integrated" or data.get("merge_sha")!=merge_sha
+      or data.get("release_completed") is not False):
+   raise RuntimeError("nonproduction integration RPC returned inconsistent evidence")
+  return data
+
  def reconcile_closed_preview_candidate(self,run_id:str,*,candidate_commit:str,pr_number:int,github_state:str,github_merged:bool)->dict:
   if github_state!="closed" or github_merged is not False or pr_number<=0:
    raise ValueError("only a verified closed, unmerged PR may be superseded")
