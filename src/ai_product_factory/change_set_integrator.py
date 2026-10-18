@@ -24,21 +24,41 @@ class ChangeSetIntegrator:
     def integrate(self,item:ChangeSetIntegrationItem)->ChangeSetIntegrationResult:
         if not item.work_units:
             raise ValueError("integration requires completed work units")
+        if not isinstance(item.current_wave,int) or isinstance(item.current_wave,bool) or item.current_wave<1:
+            raise ValueError("integration wave must be positive")
+        if not isinstance(item.integration_branch,str) or not item.integration_branch.startswith("factory/"):
+            raise ValueError("integration branch must be factory-scoped")
+        if not isinstance(item.change_set_id,str) or not item.change_set_id.strip():
+            raise ValueError("integration change set identity is missing")
+        if not isinstance(item.candidate_commit,str) or not item.candidate_commit.strip():
+            raise ValueError("integration candidate identity is missing")
         owners={}
         files={}
         for unit in item.work_units:
+            if not isinstance(unit,dict):
+                raise ValueError("integration work unit must be an object")
             if str(unit.get("base_commit") or "")!=item.candidate_commit:
                 raise RuntimeError("work unit base commit does not match current integration candidate")
             output=str(unit.get("output_commit") or "")
             if not output:
                 raise RuntimeError("work unit output commit is missing")
+            if output==item.candidate_commit:
+                raise RuntimeError("work unit output equals candidate base")
             task_key=str(unit.get("plan_task_key") or "")
-            for path in unit.get("changed_files") or []:
+            paths=unit.get("changed_files")
+            if not isinstance(paths,(tuple,list)) or not paths:
+                raise ValueError("integration work unit must declare changed files")
+            for path in paths:
+                if not isinstance(path,str) or not path.strip():
+                    raise ValueError("integration changed path must be a nonempty string")
                 path=str(path)
                 if path in owners:
                     raise RuntimeError(f"Change Set file conflict: {path} changed by {owners[path]} and {task_key}")
                 owners[path]=task_key
-                files[path]=self.github.get_file_text(path,ref=output)
+                content=self.github.get_file_text(path,ref=output)
+                if not isinstance(content,str):
+                    raise RuntimeError("integration source file is not text")
+                files[path]=content
 
         if not files:
             raise RuntimeError("integration produced no files")
@@ -51,6 +71,10 @@ class ChangeSetIntegrator:
                 {"Factory-Change-Set":item.change_set_id,"Factory-Wave":str(item.current_wave)},
             ),
         )
+        if not isinstance(candidate,str) or not candidate.strip():
+            raise RuntimeError("integration commit returned no candidate")
+        if candidate==item.candidate_commit:
+            raise RuntimeError("integration commit did not advance candidate")
         # Verify the branch still points at the commit we are about to persist.
         if self.github.get_branch_sha(item.integration_branch)!=candidate:
             raise RuntimeError("integration branch moved before candidate persistence")
