@@ -28,6 +28,12 @@ class ChangeSetIntegrator:
             raise ValueError("integration wave must be positive")
         if not isinstance(item.integration_branch,str) or not item.integration_branch.startswith("factory/"):
             raise ValueError("integration branch must be factory-scoped")
+        if not isinstance(item.project_key,str) or not item.project_key.strip():
+            raise ValueError("integration project identity is missing")
+        if not isinstance(item.repository,str) or item.repository.count("/")!=1:
+            raise ValueError("integration repository identity is invalid")
+        if not isinstance(item.source_commit,str) or not item.source_commit.strip():
+            raise ValueError("integration source identity is missing")
         if not isinstance(item.change_set_id,str) or not item.change_set_id.strip():
             raise ValueError("integration change set identity is missing")
         if not isinstance(item.candidate_commit,str) or not item.candidate_commit.strip():
@@ -45,8 +51,12 @@ class ChangeSetIntegrator:
                 raise RuntimeError("work unit output commit is missing")
             if output==item.candidate_commit:
                 raise RuntimeError("work unit output equals candidate base")
-            task_key=str(unit.get("plan_task_key") or "")
+            task_key=unit.get("plan_task_key")
+            if not isinstance(task_key,str) or not task_key.strip():
+                raise ValueError("integration task identity is missing")
             paths=unit.get("changed_files")
+            if isinstance(paths,(tuple,list)) and len(paths)>200:
+                raise ValueError("integration work unit exceeds path limit")
             if not isinstance(paths,(tuple,list)) or not paths:
                 raise ValueError("integration work unit must declare changed files")
             for path in paths:
@@ -58,6 +68,10 @@ class ChangeSetIntegrator:
                 owners[path]=task_key
                 pending_reads.append((path,output))
 
+        if len(item.work_units)>100:
+            raise ValueError("integration exceeds work unit limit")
+        if len(pending_reads)>500:
+            raise ValueError("integration exceeds total file limit")
         if not pending_reads:
             raise RuntimeError("integration produced no files")
         for path,output in pending_reads:
@@ -120,8 +134,14 @@ class ChangeSetIntegrator:
                     body=f"{marker}\n\nIntegrated candidate: {candidate}\n\nDo not merge until CI, specialist review and Preview evidence pass.",
                     head=item.integration_branch,base="main",
                 )
+            if not isinstance(pull_request.number,int) or isinstance(pull_request.number,bool) or pull_request.number<1:
+                raise RuntimeError("integration PR number is invalid")
             if pull_request.head_sha!=candidate:
                 raise RuntimeError("final Change Set PR head does not match integrated candidate")
+            if not isinstance(issue.number,int) or isinstance(issue.number,bool) or issue.number<1:
+                raise RuntimeError("integration issue number is invalid")
+            if not isinstance(issue.html_url,str) or not issue.html_url.startswith("https://github.com/"):
+                raise RuntimeError("integration issue URL is invalid")
             release=self.store.prepare_release(
                 change_set_id=item.change_set_id,issue_number=issue.number,issue_url=issue.html_url,
                 pr_number=pull_request.number,candidate_commit=candidate,branch=item.integration_branch,
