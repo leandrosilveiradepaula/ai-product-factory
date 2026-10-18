@@ -64,7 +64,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
         cases=[
             ({"repository":"invalid"},"invalid repository"),
             ({"integration_branch":"main"},"unsafe branch"),
-            ({"integration_branch":"refs/heads/main"},"protected branch"),
+            ({"integration_branch":"refs/heads/main"},"unsafe branch"),
             ({"work_units":[unit]*101},"work unit limit"),
             ({"work_units":[unit,dict(unit,changed_files=["src/b.py"])]},"repeats plan task"),
             ({"work_units":[dict(unit,output_commit="candidate")]},"unchanged output"),
@@ -82,7 +82,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
 
     def test_epoch_claim_contract_rejects_stale_or_missing_capability(self):
         cases=[
-            ({"project_id":None},"project capability"),
+            ({"project_id":None},"UUID capability"),
             ({"execution_generation":None},"execution generation"),
             ({"execution_generation":False},"execution generation"),
             ({"execution_generation":0},"execution generation"),
@@ -99,7 +99,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
         item=self.store.claim_integration("worker")
         self.store.assert_integration_epoch(item,"worker")
         self.store._rpc.assert_called_with("factory_assert_change_set_integration_epoch",{
-            "p_change_set_id":"cs","p_project_id":"project","p_generation":3,
+            "p_change_set_id":"11111111-1111-4111-8111-111111111111","p_project_id":"22222222-2222-4222-8222-222222222222","p_generation":3,
             "p_worker_id":"worker","p_wave":1,
         })
         with self.assertRaises(PermissionError):
