@@ -397,7 +397,7 @@ class RuntimeCliTests(unittest.TestCase):
 
     def test_missing_atomic_integration_migration_rejects_before_claim_or_github(self):
         store=MagicMock()
-        store.assert_epoch_mutation_ready.side_effect=RuntimeError("migration not ready")
+        store.require_epoch_mutation_ready.side_effect=RuntimeError("migration not ready")
         with patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             with self.assertRaisesRegex(RuntimeError,"migration not ready"):
