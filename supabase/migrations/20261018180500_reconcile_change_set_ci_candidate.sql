@@ -7,8 +7,8 @@ create or replace function public.factory_reconcile_change_set_ci_candidate(
 declare
  v_set public.factory_change_sets%rowtype;
  v_run public.factory_runs%rowtype;
- v_request jsonb;v_receipt jsonb;v_usage_id bigint;v_usage jsonb;
- v_control record;v_result jsonb;
+ v_request jsonb;v_receipt jsonb;
+ v_control record;
 begin
  if p_change_set_id is null or p_run_id is null or p_pr_number<1
     or p_previous_commit !~ '^[0-9a-f]{40}$'
@@ -49,7 +49,8 @@ begin
     or v_request->>'pr_number' is distinct from p_pr_number::text
     or jsonb_typeof(v_receipt) is distinct from 'object'
     or v_receipt->>'candidate_commit' is distinct from p_previous_commit
-    or v_receipt->>'generation' is distinct from v_control.generation::text then
+    or v_receipt->>'generation' is distinct from v_control.generation::text
+    or v_receipt->>'project_id' is distinct from v_set.project_id::text then
   raise exception 'release epoch evidence revoked' using errcode='PT409';
  end if;
  -- The original create_pr receipt is immutable; append a separate reconciliation receipt.
