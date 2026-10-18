@@ -81,8 +81,21 @@ class SupabaseCIFollowupQueue:
             pr_meta=usage[0].get("metadata") or {}
             pr_number=int(pr_meta.get("pr") or 0)
             head_sha=str(pr_meta.get("head_sha") or "")
-            if pr_number < 1 or head_sha != candidate:
-                raise RuntimeError("durable PR evidence does not match run candidate commit")
+            if pr_number < 1:
+                raise RuntimeError("durable PR evidence is missing PR number")
+            if head_sha != candidate:
+                # An immutable create_pr receipt may legitimately predate a
+                # separately audited, atomic candidate reconciliation.
+                reconciliations=self._get(
+                    f"factory_tool_usage?select=metadata&run_id=eq.{quote(run_id)}"
+                    "&operation=eq.reconcile_pr_candidate&order=created_at.desc&limit=1"
+                )
+                receipt=(reconciliations[0].get("metadata") or {}) if reconciliations else {}
+                if (receipt.get("previous_commit") != head_sha
+                    or receipt.get("candidate_commit") != candidate
+                    or receipt.get("pr_number") != str(pr_number)
+                    or receipt.get("change_set_id") != metadata.get("change_set_id")):
+                    raise RuntimeError("durable PR evidence does not match run candidate commit")
         elif str(metadata.get("source") or "")=="operator_reconciled_dogfood":
             pr_number=int(metadata.get("pr_number") or 0)
             if pr_number < 1:
