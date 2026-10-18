@@ -335,5 +335,45 @@ class ChangeSetTests(unittest.TestCase):
             ChangeSetIntegrator(github=github,store=store).integrate(item)
 
 
+    def test_integrator_preflight_failure_does_not_create_branch(self):
+        github=MagicMock();store=MagicMock()
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","source","candidate","factory/change-set-cs",2,(
+                {"plan_task_key":"a","base_commit":"old","output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        with self.assertRaisesRegex(RuntimeError,"base commit"):
+            ChangeSetIntegrator(github=github,store=store).integrate(item)
+        github.ensure_branch_at_sha.assert_not_called()
+        github.commit_files.assert_not_called()
+
+    def test_integrator_rejects_missing_file_without_branch_mutation(self):
+        github=MagicMock();store=MagicMock()
+        github.get_file_text.side_effect=RuntimeError("missing output file")
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","source","candidate","factory/change-set-cs",2,(
+                {"plan_task_key":"a","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        with self.assertRaisesRegex(RuntimeError,"missing output file"):
+            ChangeSetIntegrator(github=github,store=store).integrate(item)
+        github.ensure_branch_at_sha.assert_not_called()
+
+    def test_integrator_rejects_missing_completion_status(self):
+        github=MagicMock();store=MagicMock()
+        github.get_file_text.return_value="content"
+        github.commit_files.return_value="new"
+        github.get_branch_sha.return_value="new"
+        store.complete_integration.return_value={}
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","source","candidate","factory/change-set-cs",2,(
+                {"plan_task_key":"a","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        with self.assertRaisesRegex(RuntimeError,"invalid status"):
+            ChangeSetIntegrator(github=github,store=store).integrate(item)
+        store.mark_repair_wave_integrated.assert_not_called()
+        store.prepare_release.assert_not_called()
+
 if __name__=="__main__":
     unittest.main()
