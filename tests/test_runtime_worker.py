@@ -156,7 +156,10 @@ class RuntimeWorkerTests(unittest.TestCase):
             ({"context":None},"context"),
             ({"execution_generation":True},"execution generation"),
             ({"execution_generation":-1},"execution generation"),
-            ({"worker_id":" "},"worker identity"),
+            ({"worker_id":" "},"worker lease owner mismatch"),
+            ({"worker_id":"other"},"worker lease owner mismatch"),
+            ({"stages":None},"stage container"),
+
             ({"stages":tuple("s"+str(i) for i in range(33))},"stage limit"),
             ({"stages":("s"*129,)},"oversized stage"),
             ({"stages":(" discovery",)},"unnormalized stage"),
