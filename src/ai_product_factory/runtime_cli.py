@@ -300,7 +300,16 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
- if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches durable candidate commit")
+ if pr.head_sha!=item.candidate_commit:
+  # Never adopt a changed PR head implicitly: the release candidate, durable
+  # create_pr receipt, and change-set metadata must be reconciled atomically.
+  # Emit an actionable diagnostic without mutating any release or CI state.
+  return {"claimed":False,"status":"candidate_drift_blocked",
+   "run_id":item.run_id,"pr_number":item.pr_number,
+   "change_set_id":item.change_set_id,
+   "recorded_candidate_commit":item.candidate_commit,
+   "observed_pr_head":pr.head_sha,
+   "requires":"atomic_candidate_reconciliation"}
  store=SupabaseDeliveryStore()
  # A human may merge an exact PR before CI/Preview/quality gates pass. This
  # must never be interpreted as successful CI or a production release.
