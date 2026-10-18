@@ -8,7 +8,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
     def setUp(self):
         self.store=SupabaseChangeSetStore(url="https://example.supabase.co",service_role_key="secret")
         self.base={
-            "change_set_id":"cs","project_id":"project","execution_generation":3,"lease_owner":"worker","project_key":"demo","repository":"owner/repo",
+            "change_set_id":"11111111-1111-4111-8111-111111111111","project_id":"22222222-2222-4222-8222-222222222222","execution_generation":3,"lease_owner":"worker","project_key":"demo","repository":"owner/repo",
             "source_commit":"source","candidate_commit":"candidate",
             "integration_branch":"factory/change-set-cs","current_wave":1,
             "work_units":[{
@@ -63,8 +63,8 @@ class IntegrationClaimContractTests(unittest.TestCase):
         unit={"plan_task_key":"a","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]}
         cases=[
             ({"repository":"invalid"},"invalid repository"),
-            ({"integration_branch":"main"},"protected branch"),
-            ({"integration_branch":"refs/heads/main"},"protected branch"),
+            ({"integration_branch":"main"},"unsafe branch"),
+            ({"integration_branch":"refs/heads/main"},"unsafe branch"),
             ({"work_units":[unit]*101},"work unit limit"),
             ({"work_units":[unit,dict(unit,changed_files=["src/b.py"])]},"repeats plan task"),
             ({"work_units":[dict(unit,output_commit="candidate")]},"unchanged output"),
@@ -82,7 +82,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
 
     def test_epoch_claim_contract_rejects_stale_or_missing_capability(self):
         cases=[
-            ({"project_id":None},"project capability"),
+            ({"project_id":None},"UUID capability"),
             ({"execution_generation":None},"execution generation"),
             ({"execution_generation":False},"execution generation"),
             ({"execution_generation":0},"execution generation"),
@@ -99,7 +99,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
         item=self.store.claim_integration("worker")
         self.store.assert_integration_epoch(item,"worker")
         self.store._rpc.assert_called_with("factory_assert_change_set_integration_epoch",{
-            "p_change_set_id":"cs","p_project_id":"project","p_generation":3,
+            "p_change_set_id":"11111111-1111-4111-8111-111111111111","p_project_id":"22222222-2222-4222-8222-222222222222","p_generation":3,
             "p_worker_id":"worker","p_wave":1,
         })
         with self.assertRaises(PermissionError):
