@@ -268,7 +268,7 @@ def run_change_set_integration_once(worker_id:str)->dict:
  store=SupabaseChangeSetStore()
  item=store.claim_integration(worker_id)
  if item is None:return {"claimed":False,"status":"empty"}
- checkpoint=lambda:store.assert_project_running(item.project_key)
+ checkpoint=lambda:store.assert_integration_epoch(item,worker_id)
  checkpoint()
  github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
  result=ChangeSetIntegrator(github=github,store=_CheckpointedIntegrationStore(store,checkpoint)).integrate(item)
