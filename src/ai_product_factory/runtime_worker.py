@@ -79,6 +79,8 @@ class RuntimeWorker:
             malformed = "claimed run has invalid project identity"
         elif not isinstance(item.project_key,str) or not item.project_key.strip():
             malformed = "claimed run has invalid project key"
+        elif not isinstance(item.stages,(tuple,list)):
+            malformed = "claimed run has invalid stage container"
         elif not isinstance(item.context,dict):
             malformed = "claimed run has invalid context"
         elif item.execution_generation is not None and (
@@ -87,6 +89,8 @@ class RuntimeWorker:
             or item.execution_generation<0
         ):
             malformed = "claimed run has invalid execution generation"
+        elif item.worker_id is not None and item.worker_id!=self.worker_id:
+            malformed = "claimed run worker lease owner mismatch"
         elif item.worker_id is not None and (
             not isinstance(item.worker_id,str) or not item.worker_id.strip()
         ):
