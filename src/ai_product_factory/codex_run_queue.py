@@ -76,6 +76,15 @@ class SupabaseCodexRunQueue:
             raise RuntimeError("routed claim has invalid wave")
         if bool(data.get("change_set_id")) != bool(data.get("work_unit_id")):
             raise RuntimeError("routed claim has incomplete change set binding")
+        if data.get("issue_number") is not None and (isinstance(data["issue_number"],bool) or not isinstance(data["issue_number"],int) or data["issue_number"]<1):
+            raise RuntimeError("routed claim has invalid issue number")
+        if data.get("wave") is not None and not data.get("change_set_id"):
+            raise RuntimeError("routed claim wave requires change set binding")
+        for field in ("change_set_id","work_unit_id"):
+            if data.get(field) is not None and (not isinstance(data[field],str) or not data[field].strip()):
+                raise RuntimeError("routed claim has invalid "+field)
+        if data.get("description") is not None and not isinstance(data["description"],str):
+            raise RuntimeError("routed claim has invalid description")
         return CodexExecutionItem(
             run_id=data["run_id"],
             project_id=data["project_id"],
