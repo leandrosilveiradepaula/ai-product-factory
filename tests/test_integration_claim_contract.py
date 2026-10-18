@@ -8,7 +8,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
     def setUp(self):
         self.store=SupabaseChangeSetStore(url="https://example.supabase.co",service_role_key="secret")
         self.base={
-            "change_set_id":"cs","project_key":"demo","repository":"owner/repo",
+            "change_set_id":"cs","project_id":"project","execution_generation":3,"lease_owner":"worker","project_key":"demo","repository":"owner/repo",
             "source_commit":"source","candidate_commit":"candidate",
             "integration_branch":"factory/change-set-cs","current_wave":1,
             "work_units":[{
@@ -31,6 +31,8 @@ class IntegrationClaimContractTests(unittest.TestCase):
         self.store._rpc=MagicMock(return_value=self.base)
         item=self.store.claim_integration("worker")
         self.assertEqual(item.current_wave,1)
+        self.assertEqual(item.execution_generation,3)
+        self.assertEqual(item.lease_owner,"worker")
         self.assertEqual(item.work_units[0]["output_commit"],"out")
         self.store._rpc.assert_called_once_with("factory_claim_change_set_integration",{
             "p_worker_id":"worker","p_lease_seconds":600,
@@ -77,6 +79,31 @@ class IntegrationClaimContractTests(unittest.TestCase):
                 self.store._rpc=MagicMock(return_value={**self.base,**override})
                 with self.assertRaisesRegex(RuntimeError,message):
                     self.store.claim_integration("worker")
+
+    def test_epoch_claim_contract_rejects_stale_or_missing_capability(self):
+        cases=[
+            ({"project_id":None},"project capability"),
+            ({"execution_generation":None},"execution generation"),
+            ({"execution_generation":False},"execution generation"),
+            ({"execution_generation":0},"execution generation"),
+            ({"lease_owner":"stale-worker"},"lease owner mismatch"),
+        ]
+        for override,message in cases:
+            with self.subTest(override=override):
+                self.store._rpc=MagicMock(return_value={**self.base,**override})
+                with self.assertRaisesRegex(RuntimeError,message):
+                    self.store.claim_integration("worker")
+
+    def test_integration_epoch_rpc_is_bound_to_claim_identity(self):
+        self.store._rpc=MagicMock(return_value=self.base)
+        item=self.store.claim_integration("worker")
+        self.store.assert_integration_epoch(item,"worker")
+        self.store._rpc.assert_called_with("factory_assert_change_set_integration_epoch",{
+            "p_change_set_id":"cs","p_project_id":"project","p_generation":3,
+            "p_worker_id":"worker","p_wave":1,
+        })
+        with self.assertRaises(PermissionError):
+            self.store.assert_integration_epoch(item,"stale-worker")
 
 if __name__=="__main__":
     unittest.main()
