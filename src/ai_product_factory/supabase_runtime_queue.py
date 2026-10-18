@@ -13,6 +13,8 @@ from .traceability import build_requirement_trace
 from .definition_of_done import compile_definition_of_done
 from .execution_team_planner import build_execution_team_plan
 from .supabase_server import resolve_supabase_server_config
+from .github_rest import GitHubRestAdapter
+from .pinned_nonproduction_target import PinnedNonproductionTarget
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -213,9 +215,6 @@ class SupabaseRuntimeQueue(RuntimeQueue):
 
     def _live_candidate_context(self, project_id: str, context: dict) -> dict:
         """Read live candidate evidence before paid reconciliation; no GitHub writes."""
-        from .github_rest import GitHubRestAdapter
-        from .pinned_nonproduction_target import PinnedNonproductionTarget
-
         rows = self._get(
             "factory_projects?select=id,repository,project_kind,manifest"
             "&id=eq." + quote(project_id, safe="") + "&limit=1"
