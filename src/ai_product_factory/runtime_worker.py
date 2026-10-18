@@ -67,6 +67,8 @@ class RuntimeWorker:
         item = self.queue.claim_next(self.worker_id)
         if item is None:
             return None
+        if not isinstance(item.stages, (tuple, list)) or not item.stages or not all(isinstance(stage,str) and stage.strip() for stage in item.stages):
+            message = "claimed run has no executable stages"
         # A claim may have been revoked before local payload validation.
         # Never persist a failure against a paused or restarted generation.
         checkpoint = getattr(self.queue, "assert_execution_epoch", None)
@@ -75,8 +77,6 @@ class RuntimeWorker:
                 checkpoint(item)
             except Exception as exc:
                 return WorkResult(WorkStatus.FAILED, (), str(exc))
-        if not isinstance(item.stages, (tuple, list)) or not item.stages or not all(isinstance(stage,str) and stage.strip() for stage in item.stages):
-            message = "claimed run has no executable stages"
             try:
                 self.queue.fail(item, message)
             except Exception:
