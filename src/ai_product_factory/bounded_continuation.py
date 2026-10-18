@@ -16,6 +16,8 @@ class ContinuationBlocked(RuntimeError):
 _WAITING = frozenset({
     "awaiting_release", "wait_ci", "ci_triggered",
     "blocked", "release_policy_blocked",
+    "awaiting_nonproduction_merge", "wait_preview_merge_deployment",
+    "nonproduction_candidate_not_released",
 })
 
 

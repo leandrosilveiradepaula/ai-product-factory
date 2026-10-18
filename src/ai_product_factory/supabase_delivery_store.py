@@ -51,6 +51,26 @@ class SupabaseDeliveryStore:
    raise RuntimeError("early-merge reconciliation returned inconsistent evidence")
   return result
 
+ def observe_nonproduction_preview_merge(
+  self,*,run_id:str,pr_number:int,candidate_commit:str,merge_sha:str,
+  base_ref:str,verified_evidence:dict,
+ )->dict:
+  """Atomic preview-only merge observation. Does NOT authorize production."""
+  if not run_id or pr_number<=0 or not base_ref.startswith("preview/"):
+   raise ValueError("preview integration requires exact run, PR and preview base")
+  if not isinstance(verified_evidence,dict) or verified_evidence.get("production_released") is not False:
+   raise ValueError("preview integration must explicitly reject production release")
+  data=self._rpc("factory_observe_nonproduction_preview_merge",{
+   "p_run_id":run_id,"p_pr_number":pr_number,
+   "p_candidate_commit":candidate_commit,"p_merge_sha":merge_sha,
+   "p_base_ref":base_ref,"p_verified_github":verified_evidence,
+  })
+  if (not isinstance(data,dict) or data.get("run_id")!=run_id
+      or data.get("status")!="integrated" or data.get("merge_sha")!=merge_sha
+      or data.get("release_completed") is not False):
+   raise RuntimeError("nonproduction integration RPC returned inconsistent evidence")
+  return data
+
  def reconcile_closed_preview_candidate(self,run_id:str,*,candidate_commit:str,pr_number:int,github_state:str,github_merged:bool)->dict:
   if github_state!="closed" or github_merged is not False or pr_number<=0:
    raise ValueError("only a verified closed, unmerged PR may be superseded")

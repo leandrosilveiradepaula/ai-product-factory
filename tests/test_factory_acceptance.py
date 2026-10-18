@@ -350,6 +350,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261018180500_reconcile_change_set_ci_candidate.sql",
             "20261018180500_reconcile_change_set_ci_candidate.sql",
             "20261018211000_resume_preview_browser_infrastructure_failure.sql",
+            "20261018213500_observe_preview_branch_integration.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

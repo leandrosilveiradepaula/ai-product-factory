@@ -38,6 +38,7 @@ from .preview_followup_queue import SupabasePreviewFollowupQueue
 from .project_preview_config import resolve_project_vercel_preview_config
 from .preview_policy import evaluate_preview_applicability
 from .preview_base_guard import verify_preview_base_compatibility
+from .nonproduction_preview_merge import verify_nonproduction_preview_merge
 from .vercel_preview import VercelPreviewAdapter,VercelPreviewConfig
 from .github_vercel_preview import GitHubVercelPreviewAdapter,config_from_env as github_vercel_config_from_env
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
@@ -582,6 +583,34 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches verified release candidate")
+ if str(getattr(pr,"base_ref",None) or "").startswith("preview/"):
+  if item.merge_sha or item.release_source!="delivery":
+   raise RuntimeError("nonproduction merge cannot use a production Console release receipt")
+  # The runtime may OBSERVE a nonproduction merge performed elsewhere.
+  # It must never merge, mark human_release, or promote production.
+  if not getattr(pr,"merged",False):
+   return {"claimed":True,"status":"awaiting_nonproduction_merge",
+    "run_id":item.run_id,"pr_number":item.pr_number}
+  receipt=verify_nonproduction_preview_merge(github,item,pr)
+  if receipt is None:
+   return {"claimed":True,"status":"wait_preview_merge_deployment",
+    "run_id":item.run_id,"pr_number":item.pr_number}
+  # Prevent TOCTOU: re-read the same PR identity after external status reads.
+  checked=github.get_pull_request(item.pr_number)
+  if (not checked.merged or checked.head_sha!=item.candidate_commit
+      or checked.merge_commit_sha!=receipt["merge_sha"]
+      or checked.base_ref!=receipt["base_ref"]
+      or checked.head_ref!=item.branch
+      or checked.head_repository!=item.repository):
+   raise RuntimeError("nonproduction PR identity changed during observation")
+  result=SupabaseDeliveryStore().observe_nonproduction_preview_merge(
+   run_id=item.run_id,pr_number=item.pr_number,candidate_commit=item.candidate_commit,
+   merge_sha=receipt["merge_sha"],base_ref=receipt["base_ref"],
+   verified_evidence=receipt)
+  return {"claimed":True,"status":"integrated_nonproduction",
+   "run_id":item.run_id,"pr_number":item.pr_number,
+   "merge_sha":receipt["merge_sha"],
+   "release_completed":False,"integration":result}
  if getattr(pr,"base_ref",None) not in (None,"main"):
   return {"claimed":True,"status":"nonproduction_candidate_not_released","run_id":item.run_id,"pr_number":item.pr_number}
  store=SupabaseDeliveryStore()

@@ -146,6 +146,19 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(failures[0].name, "unit-tests")
         self.assertEqual(failures[0].summary, "2 tests failed")
 
+    def test_exact_commit_status_reader_reads_only_full_sha(self):
+        sha="a"*40
+        class StatusTransport:
+            def __call__(self,method,url,headers,body):
+                self_call=(method,url)
+                assert method=="GET"
+                assert url.endswith("/commits/"+sha+"/status")
+                return 200,{"statuses":[{"context":"Vercel","state":"success"}]}
+        reader=GitHubRestAdapter(repository="owner/repo",token="test-token",transport=StatusTransport())
+        self.assertEqual(reader.get_commit_statuses(sha),[{"context":"Vercel","state":"success"}])
+        with self.assertRaises(ValueError):
+            reader.get_commit_statuses("short")
+
     def test_explicit_workflow_dispatch_targets_candidate_ref(self):
         self.github.dispatch_workflow("validate.yml",ref="factory/change-set-abc")
         method,url,_,payload=self.transport.calls[-1]

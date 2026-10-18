@@ -1,3 +1,10 @@
+## 2026-10-18 — CRM #180 proved CI → verified Preview → nonproduction merge (candidate observer)
+
+- GitHub CRM PR #180, candidate `aee522fe742589e961420e15e9dc92a1500ae502`, passed CI, Factory quality gate and specialist Security/QA/Operations. The Vercel deployment and Playwright/browser evaluation passed at the candidate SHA, with four browser checks.
+- An authorized operator merged this PR **only into** `preview/hardening-release-candidate`, merge SHA `88c3517529654911ed4ee3315fdcdafc200e3004`, at 2026-10-18T21:26:52Z; verified `main` stayed at `e521308e14380121670b22f1aa3078d14e1883d7`. Vercel returned exact merge-SHA success at 21:27:26Z, proving a Preview build but **not** a production release or postmerge browser E2E.
+- The existing release observer intentionally refuses to mark a `preview/**` target as released, but leaves its run stuck in `awaiting_release` forever. **This candidate** introduces a separate fail-closed read-only GitHub observer and privileged atomic RPC that mark a nonprod Change Set as integrated, record merge evidence and mark the old production release report blocked pending a separate verified `main` PR. It never calls merge in the Python runtime, never emits `human_release`, and never claims the product ready.
+- **Deployment gate:** production code/migration are NOT yet applied by creating this PR. CI, human Factory production merge, and separate authorization for migration `20261018213500_observe_preview_branch_integration.sql` are required before the observer can reconcile CRM #180.
+
 ## 2026-10-16 — Policy UI reconciliation, migration already applied (candidate #866)
 
 - The privileged Supabase migration `factory_primary_cost_policy` is already present in production migration history as version `20261015232347` (verified 16 October). It seeds the previously authorized internal budget USD 10.00 and reservation USD 0.50; this does **not** prove OpenAI Platform credits or permit automatic purchases.

@@ -1,3 +1,10 @@
+## 2026-10-18 — CRM Preview-only integration observer (candidate)
+
+- External nonproduction merge verified: `crm-infodive` PR #180, candidate `aee522fe`, merged into `preview/hardening-release-candidate` at `88c35175`. The production branch `main` did not move. Vercel status for the merged SHA is success; no deployment to production was claimed.
+- The proposed `factory_observe_nonproduction_preview_merge` RPC checks PR/merge/base/repository/status evidence, Control Plane project generation, exact CI+quality+specialist+browser receipts, and readiness report. It atomically preserves the historical release report while setting `blocked` with explicit `production requires separate main PR`, concludes only the **nonproduction** Change Set, records audit/tool receipts, and releases agent scope locks. Repeating an identical observation is idempotent.
+- Python `run_release_once` gains observation-only support for `preview/**` targets; it never gains merge capability, does not mark `human_release`, and does not close the issue/mark project production-released. Merged Preview branch head must be exact or a bounded descendant of merge SHA. Vercel **commit status** of the merge SHA, not its feedback check, must be `success`.
+- Human production merge remains mandatory for any future `main` PR and requires fresh SHA-exact CI/Preview/release-policy evidence. Until the new migration is explicitly approved and applied, the CRM run remains `awaiting_release`, not `released`.
+
 ## 2026-10-16 — Policy UI reconciliation, migration already applied (candidate #866)
 
 - The privileged Supabase migration `factory_primary_cost_policy` is already present in production migration history as version `20261015232347` (verified 16 October). It seeds the previously authorized internal budget USD 10.00 and reservation USD 0.50; this does **not** prove OpenAI Platform credits or permit automatic purchases.

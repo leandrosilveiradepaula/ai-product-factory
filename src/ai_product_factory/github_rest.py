@@ -147,6 +147,17 @@ class GitHubRestAdapter:
                 "behind_by":comparison.get("behind_by"),
                 "files":[row.get("filename") for row in comparison.get("files",[])]}
 
+    def get_commit_statuses(self, sha: str) -> list[dict[str, Any]]:
+        """Read exact commit statuses; feedback checks cannot represent READY."""
+        import re
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("commit status lookup requires full lowercase SHA")
+        data = self._call("GET", f"/repos/{self.repository}/commits/{sha}/status")
+        rows = data.get("statuses") if isinstance(data, dict) else None
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise RuntimeError("GitHub commit statuses are not a valid list")
+        return rows
+
     def get_branch_sha(self, branch: str) -> str:
         encoded = parse.quote(branch, safe="")
         row = self._call("GET", f"/repos/{self.repository}/git/ref/heads/{encoded}")
