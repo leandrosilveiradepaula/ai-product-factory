@@ -24,7 +24,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
         self.store._rpc.assert_not_called()
 
     def test_worker_identity_rejects_three_unsafe_forms(self):
-        for worker in ("x"*129, " worker", "worker\\n"):
+        for worker in ("x"*129, " worker", "worker\n"):
             with self.subTest(worker=repr(worker)):
                 self.store._rpc=MagicMock()
                 with self.assertRaisesRegex(ValueError,"worker ID"):
@@ -35,7 +35,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
         unit=self.base["work_units"][0]
         cases=[
             ("src/"+"a"*1021,"length limit"),
-            ("src/a\\nb.py","control character"),
+            ("src/a\nb.py","unsafe path"),
             ("src/"+"a"*256,"segment exceeds limit"),
             ("src/.git/config","git internals"),
             ("src/a.py ","unsafe suffix"),
