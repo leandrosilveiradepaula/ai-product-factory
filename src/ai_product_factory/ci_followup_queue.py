@@ -43,7 +43,7 @@ class SupabaseCIFollowupQueue:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
-    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = ()) -> CIFollowupItem | None:
+    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = (), allow_unreconciled_receipt: bool = False) -> CIFollowupItem | None:
         # Read-only bounded FIFO lookahead. A pending external CI/human gate
         # must not mask later candidates already eligible for follow-up.
         if (not isinstance(exclude_run_ids, tuple) or len(exclude_run_ids) > 8
@@ -83,7 +83,7 @@ class SupabaseCIFollowupQueue:
             head_sha=str(pr_meta.get("head_sha") or "")
             if pr_number < 1:
                 raise RuntimeError("durable PR evidence is missing PR number")
-            if head_sha != candidate:
+            if head_sha != candidate and not allow_unreconciled_receipt:
                 # An immutable create_pr receipt may legitimately predate a
                 # separately audited, atomic candidate reconciliation.
                 reconciliations=self._get(
