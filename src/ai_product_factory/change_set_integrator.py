@@ -58,14 +58,14 @@ class ChangeSetIntegrator:
             change_set_id=item.change_set_id,candidate_commit=candidate,
             changed_files=tuple(sorted(files)),
         )
-        self.store.mark_repair_wave_integrated(
-            change_set_id=item.change_set_id,wave=item.current_wave,candidate_commit=candidate,
-        )
         if not isinstance(completed,dict):
             raise RuntimeError("integration completion returned an invalid result")
         status=completed.get("status")
         if not isinstance(status,str) or not status.strip():
             raise RuntimeError("integration completion returned an invalid status")
+        self.store.mark_repair_wave_integrated(
+            change_set_id=item.change_set_id,wave=item.current_wave,candidate_commit=candidate,
+        )
         pull_request=None
         if status=="review_ready":
             marker=f"Factory change set: {item.change_set_id}"
