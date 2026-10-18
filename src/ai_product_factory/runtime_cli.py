@@ -253,7 +253,7 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
 
 class _CheckpointedIntegrationStore:
  """Fence integration metadata mutations after pause/stop, not just GitHub writes."""
- _mutations=frozenset(("complete_integration","mark_repair_wave_integrated","prepare_release"))
+ _mutations=frozenset(("complete_integration","prepare_release"))
  def __init__(self,store,checkpoint):
   self._store=store;self._checkpoint=checkpoint
  def __getattr__(self,name):
@@ -266,6 +266,9 @@ class _CheckpointedIntegrationStore:
 
 def run_change_set_integration_once(worker_id:str)->dict:
  store=SupabaseChangeSetStore()
+ # Code merged before its production SQL migration must not claim a lease or
+ # create GitHub commits. The DB readiness probe also rejects legacy write grants.
+ store.assert_epoch_mutation_ready()
  item=store.claim_integration(worker_id)
  if item is None:return {"claimed":False,"status":"empty"}
  checkpoint=lambda:store.assert_integration_epoch(item,worker_id)
