@@ -32,4 +32,22 @@ class Tests(unittest.TestCase):
              with self.assertRaisesRegex(RuntimeError,message):
                  queue.claim_next("worker",agent_key="development",run_id="run-1")
 
+ def test_rejects_invalid_routed_contract(self):
+  base={"run_id":"run","project_id":"project","execution_generation":1,"task_id":"task","project_key":"demo","repository":"owner/repo","title":"Work","branch":"factory/work","human_gate_required":False}
+  cases=[
+   ({"run_id":""},"missing required run_id"),
+   ({"repository":""},"missing required repository"),
+   ({"title":None},"missing required title"),
+   ({"human_gate_required":"false"},"invalid human gate"),
+   ({"wave":True},"invalid wave"),
+   ({"wave":0},"invalid wave"),
+   ({"change_set_id":"cs"},"incomplete change set binding"),
+   ({"work_unit_id":"wu"},"incomplete change set binding"),
+  ]
+  queue=SupabaseDirectRunQueue(url="https://x.supabase.co",service_role_key="secret")
+  for override,message in cases:
+   with self.subTest(override=override),patch("urllib.request.urlopen",return_value=Response({**base,**override})):
+    with self.assertRaisesRegex(RuntimeError,message):
+     queue.claim_next("worker")
+
 if __name__=="__main__":unittest.main()
