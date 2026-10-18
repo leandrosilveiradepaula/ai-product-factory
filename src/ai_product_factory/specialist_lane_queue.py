@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
+from .candidate_pr_receipt import validate_create_pr_candidate
 
 
 @dataclass(frozen=True)
@@ -67,10 +68,15 @@ class SupabaseSpecialistLaneQueue:
         meta=usage[0].get("metadata") or {}
         pr_number=int(meta.get("pr") or 0)
         head_sha=str(meta.get("head_sha") or "")
-        if pr_number<1 or head_sha!=str(data["candidate_commit"]):
-            raise RuntimeError("specialist lane PR evidence does not match candidate commit")
+        if pr_number<1:
+            raise RuntimeError("specialist lane has invalid PR identity")
         runs=self._get("factory_runs?select=task_id,metadata&id=eq."+quote(run_id)+"&limit=1")
         if not runs:raise RuntimeError("specialist lane run not found")
+        validate_create_pr_candidate(
+            read=self._get,run_id=run_id,pr_number=pr_number,
+            original_head=head_sha,candidate_commit=str(data["candidate_commit"]),
+            run_metadata=runs[0].get("metadata") or {},
+        )
         task_id=str(runs[0]["task_id"])
         issue_number=int(((runs[0].get("metadata") or {}).get("github_issue") or {}).get("number") or 0)
         tasks=self._get("factory_tasks?select=acceptance_criteria&id=eq."+quote(task_id)+"&limit=1")

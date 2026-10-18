@@ -10,6 +10,7 @@ from urllib.parse import quote
 from .preview_eligibility import is_delivery_preview_run, is_quota_blocked_candidate
 
 from .supabase_server import resolve_supabase_server_config
+from .candidate_pr_receipt import validate_create_pr_candidate
 
 
 @dataclass(frozen=True)
@@ -91,8 +92,11 @@ class SupabasePreviewFollowupQueue:
         pr_meta=usage[0].get("metadata") or {}
         pr_number=int(pr_meta.get("pr") or 0)
         head_sha=str(pr_meta.get("head_sha") or "")
-        if pr_number < 1 or head_sha != candidate:
-            raise RuntimeError("durable PR evidence does not match preview candidate")
+        validate_create_pr_candidate(
+            read=self._get,run_id=run_id,pr_number=pr_number,
+            original_head=head_sha,candidate_commit=candidate,
+            run_metadata=run.get("metadata") or {},
+        )
 
         gate=self._get(f"factory_evaluations?select=status,baseline_ref,result&run_id=eq.{quote(run_id)}&eval_type=eq.quality_gate&status=eq.success&order=created_at.desc&limit=1")
         if not gate:
