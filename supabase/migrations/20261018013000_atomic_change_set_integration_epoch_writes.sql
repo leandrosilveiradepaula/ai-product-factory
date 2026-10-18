@@ -296,4 +296,26 @@ revoke all on function public.factory_prepare_change_set_release_epoch(uuid,uuid
  from public,anon,authenticated;
 grant execute on function public.factory_prepare_change_set_release_epoch(uuid,uuid,bigint,text,integer,integer,text,integer,text,text)
  to service_role;
+-- A code-only deployment must not claim work or commit to GitHub before SQL
+-- rollout. This fail-closed readiness RPC is installed atomically with all guards.
+create or replace function public.factory_integration_epoch_write_readiness()
+returns jsonb language plpgsql security invoker set search_path='' as $f$
+begin
+ if pg_catalog.has_function_privilege('service_role',
+      'public.factory_complete_change_set_integration(uuid,text,jsonb)','EXECUTE')
+    or pg_catalog.has_function_privilege('service_role',
+      'public.factory_mark_repair_wave_integrated(uuid,integer,text)','EXECUTE')
+    or pg_catalog.has_function_privilege('service_role',
+      'public.factory_prepare_change_set_release(uuid,integer,text,integer,text,text)','EXECUTE') then
+  raise exception 'unsafe legacy integration write grant still enabled' using errcode='PT409';
+ end if;
+ return jsonb_build_object(
+  'version',1,'atomic_completion',true,'atomic_release',true,'phase_checkpoints',true);
+end;
+$f$;
+revoke all on function public.factory_integration_epoch_write_readiness()
+ from public,anon,authenticated;
+grant execute on function public.factory_integration_epoch_write_readiness()
+ to service_role;
+
 commit;
