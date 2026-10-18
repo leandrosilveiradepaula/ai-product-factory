@@ -64,8 +64,8 @@ class ChangeSetIntegrator:
         if not isinstance(completed,dict):
             raise RuntimeError("integration completion returned an invalid result")
         status=completed.get("status")
-        if status not in ("review_ready","integrating","repair_pending","ci_pending"):
-            raise RuntimeError("integration completion returned an unexpected status")
+        if not isinstance(status,str) or not status.strip():
+            raise RuntimeError("integration completion returned an invalid status")
         pull_request=None
         if status=="review_ready":
             marker=f"Factory change set: {item.change_set_id}"
