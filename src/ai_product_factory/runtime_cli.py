@@ -37,6 +37,7 @@ from .release_followup_queue import SupabaseReleaseFollowupQueue
 from .preview_followup_queue import SupabasePreviewFollowupQueue
 from .project_preview_config import resolve_project_vercel_preview_config
 from .preview_policy import evaluate_preview_applicability
+from .preview_base_guard import verify_preview_base_compatibility
 from .vercel_preview import VercelPreviewAdapter,VercelPreviewConfig
 from .github_vercel_preview import GitHubVercelPreviewAdapter,config_from_env as github_vercel_config_from_env
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
@@ -429,17 +430,10 @@ def _assess_release_policy(*,run_id:str,candidate_commit:str,changed_files:tuple
  recorded=policy_store.record(run_id=run_id,assessment=assessment)
  return assessment,recorded
 
-def _require_current_preview_base(github:GitHubRestAdapter,pr)->None:
- base_ref=str(getattr(pr,"base_ref",None) or "")
- base_sha=str(getattr(pr,"base_sha",None) or "")
- if not base_ref or not base_sha:
-  return
- current_base_sha=github.get_branch_sha(base_ref)
- if current_base_sha!=base_sha:
-  raise RuntimeError(
-   f"GitHub PR base is stale: {base_ref} moved from {base_sha} to {current_base_sha}. "
-   "Update the PR branch and rerun CI before Preview."
-  )
+def _require_current_preview_base(github:GitHubRestAdapter,pr)->dict:
+ # A moved preview base is rejected unless every new byte has already been
+ # present and tested at the exact candidate HEAD, with bounded Git evidence.
+ return verify_preview_base_compatibility(github,pr)
 
 def run_preview_probe_once()->dict:
  item=SupabasePreviewFollowupQueue().next_pending()
@@ -455,7 +449,7 @@ def run_preview_probe_once()->dict:
   return {"claimed":True,"status":"reconcile_closed_pr","run_id":item.run_id,
    "pr_number":item.pr_number,"preview_required":False}
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
- _require_current_preview_base(github,pr)
+ base_evidence=_require_current_preview_base(github,pr)
  changed_files=github.get_pull_request_files(item.pr_number)
  applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
  if not applicability.required:
@@ -485,9 +479,15 @@ def run_preview_once()->dict:
    "idempotent":result.get("idempotent",False)}
  issue=github.get_issue(item.issue_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
+ base_evidence=_require_current_preview_base(github,pr)
  changed_files=github.get_pull_request_files(item.pr_number)
  applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
  store=SupabaseDeliveryStore()
+ if base_evidence:
+  store.record_audit_event(
+   run_id=item.run_id,event_type="preview.compatible_base_advance",
+   payload=base_evidence,actor_ref="preview-followup",
+  )
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  if not applicability.required:
@@ -498,6 +498,12 @@ def run_preview_once()->dict:
   if assessment.decision.blocked:
    return {"claimed":True,"status":"release_policy_blocked","run_id":item.run_id,"pr_number":item.pr_number,
     "preview_required":False,"reason":applicability.reason,"policy_reasons":list(assessment.decision.reasons)}
+  refreshed_pr=github.get_pull_request(item.pr_number)
+  if (getattr(refreshed_pr,"merged",False)
+      or getattr(refreshed_pr,"state","open")!="open"
+      or refreshed_pr.head_sha!=item.candidate_commit):
+   raise RuntimeError("GitHub PR identity changed before non-Preview release readiness")
+  _require_current_preview_base(github,refreshed_pr)
   status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
   return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
    "preview_required":False,"reason":applicability.reason,"release_report_id":recorded.get("report_id")}
@@ -534,6 +540,14 @@ def run_preview_once()->dict:
   if str(exc)=="preview requires successful browser/e2e evidence":
    store.fail_preview(item.run_id,candidate_commit=item.candidate_commit,reason=str(exc))
   raise
+ # A successful browser check does not authorize release if the PR or
+ # its base moved while the deployment was being verified.
+ refreshed_pr=github.get_pull_request(item.pr_number)
+ if (getattr(refreshed_pr,"merged",False)
+     or getattr(refreshed_pr,"state","open")!="open"
+     or refreshed_pr.head_sha!=item.candidate_commit):
+  raise RuntimeError("GitHub PR identity changed during verified Preview")
+ _require_current_preview_base(github,refreshed_pr)
  store.record_resource_limit_signal(
   provider="vercel",resource_key="team",metric_key="deployments_daily",
   quality="unknown",source="preview-runtime-recovered",unit="deployments",window_key="rolling_24h",
