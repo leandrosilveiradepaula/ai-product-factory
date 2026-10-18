@@ -11,6 +11,7 @@ from .impact_engine import SupabaseImpactEngine
 from .work_unit_context import build_context_packet,enforce_write_scopes,redact_repository_text
 from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
 from .commit_provenance import provenance_commit_message
+from .pinned_nonproduction_target import PinnedNonproductionTarget
 
 
 @dataclass(frozen=True)
@@ -380,15 +381,27 @@ class ChangeSetBuilderWorker:
             raise PermissionError("task requires human approval before implementation")
         if not item.change_set_id or not item.work_unit_id:
             raise ValueError("Change Set identity is required")
-        observed_main=self.github.get_branch_sha("main")
-        frozen_source=self.store.frozen_source_commit(item.change_set_id)
-        source_commit=frozen_source or observed_main
         integration_branch=f"factory/change-set-{item.change_set_id[:8]}"
-        binding=self.store.bind_source(
-            run_id=item.run_id,source_commit=source_commit,
-            integration_branch=integration_branch,work_branch=item.branch,
-        )
         try:
+            source=self.store.context_source(item.run_id)
+            if source.get("project_key") != item.project_key or source.get("repository") != item.repository:
+                raise PermissionError("work unit project/repository differs from claimed run")
+            if source.get("project_kind")=="existing":
+                target=PinnedNonproductionTarget.parse(source.get("delivery_target"),repository=item.repository)
+                target.verify(self.github)
+                verified_source=target.sha
+            elif source.get("project_kind") in (None,"","greenfield"):
+                verified_source=self.github.get_branch_sha("main")
+            else:
+                raise PermissionError("unrecognized project kind")
+            frozen_source=self.store.frozen_source_commit(item.change_set_id)
+            if source.get("project_kind")=="existing" and frozen_source and frozen_source != verified_source:
+                raise PermissionError("frozen Change Set source differs from pinned candidate")
+            source_commit=frozen_source or verified_source
+            binding=self.store.bind_source(
+                run_id=item.run_id,source_commit=source_commit,
+                integration_branch=integration_branch,work_branch=item.branch,
+            )
             self.github.ensure_branch_at_sha(item.branch,binding.base_commit)
             impact=self.impact_engine.analyze_run(
                 project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id

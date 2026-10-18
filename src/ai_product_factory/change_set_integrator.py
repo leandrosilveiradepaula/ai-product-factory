@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from .change_set_store import ChangeSetIntegrationItem,SupabaseChangeSetStore
 from .github_rest import GitHubPullRequest,GitHubRestAdapter
 from .commit_provenance import provenance_commit_message
+from .pinned_nonproduction_target import PinnedNonproductionTarget
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,16 @@ class ChangeSetIntegrator:
             raise ValueError("integration candidate identity is missing")
         if len(item.work_units)>100:
             raise ValueError("integration exceeds work unit limit")
+        if item.project_kind == "existing":
+            target=PinnedNonproductionTarget.parse(item.delivery_target,repository=item.repository)
+            if item.source_commit != target.sha:
+                raise PermissionError("integration source differs from pinned candidate")
+            target.verify(self.github)
+            destination=target.branch
+        elif item.project_kind in (None,"","greenfield"):
+            destination="main"
+        else:
+            raise PermissionError("unrecognized project kind")
         owners={}
         files={}
         pending_reads=[]
@@ -131,8 +142,10 @@ class ChangeSetIntegrator:
                 pull_request=self.github.create_pull_request(
                     title=f"feat(factory): Change Set {item.change_set_id[:8]}",
                     body=f"{marker}\n\nIntegrated candidate: {candidate}\n\nDo not merge until CI, specialist review and Preview evidence pass.",
-                    head=item.integration_branch,base="main",
+                    head=item.integration_branch,base=destination,
                 )
+            if item.project_kind == "existing" and getattr(pull_request,"base_ref",None) != destination:
+                raise PermissionError("existing-project PR must expose the pinned destination branch")
             if not isinstance(pull_request.number,int) or isinstance(pull_request.number,bool) or pull_request.number<1:
                 raise RuntimeError("integration PR number is invalid")
             if pull_request.head_sha!=candidate:
