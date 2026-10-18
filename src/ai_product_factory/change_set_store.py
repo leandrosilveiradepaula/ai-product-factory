@@ -29,6 +29,9 @@ class ChangeSetIntegrationItem:
     integration_branch:str
     current_wave:int
     work_units:tuple[dict,...]
+    project_id:str|None=None
+    execution_generation:int|None=None
+    lease_owner:str|None=None
 
 
 class SupabaseChangeSetStore:
@@ -221,12 +224,29 @@ class SupabaseChangeSetStore:
                 seen_paths.add(path)
         if len(seen_paths)>500:
             raise RuntimeError("integration claim exceeds file limit")
+        generation=data.get("execution_generation")
+        if isinstance(generation,bool) or not isinstance(generation,int) or generation<1:
+            raise RuntimeError("integration claim missing execution generation")
+        if not isinstance(data.get("project_id"),str) or not data["project_id"].strip():
+            raise RuntimeError("integration claim missing project capability")
+        if data.get("lease_owner")!=worker_id:
+            raise RuntimeError("integration claim lease owner mismatch")
         return ChangeSetIntegrationItem(
             change_set_id=data["change_set_id"],project_key=data["project_key"],
             repository=data["repository"],source_commit=data["source_commit"],
             candidate_commit=data["candidate_commit"],integration_branch=data["integration_branch"],
             current_wave=wave,work_units=tuple(units),
+            project_id=data["project_id"],execution_generation=generation,lease_owner=worker_id,
         )
+
+    def assert_integration_epoch(self,item:ChangeSetIntegrationItem,worker_id:str)->None:
+        if not item.project_id or not item.execution_generation or item.lease_owner!=worker_id:
+            raise PermissionError("integration claim capability is incomplete")
+        self._rpc("factory_assert_change_set_integration_epoch",{
+            "p_change_set_id":item.change_set_id,"p_project_id":item.project_id,
+            "p_generation":item.execution_generation,"p_worker_id":worker_id,
+            "p_wave":item.current_wave,
+        })
 
     def complete_integration(self,*,change_set_id:str,candidate_commit:str,changed_files:tuple[str,...])->dict:
         return self._rpc("factory_complete_change_set_integration",{

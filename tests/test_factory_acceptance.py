@@ -345,6 +345,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261017111500_factory_manual_project_execution_controls.sql",
             "20261017193000_factory_graceful_stop_preserve_queue.sql",
             "20261017224500_guard_routed_claims_manual_control.sql",
+            "20261018003000_fence_change_set_integration_epoch.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
