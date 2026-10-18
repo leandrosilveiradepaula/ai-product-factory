@@ -38,6 +38,8 @@ class ChangeSetIntegrator:
             raise ValueError("integration change set identity is missing")
         if not isinstance(item.candidate_commit,str) or not item.candidate_commit.strip():
             raise ValueError("integration candidate identity is missing")
+        if len(item.work_units)>100:
+            raise ValueError("integration exceeds work unit limit")
         owners={}
         files={}
         pending_reads=[]
@@ -68,8 +70,6 @@ class ChangeSetIntegrator:
                 owners[path]=task_key
                 pending_reads.append((path,output))
 
-        if len(item.work_units)>100:
-            raise ValueError("integration exceeds work unit limit")
         if len(pending_reads)>500:
             raise ValueError("integration exceeds total file limit")
         if not pending_reads:
@@ -140,8 +140,6 @@ class ChangeSetIntegrator:
                 raise RuntimeError("final Change Set PR head does not match integrated candidate")
             if not isinstance(issue.number,int) or isinstance(issue.number,bool) or issue.number<1:
                 raise RuntimeError("integration issue number is invalid")
-            if not isinstance(issue.html_url,str) or not issue.html_url.startswith("https://github.com/"):
-                raise RuntimeError("integration issue URL is invalid")
             release=self.store.prepare_release(
                 change_set_id=item.change_set_id,issue_number=issue.number,issue_url=issue.html_url,
                 pr_number=pull_request.number,candidate_commit=candidate,branch=item.integration_branch,
