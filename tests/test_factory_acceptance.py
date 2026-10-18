@@ -348,6 +348,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261018003000_fence_change_set_integration_epoch.sql",
             "20261018013000_atomic_change_set_integration_epoch_writes.sql",
             "20261018180500_reconcile_change_set_ci_candidate.sql",
+            "20261018180500_reconcile_change_set_ci_candidate.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
