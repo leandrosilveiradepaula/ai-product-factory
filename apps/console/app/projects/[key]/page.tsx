@@ -7,6 +7,7 @@ import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {RepositoryLinkForm} from "./repository-link-form";
 import {ProjectControlSubmit} from "./control-confirm";
+import {getProjectControlWakeStatus} from "../../../lib/project-control-wake-outbox";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
@@ -158,6 +159,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
  const focusedControlAction=controlNextAction(executionControl.state);
+ const controlWake=await getProjectControlWakeStatus(p.id);
  const action=focusedControlAction|| (observedBlocker?{
    title:observedBlocker==="budget_exhausted"?"Execução pausada: limite do modelo atingido":"Execução pausada: dependência do modelo",
    body:productWorkerBlockerMessage(observedBlocker)+" O trabalho permanece preservado na fila; nenhum novo run precisa ser criado.",
@@ -197,7 +199,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
        <ProjectControlSubmit command={command} label={label}/>
       </form>
     )}</div>
-    {executionControl.state==="unavailable"?<p role="alert">O controle de execução não está disponível. Nenhum comando foi liberado; verifique a ativação da migração e as permissões do Control Plane.</p>:null}
+    {controlWake?<p role="status">Acionamento: {controlWake.status==="dispatched"?"Sinal aceito pelo GitHub":controlWake.status==="observed"?"Scheduler observou o pedido":controlWake.status==="pending"?"Nova tentativa agendada":controlWake.status==="claimed"?"Tentativa em andamento":controlWake.status==="suppressed"?"Invalidado por pausa/parada":controlWake.status==="exhausted"?"Tentativas esgotadas":"Aguardando"} · tentativas {controlWake.attempts}. Isto não comprova execução de modelo ou conclusão da tarefa.</p>:null}
+     {executionControl.state==="unavailable"?<p role="alert">O controle de execução não está disponível. Nenhum comando foi liberado; verifique a ativação da migração e as permissões do Control Plane.</p>:null}
     {["pausing","stopping"].includes(executionControl.state)?<p role="status">Aguardando conclusão segura dos trabalhos em andamento. Nenhuma tarefa nova deve ser iniciada.</p>:null}
    </div>
   </section>

@@ -85,17 +85,15 @@ export async function commandProjectExecution(projectKey:string,command:"start"|
  if(!response.ok)throw new Error("Comando não autorizado ou estado alterado. Atualize a página.");
  const result=await response.json();
  if(!result||result.command!==command||!Number.isSafeInteger(result.version)||!Number.isSafeInteger(result.generation)||result.generation<0||!["draft","running","pausing","paused","stopping","stopped"].includes(result.state))throw new Error("Confirmação de controle inválida.");
- // Operator command is durable before any best-effort scheduling signal.
- // START/RESUME/RESTART can release preserved queued work. PAUSE/STOP only
- // wake the controller if a claimed run still needs graceful settlement.
- const shouldWake=(result.state==="running"&&["start","resume","restart"].includes(command))
-    ||["pausing","stopping"].includes(result.state);
+ // The committed command writes a wake intent through the database trigger.
+ // Failure or disconnect leaves a retryable record; no paid call is bypassed.
  let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
- if(shouldWake){
-   try{
-     wakeStatus=await requestIntakeWorkerWake();
-     if(wakeStatus!=="requested")console.warn("project_control_wake_unavailable",{status:wakeStatus});
-   }catch{wakeStatus="failed";console.warn("project_control_wake_failed")}
+ if(result.state==="running"&&["start","resume","restart"].includes(command)){
+  try{
+   wakeStatus=await (await import("./project-control-wake-outbox")).deliverProjectControlWake(commandId);
+  }catch{wakeStatus="failed";console.warn("project_control_wake_will_retry");}
+ }else if(["pausing","stopping"].includes(result.state)){
+  try{wakeStatus=await requestIntakeWorkerWake();}catch{wakeStatus="failed";}
  }
  return {state:result.state as ProjectExecutionControl["state"],version:result.version as number,
          generation:result.generation as number,command:result.command as string,wakeStatus};
