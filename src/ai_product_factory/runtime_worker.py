@@ -84,6 +84,12 @@ class RuntimeWorker:
             return WorkResult(WorkStatus.FAILED, (), message)
         if len(item.stages) != len(set(item.stages)):
             message = "claimed run has duplicate stages"
+            checkpoint = getattr(self.queue, "assert_execution_epoch", None)
+            if callable(checkpoint):
+                try:
+                    checkpoint(item)
+                except Exception as exc:
+                    return WorkResult(WorkStatus.FAILED, (), str(exc))
             try:
                 self.queue.fail(item, message)
             except Exception:
