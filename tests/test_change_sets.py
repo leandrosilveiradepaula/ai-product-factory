@@ -287,7 +287,8 @@ class ChangeSetTests(unittest.TestCase):
         github.find_open_pull_request_containing.return_value=None
         github.create_pull_request.return_value=SimpleNamespace(number=9,head_sha="integrated")
         store=MagicMock()
-        store.complete_integration.return_value={"status":"review_ready","candidate_commit":"integrated"}
+        store.complete_integration.return_value={"status":"review_ready","change_set_id":"cs12345678","candidate_commit":"integrated","current_wave":1}
+        store.prepare_release.return_value={"status":"ci_pending","change_set_id":"cs12345678","release_run_id":"release-run"}
         item=ChangeSetIntegrationItem(
             "cs12345678","demo","owner/repo","base","base","factory/change-set-cs12345678",1,(
                 {"plan_task_key":"a","base_commit":"base","output_commit":"a1","changed_files":["src/a.py"]},
@@ -370,7 +371,7 @@ class ChangeSetTests(unittest.TestCase):
                 {"plan_task_key":"a","base_commit":"candidate","output_commit":"out","changed_files":["src/a.py"]},
             )
         )
-        with self.assertRaisesRegex(RuntimeError,"invalid status"):
+        with self.assertRaisesRegex(RuntimeError,"unsupported status"):
             ChangeSetIntegrator(github=github,store=store).integrate(item)
         store.mark_repair_wave_integrated.assert_not_called()
         store.prepare_release.assert_not_called()
