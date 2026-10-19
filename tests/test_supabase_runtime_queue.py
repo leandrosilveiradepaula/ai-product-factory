@@ -193,7 +193,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                   "repository": "owner/crm", "branch": "preview/candidate",
                   "sha": sha, "candidate_pr_number": 56}
         q._get = lambda path: [{"project_kind": "existing", "repository": "owner/crm",
-                                "manifest": {"delivery_target": target}}]
+                                "manifest": {"delivery_target": target, "continuation_request": {"summary": "Fix src/components/automations/AutomationBuilder.tsx"}}}]
         from unittest.mock import MagicMock
         from types import SimpleNamespace
         github = MagicMock()
