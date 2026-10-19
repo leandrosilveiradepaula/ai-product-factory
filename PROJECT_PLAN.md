@@ -253,3 +253,9 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - Vercel: novo rate limit sobre SHA #786 as 19:42:26 UTC do dia 14/10. Evitar novos Preview desnecessarios, novas tentativas sem evidencias de liberacao e deploy em producao automatico.
 - WIF Codex/OpenAI dependencias externas separadas; modelo primario pago permanece desligado e qualquer alteracao de billing exige aprovacao explicita.
 
+## Prova pendente depois da limpeza operacional de 19/10/2026
+
+- [x] Integracao de CI passa a exigir workflow GitHub Actions completo no SHA exato e deduplicar dispatch (PR #983, merge humano 3da90ed2628d240c47163f7ce3ec676c4f59e86e).
+- [x] Control Plane reconciliado sem Change Sets pendentes e com registros antigos aposentados sem perda de auditoria.
+- [ ] Novo projeto explicitamente iniciado por pessoa completar o E2E real sem reparos manuais: Product Stage, Change Set, Direct, PR, CI, Review, Preview aplicavel (ou N/A duravel), awaiting_release, merge humano observado e operacao.
+- [ ] Publicar auditor somente leitura por Start/run exato, sem reativar itens antigos e sem chamar modelos pagos para sondagem; validar com CI no candidato e depois com evidencias do ciclo real.

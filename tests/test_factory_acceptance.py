@@ -21,6 +21,31 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FactoryAcceptanceTests(unittest.TestCase):
+    def test_fresh_autonomy_journey_is_manual_read_only_and_sha_bound(self):
+        workflow=(ROOT / ".github/workflows/autonomy-journey-readonly.yml").read_text()
+        engine=(ROOT / "src/ai_product_factory/autonomy_journey.py").read_text()
+        reader=(ROOT / "src/ai_product_factory/autonomy_journey_reader.py").read_text()
+        cli=(ROOT / "scripts/audit_autonomy_journey.py").read_text()
+        for stage in ("manual_start","discovery","specification","planning",
+                      "routing","implementation","review","github_ci","preview",
+                      "awaiting_release","human_release_observed","operations"):
+            self.assertIn('"'+stage+'"',engine)
+        self.assertIn('project.control.start',workflow.replace('explicit Start','project.control.start'))
+        self.assertIn("workflow_dispatch:",workflow)
+        self.assertNotIn("  schedule:",workflow)
+        self.assertIn("read-only-evidence:",workflow)
+        self.assertIn("github.get_ci_state(pr_number)",reader)
+        self.assertIn("github.commit_exists(sha)",reader)
+        self.assertIn("evaluate_preview_applicability",reader)
+        self.assertIn('root_run_id',reader)
+        self.assertIn('"product_ready": False',engine)
+        self.assertIn('"paid_calls": 0',engine)
+        self.assertIn('"writes": 0',engine)
+        self.assertIn("--require-at-least",cli)
+        self.assertNotIn("dispatch_workflow(",reader)
+        self.assertNotIn("merge_pull_request(",reader)
+        self.assertNotIn("run_product_once(",reader)
+
     def test_lifecycle_covers_product_factory_chain(self):
         expected = {
             LifecycleStage.DISCOVERY,

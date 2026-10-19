@@ -1,0 +1,85 @@
+name: Fresh Factory autonomy journey evidence (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_key:
+        description: "Exact project key; this workflow never creates or starts it"
+        required: true
+        type: string
+      since_utc:
+        description: "Cutoff ISO 8601 UTC for a NEW operator-issued Start"
+        required: true
+        type: string
+      run_id:
+        description: "Optional exact bootstrap run UUID from the operator Start"
+        required: false
+        type: string
+      require_at_least:
+        description: "Fail the audit if this actual stage lacks proof"
+        required: true
+        type: choice
+        default: manual_start
+        options:
+          - manual_start
+          - discovery
+          - specification
+          - planning
+          - routing
+          - implementation
+          - review
+          - github_ci
+          - preview
+          - awaiting_release
+          - human_release_observed
+          - operations
+
+permissions:
+  contents: read
+  id-token: write
+  issues: read
+  pull-requests: read
+  checks: read
+  actions: read
+  statuses: read
+
+concurrency:
+  group: autonomy-journey-${{ inputs.project_key }}-${{ inputs.run_id || inputs.since_utc }}
+  cancel-in-progress: false
+
+jobs:
+  read-only-evidence:
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      PROJECT_KEY: ${{ inputs.project_key }}
+      SINCE_UTC: ${{ inputs.since_utc }}
+      ROOT_RUN_ID: ${{ inputs.run_id }}
+      REQUIRE_STAGE: ${{ inputs.require_at_least }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Correlate explicit Start, worker receipts, exact GitHub CI, Preview, release
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--project-key "$PROJECT_KEY" --since-utc "$SINCE_UTC" --require-at-least "$REQUIRE_STAGE")
+          if [ -n "$ROOT_RUN_ID" ]; then args+=(--run-id "$ROOT_RUN_ID"); fi
+          python scripts/audit_autonomy_journey.py "${args[@]}" \
+            | tee "$RUNNER_TEMP/factory-autonomy-journey.json"
+      - name: Preserve sanitized read-only journey evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fresh-factory-autonomy-journey-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-autonomy-journey.json
+          if-no-files-found: warn
+          retention-days: 7

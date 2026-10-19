@@ -1,3 +1,11 @@
+## 19/10/2026 — Estado apos merge humano da PR #983
+
+- Factory main verificada em 3da90ed2628d240c47163f7ce3ec676c4f59e86e; validate verde. Nao confundir CI da Factory com prova de E2E autonomo de novo projeto.
+- Control Plane: zero Change Sets executaveis, zero gates humanos pendentes, scheduler sem trabalho. 5 Change Sets CRM e 10 tarefas historicas foram encerrados com auditoria, sem DELETE.
+- Budget real: total US$ 10, reserva US$ 0,50 por run, uso conhecido US$ 9,0264452; proibido executar modelos apenas para teste.
+- Proxima prova: operador inicia um projeto NOVO manualmente, e a Factory deve chegar por si a CI, Preview conforme politica e awaiting_release. Auditor de jornada em preparacao, somente leitura (docs/AUTONOMY_JOURNEY_EVIDENCE.md); nao declarar produto pronto por simulacao.
+- O proximo PR da Factory nao deve executar worker pago, autostart, auto-merge ou migration. O teste real so ocorrera quando existir Start humano e fluxo aprovado.
+
 ## 2026-10-18 — Durable project-control wake (candidate)
 
 Five functional blocks: SQL outbox trigger recording START/RESUME/RESTART atomically; privileged claim/ack lease with five attempts and generation fencing; postcommit Console delivery with durable failure; existing scheduled runner observes pending work without paid calls; project UI exposes status, with PostgreSQL 16 concurrency/idempotence testing.

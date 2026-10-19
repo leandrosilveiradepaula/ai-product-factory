@@ -1140,3 +1140,7 @@ Contexto: após a limpeza auditada do backlog, a Factory permaneceu sem filas ex
 5. Evidências: regressões em test_github_rest, test_runtime_cli, test_ci_followup_queue, test_supabase_operational_health e test_operational_alerts cobrem SHA/branch, workflows parciais/falhos, Vercel isolado, validação de permissões, deduplicação, alerta e não execução de modelos.
 
 Esta mudança não contém migrations, alterações de RLS, Console nem auto-merge. Não altera o teto financeiro de US$10 ou reserva US$0,50. Aplica-se Preview N/A para a própria Factory por não tocar em apps/console/**; não inventar deployment. Gate de merge de produção permanece humano. Mesmo após CI verde, readiness global do produto só pode ser comprovada por um novo fluxo real até o gate de release.
+
+## 2026-10-19 — Verificador de jornada E2E sem disparo nem custo
+
+A proxima comprovacao da autonomia NAO e reabrir tasks historicas nem criar fake run. O procedimento versionado em docs/AUTONOMY_JOURNEY_EVIDENCE.md recebe um Start humano com cutoff UTC, recusa eventos de outro projeto/run, confirma commits e PR no repositorio real e diferencia CI, Preview, release e operacao. A nova GitHub Action e workflow_dispatch manual e usa apenas GET no Control Plane/GitHub; nenhum provider, merge, deploy ou DDL e invocado. Cadastro draft isolado e precondicao de teste, nunca autostart. Somente evidencias futuras de execucao real podem fechar a pendencia de autonomia; mocks e testes unitarios validam o avaliador, nao a Factory inteira.
