@@ -96,8 +96,12 @@ def _canonical_routing_task(task: dict) -> dict:
             "supabase":"migration_authoring",
             "database_testing":"implementation",
         }
-        if raw_preferred=="test_engineer":
-            cap_aliases["tests"]="implementation"
+        if raw_preferred=="test_engineer" or "implementation" in raw_caps:
+            # Tests are deliverables of implementation; QA review stays a later lane.
+            cap_aliases.update({"tests":"implementation","regression":"implementation"})
+    elif preferred=="ui" and "ui" in raw_caps:
+        # A UI builder owns its component regressions; this grants no QA privileges.
+        cap_aliases={"tests":"ui","regression":"ui"}
     elif preferred=="security":
         cap_aliases={"supabase":"rls","oidc":"auth"}
     elif preferred=="operations":
