@@ -521,11 +521,11 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode release --batch-items 3
 
-  # Product Stage may materialize dispatchable tasks before an unrelated
-  # poststage command fails. A failed job triggers the guarded queue claim,
-  # not permission to infer or synthesize new work or call models.
+  # Dispatch remains gated by the Product Stage and auth preflights.
+  # A failed upstream job never bypasses paid or route readiness; materialized
+  # queue entries can be recovered by the next native wake.
   dispatch:
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success'  && (((github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true' || needs.product-stage.result == 'failure')) || (github.event_name == 'workflow_dispatch' && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true' || needs.product-stage.result == 'failure' || inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && needs.codex-route-preflight.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true' || inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
     needs: [schedule-probe, github-access-preflight, product-stage, codex-route-preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 5

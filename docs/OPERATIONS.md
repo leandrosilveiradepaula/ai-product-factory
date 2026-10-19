@@ -1041,10 +1041,11 @@ Set, nem chamar retrospectivamente a integração com um SHA desatualizado.
 
 **Comportamento da alteração candidata:**
 
-1. Product Stage, Direct/Codex e integração podem falhar como *jobs* depois de
-   registrar trabalho em banco. O job seguinte poderá consultar sua própria
-   fila e só operar sob claim/checkpoint transacional — nunca usando `success`
-   ou `failure` do job anterior como autorização de escrita ou chamada paga.
+1. Direct/Codex e integração podem falhar como *jobs* depois de registrar
+   trabalho em banco. O job seguinte consulta sua própria fila e só opera
+   sob claim/checkpoint transacional. O dispatch após Product Stage mantém
+   preflight/gate de orçamento estrito; se Product Stage falhar, materializações
+   legítimas continuam para um novo wake, sem autorização implícita de pago.
 2. A nova migration
    `20261019193000_guard_stale_change_set_integration.sql` exige projeto
    ativo/running, Work Units da onda realmente concluídas e origem compatível

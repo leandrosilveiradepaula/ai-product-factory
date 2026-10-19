@@ -357,6 +357,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261018213500_observe_preview_branch_integration.sql",
             "20261019002000_project_control_wake_outbox.sql",
             "20261019031000_repin_nonproduction_target.sql",
+            "20261019193000_guard_stale_change_set_integration.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

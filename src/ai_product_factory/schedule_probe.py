@@ -269,7 +269,7 @@ class SupabaseScheduleProbe:
         out = {
             "queue_diagnostics": {
                 "queue_signal_source": "authoritative_rpc",
-                "stale_integration_change_sets": signals["stale_integration_change_sets"],
+                "stale_integration_change_sets": signals.get("stale_integration_change_sets"),
                 "run_status_partitions_at_limit": list(capped_run_statuses),
                 "task_status_partitions_at_limit": list(capped_task_statuses),
                 "linked_task_lookups": linked_task_lookups,

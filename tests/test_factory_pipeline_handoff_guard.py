@@ -16,7 +16,7 @@ CLI = (ROOT / "src/ai_product_factory/runtime_cli.py").read_text()
 
 def condition(name):
     section = WORKFLOW.split("\n  " + name + ":\n", 1)[1]
-    return section.split("\n    if: ", 1)[1].split("\n", 1)[0]
+    return section.split("    if: ", 1)[1].split("\n", 1)[0]
 
 
 class HandoffTests(unittest.TestCase):
@@ -30,15 +30,15 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("needs.schedule-probe.result == 'success'", c)
         self.assertEqual(c.count("("), c.count(")"))
 
-    def test_ci_and_dispatch_do_not_drop_committed_followup_after_failed_jobs(self):
+    def test_ci_followup_survives_integrator_failure_without_weakening_dispatch_gate(self):
         ci = condition("ci-followup")
         dispatch = condition("dispatch")
         self.assertIn("needs.change-set-integration.result == 'failure'", ci)
         self.assertIn("needs.schedule-probe.outputs.ci_work == 'true'", ci)
         self.assertNotIn("needs.change-set-integration.result != 'failure'", ci)
-        self.assertIn("needs.product-stage.result == 'failure'", dispatch)
+        self.assertIn("needs.product-stage.result != 'failure'", dispatch)
         self.assertIn("needs.schedule-probe.outputs.dispatch_work == 'true'", dispatch)
-        self.assertNotIn("needs.product-stage.result != 'failure'", dispatch)
+        self.assertNotIn("needs.product-stage.result == 'failure'", dispatch)
         for c in (ci, dispatch):
             self.assertEqual(c.count("("), c.count(")"))
             self.assertIn("needs.schedule-probe.result == 'success'", c)
@@ -73,7 +73,8 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(SQL.lower().count("create or replace function"), 2)
         self.assertEqual(SQL.lower().count("grant execute on function"), 2)
         self.assertIn("security invoker", SQL.lower())
-        self.assertNotIn("update public.factory_change_sets", SQL.lower())
+        self.assertEqual(SQL.lower().count("update public.factory_change_sets"), 1)
+        self.assertIn("set status='integrating'", SQL.lower())
         self.assertNotIn("delete from public.factory_change_sets", SQL.lower())
 
 
