@@ -1,3 +1,8 @@
+## 2026-10-18 — Durable project-control wake (candidate)
+
+Five functional blocks: SQL outbox trigger recording START/RESUME/RESTART atomically; privileged claim/ack lease with five attempts and generation fencing; postcommit Console delivery with durable failure; existing scheduled runner observes pending work without paid calls; project UI exposes status, with PostgreSQL 16 concurrency/idempotence testing.
+
+The SQL migration `20261019002000_project_control_wake_outbox.sql` is **not applied**. Needs SHA-exact CI and Console Preview, human Factory production PR merge, and separate migration authorization. No registration autostart, paid probe, broader RLS access, new timers or runtime auto-merge. "Observed" means runner saw the wake, NOT task executed.
 ## 2026-10-18 — CRM Preview-only integration observer (candidate)
 
 - External nonproduction merge verified: `crm-infodive` PR #180, candidate `aee522fe`, merged into `preview/hardening-release-candidate` at `88c35175`. The production branch `main` did not move. Vercel status for the merged SHA is success; no deployment to production was claimed.
