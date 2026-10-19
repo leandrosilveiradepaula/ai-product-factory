@@ -18,9 +18,6 @@ class OversizedOptionalContextTests(unittest.TestCase):
             "large.ts": ValueError("repository context file too large"),
             "small.ts": "export const ok = true;",
         })
-        def read(path, ref):
-            value = worker.github.get_file_text.side_effect.__closure__
-            return None
         worker.github.get_file_text.side_effect = lambda path, ref: (
             (_ for _ in ()).throw(ValueError("repository context file too large"))
             if path == "large.ts" else
