@@ -352,6 +352,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261018211000_resume_preview_browser_infrastructure_failure.sql",
             "20261018213500_observe_preview_branch_integration.sql",
             "20261019002000_project_control_wake_outbox.sql",
+            "20261019031000_repin_nonproduction_target.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

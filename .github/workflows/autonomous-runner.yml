@@ -145,7 +145,7 @@ jobs:
   github-access-preflight:
     environment: openai-api
     needs: schedule-probe
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.github_access_work == 'true') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.github_access_work == 'true' || github.event_name == 'schedule') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -166,6 +166,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Reconcile exact CRM candidate target after GitHub preflight
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        continue-on-error: true
+        run: python -m ai_product_factory.runtime_cli --mode candidate-repin --project-key crm-infodive
       - name: Verify one project GitHub capability contract
         shell: bash
         run: |
