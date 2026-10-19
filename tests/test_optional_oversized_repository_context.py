@@ -45,6 +45,19 @@ class OversizedOptionalContextTests(unittest.TestCase):
                 base_commit="a" * 40,
             )
 
+    def test_required_oversized_error_names_path_without_content(self):
+        worker = self.make_worker({})
+        worker.github.get_file_text.side_effect = ValueError("repository context file too large")
+        worker._governance_paths = lambda paths: ()
+        with self.assertRaisesRegex(ValueError, "required repository context file too large: src/services/SettingsService.ts"):
+            worker._repository_snapshot_with_safety(
+                source={"assignment": {
+                    "context_paths": ["src/services/SettingsService.ts"],
+                    "scope_keys": ["src/services/SettingsService.ts"],
+                }},
+                base_commit="a" * 40,
+            )
+
     def test_other_optional_read_errors_remain_blocked(self):
         worker = self.make_worker({})
         worker.github.get_file_text.side_effect = ValueError("invalid UTF-8")
