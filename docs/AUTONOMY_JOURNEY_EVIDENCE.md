@@ -83,3 +83,32 @@ AVALIADOR e o mecanismo de consulta. Nao provam o E2E real da Factory ate
 que exista um trabalho novo iniciado manualmente e executado de fato.
 Nao gerar chamadas pagas somente para simular sucesso nem reabrir itens
 ja aposentados do CRM ou da Factory.
+
+
+## Compatibilidade com eventos reais do Control Plane
+
+A consulta read-only ao Control Plane comprovou estes formatos operacionais:
+
+- Projetos greenfield usam discovery, specification, planning. Projetos
+  existentes/importados (incluindo CRM) registram reconciliation,
+  gap_analysis, planning. O auditor mapeia somente os nomes verdadeiros
+  para as fases exibidas e nunca cria stages artificiais.
+- Eventos legados release.awaiting_human_merge e
+  release.preview_not_required possuem project_id=NULL no banco. Um evento
+  global somente conta quando seu run_id e descendente do Start humano e
+  o SHA e o numero da PR sao exatamente os da candidatura auditada.
+- O release.human_merge_observed do Console pode registrar apenas
+  candidate_commit e merge_sha. Nessa forma, exige-se TAMBEM o evento
+  human_release.console_merge_succeeded com repository, pr_number,
+  candidate_commit e merge_sha do mesmo run. A outra forma validada
+  inclui head_sha, pr_number e merge_sha no proprio observer. Ambas
+  exigem PR merged real no GitHub e release_report released correspondente.
+- QA, Security, CI, Preview e release sao vinculados ao run exato do recibo
+  create_pr e nao a um run vizinho. Uma Work Unit so comprova codigo
+  incorporado quando output_commit existe E e ancestral do SHA candidato.
+- Nunca marcar awaiting_human_merge nem observed_complete quando uma etapa
+  anterior estiver ausente, mesmo se houver um evento futuro verdadeiro.
+
+Apenas leitura de eventos existentes foi utilizada para conferir estes
+formatos. Ainda NAO ocorreu o E2E novo, pois nao houve novo Start explicito.
+

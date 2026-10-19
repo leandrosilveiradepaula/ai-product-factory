@@ -1144,3 +1144,18 @@ Esta mudança não contém migrations, alterações de RLS, Console nem auto-mer
 ## 2026-10-19 — Verificador de jornada E2E sem disparo nem custo
 
 A proxima comprovacao da autonomia NAO e reabrir tasks historicas nem criar fake run. O procedimento versionado em docs/AUTONOMY_JOURNEY_EVIDENCE.md recebe um Start humano com cutoff UTC, recusa eventos de outro projeto/run, confirma commits e PR no repositorio real e diferencia CI, Preview, release e operacao. A nova GitHub Action e workflow_dispatch manual e usa apenas GET no Control Plane/GitHub; nenhum provider, merge, deploy ou DDL e invocado. Cadastro draft isolado e precondicao de teste, nunca autostart. Somente evidencias futuras de execucao real podem fechar a pendencia de autonomia; mocks e testes unitarios validam o avaliador, nao a Factory inteira.
+
+
+## 2026-10-19 — Auditor de jornada: aderencia aos eventos reais (#984)
+
+Consulta read-only evidenciou tres incompatibilidades corrigidas no auditor:
+nomes de Product Stage distintos entre greenfield e existing, eventos
+release.awaiting_human_merge/preview_not_required com project_id NULL, e
+release.human_merge_observed moderno contendo candidate_commit+merge_sha
+sem pr_number. Eventual NULL-project e aceito apenas pelo run_id exato,
+SHA/PR; console human merge requer testemunha extra do mesmo run com PR
+e repository. Todas as evidencias de delivery pertencem ao unico run da
+create_pr, e cada Work Unit deve ser ancestral do commit candidato.
+Nenhuma evidencia posterior permite pular etapas ou rotular uma jornada
+como completa. Nao executar Start automatico, modelo pago nem SQL de escrita.
+

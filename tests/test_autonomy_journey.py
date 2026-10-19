@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from ai_product_factory.autonomy_journey import STAGES, evaluate_journey, no_start_report
-from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader
+from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader, candidate_contains_work_units
 from ai_product_factory.github_loop import CIState
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -135,6 +135,12 @@ class JourneyEvidenceTests(unittest.TestCase):
             "delivery_target":{"mode":"open_pr_candidate",
                                "branch":"preview/stable-candidate"}
         }
+        for event in d["events"]:
+            if event["event_type"]=="product.stage.persisted":
+                if event["payload"]["stage"]=="discovery":
+                    event["payload"]["stage"]="reconciliation"
+                elif event["payload"]["stage"]=="specification":
+                    event["payload"]["stage"]="gap_analysis"
         d["github"]["base_ref"]="preview/stable-candidate"
         self.assertEqual(evaluate_journey(**d).highest_verified,"awaiting_release")
         d["github"]["base_ref"]="main"
@@ -259,6 +265,223 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED",workflow)
         self.assertNotIn("merge_pull_request",workflow)
         self.assertNotIn("--mode product",workflow)
+
+
+
+
+class RealControlPlaneCompatibilityTests(unittest.TestCase):
+    """Regression fixtures derived from the actual October 19 audit schemas.
+
+    Existing-project stages are reconciliation/gap_analysis/planning; release
+    gate events have project_id=NULL, and console release observation omits PR.
+    These tests prove the audit can recognize those formats without borrowing
+    another run's evidence or faking a human merge.
+    """
+
+    def test_existing_project_reconciliation_gap_analysis_are_real_stages(self):
+        d=scenario()
+        d["project"]["project_kind"]="existing"
+        d["project"]["manifest"]={
+            "delivery_target":{"mode":"open_pr_candidate",
+                               "branch":"preview/proven-candidate"}
+        }
+        d["github"]["base_ref"]="preview/proven-candidate"
+        for e in d["events"]:
+            if e["event_type"]=="product.stage.persisted":
+                if e["payload"]["stage"]=="discovery":
+                    e["payload"]["stage"]="reconciliation"
+                elif e["payload"]["stage"]=="specification":
+                    e["payload"]["stage"]="gap_analysis"
+        verified=evaluate_journey(**d)
+        self.assertEqual(verified.highest_verified,"awaiting_release")
+        self.assertEqual(verified.status,"awaiting_human_merge")
+        # Do not substitute a greenfield event for a missing CRM reconciliation.
+        d["events"][0]["payload"]["stage"]="discovery"
+        self.assertEqual(evaluate_journey(**d).highest_verified,"manual_start")
+        d["events"][0]["payload"]["stage"]="reconciliation"
+        d["events"][1]["payload"]["stage"]="specification"
+        self.assertEqual(evaluate_journey(**d).highest_verified,"discovery")
+
+    def test_null_project_release_receipts_require_same_run_pr_and_sha(self):
+        d=scenario()
+        for e in d["events"]:
+            if e["event_type"] in (
+                "release.preview_not_required","release.awaiting_human_merge"
+            ):
+                e["project_id"]=None
+        report=evaluate_journey(**d)
+        self.assertEqual(report.highest_verified,"awaiting_release")
+        for field,value in (
+            ("run_id",WORK_RUN),
+            ("project_id","another-project"),
+        ):
+            invalid=scenario()
+            for e in invalid["events"]:
+                if e["event_type"]=="release.awaiting_human_merge":
+                    e["project_id"]=None
+                    e[field]=value
+            with self.subTest(field=field):
+                r=evaluate_journey(**invalid)
+                self.assertEqual(r.highest_verified,"preview")
+                self.assertNotEqual(r.status,"awaiting_human_merge")
+        # Wrong candidate must not pass even when project_id is intentionally NULL.
+        invalid=scenario()
+        for e in invalid["events"]:
+            if e["event_type"]=="release.preview_not_required":
+                e["project_id"]=None
+                e["payload"]["head_sha"]="f"*40
+        self.assertEqual(evaluate_journey(**invalid).highest_verified,"github_ci")
+
+    def test_console_merge_requires_matching_second_audit_and_report(self):
+        d=scenario(merged=True,operations=True)
+        d["events"]=[
+            e for e in d["events"]
+            if e["event_type"]!="release.human_merge_observed"
+        ]
+        observer={
+            "project_id":PID,"run_id":RELEASE_RUN,
+            "event_type":"release.human_merge_observed",
+            "payload":{"source":"console_human_merge",
+                       "candidate_commit":SHA,"merge_sha":MERGE_SHA},
+        }
+        receipt={
+            "project_id":PID,"run_id":RELEASE_RUN,
+            "event_type":"human_release.console_merge_succeeded",
+            "payload":{"repository":REPO,"pr_number":17,
+                       "candidate_commit":SHA,"merge_sha":MERGE_SHA},
+        }
+        d["events"].extend((observer,receipt))
+        self.assertEqual(evaluate_journey(**d).status,"observed_complete")
+        d["events"].remove(receipt)
+        report=evaluate_journey(**d)
+        self.assertEqual(report.status,"blocked")
+        self.assertEqual(report.highest_verified,"awaiting_release")
+        self.assertIn("merged_candidate_without_verified_release",report.blockers)
+        d["events"].append(dict(receipt,payload=dict(receipt["payload"],pr_number=99)))
+        self.assertEqual(evaluate_journey(**d).highest_verified,"awaiting_release")
+        d["events"][-1]["payload"]["pr_number"]=17
+        d["events"][-1]["run_id"]=WORK_RUN
+        self.assertEqual(evaluate_journey(**d).highest_verified,"awaiting_release")
+
+    def test_delivery_evidence_cannot_be_borrowed_from_sibling_run(self):
+        for event_type in (
+            "delivery.evidence.recorded",
+            "quality_gate.passed",
+            "release.awaiting_human_merge",
+        ):
+            d=scenario()
+            event=next(e for e in d["events"] if e["event_type"]==event_type
+                       and (event_type!="delivery.evidence.recorded"
+                            or e["payload"]["evidence_type"]=="security"))
+            event["run_id"]=WORK_RUN
+            with self.subTest(event_type=event_type):
+                report=evaluate_journey(**d)
+                self.assertNotEqual(report.highest_verified,"awaiting_release")
+                self.assertNotEqual(report.status,"awaiting_human_merge")
+
+    def test_future_evidence_does_not_implicitly_complete_missing_middle(self):
+        d=scenario()
+        d["events"]=[
+            e for e in d["events"]
+            if e["event_type"]!="release.preview_not_required"
+        ]
+        report=evaluate_journey(**d)
+        self.assertEqual(report.highest_verified,"github_ci")
+        self.assertEqual(report.status,"in_progress")
+
+    def test_candidate_work_unit_commits_must_be_ancestors_not_just_existing(self):
+        github=MagicMock()
+        github.commit_exists.return_value=True
+        github.compare_commits.return_value={
+            "status":"ahead","ahead_by":2,"behind_by":0,"files":[]
+        }
+        self.assertTrue(candidate_contains_work_units(github,SHA,{WORK_SHA}))
+        github.compare_commits.assert_called_once_with(WORK_SHA,SHA)
+        for invalid in (
+            {"status":"diverged","ahead_by":2,"behind_by":1},
+            {"status":"behind","ahead_by":0,"behind_by":2},
+            {"status":"ahead","ahead_by":2,"behind_by":1},
+            {"status":"ahead","ahead_by":True,"behind_by":0},
+        ):
+            github.compare_commits.return_value=invalid
+            with self.subTest(result=invalid):
+                self.assertFalse(candidate_contains_work_units(github,SHA,{WORK_SHA}))
+        github.commit_exists.return_value=False
+        self.assertFalse(candidate_contains_work_units(github,SHA,{WORK_SHA}))
+        github.commit_exists.return_value=True
+        github.compare_commits.reset_mock()
+        self.assertTrue(candidate_contains_work_units(github,SHA,{SHA}))
+        github.compare_commits.assert_not_called()
+        for commits in (set(),{"bad"}, {str(i).zfill(40) for i in range(31)}):
+            with self.subTest(size=len(commits)):
+                with self.assertRaises(ValueError):
+                    candidate_contains_work_units(github,SHA,commits)
+
+
+    def test_reader_rejects_untrusted_null_project_event_without_github(self):
+        reader=SupabaseJourneyReader(
+            url="https://example.supabase.co",secret_key="sb_secret_placeholder",
+            github_factory=MagicMock(),
+        )
+        task_id="00000000-0000-0000-0000-000000000007"
+        started_at="2026-10-19T21:00:00+00:00"
+        def one(table,query):
+            if table=="factory_projects":
+                return {"id":PID,"project_key":"fresh-journey",
+                        "repository":REPO,"is_active":True,"project_kind":"existing"}
+            if table=="factory_runs":
+                return {"id":ROOT_RUN,"task_id":task_id,"status":"completed"}
+            if table=="factory_tasks":
+                return {"id":task_id,"project_id":PID,"parent_task_id":None,
+                        "created_at":started_at,"status":"completed"}
+            raise AssertionError(table)
+        def get(path,*,limit):
+            if path.startswith("factory_project_execution_commands?"):
+                return [{"project_id":PID,"command":"start","actor_id":"operator",
+                         "result":{"run_id":ROOT_RUN},"created_at":started_at}]
+            if path.startswith("factory_tasks?"):
+                return [{"id":task_id,"project_id":PID,"parent_task_id":None,
+                         "created_at":started_at}]
+            if path.startswith(("factory_change_sets?","factory_audit_events?",
+                                "factory_release_reports?")):
+                return []
+            raise AssertionError(path)
+        def many(table,*,cols,fk,ids,extra="",limit=301):
+            if table=="factory_runs":
+                return [{"id":ROOT_RUN,"task_id":task_id,"status":"completed"}]
+            if table=="factory_audit_events":
+                return [{"id":1,"run_id":ROOT_RUN,"project_id":None,
+                         "event_type":"run.status.updated","payload":{}}]
+            return []
+        with patch.object(reader,"_one",side_effect=one),\
+             patch.object(reader,"_get",side_effect=get),\
+             patch.object(reader,"_many_ids",side_effect=many),\
+             self.assertRaisesRegex(RuntimeError,"untrusted globally scoped"):
+            reader.read(project_key="fresh-journey",
+                        since=datetime(2026,10,19,20,0,tzinfo=timezone.utc))
+        reader.github_factory.assert_not_called()
+
+    def test_global_release_reader_rejects_other_project_and_unlisted_events(self):
+        reader=SupabaseJourneyReader(
+            url="https://example.supabase.co",secret_key="sb_secret_placeholder",
+        )
+        mocked={
+            "id":1,"run_id":RELEASE_RUN,"project_id":None,
+            "event_type":"release.awaiting_human_merge","payload":{"pr":17,"head_sha":SHA},
+        }
+        with patch.object(reader,"_get",return_value=[mocked]) as call:
+            rows=reader._many_ids(
+                "factory_audit_events",
+                cols="id,project_id,task_id,run_id,event_type,payload,created_at",
+                fk="run_id",ids={RELEASE_RUN},
+                extra=("project_id=is.null&event_type=in.("
+                       "release.awaiting_human_merge,release.preview_not_required,"
+                       "release.human_merge_observed)"),
+                limit=201,
+            )
+        self.assertEqual(rows,[mocked])
+        self.assertIn("project_id=is.null",call.call_args.args[0])
+        self.assertIn("run_id=in.(",call.call_args.args[0])
 
 
 if __name__=="__main__":

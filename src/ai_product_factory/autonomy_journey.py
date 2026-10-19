@@ -103,7 +103,17 @@ def _release_event(
     run_ids: set[str],
 ) -> bool:
     for row in events:
-        if row.get("event_type") != name or row.get("project_id") != project_id:
+        if row.get("event_type") != name:
+            continue
+        # Legacy release/Preview gate events were intentionally emitted with
+        # project_id=NULL. Their immutable run_id + PR + SHA is authoritative,
+        # but unrelated NULL-project events never count for other event types.
+        if row.get("project_id") != project_id and not (
+            row.get("project_id") is None
+            and name in ("release.preview_not_required",
+                         "release.awaiting_human_merge",
+                         "release.human_merge_observed")
+        ):
             continue
         if row.get("run_id") not in run_ids:
             continue
@@ -168,8 +178,16 @@ def evaluate_journey(
     def has_stage(stage: str) -> bool:
         return _event(events, "product.stage.persisted",
                       run_ids=run_ids, payload={"stage":stage}, audit_project=pid)
-    discovered = has_stage("discovery")
-    specified = has_stage("specification")
+    # Existing imported projects use reconciliation -> gap_analysis -> planning
+    # as their ACTUAL Product Stage contract; greenfield records
+    # discovery -> specification -> planning. They must not borrow one
+    # another's event names and declare a fictitious successful stage.
+    if project.get("project_kind") == "existing":
+        discovered = has_stage("reconciliation")
+        specified = has_stage("gap_analysis")
+    else:
+        discovered = has_stage("discovery")
+        specified = has_stage("specification")
     planned = has_stage("planning")
     cs_ids = {str(cs.get("id")) for cs in change_sets}
     if len(cs_ids) != len(change_sets):
@@ -199,7 +217,7 @@ def evaluate_journey(
     ]
     candidate_shas = {str(cs.get("candidate_commit")) for cs in change_sets
                       if isinstance(cs.get("candidate_commit"), str) and SHA.fullmatch(cs["candidate_commit"])}
-    receipt_pairs = {}
+    receipt_pairs: dict[str, tuple[int, str]] = {}
     for row in create_pr_receipts:
         if row.get("run_id") not in run_ids or row.get("operation") != "create_pr":
             raise ValueError("unscoped create_pr receipt")
@@ -210,15 +228,18 @@ def evaluate_journey(
         num = meta.get("pr")
         if not isinstance(sha, str) or not SHA.fullmatch(sha) or type(num) is not int or num <= 0:
             raise ValueError("invalid create_pr SHA or PR number")
-        if sha in receipt_pairs and receipt_pairs[sha] != num:
+        pair = (num, str(row["run_id"]))
+        if sha in receipt_pairs and receipt_pairs[sha] != pair:
             raise ValueError("conflicting create_pr receipts for same commit")
-        receipt_pairs[sha] = num
+        receipt_pairs[sha] = pair
     candidate = None
     pr_number = None
+    delivery_run_id = None
     if candidate_shas:
-        matches = [(sha, num) for sha, num in receipt_pairs.items() if sha in candidate_shas]
+        matches = [(sha, num, run_id) for sha, (num, run_id) in receipt_pairs.items()
+                   if sha in candidate_shas]
         if len(matches) == 1:
-            candidate, pr_number = matches[0]
+            candidate, pr_number, delivery_run_id = matches[0]
         elif matches:
             blockers.append("ambiguous_candidate_sha")
         elif receipt_pairs:
@@ -252,18 +273,21 @@ def evaluate_journey(
         blockers.append("github_pr_sha_or_repository_drift")
     commit_verified = bool(candidate_bound and github_pr.get("work_unit_commit_verified") is True)
     implemented = bool(completed_units and commit_verified)
+    # PR/CI/Preview/release evidence must all belong to the SAME run that
+    # created this candidate PR. A different sibling run must never complete it.
+    delivery_runs = {delivery_run_id} if delivery_run_id else set()
     def delivery(evidence: str) -> bool:
         return _event(
             events, "delivery.evidence.recorded",
-            run_ids=run_ids, payload={"evidence_type":evidence,"status":"passed"},
+            run_ids=delivery_runs, payload={"evidence_type":evidence,"status":"passed"},
             audit_project=pid,
         ) or _event(
             events, "delivery.evidence.recorded",
-            run_ids=run_ids, payload={"evidence_type":evidence,"status":"success"},
+            run_ids=delivery_runs, payload={"evidence_type":evidence,"status":"success"},
             audit_project=pid,
         )
     reviewed = bool(candidate and delivery("qa") and delivery("security") and
-                    _event(events,"quality_gate.passed",run_ids=run_ids,
+                    _event(events,"quality_gate.passed",run_ids=delivery_runs,
                            payload={"candidate_commit":candidate},audit_project=pid))
     ci = bool(candidate_bound and github_pr.get("ci_state")==CIState.SUCCESS
               and delivery("github_ci"))
@@ -272,15 +296,15 @@ def evaluate_journey(
         if not preview_required:
             preview_done = _release_event(
                 events, "release.preview_not_required", project_id=pid,
-                sha=candidate,pr_number=pr_number,run_ids=run_ids,
+                sha=candidate,pr_number=pr_number,run_ids=delivery_runs,
             )
         else:
             preview_done = bool(
                 delivery("preview") and delivery("browser_evidence")
                 and any(row.get("environment")=="preview" and row.get("status")=="success"
-                        and row.get("run_id") in run_ids for row in deployments)
+                        and row.get("run_id") in delivery_runs for row in deployments)
                 and any(row.get("event_type")=="preview.browser_evidence_recorded"
-                        and row.get("project_id")==pid and row.get("run_id") in run_ids
+                        and row.get("project_id")==pid and row.get("run_id") in delivery_runs
                         and isinstance(row.get("payload"),dict)
                         and row["payload"].get("status")=="success"
                         for row in events)
@@ -293,17 +317,40 @@ def evaluate_journey(
     release_gate = bool(
         candidate_bound
         and _release_event(events,"release.awaiting_human_merge",project_id=pid,
-                           sha=candidate,pr_number=pr_number,run_ids=run_ids)
+                           sha=candidate,pr_number=pr_number,run_ids=delivery_runs)
     )
     merge_sha = github_pr.get("merge_commit_sha") if candidate_bound else None
+    # Newer release observer events contain candidate_commit+merge_sha but
+    # omit the PR number; the console's separately audited human merge DOES
+    # carry exact PR/repository/candidate/merge identities. Require both.
+    console_merge_witness = bool(
+        delivery_run_id and isinstance(merge_sha,str) and SHA.fullmatch(merge_sha)
+        and _event(events,"release.human_merge_observed",run_ids=delivery_runs,
+                   payload={"candidate_commit":candidate,"merge_sha":merge_sha},
+                   audit_project=pid)
+        and any(
+            row.get("event_type") == "human_release.console_merge_succeeded"
+            and row.get("project_id") == pid
+            and row.get("run_id") == delivery_run_id
+            and isinstance(row.get("payload"),dict)
+            and row["payload"].get("repository") == repo
+            and str(row["payload"].get("pr_number")) == str(pr_number)
+            and row["payload"].get("candidate_commit") == candidate
+            and row["payload"].get("merge_sha") == merge_sha
+            for row in events
+        )
+    )
     released = bool(
         release_gate and github_pr.get("merged") is True
         and isinstance(merge_sha,str) and SHA.fullmatch(merge_sha)
-        and _release_event(events,"release.human_merge_observed",project_id=pid,
+        and (
+            _release_event(events,"release.human_merge_observed",project_id=pid,
                            sha=candidate,pr_number=pr_number,merge_sha=merge_sha,
-                           run_ids=run_ids)
+                           run_ids=delivery_runs)
+            or console_merge_witness
+        )
         and any(rr.get("candidate_commit")==candidate and rr.get("status")=="released"
-                and rr.get("run_id") in run_ids for rr in release_reports)
+                and rr.get("run_id") == delivery_run_id for rr in release_reports)
     )
     if candidate_bound and github_pr.get("merged") is True and not released:
         blockers.append("merged_candidate_without_verified_release")
@@ -322,10 +369,12 @@ def evaluate_journey(
         else:
             reached=False
             stages.append(JourneyStage(stage,"not_reached"))
+    # A later event alone never yields a complete/awaiting label while
+    # any required earlier stage is still missing.
     status = ("blocked" if blockers else
-              "observed_complete" if operations else
-              "awaiting_human_merge" if release_gate and not released else
-              "in_progress")
+              "observed_complete" if highest == "operations" else
+              "awaiting_human_merge" if highest == "awaiting_release"
+              and not released else "in_progress")
     return JourneyReport(
         key,root_run_id,status,highest,tuple(stages),
         candidate,pr_number,tuple(dict.fromkeys(blockers)),

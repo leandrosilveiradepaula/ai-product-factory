@@ -18,6 +18,16 @@ PROJECT_KEY = re.compile(r"^[a-z0-9][a-z0-9-]{1,119}$")
 MAX_PROJECT_TASKS = 300
 MAX_PROJECT_EVENTS = 500
 
+# These historical release receipts are emitted with project_id=NULL by the
+# existing worker. They are safe only when also pinned to the exact Start
+# descendant run and to a matching PR/SHA; other NULL-project audits are
+# intentionally outside the accepted read surface.
+GLOBAL_RELEASE_EVENTS = (
+    "release.awaiting_human_merge",
+    "release.preview_not_required",
+    "release.human_merge_observed",
+)
+
 
 def _uuid(value: object) -> str:
     if not isinstance(value, str):
@@ -45,6 +55,36 @@ def _timestamp(value: object) -> datetime:
 
 def _utc_filter(instant: datetime) -> str:
     return quote(instant.isoformat(timespec="microseconds").replace("+00:00", "Z"),safe="")
+
+
+def candidate_contains_work_units(github, candidate_sha: str, commits: set[str]) -> bool:
+    """Verify every completed Work Unit commit belongs to the candidate ancestry.
+
+    A SHA existing in the repository but absent from the proposed PR is not
+    delivery evidence. The GitHub compare API is read-only and bounded.
+    """
+    if not isinstance(candidate_sha,str) or not SHA.fullmatch(candidate_sha):
+        raise ValueError("candidate must be an exact commit SHA")
+    if not isinstance(commits,set) or len(commits)>30 or not commits:
+        raise ValueError("implementation commit inventory is missing or unbounded")
+    for sha in sorted(commits):
+        if not isinstance(sha,str) or not SHA.fullmatch(sha):
+            raise ValueError("invalid Work Unit commit SHA")
+        if not github.commit_exists(sha):
+            return False
+        if sha == candidate_sha:
+            continue
+        comparison=github.compare_commits(sha,candidate_sha)
+        if (
+            not isinstance(comparison,dict)
+            or comparison.get("status") != "ahead"
+            or type(comparison.get("ahead_by")) is not int
+            or comparison["ahead_by"] < 1
+            or type(comparison.get("behind_by")) is not int
+            or comparison["behind_by"] != 0
+        ):
+            return False
+    return True
 
 
 class SupabaseJourneyReader:
@@ -219,6 +259,27 @@ class SupabaseJourneyReader:
         )
         if any(row.get("project_id")!=pid for row in events):
             raise RuntimeError("cross-project audit evidence")
+        # Project-bound SELECT omits historical release receipts written with
+        # project_id=NULL. Read only the THREE known event types for scoped run
+        # IDs, and fail closed if a database row violates that contract.
+        global_events=self._many_ids(
+            "factory_audit_events",
+            cols="id,project_id,task_id,run_id,event_type,payload,created_at",
+            fk="run_id",ids=run_ids,
+            extra=("project_id=is.null&event_type=in.("
+                   + ",".join(GLOBAL_RELEASE_EVENTS) + ")"),
+            limit=201,
+        )
+        if any(
+            row.get("project_id") is not None
+            or row.get("event_type") not in GLOBAL_RELEASE_EVENTS
+            or row.get("run_id") not in run_ids
+            for row in global_events
+        ):
+            raise RuntimeError("untrusted globally scoped release event")
+        events.extend(global_events)
+        if len(events)>MAX_PROJECT_EVENTS or len({row.get("id") for row in events})!=len(events):
+            raise RuntimeError("release audit inventory exceeded verified bound")
         create_pr=self._many_ids(
             "factory_tool_usage",cols="id,run_id,operation,metadata",fk="run_id",
             ids=run_ids,extra="operation=eq.create_pr",
@@ -265,8 +326,13 @@ class SupabaseJourneyReader:
                 ]
                 if len(verified_units)>30:
                     raise RuntimeError("commit verification exceeds bounded limit")
-                commits_ok=bool(verified_units) and all(
-                    github.commit_exists(sha) for sha in set(verified_units)
+                # Existence alone is insufficient: a real commit on an
+                # unrelated branch is NOT code integrated in this PR.
+                commits_ok=(
+                    pr.head_sha == receipt["head_sha"]
+                    and candidate_contains_work_units(
+                        github, pr.head_sha, set(verified_units)
+                    )
                 )
                 ci_state=github.get_ci_state(pr_number)
                 github_evidence={

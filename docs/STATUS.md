@@ -6,6 +6,9 @@
 - Proxima prova: operador inicia um projeto NOVO manualmente, e a Factory deve chegar por si a CI, Preview conforme politica e awaiting_release. Auditor de jornada em preparacao, somente leitura (docs/AUTONOMY_JOURNEY_EVIDENCE.md); nao declarar produto pronto por simulacao.
 - O proximo PR da Factory nao deve executar worker pago, autostart, auto-merge ou migration. O teste real so ocorrera quando existir Start humano e fluxo aprovado.
 
+
+- Auditor PR #984: corrigida leitura de dados reais do CRM (reconciliation/gap_analysis), recibos de release com project_id NULL e prova de ancestralidade do commit de Work Unit; sem Start novo, nao existe ainda prova operacional E2E.
+
 ## 2026-10-18 — Durable project-control wake (candidate)
 
 Five functional blocks: SQL outbox trigger recording START/RESUME/RESTART atomically; privileged claim/ack lease with five attempts and generation fencing; postcommit Console delivery with durable failure; existing scheduled runner observes pending work without paid calls; project UI exposes status, with PostgreSQL 16 concurrency/idempotence testing.
