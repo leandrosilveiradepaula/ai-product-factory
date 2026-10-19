@@ -202,7 +202,56 @@ class ChangeSetBuilderWorker:
     @classmethod
     def _is_test_scope(cls,value:str)->bool:
         tokens=cls._tokens(value)
-        return bool(tokens & {"test","tests","testing","spec","specs","regression"})
+        return bool(tokens & {"test","tests","teste","testes","testing","spec","specs","regression"})
+
+    @classmethod
+    def _bounded_file_scope(cls, raw:str, all_paths:tuple[str,...])->tuple[str,str|None]|None:
+        """Recognize an exact file plus optional conditional prose, never a prose path.
+
+        A new file is allowed only in an already populated code directory. Neither
+        a broad namespace nor a guessed SQL/migration/credential file is created.
+        """
+        match=re.fullmatch(
+            r"(?P<path>(?:src|app|apps|packages|test|tests|docs)/[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|md))"
+            r"(?:\s+(?P<condition>(?:somente\s+se|se\s+necess[aá]rio|only\s+if|if\s+needed)\b.*))?",
+            raw,flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        path=match.group("path")
+        segments=path.split("/")
+        if (len(segments)<3 or any(segment in ("",".","..") or segment.startswith(".") for segment in segments)
+                or "//" in path or "/.github/" in path.lower()):
+            return None
+        if path not in all_paths:
+            if (not path.startswith(("src/","app/","apps/","packages/","test/","tests/"))
+                    or not path.endswith((".py",".ts",".tsx",".js",".jsx"))):
+                return None
+            parent=path.rsplit("/",1)[0]+"/"
+            if not any(existing.startswith(parent) for existing in all_paths):
+                return None
+        return path,match.group("condition")
+
+    @classmethod
+    def _co_located_test_scopes(cls, paths:list[str], all_paths:tuple[str,...])->tuple[str,...]:
+        """Bound test authorization to exact siblings of declared source files."""
+        tests=[]
+        for path in paths:
+            if (not path.startswith(("src/","app/","apps/","packages/"))
+                    or not path.endswith((".py",".ts",".tsx",".js",".jsx"))
+                    or re.search(r"\.(?:test|spec)\.",path,re.IGNORECASE)):
+                continue
+            stem,ext=path.rsplit(".",1)
+            candidates=[f"{stem}.test.{ext}",f"{stem}.spec.{ext}"]
+            if ext=="py" and any(p.startswith("tests/") for p in all_paths):
+                candidates.insert(0,"tests/test_"+stem.rsplit("/",1)[-1]+".py")
+            existing=next((p for p in candidates if p in all_paths),None)
+            target=existing or candidates[0]
+            if target not in tests:
+                tests.append(target)
+            if len(tests)==3:
+                break
+        return tuple(tests)
 
     @classmethod
     def _governance_paths(cls,paths:tuple[str,...])->tuple[str,...]:
@@ -286,11 +335,30 @@ class ChangeSetBuilderWorker:
                 raise RuntimeError("repository context discovery found no relevant files; replan with explicit context_paths")
 
         raw_scopes=assignment.get("scope_keys") if isinstance(assignment.get("scope_keys"),list) else []
-        exact_scope_context=[]
+        normalized_scopes=[]
+        precise_scopes=[]
+        conditional_notes=[]
         for raw in raw_scopes:
+            literal=str(raw or "").strip().replace("\\","/")
+            if literal.startswith("/") or literal.startswith("../") or ".." in literal.split("/"):
+                raise PermissionError("planned write scope contains an unsafe path")
             scope=self._normalize_path(raw)
-            if scope and scope in all_paths and scope.endswith(self._TEXT_EXTENSIONS):
-                exact_scope_context.append(scope)
+            if not scope:
+                continue
+            exact=self._bounded_file_scope(scope,all_paths)
+            if exact:
+                scope,condition=exact
+                precise_scopes.append(scope)
+                if condition:
+                    conditional_notes.append(
+                        f"Conditional write: {scope} only if the task's stated condition "
+                        f"is confirmed in the pinned repository evidence: {condition}"
+                    )
+            normalized_scopes.append(scope)
+        exact_scope_context=[
+            scope for scope in normalized_scopes
+            if scope in all_paths and scope.endswith(self._TEXT_EXTENSIONS)
+        ]
 
         required_context=list(dict.fromkeys([*governance,*exact_scope_context]))
         optional_context=[path for path in context_paths if path not in required_context]
@@ -300,14 +368,15 @@ class ChangeSetBuilderWorker:
 
         resolved_scopes=[]
         semantic_scopes=[]
-        for raw in raw_scopes:
-            scope=self._normalize_path(raw)
-            if not scope:
-                continue
+        for scope in normalized_scopes:
             prefix=scope[:-3].rstrip("/") if scope.endswith("/**") else scope.rstrip("/")
             if continuation and scope==".":
                 raise PermissionError("greenfield continuation cannot use repository-root write scope")
             if scope=="." or any(path==prefix or path.startswith(prefix+"/") for path in all_paths):
+                resolved_scopes.append(scope)
+            elif scope in precise_scopes:
+                # The exact new file has a verified existing parent; never
+                # substitute a different path merely because keywords match.
                 resolved_scopes.append(scope)
             elif continuation:
                 mapped=self._continuation_semantic_scopes(scope,all_paths)
@@ -320,6 +389,16 @@ class ChangeSetBuilderWorker:
         editable_context=[path for path in context_paths if path not in governance]
         for semantic in semantic_scopes:
             if self._is_test_scope(semantic):
+                if any(ch.isspace() for ch in semantic) or self._tokens(semantic) & {"teste","testes"}:
+                    # Natural-language test scopes must never become tests/**
+                    # or arbitrary tests unrelated to the authorized code.
+                    related=self._co_located_test_scopes(precise_scopes,all_paths)
+                    if not related:
+                        raise RuntimeError(
+                            "descriptive test scope requires an exact related code file"
+                        )
+                    resolved_scopes.extend(related)
+                    continue
                 semantic_tokens=self._tokens(semantic)-{"test","tests","testing","spec","specs","regression"}
                 test_matches=[
                     path for path in all_paths
@@ -336,6 +415,8 @@ class ChangeSetBuilderWorker:
                     else:
                         raise RuntimeError(f"semantic test scope could not be resolved safely: {semantic}")
             else:
+                if any(ch.isspace() for ch in semantic):
+                    raise RuntimeError("descriptive write scope requires an exact repository path")
                 semantic_tokens=self._tokens(semantic)
                 matches=[
                     path for path in editable_context
@@ -355,6 +436,12 @@ class ChangeSetBuilderWorker:
         assignment["context_paths"]=context_paths
         enriched=dict(source)
         enriched["assignment"]=assignment
+        if conditional_notes:
+            previous=enriched.get("constraints")
+            enriched["constraints"]=[
+                *(previous if isinstance(previous,list) else []),
+                *conditional_notes,
+            ]
         return enriched,tuple(context_paths)
 
     _MAX_SNAPSHOT_BYTES = 131072

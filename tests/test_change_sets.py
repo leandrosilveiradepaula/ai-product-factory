@@ -266,6 +266,103 @@ class ChangeSetTests(unittest.TestCase):
             {"AGENTS.md","docs/codex/CURRENT_TASK.md","src/app/debug/page.tsx"},
         )
 
+    def test_crm_portuguese_conditional_scope_is_exact_and_tests_are_bounded(self):
+        from ai_product_factory.work_unit_context import enforce_write_scopes
+        github=MagicMock()
+        github.list_file_paths.return_value=(
+            "AGENTS.md","docs/codex/CURRENT_TASK.md",
+            "src/components/automations/NewAutomationModal.tsx",
+            "src/components/automations/AutomationBuilder.tsx",
+            "src/lib/ExistingLibrary.ts",
+            "src/services/automationRuntimeCore.ts",
+            "src/app/(dashboard)/automations/client-page.tsx",
+            "src/lib/unrelated.test.ts",
+        )
+        worker=ChangeSetBuilderWorker(
+            github=github,store=MagicMock(),producer=MagicMock(),
+            impact_engine=MagicMock(),provenance=MagicMock(),
+        )
+        source={
+            "project_kind":"existing",
+            "task":{"title":"CRM conditions"},
+            "assignment":{
+                "scope_keys":[
+                    "docs/codex/CURRENT_TASK.md",
+                    "src/components/automations/NewAutomationModal.tsx",
+                    "src/components/automations/AutomationBuilder.tsx somente se a leitura comprovar uso",
+                    "src/lib/automation-builder-input.ts somente se necessário",
+                    "testes determinísticos diretamente relevantes ao editor, validação local e fluxo de salvamento",
+                ],
+                "context_paths":[
+                    "src/components/automations/NewAutomationModal.tsx",
+                    "src/components/automations/AutomationBuilder.tsx",
+                    "src/services/automationRuntimeCore.ts",
+                ],
+            },
+            "constraints":["No production release"],
+        }
+        enriched,paths=worker._resolved_repository_context(source=source,base_commit="d"*40)
+        scopes=enriched["assignment"]["scope_keys"]
+        self.assertIn("docs/codex/CURRENT_TASK.md",scopes)
+        self.assertIn("src/components/automations/NewAutomationModal.tsx",scopes)
+        self.assertIn("src/components/automations/AutomationBuilder.tsx",scopes)
+        self.assertIn("src/lib/automation-builder-input.ts",scopes)
+        self.assertIn("src/components/automations/NewAutomationModal.test.tsx",scopes)
+        self.assertIn("src/lib/automation-builder-input.test.ts",scopes)
+        self.assertNotIn("src/lib/unrelated.test.ts",scopes)
+        self.assertNotIn("src/lib/**",scopes)
+        self.assertNotIn("src/services/automationRuntimeCore.ts",scopes)
+        self.assertIn("src/services/automationRuntimeCore.ts",paths)
+        self.assertTrue(any("Conditional write" in n for n in enriched["constraints"]))
+        enforce_write_scopes(
+            ("src/components/automations/NewAutomationModal.tsx",
+             "src/lib/automation-builder-input.test.ts"),scopes,
+        )
+        with self.assertRaises(PermissionError):
+            enforce_write_scopes(("src/services/automationRuntimeCore.ts",),scopes)
+
+    def test_descriptive_scope_without_exact_target_fails_closed(self):
+        github=MagicMock()
+        github.list_file_paths.return_value=("AGENTS.md","src/lib/existing.ts","src/lib/unrelated.test.ts")
+        worker=ChangeSetBuilderWorker(
+            github=github,store=MagicMock(),producer=MagicMock(),
+            impact_engine=MagicMock(),provenance=MagicMock(),
+        )
+        source={"project_kind":"existing","task":{"title":"Conditions"},
+                "assignment":{"scope_keys":["testes quaisquer arquivos do projeto"],
+                              "context_paths":["src/lib/existing.ts"]}}
+        with self.assertRaisesRegex(RuntimeError,"exact related code file"):
+            worker._resolved_repository_context(source=source,base_commit="a"*40)
+        source["assignment"]["scope_keys"]=[
+            "src/lib/existing.ts", "modificar qualquer caminho sensível por conveniência",
+        ]
+        with self.assertRaisesRegex(RuntimeError,"descriptive write scope"):
+            worker._resolved_repository_context(source=source,base_commit="a"*40)
+        source["assignment"]["scope_keys"]=[
+            "src/lib/../auth.ts somente se necessário",
+        ]
+        with self.assertRaisesRegex(PermissionError,"unsafe path"):
+            worker._resolved_repository_context(source=source,base_commit="a"*40)
+
+    def test_conditional_scope_cannot_invent_new_directory_or_migration(self):
+        github=MagicMock()
+        github.list_file_paths.return_value=("AGENTS.md","src/lib/existing.ts")
+        worker=ChangeSetBuilderWorker(
+            github=github,store=MagicMock(),producer=MagicMock(),
+            impact_engine=MagicMock(),provenance=MagicMock(),
+        )
+        for candidate in (
+            "src/nonexistent/mystery.ts somente se necessário",
+            "supabase/migrations/20261019_new_rpc.sql somente se necessário",
+            "src/lib/.env somente se necessário",
+        ):
+            with self.subTest(candidate=candidate):
+                source={"project_kind":"existing","task":{"title":"Conditions"},
+                        "assignment":{"scope_keys":[candidate],
+                                      "context_paths":["src/lib/existing.ts"]}}
+                with self.assertRaisesRegex(RuntimeError,"descriptive write scope"):
+                    worker._resolved_repository_context(source=source,base_commit="a"*40)
+
     def test_builder_fails_before_model_when_context_cannot_be_discovered(self):
         github=MagicMock()
         github.get_branch_sha.return_value="main"
