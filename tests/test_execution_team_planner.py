@@ -27,6 +27,58 @@ AGENTS=(
 
 
 class ExecutionTeamPlannerTests(unittest.TestCase):
+    def test_unpreferred_implementation_tests_routes_to_development(self):
+        plan={"tasks":[{"task_key":"automation-modal-conditions","title":"Fix CRM modal",
+            "required_capabilities":["implementation","tests","regression"],
+            "scope_keys":["src/components/automations/NewAutomationModal.tsx"],
+            "depends_on":[]}]}
+        result=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(result["status"],"ready")
+        self.assertEqual(result["task_assignments"][0]["agent_key"],"development")
+        self.assertEqual(result["task_assignments"][0]["source_required_capabilities"],
+                         ["implementation","tests","regression"])
+
+    def test_unpreferred_ui_tests_routes_to_ui(self):
+        plan={"tasks":[{"task_key":"conditions-editor","title":"CRM UI",
+            "required_capabilities":["ui","tests","regression"],
+            "scope_keys":["src/components/automations/NewAutomationModal.tsx"],
+            "depends_on":[]}]}
+        result=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(result["status"],"ready")
+        self.assertEqual(result["task_assignments"][0]["agent_key"],"ui")
+
+    def test_mixed_ui_implementation_tests_has_single_write_capable_owner(self):
+        for role,agent in (("development","development"),("ui","ui"),("frontend_engineer","ui")):
+            with self.subTest(role=role):
+                plan={"tasks":[{"task_key":"crm-conditions","title":"CRM conditions",
+                    "preferred_agent_role":role,
+                    "required_capabilities":["implementation","ui","tests","regression"],
+                    "scope_keys":["src/components/automations/NewAutomationModal.tsx"],
+                    "depends_on":[]}]}
+                result=build_execution_team_plan(plan,AGENTS)
+                self.assertEqual(result["status"],"ready")
+                self.assertEqual(result["task_assignments"][0]["agent_key"],agent)
+                self.assertEqual(result["waves"][0]["task_keys"],["crm-conditions"])
+
+    def test_unknown_and_sensitive_requirements_remain_blocked(self):
+        for caps in (["implementation","security_review","tests"],
+                     ["implementation","unknown_privilege","tests"],
+                     ["ui","auth","tests"]):
+            with self.subTest(caps=caps):
+                plan={"tasks":[{"task_key":"unsafe","required_capabilities":caps,
+                    "scope_keys":["src/changes.ts"],"depends_on":[]}]}
+                result=build_execution_team_plan(plan,AGENTS)
+                self.assertEqual(result["status"],"blocked")
+                self.assertEqual(result["planned_worker_peak"],0)
+
+    def test_standalone_qa_stays_read_only(self):
+        plan={"tasks":[{"task_key":"qa-only","title":"Standalone QA",
+            "required_capabilities":["tests","regression"],
+            "scope_keys":["tests"],"depends_on":[]}]}
+        result=build_execution_team_plan(plan,AGENTS)
+        self.assertEqual(result["task_assignments"][0]["agent_key"],"qa")
+        self.assertEqual(result["task_assignments"][0]["execution_lane"],"specialist")
+
     def test_implementation_with_tests_is_owned_by_builder_not_qa(self):
         from ai_product_factory.execution_team_planner import _canonical_routing_task
         normalized=_canonical_routing_task({

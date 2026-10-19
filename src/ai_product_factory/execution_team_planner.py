@@ -17,6 +17,10 @@ _ROLE_ALIASES={
     "repository_archaeologist":"development",
     "backend_engineer":"development",
     "test_engineer":"development",
+    "fullstack_engineer":"development",
+    "frontend_engineer":"ui",
+    "frontend_developer":"ui",
+    "ui_engineer":"ui",
     "security_engineer":"security",
     "release_engineer":"operations",
     "release_manager":"human_gate",
@@ -83,9 +87,20 @@ def _execution_lane(agent: AgentProfile) -> str | None:
 
 
 def _canonical_routing_task(task: dict) -> dict:
+    """Map a builder's test deliverables onto its write-capable primary skill.
+
+    QA/security/operations remain distinct specialist lanes.  This function
+    never changes allowed_tools or erases unknown/sensitive capabilities.
+    """
     raw_preferred=str(task.get("preferred_agent_role") or "").strip()
-    preferred=_ROLE_ALIASES.get(raw_preferred,raw_preferred)
+    preferred=_ROLE_ALIASES.get(raw_preferred.lower(),raw_preferred)
     raw_caps=list(_string_list(task.get("required_capabilities")))
+    caps=set(raw_caps)
+    if not preferred:
+        if caps & {"implementation","backend","debug","integration","migration_authoring","database","architecture","repository_analysis"}:
+            preferred="development"
+        elif caps & {"ui","ux","accessibility"}:
+            preferred="ui"
     cap_aliases:dict[str,str]={}
     if preferred=="development":
         cap_aliases={
@@ -96,12 +111,22 @@ def _canonical_routing_task(task: dict) -> dict:
             "supabase":"migration_authoring",
             "database_testing":"implementation",
         }
-        if raw_preferred=="test_engineer" or "implementation" in raw_caps:
-            # Tests are deliverables of implementation; QA review stays a later lane.
+        write_intent=bool(caps & {
+            "implementation","backend","ui","debug","integration",
+            "migration_authoring","database","architecture","repository_analysis"
+        })
+        if write_intent or raw_preferred.lower()=="test_engineer":
+            # Tests/regression are work products, not QA-agent privileges.
             cap_aliases.update({"tests":"implementation","regression":"implementation"})
-    elif preferred=="ui" and "ui" in raw_caps:
-        # A UI builder owns its component regressions; this grants no QA privileges.
-        cap_aliases={"tests":"ui","regression":"ui"}
+        if "ui" in caps and (write_intent or raw_preferred.lower() in {"fullstack_engineer","backend_engineer"}):
+            # Development can implement the UI when explicitly owning the task.
+            cap_aliases["ui"]="implementation"
+    elif preferred=="ui":
+        if caps & {"ui","ux","accessibility"}:
+            cap_aliases={"tests":"ui","regression":"ui"}
+            if "ui" in caps:
+                # A single UI builder may implement and test its own components.
+                cap_aliases["implementation"]="ui"
     elif preferred=="security":
         cap_aliases={"supabase":"rls","oidc":"auth"}
     elif preferred=="operations":

@@ -42,6 +42,47 @@ def existing_item():
 
 
 class ProductStageExecutorTests(unittest.TestCase):
+    def test_crm_conditions_builder_mix_validates_without_pre_pr_qa(self):
+        from ai_product_factory.product_stage_executor import _validate_pre_pr_planning_tasks
+        agents=(
+            AgentProfile("development","development",("implementation","debug","integration"),
+                         ("github_write",),{},1,0.5,True),
+            AgentProfile("ui","ui",("ui","ux","accessibility"),
+                         ("github_write",),{},1,0.5,True),
+            AgentProfile("qa","qa",("tests","regression"),
+                         ("github_read",),{},1,0.5,True),
+        )
+        for role in ("development","ui",None):
+            with self.subTest(role=role):
+                task={"task_key":"automation-modal-conditions",
+                      "required_capabilities":["implementation","ui","tests","regression"],
+                      "scope_keys":["src/components/automations/NewAutomationModal.tsx"],
+                      "depends_on":[]}
+                if role: task["preferred_agent_role"]=role
+                _validate_pre_pr_planning_tasks({"tasks":[task]},agents)
+
+    def test_planning_failure_identifies_capability_conflict_without_bypass(self):
+        from ai_product_factory.product_stage_executor import _validate_pre_pr_planning_tasks
+        dev=AgentProfile("development","development",("implementation",),
+                         ("github_write",),{},1,0.5,True)
+        task={"task_key":"automation-modal-conditions","preferred_agent_role":"development",
+              "required_capabilities":["implementation","security_review"],
+              "scope_keys":["src/components/automations/NewAutomationModal.tsx"],"depends_on":[]}
+        with self.assertRaisesRegex(ValueError,"blocker=no_single_agent_covers_task"):
+            _validate_pre_pr_planning_tasks({"tasks":[task]},(dev,))
+        task["required_capabilities"]=["implementation","unknown_capability"]
+        with self.assertRaisesRegex(ValueError,"unknown_capability"):
+            _validate_pre_pr_planning_tasks({"tasks":[task]},(dev,))
+
+    def test_planning_qa_only_cannot_become_pre_pr_builder(self):
+        from ai_product_factory.product_stage_executor import _validate_pre_pr_planning_tasks
+        dev=AgentProfile("development","development",("implementation",),
+                         ("github_write",),{},1,0.5,True)
+        qa_task={"task_key":"qa-only","required_capabilities":["tests","regression"],
+                 "scope_keys":["tests"],"depends_on":[]}
+        with self.assertRaisesRegex(ValueError,"pre-PR builder lane"):
+            _validate_pre_pr_planning_tasks({"tasks":[qa_task]},(dev,))
+
     def test_planning_implementation_and_tests_uses_canonical_builder_capabilities(self):
         development=AgentProfile("development","development",("implementation","debug"),("github_write",),{},1,0.5,True)
         output={"tasks":[{"task_key":"automation-modal-conditions",
