@@ -262,6 +262,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
         }
         expected_history = {
+            "20261019045500_retry_blocked_change_set_preflight.sql",
             "20260925172455_create_factory_control_plane.sql",
             "20260925172519_add_control_plane_fk_indexes.sql",
             "20260925200339_factory_create_project_intake_rpc.sql",
