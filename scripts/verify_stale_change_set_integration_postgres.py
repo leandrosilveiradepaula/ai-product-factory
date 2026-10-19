@@ -71,6 +71,7 @@ create table public.factory_change_sets(
     attempt_count integer not null default 0,
     lease_owner text,
     lease_expires_at timestamptz,
+    created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     integration_branch text not null
 );
