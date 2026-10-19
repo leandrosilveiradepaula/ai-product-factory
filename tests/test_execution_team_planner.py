@@ -27,6 +27,31 @@ AGENTS=(
 
 
 class ExecutionTeamPlannerTests(unittest.TestCase):
+    def test_implementation_with_tests_is_owned_by_builder_not_qa(self):
+        from ai_product_factory.execution_team_planner import _canonical_routing_task
+        normalized=_canonical_routing_task({
+            "preferred_agent_role":"development",
+            "required_capabilities":["implementation","tests","regression"],
+        })
+        self.assertEqual(normalized["required_capabilities"],["implementation"])
+        self.assertEqual(normalized["_source_required_capabilities"],["implementation","tests","regression"])
+
+    def test_ui_with_tests_keeps_ui_builder(self):
+        from ai_product_factory.execution_team_planner import _canonical_routing_task
+        normalized=_canonical_routing_task({
+            "preferred_agent_role":"ui",
+            "required_capabilities":["ui","tests"],
+        })
+        self.assertEqual(normalized["required_capabilities"],["ui"])
+
+    def test_pure_qa_task_not_promoted_to_builder(self):
+        from ai_product_factory.execution_team_planner import _canonical_routing_task
+        normalized=_canonical_routing_task({
+            "preferred_agent_role":"qa",
+            "required_capabilities":["tests","regression"],
+        })
+        self.assertEqual(normalized["required_capabilities"],["tests","regression"])
+
     def test_simple_task_uses_smallest_specialist_team(self):
         plan={"tasks":[{"task_key":"api","title":"Implement API","required_capabilities":["implementation"],"scope_keys":["src/api"],"depends_on":[]}]}
         out=build_execution_team_plan(plan,AGENTS)
