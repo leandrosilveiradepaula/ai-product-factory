@@ -223,6 +223,20 @@ def evaluate_journey(
             blockers.append("ambiguous_candidate_sha")
         elif receipt_pairs:
             blockers.append("candidate_receipt_drift")
+    # The target PR base is part of the project delivery policy, not always
+    # main: imported existing projects must first target their explicit
+    # nonproduction candidate branch, without calling that a release.
+    expected_base = "main"
+    if project.get("project_kind") == "existing":
+        manifest = project.get("manifest")
+        target = manifest.get("delivery_target") if isinstance(manifest, dict) else None
+        if (not isinstance(target, dict) or target.get("mode") != "open_pr_candidate"
+            or not isinstance(target.get("branch"), str)
+            or not target["branch"].startswith("preview/")):
+            expected_base = None
+            blockers.append("project_delivery_target_unverified")
+        else:
+            expected_base = target["branch"]
     # Neither PR nor CI evidence is inferred from a green workflow elsewhere.
     github_pr = github or {}
     candidate_bound = bool(
@@ -231,7 +245,8 @@ def evaluate_journey(
         and github_pr.get("number") == pr_number
         and github_pr.get("head_sha") == candidate
         and github_pr.get("head_repository") == repo
-        and github_pr.get("base_ref") == "main"
+        and expected_base is not None
+        and github_pr.get("base_ref") == expected_base
     )
     if candidate and github is not None and not candidate_bound:
         blockers.append("github_pr_sha_or_repository_drift")
@@ -272,8 +287,11 @@ def evaluate_journey(
             )
     if candidate_bound and preview_required is None:
         blockers.append("preview_applicability_not_verified")
+    # A terminal run may already be completed AFTER a human release.
+    # The immutable audit event is the evidence that the boundary existed;
+    # looking only at today's status would erase a legitimate past gate.
     release_gate = bool(
-        candidate_bound and any(r.get("status")=="awaiting_release" for r in runs)
+        candidate_bound
         and _release_event(events,"release.awaiting_human_merge",project_id=pid,
                            sha=candidate,pr_number=pr_number,run_ids=run_ids)
     )
@@ -287,6 +305,8 @@ def evaluate_journey(
         and any(rr.get("candidate_commit")==candidate and rr.get("status")=="released"
                 and rr.get("run_id") in run_ids for rr in release_reports)
     )
+    if candidate_bound and github_pr.get("merged") is True and not released:
+        blockers.append("merged_candidate_without_verified_release")
     operations = bool(released and delivery("operations"))
     checks = (
         True, discovered, specified, planned, routed, implemented, reviewed,
@@ -302,9 +322,10 @@ def evaluate_journey(
         else:
             reached=False
             stages.append(JourneyStage(stage,"not_reached"))
-    status = ("observed_complete" if operations else
+    status = ("blocked" if blockers else
+              "observed_complete" if operations else
               "awaiting_human_merge" if release_gate and not released else
-              "blocked" if blockers else "in_progress")
+              "in_progress")
     return JourneyReport(
         key,root_run_id,status,highest,tuple(stages),
         candidate,pr_number,tuple(dict.fromkeys(blockers)),

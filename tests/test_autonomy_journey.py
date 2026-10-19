@@ -128,6 +128,24 @@ class JourneyEvidenceTests(unittest.TestCase):
                 self.assertEqual(r.stages[STAGES.index("implementation")].status,"not_reached")
                 self.assertNotEqual(r.status,"observed_complete")
 
+    def test_existing_project_requires_its_actual_nonproduction_target(self):
+        d=scenario()
+        d["project"]["project_kind"]="existing"
+        d["project"]["manifest"]={
+            "delivery_target":{"mode":"open_pr_candidate",
+                               "branch":"preview/stable-candidate"}
+        }
+        d["github"]["base_ref"]="preview/stable-candidate"
+        self.assertEqual(evaluate_journey(**d).highest_verified,"awaiting_release")
+        d["github"]["base_ref"]="main"
+        report=evaluate_journey(**d)
+        self.assertIn("github_pr_sha_or_repository_drift",report.blockers)
+        self.assertEqual(report.status,"blocked")
+        d["project"]["manifest"]={"delivery_target":{"mode":"unknown",
+                                                       "branch":"preview/stable-candidate"}}
+        self.assertIn("project_delivery_target_unverified",
+                      evaluate_journey(**d).blockers)
+
     def test_preview_n_a_needs_durable_exact_sha_receipt(self):
         d=scenario()
         d["events"]=[e for e in d["events"]
@@ -150,7 +168,10 @@ class JourneyEvidenceTests(unittest.TestCase):
         d=scenario(merged=True,operations=True)
         d["events"]=[e for e in d["events"]
                      if e["event_type"]!="release.human_merge_observed"]
-        self.assertEqual(evaluate_journey(**d).highest_verified,"awaiting_release")
+        result=evaluate_journey(**d)
+        self.assertEqual(result.highest_verified,"awaiting_release")
+        self.assertEqual(result.status,"blocked")
+        self.assertIn("merged_candidate_without_verified_release",result.blockers)
 
     def test_failed_worker_is_exposed_as_blocker(self):
         d=scenario()

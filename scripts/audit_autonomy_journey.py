@@ -27,9 +27,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         result=report.as_json()
         result["required_stage"]=args.require_at_least
-        passed=(args.require_at_least=="none" or
-                any(item.name==args.require_at_least and item.status=="verified"
-                    for item in report.stages))
+        passed=(report.status!="blocked" and
+                (args.require_at_least=="none" or
+                 any(item.name==args.require_at_least and item.status=="verified"
+                     for item in report.stages)))
         result["requirement_met"]=passed
         print(json.dumps(result,sort_keys=True,ensure_ascii=False))
         return 0 if passed else 2
