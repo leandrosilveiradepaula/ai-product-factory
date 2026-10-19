@@ -322,8 +322,11 @@ jobs:
           PY
 
 
+  # A Direct/Codex job can fail AFTER the Work Unit RPC committed success.
+  # Never let its exit code suppress the deterministic integration claim:
+  # the Control Plane admits only eligible, completed waves; no model here.
   change-set-integration:
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.direct.result != 'failure' && needs.codex.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.integration_work == 'true' || needs.direct.result == 'success' || needs.codex.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success'  && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.integration_work == 'true' || needs.direct.result == 'success' || needs.codex.result == 'success' || needs.direct.result == 'failure' || needs.codex.result == 'failure') }}
     needs: [schedule-probe, direct, codex]
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -353,9 +356,11 @@ jobs:
             echo "Change Set integration is inert: Control Plane credentials are not configured."
           fi
 
+  # Integration may persist a ci_pending run/PR before the job fails.
+  # CI is re-claimed by its own durable eligibility checks, not upstream exit codes.
   ci-followup:
     environment: openai-api
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.change-set-integration.result != 'failure' && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success'  && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success' || needs.change-set-integration.result == 'failure') }}
     needs: [schedule-probe, product-stage, change-set-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -516,8 +521,11 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode release --batch-items 3
 
+  # Product Stage may materialize dispatchable tasks before an unrelated
+  # poststage command fails. A failed job triggers the guarded queue claim,
+  # not permission to infer or synthesize new work or call models.
   dispatch:
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success' && needs.github-access-preflight.result != 'failure' && needs.product-stage.result != 'failure' && needs.codex-route-preflight.result != 'failure' && (((github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true')) || (github.event_name == 'workflow_dispatch' && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true' || inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success'  && (((github.event_name == 'schedule' || github.event_name == 'issue_comment' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run') && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true' || needs.product-stage.result == 'failure')) || (github.event_name == 'workflow_dispatch' && (needs.schedule-probe.outputs.dispatch_work == 'true' || needs.product-stage.outputs.dispatch_work == 'true' || needs.product-stage.result == 'failure' || inputs.project_key != '' || inputs.run_direct == true || inputs.run_codex == true))) }}
     needs: [schedule-probe, github-access-preflight, product-stage, codex-route-preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 5

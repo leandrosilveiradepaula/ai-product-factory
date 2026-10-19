@@ -1019,3 +1019,54 @@ The Console writes a non-sensitive `project.bootstrap.wake_attempted` audit even
 Live run `62498f37-e84e-4ada-a8f0-fa9810dfcea0` on Factory `ce0193f0` completed reconciliation/gap/planning but produced 0 implementation tasks and 0 workers. The exact PR #56 head was verified, but planning still received only historical task text and repo governance, not current code. On the pinned CRM commit `f5f7d91f`, `SettingsService.ts` already calls the atomic pipeline RPC although CURRENT_TASK has older non-atomic notes. This is concrete evidence that task text alone must not determine active product gaps.
 
 Next code path: after exact open PR/head verification, read a bounded list of files explicitly named in the latest authorized CURRENT_TASK section, at the same SHA, with missing/truncated/secret evidence fail-closed or explicitly marked. Expose the proof to Product Stage; never equate sampled source with full audit, CI, E2E, deployed migrations or product readiness. No schema writes or migrations. Re-run a new CRM continuation only after human merge of this production-runtime patch.
+
+## 2026-10-19 — Falha de handoff do Change Set após Work Unit concluída
+
+**Incidente real, não teste sintético.** No piloto CRM, o run Direct
+`42aa0d07-a143-4955-a24f-517ef37cdc8b` persistiu a Work Unit
+`587b6810-d0de-4099-bbae-83e1e79deb5c` como `completed`, com
+commit `b135b920043b4eeac87db9aba597af9142a33b53`. O job GitHub Actions
+#39296884202 terminou em erro HTTP 409 no checkpoint de uma lease já
+encerrada. A condição `needs.direct.result != 'failure'` suprimiu
+`change-set-integration`, mesmo com trabalho durável concluído.
+A correção do checkpoint no PR #980 evita a falha conhecida; este segundo
+bloco protege também contra outras falhas **após** escritas bem-sucedidas.
+
+O Change Set `552fd082-7c8e-4ed7-a712-2a550bb50a52` continua
+`building` no Control Plane, com `source_commit=ca4185c3...` e uma Work
+Unit concluída. O pin de Preview já avançou para `852a7824...` e depois
+para outros SHAs por merges humanos não produtivos. **Não** tratar o código
+das PRs humanas #185/#186 como integração durável automática desse Change
+Set, nem chamar retrospectivamente a integração com um SHA desatualizado.
+
+**Comportamento da alteração candidata:**
+
+1. Product Stage, Direct/Codex e integração podem falhar como *jobs* depois de
+   registrar trabalho em banco. O job seguinte poderá consultar sua própria
+   fila e só operar sob claim/checkpoint transacional — nunca usando `success`
+   ou `failure` do job anterior como autorização de escrita ou chamada paga.
+2. A nova migration
+   `20261019193000_guard_stale_change_set_integration.sql` exige projeto
+   ativo/running, Work Units da onda realmente concluídas e origem compatível
+   com o pin atual antes de anunciar ou tomar uma lease de integração.
+   O contador de Change Sets com SHA obsoleto é **diagnóstico**, não fila.
+3. `schedule-probe` registra `queue_diagnostics.stale_integration_change_sets`;
+   `null` significa que a migration ainda não foi aplicada, **não** que há
+   zero registros obsoletos. Falhas de tipo no retorno bloqueiam o probe.
+4. A migration **não altera** nenhuma linha histórica, não marca o Change Set
+   como integrado, não executa merge e não reexecuta modelo. O Change Set
+   antigo deve permanecer auditável e só pode ser encerrado/reconciliado
+   por um procedimento oficialmente versionado que confirme provas reais.
+5. Production gate separado: merge humano da Factory, CI e isolated-Postgres
+   evidence primeiro; **aplicação humana** da migration depois. Nunca aplicar
+   SQL de produção pelo runtime, usar SQL direto para mudar status de runs ou
+   aumentar teto de API para forçar integração.
+
+**Verificação após gate:** ler
+`public.factory_scheduler_queue_signals()` e exigir
+`integration_work=false` quando o único Change Set elegível for
+obsoleto, `stale_integration_change_sets>=1` no incidente conhecido,
+`factory_change_sets` histórico intacto e nenhum worker pago acionado.
+Para uma nova Work Unit válida, exigir CI, PR e Preview por SHA exato,
+com merge de produção exclusivamente humano. Não disparar modelos apenas
+para sondar a alteração.

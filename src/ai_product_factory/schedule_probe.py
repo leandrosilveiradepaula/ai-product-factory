@@ -88,7 +88,16 @@ class SupabaseScheduleProbe:
         )
         if not isinstance(payload, dict) or any(type(payload.get(k)) is not bool for k in names):
             raise RuntimeError("invalid authoritative queue signal response")
-        return {key: payload[key] for key in names}
+        # The new SQL migration provides a separate non-executable count of
+        # stale pinned candidates. Until it is applied, report "unknown", not
+        # a misleading zero; queue eligibility remains owned by the SQL RPC.
+        stale = payload.get("stale_integration_change_sets")
+        if stale is not None and (type(stale) is not int or stale < 0):
+            raise RuntimeError("invalid stale Change Set diagnostic")
+        return {
+            **{key: payload[key] for key in names},
+            "stale_integration_change_sets": stale,
+        }
 
     def _record_telemetry(self, *, work_detected: bool, work_classes: list[str], queue_diagnostics: dict | None = None) -> bool:
         try:
@@ -260,6 +269,7 @@ class SupabaseScheduleProbe:
         out = {
             "queue_diagnostics": {
                 "queue_signal_source": "authoritative_rpc",
+                "stale_integration_change_sets": signals["stale_integration_change_sets"],
                 "run_status_partitions_at_limit": list(capped_run_statuses),
                 "task_status_partitions_at_limit": list(capped_task_statuses),
                 "linked_task_lookups": linked_task_lookups,
