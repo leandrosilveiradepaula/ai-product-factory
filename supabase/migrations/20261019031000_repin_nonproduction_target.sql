@@ -46,10 +46,10 @@ begin
 
  v_target:=v_project.manifest->'delivery_target';
  v_old:=v_target->>'sha';
- if v_target is null or v_target->>'mode'<>'open_pr_candidate'
-  or v_target->>'schema_version'<>'1'
+ if v_target is null or v_target->>'mode' is distinct from 'open_pr_candidate'
+  or v_target->>'schema_version' is distinct from '1'
   or v_target->>'repository' is distinct from v_project.repository
-  or v_target->>'branch' not like 'preview/%'
+  or v_target->>'branch' is null or v_target->>'branch' not like 'preview/%'
   or (v_target->>'candidate_pr_number') is null
  then raise exception 'project lacks verified pinned candidate' using errcode='PT409'; end if;
  if v_old is distinct from p_expected_sha
@@ -57,7 +57,7 @@ begin
 
  -- These are signed-by-possession-of-service-role attestations, not user input.
  -- The worker checks live GitHub PR/ref/ancestry/Actions before requesting this CAS.
- if p_evidence->>'source' <> 'github_actions_exact_sha'
+ if p_evidence->>'source' is distinct from 'github_actions_exact_sha'
   or p_evidence->>'repository' is distinct from v_project.repository
   or p_evidence->>'branch' is distinct from v_target->>'branch'
   or p_evidence->>'pr_number' is distinct from v_target->>'candidate_pr_number'
@@ -65,14 +65,14 @@ begin
   or p_evidence->>'new_sha' is distinct from p_new_sha
   or p_evidence->>'pr_head_sha' is distinct from p_new_sha
   or p_evidence->>'branch_head_sha' is distinct from p_new_sha
-  or p_evidence->>'pr_base' <> 'main'
-  or p_evidence->>'pr_state' <> 'open'
-  or p_evidence->>'compare_status' <> 'ahead'
-  or p_evidence->>'ci_conclusion' <> 'success'
+  or p_evidence->>'pr_base' is distinct from 'main'
+  or p_evidence->>'pr_state' is distinct from 'open'
+  or p_evidence->>'compare_status' is distinct from 'ahead'
+  or p_evidence->>'ci_conclusion' is distinct from 'success'
   or p_evidence->>'ci_sha' is distinct from p_new_sha
-  or jsonb_typeof(p_evidence->'ahead_by') <> 'number'
-  or jsonb_typeof(p_evidence->'behind_by') <> 'number'
-  or jsonb_typeof(p_evidence->'ci_run_id') <> 'number'
+  or jsonb_typeof(p_evidence->'ahead_by') is distinct from 'number'
+  or jsonb_typeof(p_evidence->'behind_by') is distinct from 'number'
+  or jsonb_typeof(p_evidence->'ci_run_id') is distinct from 'number'
   or (p_evidence->>'ahead_by')::integer not between 1 and 10000
   or (p_evidence->>'behind_by')::integer <> 0
   or (p_evidence->>'ci_run_id')::bigint <= 0
