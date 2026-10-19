@@ -42,6 +42,17 @@ def existing_item():
 
 
 class ProductStageExecutorTests(unittest.TestCase):
+    def test_planning_implementation_and_tests_uses_canonical_builder_capabilities(self):
+        development=AgentProfile("development","development",("implementation","debug"),("github_write",),{},1,0.5,True)
+        output={"tasks":[{"task_key":"automation-modal-conditions",
+            "required_capabilities":["implementation","tests"],
+            "preferred_agent_role":"development",
+            "scope_keys":["src/components/automations/NewAutomationModal.tsx"],
+            "depends_on":[]}]}
+        from ai_product_factory.product_stage_executor import _validate_pre_pr_planning_tasks
+        _validate_pre_pr_planning_tasks(output,(development,))
+        self.assertEqual(output["tasks"][0]["required_capabilities"],["implementation","tests"])
+
     def test_product_stages_use_primary_and_chain_prior_evidence(self):
         p=Provider();h=ProductStageExecutor(ModelExecutor(primary=p));i=item()
         d=h.execute(i,"discovery");h.execute(i,"specification");h.execute(i,"planning")
