@@ -289,8 +289,34 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("claim RPC returned invalid execution generation")
         context = data.get("context", {})
         if "reconciliation" in stages:
-            context = self._reconciliation_context(data["project_id"], context)
-            context = self._live_candidate_context(data["project_id"], context)
+            try:
+                context = self._reconciliation_context(data["project_id"], context)
+                context = self._live_candidate_context(data["project_id"], context)
+            except Exception as exc:
+                # The claim is already durable; RuntimeWorker has no WorkItem
+                # if this context preparation raises. Settle it with the
+                # existing epoch-fenced failure RPC before propagating.
+                reason = (
+                    "reconciliation_source_candidate_sha_drift"
+                    if isinstance(exc, PermissionError)
+                    and str(exc) == "candidate branch moved; reconcile exact SHA before writing"
+                    else "reconciliation_context_preflight_failed"
+                )
+                claimed = WorkItem(
+                    run_id=data["run_id"], task_id=data["task_id"],
+                    project_id=data["project_id"], project_key=data["project_key"],
+                    stages=tuple(stages), context={},
+                    execution_generation=data["execution_generation"],
+                    worker_id=worker_id,
+                )
+                try:
+                    self.fail(claimed, reason)
+                except Exception as settlement_error:
+                    raise RuntimeError(
+                        "claimed reconciliation preflight failed and durable "
+                        "failure settlement was not confirmed"
+                    ) from settlement_error
+                raise
         return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
