@@ -401,6 +401,13 @@ class ChangeSetBuilderWorker:
             try:
                 original = self.github.get_file_text(path, ref=base_commit)
             except ValueError as exc:
+                if "repository context file too large" in str(exc):
+                    # Record the exact path and whether omission is allowed.
+                    # Never include file content or secrets in the error.
+                    if path in required:
+                        raise ValueError(
+                            "required repository context file too large: " + path
+                        ) from exc
                 # Optional context may be rejected by the provider before
                 # the bounded excerpt logic runs. Required context stays
                 # fail-closed, including governance and exact write targets.
