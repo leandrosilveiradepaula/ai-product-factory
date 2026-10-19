@@ -51,6 +51,18 @@ class HandoffTests(unittest.TestCase):
             self.assertIn(marker, WORKFLOW)
         self.assertNotIn("gh pr merge", WORKFLOW)
 
+    def test_manual_codex_wake_retains_live_dedicated_execution_mode_guard(self):
+        # A stale source rewrite must never mistake a queued autonomous Codex
+        # execution as permission for manual handoff to the operator.
+        self.assertIn(
+            "r.metadata->>'codex_execution_mode'='manual'", SQL
+        )
+        script=(ROOT / "scripts/verify_stale_change_set_integration_postgres.py").read_text()
+        self.assertIn('signals()["codex_manual_work"] is False', script)
+        self.assertIn('signals()["codex_manual_work"] is True', script)
+        self.assertIn("codex_execution_mode", script)
+        self.assertIn("awaiting_codex_manual", script)
+
     def test_exact_source_pins_and_completed_waves_are_checked_in_both_sql_paths(self):
         signal, claim = SQL.split(
             "CREATE OR REPLACE FUNCTION public.factory_claim_change_set_integration", 1
