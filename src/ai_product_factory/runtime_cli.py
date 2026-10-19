@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse,json,os,socket
+import argparse,json,os,socket,re
 from decimal import Decimal, InvalidOperation
 from .model_executor import ModelExecutor
 from .metered_provider import MeteredPrimaryProvider
@@ -172,6 +172,33 @@ def _release_routed_run(scheduler,item,worker_id,status):
   _routed_checkpoint(item,worker_id)
  scheduler.release(item.run_id,status)
 
+
+def _release_completed_change_set(scheduler,item,receipt):
+ """Release a slot after atomic work-unit completion, without a revoked lease check.
+
+ factory_complete_change_set_work_unit atomically changes the run from
+ 'implementing' to 'completed' and clears its lease. The routed epoch RPC
+ necessarily returns 409 after that transition. The builder returns its
+ completion receipt only after that privileged RPC succeeds. This is
+ cleanup, never authorization for another write or model call.
+ """
+ def exact_sha(value):
+  return isinstance(value,str) and re.fullmatch(r"[0-9a-f]{40}",value) is not None
+
+ if (not getattr(item,"change_set_id",None) or not getattr(item,"work_unit_id",None)
+     or getattr(receipt,"run_id",None)!=item.run_id
+     or getattr(receipt,"change_set_id",None)!=item.change_set_id
+     or getattr(receipt,"work_unit_id",None)!=item.work_unit_id
+     or getattr(receipt,"branch",None)!=item.branch
+     or not exact_sha(getattr(receipt,"output_commit",None))):
+  raise PermissionError("terminal change-set receipt does not match claimed work unit")
+
+ # The slot-release RPC accepts an already-completed run and cannot create
+ # commits, change projects or resurrect work. All preceding side effects
+ # stay guarded by live epoch checkpoints.
+ scheduler.release(item.run_id,"completed")
+
+
 def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
@@ -203,7 +230,7 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
    except ImplementationBlocked as exc:
     _release_routed_run(scheduler,item,worker_id,"blocked")
     return {"claimed":True,"status":"blocked","run_id":item.run_id,"error":str(exc)}
-   _release_routed_run(scheduler,item,worker_id,"completed")
+   _release_completed_change_set(scheduler,item,result)
    return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   loop=AutonomousGitHubLoop(github,SupabaseDeliveryStore())
   materializer=GitHubIssueMaterializer(github=github,binding=SupabaseIssueBindingStore())
@@ -240,7 +267,7 @@ def run_codex_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->
   github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):
    result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="codex").execute(item)
-   _release_routed_run(scheduler,item,worker_id,"completed")
+   _release_completed_change_set(scheduler,item,result)
    return {"claimed":True,"status":"work_unit_completed","run_id":item.run_id,"change_set_id":result.change_set_id,"output_commit":result.output_commit}
   store=SupabaseDeliveryStore()
   loop=AutonomousGitHubLoop(github,store)
