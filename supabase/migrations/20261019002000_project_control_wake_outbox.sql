@@ -118,12 +118,51 @@ grant execute on function public.factory_ack_project_control_wake(uuid,text,text
 -- Runner observations are independent of GitHub's accepted delivery.
 create function public.factory_observe_project_control_wakes(
  p_owner text,p_limit integer default 16
-) returns jsonb language plpgsql security invoker set search_path='' as $
+) returns jsonb language plpgsql security invoker set search_path='' as $wake$
 declare w public.factory_project_control_wakes%rowtype;
  v_state text;v_generation bigint;v_active boolean;
  v_status text;v_observed integer:=0;v_suppressed integer:=0;
 begin
- if p_owner is null or p_owner !~ '^[a-zA-Z0-9_.:-]{3,128}
+ if p_owner is null or p_owner !~ '^[a-zA-Z0-9_.:-]{3,128}   or p_limit is null or p_limit not between 1 and 32
+ then raise exception 'invalid runner observer';end if;
+ for w in
+   select * from public.factory_project_control_wakes
+   where status in ('pending','dispatched')
+     or (status='claimed' and lease_until<=now())
+   order by created_at,id for update skip locked limit p_limit
+ loop
+   select ctl.state,ctl.generation,pr.is_active
+     into v_state,v_generation,v_active
+   from public.factory_project_execution_controls ctl
+   join public.factory_projects pr on pr.id=ctl.project_id
+   where ctl.project_id=w.project_id for share of ctl,pr;
+   v_status:=case when v_state is distinct from 'running'
+     or v_generation is distinct from w.generation
+     or v_active is distinct from true then 'suppressed'
+     else 'observed' end;
+   update public.factory_project_control_wakes
+   set status=v_status,lease_owner=null,lease_until=null,
+       last_result=case when v_status='observed' then 'runner_observed' else 'revoked' end,
+       updated_at=now() where id=w.id;
+   insert into public.factory_audit_events(project_id,actor_type,actor_ref,event_type,payload)
+   values(w.project_id,'system',p_owner,
+     case when v_status='observed' then 'project.control.wake_observed'
+       else 'project.control.wake_suppressed' end,
+     jsonb_build_object('id',w.id,'command_id',w.command_id,
+       'generation',w.generation,'status',v_status,'delivery_attempts',w.attempts));
+   if v_status='observed' then v_observed:=v_observed+1;
+   else v_suppressed:=v_suppressed+1;end if;
+ end loop;
+ return jsonb_build_object('observed',v_observed,'suppressed',v_suppressed);
+end;
+$wake$;
+revoke all on function public.factory_observe_project_control_wakes(text,integer)
+ from public,anon,authenticated;
+grant execute on function public.factory_observe_project_control_wakes(text,integer)
+ to service_role;
+
+commit;
+
    or p_limit is null or p_limit not between 1 and 32
  then raise exception 'invalid runner observer';end if;
  for w in
@@ -156,7 +195,7 @@ begin
  end loop;
  return jsonb_build_object('observed',v_observed,'suppressed',v_suppressed);
 end;
-$;
+$wake$;
 revoke all on function public.factory_observe_project_control_wakes(text,integer)
  from public,anon,authenticated;
 grant execute on function public.factory_observe_project_control_wakes(text,integer)
