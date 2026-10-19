@@ -241,7 +241,12 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 raise PermissionError("repository governance missing or oversized")
             governance[path] = text
         source_evidence = collect_candidate_source_evidence(
-            governance["docs/codex/CURRENT_TASK.md"], github, sha=target.sha
+            governance["docs/codex/CURRENT_TASK.md"], github, sha=target.sha,
+            continuation_request=(
+                manifest.get("continuation_request", {}).get("summary")
+                if isinstance(manifest.get("continuation_request"), dict)
+                else None
+            ),
         )
         candidate = {
             "repository": repo,
