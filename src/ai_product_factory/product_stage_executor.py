@@ -7,7 +7,7 @@ from .model_executor import ModelExecutor, ModelRequest
 from .models import ExecutionRoute
 from .runtime_worker import WorkItem
 from .agent_scheduler import AgentProfile
-from .execution_team_planner import build_execution_team_plan
+from .execution_team_planner import build_execution_team_plan, _canonical_routing_task
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,8 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
         if task_key in task_keys:
             raise ValueError(f"duplicate planning task_key: {task_key}")
         task_keys.append(task_key)
-        required={str(x).strip() for x in (task.get("required_capabilities") or []) if str(x).strip()}
+        routed=_canonical_routing_task(task)
+        required={str(x).strip() for x in (routed.get("required_capabilities") or []) if str(x).strip()}
         scopes=task.get("scope_keys")
         if not isinstance(scopes,list) or not any(str(x).strip() for x in scopes):
             raise ValueError(f"planning task requires non-empty scope_keys: {task_key}")
@@ -80,7 +81,7 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
                 path=str(raw_path).strip().replace("\\","/").removeprefix("./")
                 if not path or path.startswith("/") or path.startswith("../") or "/../" in path:
                     raise ValueError(f"planning task has invalid context path: {task_key}")
-        preferred=str(task.get("preferred_agent_role") or "").strip()
+        preferred=str(routed.get("preferred_agent_role") or "").strip()
         eligible=[
             profile for profile in builders
             if (not required or required.issubset(set(profile.capabilities)))
