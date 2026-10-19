@@ -1076,3 +1076,56 @@ obsoleto, `stale_integration_change_sets>=1` no incidente conhecido,
 Para uma nova Work Unit válida, exigir CI, PR e Preview por SHA exato,
 com merge de produção exclusivamente humano. Não disparar modelos apenas
 para sondar a alteração.
+## 2026-10-19 — Higiene do backlog e encerramento auditado de artefatos antigos
+
+Incidente observado: o Change Set CRM 552fd082-7c8e-4ed7-a712-2a550bb50a52
+ficou em building depois de concluir uma Work Unit e criar commit real,
+enquanto o SHA de origem foi superado por merges humanos no Preview.
+Quatro Change Sets em review_ready não têm nenhuma Work Unit; há dez
+tarefas queued históricas (Factory e CRM) e havia um gate de planejamento
+sobre edição de condições já entregue no CRM. Esse último gate foi
+encerrado pela RPC oficial factory_supersede_stale_planning_gates,
+preservando auditoria e reduzindo gates humanos pendentes a zero.
+
+Não usar DELETE. A FK de Work Units para Change Sets usa ON DELETE
+CASCADE: excluir a linha do Change Set apagaria evidências de trabalho.
+Muitos artefatos terminais (blocked, superseded, completed) fazem parte
+da trilha de rastreabilidade e não devem ser tratados como fila executável.
+
+A migration 20261019201000_retire_obsolete_factory_artifacts.sql registra
+a função factory_retire_obsolete_artifacts_v1 (SECURITY INVOKER,
+somente service_role). A migration NÃO retira nenhum registro por si só.
+A chamada explícita exige project_key, pin exato (ou o sentinela
+platform:no-pinned-candidate para a plataforma), listas limitadas e
+sem duplicações de IDs, UUID da operação e justificativa. A função
+exige projeto running/quiescent, trava transacional do projeto/controle
+e falha integralmente diante de qualquer entrada ou estado inesperado.
+
+Elegibilidade:
+- Change Set building: origem diferente do pin atual e Work Units
+  todas completed, sem release, lease ou run de execução ativo.
+- Change Set review_ready: nenhum SHA, nenhuma Work Unit, root concluído
+  e prova de Work Unit concluída de um Change Set mais recente.
+- Tarefa queued antiga (mínimo sete dias): parent concluído e trabalho
+  posterior concluído no mesmo projeto, sem run/gate/filhos ativos e sem
+  associação a um Change Set não terminal.
+- Tarefa com run completed passa a completed; outra comprovadamente
+  obsoleta passa a cancelled; Change Set passa a superseded.
+
+A rotina registra recibo idempotente e eventos auditados por objeto,
+preservando dados de modelo/custo, commits, Work Units e snapshots.
+Um request_id repetido com IDs ou justificativa diferentes é rejeitado.
+O teste em PostgreSQL 16 isolado é
+scripts/verify_retire_obsolete_artifacts_postgres.py, job
+retire-obsolete-artifacts-postgres. Ele valida permissões restritas,
+origens e gates, listas explícitas, ausência de delete, idempotência,
+retenção de evidências, falha integral de lote e diferença entre
+plataforma e projeto existente.
+
+Aplicação da nova migration e chamadas de limpeza no Control Plane de
+produção exigem gates humanos separados de merge e aplicação. Não
+atualizar status manualmente por UPDATE, não retomar tarefas antigas
+por modelo nem alegar que a Factory completou automaticamente os
+Change Sets entregues por intervenções externas. Não marcar PR #56
+como mergeável/publicada por um mero encerramento de registros.
+

@@ -121,6 +121,41 @@ class IsolatedDatabaseGuardContract(unittest.TestCase):
         self.assertNotIn("gh pr merge",script)
 
 
+class ObsoleteArtifactRetirementContract(unittest.TestCase):
+    def test_retirement_stays_audited_explicit_and_database_isolated(self):
+        migration=(ROOT / "supabase/migrations/20261019201000_retire_obsolete_factory_artifacts.sql").read_text()
+        verifier=(ROOT / "scripts/verify_retire_obsolete_artifacts_postgres.py").read_text()
+        workflow=(ROOT / ".github/workflows/manual-project-control-postgres.yml").read_text()
+        for piece in (
+            "security invoker", "service_role", "public.factory_control_quiescent",
+            "p_expected_pin", "p_request_id", "p_change_set_ids", "p_task_ids",
+            "array_position(v_sets,null)", "array_position(v_tasks,null)",
+            "v_set.source_commit=p_expected_pin",
+            "status='superseded'",
+            "project.obsolete_artifacts.retired",
+            "change_set.retired_obsolete", "task.retired_obsolete",
+        ):
+            with self.subTest(piece=piece):
+                self.assertIn(piece,migration)
+        self.assertNotIn("delete from public.",migration.lower())
+        self.assertNotIn("security definer",migration.lower())
+        for piece in (
+            "refusing non-isolated retirement database",
+            "OBSOLETE_FACTORY_ARTIFACT_RETIREMENT_POSTGRES_PASS",
+            "factory_retire_obsolete_artifacts_v1",
+            "role_check == (False,True,False,False)",
+            "before_counts==",
+        ):
+            self.assertIn(piece,verifier)
+        for piece in (
+            "retire-obsolete-artifacts-postgres:",
+            "python scripts/verify_retire_obsolete_artifacts_postgres.py",
+            "image: postgres:16",
+            "factory_retire_test",
+        ):
+            self.assertIn(piece,workflow)
+
+
 class ProbeEvidenceTests(unittest.TestCase):
     class FakeResponse:
         def __init__(self, payload):

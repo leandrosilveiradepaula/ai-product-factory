@@ -8,6 +8,8 @@ on:
       - "supabase/migrations/*repin_nonproduction_target.sql"
       - "supabase/migrations/*guard_stale_change_set_integration.sql"
       - "scripts/verify_stale_change_set_integration_postgres.py"
+      - "scripts/verify_retire_obsolete_artifacts_postgres.py"
+      - "supabase/migrations/*retire_obsolete_factory_artifacts.sql"
       - "scripts/verify_nonproduction_candidate_repin_postgres.py"
       - "scripts/verify_project_control_wake_postgres.py"
       - "src/ai_product_factory/project_control_wake_outbox.py"
@@ -167,4 +169,32 @@ jobs:
           FACTORY_STALE_CHANGE_SET_TEST_ISOLATED: "true"
           FACTORY_STALE_CHANGE_SET_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_change_set_guard_test"
         run: python scripts/verify_stale_change_set_integration_postgres.py
+
+  retire-obsolete-artifacts-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: factory_ci
+          POSTGRES_DB: factory_retire_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_retire_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Assert verified-only retirement and audit in isolated PostgreSQL
+        env:
+          FACTORY_RETIRE_TEST_ISOLATED: "true"
+          FACTORY_RETIRE_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_retire_test"
+        run: python scripts/verify_retire_obsolete_artifacts_postgres.py
 
