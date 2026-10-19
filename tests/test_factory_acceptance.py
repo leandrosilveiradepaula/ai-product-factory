@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class FactoryAcceptanceTests(unittest.TestCase):
     def test_fresh_autonomy_journey_is_manual_read_only_and_sha_bound(self):
-        workflow=(ROOT / ".github/workflows/autonomy-journey-readonly.yml").read_text()
+        workflow=(ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         engine=(ROOT / "src/ai_product_factory/autonomy_journey.py").read_text()
         reader=(ROOT / "src/ai_product_factory/autonomy_journey_reader.py").read_text()
         cli=(ROOT / "scripts/audit_autonomy_journey.py").read_text()
@@ -30,10 +30,11 @@ class FactoryAcceptanceTests(unittest.TestCase):
                       "routing","implementation","review","github_ci","preview",
                       "awaiting_release","human_release_observed","operations"):
             self.assertIn('"'+stage+'"',engine)
-        self.assertIn('project.control.start',workflow.replace('explicit Start','project.control.start'))
+        self.assertIn("run_journey_audit:",workflow)
+        self.assertIn("inputs.run_journey_audit != true",workflow)
         self.assertIn("workflow_dispatch:",workflow)
-        self.assertNotIn("  schedule:",workflow)
-        self.assertIn("read-only-evidence:",workflow)
+        self.assertIn("journey-readonly:",workflow)
+        self.assertIn("inputs.run_journey_audit == true",workflow)
         self.assertIn("github.get_ci_state(pr_number)",reader)
         self.assertIn("github.commit_exists(sha)",reader)
         self.assertIn("evaluate_preview_applicability",reader)

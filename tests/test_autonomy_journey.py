@@ -289,8 +289,9 @@ class JourneyReaderContractTests(unittest.TestCase):
         jobs=dict(pieces)
         self.assertIn("schedule-probe",jobs)
         self.assertIn("journey-readonly",jobs)
+        self.assertIn("github.event_name == 'issue_comment'",jobs["alerts-owner-comment"])
         for name,body in jobs.items():
-            if name in {"schedule-probe","journey-readonly"}:
+            if name in {"schedule-probe","journey-readonly","alerts-owner-comment"}:
                 continue
             seen=set()
             def depends_on_probe(current):
