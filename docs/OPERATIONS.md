@@ -1,3 +1,9 @@
+### Activation order for durable control wake
+
+- The new scheduler observation is **after** a successful schedule-probe, so it cannot acknowledge a wake before the worker has inspected durable work.
+- Merging the code before the separately authorized SQL does not break scheduled work: HTTP 404 from the absent claim RPC is explicitly inert for Python. The Console retains its legacy *post-commit* GitHub dispatch only for that missing RPC; no durable receipt is claimed.
+- Once migration `20261019002000_project_control_wake_outbox.sql` is approved and applied, the atomic trigger, bounded claim/ack and state/generation fencing become active. Validate service-role-only privileges, one recorded command, no DRAFT wake, and a scheduled observation receipt before claiming activation. Do not auto-merge production or buy credits.
+
 ## 2026-10-18 — Durable project-control wake (candidate)
 
 Five functional blocks: SQL outbox trigger recording START/RESUME/RESTART atomically; privileged claim/ack lease with five attempts and generation fencing; postcommit Console delivery with durable failure; existing scheduled runner observes pending work without paid calls; project UI exposes status, with PostgreSQL 16 concurrency/idempotence testing.

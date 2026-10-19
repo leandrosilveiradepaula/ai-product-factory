@@ -12,7 +12,13 @@ class ControlWakeOutbox:
     headers={**self.headers,"Content-Type":"application/json"})
   try:
    with urllib.request.urlopen(req,timeout=30) as r:raw=r.read().decode()
-  except (urllib.error.HTTPError,urllib.error.URLError,TimeoutError) as exc:
+  except urllib.error.HTTPError as exc:
+   # A Console production merge may precede the separately authorized SQL
+   # migration. The normal scheduled runner must remain healthy until then.
+   if exc.code == 404 and name == "factory_claim_project_control_wake":
+    return {"status": "unconfigured"}
+   raise RuntimeError("control wake evidence RPC unavailable") from exc
+  except (urllib.error.URLError,TimeoutError) as exc:
    raise RuntimeError("control wake evidence RPC unavailable") from exc
   result=json.loads(raw) if raw else None
   if result is not None and not isinstance(result,dict):
@@ -23,6 +29,8 @@ class ControlWakeOutbox:
    raise ValueError("invalid control wake owner")
   claim=self.rpc("factory_claim_project_control_wake",{"p_owner":owner,"p_command_id":None})
   if claim is None:return {"status":"empty","observed":False}
+  if claim.get("status") == "unconfigured":
+   return {"status":"unconfigured","observed":False}
   if claim.get("status") in ("suppressed","exhausted"):
    return {"status":claim["status"],"observed":False}
   if claim.get("status")!="claimed" or not isinstance(claim.get("id"),str):

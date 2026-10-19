@@ -11,7 +11,11 @@ async function rpc(name:string,body:unknown):Promise<any>{
   method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},
   body:JSON.stringify(body),cache:"no-store",
  });
- if(!response.ok)throw new Error("Project control wake RPC unavailable");
+ if(!response.ok){
+  const error=new Error("Project control wake RPC unavailable");
+  Object.assign(error,{status:response.status});
+  throw error;
+ }
  if(response.status===204)return null;
  return response.json();
 }
@@ -19,7 +23,17 @@ async function rpc(name:string,body:unknown):Promise<any>{
 export async function deliverProjectControlWake(commandId:string):Promise<WakeResult>{
  if(!uuid.test(commandId))throw new Error("Invalid control command identity");
  const owner="console-"+randomUUID();
- const claim=await rpc("factory_claim_project_control_wake",{p_owner:owner,p_command_id:commandId});
+ let claim:Record<string,unknown>|null;
+ try{
+  claim=await rpc("factory_claim_project_control_wake",{p_owner:owner,p_command_id:commandId});
+ }catch(error){
+  // The schema migration has its own human gate. Until it is applied,
+  // preserve the existing post-commit GitHub wake behavior without falsely
+  // declaring a durable outbox receipt.
+  if(Number((error as {status?:number}).status||0)===404)
+   return requestIntakeWorkerWake();
+  throw error;
+ }
  if(!claim)return "unconfigured";
  if(claim.status==="suppressed"||claim.status==="exhausted")return "failed";
  if(claim.status!=="claimed"||typeof claim.id!=="string"||!uuid.test(claim.id))

@@ -38,6 +38,29 @@ class Tests(unittest.TestCase):
   ])
   self.assertTrue(out.observe_one(owner="gha-1")["observed"])
   self.assertEqual(out.rpc.call_args.args[1]["p_result"],"observed")
+ def test_unapplied_migration_is_inert_for_scheduled_runner(self):
+  from unittest.mock import patch
+  from urllib.error import HTTPError
+  out=ControlWakeOutbox(url="https://example.supabase.co",service_role_key="secret")
+  missing=HTTPError("https://example.supabase.co/rest/v1/rpc/factory_claim_project_control_wake",404,"not found",{},None)
+  with patch("urllib.request.urlopen",side_effect=missing):
+   result=out.observe_one(owner="gha-123")
+  self.assertEqual(result,{"status":"unconfigured","observed":False})
+
+ def test_scheduler_observes_only_after_queue_probe(self):
+  workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+  self.assertLess(workflow.index("Probe durable work queues without side effects"),
+                  workflow.index("Observe committed project control wake"))
+  self.assertIn("steps.probe.outcome == 'success'",workflow.split("Observe committed project control wake",1)[1].split("- name:",1)[0])
+
+ def test_pre_migration_console_preserves_old_committed_wake(self):
+  ts=(ROOT/"apps/console/lib/project-control-wake-outbox.ts").read_text()
+  self.assertIn('===404)',ts)
+  self.assertIn("return requestIntakeWorkerWake()",ts)
+  function=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+  segment=function.split("export async function commandProjectExecution",1)[1].split("export async function enqueueProjectBootstrap",1)[0]
+  self.assertLess(segment.index('if(!response.ok)'),segment.index("deliverProjectControlWake(commandId)"))
+
  def test_invalid_owner(self):
   out=ControlWakeOutbox(url="https://example.supabase.co",service_role_key="secret")
   with self.assertRaises(ValueError):out.observe_one(owner="bad owner")

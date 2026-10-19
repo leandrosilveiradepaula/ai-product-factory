@@ -112,10 +112,6 @@ jobs:
         if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode project-control-settle
-      - name: Observe committed project control wake
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
-        shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode project-control-wake --worker-id "gha-control-${{ github.run_id }}"
       - name: Probe durable work queues without side effects
         if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && (github.event_name != 'workflow_run' || steps.backup_wake.outputs.wake == 'true') }}
         id: probe
@@ -137,6 +133,10 @@ jobs:
               for key in keys:
                   out.write(f"{key}={'true' if data.get(key) else 'false'}\n")
           PY
+      - name: Observe committed project control wake
+        if: ${{ steps.probe.outcome == 'success' && (github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true')) }}
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode project-control-wake --worker-id "gha-control-${{ github.run_id }}"
       - name: Diagnose historical queued backlog without dispatch
         if: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true')) && steps.probe.outputs.work_detected == 'false' }}
         continue-on-error: true
