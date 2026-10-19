@@ -51,6 +51,18 @@ class HandoffTests(unittest.TestCase):
             self.assertIn(marker, WORKFLOW)
         self.assertNotIn("gh pr merge", WORKFLOW)
 
+    def test_manual_codex_wake_retains_live_dedicated_execution_mode_guard(self):
+        # A stale source rewrite must never mistake a queued autonomous Codex
+        # execution as permission for manual handoff to the operator.
+        self.assertIn(
+            "r.metadata->>'codex_execution_mode'='manual'", SQL
+        )
+        script=(ROOT / "scripts/verify_stale_change_set_integration_postgres.py").read_text()
+        self.assertIn('signals()["codex_manual_work"] is False', script)
+        self.assertIn('signals()["codex_manual_work"] is True', script)
+        self.assertIn("codex_execution_mode", script)
+        self.assertIn("awaiting_codex_manual", script)
+
     def test_exact_source_pins_and_completed_waves_are_checked_in_both_sql_paths(self):
         signal, claim = SQL.split(
             "CREATE OR REPLACE FUNCTION public.factory_claim_change_set_integration", 1
@@ -107,6 +119,41 @@ class IsolatedDatabaseGuardContract(unittest.TestCase):
         self.assertNotIn("SUPABASE_SECRET_KEY",script)
         self.assertNotIn("OPENAI_API_KEY",script)
         self.assertNotIn("gh pr merge",script)
+
+
+class ObsoleteArtifactRetirementContract(unittest.TestCase):
+    def test_retirement_stays_audited_explicit_and_database_isolated(self):
+        migration=(ROOT / "supabase/migrations/20261019201000_retire_obsolete_factory_artifacts.sql").read_text()
+        verifier=(ROOT / "scripts/verify_retire_obsolete_artifacts_postgres.py").read_text()
+        workflow=(ROOT / ".github/workflows/manual-project-control-postgres.yml").read_text()
+        for piece in (
+            "security invoker", "service_role", "public.factory_control_quiescent",
+            "p_expected_pin", "p_request_id", "p_change_set_ids", "p_task_ids",
+            "array_position(v_sets,null)", "array_position(v_tasks,null)",
+            "v_set.source_commit=p_expected_pin",
+            "status='superseded'",
+            "project.obsolete_artifacts.retired",
+            "change_set.retired_obsolete", "task.retired_obsolete",
+        ):
+            with self.subTest(piece=piece):
+                self.assertIn(piece,migration)
+        self.assertNotIn("delete from public.",migration.lower())
+        self.assertNotIn("security definer",migration.lower())
+        for piece in (
+            "refusing non-isolated retirement database",
+            "OBSOLETE_FACTORY_ARTIFACT_RETIREMENT_POSTGRES_PASS",
+            "factory_retire_obsolete_artifacts_v1",
+            "role_check == (False,True,False,False)",
+            "before_counts==",
+        ):
+            self.assertIn(piece,verifier)
+        for piece in (
+            "retire-obsolete-artifacts-postgres:",
+            "python scripts/verify_retire_obsolete_artifacts_postgres.py",
+            "image: postgres:16",
+            "factory_retire_test",
+        ):
+            self.assertIn(piece,workflow)
 
 
 class ProbeEvidenceTests(unittest.TestCase):

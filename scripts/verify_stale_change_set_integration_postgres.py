@@ -174,6 +174,40 @@ with psycopg.connect(DSN, autocommit=True) as db:
     old_sha, new_sha = "a" * 40, "b" * 40
     project_id, old_cs, unit_id = create_project("crm", "existing", old_sha)
 
+    # Preserve the currently deployed Codex manual-only readiness signal.
+    # The source SQL was older than the live function; without this contract,
+    # queued autonomous codex routes could trigger manual handoff incorrectly.
+    manual_task, manual_run = uuid.uuid4(), uuid.uuid4()
+    db.execute(
+        "insert into public.factory_tasks(id,project_id,status) values(%s,%s,'queued_execution')",
+        (manual_task,project_id),
+    )
+    db.execute("""
+        insert into public.factory_runs(id,task_id,status,execution_route,metadata)
+        values(%s,%s,'queued','codex',%s::jsonb)
+    """,(manual_run,manual_task,json.dumps({"codex_execution_mode":"autonomous"})))
+    assert signals()["codex_manual_work"] is False
+    db.execute(
+        "update public.factory_runs set metadata=%s::jsonb where id=%s",
+        (json.dumps({"codex_execution_mode":"manual"}), manual_run),
+    )
+    assert signals()["codex_manual_work"] is True
+    db.execute(
+        "update public.factory_runs set execution_route='direct' where id=%s",
+        (manual_run,),
+    )
+    assert signals()["codex_manual_work"] is False
+    db.execute(
+        "update public.factory_runs set status='awaiting_codex_manual' where id=%s",
+        (manual_run,),
+    )
+    assert signals()["codex_manual_work"] is True
+    db.execute(
+        "update public.factory_runs set status='completed' where id=%s",
+        (manual_run,),
+    )
+    assert signals()["codex_manual_work"] is False
+
     # A single legitimate completed wave is advertised and can be claimed.
     before = signals()
     assert before["integration_work"] is True, before

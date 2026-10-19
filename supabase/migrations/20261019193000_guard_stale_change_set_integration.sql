@@ -8,6 +8,10 @@
 -- existing Change Sets, runs, PRs, project pins, or production application data.
 -- Applying it to the production Control Plane requires separate human approval.
 -- PostgreSQL function grants remain service_role-only; RLS is untouched.
+-- Migration preflight 2026-10-19 found a live downstream guard on manual
+-- Codex routing (r.metadata->>'codex_execution_mode'='manual') absent
+-- from the earlier versioned scheduler SQL. Preserve that existing
+-- fail-closed predicate when replacing the function; CI exercises it in PG16.
 --
 -- This guard does not prove a stale Change Set was integrated. It keeps the
 -- original row and Work Unit as historical evidence and reports the count.
@@ -39,6 +43,7 @@ as $$
      where p.is_active=true and (
        r.status='awaiting_codex_manual'
        or (r.status='queued' and r.execution_route='codex'
+           and r.metadata->>'codex_execution_mode'='manual'
            and t.status='queued_execution')
      )
    ),
