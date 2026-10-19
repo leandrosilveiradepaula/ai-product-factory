@@ -1059,7 +1059,12 @@ Set, nem chamar retrospectivamente a integração com um SHA desatualizado.
    antigo deve permanecer auditável e só pode ser encerrado/reconciliado
    por um procedimento oficialmente versionado que confirme provas reais.
 5. Production gate separado: merge humano da Factory, CI e isolated-Postgres
-   evidence primeiro; **aplicação humana** da migration depois. Nunca aplicar
+   evidence primeiro; **aplicação humana** da migration depois. A verificação
+   de SQL usa `scripts/verify_stale_change_set_integration_postgres.py` em
+   PostgreSQL 16 descartável, job `change-set-guard-postgres`. Ela valida
+   privilégios somente `service_role`, claim de onda completa, pausa,
+   inatividade, tentativas esgotadas, pin obsoleto, não alteração de histórico,
+   elegibilidade de outro projeto e greenfield; não toca Supabase real. Nunca aplicar
    SQL de produção pelo runtime, usar SQL direto para mudar status de runs ou
    aumentar teto de API para forçar integração.
 

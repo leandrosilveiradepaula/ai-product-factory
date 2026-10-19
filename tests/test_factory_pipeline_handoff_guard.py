@@ -78,6 +78,37 @@ class HandoffTests(unittest.TestCase):
         self.assertNotIn("delete from public.factory_change_sets", SQL.lower())
 
 
+class IsolatedDatabaseGuardContract(unittest.TestCase):
+    def test_new_migration_has_real_postgres_service_and_guarded_execution(self):
+        workflow = (ROOT / ".github/workflows/manual-project-control-postgres.yml").read_text()
+        script = (ROOT / "scripts/verify_stale_change_set_integration_postgres.py").read_text()
+        for marker in (
+            "change-set-guard-postgres:",
+            "image: postgres:16",
+            "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_change_set_guard_test",
+            "python scripts/verify_stale_change_set_integration_postgres.py",
+            "supabase/migrations/*guard_stale_change_set_integration.sql",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, workflow)
+        for marker in (
+            'FACTORY_STALE_CHANGE_SET_TEST_ISOLATED',
+            'refusing non-isolated Change Set guard database',
+            'STALE_CHANGE_SET_GUARD_POSTGRES_PASS',
+            'factory_scheduler_queue_signals()',
+            'factory_claim_change_set_integration(',
+            'stale["stale_integration_change_sets"] == 1',
+            'assert claim() is None',
+            '("building",old_sha,old_sha,0,None,None)',
+            '"greenfield"',
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, script)
+        self.assertNotIn("SUPABASE_SECRET_KEY",script)
+        self.assertNotIn("OPENAI_API_KEY",script)
+        self.assertNotIn("gh pr merge",script)
+
+
 class ProbeEvidenceTests(unittest.TestCase):
     class FakeResponse:
         def __init__(self, payload):
