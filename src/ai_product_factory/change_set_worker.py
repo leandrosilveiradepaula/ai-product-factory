@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass,replace
+import hashlib
 import re
 from typing import Protocol
 
@@ -356,29 +357,113 @@ class ChangeSetBuilderWorker:
         enriched["assignment"]=assignment
         return enriched,tuple(context_paths)
 
-    def _repository_snapshot(self,*,source:dict,base_commit:str)->dict[str,str]:
-        assignment=source.get("assignment") if isinstance(source.get("assignment"),dict) else {}
-        paths=assignment.get("context_paths") if isinstance(assignment.get("context_paths"),list) else []
-        if len(paths)>12:
+    _MAX_SNAPSHOT_BYTES = 131072
+    _MAX_OPTIONAL_CONTEXT_BYTES = 16384
+
+    def _repository_snapshot_with_safety(
+        self, *, source: dict, base_commit: str
+    ) -> tuple[dict[str, str], frozenset[str]]:
+        """Read the exact-SHA sources without exposing incomplete files as editable.
+
+        Governance and explicitly named write targets must be complete. Other
+        context is budgeted deterministically, with a read-only excerpt marker.
+        Truncated or redacted files are never eligible for an output commit,
+        even when a broader assigned write scope would otherwise allow them.
+        """
+        assignment = source.get("assignment") if isinstance(source.get("assignment"), dict) else {}
+        requested = assignment.get("context_paths") if isinstance(assignment.get("context_paths"), list) else []
+        scopes = assignment.get("scope_keys") if isinstance(assignment.get("scope_keys"), list) else []
+        if len(requested) > 12:
             raise ValueError("too many repository context paths")
-        snapshot={}
-        total=0
-        for raw in paths:
-            path=str(raw).strip().replace("\\","/").removeprefix("./")
-            if not path or path.startswith("/") or path.startswith("../") or "/../" in path:
+        paths = []
+        for raw in requested:
+            path = str(raw).strip().replace("\\", "/").removeprefix("./")
+            if not path or path.startswith("/") or any(
+                part in ("", ".", "..", ".git") for part in path.split("/")
+            ):
                 raise ValueError("invalid repository context path")
-            text=redact_repository_text(self.github.get_file_text(path,ref=base_commit))
-            # Large source files are common in established projects. Keep a bounded,
-            # deterministic excerpt rather than blocking the entire work unit.
-            if len(text.encode("utf-8"))>32768:
-                marker="\n[TRUNCATED: repository context exceeds 32768 bytes; inspect the exact-SHA source before editing]\n"
-                budget=32768-len(marker.encode("utf-8"))
-                text=text.encode("utf-8")[:budget].decode("utf-8",errors="ignore")+marker
-            total+=len(text.encode("utf-8"))
-            if total>131072:
-                raise ValueError("repository context snapshot too large")
-            snapshot[path]=text
-        return snapshot
+            if path not in paths:
+                paths.append(path)
+        exact_scopes = {
+            str(raw).strip().replace("\\", "/").removeprefix("./")
+            for raw in scopes if isinstance(raw, str)
+        }
+        governance = set(self._governance_paths(tuple(paths)))
+        required = governance | (set(paths) & exact_scopes)
+        ordered = [path for path in paths if path in required] + [
+            path for path in paths if path not in required
+        ]
+        snapshot: dict[str, str] = {}
+        unsafe: set[str] = set()
+        used_bytes = 0
+        optional_left = len(ordered) - len(required)
+        for path in ordered:
+            original = self.github.get_file_text(path, ref=base_commit)
+            clean = redact_repository_text(original)
+            encoded = clean.encode("utf-8")
+            if clean != original:
+                unsafe.add(path)
+                if path in exact_scopes:
+                    raise PermissionError(
+                        "editable repository context contains redacted secret: " + path
+                    )
+            if path in required:
+                if used_bytes + len(encoded) > self._MAX_SNAPSHOT_BYTES:
+                    raise ValueError(
+                        "complete required repository context exceeds safe budget; "
+                        "replan with narrower exact write scopes"
+                    )
+                value = clean
+            else:
+                available = self._MAX_SNAPSHOT_BYTES - used_bytes
+                allowance = min(
+                    self._MAX_OPTIONAL_CONTEXT_BYTES,
+                    available // optional_left if optional_left else 0,
+                )
+                optional_left -= 1
+                if len(encoded) <= allowance:
+                    value = clean
+                else:
+                    unsafe.add(path)
+                    digest = hashlib.sha256(encoded).hexdigest()
+                    marker = (
+                        "\n[CONTEXT_EXCERPT path=" + path
+                        + " sha256=" + digest + " original_bytes=" + str(len(encoded))
+                        + "; INCOMPLETE READ-ONLY CONTEXT; full-file edits forbidden]\n"
+                    )
+                    marker_size = len(marker.encode("utf-8"))
+                    if allowance <= marker_size:
+                        # Context can be omitted, but must never exceed its
+                        # shared budget or silently become writable.
+                        continue
+                    head_size = (allowance - marker_size) // 2
+                    tail_size = allowance - marker_size - head_size
+                    prefix = encoded[:head_size].decode("utf-8", errors="ignore")
+                    suffix = encoded[-tail_size:].decode("utf-8", errors="ignore")
+                    value = prefix + marker + suffix
+            size = len(value.encode("utf-8"))
+            if used_bytes + size > self._MAX_SNAPSHOT_BYTES:
+                raise RuntimeError("repository context accounting exceeded safe budget")
+            snapshot[path] = value
+            used_bytes += size
+        return snapshot, frozenset(unsafe)
+
+    def _repository_snapshot(self, *, source: dict, base_commit: str) -> dict[str, str]:
+        """Backward-compatible snapshot reader; execution uses the safety receipt."""
+        return self._repository_snapshot_with_safety(
+            source=source, base_commit=base_commit
+        )[0]
+
+    @staticmethod
+    def _assert_snapshot_edit_safety(
+        files: dict[str, str], unsafe_paths: frozenset[str]
+    ) -> None:
+        forbidden = sorted(set(files) & unsafe_paths)
+        if forbidden:
+            raise PermissionError(
+                "implementation attempted to rewrite incomplete or redacted "
+                "repository context: " + ", ".join(forbidden)
+            )
 
     def execute(self,item:DirectExecutionItem)->ChangeSetWorkResult:
         if item.human_gate_required:
@@ -412,9 +497,18 @@ class ChangeSetBuilderWorker:
             )
             source=self.store.context_source(item.run_id)
             source,_=self._resolved_repository_context(source=source,base_commit=binding.base_commit)
-            snapshot=self._repository_snapshot(source=source,base_commit=binding.base_commit)
+            snapshot,unsafe_context_paths=self._repository_snapshot_with_safety(
+                source=source,base_commit=binding.base_commit,
+            )
             if not snapshot:
                 raise RuntimeError("repository context preflight produced an empty snapshot")
+            if unsafe_context_paths:
+                source=dict(source)
+                source["constraints"]=[
+                    *(source.get("constraints") if isinstance(source.get("constraints"),list) else []),
+                    "Repository context excerpts and redacted files are read-only; "
+                    "rewriting these paths will be rejected before commit.",
+                ]
             packet=build_context_packet(
                 source=source,impact=impact.as_context(),base_commit=binding.base_commit,branch=item.branch,
                 repository_snapshot=snapshot,
@@ -465,6 +559,7 @@ class ChangeSetBuilderWorker:
             )
             raise ValueError("implementation producer returned no files")
         try:
+            self._assert_snapshot_edit_safety(artifact.files,unsafe_context_paths)
             enforce_write_scopes(artifact.files.keys(),write_scopes)
         except (PermissionError, ValueError) as exc:
             # A model-produced patch outside the approved frozen-plan scopes
