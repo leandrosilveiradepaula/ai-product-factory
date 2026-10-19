@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from ai_product_factory.candidate_source_evidence import (
-    _latest_scope, collect_candidate_source_evidence,
+    _latest_scope, _request_paths, collect_candidate_source_evidence,
 )
 
 
@@ -84,6 +84,25 @@ class CandidateSourceEvidenceTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(PermissionError, "secret material"):
             collect_candidate_source_evidence(self.doc, self.github, sha=SHA)
+
+    def test_current_request_paths_take_precedence_without_granting_write_scope(self):
+        request = ("CRM defect src/components/automations/AutomationBuilder.tsx "
+                   "and src/services/automationRuntimeCore.ts; not src/../secret.py")
+        self.github.list_file_paths.return_value = (
+            "src/components/automations/AutomationBuilder.tsx",
+            "src/services/automationRuntimeCore.ts",
+            "src/services/SettingsService.ts",
+        )
+        result = collect_candidate_source_evidence(
+            self.doc, self.github, sha=SHA, continuation_request=request
+        )
+        self.assertEqual([x["path"] for x in result["inspected_files"][:2]], [
+            "src/components/automations/AutomationBuilder.tsx",
+            "src/services/automationRuntimeCore.ts",
+        ])
+        self.assertEqual(result["governance_scope_paths"][0], "src/services/SettingsService.ts")
+        self.assertEqual(result["assessed_commit"], SHA)
+        self.assertNotIn("src/../secret.py", _request_paths(request))
 
     def test_invalid_ref_fails_before_git_access(self):
         with self.assertRaises(PermissionError):

@@ -45,6 +45,19 @@ def _latest_scope(task_record: str) -> tuple[str | None, list[str]]:
     return latest.group().strip(), paths
 
 
+def _request_paths(continuation_request: str | None) -> list[str]:
+    """Prioritize read-only source evidence from a new request; never authorize writes."""
+    if not isinstance(continuation_request, str):
+        return []
+    paths: list[str] = []
+    pattern = r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs)"
+    for match in re.finditer(pattern, continuation_request):
+        path = match.group()
+        if _CODE_PATH.fullmatch(path) and ".." not in path.split("/") and path not in paths:
+            paths.append(path)
+    return paths
+
+
 def _bounded_excerpt(source: str, limit: int) -> tuple[str, bool]:
     encoded = source.encode("utf-8")
     if len(encoded) <= limit:
@@ -54,7 +67,9 @@ def _bounded_excerpt(source: str, limit: int) -> tuple[str, bool]:
     return prefix + "\n\n[OMITTED MIDDLE: partial source evidence]\n\n" + suffix, False
 
 
-def collect_candidate_source_evidence(task_record: str, github: object, *, sha: str) -> dict:
+def collect_candidate_source_evidence(
+    task_record: str, github: object, *, sha: str, continuation_request: str | None = None
+) -> dict:
     """Inspect current task's code/test files at the *verified* pinned GitHub SHA.
 
     Source snippets are untrusted evidence, not executable instructions or a whole
@@ -63,7 +78,9 @@ def collect_candidate_source_evidence(task_record: str, github: object, *, sha: 
     """
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise PermissionError("candidate source evidence requires exact SHA")
-    heading, requested = _latest_scope(task_record)
+    heading, governed = _latest_scope(task_record)
+    request_paths = _request_paths(continuation_request)
+    requested = list(dict.fromkeys([*request_paths, *governed]))
     if not requested:
         return {
             "status": "no_scoped_source_paths", "scope_heading": heading,
@@ -96,12 +113,13 @@ def collect_candidate_source_evidence(task_record: str, github: object, *, sha: 
             break
     return {
         "status": "bounded_source_inspected" if inspected else "scoped_source_missing",
-        "scope_heading": heading,
+        "scope_heading": heading, "request_source_paths": request_paths,
+        "governance_scope_paths": governed,
         "assessed_commit": sha, "inspected_files": inspected,
         "missing_paths": missing,
         "omitted_paths": available[len(inspected):],
         "limitation": (
-            "Only the named task-scope files above were inspected. "
+            "Only request-named or latest task-scope files above were inspected. "
             "An open issue, previous task description, or truncated excerpt does "
             "not prove a defect remains. Do not infer product-wide readiness."
         ),

@@ -193,7 +193,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                   "repository": "owner/crm", "branch": "preview/candidate",
                   "sha": sha, "candidate_pr_number": 56}
         q._get = lambda path: [{"project_kind": "existing", "repository": "owner/crm",
-                                "manifest": {"delivery_target": target}}]
+                                "manifest": {"delivery_target": target, "continuation_request": {"summary": "Fix src/components/automations/AutomationBuilder.tsx"}}}]
         from unittest.mock import MagicMock
         from types import SimpleNamespace
         github = MagicMock()
@@ -209,7 +209,7 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
             if path == "docs/codex/CURRENT_TASK.md"
             else ("code evidence" if path.endswith(".ts") else "governance for " + path)
         )
-        github.list_file_paths.return_value = ("src/services/SettingsService.ts",)
+        github.list_file_paths.return_value = ("src/services/SettingsService.ts", "src/components/automations/AutomationBuilder.tsx")
         with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
             evidence = q._live_candidate_context("project-id", {"current_state_facts": {}})
         observed = evidence["current_state_facts"]["live_candidate"]
@@ -218,8 +218,10 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
         self.assertTrue(observed["verified_open_pr"]["verified"])
         self.assertEqual(
             observed["source_evidence"]["inspected_files"][0]["path"],
-            "src/services/SettingsService.ts"
+            "src/components/automations/AutomationBuilder.tsx"
         )
+        self.assertEqual(observed["source_evidence"]["request_source_paths"],
+                         ["src/components/automations/AutomationBuilder.tsx"])
         github.get_file_text.assert_any_call("AGENTS.md", ref=sha)
         github.get_branch_sha.side_effect = lambda ref: "b" * 40
         with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
