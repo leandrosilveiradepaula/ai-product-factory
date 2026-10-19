@@ -22,6 +22,8 @@ with psycopg.connect(dsn,autocommit=True) as db:
  has_function_privilege('anon',p.oid,'execute'),has_function_privilege('authenticated',p.oid,'execute')
  from pg_proc p where p.proname='factory_claim_project_control_wake'""").fetchone()
  assert perm==(False,True,False,False),perm
+ obsperm=db.execute("""select p.prosecdef,has_function_privilege('service_role',p.oid,'execute'),has_function_privilege('anon',p.oid,'execute'),has_function_privilege('authenticated',p.oid,'execute') from pg_proc p where p.proname='factory_observe_project_control_wakes'""").fetchone()
+ assert obsperm==(False,True,False,False),obsperm
  db.execute("insert into public.factory_projects(id) values(%s)",(p,))
  db.execute("insert into public.factory_project_execution_controls values(%s,'draft',0,0)",(p,))
  assert db.execute("select count(*) from public.factory_project_control_wakes").fetchone()[0]==0
@@ -37,10 +39,23 @@ with psycopg.connect(dsn,autocommit=True) as db:
  else:raise AssertionError("foreign claimant acknowledged wake")
  assert rpc(db,"factory_ack_project_control_wake",w["id"],"gha-one","dispatched")["status"]=="dispatched"
  assert rpc(db,"factory_claim_project_control_wake","gha-one",c1) is None
+ assert rpc(db,"factory_observe_project_control_wakes","gha-observer",16)=={"observed":1,"suppressed":0}
+ assert db.execute("select status,attempts from public.factory_project_control_wakes where command_id=%s",(c1,)).fetchone()==("observed",1)
+ assert rpc(db,"factory_observe_project_control_wakes","gha-observer",16)=={"observed":0,"suppressed":0}
  db.execute("update public.factory_project_execution_controls set state='running',version=3,generation=2")
  db.execute("insert into public.factory_project_execution_commands values (%s,%s,'resume',2,%s,%s::jsonb)",(p,c2,actor,json.dumps({"command":"resume","state":"running","version":3,"generation":2})))
  w=rpc(db,"factory_claim_project_control_wake","gha-one",c2)
  db.execute("update public.factory_project_execution_controls set state='paused',version=4")
  assert rpc(db,"factory_ack_project_control_wake",w["id"],"gha-one","observed")["status"]=="suppressed"
  assert db.execute("select count(*) from public.factory_project_control_wakes").fetchone()[0]==2
+ # A failed immediate GitHub wake stays pending, but the runner can observe it.
+ c3=uuid.uuid4()
+ db.execute("update public.factory_project_execution_controls set state='running',version=5,generation=3")
+ db.execute("insert into public.factory_project_execution_commands values (%s,%s,'restart',4,%s,%s::jsonb)",(p,c3,actor,json.dumps({"command":"restart","state":"running","version":5,"generation":3})))
+ claim=rpc(db,"factory_claim_project_control_wake","console-retry",c3)
+ assert claim["status"]=="claimed",claim
+ assert rpc(db,"factory_ack_project_control_wake",claim["id"],"console-retry","failed")["status"]=="pending"
+ assert rpc(db,"factory_observe_project_control_wakes","gha-observer",16)=={"observed":1,"suppressed":0}
+ assert db.execute("select status,attempts from public.factory_project_control_wakes where command_id=%s",(c3,)).fetchone()==("observed",1)
+ assert rpc(db,"factory_observe_project_control_wakes","gha-observer",16)=={"observed":0,"suppressed":0}
 print("WAKE_OUTBOX_POSTGRES_PASS")
