@@ -398,7 +398,17 @@ class ChangeSetBuilderWorker:
         used_bytes = 0
         optional_left = len(ordered) - len(required)
         for path in ordered:
-            original = self.github.get_file_text(path, ref=base_commit)
+            try:
+                original = self.github.get_file_text(path, ref=base_commit)
+            except ValueError as exc:
+                # Optional context may be rejected by the provider before
+                # the bounded excerpt logic runs. Required context stays
+                # fail-closed, including governance and exact write targets.
+                if path in required or "repository context file too large" not in str(exc):
+                    raise
+                unsafe.add(path)
+                optional_left -= 1
+                continue
             clean = redact_repository_text(original)
             encoded = clean.encode("utf-8")
             if clean != original:
