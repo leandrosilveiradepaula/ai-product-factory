@@ -372,5 +372,70 @@ class Tests(unittest.TestCase):
 
 
 
+    def test_stalled_ci_dispatch_is_alerted_without_new_work_or_paid_calls(self):
+        from ai_product_factory.operational_alerts import evaluate_operational_alerts
+        now=datetime(2026,10,19,20,30,tzinfo=timezone.utc)
+        waiting=[{"id":"run-ci","status":"ci_pending","task_id":"task-ci",
+                  "candidate_commit":"a"*40,"created_at":"2026-10-19T19:10:00Z"}]
+        receipt=[{"run_id":"run-ci","created_at":"2026-10-19T19:55:00Z",
+                  "metadata":{"head_sha":"a"*40,"pr":10,
+                              "ref":"factory/change-set","workflow":"validate.yml"}}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(waiting),Response(receipt),Response([]),Response([]),
+        ]) as requests:
+            result=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x",
+            ).read(now=now)
+        self.assertEqual(result.stale_ci_dispatches,1)
+        self.assertEqual([a.code for a in evaluate_operational_alerts(result)],["stalled_ci"])
+        self.assertEqual(requests.call_count,4)
+        self.assertIn("operation=eq.dispatch_ci",requests.call_args_list[1].args[0].full_url)
+        self.assertTrue(all(
+            call.args[0].get_method()=="GET" for call in requests.call_args_list
+        ))
+
+    def test_recent_or_prior_candidate_dispatch_is_not_stale(self):
+        now=datetime(2026,10,19,20,30,tzinfo=timezone.utc)
+        waiting=[{"id":"run-ci","status":"ci_pending","task_id":"task-ci",
+                  "candidate_commit":"a"*40,"created_at":"2026-10-19T19:10:00Z"}]
+        for sha,created in (("a"*40,"2026-10-19T20:15:00Z"),
+                            ("b"*40,"2026-10-19T19:30:00Z")):
+            with self.subTest(sha=sha,created=created), patch(
+                "urllib.request.urlopen",side_effect=[
+                    Response(waiting),
+                    Response([{"run_id":"run-ci","created_at":created,"metadata":{"head_sha":sha}}]),
+                    Response([]),Response([]),
+                ],
+            ):
+                health=SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x",
+                ).read(now=now)
+            self.assertEqual(health.stale_ci_dispatches,0)
+
+    def test_terminal_ci_and_old_work_never_trigger_dispatch_alert(self):
+        rows=[{"id":"historical","status":"completed",
+               "candidate_commit":"a"*40,"created_at":"2026-10-01T00:00:00Z"}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(rows),Response([]),Response([]),
+        ]) as requests:
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x",
+            ).read(now=datetime(2026,10,19,tzinfo=timezone.utc))
+        self.assertEqual(health.stale_ci_dispatches,0)
+        self.assertEqual(requests.call_count,3)
+
+    def test_malformed_ci_dispatch_timestamp_fails_closed(self):
+        rows=[{"id":"run-ci","status":"ci_pending","candidate_commit":"a"*40}]
+        receipt=[{"run_id":"run-ci","created_at":"not-a-time",
+                  "metadata":{"head_sha":"a"*40}}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(rows),Response(receipt),
+        ]):
+            with self.assertRaisesRegex(RuntimeError,"invalid timestamp"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x",
+                ).read(now=datetime(2026,10,19,tzinfo=timezone.utc))
+
+
 if __name__ == "__main__":
     unittest.main()

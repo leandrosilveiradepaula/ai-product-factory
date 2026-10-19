@@ -3,15 +3,16 @@ import unittest
 from unittest.mock import patch
 
 from ai_product_factory.github_loop import CIState
-from ai_product_factory.github_rest import GitHubRestAdapter
+from ai_product_factory.github_rest import GitHubRestAdapter, GitHubCapabilityError
 
 
 class FakeGitHubTransport:
     def __init__(self):
         self.calls = []
-        self.check_runs = [{"name": "test", "status": "completed", "conclusion": "success", "details_url": "https://example/check", "output": {}}]
+        self.check_runs = [{"name":"test","status":"completed","conclusion":"success","details_url":"https://example/check","head_sha":"commit1","app":{"slug":"github-actions"},"output":{}}]
         self.check_runs_forbidden = False
-        self.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"success","html_url":"https://example/actions/1"}]
+        self.actions_forbidden = False
+        self.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"success","head_sha":"commit1","head_branch":"codex/refactor","event":"pull_request","html_url":"https://example/actions/1"}]
         self.commit_statuses = [{"context":"Vercel","state":"success","target_url":"https://preview.example","description":"Deployment completed"}]
 
     def __call__(self, method, url, headers, body):
@@ -52,9 +53,11 @@ class FakeGitHubTransport:
         if "/check-runs" in url and method == "GET":
             if self.check_runs_forbidden:
                 return 403, {"message": "forbidden"}
-            return 200, {"check_runs": self.check_runs}
+            return 200, {"total_count": len(self.check_runs), "check_runs": self.check_runs}
         if "/actions/runs?" in url and method == "GET":
-            return 200, {"workflow_runs": self.workflow_runs}
+            if self.actions_forbidden:
+                return 403, {"message": "forbidden"}
+            return 200, {"total_count": len(self.workflow_runs), "workflow_runs": self.workflow_runs}
         if "/commits/commit1/status" in url and method == "GET":
             return 200, {"statuses": self.commit_statuses}
         if "/actions/workflows/validate.yml/dispatches" in url and method == "POST":
@@ -106,9 +109,9 @@ class GitHubRestAdapterTests(unittest.TestCase):
         paths=self.github.list_file_paths(ref="base123")
         self.assertEqual(paths,("AGENTS.md","src/app/debug/page.tsx"))
     def test_pending_and_failed_ci(self):
-        self.transport.check_runs = [{"status": "in_progress", "conclusion": None}]
+        self.transport.check_runs = [{"head_sha":"commit1","app":{"slug":"github-actions"},"status":"in_progress","conclusion":None}]
         self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
-        self.transport.check_runs = [{"status": "completed", "conclusion": "failure"}]
+        self.transport.check_runs = [{"head_sha":"commit1","app":{"slug":"github-actions"},"status":"completed","conclusion":"failure"}]
         self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
 
     def test_fine_grained_ci_fallback_uses_actions_and_commit_statuses(self):
@@ -128,7 +131,7 @@ class GitHubRestAdapterTests(unittest.TestCase):
 
     def test_fine_grained_ci_fallback_reports_workflow_failure(self):
         self.transport.check_runs_forbidden = True
-        self.transport.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"failure","html_url":"https://example/actions/1"}]
+        self.transport.workflow_runs = [{**self.transport.workflow_runs[0], "conclusion": "failure"}]
         self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
         failures=self.github.get_failed_checks(9)
         self.assertEqual(failures[0].name,"CRM validation")
@@ -139,6 +142,8 @@ class GitHubRestAdapterTests(unittest.TestCase):
             "status": "completed",
             "conclusion": "failure",
             "details_url": "https://example/check/1",
+            "head_sha": "commit1",
+            "app": {"slug": "github-actions"},
             "output": {"summary": "2 tests failed"},
         }]
         failures = self.github.get_failed_checks(9)
@@ -165,6 +170,69 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(method,"POST")
         self.assertIn("/actions/workflows/validate.yml/dispatches",url)
         self.assertEqual(payload,{"ref":"factory/change-set-abc"})
+
+    def test_vercel_only_green_check_is_never_treated_as_green_ci(self):
+        self.transport.check_runs = [{
+            "name": "Vercel Preview Comments", "status": "completed",
+            "conclusion": "success", "head_sha": "commit1",
+            "app": {"slug": "vercel"},
+        }]
+        self.transport.workflow_runs = []
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+        self.assertFalse(self.github.last_ci_evidence_present)
+
+    def test_github_job_green_while_workflow_pending_does_not_pass(self):
+        self.transport.workflow_runs[0]["status"] = "in_progress"
+        self.transport.workflow_runs[0]["conclusion"] = None
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+        self.assertTrue(self.github.last_ci_evidence_present)
+
+    def test_workflow_failure_blocks_even_if_partial_check_is_green(self):
+        self.transport.workflow_runs[0]["conclusion"] = "failure"
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+        failures = self.github.get_failed_checks(9)
+        self.assertTrue(any(f.name=="CRM validation" for f in failures))
+
+    def test_stale_branch_or_sha_run_does_not_authorize_ci(self):
+        for key, invalid in (("head_sha", "other"), ("head_branch", "main"),
+                             ("event", "schedule")):
+            with self.subTest(key=key):
+                old=self.transport.workflow_runs[0][key]
+                self.transport.workflow_runs[0][key]=invalid
+                self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+                self.assertFalse(self.github.last_ci_evidence_present)
+                self.transport.workflow_runs[0][key]=old
+
+    def test_actions_read_capability_is_mandatory_even_with_green_check(self):
+        self.transport.actions_forbidden = True
+        with self.assertRaisesRegex(GitHubCapabilityError,"Actions: read"):
+            self.github.get_ci_state(9)
+
+    def test_preview_status_is_distinct_from_trusted_ci_gate(self):
+        self.transport.commit_statuses = [{"context":"Vercel","state":"pending"}]
+        self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
+        # A Vercel status does not bypass the independent verified Preview gate.
+
+    def test_all_skipped_jobs_are_not_successful_validation(self):
+        self.transport.check_runs[0]["conclusion"]="skipped"
+        self.transport.workflow_runs[0]["conclusion"]="skipped"
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+
+    def test_missing_check_runs_with_real_workflow_does_not_trigger_dispatch(self):
+        self.transport.check_runs=[]
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+        self.assertTrue(self.github.last_ci_evidence_present)
+
+    def test_oversized_check_or_workflow_inventory_fails_closed(self):
+        original_checks = list(self.transport.check_runs)
+        original_runs = list(self.transport.workflow_runs)
+        self.transport.check_runs=original_checks*101
+        with self.assertRaisesRegex(RuntimeError,"100-run limit"):
+            self.github.get_ci_state(9)
+        self.transport.check_runs=original_checks
+        self.transport.workflow_runs=original_runs*101
+        with self.assertRaisesRegex(RuntimeError,"100-run limit"):
+            self.github.get_ci_state(9)
 
     def test_adapter_exposes_no_merge_operation(self):
         self.assertFalse(hasattr(self.github, "merge_pull_request"))

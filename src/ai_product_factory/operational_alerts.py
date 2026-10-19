@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-OPERATIONAL_ALERT_CODES=("dead_letter","expired_lease","failed_runs","unknown_cost","budget_exhausted","stale_preview","scheduler_gap","scheduler_pipeline")
+OPERATIONAL_ALERT_CODES=("dead_letter","expired_lease","failed_runs","unknown_cost","budget_exhausted","stale_preview","stalled_ci","scheduler_gap","scheduler_pipeline")
 
 @dataclass(frozen=True)
 class OperationalHealth:
@@ -13,6 +13,7 @@ class OperationalHealth:
  known_cost:Decimal=Decimal("0")
  budget:Decimal|None=None
  stale_preview_runs:int=0
+ stale_ci_dispatches:int=0
 
 @dataclass(frozen=True)
 class OperationalAlert:
@@ -23,6 +24,7 @@ class OperationalAlert:
 def evaluate_operational_alerts(health:OperationalHealth)->tuple[OperationalAlert,...]:
  alerts:list[OperationalAlert]=[]
  if health.stale_preview_runs>0:alerts.append(OperationalAlert("stale_preview","warning",f"{health.stale_preview_runs} preview-ready run(s) have waited over 24 hours"))
+ if health.stale_ci_dispatches>0:alerts.append(OperationalAlert("stalled_ci","warning",f"{health.stale_ci_dispatches} CI candidate(s) have no workflow progress 30 minutes after a recorded dispatch"))
  if health.dead_letter_runs>0:alerts.append(OperationalAlert("dead_letter","critical",f"{health.dead_letter_runs} run(s) exhausted retry attempts"))
  if health.expired_leases>0:alerts.append(OperationalAlert("expired_lease","warning",f"{health.expired_leases} worker lease(s) expired"))
  if health.failed_runs>0:alerts.append(OperationalAlert("failed_runs","warning",f"{health.failed_runs} run(s) are failed"))

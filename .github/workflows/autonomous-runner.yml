@@ -370,6 +370,8 @@ jobs:
       issues: read
       pull-requests: read
       checks: read
+      actions: read
+      statuses: read
     env:
       PYTHONPATH: src
       GITHUB_TOKEN: ${{ github.token }}

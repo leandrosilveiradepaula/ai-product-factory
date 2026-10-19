@@ -115,7 +115,7 @@ class SupabaseOperationalHealthReader:
         last_id: str | None = None
         for page in range(MAX_RUN_PAGES):
             batch=self._get(
-                "factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at,created_at"
+                "factory_runs?select=id,task_id,status,attempt_count,last_error,lease_expires_at,created_at,candidate_commit"
                 "&order=created_at.desc,id.desc"
                 f"&limit={RUN_PAGE_SIZE}&offset={page*RUN_PAGE_SIZE}"
             )
@@ -149,9 +149,51 @@ class SupabaseOperationalHealthReader:
                 return runs
         raise RuntimeError("run health inventory exceeded verified pagination boundary")
 
+    def _stale_ci_dispatches(self, runs: list[dict], now: datetime) -> int:
+        """Detect same-SHA CI dispatches stalled for >=30 min without retrying.
+
+        The alert sink already deduplicates GitHub Issues. This method is
+        read-only and never acts on terminal/historical candidates or another
+        project's tasks; no model or CI job is created here.
+        """
+        waiting={str(row["id"]):row for row in runs if row.get("status")=="ci_pending"}
+        if not waiting:
+            return 0
+        ids=sorted(waiting)
+        received={}
+        for start in range(0,len(ids),100):
+            batch=ids[start:start+100]
+            rows=self._get(
+                "factory_tool_usage?select=run_id,created_at,metadata"
+                "&operation=eq.dispatch_ci&run_id=in.("+",".join(batch)+")"
+                "&order=created_at.desc&limit=201"
+            )
+            if not isinstance(rows,list) or len(rows)>200 or any(not isinstance(r,dict) for r in rows):
+                raise RuntimeError("CI dispatch health inventory is not bounded")
+            for row in rows:
+                run_id=row.get("run_id")
+                if run_id not in waiting:
+                    raise RuntimeError("CI dispatch receipt belongs to unknown run")
+                if run_id in received:
+                    continue
+                meta=row.get("metadata")
+                if not isinstance(meta,dict) or not isinstance(meta.get("head_sha"),str):
+                    raise RuntimeError("CI dispatch health receipt is malformed")
+                if meta["head_sha"] != waiting[run_id].get("candidate_commit"):
+                    continue
+                try:
+                    when=_parse_time(row.get("created_at"))
+                except (TypeError,ValueError,AttributeError) as exc:
+                    raise RuntimeError("CI dispatch health receipt has invalid timestamp") from exc
+                if when is None or when.tzinfo is None or when.utcoffset() is None or when>now:
+                    raise RuntimeError("CI dispatch health receipt has invalid timestamp")
+                received[run_id]=when
+        return sum(now-since>=timedelta(minutes=30) for since in received.values())
+
     def read(self, *, budget: Decimal | None = None, now: datetime | None = None) -> OperationalHealth:
         now=now or datetime.now(timezone.utc)
         runs=self._all_runs()
+        stale_ci_dispatches=self._stale_ci_dispatches(runs,now)
         task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status")=="failed"})
         task_status_by_id={}
         for start in range(0,len(task_ids),FAILED_TASK_BATCH):
@@ -212,4 +254,4 @@ class SupabaseOperationalHealthReader:
                 if not cost.is_finite() or cost < 0:
                     raise RuntimeError("cost usage inventory contains invalid amount")
                 known += cost
-        return OperationalHealth(expired_leases=expired,dead_letter_runs=dead,failed_runs=failed,unknown_cost_events=unknown,known_cost=known,budget=budget,stale_preview_runs=stale_preview)
+        return OperationalHealth(expired_leases=expired,dead_letter_runs=dead,failed_runs=failed,unknown_cost_events=unknown,known_cost=known,budget=budget,stale_preview_runs=stale_preview,stale_ci_dispatches=stale_ci_dispatches)

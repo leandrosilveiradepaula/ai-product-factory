@@ -304,10 +304,10 @@ def run_change_set_integration_once(worker_id:str)->dict:
  checkpoint()
  github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
  result=ChangeSetIntegrator(github=github,store=_CheckpointedIntegrationStore(store,checkpoint)).integrate(item)
+ # CI followup is the single owner of the exact-SHA workflow_dispatch.
+ # GitHub-token-created PRs need it, but a second dispatch here would race
+ # with the durable followup and waste runner minutes after a late job error.
  ci_dispatched=False
- if result.pull_request and item.repository==os.getenv("GITHUB_REPOSITORY","").strip():
-  github.dispatch_workflow("validate.yml",ref=item.integration_branch)
-  ci_dispatched=True
  return {"claimed":True,"status":result.status,"change_set_id":result.change_set_id,"wave":result.wave,"candidate_commit":result.candidate_commit,"pr_number":result.pull_request.number if result.pull_request else None,"ci_dispatched":ci_dispatched}
 
 def run_health_once()->dict:
@@ -400,6 +400,14 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
   and item.repository==os.getenv("GITHUB_REPOSITORY","").strip()
   and getattr(github,"last_ci_evidence_present",None) is False
  ):
+  if queue.has_ci_dispatch_receipt(
+   run_id=item.run_id,pr_number=item.pr_number,
+   candidate_commit=item.candidate_commit,branch=item.branch,
+   workflow="validate.yml",
+  ):
+   return {"claimed":True,"status":"wait_dispatched_ci",
+    "run_id":item.run_id,"pr_number":item.pr_number,
+    "candidate_commit":item.candidate_commit}
   github.dispatch_workflow("validate.yml",ref=item.branch)
   store.record_tool_usage(
    run_id=item.run_id,tool_family="github",operation="dispatch_ci",

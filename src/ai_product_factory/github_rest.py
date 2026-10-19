@@ -81,6 +81,7 @@ class GitHubRestAdapter:
         self.transport = transport or _default_transport
         self.last_ci_evidence_source: str | None = None
         self.last_ci_evidence_present: bool | None = None
+        self.last_ci_workflow_runs: list[dict] = []
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -293,27 +294,57 @@ class GitHubRestAdapter:
 
 
     def _fine_grained_ci_evidence(self, head_sha: str) -> tuple[list[dict], list[dict]]:
+        """Require authoritative Actions evidence, even if a Vercel check passed.
+
+        One passing check run is NOT the completion of a multi-job workflow.
+        Any missing Actions:read permission must fail closed, never fall back
+        to external deployment checks or a favorable combined commit status.
+        """
         try:
             workflow_payload = self._call(
-                "GET",
-                f"/repos/{self.repository}/actions/runs",
+                "GET", f"/repos/{self.repository}/actions/runs",
                 query={"head_sha": head_sha, "per_page": "100"},
             )
             status_payload = self._call(
-                "GET",
-                f"/repos/{self.repository}/commits/{head_sha}/status",
+                "GET", f"/repos/{self.repository}/commits/{head_sha}/status",
             )
         except GitHubRequestError as exc:
             if exc.status in {403, 404}:
                 raise GitHubCapabilityError(
                     "ci_evidence",
-                    "GitHub CI evidence is unavailable: check-runs are not accessible and the "
-                    "fine-grained fallback requires Actions: read plus Commit statuses: read",
+                    "GitHub CI evidence requires Actions: read and Commit statuses: read "
+                    "for the exact candidate SHA",
                 ) from exc
             raise
-        workflows = workflow_payload.get("workflow_runs", []) if isinstance(workflow_payload, dict) else []
-        statuses = status_payload.get("statuses", []) if isinstance(status_payload, dict) else []
-        return list(workflows), list(statuses)
+        if not isinstance(workflow_payload, dict) or not isinstance(status_payload, dict):
+            raise RuntimeError("GitHub CI inventory must be an object")
+        workflows = workflow_payload.get("workflow_runs")
+        statuses = status_payload.get("statuses")
+        count = workflow_payload.get("total_count", len(workflows) if isinstance(workflows,list) else None)
+        if (
+            not isinstance(workflows,list)
+            or not isinstance(statuses,list)
+            or len(workflows)>100 or isinstance(count,bool)
+            or not isinstance(count,int) or count>100 or count<len(workflows)
+            or any(not isinstance(row,dict) for row in workflows+statuses)
+        ):
+            raise RuntimeError("GitHub CI inventory is malformed or exceeds verified 100-run limit")
+        return workflows, statuses
+
+    @staticmethod
+    def _trusted_workflows(workflows: list[dict], sha: str, branch: str | None) -> list[dict]:
+        """Only candidate-bound PR/push/manual CI runs from GitHub Actions."""
+        trusted = []
+        for run in workflows:
+            if (run.get("head_sha") != sha
+                or run.get("event") not in {"pull_request", "push", "workflow_dispatch"}
+                or (branch and run.get("head_branch") != branch)):
+                continue
+            if (not isinstance(run.get("status"),str)
+                or not isinstance(run.get("name"),str) or not run["name"].strip()):
+                raise RuntimeError("trusted GitHub Actions run has invalid identity")
+            trusted.append(run)
+        return trusted
 
     @staticmethod
     def _ci_state_from_fine_grained_evidence(workflows: list[dict], statuses: list[dict]) -> CIState:
@@ -324,6 +355,9 @@ class GitHubRestAdapter:
             return CIState.PENDING
         if any(str(run.get("conclusion") or "") not in passing for run in workflows):
             return CIState.FAILURE
+        # All workflows being skipped/neutral is NOT evidence that tests ran.
+        if not any(run.get("conclusion") == "success" for run in workflows):
+            return CIState.PENDING
         status_states = {str(item.get("state") or "") for item in statuses}
         if status_states & {"error", "failure"}:
             return CIState.FAILURE
@@ -331,42 +365,62 @@ class GitHubRestAdapter:
             return CIState.PENDING
         return CIState.SUCCESS
 
-    def _check_runs_or_fine_grained_evidence(self, head_sha: str) -> tuple[str, list[dict], list[dict]]:
+    def _check_runs_or_fine_grained_evidence(
+        self, head_sha: str, head_branch: str | None = None
+    ) -> tuple[str, list[dict], list[dict]]:
+        workflows, statuses = self._fine_grained_ci_evidence(head_sha)
+        trusted = self._trusted_workflows(workflows, head_sha, head_branch)
+        self.last_ci_workflow_runs = trusted
+        # Vercel and other external checks never suppress a needed CI dispatch.
+        self.last_ci_evidence_present = bool(trusted)
         try:
-            checks = self._call(
-                "GET",
-                f"/repos/{self.repository}/commits/{head_sha}/check-runs",
+            payload = self._call(
+                "GET", f"/repos/{self.repository}/commits/{head_sha}/check-runs",
                 query={"per_page": "100"},
-            ).get("check_runs", [])
+            )
         except GitHubRequestError as exc:
             if exc.status != 403:
                 raise
-            workflows, statuses = self._fine_grained_ci_evidence(head_sha)
             self.last_ci_evidence_source = "github_actions_statuses"
-            # Commit statuses (for example Vercel) are not sufficient CI evidence.
-            # The same-repo recovery only suppresses dispatch when an Actions workflow exists.
-            self.last_ci_evidence_present = bool(workflows)
-            return self.last_ci_evidence_source, workflows, statuses
+            return self.last_ci_evidence_source, trusted, statuses
+        checks = payload.get("check_runs") if isinstance(payload,dict) else None
+        count = payload.get("total_count",len(checks) if isinstance(checks,list) else None) if isinstance(payload,dict) else None
+        if (not isinstance(checks,list) or len(checks)>100
+            or isinstance(count,bool) or not isinstance(count,int)
+            or count>100 or count<len(checks)
+            or any(not isinstance(row,dict) for row in checks)):
+            raise RuntimeError("GitHub check-run inventory is malformed or exceeds verified 100-run limit")
+        github_actions_checks = [
+            check for check in checks
+            if isinstance(check.get("app"),dict)
+               and check["app"].get("slug") == "github-actions"
+               and check.get("head_sha") == head_sha
+        ]
         self.last_ci_evidence_source = "github_checks"
-        self.last_ci_evidence_present = bool(checks)
-        return self.last_ci_evidence_source, list(checks), []
+        return self.last_ci_evidence_source, github_actions_checks, statuses
 
     def get_ci_state(self, pr_number: int) -> CIState:
         pr = self.get_pull_request(pr_number)
-        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha)
+        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha,pr.head_ref)
+        # Deployment/Preview commit statuses are not CI jobs. Keep these gates separate.
+        workflow_state = self._ci_state_from_fine_grained_evidence(self.last_ci_workflow_runs, [])
+        if workflow_state != CIState.SUCCESS:
+            return workflow_state
         if source == "github_actions_statuses":
-            return self._ci_state_from_fine_grained_evidence(primary, statuses)
+            return workflow_state
         checks = primary
         if not checks or any(check.get("status") != "completed" for check in checks):
             return CIState.PENDING
         passing = {"success", "neutral", "skipped"}
         if any(check.get("conclusion") not in passing for check in checks):
             return CIState.FAILURE
+        if not any(check.get("conclusion") == "success" for check in checks):
+            return CIState.PENDING
         return CIState.SUCCESS
 
     def get_failed_checks(self, pr_number: int) -> tuple[GitHubCheckFailure, ...]:
         pr = self.get_pull_request(pr_number)
-        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha)
+        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha,pr.head_ref)
         passing = {"success", "neutral", "skipped"}
         failures = []
         if source == "github_actions_statuses":
@@ -407,6 +461,17 @@ class GitHubRestAdapter:
                     summary=output.get("summary") or output.get("title"),
                 )
             )
+        seen = {(failure.name, failure.conclusion) for failure in failures}
+        for run in self.last_ci_workflow_runs:
+            conclusion = str(run.get("conclusion") or "")
+            if run.get("status") == "completed" and conclusion not in passing:
+                name = str(run.get("name") or "github-actions")
+                if (name, conclusion) not in seen:
+                    failures.append(GitHubCheckFailure(
+                        name=name, conclusion=conclusion or "failure",
+                        details_url=run.get("html_url"),
+                        summary="GitHub Actions workflow concluded " + conclusion,
+                    ))
         return tuple(failures)
 
     def dispatch_workflow(self, workflow: str, *, ref: str) -> None:
