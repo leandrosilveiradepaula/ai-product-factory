@@ -123,7 +123,9 @@ declare w public.factory_project_control_wakes%rowtype;
  v_state text;v_generation bigint;v_active boolean;
  v_status text;v_observed integer:=0;v_suppressed integer:=0;
 begin
- if p_owner is null or p_owner !~ '^[a-zA-Z0-9_.:-]{3,128}   or p_limit is null or p_limit not between 1 and 32
+ if p_owner is null or length(p_owner) not between 3 and 128
+   or p_owner ~ '[^a-zA-Z0-9_.:-]'
+   or p_limit is null or p_limit not between 1 and 32
  then raise exception 'invalid runner observer';end if;
  for w in
    select * from public.factory_project_control_wakes
