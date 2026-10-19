@@ -9,6 +9,12 @@ class Tests(unittest.TestCase):
  def test_budget_exhaustion_is_critical(self):
   alerts=evaluate_operational_alerts(OperationalHealth(known_cost=Decimal("5"),budget=Decimal("5")))
   self.assertEqual(alerts[0].code,"budget_exhausted");self.assertEqual(alerts[0].severity,"critical")
+ def test_missing_ci_after_one_dispatch_alerts_once(self):
+  from ai_product_factory.operational_alerts import OPERATIONAL_ALERT_CODES
+  alerts=evaluate_operational_alerts(OperationalHealth(stale_ci_dispatches=2))
+  self.assertEqual([(a.code,a.severity) for a in alerts],[("stalled_ci","warning")])
+  self.assertIn("stalled_ci",OPERATIONAL_ALERT_CODES)
+  self.assertIn("2 CI candidate(s)",alerts[0].message)
  def test_stale_preview_warning(self):
   alerts=evaluate_operational_alerts(OperationalHealth(stale_preview_runs=3))
   self.assertEqual([(a.code,a.severity) for a in alerts],[("stale_preview","warning")])

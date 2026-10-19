@@ -90,4 +90,55 @@ class Tests(unittest.TestCase):
             q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
             with self.assertRaises(RuntimeError): q.next_pending()
 
+    def test_prior_ci_dispatch_is_bound_to_run_sha_branch_and_workflow(self):
+        q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+        receipt={"metadata":{"pr":9,"head_sha":"a"*40,"workflow":"validate.yml","ref":"factory/cs-a"}}
+        with patch.object(q,"_get",return_value=[receipt]) as get:
+            self.assertTrue(q.has_ci_dispatch_receipt(
+                run_id="run-1",pr_number=9,candidate_commit="a"*40,
+                branch="factory/cs-a",workflow="validate.yml",
+            ))
+        self.assertIn("operation=eq.dispatch_ci",get.call_args.args[0])
+        self.assertIn("run_id=eq.run-1",get.call_args.args[0])
+        with patch.object(q,"_get",return_value=[receipt]):
+            self.assertFalse(q.has_ci_dispatch_receipt(
+                run_id="run-1",pr_number=9,candidate_commit="b"*40,
+                branch="factory/cs-a",workflow="validate.yml",
+            ))
+
+    def test_same_sha_receipt_identity_drift_is_blocked(self):
+        q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+        for mutation in ({"pr":10},{"ref":"factory/other"},{"workflow":"other.yml"}):
+            receipt={"metadata":{"pr":9,"head_sha":"a"*40,"workflow":"validate.yml",
+                                 "ref":"factory/cs-a",**mutation}}
+            with self.subTest(mutation=mutation),patch.object(q,"_get",return_value=[receipt]):
+                with self.assertRaisesRegex(RuntimeError,"identity drift"):
+                    q.has_ci_dispatch_receipt(
+                        run_id="run-1",pr_number=9,candidate_commit="a"*40,
+                        branch="factory/cs-a",workflow="validate.yml",
+                    )
+
+    def test_malformed_or_unbounded_receipts_are_rejected(self):
+        q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+        for invalid in ([{}],["malformed"],[{"metadata":[]}],[{"metadata":{}}]*11):
+            with self.subTest(invalid=str(invalid)[:50]),patch.object(q,"_get",return_value=invalid):
+                with self.assertRaises(RuntimeError):
+                    q.has_ci_dispatch_receipt(
+                        run_id="run-1",pr_number=9,candidate_commit="a"*40,
+                        branch="factory/cs-a",workflow="validate.yml",
+                    )
+
+    def test_invalid_branch_or_sha_is_rejected_before_io(self):
+        q=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+        for branch,sha in (("main","a"*40),("bad branch","a"*40),
+                           ("factory/cs","short"),("factory/cs","A"*40)):
+            with self.subTest(branch=branch,sha=sha),patch.object(q,"_get") as get:
+                with self.assertRaises(ValueError):
+                    q.has_ci_dispatch_receipt(
+                        run_id="run-1",pr_number=9,candidate_commit=sha,
+                        branch=branch,workflow="validate.yml",
+                    )
+                get.assert_not_called()
+
+
 if __name__=="__main__": unittest.main()

@@ -405,7 +405,7 @@ class RuntimeCliTests(unittest.TestCase):
         store.claim_integration.assert_not_called()
         github.assert_not_called()
 
-    def test_same_repo_change_set_integration_dispatches_validate_workflow(self):
+    def test_same_repo_change_set_integration_defers_ci_to_durable_followup(self):
         item=SimpleNamespace(repository="owner/factory",project_key="factory",integration_branch="factory/change-set-cs")
         store=MagicMock();store.claim_integration.return_value=item;store.assert_project_running=MagicMock()
         store.assert_integration_epoch=MagicMock()
@@ -417,8 +417,9 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
             integrator.return_value.integrate.return_value=result
             out=run_change_set_integration_once("worker")
-        self.assertTrue(out["ci_dispatched"])
-        github.dispatch_workflow.assert_called_once_with("validate.yml",ref="factory/change-set-cs")
+        self.assertFalse(out["ci_dispatched"])
+        self.assertEqual(out["status"],"ci_pending")
+        github.dispatch_workflow.assert_not_called()
 
     def test_cross_repo_change_set_integration_does_not_dispatch_factory_workflow(self):
         item=SimpleNamespace(repository="owner/crm",project_key="crm",integration_branch="factory/change-set-cs")
@@ -457,7 +458,11 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseChangeSetStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.runtime_cli.ChangeSetIntegrator") as integrator:
-            integrator.return_value.integrate.return_value=result
+            integrator.return_value.integrate.side_effect=(
+                lambda _: integrator.call_args.kwargs["github"].commit_files(
+                    "factory/cs",{"test.py":"x"},message="unsafe",
+                )
+            )
             with self.assertRaises(PermissionError):
                 run_change_set_integration_once("worker")
         github.dispatch_workflow.assert_not_called()
@@ -477,6 +482,7 @@ class RuntimeCliTests(unittest.TestCase):
     def test_ci_followup_dispatches_missing_same_repo_ci_once(self):
         item=SimpleNamespace(repository="owner/factory",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/change-set-x",run_id="r",human_gate_required=False)
         queue=MagicMock();queue.next_pending.return_value=item
+        queue.has_ci_dispatch_receipt.return_value=False
         github=MagicMock();github.last_ci_evidence_present=False
         github.get_issue.return_value=SimpleNamespace(number=7)
         github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
@@ -493,9 +499,66 @@ class RuntimeCliTests(unittest.TestCase):
         store.record_tool_usage.assert_called_once()
         store.record_audit_event.assert_called_once()
 
+    def test_ci_followup_never_dispatches_same_sha_twice_after_receipt(self):
+        item=SimpleNamespace(
+            repository="owner/factory",issue_number=7,pr_number=9,
+            candidate_commit="a"*40,branch="factory/change-set-x",
+            run_id="r",human_gate_required=False,
+        )
+        queue=MagicMock();queue.next_pending.return_value=item
+        queue.has_ci_dispatch_receipt.return_value=True
+        github=MagicMock();github.last_ci_evidence_present=False
+        github.get_issue.return_value=SimpleNamespace(number=7)
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="a"*40)
+        store=MagicMock()
+        loop=MagicMock()
+        loop.evaluate.return_value=SimpleNamespace(
+            action=SimpleNamespace(value="wait_ci"),
+            ci_state=SimpleNamespace(value="pending"),
+        )
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_ci_once()
+        self.assertEqual(out["status"],"wait_dispatched_ci")
+        queue.has_ci_dispatch_receipt.assert_called_once_with(
+            run_id="r",pr_number=9,candidate_commit="a"*40,
+            branch="factory/change-set-x",workflow="validate.yml",
+        )
+        github.dispatch_workflow.assert_not_called()
+        store.record_tool_usage.assert_not_called()
+
+    def test_ci_followup_in_progress_workflow_is_not_dispatched_again(self):
+        item=SimpleNamespace(
+            repository="owner/factory",issue_number=7,pr_number=9,
+            candidate_commit="b"*40,branch="factory/change-set-x",
+            run_id="r",human_gate_required=False,
+        )
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.last_ci_evidence_present=True
+        github.get_issue.return_value=SimpleNamespace(number=7)
+        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="b"*40)
+        loop=MagicMock()
+        loop.evaluate.return_value=SimpleNamespace(
+            action=SimpleNamespace(value="wait_ci"),
+            ci_state=SimpleNamespace(value="pending"),
+        )
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
+             patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore"), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop",return_value=loop):
+            out=run_ci_once()
+        self.assertEqual(out["status"],"wait_ci")
+        queue.has_ci_dispatch_receipt.assert_not_called()
+        github.dispatch_workflow.assert_not_called()
+
     def test_ci_followup_does_not_dispatch_factory_workflow_cross_repo(self):
         item=SimpleNamespace(repository="owner/crm",issue_number=7,pr_number=9,candidate_commit="abc",branch="factory/change-set-x",run_id="r",human_gate_required=False)
         queue=MagicMock();queue.next_pending.return_value=item
+        queue.has_ci_dispatch_receipt.return_value=False
         github=MagicMock();github.last_ci_evidence_present=False
         github.get_issue.return_value=SimpleNamespace(number=7)
         github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")

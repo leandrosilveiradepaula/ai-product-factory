@@ -1129,3 +1129,14 @@ por modelo nem alegar que a Factory completou automaticamente os
 Change Sets entregues por intervenções externas. Não marcar PR #56
 como mergeável/publicada por um mero encerramento de registros.
 
+## 2026-10-19 — CI íntegra e execução única do workflow por candidato
+
+Contexto: após a limpeza auditada do backlog, a Factory permaneceu sem filas executáveis. O incidente real do piloto CRM demonstrou que um job pode gravar sua Work Unit e falhar depois, e que intervenção manual não prova que a Factory concluiu sua própria esteira. A validação de CI precisa depender de GitHub Actions no SHA exato, não apenas de um check verde de Vercel.
+
+1. Fonte e identidade: exigir workflow GitHub Actions vinculado ao head SHA e à head branch da PR, acionado por push, pull_request ou workflow_dispatch. Run parcialmente executado ou falho bloqueia avanço; run concluído com apenas skipped/neutral não comprova testes. Quando Check Runs estiver acessível, exigir também ao menos um check de github-actions com sucesso e o mesmo SHA. Inventários incompletos, mais de 100 registros, permissões Actions/statuses ausentes ou respostas malformadas bloqueiam o gate. Vercel e Preview não são CI.
+2. CI única: a integração cria Issue/PR e persiste ci_pending, mas não dispara workflow. Somente o ci-followup tem autorização para disparar validate.yml no mesmo repositório. Um workflow GitHub Actions já presente no mesmo SHA impede novo dispatch.
+3. Deduplicação durável: o registro factory_tool_usage com operation=dispatch_ci e identidade (run, PR, SHA, branch, workflow) impede disparos repetidos a cada wake se GitHub ainda não mostrar o novo workflow. SHA diferente pode receber novo dispatch; identidade conflitante, lista truncada e formatos inválidos falham fechados. Em outros repositórios, nunca usar validate.yml da Factory como substituto.
+4. Operação: depois de 30 minutos de um dispatch registrado, se o run permanecer ci_pending sem avançar, o health reader somente lê o ledger e produz stalled_ci. O adapter de alerts emite um issue deduplicado em futuro ciclo de avaliação. Este alerta nunca relança CI, modelo, Codex, Preview ou merge.
+5. Evidências: regressões em test_github_rest, test_runtime_cli, test_ci_followup_queue, test_supabase_operational_health e test_operational_alerts cobrem SHA/branch, workflows parciais/falhos, Vercel isolado, validação de permissões, deduplicação, alerta e não execução de modelos.
+
+Esta mudança não contém migrations, alterações de RLS, Console nem auto-merge. Não altera o teto financeiro de US$10 ou reserva US$0,50. Aplica-se Preview N/A para a própria Factory por não tocar em apps/console/**; não inventar deployment. Gate de merge de produção permanece humano. Mesmo após CI verde, readiness global do produto só pode ser comprovada por um novo fluxo real até o gate de release.

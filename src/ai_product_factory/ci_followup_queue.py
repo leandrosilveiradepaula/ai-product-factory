@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -42,6 +43,45 @@ class SupabaseCIFollowupQueue:
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
+
+    def has_ci_dispatch_receipt(
+        self, *, run_id: str, pr_number: int, candidate_commit: str,
+        branch: str, workflow: str,
+    ) -> bool:
+        """Deduplicate exact-SHA GitHub Actions dispatches across scheduler wakes.
+
+        A successful dispatch is durably recorded in factory_tool_usage.
+        Missing GitHub checks after dispatch should not cause repeated hourly
+        workflow_dispatch attempts or unrelated paid work.
+        """
+        if (not isinstance(run_id,str) or not run_id.strip()
+            or not isinstance(pr_number,int) or isinstance(pr_number,bool)
+            or pr_number < 1 or not re.fullmatch(r"[0-9a-f]{40}",candidate_commit)
+            or not isinstance(branch,str) or not branch.strip()
+            or branch in ("main","master") or branch.startswith("/")
+            or ".." in branch or "//" in branch or "\\" in branch
+            or any(ch.isspace() or ord(ch)<32 or ord(ch)==127 for ch in branch)
+            or workflow != "validate.yml"):
+            raise ValueError("invalid exact CI dispatch receipt identity")
+        rows = self._get(
+            "factory_tool_usage?select=metadata"
+            "&run_id=eq." + quote(run_id,safe="")
+            + "&operation=eq.dispatch_ci&order=created_at.desc&limit=11"
+        )
+        if not isinstance(rows,list) or len(rows)>10:
+            raise RuntimeError("CI dispatch receipt history exceeds safe boundary")
+        matched=False
+        for row in rows:
+            if not isinstance(row,dict) or not isinstance(row.get("metadata"),dict):
+                raise RuntimeError("malformed durable CI dispatch receipt")
+            data=row["metadata"]
+            if data.get("head_sha") != candidate_commit:
+                continue
+            if (data.get("pr") != pr_number or data.get("ref") != branch
+                or data.get("workflow") != workflow):
+                raise RuntimeError("same-SHA CI dispatch identity drift")
+            matched=True
+        return matched
 
     def next_pending(self, *, exclude_run_ids: tuple[str, ...] = (), allow_unreconciled_receipt: bool = False) -> CIFollowupItem | None:
         # Read-only bounded FIFO lookahead. A pending external CI/human gate
