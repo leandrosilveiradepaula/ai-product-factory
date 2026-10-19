@@ -254,17 +254,60 @@ class JourneyReaderContractTests(unittest.TestCase):
             self.assertEqual(request.get_method(),"GET")
             self.assertNotIn("sb_secret",request.full_url)
 
-    def test_workflow_is_opt_in_no_model_or_auto_merge(self):
-        workflow=(ROOT/".github/workflows/autonomy-journey-readonly.yml").read_text()
-        self.assertIn("workflow_dispatch:",workflow)
-        self.assertNotIn("\n  schedule:",workflow)
+    def test_read_only_mode_uses_trusted_oidc_runner_without_worker_wake(self):
+        import re
+        workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+        broker=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertFalse((ROOT/".github/workflows/autonomy-journey-readonly.yml").exists())
+        self.assertIn("run_journey_audit:",workflow)
+        self.assertIn("journey-readonly:",workflow)
+        self.assertIn("inputs.run_journey_audit != true",workflow)
+        self.assertIn(
+            "if: \${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}",
+            workflow,
+        )
         self.assertIn("control-plane-oidc",workflow)
         self.assertIn("persist-credentials: false",workflow)
         self.assertIn("audit_autonomy_journey.py",workflow)
         self.assertIn("upload-artifact@",workflow)
-        self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED",workflow)
-        self.assertNotIn("merge_pull_request",workflow)
-        self.assertNotIn("--mode product",workflow)
+        self.assertNotIn("autonomy-journey-readonly.yml",broker)
+        self.assertIn(".github/workflows/autonomous-runner.yml@refs/heads/main",broker)
+        audit=workflow.split("\n  journey-readonly:\n",1)[1]
+        for forbidden in (
+            "FACTORY_PRIMARY_MODEL_ENABLED","--mode product","--mode dispatch",
+            "--mode direct","--mode change-set-integration","--mode preview",
+            "merge_pull_request",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden,audit)
+        # Every pre-existing worker or alert transitively needs the probe,
+        # which is explicitly skipped for read-only audit dispatches.
+        pieces=re.findall(
+            r"(?ms)^  ([a-z][a-z0-9-]+):\n(.*?)(?=^  [a-z][a-z0-9-]+:\n|\Z)",
+            workflow.split("\njobs:\n",1)[1],
+        )
+        jobs=dict(pieces)
+        self.assertIn("schedule-probe",jobs)
+        self.assertIn("journey-readonly",jobs)
+        for name,body in jobs.items():
+            if name in {"schedule-probe","journey-readonly"}:
+                continue
+            seen=set()
+            def depends_on_probe(current):
+                if current=="schedule-probe":
+                    return True
+                if current in seen:
+                    return False
+                seen.add(current)
+                match=re.search(r"(?m)^    needs:\s*(.*)$",jobs[current])
+                self.assertIsNotNone(match,f"{current} has no needs")
+                dependencies=match.group(1).strip().strip("[]").split(",")
+                return any(
+                    d.strip() in jobs and depends_on_probe(d.strip())
+                    for d in dependencies
+                )
+            with self.subTest(job=name):
+                self.assertTrue(depends_on_probe(name),name)
 
 
 

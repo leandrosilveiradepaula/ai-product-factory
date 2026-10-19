@@ -46,10 +46,13 @@ inventario de eventos acumulados de projetos antigos.
    nao existe autostart.
 2. Clicar em Iniciar (acao humana), anotar project_key, data UTC e
    opcionalmente o bootstrap run UUID.
-3. Executar manualmente em GitHub Actions:
-   Fresh Factory autonomy journey evidence (read-only).
-   Informar project_key, since_utc, opcional run_id, e require_at_least,
-   por exemplo awaiting_release.
+3. Executar manualmente em GitHub Actions o workflow EXISTENTE
+   Factory autonomous runner, sempre na branch main, com:
+   run_journey_audit=true, project_key, journey_since_utc, opcional
+   journey_run_id, journey_stage (por exemplo awaiting_release).
+   Quando esse modo e selecionado, schedule-probe e todos os demais
+   jobs de worker/CI/modelo/Preview/alerta ficam SKIPPED; somente
+   journey-readonly consulta OIDC, GitHub e Control Plane por GET.
 4. Ler o JSON do run e o artifact de sete dias. Um gate sem evidencia
    causa falha do teste, mas nao dispara nenhum worker ou chamada paga.
 
@@ -111,4 +114,22 @@ A consulta read-only ao Control Plane comprovou estes formatos operacionais:
 
 Apenas leitura de eventos existentes foi utilizada para conferir estes
 formatos. Ainda NAO ocorreu o E2E novo, pois nao houve novo Start explicito.
+
+## OIDC e GitHub App: nao ampliar allowlist por causa de auditoria
+
+O broker em supabase/functions/factory-runtime-control-plane/index.ts autoriza
+somente workflow_ref especificos de main, tanto para proxy PostgREST quanto
+para o token efemero da GitHub App. Um workflow novo e independente receberia
+HTTP 403 (github_oidc_proxy_workflow_not_allowed /
+github_app_token_workflow_not_allowed). Por isso, NAO foi ampliada a lista
+de workflows confiaveis, nem foram introduzidas chaves secretas adicionais.
+
+A auditoria opt-in roda como job independente dentro do JA CONFIAVEL
+autonomous-runner.yml, com permissao id-token:write e GitHub GET. O proprio
+schedule-probe tem condicao explicita para ficar SKIPPED quando
+run_journey_audit=true; todos os jobs de operacao dependem desse probe.
+Nenhuma etapa de worker, alteracao no banco, dispatch ou modelo pode rodar
+nessa invocacao. GitHub App segue o caminho oficial de token efemero
+(nao confundir GITHUB_TOKEN do proprio repo com permissao cross-repo).
+O caminho do auditor nao recebe nem persiste private keys, tokens ou prompts.
 

@@ -1159,3 +1159,18 @@ create_pr, e cada Work Unit deve ser ancestral do commit candidato.
 Nenhuma evidencia posterior permite pular etapas ou rotular uma jornada
 como completa. Nao executar Start automatico, modelo pago nem SQL de escrita.
 
+## 2026-10-19 — Auditor de jornada via workflow OIDC JA confiavel
+
+Antes da liberacao da PR #984, a revisao de identidade descobriu que o
+workflow independente proposto nao pertencia aos workflow_ref permitidos
+pelo broker do Control Plane; GETs e GitHub App token retornariam 403.
+Sem ampliar nenhuma permissão OIDC/App, o audit agora usa
+autonomous-runner.yml (workflow_dispatch, run_journey_audit=true) no main.
+O schedule-probe e TODOS os seus descendentes ficam skipped nesse modo;
+o unico job executado e journey-readonly, que usa broker e GitHub App ja
+autorizados, com GETs exatos e artifact JSON sanitizado. A antiga Action
+independente foi eliminada. Testes regressivos garantem encadeamento dos
+jobs e ausencias de modelos, workers, deploy, merge e migrations no modo
+auditoria. Para acionar apos Start humano: usar projeto, cutoff UTC, run
+UUID e stage minimo; sem Start o retorno e not_started (nao E2E aprovado).
+
