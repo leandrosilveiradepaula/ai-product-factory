@@ -265,6 +265,9 @@ class GlobalReadinessTests(unittest.TestCase):
                 status=mod.main(["--event-path",str(source),"--output",str(out)])
             self.assertEqual(status,2)
             self.assertFalse(json.loads(out.read_text())["product_ready"])
+            self.assertEqual(json.loads(out.read_text())["reason_code"],
+                             "control_plane_oidc_unavailable")
+            self.assertEqual(json.loads(out.read_text())["error_class"],"RuntimeError")
             self.assertNotIn("secret value",out.read_text())
             self.assertNotIn("secret value",stdout.getvalue())
 
