@@ -1,3 +1,24 @@
+## 20/10/2026 — Correção de corrida CI → auditoria visual (candidato #713)
+
+- PR #1005 mergeada em `e6c045cc20ce47040bdbe9d268fa2f1459bb221c`.
+  `validate` #39467413982 SUCCESS, Console #39467413966 SUCCESS,
+  Vercel produção `dpl_73fQ8bsAfGUaRXpyB8MqhvgJd7qv` READY.
+  Workflow de evidência autenticada #39467414056 SUCCESS, artifact
+  #12284659523 criptografado e limpeza de conta efêmera concluída.
+- Auditor global OIDC #39467480783 SUCCESS, `product_ready=false`,
+  6 domínios não avaliados, US$ 0, 0 writes. Começou antes de o navegador
+  terminar: a ausência de recibo visual naquele momento é uma corrida
+  normal, não prova de que a UI não foi testada.
+- Próximo bloco candidato: observer **somente leitura** executado novamente
+  quando o browser terminar (sucesso ou falha), usando o **workflow
+  confiável existente**, sem ampliar allowlists, papéis, RLS ou custo.
+  Exigir GitHub main/CI/visual/capture/artifact/Vercel status no mesmo SHA,
+  reportar evidências parciais e remaining gaps sem fabricar certificação.
+  CI e primeiro run real pós-merge obrigatórios antes de afirmar o
+  segundo evento operacional.
+
+---
+
 ## 20/10/2026 — Console operador: UX e prontidão global (PR candidata)
 
 - A PR #1003 foi mergeada em `393d91fe4dbd4542e0e73b5a10827bc6bd21bd45`. `validate` main #39462503402 SUCCESS; workflow OIDC confiável #39462579687 executou somente `global-readiness-post-ci` com 20 workers skipped, `status=observed, product_ready=false` e seis domínios sem avaliação, US$ 0 e writes 0. Artefato #12284110616.

@@ -9,9 +9,13 @@ The Control Plane release may legitimately say
 
 The `global-readiness-post-ci` job within the existing trusted
 `.github/workflows/autonomous-runner.yml` is a strictly read-only,
-model-free observer triggered by a successful `validate`
-workflow on a **push to main**. It is not run on PRs, schedules, comments,
-dispatches, or failed CI. It uses the short-lived Control Plane OIDC credential
+model-free observer triggered by either successful `validate` on a **push to
+main** or the completion (success **or failure**) of the **authenticated Console
+visual evidence** workflow on that same main SHA. It is not run on PRs,
+schedules, comments, dispatches, or unrelated workers. The first report after
+CI can legitimately say `visual=pending`; the second observation after
+browser completion reconciles the actual evidence rather than looping over
+historical gaps. It uses the short-lived Control Plane OIDC credential
 and same-repository GitHub read token. No Vercel deployment or Preview is
 requested.
 
@@ -101,3 +105,46 @@ still-running check-runs. Unexpected failures produce a fixed
 `reason_code` and `error_class` only, with no error messages or tokens.
 A CI pass before the merge does **not** prove that the new OIDC job worked;
 check the exact post-merge job and JSON receipt.
+
+## Live post-visual reconciliation (20/10/2026)
+
+A successful `validate` push and the `Authenticated Console visual evidence`
+push run happen concurrently, so the early global receipt could not
+possibly prove the later browser job. The trusted `autonomous-runner.yml`
+now accepts a second **workflow_run** observation signal from the already
+existing visual workflow, **without adding a scheduler wake**, service-role
+credential, OIDC allowlist entry or new workflow identity. It runs only the
+standalone `global-readiness-post-ci` job. The existing `schedule-probe`
+accepts an upstream `workflow_run` only for `event=schedule`; all
+workers remain skipped.
+
+On visual completion (success or failure), the observer validates:
+1. GitHub main HEAD at the exact visual SHA; no late historical audits.
+2. The one successful `validate` push workflow for that SHA, with actual
+   `test` and `factory-acceptance` jobs. The visual run is never accepted as CI.
+3. The trusted `.github/workflows/authenticated-visual-evidence.yml`
+   `push` run (run_attempt=1) and its `capture` job; a successful run
+   must also have a nonempty unexpired encrypted artifact, owned by the
+   same run, SHA and main branch. No secret, artifact body or encryption
+   key is read.
+4. The `Vercel` commit status at exactly the audited SHA, tagged strictly
+   `provider_reported_ready`, not as independent proof of live health.
+
+These results appear as `current_sha_operational_evidence` within the
+seven-day read-only JSON receipt. Observed facts improve the specificity
+of the six-domain handoff: known CI and visual/a11y testing are not
+requested again as if no check had run; remaining independent security,
+cross-project critical E2E, recovery/rollback and product UX coverage
+still require attestation.
+
+`product_ready` **does not become true from these signals**. An exact-SHA
+durable six-domain evaluation remains mandatory, and a conflicting same-SHA
+visual failure or provider failure overrides even a previously recorded pass.
+No evaluation row, task, scheduler claim, model call, merge or migration is
+written by this observer.
+
+Test with `python -m unittest tests.test_global_readiness_evidence
+tests.test_oidc_backup_scheduler_wake -v`. After merge, inspect **two**
+distinct OIDC observer runs: the CI-completion receipt and the visual-
+completion receipt. No fresh paid E2E may be created for this verification;
+the next Console change naturally exercises the path.

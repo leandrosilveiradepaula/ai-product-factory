@@ -66,6 +66,15 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
             "id":RUN,"name":"validate","event":"push","head_branch":"main",
             "head_sha":S,"conclusion":"success","status":"completed",
             "repository":{"full_name":REPO}},
+        "/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100":{
+            "total_count":1,"workflow_runs":[
+                {"id":RUN,"name":"validate","event":"push","head_branch":"main",
+                 "head_sha":S,"path":".github/workflows/validate.yml",
+                 "run_attempt":1,"conclusion":"success","status":"completed",
+                 "repository":{"full_name":REPO}},
+            ],
+        },
+        "/repos/"+REPO+"/commits/"+S+"/status":{"sha":S,"statuses":[]},
         "/repos/"+REPO+"/git/commits/"+S:{"sha":S,"tree":{"sha":TREE}},
         "/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1":{
             "sha":TREE,"truncated":False,"tree":paths},
@@ -124,6 +133,8 @@ class GlobalReadinessTests(unittest.TestCase):
         self.assertEqual(report["ci_evidence"]["checks_observed"],2)
         self.assertEqual(report["ci_evidence"]["validation_jobs"]["verification_state"],"executed_same_SHA")
         self.assertEqual(report["source_inventory"]["tracked_files"],7)
+        self.assertEqual(report["current_sha_operational_evidence"]["authenticated_console"]["status"],"not_observed")
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],"not_reported")
         self.assertTrue(report["source_inventory"]["documents_present"]["operations"])
         self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
 
@@ -169,6 +180,10 @@ class GlobalReadinessTests(unittest.TestCase):
             ("truncated inventory",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"].update(truncated=True)),
             ("symlink",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"]["tree"].append({"type":"blob","mode":"120000","path":"secret"})),
             ("incomplete checks",lambda gh,cp:gh["/repos/"+REPO+"/commits/"+S+"/check-runs?per_page=100"].update(total_count=200)),
+            ("ambiguous same-SHA runs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"].update(total_count=200)),
+            ("wrong workflow run SHA",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][0].update(head_sha="f"*40)),
+            ("untrusted Vercel status SHA",lambda gh,cp:gh["/repos/"+REPO+"/commits/"+S+"/status"].update(sha="f"*40)),
+
             ("incomplete run jobs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"].update(total_count=200)),
             ("failed required validate job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(conclusion="failure")),
             ("unrelated validation job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(name="invented-success")),
@@ -207,7 +222,7 @@ class GlobalReadinessTests(unittest.TestCase):
         yaml=(root/".github/workflows/autonomous-runner.yml").read_text()
         broker=(root/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
         self.assertFalse((root/".github/workflows/global-product-readiness.yml").exists())
-        self.assertIn('workflows: ["Control Plane OIDC preflight", "validate"]',yaml)
+        self.assertIn('workflows: ["Control Plane OIDC preflight", "validate", "Authenticated Console visual evidence"]',yaml)
         self.assertIn('const TRUSTED_BACKUP_WORKFLOW_REF = "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main"',broker)
         self.assertIn('const GENERIC_PROXY_WORKFLOW_REFS = new Set([',broker)
         self.assertNotIn('"leandrosilveiradepaula/ai-product-factory/.github/workflows/global-product-readiness.yml@refs/heads/main"',broker)
@@ -219,6 +234,8 @@ class GlobalReadinessTests(unittest.TestCase):
         for term in (
             "github.event_name == 'workflow_run'",
             "github.event.workflow_run.name == 'validate'",
+            "github.event.workflow_run.name == 'Authenticated Console visual evidence'",
+            "github.event.workflow_run.conclusion == 'failure'",
             "github.event.workflow_run.event == 'push'",
             "github.event.workflow_run.conclusion == 'success'",
             "github.event.workflow_run.status == 'completed'",
@@ -270,6 +287,141 @@ class GlobalReadinessTests(unittest.TestCase):
             self.assertEqual(json.loads(out.read_text())["error_class"],"RuntimeError")
             self.assertNotIn("secret value",out.read_text())
             self.assertNotIn("secret value",stdout.getvalue())
+
+
+class GlobalPostVisualReceiptTests(unittest.TestCase):
+    def visual(self,*,conclusion="success",status="completed",with_artifact=True):
+        from ai_product_factory.global_readiness_evidence import (
+            _authenticated_visual_receipt, find_current_validation_run,
+        )
+        gh,cp,gg,cg=fixture()
+        visual=142
+        row={"id":visual,"name":"Authenticated Console visual evidence",
+             "event":"push","head_branch":"main","head_sha":S,"status":status,
+             "conclusion":conclusion if status=="completed" else None,
+             "run_attempt":1,"path":".github/workflows/authenticated-visual-evidence.yml",
+             "repository":{"full_name":REPO}}
+        uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"
+        gh[uri]["workflow_runs"].append(row)
+        gh[uri]["total_count"] += 1
+        gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/jobs?per_page=100"]={
+            "total_count":1,"jobs":[{"id":33,"run_id":visual,"head_sha":S,
+                                   "name":"capture","status":"completed","conclusion":"success"}],
+        }
+        gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/artifacts?per_page=100"]={
+            "total_count":int(with_artifact),
+            "artifacts":[{"id":1212,"name":"authenticated-console-"+str(visual),
+                          "expired":False,"size_in_bytes":5200,
+                          "workflow_run":{"id":visual,"head_sha":S,"head_branch":"main"}}] if with_artifact else [],
+        }
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
+            {"context":"Vercel","state":"success"}]
+        return gh,cp,gg,cg,visual
+
+    def test_completed_visual_and_deployment_are_executed_signals_not_full_readiness(self):
+        gh,cp,gg,cg,visual=self.visual()
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg,
+                                       visual_trigger_run_id=visual)
+        evidence=report["current_sha_operational_evidence"]
+        self.assertEqual(evidence["ci"]["status"],"verified")
+        self.assertEqual(evidence["authenticated_console"]["status"],"verified")
+        self.assertEqual(evidence["authenticated_console"]["workflow_run_id"],visual)
+        self.assertEqual(evidence["authenticated_console"]["artifact_id"],1212)
+        self.assertEqual(evidence["production_deployment"]["status"],"provider_reported_ready")
+        self.assertFalse(report["global_readiness"]["product_ready"])
+        self.assertEqual(report["global_readiness"]["missing_or_unverified_domains"],list(REQUIRED_DOMAINS))
+        experience=next(x for x in report["work_proposals"] if x["domain"]=="product_experience")
+        self.assertEqual(experience["observed_evidence"],["authenticated_console_browser"])
+        self.assertIn("remaining",experience["next_step"].replace("full_product","remaining_full_product"))
+        self.assertTrue(all(not x["start_authorized"] and not x["paid_calls_authorized"]
+                            for x in report["work_proposals"]))
+        self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
+
+    def test_visual_before_completion_remains_pending_not_verified(self):
+        gh,cp,gg,cg,visual=self.visual(status="in_progress")
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        self.assertEqual(report["current_sha_operational_evidence"]["authenticated_console"]["status"],"pending")
+        with self.assertRaises(GlobalReadinessEvidenceError):
+            observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                    github_get=gg,cp_get=cg,visual_trigger_run_id=visual)
+
+    def test_failed_visual_never_promotes_a_recorded_product_pass(self):
+        gh,cp,gg,cg,visual=self.visual(conclusion="failure")
+        cp["factory_evaluations.product_readiness"]=[complete_eval()]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg,
+                                       visual_trigger_run_id=visual)
+        self.assertEqual(report["current_sha_operational_evidence"]["authenticated_console"]["status"],"failed")
+        self.assertFalse(report["global_readiness"]["product_ready"])
+        self.assertEqual(len(report["work_proposals"]),6)
+
+    def test_provider_failure_overrides_old_global_pass_on_same_sha(self):
+        gh,cp,gg,cg,visual=self.visual()
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"][0]["state"]="failure"
+        cp["factory_evaluations.product_readiness"]=[complete_eval()]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],"failed")
+        self.assertFalse(report["global_readiness"]["product_ready"])
+
+    def test_visual_identity_artifact_and_job_guards_fail_closed(self):
+        altered=[
+            ("rerun replay",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][1].update(run_attempt=2)),
+            ("unexpected workflow",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][1].update(path="evil.yml")),
+            ("wrong event",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][1].update(event="pull_request")),
+            ("failed capture job",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/jobs?per_page=100"]["jobs"][0].update(conclusion="failure")),
+            ("wrong capture SHA",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/jobs?per_page=100"]["jobs"][0].update(head_sha="f"*40)),
+            ("expired evidence",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/artifacts?per_page=100"]["artifacts"][0].update(expired=True)),
+            ("empty encrypted evidence",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/artifacts?per_page=100"]["artifacts"][0].update(size_in_bytes=0)),
+            ("wrong artifact SHA",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/artifacts?per_page=100"]["artifacts"][0]["workflow_run"].update(head_sha="f"*40)),
+            ("missing artifact",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/artifacts?per_page=100"].update(total_count=0,artifacts=[])),
+        ]
+        for name,modify in altered:
+            with self.subTest(name=name):
+                gh,cp,gg,cg,visual=self.visual()
+                modify(gh,visual)
+                with self.assertRaises(GlobalReadinessEvidenceError):
+                    observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                            github_get=gg,cp_get=cg,
+                                            visual_trigger_run_id=visual)
+
+    def test_exact_validation_selection_for_visual_cannot_use_visual_run_as_ci(self):
+        from ai_product_factory.global_readiness_evidence import find_current_validation_run
+        gh,cp,gg,cg,visual=self.visual()
+        self.assertEqual(find_current_validation_run(repository=REPO,sha=S,
+                                                     branch="main",github_get=gg),RUN)
+        k="/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"
+        gh[k]["workflow_runs"][0].update(conclusion="failure")
+        with self.assertRaises(GlobalReadinessEvidenceError):
+            find_current_validation_run(repository=REPO,sha=S,branch="main",github_get=gg)
+        gh[k]["workflow_runs"][0].update(conclusion="success")
+        gh[k]["workflow_runs"].append(dict(gh[k]["workflow_runs"][0],id=888))
+        gh[k]["total_count"] += 1
+        with self.assertRaises(GlobalReadinessEvidenceError):
+            find_current_validation_run(repository=REPO,sha=S,branch="main",github_get=gg)
+
+    def test_visual_event_accepts_only_main_push_same_repo_without_dispatch(self):
+        path=Path(__file__).resolve().parents[1]/"scripts/audit_global_readiness.py"
+        spec=importlib.util.spec_from_file_location("global_post_visual_test",path)
+        assert spec and spec.loader
+        mod=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        event={"repository":{"full_name":REPO,"default_branch":"main"},
+               "workflow_run":{"id":142,"head_sha":S,"name":"Authenticated Console visual evidence",
+                               "event":"push","status":"completed","head_branch":"main",
+                               "conclusion":"success"}}
+        self.assertEqual(mod.resolve_observer_event(event,REPO),(S,142,"visual"))
+        self.assertEqual(mod.resolve_observer_event({**event,"workflow_run":{**event["workflow_run"],"conclusion":"failure"}},REPO),(S,142,"visual"))
+        for update in ({"event":"workflow_dispatch"},{"head_branch":"preview/pr-1"},
+                       {"head_sha":"main"},{"status":"in_progress"},
+                       {"name":"untrusted visual"},{"id":True}):
+            with self.subTest(update=update),self.assertRaises(ValueError):
+                mod.resolve_observer_event({**event,"workflow_run":{**event["workflow_run"],**update}},REPO)
+        with self.assertRaises(ValueError):
+            mod.resolve_observer_event({**event,"repository":{"full_name":"untrusted/repo","default_branch":"main"}},REPO)
+
 
 if __name__=="__main__":
     unittest.main()

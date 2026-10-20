@@ -1373,3 +1373,24 @@ Mudanças em `apps/console/**` exigem CI e Preview Vercel verificado por
 SHA exato com browser evidence; Vercel `Ignored Build Step` não é Preview.
 Sem credencial secreta no browser, novas chamadas de modelo, migrations ou
 auto-merge. Um deployment de Preview bloqueado por quota mantém gate fechado.
+
+## 20/10/2026 — Coleta global após evidência visual (candidato #713)
+
+A PR #1005 foi mergeada humanamente em
+`e6c045cc20ce47040bdbe9d268fa2f1459bb221c`; `validate`,
+`Console validation` e `Authenticated Console visual evidence` em
+main passaram no mesmo SHA. A Vercel publicou deployment production
+`dpl_73fQ8bsAfGUaRXpyB8MqhvgJd7qv` READY e a captura autenticada
+`39467414056` gerou artefato criptografado #12284659523; a conta
+efêmera foi eliminada pelo workflow. O auditor global #39467480783
+executou antes do fim da captura, retornando
+`product_ready=false` e seis domínios não avaliados.
+
+O candidato muda apenas o workflow OIDC já confiável e coletores Python:
+aciona uma **segunda observação** no término do workflow visual (SUCCESS ou
+FAILURE), sem acordar scheduler/workers e sem novos modelos. Os fatos são
+correlacionados por SHA exato, run de CI, job `capture`, artifact
+criptografado e status Vercel; falha real de navegador/provider bloqueia
+qualquer promoção de prontidão. Evidência de CI/UX é parcial, jamais
+`product_ready` completo. A saída não contém token/chave. Relatório
+disponível em `docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.
