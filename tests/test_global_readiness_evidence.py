@@ -197,11 +197,11 @@ class GlobalReadinessTests(unittest.TestCase):
         self.assertIn('const TRUSTED_BACKUP_WORKFLOW_REF = "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main"',broker)
         self.assertIn('const GENERIC_PROXY_WORKFLOW_REFS = new Set([',broker)
         self.assertNotIn('"leandrosilveiradepaula/ai-product-factory/.github/workflows/global-product-readiness.yml@refs/heads/main"',broker)
-        probe=yaml.split("\\n  schedule-probe:",1)[1].split("\\n  github-access-preflight:",1)[0]
+        probe=yaml.split("\n  schedule-probe:",1)[1].split("\n  github-access-preflight:",1)[0]
         self.assertIn("github.event.workflow_run.event == 'schedule'",probe)
         self.assertIn("steps.backup_wake.outputs.wake == 'true'",probe)
         self.assertNotIn('global-readiness-post-ci',probe)
-        job=yaml.split("\\n  global-readiness-post-ci:",1)[1]
+        job=yaml.split("\n  global-readiness-post-ci:",1)[1]
         for term in (
             "github.event_name == 'workflow_run'",
             "github.event.workflow_run.name == 'validate'",
