@@ -1,3 +1,9 @@
+## 2026-10-20 - Continuacao na propria Factory: duplo clique e contexto platform (candidato)
+
+Operador abriu Novo pedido na Factory; os dois cliques de Iniciar novo ciclo foram observados como uma unica task/run no banco. A run 16b12d17-9cb0-4578-a0e2-0d601f36b856 chegou a run.claimed e falhou em 39352319002 antes do modelo: `SupabaseRuntimeQueue._live_candidate_context` exigiu `project_kind=existing`, mas `ai-product-factory` e `platform`. Diagnostico verificado por GitHub Action e Control Plane; nao fazer retry do run antes do merge/correcao e sem avaliar budget.
+
+Candidato conjunto: status pendente, desabilitacao e live region no submit; manutencao da chave `request_id` de idempotencia no RPC; preflight separado para platform que le um unico commit exato `main` e `AGENTS.md`/`PROJECT_PLAN.md` usando GitHub GET, revalida branch apos os reads e nunca finge haver Preview PR. Existing/importado segue exigindo pinned `preview/**` + PR aberto. Nao alterar gates de release nem usar API paga para sondar. Validar CI, Console build e Preview/browser SHA-exatos antes de qualquer merge. Falha historica fica preservada, nenhuma reativacao automatica.
+
 ## 2026-10-19 — Safe nonproduction candidate re-pin (PR candidate)
 
 - Source of truth is the **open PR and its exact head commit**, never a floating branch or old Control Plane snapshot. For CRM PR #56, old pin `f5f7d91f` and candidate `d65eea88` were confirmed after human Factory #964 merge; CRM candidate-only reconciliation retained the tree and passed 4 CI jobs/Preview at the exact head. That does **not** establish product readiness or permission for production release.

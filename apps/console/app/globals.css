@@ -1048,3 +1048,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .intakeSubmit p{min-width:0}
  .intakeSubmit button{width:100%;min-height:48px}
 }
+
+/* Novo ciclo: o primeiro clique tem estado visivel enquanto a action persiste. */
+.continuationSubmit{display:grid;justify-items:start;gap:9px;min-width:0;width:100%}
+.continuationSubmit .primary:disabled{opacity:.8;cursor:progress}
+.continuationSubmitFeedback{margin:0;font-size:12px;line-height:1.5;max-width:640px}
+.continuationSubmitSpinner{display:inline-block;width:13px;height:13px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:continuation-spin .7s linear infinite}
+@keyframes continuation-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.continuationSubmitSpinner{animation:none}}

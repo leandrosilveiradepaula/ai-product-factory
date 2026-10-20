@@ -2,7 +2,8 @@ import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {enqueueProjectContinuation,getProjectDetail} from "../../../../lib/control-plane";
 import {cleanupProjectContinuationFiles,uploadProjectContinuationFile} from "../../../../lib/attachments";
-import {ActionLink,Button,PageHeader,StatusPill} from "../../../ui";
+import {ActionLink,PageHeader} from "../../../ui";
+import {ContinuationSubmit} from "./continuation-submit";
 
 async function submit(formData:FormData){
  "use server";
@@ -44,7 +45,7 @@ export default async function ProjectRequest({params}:{params:Promise<{key:strin
    </label>
    <div className="intakeAttachments"><strong>Anexos</strong><input name="attachments" type="file" multiple accept=".pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp"/><span className="muted">Até 10 arquivos, 10 MB cada. PDF, documentos Office, texto/CSV/JSON e imagens. Os arquivos ficam privados e vinculados ao projeto.</span></div>
    <p className="muted">Não precisa escolher agente, stack ou modelo. A Factory não abre dois ciclos concorrentes: o Control Plane verifica isso de forma atômica quando você envia o pedido. A Factory registra este pedido no contexto durável e inicia a reconciliação/planejamento adequado. Produção continua sob gate humano.</p>
-   <div className="actions"><Button variant="primary">Iniciar novo ciclo</Button></div>
+   <div className="actions"><ContinuationSubmit/></div>
   </form>
  </>;
 }

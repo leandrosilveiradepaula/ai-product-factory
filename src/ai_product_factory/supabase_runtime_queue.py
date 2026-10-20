@@ -223,10 +223,19 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
             raise PermissionError("reconciliation requires exact durable project identity")
         project = rows[0]
-        if project.get("project_kind") != "existing":
-            raise PermissionError("live candidate reconciliation requires an existing project")
         repo = project.get("repository")
         manifest = project.get("manifest")
+        if project.get("project_kind") == "platform":
+            # Platform products (including the Factory itself) use an exact
+            # GitHub main snapshot. The CRM-only open Preview PR target must
+            # never be invented or imposed on these projects.
+            from .platform_source_context import live_platform_source_context
+            if not isinstance(repo, str) or "/" not in repo:
+                raise PermissionError("platform reconciliation has no repository identity")
+            github = GitHubRestAdapter(repository=repo)
+            return live_platform_source_context(project=project, context=context, github=github)
+        if project.get("project_kind") != "existing":
+            raise PermissionError("live candidate reconciliation requires an existing or platform project")
         target = PinnedNonproductionTarget.parse(
             manifest.get("delivery_target") if isinstance(manifest, dict) else None,
             repository=repo,

@@ -1,3 +1,9 @@
+## 20/10/2026 - Candidato: feedback imediato de continuacao + preflight platform
+
+- Incidente real: operador clicou duas vezes em Iniciar novo ciclo para issue #987 no projeto ai-product-factory. Control Plane confirmou uma unica nova task/run (run 16b12d17-9cb0-4578-a0e2-0d601f36b856) em 2026-10-20T01:14:21Z. Wake foi solicitado; GHA 39352319002 assumiu, mas falhou antes do modelo com reconciliation_context_preflight_failed.
+- Raiz nos logs: a rotina de contexto exige project_kind=existing e Preview PR fixado; a Factory e project_kind=platform e usa main. Nao houve uso de modelo para essa run. Nenhuma run sera reativada automaticamente.
+- Este candidato exibe feedback via React useFormStatus, botao disabled enquanto o servidor grava e aria-live; o request_id idempotente permanece estavel. Inclui origem GitHub main exata, somente leitura, com governanca obrigatoria para platform; projetos existing mantem regra do PR fixado. Testes de regressao e CI/Preview sao requisitos antes de liberar merge em producao. Nao ha migration nem custo de modelo nesta mudanca.
+
 ## 19/10/2026 — Estado apos merge humano da PR #983
 
 - Factory main verificada em 3da90ed2628d240c47163f7ce3ec676c4f59e86e; validate verde. Nao confundir CI da Factory com prova de E2E autonomo de novo projeto.
