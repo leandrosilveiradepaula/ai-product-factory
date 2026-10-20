@@ -1,3 +1,11 @@
+## 20/10/2026 — Caminhos de agente e especialista continuam sem controle humano (candidato)
+
+- PR #1009 mergeada em `e29a83e7a2bd6403993a4ada49488efbea357666`; CI push #39476776418 SUCCESS. Migrations `20261020181000` e `20261020183500` ainda ausentes do histórico Supabase, logo seus filtros não estão ativos.
+- A investigação read-only das funções de produção identificou **seis pontos reais** de criação/claim de trabalho sem verificação própria do estado running: `factory_claim_agent_slot`, `factory_schedule_run_agent`, `factory_schedule_next_unassigned_run`, `factory_claim_specialist_lane`, `factory_enqueue_specialist_lanes` e `factory_enqueue_repair_from_specialist`.
+- Candidato `20261020190000_fence_agent_specialist_and_repair_control.sql` preserva definições SQL existentes e acrescenta guards ao projeto próprio, sem autorizar nenhum estado nem ampliar grants. Testes de contrato negativos exigidos; sem aplicação em produção até autorização específica e validação real.
+
+---
+
 ## 20/10/2026 — Pós-merge #1007: scheduler queue signals ainda incompletos (candidato)
 
 - PR #1007 mergeada em `2fd93df2088cff7716c461415b75e0118a41bfee`; `validate` pós-merge #39474567146 SUCCESS.
