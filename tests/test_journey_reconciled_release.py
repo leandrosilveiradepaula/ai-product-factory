@@ -317,6 +317,11 @@ class RealReaderFromAuthorizedConsoleFixtures(unittest.TestCase):
             if path.startswith("factory_tasks?"):
                 return tasks
             if path.startswith("factory_runs?"):
+                # Mimic PostgREST's exact task_id=in.(...) filtering.
+                # The reader correctly rejects any row from another lineage.
+                if "task_id=in.(" in path:
+                    task_ids=set(path.split("task_id=in.(",1)[1].split(")",1)[0].split(","))
+                    return [row for row in runs if row["task_id"] in task_ids]
                 return runs
             if path.startswith("factory_change_sets?"):
                 return d["change_sets"]
