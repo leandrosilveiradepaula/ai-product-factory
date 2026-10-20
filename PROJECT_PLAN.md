@@ -349,3 +349,10 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Versionar migration `20261020190000` para atribuições, specialist claims, specialist lane creation e repair sem execução em paused/stopped, preservando locks da assert de projeto.
 - [ ] Exigir CI, testes de integração isolados e gate de migration de produção; não inferir instalação no banco pelo merge.
 - [ ] Revisar recovery de lease/change set e continuidade de decisões sob pausa antes de declarar controle do ciclo integralmente concluído.
+
+## 20/10/2026 — Recovery de leases após controle humano (#894)
+
+- [x] Três migrations do scheduler/agent-specialist aplicadas e verificadas no Control Plane real, com ACL/RLS preservados, histórico registrado sob versões MCP `20261020185723/20261020190213/20261020190346`.
+- [ ] Bloquear **mutação de recovery** em paused/stopped: cinco RPCs de leases, Change Sets, especialistas, decisões e retry de failed run. Não reexecutar runs históricas ou modelos em teste.
+- [ ] Verificar concorrência com pausa usando locks de controle `FOR SHARE`; teste PostgreSQL isolado real, CI, e só então solicitar merge de produção e nova autorização de migration.
+- [ ] Reconciliação de `supabase db push` deve comparar version IDs MCP por nome/assinatura, sem replays automáticos; origem Git permanece fonte de verdade do SQL.
