@@ -1419,3 +1419,9 @@ Duas migrations aguardam autorização específica para produção: esta e
 Executar em ordem de versão e confirmar após aplicação, via leitura de
 `pg_get_functiondef` e chamadas só de consulta, sem criar projetos/runs.
 Os testes de PR não são prova de aplicação real.
+
+## 20/10/2026 — Gate humano no agendamento de agentes, especialistas e reparos
+
+As funções de produção `factory_claim_agent_slot`, `factory_schedule_run_agent`, `factory_schedule_next_unassigned_run`, `factory_claim_specialist_lane`, `factory_enqueue_specialist_lanes` e `factory_enqueue_repair_from_specialist` foram reconciliadas pela definição `pg_get_functiondef`. A migration `20261020190000_fence_agent_specialist_and_repair_control.sql` introduz `factory_assert_project_running(project_id)` antes de atribuir agentes, criar lanes ou reparos, e filtra filas globalmente pela linha de controle do mesmo projeto. **Não reintroduzir** chamadas para APIs antigas revogadas nem usar heartbeat como autorização.
+
+O guard `factory_assert_project_running` mantém lock `FOR SHARE` para serializar comandos de pausa/stop com claims. O SQL do candidato não muda grants, RLS nem a implementação do controle humano. Aplicar **somente depois de aprovação explícita**, preservando ordem após `20261020181000` e `20261020183500`, e validar por testes e consulta ao banco. As funções de recuperação serão abordadas separadamente, sem requeue automático de trabalho pago em projetos pausados.
