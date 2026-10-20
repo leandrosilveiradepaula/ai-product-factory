@@ -82,7 +82,7 @@ on:
           - operations
   workflow_run:
     # Reuses existing trusted six-hour OIDC preflight cron, no new timer.
-    workflows: ["Control Plane OIDC preflight"]
+    workflows: ["Control Plane OIDC preflight", "validate"]
     types: [completed]
     branches: [main]
   schedule:
@@ -1222,5 +1222,46 @@ jobs:
         with:
           name: factory-admission-diagnosis-${{ github.run_id }}
           path: ${{ runner.temp }}/factory-admission-diagnosis.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  global-readiness-post-ci:
+    # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
+    # A validated push is NOT a scheduler wake: schedule-probe only accepts
+    # workflow_run(event=schedule), so every dependent worker stays skipped.
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'validate' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Inspect current HEAD and independent Control Plane evaluations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit_global_readiness.py \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/factory-global-product-readiness.json"
+      - name: Preserve sanitized global product audit receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-global-readiness-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-global-product-readiness.json
           if-no-files-found: warn
           retention-days: 7
