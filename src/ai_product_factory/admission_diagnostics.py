@@ -12,6 +12,7 @@ from .primary_cost_config import SupabasePrimaryCostPolicyReader
 from .supabase_operational_health import SupabaseOperationalHealthReader, KNOWN_RUN_STATUSES
 from .preview_eligibility import is_delivery_preview_run
 from .supabase_server import resolve_supabase_server_config
+from .post_release_readiness import observe_manifest_release
 
 KEY = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$")
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
@@ -50,7 +51,8 @@ def _id(value: object) -> str:
 
 def classify(*, project: dict, control: dict, commands: list[dict],
              tasks: list[dict], runs: list[dict], run_id: str | None,
-             cost: dict, planned: list[dict], portfolio: list[dict]) -> dict:
+             cost: dict, planned: list[dict], portfolio: list[dict],
+             readiness: dict | None = None) -> dict:
     """Pure classification; absence of a claim is not proof of scheduler health."""
     pid = _id(project.get("id"))
     if not isinstance(project.get("project_key"), str) or not project["project_key"]:
@@ -147,6 +149,15 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         status,reason,next_step = "waiting","no_start_or_bootstrap","operator_start"
     else:
         status,reason,next_step = "waiting","no_current_eligible_work","review_project_backlog"
+    # Empty scheduler queue and an unassessed released product are different
+    # findings. Never manufacture work, restart historical runs, or imply
+    # global readiness from release completion.
+    if (not run_id and status == "waiting"
+            and reason in {"no_current_eligible_work", "no_start_or_bootstrap"}
+            and project.get("lifecycle_stage") == "operations"
+            and isinstance(readiness, dict) and readiness.get("ready") is False):
+        reason = "idle_with_unassessed_global_product_readiness"
+        next_step = "global_product_readiness_audit"
     if status == "eligible" and next_step in {"product_stage","dispatch"} and cost["state"] != "available":
         status,reason,next_step = "blocked",cost.get("reason") or "cost_unverified","review_cost_policy_and_ledger"
     task_by_id = {t["id"].lower(): t for t in tasks}
@@ -163,7 +174,8 @@ def classify(*, project: dict, control: dict, commands: list[dict],
                         "run":run_evidence,"command_count":len(commands),
                         "task_count":len(tasks),"run_count":len(runs),
                         "planned_admitted_count":len(planned),"portfolio_eligible":bool(portfolio),
-                        "cost":cost},"read_only":True}
+                        "cost":cost,
+                        "product_readiness":readiness},"read_only":True}
 
 
 class SupabaseAdmissionReader:
@@ -212,7 +224,7 @@ class SupabaseAdmissionReader:
             raise ValueError("invalid --project-key")
         if run_id is not None and (not isinstance(run_id,str) or not UUID.fullmatch(run_id)):
             raise ValueError("invalid --run-id")
-        project=_one(self._get("factory_projects?select=id,project_key,is_active&project_key=eq."+quote(project_key)+"&limit=2"),"project")
+        project=_one(self._get("factory_projects?select=id,project_key,is_active,lifecycle_stage,manifest&project_key=eq."+quote(project_key)+"&limit=2"),"project")
         if project.get("project_key") != project_key:
             raise RuntimeError("project identity mismatch")
         pid=_id(project.get("id"))
@@ -229,7 +241,11 @@ class SupabaseAdmissionReader:
         portfolio=self._rpc_read("factory_portfolio_candidates",{"p_limit":100})
         if not isinstance(portfolio,list) or len(portfolio)>100:
             raise RuntimeError("inconsistent portfolio response")
+        readiness = observe_manifest_release(
+            get=self._get,project_id=pid,manifest=project.get("manifest")
+        )
         return classify(project=project,control=control,commands=commands,tasks=tasks,
             runs=runs,run_id=run_id,cost=self._cost(),
             planned=_many(planned,"planned candidates"),
-            portfolio=[p for p in portfolio if isinstance(p,dict) and p.get("project_id")==pid])
+            portfolio=[p for p in portfolio if isinstance(p,dict) and p.get("project_id")==pid],
+            readiness=readiness)

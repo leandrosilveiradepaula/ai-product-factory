@@ -212,6 +212,16 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 "last_verified_at": row.get("last_verified_at"),
                 "live_github_head_verified": False,
             }
+        # Preserve the exact release's global-readiness obligations when
+        # preparing a later, independently authorized continuation. This is
+        # passive evidence, never a worker claim or paid-model authorization.
+        from .post_release_readiness import observe_manifest_release
+        manifest = context.get("manifest")
+        followup = observe_manifest_release(
+            get=self._get, project_id=project_id, manifest=manifest
+        )
+        if followup is not None:
+            facts["global_product_readiness"] = followup
         context["current_state_facts"] = facts
         return context
 

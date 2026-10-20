@@ -259,3 +259,13 @@ A estrategia operacional e: ferramentas deterministicas primeiro, API/Direct com
 - [x] Control Plane reconciliado sem Change Sets pendentes e com registros antigos aposentados sem perda de auditoria.
 - [ ] Novo projeto explicitamente iniciado por pessoa completar o E2E real sem reparos manuais: Product Stage, Change Set, Direct, PR, CI, Review, Preview aplicavel (ou N/A duravel), awaiting_release, merge humano observado e operacao.
 - [ ] Publicar auditor somente leitura por Start/run exato, sem reativar itens antigos e sem chamar modelos pagos para sondagem; validar com CI no candidato e depois com evidencias do ciclo real.
+
+
+## Pós-E2E 20/10/2026 — Próximo salto de autonomia (#713)
+
+A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a release `#997` e o auditor de issue `#987` são evidência de entrega, **não** de produto universalmente pronto. `product_ready=false` e `not_assessed` permanecem verdadeiros.
+
+- [x] Diagnóstico de admissão por projeto/run executado no Control Plane sem modelos, #999/#1000, workflows #39455676878 e #39455945061 (read-only).
+- [ ] Preservar gap auditável de prontidão global após release, associando relatório, project/run e merge exato, sem fabricar tarefas nem apagar gaps no snapshot de `operations`; validar CI e observação operacional pós-merge.
+- [ ] Completar auditor global de seis domínios com evidência atual por SHA, inclusive experiência Console/móvel, segurança, E2E representativo e operação; até lá `product_ready` é `not_assessed`/`not_ready`.
+- [ ] Com autorização de execução já vigente no projeto, garantir que a Factory use gaps verificados como contexto para trabalho subsequente sem rodar modelos apenas para verificar disponibilidade ou gerar replays de tarefas encerradas.
