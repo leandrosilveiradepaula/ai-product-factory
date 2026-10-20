@@ -27,7 +27,8 @@ class MergedBeforeReadinessTests(unittest.TestCase):
         )
         with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue") as q, \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github_adapter, \
-             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as store:
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as store, \
+             patch("ai_product_factory.runtime_cli._assert_project_followup",return_value=1):
             q.return_value.next_pending.return_value = item
             github = github_adapter.return_value
             github.get_pull_request.return_value = pr
