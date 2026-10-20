@@ -162,3 +162,12 @@ Disallowed without a passing product audit:
 - "the product is complete";
 - "100% finished";
 - "only external credential X remains" when other readiness domains have not been globally assessed.
+
+
+## Handoff pós-release: evidência ≠ tarefa ≠ produto pronto (20/10/2026)
+
+Um release reconciliado em `operations` pode manter `product_ready=false`. A fonte mais próxima é o relatório durável `factory_release_reports` associado ao run de release e merge SHA observado. `src/ai_product_factory/post_release_readiness.py` sintetiza somente campos controlados: status `not_assessed`, `not_ready`, `candidate_only` ou `unknown`; lista dos seis domínios exigidos; IDs, SHA e estado de verificação do recibo. Nenhum `ready=true` é gerado a partir desse recibo: mesmo uma avaliação de candidato `passed` pode ficar obsoleta após o merge.
+
+O reconciliador escreve um snapshot `operations` com as **obrigações de auditoria** e guarda um handoff sanitizado em `manifest.product_readiness_followup`. Novas reconciliações podem herdar esses fatos, sem propagação de prompts, dados de negócio nem alegações de avaliação executada. O runtime não cria nova run por um relatório incompleto: continuar desenvolvimento exige autorização operacional vigente, pedido válido, custos/gates preservados e evidência concreta de trabalho. Um auditor global independente continua necessário para promover `product_ready`.
+
+Cobertura negativa offline: recibo ausente/trocado/duplicado, SHA não correspondente, status antigo `ready_for_human_release`, payload malformado, report indisponível e tentativa de forjar `ready=true` nunca passam a prontidão. CI verde valida o contrato, não equivale a auditoria global.
