@@ -321,10 +321,12 @@ class SupabaseChangeSetStore:
             raise PermissionError("integration project identity unavailable or mismatched")
         row=projects[0]
         kind=row.get("project_kind")
-        if kind not in ("greenfield","existing"):
+        if kind not in ("greenfield","existing","platform"):
             raise PermissionError("unrecognized integration project kind")
         manifest=row.get("manifest")
         target=manifest.get("delivery_target") if isinstance(manifest,dict) else None
+        if kind=="platform" and target not in (None,{}):
+            raise PermissionError("platform cannot inherit an imported-project delivery target")
         return ChangeSetIntegrationItem(
             change_set_id=data["change_set_id"],project_key=data["project_key"],
             repository=data["repository"],source_commit=data["source_commit"],

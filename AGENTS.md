@@ -155,3 +155,22 @@ Planning nao pode concluir uma run sem um array `tasks` e pelo menos
 uma tarefa acionavel ou decisao material ainda nao resolvida. Se nao houver
 trabalho, registrar o impedimento tecnico como evidencia: nunca fabricar
 tarefas nem marcar a implementacao ou E2E como realizada.
+
+
+## Change Set para projeto platform
+
+`factory_projects.project_kind='platform'` e classe operacional valida,
+distinta de `existing` importado (exige PR Preview fixado) e de
+`greenfield`. O Product Stage, o work-unit builder, o claim de
+integracao e o integrador devem aceitar somente este tipo explicito
+gravado no Control Plane. Para platform, capturar `main` no SHA exato,
+congelar a fonte do Change Set e rejeitar deriva do SHA antes de
+materializar integracao; PR final tem base `main` protegida.
+Nunca escrever/mergear diretamente em `main` pelo runtime.
+
+Quando uma run real ficar blocked ANTES de produzir qualquer commit,
+nao pagar Discovery/Planning novamente sem necessidade. Uma recuperacao
+pontual so pode ocorrer por RPC versionada, explicitamente autorizada,
+com provas de escopo, identidade do run, generation, work unit sem
+base/output e blocker imutavel. Proibido retry generico ou repassar a
+mesma run de Product Stage ao modelo.

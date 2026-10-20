@@ -1,3 +1,29 @@
+## 20/10/2026 — Incidente real de implementacao platform apos novo ciclo #987
+
+- Pedido registrado 03:07:16Z, run Product Stage
+  `945c0da5-f36f-46da-a454-072037a988a5` COMPLETED.
+  Reconciliation, Gap Analysis e Planning concluídos com snapshots e um
+  Change Set `f95e3840-555e-40d7-8c91-011802debf8a`.
+- GHA `39362614047` iniciou job Direct para Work Unit
+  `dcac15fd-9c16-466b-a72d-4a2c5f6020c7`, run
+  `5057260d-3f4e-4a28-8209-53a0ea0ed5d2`. O work unit bloqueou
+  antes da API de implementacao, sem branch/commit:
+  `implementation_preflight_error: PermissionError: unrecognized project kind`.
+  Root Python: `change_set_worker.py` excluia platform; o mesmo
+  problema existe em `change_set_store.py` e `change_set_integrator.py`.
+- Ledger efetivo da run de Product Stage: US$ 0.223000 de 3 chamadas
+  semanticas (0.061320 + 0.073198 + 0.088482). A reserva de US$ 0.50
+  e contabilidade, nao uma chamada. Nao pagar novamente para repetir
+  a fase ja concluida.
+- Candidato: suportar platform ponta a ponta, preservando PR base main e
+  fail-closed por SHA/repo; migration RPC inerte e estreitamente guardada
+  para reencaminhar apenas a mesma Work Unit SEM reexecutar Product Stage.
+  A aplicacao da migration em producao requer autorizacao separada.
+  CI sem chamadas pagas e Preview nao aplicavel (apps/console nao mudou).
+- A migracao nao esta aplicada, e a Work Unit permanece blocked ate
+  verificacao + autorizacao. Nenhum E2E/PR gerado automaticamente foi
+  comprovado ainda.
+
 ## 20/10/2026 — Progresso verificado e proxima salvaguarda (candidato)
 
 - #992 mergeada em main `d3dd384a929d60b37372fcccadd01326822b0908`, validate push `39361245632` SUCCESS.

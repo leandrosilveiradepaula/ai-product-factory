@@ -1,3 +1,38 @@
+## 20/10/2026 — Recuperacao de Work Unit platform bloqueada antes de codigo
+
+Cenario real: projeto `ai-product-factory` e `project_kind=platform`.
+Product Stage run 945c0da5-f36f-46da-a454-072037a988a5 passou por
+Reconciliation, Gap Analysis e Planning, materializando Change Set
+f95e3840-555e-40d7-8c91-011802debf8a com Work Unit
+dcac15fd-9c16-466b-a72d-4a2c5f6020c7. Direct run
+5057260d-3f4e-4a28-8209-53a0ea0ed5d2 bloqueou antes da fonte
+e antes de chamar modelo: `PermissionError: unrecognized project kind`.
+GHA 39362614047 falhou; nenhum arquivo/branch/commit foi produzido.
+
+Candidato corrige builder, integração claim, integrador: para `platform`,
+a fonte/PR target e `main` no SHA exato; branch de trabalho permanece
+factory/*; drift de main bloqueia antes de escrita; nunca merge automatico.
+`existing` continua preso ao Preview PR explicitamente pinado.
+
+A migration versionada
+`20261020032500_retry_blocked_platform_kind.sql` apenas cria uma RPC
+`factory_retry_blocked_platform_kind` service_role invoker; NAO executa
+recuperacao enquanto aplicada. Após merge humano do codigo runtime e
+autorizacao especifica para aplicacao em producao, verificar SHA da main,
+estado/generation do projeto, statuses e identificadores da run original.
+Apenas entao chamar RPC uma vez com ID da Change Set, ID da run,
+project_key, generation e motivo. Conferir audit
+`change_set.platform_kind_requeued`, estados requeue, e disparar o
+runner oficial sem refazer Product Stage. Nunca aplicar SQL UPDATE ad hoc,
+never auto-merge, nunca reprocessar o Product Stage pago.
+
+A RPC rejeita Change Set que ja tenha fonte/commits ou mais de uma Work
+Unit, lease ativo, generation alterada, projeto nao-running,
+blocker diferente ou tipo que nao seja platform. Custo efetivo da
+fase de produto na run: US$ 0.223000 (reserva nao e gasto).
+Ao retomar, somente a implementacao real pode usar modelo dentro do
+ledger real e do budget; nao usar chamadas pagas para testar readiness.
+
 ## 20/10/2026 — Hardening de progresso real no Product Stage (candidato)
 
 Foi identificada no nucleo uma falha de verdade operacional: o
