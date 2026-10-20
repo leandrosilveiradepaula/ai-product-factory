@@ -188,3 +188,24 @@ a11y, RLS nem browser. Contar arquivos ou citar um CI do HEAD não satisfaz
 uma avaliação inteira. O relatório é um inventory e plano de trabalho para
 que avaliações independentes sejam realmente executadas e registradas
 conforme o contrato de seis domínios, sem faturamento de modelos.
+
+
+## 20/10/2026 — Operabilidade como parte da auditoria global
+
+`operations` representa o estágio de ciclo de vida, não uma avaliação
+`product_ready`. O Console expõe os seis domínios obrigatórios da Factory,
+mesmo sem qualquer `factory_evaluations` do tipo `product_readiness`.
+Status de candidato histórico permanece escopado ao SHA avaliado; UI não
+autoriza promoção por contadores de tarefas, release observado ou checks.
+
+Para produtos com interface, `product_experience` só pode receber avaliação
+real com cobertura de surface inventory, responsive, accessibility e states.
+O teste Playwright autenticado valida telas móveis em 390px, controles de
+execução somente leitura, menu completo, overflow, fonte mínima, áreas
+interativas e salto de teclado, além dos seis domínios exibidos. A mera
+existência desses testes no repositório não é prova: o recibo do navegador
+precisa corresponder ao deployment e candidato exatos.
+
+A emissão de uma avaliação `passed` de produto inteiro continua fora do
+escopo deste ajuste UX. Isso preserva `product_ready=false` até provas
+de segurança, operação, critical E2E, documentação e funcionalidade.
