@@ -101,3 +101,19 @@ Ao receber "prossiga", "continue" ou pedido equivalente para desenvolver a Facto
 8. Os gates existentes prevalecem: nao realizar merge de producao, migration de producao, ampliacao sensivel de acesso, compra ou outra acao irreversivel sem autorizacao humana especifica.
 
 **Criterio de encerramento:** cinco blocos substanciais concluidos e verificados, ou impossibilidade real de continuar com seguranca. Respostas de progresso e commits isolados nao substituem esse criterio.
+
+
+## Política de testes: offline-first antes de modelos pagos
+
+Em toda evolução da Factory, executar primeiro testes unitários, regressões,
+contratos, simulações determinísticas, PostgreSQL local, CI e Preview/browser
+quando aplicável. Nunca consumir API de modelo apenas para smoke, readiness,
+credenciais/quota ou tentativa de resolver falha reproduzível sem modelo.
+Usar modelo pago somente para capacidade que realmente necessita de semântica
+de LLM, após preflight estrutural e dentro do ledger/budget/reserva real.
+Custo pago desconhecido bloqueia; nenhuma compra automática.
+
+O auditor separado \`scripts/audit_offline_product_preflight.py\` é somente
+leitura e nunca reabre runs. \`source_preflight=verified\` não significa
+Product Stage concluído nem E2E verificado. \`docs/OFFLINE_PRODUCT_PREFLIGHT.md\`
+é o procedimento operacional.

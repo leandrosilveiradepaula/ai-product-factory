@@ -1,3 +1,10 @@
+## 20/10/2026 — Candidato: Product Stage preflight real e gratuito por run
+
+- Merge #988 confirmou CI e Console saudável, mas a run real 16b12d17-9cb0-4578-a0e2-0d601f36b856 continua failed, sem replay. Na verificação mais recente, zero runs executáveis, zero Change Sets ativos e zero eventos novos de modelos pagos.
+- O novo preflight proposto lê somente GET e cruza project_key, run, task, generation, snapshot e GitHub SHA. Corrige falta de código em contexto quando pedido platform só cita uma issue: extrai paths de issue do mesmo repo sem copiar instruções da issue ao modelo.
+- \`run_offline_preflight\` como modo manual isolado reutiliza OIDC existente; schedule-probe/agents são SKIPPED. Fonte verificável não equivale a Product Stage executado nem E2E real.
+- Antes de merge: CI completo, testes offline e verificar alteração de custo = zero. Sem migration, mudanças de RLS, merge automático ou chamadas pagas de teste.
+
 ## 20/10/2026 - Candidato: feedback imediato de continuacao + preflight platform
 
 - Incidente real: operador clicou duas vezes em Iniciar novo ciclo para issue #987 no projeto ai-product-factory. Control Plane confirmou uma unica nova task/run (run 16b12d17-9cb0-4578-a0e2-0d601f36b856) em 2026-10-20T01:14:21Z. Wake foi solicitado; GHA 39352319002 assumiu, mas falhou antes do modelo com reconciliation_context_preflight_failed.
