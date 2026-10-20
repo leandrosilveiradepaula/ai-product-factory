@@ -287,3 +287,9 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
   E2E críticos, rollback/ops, documentação e funcionalidade em diversos
   tipos de projetos, produzindo avaliações independentes antes de
   declarar `product_ready`.
+
+## 20/10/2026 — Auditoria global: correção do OIDC real (#713)
+
+- [x] #1002: código e contrato global de seis domínios integrados à main, CI #39460100571 SUCCESS.
+- [ ] Execução real pós-main falhou no broker OIDC (#39460182317). Reutilizar `autonomous-runner.yml` confiável sem ampliar allowlists; `validate` main push só dispara auditoria, nunca scheduler/workers pagos.
+- [ ] Exigir recibo exato com `test` + `factory-acceptance` do próprio run `validate`, HEAD ainda corrente e `product_ready=false` até avaliações globais independentes. CI/Preview/merge humano obrigatórios antes de registrar sucesso.
