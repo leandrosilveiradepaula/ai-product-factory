@@ -324,3 +324,10 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
   observar dois recibos independentes (CI e browser), comparando sha, jobs,
   artifact e Vercel; manter `product_ready=false` até avaliação formal
   de seis domínios e cenários greenfield/existing.
+
+## 20/10/2026 — Elegibilidade de scheduler e comando humano (#894)
+
+- [x] Verificado no Supabase real: controle por projeto, generation/version, RPC transacional de claim v2, outbox e observador de wake já existem. Não duplicar scheduler.
+- [ ] Migration proposta: acrescentar filtro por `running` e `generation>0` aos seletores `factory_portfolio_candidates` e `factory_peek_planned_work`. A ausência desse filtro anunciava elegibilidade falsa, embora o claim v2 bloqueasse execução indevida.
+- [x] RPCs legados sem esse filtro não têm grant para `service_role`, `anon` ou `authenticated` e o adapter atual usa v2: não reativar APIs antigas.
+- [ ] CI e aprovação humana para migration de produção, depois conferir contratos reais sem iniciar runs/modelos. Não misturar auditoria histórica de E2E com novo bootstrap.
