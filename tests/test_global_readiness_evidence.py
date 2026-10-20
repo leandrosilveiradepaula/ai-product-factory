@@ -189,25 +189,42 @@ class GlobalReadinessTests(unittest.TestCase):
                                         github_get=gg,cp_get=cg)
 
     def test_workflow_is_only_successful_main_push_with_no_paid_worker(self):
-        flow=(Path(__file__).resolve().parents[1]/".github/workflows/global-product-readiness.yml").read_text()
+        root=Path(__file__).resolve().parents[1]
+        yaml=(root/".github/workflows/autonomous-runner.yml").read_text()
+        broker=(root/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertFalse((root/".github/workflows/global-product-readiness.yml").exists())
+        self.assertIn('workflows: ["Control Plane OIDC preflight", "validate"]',yaml)
+        self.assertIn('const TRUSTED_BACKUP_WORKFLOW_REF = "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main"',broker)
+        self.assertIn('const GENERIC_PROXY_WORKFLOW_REFS = new Set([',broker)
+        self.assertNotIn('"leandrosilveiradepaula/ai-product-factory/.github/workflows/global-product-readiness.yml@refs/heads/main"',broker)
+        probe=yaml.split("\\n  schedule-probe:",1)[1].split("\\n  github-access-preflight:",1)[0]
+        self.assertIn("github.event.workflow_run.event == 'schedule'",probe)
+        self.assertIn("steps.backup_wake.outputs.wake == 'true'",probe)
+        self.assertNotIn('global-readiness-post-ci',probe)
+        job=yaml.split("\\n  global-readiness-post-ci:",1)[1]
         for term in (
-            "workflows: [\"validate\"]","types: [completed]","branches: [main]",
+            "github.event_name == 'workflow_run'",
+            "github.event.workflow_run.name == 'validate'",
             "github.event.workflow_run.event == 'push'",
             "github.event.workflow_run.conclusion == 'success'",
+            "github.event.workflow_run.status == 'completed'",
+            "github.event.workflow_run.head_branch == 'main'",
             "github.event.workflow_run.repository.full_name == github.repository",
             "github.event.workflow_run.head_sha",
-            "permissions:","  contents: read","  actions: read","  checks: read",
-            "  id-token: write","environment: openai-api",
-            "persist-credentials: false","uses: ./.github/actions/control-plane-oidc",
+            "    environment: openai-api",
+            "      contents: read","      actions: read","      checks: read",
+            "      id-token: write","GITHUB_TOKEN: ${{ github.token }}",
+            "persist-credentials: false",
+            "uses: ./.github/actions/control-plane-oidc",
             "audit_global_readiness.py","retention-days: 7",
         ):
-            with self.subTest(term=term):self.assertIn(term,flow)
+            with self.subTest(term=term):self.assertIn(term,job)
         for forbidden in ("FACTORY_GITHUB_TOKEN","OPENAI_API_KEY",
                           "schedule:","workflow_dispatch:","merge_pull_request",
                           "contents: write","pull-requests: write",
                           "--mode product","--mode dispatch",
                           "factory_claim_next_run","FACTORY_PRIMARY_MODEL_ENABLED"):
-            self.assertNotIn(forbidden,flow)
+            self.assertNotIn(forbidden,job)
 
     def test_script_rejects_forged_event_and_does_not_echo_exceptions(self):
         path=Path(__file__).resolve().parents[1]/"scripts/audit_global_readiness.py"
