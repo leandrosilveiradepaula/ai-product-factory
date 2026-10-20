@@ -29,6 +29,7 @@ GLOBAL_RELEASE_EVENTS = (
     "release.awaiting_human_merge",
     "release.preview_not_required",
     "release.human_merge_observed",
+    "quality_gate.passed",
 )
 
 
@@ -200,9 +201,9 @@ class SupabaseJourneyReader:
                 "factory_audit_events?select=project_id,task_id,run_id,event_type,"
                 "actor_type,actor_ref,payload,created_at"
                 "&project_id=eq."+pid
-                "&event_type=in.(project.continuation.requested,project.reconciliation.enqueued)"
-                "&created_at=gte."+_utc_filter(since)
-                +"&order=created_at.desc",
+                + "&event_type=in.(project.continuation.requested,project.reconciliation.enqueued)"
+                + "&created_at=gte."+_utc_filter(since)
+                + "&order=created_at.desc",
                 limit=101,
             )
             if any(row.get("project_id")!=pid for row in continuation):
@@ -326,7 +327,7 @@ class SupabaseJourneyReader:
         if any(row.get("task_id") not in children for row in units):
             raise RuntimeError("Change Set work unit is outside Start lineage")
         events=self._get(
-            "factory_audit_events?select=id,project_id,task_id,run_id,event_type,payload,created_at"
+            "factory_audit_events?select=id,project_id,task_id,run_id,event_type,actor_type,actor_ref,payload,created_at"
             "&project_id=eq."+pid+"&created_at=gte."+_utc_filter(start_time)
             +"&order=created_at.asc,id.asc",
             limit=MAX_PROJECT_EVENTS+1,
@@ -334,11 +335,11 @@ class SupabaseJourneyReader:
         if any(row.get("project_id")!=pid for row in events):
             raise RuntimeError("cross-project audit evidence")
         # Project-bound SELECT omits historical release receipts written with
-        # project_id=NULL. Read only the THREE known event types for scoped run
+        # project_id=NULL. Read only the FOUR known event types for scoped run
         # IDs, and fail closed if a database row violates that contract.
         global_events=self._many_ids(
             "factory_audit_events",
-            cols="id,project_id,task_id,run_id,event_type,payload,created_at",
+            cols="id,project_id,task_id,run_id,event_type,actor_type,actor_ref,payload,created_at",
             fk="run_id",ids=run_ids,
             extra=("project_id=is.null&event_type=in.("
                    + ",".join(GLOBAL_RELEASE_EVENTS) + ")"),

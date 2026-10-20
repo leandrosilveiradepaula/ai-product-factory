@@ -85,7 +85,7 @@ def fixtures():
         events.append(event("delivery.evidence.recorded",REL,task_id=REL_TASK,
                             evidence_type=kind,status="passed",evidence_ref=FINAL))
     events.extend([
-        event("quality_gate.passed",REL,task_id=REL_TASK,
+        event("quality_gate.passed",REL,project_id=None,task_id=REL_TASK,
               candidate_commit=FINAL),
         event("release.policy.decided",REL,task_id=REL_TASK,
               outcome="ready_for_human_release"),

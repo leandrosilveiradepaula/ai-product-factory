@@ -85,7 +85,15 @@ def _event(
 ) -> bool:
     required = payload or {}
     for row in events:
-        if row.get("event_type") != name or row.get("project_id") != audit_project:
+        if row.get("event_type") != name:
+            continue
+        if row.get("project_id") != audit_project and not (
+            # Legacy quality-gate events have project_id=NULL, but are scoped
+            # to the exact release run and candidate SHA below.
+            row.get("project_id") is None and name == "quality_gate.passed"
+            and isinstance(required.get("candidate_commit"), str)
+            and SHA.fullmatch(required["candidate_commit"])
+        ):
             continue
         if row.get("run_id") not in run_ids:
             continue
