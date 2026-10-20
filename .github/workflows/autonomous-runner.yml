@@ -1095,7 +1095,7 @@ jobs:
   continuation-offline-preflight:
     # Uses the already allowlisted trusted runner workflow identity. There is
     # intentionally no OpenAI API key, model flag, write token or claim.
-    if: {{ github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -1104,9 +1104,9 @@ jobs:
       id-token: write
     env:
       PYTHONPATH: src
-      GITHUB_TOKEN: {{ github.token }
-      PROJECT_KEY: {{ inputs.project_key }
-      PRODUCT_RUN_ID: {{ inputs.offline_run_id }
+      GITHUB_TOKEN: ${{ github.token }}
+      PROJECT_KEY: ${{ inputs.project_key }}
+      PRODUCT_RUN_ID: ${{ inputs.offline_run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -1130,7 +1130,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: factory-offline-preflight-{{ github.run_id }
-          path: {{ runner.temp }/factory-offline-product-preflight.json
+          name: factory-offline-preflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-offline-product-preflight.json
           if-no-files-found: warn
           retention-days: 7

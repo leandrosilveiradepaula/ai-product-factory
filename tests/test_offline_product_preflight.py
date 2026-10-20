@@ -24,6 +24,7 @@ class MemoryQueue:
         self.control, self.epoch, self.source = control, epoch, source
         self.snapshot, self.change_run, self.project_kind = snapshot, change_run, project_kind
         self.paths = []
+        self.run_reads = 0
         self._rpc = Mock(side_effect=AssertionError("RPC MUST NOT run"))
         self.calls = {"source": 0}
 
@@ -34,7 +35,8 @@ class MemoryQueue:
                          project_kind=self.project_kind, repository=REPO,
                          is_active=True, manifest={})]
         if path.startswith("factory_runs?"):
-            run_status = "queued" if self.change_run and self.paths.count(path) > 1 else self.run_status
+            self.run_reads += 1
+            run_status = "queued" if self.change_run and self.run_reads > 1 else self.run_status
             return [dict(id=RUN_ID, task_id=TASK_ID, status=run_status,
                          metadata={"stages": self.stages, "execution_generation": 1})]
         if path.startswith("factory_tasks?"):
