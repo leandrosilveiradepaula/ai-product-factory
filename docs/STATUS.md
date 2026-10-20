@@ -1,3 +1,13 @@
+## 20/10/2026 — Gate operador nos followups CI, Preview, especialistas e release (candidato)
+
+- PR #1011 **mergeada** em `dde76b4a402be98eea26acac2302c7b6c0b5a941`; `validate` pós-merge #39483075109 SUCCESS; zero PRs abertas no checkpoint. A nova migration `20261020194500_fence_recovery_manual_project_control.sql` continua **não aplicada** em Supabase produção e exige autorização específica.
+- As migrations anteriores de elegibilidade, wake e agentes/especialistas estão aplicadas. Revisão de código do runtime identificou lacuna de controle **fora do claim**: `run_ci_once` podia despachar CI mesmo após Pause; `run_preview_once` podia fazer deploy/navegador sem recheck; `run_specialist_once` podia gravar avaliação após review com estado alterado; `run_release_once` podia aplicar followup mutante em paused.
+- Candidato adiciona `SupabaseProjectFollowupGuard` server-side e fail-closed via projeto ativo, `running`, geração positiva e RPC existente `factory_assert_project_running` sem ampliar grants. Injeção em CI, Preview, specialist e release. `project_control_waiting` permanece observado, sem contabilizar trabalho concluído. Lookahead de Preview não deixa paused mascarar projeto diferente.
+- Rechecks pré-despacho CI, pré-deploy e pré-marcação de evidências evitam efeitos após pausa conhecida. Limitação explícita: uma API externa já aceita não é cancelada retroativamente e a checagem REST não é transação ACID com GitHub/Vercel; epoch/lease fences e reconciliador continuam obrigatórios.
+- Testes novos de paused/draft/stopped/unknown, race HTTP 409, projeto cruzado, Preview skip e continuation sem modelo pago. Nenhum schema, secret, auto-merge ou chamada de modelo no candidato.
+
+---
+
 ## 20/10/2026 — Recovery seguro após migrations de controle (candidato)
 
 - As três migrations autorizadas das PRs #1007, #1009 e #1010 foram **aplicadas e verificadas** no Supabase `fjplmxfcshhbmzgvyqlm`. Nomes/version IDs Supabase: `fence_scheduler_eligibility_manual_control=20261020185723`, `fence_scheduler_queue_signals_manual_control=20261020190213`, `fence_agent_specialist_and_repair_control=20261020190346`.
