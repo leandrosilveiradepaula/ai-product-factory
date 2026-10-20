@@ -141,3 +141,17 @@ Classificar escopo como `complete`, `partial`, `new_files_only` ou
 `unscoped`, sem afirmar codigo verificado quando nao foi inspecionado.
 Sem chamadas LLM de sondagem, sem hardcodes de cliente, nem auto-merge,
 migrations ou alteracao de budget.
+
+## Evidencia executada versus simulacao em Product Stage
+
+Nunca considerar `requires_model=true`, `deferred=true` ou modos
+`placeholder/mock/fixture/simulated/dry_run` como Discovery,
+Specification, Planning ou Reconciliation concluidos. O worker deve
+falhar fechado antes de gravar status `completed` ou avançar a run.
+Modelos pagos so podem produzir progresso real dentro do ledger; resultados
+deterministicos genuinos continuam possiveis sem esses marcadores.
+
+Planning nao pode concluir uma run sem um array `tasks` e pelo menos
+uma tarefa acionavel ou decisao material ainda nao resolvida. Se nao houver
+trabalho, registrar o impedimento tecnico como evidencia: nunca fabricar
+tarefas nem marcar a implementacao ou E2E como realizada.

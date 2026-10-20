@@ -1,3 +1,18 @@
+## 20/10/2026 — Hardening de progresso real no Product Stage (candidato)
+
+Foi identificada no nucleo uma falha de verdade operacional: o
+`DeterministicBootstrapHandler` devolve um marcador `requires_model=true`,
+mas `RuntimeWorker` aceitava esse marcador como stage `completed`.
+Tambem se permitia `planning` com zero tarefas e zero decisoes, deixando
+uma run concluida sem gerar backlog. O candidato recusa explicitamente
+os placeholders e planos vazios antes de `record_stage`/Change Set.
+
+O tratamento preserva fencing de execution_generation e usa o mecanismo
+existente de falha da run. Nao chama OpenAI/Codex, nao cria migration nem
+muda gates de release. Testes simulados verificam que nenhuma etapa
+falsa e persistida; isso nao substitui a prova de Start → codigo → CI →
+Preview → awaiting_release → merge humano observado.
+
 ## 2026-10-20 — Fonte no SHA exato: auditoria sem modelo e classificacao sem gate artificial (candidato)
 
 Em um novo Start ou continuidade explicita, a Factory usa o claim RPC existente com fencing de generation e gate de custos. Para reconciliation do tipo platform, a leitura de codigo e governanca GitHub no SHA exato ocorre antes de qualquer chamada de modelo. O avaliador compartilhado classifica scope como complete (codigo lido), partial (faltante/omitido/truncado mas ainda possivel planejar), new_files_only (arquivos citados a criar) ou unscoped (pedido livre sem paths).
