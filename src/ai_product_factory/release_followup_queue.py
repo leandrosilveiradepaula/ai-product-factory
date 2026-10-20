@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
 from .followup_execution_epoch import run_followup_epoch
+from .followup_active_project_query import active_project_followup_query
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class SupabaseReleaseFollowupQueue:
             or any(not isinstance(v, str) or not v.strip() for v in exclude_run_ids)):
             raise ValueError("invalid bounded follow-up exclusion set")
         limit = 12 if exclude_run_ids else 1
-        runs=self._get("factory_runs?select=id,task_id,branch_name,candidate_commit,execution_route,metadata&status=eq.awaiting_release&order=created_at.asc&limit="+str(limit))
+        runs=self._get(active_project_followup_query(status="awaiting_release",limit=limit))
         if not isinstance(runs, list) or any(not isinstance(row, dict) for row in runs):
             raise RuntimeError("invalid follow-up queue response")
         skipped = set(exclude_run_ids)

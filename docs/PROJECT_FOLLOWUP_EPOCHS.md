@@ -71,3 +71,30 @@ O RPC fornece apenas um checkpoint transacional; não mantém lock
 sobre chamadas externas GitHub/Vercel. Essas chamadas não podem
 ser desfeitas retroativamente e as reconciliações duráveis,
 receipts e lease/epoch guards existentes permanecem necessários.
+
+## Fairness: projetos pausados nao ocupam o lookahead de CI/Release/Preview
+
+O checkpoint transacional continua obrigatorio depois da selecao. Antes desta
+correcao, CI e Release observavam no maximo oito runs por wake, sempre comecando
+das mais antigas. Oito runs pausadas podiam esconder indefinidamente um nono
+candidato de outro projeto ativo. Preview tinha limite inicial de 50.
+
+Agora, os tres seletores usam os FKs existentes factory_runs -> factory_tasks
+-> factory_projects -> factory_project_execution_controls com PostgREST
+!inner em todos os relacionamentos. O banco filtra is_active=true,
+state=running e generation>0 ANTES do order/limit. Nenhuma run e alterada;
+projeto pausado/stopped/draft nao gasta janela de observacao nem quota GitHub.
+O RPC de epoch no worker ainda confere a identidade e a geracao exatas
+antes de qualquer efeito. Falha de relacao/REST e fail-closed, sem fallback
+para o FIFO antigo. Todos project_kind, inclusive platform, greenfield,
+existing e ai_agent, seguem o mesmo contrato.
+
+O teto de oito observacoes permanece intencional entre candidatos que estao
+running mas esperam CI externo ou merge humano. Esta correcao elimina a fome
+especificamente causada por projetos nao executaveis; nao altera o gate
+humano de release nem autoriza replay de epoch revogada.
+
+Regressao offline: python -m unittest tests.test_followup_active_project_query
+tests.test_followup_execution_epochs -v. Validar CI + acceptance no SHA exato.
+Nao exige DDL, novo grant/RLS ou credencial. Migration de recovery 20261020194500
+continua pendente de autorizacao separada.

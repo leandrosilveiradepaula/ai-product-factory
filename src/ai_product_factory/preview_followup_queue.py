@@ -11,6 +11,7 @@ from .preview_eligibility import is_delivery_preview_run, is_quota_blocked_candi
 
 from .supabase_server import resolve_supabase_server_config
 from .followup_execution_epoch import run_followup_epoch
+from .followup_active_project_query import active_project_followup_query
 from .candidate_pr_receipt import validate_create_pr_candidate
 
 
@@ -54,8 +55,7 @@ class SupabasePreviewFollowupQueue:
             raise ValueError("invalid bounded Preview exclusion set")
         ignored=set(exclude_run_ids)
         runs=self._get(
-            "factory_runs?select=id,task_id,branch_name,candidate_commit,execution_route,metadata"
-            "&status=eq.preview_ready&order=created_at.asc&limit=50"
+            active_project_followup_query(status="preview_ready",limit=50)
         )
         if not runs:
             return None
