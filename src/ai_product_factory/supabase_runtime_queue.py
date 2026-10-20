@@ -15,6 +15,7 @@ from .execution_team_planner import build_execution_team_plan
 from .supabase_server import resolve_supabase_server_config
 from .github_rest import GitHubRestAdapter
 from .pinned_nonproduction_target import PinnedNonproductionTarget
+from .source_scope_admission import SourceScopeBlocked
 from .candidate_source_evidence import collect_candidate_source_evidence
 
 
@@ -310,12 +311,15 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 # The claim is already durable; RuntimeWorker has no WorkItem
                 # if this context preparation raises. Settle it with the
                 # existing epoch-fenced failure RPC before propagating.
-                reason = (
-                    "reconciliation_source_candidate_sha_drift"
-                    if isinstance(exc, PermissionError)
-                    and str(exc) == "candidate branch moved; reconcile exact SHA before writing"
-                    else "reconciliation_context_preflight_failed"
-                )
+                if isinstance(exc, SourceScopeBlocked):
+                    # Do not persist provider responses, issue content or paths
+                    # in the run error. The fixed reason code is actionable.
+                    reason = "reconciliation_" + exc.code
+                elif (isinstance(exc, PermissionError)
+                      and str(exc) == "candidate branch moved; reconcile exact SHA before writing"):
+                    reason = "reconciliation_source_candidate_sha_drift"
+                else:
+                    reason = "reconciliation_context_preflight_failed"
                 claimed = WorkItem(
                     run_id=data["run_id"], task_id=data["task_id"],
                     project_id=data["project_id"], project_key=data["project_key"],

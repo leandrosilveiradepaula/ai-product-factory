@@ -9,6 +9,7 @@ import re
 from urllib.parse import quote
 
 from .supabase_runtime_queue import SupabaseRuntimeQueue
+from .source_scope_admission import SourceScopeBlocked
 
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z", re.I)
 _KEY = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
@@ -46,6 +47,7 @@ def check_recorded_product_run(
         "project_key": project_key, "run_id": run_id,
         "state": "blocked", "reason_code": "unverifiable_source",
         "source_preflight": "blocked", "source_commit": None,
+        "source_scope_status": "unverified", "code_inspected": False,
         "inspected_paths": [], "issue_reference": None,
         "model_tested": False, "paid_model_calls": 0, "writes": 0,
         "budget_authorized": False, "e2e_verified": False,
@@ -128,9 +130,31 @@ def check_recorded_product_run(
                 if isinstance(row, dict) and isinstance(row.get("path"), str)
             ][:3]
             result["issue_reference"] = evidence.get("issue_reference")
-            if evidence.get("status") != "bounded_source_inspected":
+            admission = live.get("source_admission")
+            if isinstance(admission, dict):
+                # Platform source admission was validated by the SAME
+                # exact-SHA GET path that the paid Product Stage would use.
+                # Partial, new-file and path-free briefs are not false PASSes,
+                # nor do they create a human gate for legitimate development.
+                scope = admission.get("status")
+                if scope not in {"complete", "partial", "new_files_only", "unscoped"}:
+                    raise PermissionError("source admission status unknown")
+                result["source_scope_status"] = scope
+                result["code_inspected"] = admission.get("code_inspected") is True
+                if scope != "complete":
+                    result["source_preflight"] = "partial"
+                    result["reason_code"] = {
+                        "partial": "source_scope_partial",
+                        "new_files_only": "new_code_creation_needed",
+                        "unscoped": "semantic_source_discovery_needed",
+                    }[scope]
+                    return result
+            elif evidence.get("status") != "bounded_source_inspected":
                 result["reason_code"] = "source_paths_not_inspected"
                 return result
+            else:
+                result["source_scope_status"] = "bounded"
+                result["code_inspected"] = bool(result["inspected_paths"])
         result["source_preflight"] = "verified"
         result["reason_code"] = "source_only_no_model_or_execution"
         # Recheck the exact run status: no verification of a disappearing or
@@ -143,6 +167,11 @@ def check_recorded_product_run(
             result["state"] = "blocked"
             result["source_preflight"] = "blocked"
             result["reason_code"] = "run_changed_during_preflight"
+        return result
+    except SourceScopeBlocked as exc:
+        # Only trusted, fixed reason codes may be copied to a read-only report.
+        result["reason_code"] = exc.code
+        result["source_scope_status"] = "blocked"
         return result
     except Exception:
         # No HTTP bodies, tokens, user content, task descriptions, prompts, or

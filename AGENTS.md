@@ -126,3 +126,18 @@ canal owner-only de issue_comment com o comando exato
 O job usa workflow main ja autorizado, apenas GET, parsing estrito e
 permissoes read-only de GitHub. Nao converter isso em Start/retry/merge
 automaticos ou autorizacao para uso de modelo pago.
+
+
+## Admissao de fonte antes de qualquer modelo pago
+
+Em continuacoes `platform` com `reconciliation`, verificar governanca,
+SHA exato e escopo por GET antes de enviar prompt ao modelo.
+Recibos estruturalmente invalidos ou contraditorios bloqueiam consumo
+pago com motivo fixo redigido; nao gravar erros vindos do provedor.
+
+Arquivos ausentes podem ser novos arquivos a desenvolver; trechos omitidos
+ou truncados podem representar trabalho complexo, nunca gate humano automatico.
+Classificar escopo como `complete`, `partial`, `new_files_only` ou
+`unscoped`, sem afirmar codigo verificado quando nao foi inspecionado.
+Sem chamadas LLM de sondagem, sem hardcodes de cliente, nem auto-merge,
+migrations ou alteracao de budget.
