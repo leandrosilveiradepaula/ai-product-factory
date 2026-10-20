@@ -1345,3 +1345,31 @@ integração, CI/release, Preview e Codex a partir do evento `validate`.
 A trilha de evidência deve manter jobs de CI exatos e razões de falha
 sanitizadas, sem ampliar RLS ou credenciais. Consultar
 `docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.
+
+
+## 20/10/2026 — Console: operação não é prontidão global
+
+O Console não deve tratar a chegada ao stage `operations` como produto
+`product_ready`. O próximo passo exibido passa a direcionar o operador para
+`#product-readiness`, que mostra os seis domínios exigidos
+(segurança/isolamento, operação/recuperação, testes/E2E, UX/a11y/mobile,
+documentação/rollback e completude). Domínios sem avaliação global passam
+visualmente como `Comprovação pendente`; não inferir `passed` de CI, release,
+arquivo estático ou ausência de issues. O detalhe da avaliação histórica e
+o SHA permanecem explicitamente separados da prontidão atual.
+
+A configuração de projeto novo não deve conter nomes de piloto como Service
+Desk, nem conta GitHub fixada. O proprietário da organização/repo é definido
+pelo operador e verificado pela GitHub App server-side; o Console apenas sugere
+`project_key` como nome do repositório privado e nunca altera permissão sozinho.
+
+A acessibilidade passa a exigir navegação por teclado com `Pular para o
+conteúdo principal`, foco visível, tipografia legível e alvos móveis >=44px.
+`scripts/capture_authenticated_console.mjs` coleta apenas medidas de layout,
+fontes e alvos, valida seis domínios no detalhe de um projeto, e continua
+bloqueando overflow e mutações de projeto durante auditoria.
+
+Mudanças em `apps/console/**` exigem CI e Preview Vercel verificado por
+SHA exato com browser evidence; Vercel `Ignored Build Step` não é Preview.
+Sem credencial secreta no browser, novas chamadas de modelo, migrations ou
+auto-merge. Um deployment de Preview bloqueado por quota mantém gate fechado.
