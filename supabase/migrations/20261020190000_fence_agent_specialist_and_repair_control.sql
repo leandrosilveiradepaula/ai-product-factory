@@ -197,11 +197,11 @@ begin
  if p_lease_seconds<60 or p_lease_seconds>1800 then raise exception 'invalid lease'; end if;
 
  select * into v_job
- from public.factory_specialist_lane_jobs
- where role=p_role
+ from public.factory_specialist_lane_jobs j
+ where j.role=p_role
    and exists(select 1 from public.factory_projects p
        join public.factory_project_execution_controls c on c.project_id=p.id
-       where p.id=project_id and p.is_active=true and c.state='running' and c.generation>0)
+       where p.id=j.project_id and p.is_active=true and c.state='running' and c.generation>0)
    and attempt_count < 3
    and (
      status='queued'
