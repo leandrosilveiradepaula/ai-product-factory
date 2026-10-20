@@ -312,7 +312,7 @@ class RealReaderFromAuthorizedConsoleFixtures(unittest.TestCase):
                 return events[:2] if authorized else [events[0]]
             if path.startswith("factory_runs?") and "id=eq." in path:
                 return [root_run]
-            if path.startswith("factory_tasks?") and "id=eq." in path:
+            if path.startswith("factory_tasks?") and "&id=eq." in path:
                 return [tasks[0]]
             if path.startswith("factory_tasks?"):
                 return tasks
