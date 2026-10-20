@@ -159,6 +159,35 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     assert single("SELECT count(*) FROM public.factory_runs WHERE task_id=%s",(fail_tp,))==1
     assert single("SELECT count(*) FROM public.factory_runs WHERE task_id=%s",(fail_tr,))==2
 
+    # A pause command must wait for an authorized shared-control guard to
+    # commit, proving the lock boundary rather than merely string matching.
+    with psycopg.connect(dsn) as guarded, psycopg.connect(dsn, autocommit=True) as pauser:
+        guarded.execute("SELECT public.factory_assert_project_running(%s)",(running,))
+        pauser.execute("SET lock_timeout='200ms'")
+        try:
+            pauser.execute(
+                "UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",
+                (running,),
+            )
+            raise AssertionError("Pause updated control during guarded transaction")
+        except psycopg.Error as e:
+            assert e.sqlstate=="55P03", (e.sqlstate,str(e))
+        guarded.commit()
+        pauser.execute(
+            "UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",
+            (running,),
+        )
+        assert pauser.execute(
+            "SELECT state FROM public.factory_project_execution_controls WHERE project_id=%s",
+            (running,),
+        ).fetchone()[0]=="paused"
+    try:
+        conn.execute("SELECT public.factory_assert_project_running(%s)",(running,))
+        raise AssertionError("paused project admitted after lock was released")
+    except psycopg.Error as e:
+        assert e.sqlstate=="PT409"
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='running' WHERE project_id=%s",(running,))
+
     # A running row with zero generation or inactive project must be rejected.
     conn.execute("UPDATE public.factory_project_execution_controls SET generation=0 WHERE project_id=%s",(running,))
     try:
