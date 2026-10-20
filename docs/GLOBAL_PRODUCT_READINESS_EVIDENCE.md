@@ -7,8 +7,9 @@ features, mobile/accessibility, tenant boundaries or operational recovery.
 The Control Plane release may legitimately say
 `product_readiness={ready:false,status:not_assessed}`.
 
-`.github/workflows/global-product-readiness.yml` is a strictly read-only,
-model-free observer automatically triggered by a successful `validate`
+The `global-readiness-post-ci` job within the existing trusted
+`.github/workflows/autonomous-runner.yml` is a strictly read-only,
+model-free observer triggered by a successful `validate`
 workflow on a **push to main**. It is not run on PRs, schedules, comments,
 dispatches, or failed CI. It uses the short-lived Control Plane OIDC credential
 and same-repository GitHub read token. No Vercel deployment or Preview is
@@ -74,3 +75,29 @@ Preview **N/A**; after human production merge the real
 does not prove that the OIDC live collector executed successfully.
 
 No migration, public RLS grant, new run, model billing, or auto-merge.
+
+## OIDC trust-boundary correction after #1002
+
+The first post-merge observer attempted to use a new
+`.github/workflows/global-product-readiness.yml` (#39460182317).
+The code/CI succeeded, but the live observer was **blocked**: the
+Control Plane edge broker trusts only allowlisted GitHub workflow
+identities. Adding a new identity would expand privileged access and
+is not justified for this purpose. The observer now runs inside the
+already-trusted `autonomous-runner.yml` identity, with its own job
+permissions `contents: read`, `actions: read`, `checks: read` and
+`id-token: write`; it cannot write to GitHub or dispatch workers.
+
+The existing runner listens for the *successful main push* `validate`
+completion in addition to the previous Control Plane OIDC backup event.
+The scheduler probe accepts a `workflow_run` only when its upstream
+event is `schedule`, so a successful push validation is **not** a wake.
+All worker, CI, Preview, release and paid-model lanes remain skipped.
+No OIDC allowlist, Supabase RLS, broker or secret configuration is changed.
+
+The observer now verifies the actual `validate` run jobs `test` and
+`factory-acceptance` at the same SHA, separate from unrelated or
+still-running check-runs. Unexpected failures produce a fixed
+`reason_code` and `error_class` only, with no error messages or tokens.
+A CI pass before the merge does **not** prove that the new OIDC job worked;
+check the exact post-merge job and JSON receipt.
