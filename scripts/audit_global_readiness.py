@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     output = {"status":"blocked","reason_code":"unverifiable_global_readiness_evidence",
               "product_ready":False,"paid_calls":0,"writes":0}
     code = 2
+    phase = "event"
     try:
         repository = os.environ.get("GITHUB_REPOSITORY","")
         if not isinstance(repository,str) or REPO.fullmatch(repository) is None:
@@ -54,8 +55,11 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("event missing or too large")
         event = json.loads(args.event_path.read_text(encoding="utf-8"))
         sha, run_id = validate_event(event,repository)
+        phase = "github_token"
         token = resolve_github_token(repository)
+        phase = "control_plane_access"
         reader = SupabaseAdmissionReader()
+        phase = "evidence_collection"
         report = observe_current_product(
             repository=repository,sha=sha,validation_run_id=run_id,
             github_get=lambda path: github_read(token,path),
@@ -66,10 +70,20 @@ def main(argv: list[str] | None = None) -> int:
         output["product_ready"] = report["global_readiness"]["product_ready"]
         code = 0
     except (ValueError, TypeError, RuntimeError, KeyError, OSError,
-            UnicodeError, json.JSONDecodeError):
-        # Do not print HTTP responses, JWTs, model prompts, private repository
-        # content or error messages from the remote API. Failure is fail closed.
-        pass
+            UnicodeError, json.JSONDecodeError) as exc:
+        # Fixed diagnostic vocabulary: no HTTP body, token, private source,
+        # prompt or arbitrary exception message can enter the artifact.
+        output["reason_code"] = {
+            "event":"invalid_or_stale_workflow_event",
+            "github_token":"github_read_credential_unavailable",
+            "control_plane_access":"control_plane_oidc_unavailable",
+            "evidence_collection":"exact_head_or_control_plane_evidence_unavailable",
+        }[phase]
+        output["error_class"] = type(exc).__name__ if type(exc).__name__ in {
+            "ValueError","TypeError","RuntimeError","KeyError","OSError",
+            "JSONDecodeError","UnicodeDecodeError","GlobalReadinessEvidenceError",
+            "BaselineInventoryError","PermissionError","HTTPError","URLError",
+        } else "unexpected_error"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(output,sort_keys=True,ensure_ascii=False)+"\n",encoding="utf-8")
     print(json.dumps({
