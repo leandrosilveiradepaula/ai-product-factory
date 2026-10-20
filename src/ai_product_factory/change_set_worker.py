@@ -579,17 +579,30 @@ class ChangeSetBuilderWorker:
             source=self.store.context_source(item.run_id)
             if source.get("project_key") != item.project_key or source.get("repository") != item.repository:
                 raise PermissionError("work unit project/repository differs from claimed run")
-            if source.get("project_kind")=="existing":
-                target=PinnedNonproductionTarget.parse(source.get("delivery_target"),repository=item.repository)
+            kind=source.get("project_kind")
+            # Project kind is read from the privileged Control Plane record,
+            # never inferred from a task prompt. A platform is an existing
+            # populated product with a protected production main; it is NOT
+            # the imported-project pinned-preview lane.
+            if kind=="existing":
+                target=PinnedNonproductionTarget.parse(
+                    source.get("delivery_target"),repository=item.repository
+                )
                 target.verify(self.github)
                 verified_source=target.sha
-            elif source.get("project_kind") in (None,"","greenfield"):
+            elif kind=="platform":
+                if source.get("delivery_target") not in (None,{}):
+                    raise PermissionError("platform cannot use an imported-project delivery target")
+                verified_source=self.github.get_branch_sha("main")
+                if not isinstance(verified_source,str) or not re.fullmatch(r"[0-9a-f]{40}",verified_source):
+                    raise PermissionError("platform main requires a verified exact SHA")
+            elif kind in (None,"","greenfield"):
                 verified_source=self.github.get_branch_sha("main")
             else:
                 raise PermissionError("unrecognized project kind")
             frozen_source=self.store.frozen_source_commit(item.change_set_id)
-            if source.get("project_kind")=="existing" and frozen_source and frozen_source != verified_source:
-                raise PermissionError("frozen Change Set source differs from pinned candidate")
+            if kind in ("existing","platform") and frozen_source and frozen_source != verified_source:
+                raise PermissionError("frozen Change Set source differs from verified candidate")
             source_commit=frozen_source or verified_source
             binding=self.store.bind_source(
                 run_id=item.run_id,source_commit=source_commit,

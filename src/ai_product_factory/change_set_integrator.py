@@ -47,6 +47,17 @@ class ChangeSetIntegrator:
                 raise PermissionError("integration source differs from pinned candidate")
             target.verify(self.github)
             destination=target.branch
+        elif item.project_kind == "platform":
+            if item.delivery_target not in (None,{}):
+                raise PermissionError("platform integration cannot use an imported-project target")
+            if getattr(self.github,"repository",item.repository)!=item.repository:
+                raise PermissionError("platform integration GitHub repository identity mismatch")
+            # Fail before GitHub mutations if protected production main moved
+            # since the Change Set was bound. Never silently rebase a result
+            # produced by a model against a different source tree.
+            if self.github.get_branch_sha("main") != item.source_commit:
+                raise PermissionError("platform integration main advanced; reconcile exact SHA")
+            destination="main"
         elif item.project_kind in (None,"","greenfield"):
             destination="main"
         else:
@@ -144,8 +155,8 @@ class ChangeSetIntegrator:
                     body=f"{marker}\n\nIntegrated candidate: {candidate}\n\nDo not merge until CI, specialist review and Preview evidence pass.",
                     head=item.integration_branch,base=destination,
                 )
-            if item.project_kind == "existing" and getattr(pull_request,"base_ref",None) != destination:
-                raise PermissionError("existing-project PR must expose the pinned destination branch")
+            if item.project_kind in ("existing","platform") and getattr(pull_request,"base_ref",None) != destination:
+                raise PermissionError("Change Set PR base must match the verified destination branch")
             if not isinstance(pull_request.number,int) or isinstance(pull_request.number,bool) or pull_request.number<1:
                 raise RuntimeError("integration PR number is invalid")
             if pull_request.head_sha!=candidate:
