@@ -72,7 +72,7 @@ class AdmissionLiveEvidenceTests(TestCase):
 
     def test_workflow_uses_protected_read_lane_not_scheduler_or_model(self):
         yaml=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
-        job=yaml.split("\n  admission-readonly:",1)[1]
+        job=yaml.split("\n  admission-readonly:",1)[1].split("\n  global-readiness-post-ci:",1)[0]
         schedule=yaml.split("\n  schedule-probe:",1)[1].split("\n  github-access-preflight:",1)[0]
         self.assertIn("inputs.run_admission_diagnosis != true",schedule)
         self.assertIn("github.event.comment.body == '/factory-wake'",schedule)
