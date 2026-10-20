@@ -128,6 +128,21 @@ class JourneyEvidenceTests(unittest.TestCase):
                 self.assertEqual(r.stages[STAGES.index("implementation")].status,"not_reached")
                 self.assertNotEqual(r.status,"observed_complete")
 
+    def test_platform_project_uses_actual_reconciliation_and_gap_analysis(self):
+        d = scenario()
+        d["project"]["project_kind"] = "platform"
+        for event in d["events"]:
+            if event["event_type"] == "product.stage.persisted":
+                if event["payload"]["stage"] == "discovery":
+                    event["payload"]["stage"] = "reconciliation"
+                elif event["payload"]["stage"] == "specification":
+                    event["payload"]["stage"] = "gap_analysis"
+        result = evaluate_journey(**d)
+        self.assertEqual(result.highest_verified, "awaiting_release")
+        self.assertEqual(result.status, "awaiting_human_merge")
+        d["events"][1]["payload"]["stage"] = "specification"
+        self.assertEqual(evaluate_journey(**d).highest_verified, "discovery")
+
     def test_existing_project_requires_its_actual_nonproduction_target(self):
         d=scenario()
         d["project"]["project_kind"]="existing"

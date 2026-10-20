@@ -12,14 +12,12 @@ from ai_product_factory.autonomy_journey import STAGES
 from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader
 
 
-_VERIFIED = {"verified"}
-_BLOCKED = {"blocked", "failed", "error", "rejected", "denied"}
-_AWAITING = {"awaiting", "pending", "waiting", "running", "in_progress"}
-_COMPLETE_REPORTS = {"verified", "eligible", "completed"}
+_STAGE_VERIFIED = "verified"
+_STAGE_NOT_REACHED = "not_reached"
 
 
 def _status(value: Any) -> str:
-    """Return only a normalized enum-like status, never arbitrary evidence."""
+    """Return only an enum-like status, never arbitrary evidence payloads."""
     return value.strip().lower() if isinstance(value, str) else ""
 
 
@@ -31,89 +29,91 @@ def _reason(code: str, stage: str | None = None) -> dict[str, str]:
 
 
 def _classify(report: Any) -> tuple[str, list[dict[str, str]]]:
-    """Classify only facts exposed by the exact-run read-only reader.
+    """Classify the ACTUAL read-only JourneyReport contract, fail-closed.
 
-    Eligibility fails closed: every expected stage and the report-level status
-    must be currently verified.  Unknown, missing, duplicate, or contradictory
-    facts are insufficient evidence rather than implicit progress.
+    Journey stages have verified/not_reached status, in a verified prefix.
+    The report status may be in_progress, awaiting_human_merge,
+    observed_complete, blocked or not_started. No later-stage assertion is
+    a substitute for a missing earlier stage.
     """
     report_status = _status(getattr(report, "status", None))
     stages = getattr(report, "stages", None)
-    if not isinstance(stages, (list, tuple)):
+    if not isinstance(stages, (tuple, list)) or len(stages) != len(STAGES):
         return "insufficient_evidence", [_reason("missing_stage_evidence")]
 
-    observed: dict[str, str] = {}
-    duplicate_names: set[str] = set()
-    invalid_entries = False
+    names = tuple(getattr(item, "name", None) for item in stages)
+    if names != STAGES:
+        return "insufficient_evidence", [_reason("contradictory_stage_evidence")]
+
+    verified_prefix = 0
+    future_seen = False
     for item in stages:
-        name = getattr(item, "name", None)
-        if not isinstance(name, str) or name not in STAGES:
-            invalid_entries = True
-            continue
-        if name in observed:
-            duplicate_names.add(name)
-            continue
-        observed[name] = _status(getattr(item, "status", None))
+        current = _status(getattr(item, "status", None))
+        if current not in {_STAGE_VERIFIED, _STAGE_NOT_REACHED}:
+            return "insufficient_evidence", [
+                _reason("unrecognized_stage_status", item.name)
+            ]
+        if current == _STAGE_NOT_REACHED:
+            future_seen = True
+        else:
+            if future_seen:
+                return "insufficient_evidence", [
+                    _reason("contradictory_stage_evidence", item.name)
+                ]
+            verified_prefix += 1
 
-    reasons: list[dict[str, str]] = []
-    if invalid_entries:
-        reasons.append(_reason("unrecognized_stage_evidence"))
-    for name in sorted(duplicate_names):
-        reasons.append(_reason("contradictory_stage_evidence", name))
-    for name in STAGES:
-        if name not in observed:
-            reasons.append(_reason("missing_stage_evidence", name))
+    highest = STAGES[verified_prefix - 1] if verified_prefix else None
+    if getattr(report, "highest_verified", None) != highest:
+        return "insufficient_evidence", [_reason("contradictory_current_evidence")]
 
-    blocked_stages = [name for name in STAGES if observed.get(name) in _BLOCKED]
-    pending_stages = [name for name in STAGES if observed.get(name) in _AWAITING]
-    unknown_stages = [
-        name for name in STAGES
-        if name in observed
-        and observed[name] not in _VERIFIED | _BLOCKED | _AWAITING
-    ]
+    blockers = getattr(report, "blockers", None)
+    if (not isinstance(blockers, (tuple, list))
+            or any(not isinstance(code, str) or not 1 <= len(code) <= 160
+                   for code in blockers)):
+        return "insufficient_evidence", [_reason("unverifiable_live_evidence")]
 
-    all_verified = (
-        not reasons
-        and len(observed) == len(STAGES)
-        and all(observed.get(name) in _VERIFIED for name in STAGES)
-    )
-    report_blocks = report_status in _BLOCKED
-    report_awaits = report_status in _AWAITING
+    if report_status == "not_started":
+        if (verified_prefix or "explicit_project_start_not_observed"
+                not in blockers):
+            return "insufficient_evidence", [
+                _reason("contradictory_current_evidence")
+            ]
+        return "not_started", [_reason("explicit_project_start_not_observed")]
 
-    contradictory = (
-        (report_blocks and all_verified)
-        or (report_awaits and all_verified)
-        or (report_status in _COMPLETE_REPORTS and (blocked_stages or pending_stages))
-        or (blocked_stages and pending_stages)
-    )
-    if contradictory:
-        reasons.append(_reason("contradictory_current_evidence"))
+    if report_status == "blocked":
+        if not blockers:
+            return "insufficient_evidence", [
+                _reason("contradictory_current_evidence")
+            ]
+        return "blocked", [_reason("verified_blocker")]
 
-    # A reader-reported block is a verifiable operational fact, even if other
-    # stage facts are incomplete.  Contradictions remain visible in reasons.
-    if report_blocks or blocked_stages:
-        if report_blocks:
-            reasons.append(_reason("verified_blocker"))
-        for name in blocked_stages:
-            reasons.append(_reason("verified_blocker", name))
-        return "blocked", reasons
-
-    if reasons or unknown_stages or not report_status:
-        for name in unknown_stages:
-            reasons.append(_reason("unrecognized_stage_status", name))
-        if not report_status:
-            reasons.append(_reason("missing_current_run_status"))
-        return "insufficient_evidence", reasons
-
-    if report_awaits or pending_stages:
-        if report_status not in _AWAITING | _COMPLETE_REPORTS:
-            return "insufficient_evidence", [_reason("unrecognized_current_run_status")]
-        return "awaiting", [_reason("pending_gate", name) for name in pending_stages] or [
-            _reason("pending_gate")
+    if blockers or verified_prefix == 0:
+        return "insufficient_evidence", [
+            _reason("contradictory_current_evidence")
         ]
 
-    if all_verified and report_status in _COMPLETE_REPORTS:
+    if report_status == "observed_complete":
+        if verified_prefix != len(STAGES):
+            return "insufficient_evidence", [
+                _reason("contradictory_current_evidence")
+            ]
         return "eligible", [_reason("all_required_stages_verified")]
+
+    if report_status == "awaiting_human_merge":
+        if verified_prefix != STAGES.index("awaiting_release") + 1:
+            return "insufficient_evidence", [
+                _reason("contradictory_current_evidence")
+            ]
+        return "awaiting", [_reason("pending_gate", "human_release_observed")]
+
+    if report_status == "in_progress":
+        if verified_prefix >= STAGES.index("awaiting_release") + 1:
+            return "insufficient_evidence", [
+                _reason("contradictory_current_evidence")
+            ]
+        return "in_progress", [
+            _reason("stage_not_yet_verified", STAGES[verified_prefix])
+        ]
 
     return "insufficient_evidence", [_reason("unrecognized_current_run_status")]
 
@@ -155,12 +155,17 @@ def main(argv: list[str] | None = None) -> int:
         result["classification"] = classification
         result["reasons"] = reasons
         result["required_stage"] = args.require_at_least
-        required_stage_verified = args.require_at_least == "none" or any(
-            item.name == args.require_at_least and item.status == "verified"
+        required_stage = (
+            "manual_start" if args.require_at_least == "none"
+            else args.require_at_least
+        )
+        required_stage_verified = any(
+            item.name == required_stage and item.status == "verified"
             for item in report.stages
         )
         result["requirement_met"] = (
-            classification in {"awaiting", "eligible"} and required_stage_verified
+            classification in {"in_progress", "awaiting", "eligible"}
+            and required_stage_verified
         )
         # This command has no mutation or model path regardless of reader data.
         result["paid_calls"] = 0

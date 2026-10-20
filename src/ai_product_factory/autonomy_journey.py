@@ -182,7 +182,7 @@ def evaluate_journey(
     # as their ACTUAL Product Stage contract; greenfield records
     # discovery -> specification -> planning. They must not borrow one
     # another's event names and declare a fictitious successful stage.
-    if project.get("project_kind") == "existing":
+    if project.get("project_kind") in ("existing", "platform"):
         discovered = has_stage("reconciliation")
         specified = has_stage("gap_analysis")
     else:
