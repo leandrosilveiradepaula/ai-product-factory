@@ -176,14 +176,14 @@ begin
   set status='queued',updated_at=now()
   from public.factory_runs r
   where u.run_id=r.id and u.status='running' and r.status='queued'
-    and exists(select 1 from public.factory_tasks t join public.factory_projects p on p.id=t.project_id join public.factory_project_execution_controls c on c.project_id=p.id where t.id=u.task_id and p.is_active=true and c.state='running' and c.generation>0);
+    and exists(select 1 from public.factory_tasks t join public.factory_projects p on p.id=t.project_id join public.factory_project_execution_controls c on c.project_id=p.id where t.id=u.task_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
   get diagnostics v_requeued=row_count;
 
   update public.factory_change_set_work_units u
   set status='failed',updated_at=now()
   from public.factory_runs r
   where u.run_id=r.id and u.status in ('running','queued') and r.status='failed'
-    and exists(select 1 from public.factory_tasks t join public.factory_projects p on p.id=t.project_id join public.factory_project_execution_controls c on c.project_id=p.id where t.id=u.task_id and p.is_active=true and c.state='running' and c.generation>0);
+    and exists(select 1 from public.factory_tasks t join public.factory_projects p on p.id=t.project_id join public.factory_project_execution_controls c on c.project_id=p.id where t.id=u.task_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
 
   update public.factory_change_sets s
   set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
@@ -192,20 +192,20 @@ begin
     and exists(
       select 1 from public.factory_change_set_work_units u
       where u.change_set_id=s.id and u.status in ('failed','blocked')
-    ) and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=s.project_id and p.is_active=true and c.state='running' and c.generation>0);
+    ) and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=s.project_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
   get diagnostics v_blocked=row_count;
 
   update public.factory_change_sets s
   set status='building',lease_owner=null,lease_expires_at=null,updated_at=now()
   where s.status='integrating' and s.lease_expires_at<=now() and s.attempt_count<p_max_attempts
-    and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=s.project_id and p.is_active=true and c.state='running' and c.generation>0);
+    and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=s.project_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
   get diagnostics v_integrators=row_count;
 
   update public.factory_change_sets s
   set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
       metadata=metadata||jsonb_build_object('blocker','integration_retry_exhausted')
   where s.status='integrating' and s.lease_expires_at<=now() and s.attempt_count>=p_max_attempts
-    and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=s.project_id and p.is_active=true and c.state='running' and c.generation>0);
+    and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=s.project_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
   get diagnostics v_blocked_integrations=row_count;
   v_blocked:=v_blocked+v_blocked_integrations;
 
@@ -234,7 +234,7 @@ begin
  update public.factory_specialist_lane_jobs
  set status='queued',lease_owner=null,lease_expires_at=null,updated_at=now()
  where status='claimed' and lease_expires_at<=now() and attempt_count<p_max_attempts
-   and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=public.factory_specialist_lane_jobs.project_id and p.is_active=true and c.state='running' and c.generation>0);
+   and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=public.factory_specialist_lane_jobs.project_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
  get diagnostics v_requeued=row_count;
 
  update public.factory_specialist_lane_jobs
@@ -243,7 +243,7 @@ begin
        'code','specialist_retry_exhausted','severity','critical','message','specialist lane exhausted retry attempts'
      )) else findings end
  where status='claimed' and lease_expires_at<=now() and attempt_count>=p_max_attempts
-   and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=public.factory_specialist_lane_jobs.project_id and p.is_active=true and c.state='running' and c.generation>0);
+   and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=public.factory_specialist_lane_jobs.project_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p);
  get diagnostics v_blocked=row_count;
 
  update public.factory_runs r
@@ -251,7 +251,7 @@ begin
  where exists(
    select 1 from public.factory_specialist_lane_jobs j
    where j.run_id=r.id and j.required and j.status='blocked'
- ) and exists(select 1 from public.factory_tasks t where t.id=r.task_id and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=t.project_id and p.is_active=true and c.state='running' and c.generation>0));
+ ) and exists(select 1 from public.factory_tasks t where t.id=r.task_id and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=t.project_id and p.is_active=true and c.state='running' and c.generation>0 for share of c,p));
 
  return jsonb_build_object('requeued',v_requeued,'blocked',v_blocked);
 end;
