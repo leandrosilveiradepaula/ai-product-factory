@@ -81,7 +81,7 @@ class OwnerOfflinePreflightTests(TestCase):
         flow = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         jobs = "\n" + flow.split("\njobs:\n", 1)[1]
         scheduler = jobs.split("\n  schedule-probe:\n", 1)[1].split("\n  github-access-preflight:\n", 1)[0]
-        offline = jobs.split("\n  continuation-offline-preflight:\n", 1)[1]
+        offline = jobs.split("\n  continuation-offline-preflight:\n", 1)[1].split("\n  admission-readonly:\n", 1)[0]
         alerts = jobs.split("\n  alerts-owner-comment:\n", 1)[1].split("\n  codex-route-preflight:\n", 1)[0]
         self.assertIn("github.event.comment.body == '/factory-wake'", scheduler)
         self.assertIn("github.event.comment.body == '/factory-alerts'", alerts)
