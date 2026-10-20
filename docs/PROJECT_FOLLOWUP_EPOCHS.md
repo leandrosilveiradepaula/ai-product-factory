@@ -1,0 +1,73 @@
+# Fencing de geração nos followups da Factory
+
+**Status:** código candidato, não equivale a release ou produto globalmente pronto.
+**Escopo:** CI, Preview e avaliações Specialist de runs roteadas Direct/Codex;
+observação de merge humano sem replay de claims antigas.
+
+## O defeito observado
+
+O comando humano `pause` bloqueia novas claims. Ao executar
+`resume`, `factory_project_execution_controls.generation` aumenta.
+No runtime anterior, o followup de uma run antiga checava apenas o
+estado `running`, permitindo que um candidato CI/Preview ou Specialist
+de uma geração anterior fosse processado após a retomada.
+
+A prova de geração já existe em
+`factory_runs.metadata.execution_generation` e é preenchida pelas
+claims `factory_claim_next_agent_direct_run` /
+`factory_claim_next_agent_codex_run`. O RPC
+`factory_assert_project_execution_epoch(uuid,bigint)` já existe em
+produção e foi confirmado como **SECURITY INVOKER**, com EXECUTE
+para `service_role` e sem EXECUTE para `anon/authenticated`.
+Nenhum DDL novo é necessário.
+
+## Contrato de um novo efeito externo
+
+1. Ler o item com `project_id`, `execution_route` e metadados da
+   claim. `direct/codex` exigem `execution_generation` inteiro
+   positivo; ausência não significa autorização.
+2. Revalidar projeto ativo, identidade do projeto, `running` e
+   geração positiva no Control Plane.
+3. Comparar a geração de origem com a atual; divergência retorna
+   `project_execution_epoch_revoked` e nenhum novo efeito externo.
+4. Chamar `factory_assert_project_execution_epoch` via acesso
+   privilegiado server-side, com `project_id` e geração exatos,
+   para falhar fechado se Pause/Resume ocorrer entre as consultas.
+5. Revalidar nos checkpoints anteriores a dispatch CI, deploy
+   Preview e persistência de Specialist; preservar gates de CI,
+   qualidade, Preview SHA-exato e merge humano.
+
+`project_execution_epoch_revoked` entra na lista de estados
+`waiting`, não em `processed`. O lookahead Preview pula um
+candidato revogado sem bloquear outro projeto autorizado. A
+retomada de uma run antiga exige nova claim ou reconciliação
+explícita/auditada, **nunca reutilização silenciosa** de seu token.
+
+## Exceção de observação de ato humano já consumado
+
+A observação de um PR **já mergeado humanamente** não é um
+novo claim. O release observer continua exigindo projeto
+atualmente running, PR/candidate/merge SHA exatos e os
+gates de release existentes; pode registrar o fato humano
+mesmo que a geração da run original seja antiga. Isso não
+despacha CI, não faz deployment, não executa modelos, e
+não autoriza merge automatizado.
+
+## Evidência e limites
+
+Executar `python -m unittest tests.test_followup_execution_epochs
+tests.test_project_followup_guard tests.test_ci_followup_queue
+tests.test_preview_followup_queue tests.test_release_followup_queue -v`
+e a suite geral `validate`. Os cenários incluem projeto diferente,
+claim missing, geração anterior depois de Pause/Resume, corrida HTTP 409
+no RPC e fair continuation cross-project.
+
+Não há chamadas pagas, migration, aumento de privilégios ou
+alteração de RLS. A migration de recuperação
+`20261020194500_fence_recovery_manual_project_control.sql`
+continua pendente e exige autorização específica de produção.
+
+O RPC fornece apenas um checkpoint transacional; não mantém lock
+sobre chamadas externas GitHub/Vercel. Essas chamadas não podem
+ser desfeitas retroativamente e as reconciliações duráveis,
+receipts e lease/epoch guards existentes permanecem necessários.

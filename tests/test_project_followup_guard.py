@@ -45,7 +45,8 @@ class ProjectFollowupGuardTests(unittest.TestCase):
         self.assertEqual(len(requests),3)
         self.assertIn("project_key=eq.crm-infodive",requests[0].args[0].full_url)
         self.assertIn("project_id=eq."+PID,requests[1].args[0].full_url)
-        self.assertTrue(requests[2].args[0].full_url.endswith("rpc/factory_assert_project_running"))
+        self.assertTrue(requests[2].args[0].full_url.endswith("rpc/factory_assert_project_execution_epoch"))
+        self.assertEqual(json.loads(requests[2].args[0].data),{"p_project_id":PID,"p_generation":1})
         self.assertEqual(requests[2].args[0].method,"POST")
         self.assertIn(PID,requests[2].args[0].data.decode())
 
@@ -94,7 +95,7 @@ class ProjectFollowupGuardTests(unittest.TestCase):
 
     def test_race_pause_during_rpc_returns_waiting_not_runner_error(self):
         guard=SupabaseProjectFollowupGuard(url="https://x.supabase.co",secret_key="sb_secret_test")
-        raced=urllib.error.HTTPError("https://x.supabase.co/rest/v1/rpc/factory_assert_project_running",
+        raced=urllib.error.HTTPError("https://x.supabase.co/rest/v1/rpc/factory_assert_project_execution_epoch",
                                      409,"PT409 operator paused",{},None)
         with patch("urllib.request.urlopen",side_effect=[
             Response([{"id":PID,"is_active":True}]),

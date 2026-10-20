@@ -200,3 +200,25 @@ owner-only `/factory-journey-audit <project_key> <root_run_uuid> <cutoff_utc>`
 em issue real ou `workflow_dispatch` explicito; nao usar /factory-wake
 como substituto. Parser obrigatorio antes do OIDC, job exclusivo sem
 permissao de escrita, sem modelo e sem executor, artifact sanitized.
+
+## Fencing de geracao apos Pause/Resume
+
+Uma claim roteada Direct/Codex possui geracao imutavel em
+`factory_runs.metadata.execution_generation`. Comandos humanos
+`start`, `resume` e `restart` mudam a geracao do projeto.
+**Nunca** autorize uma nova chamada paga, escrita GitHub, disparo CI,
+deployment Preview, specialist review/reparo ou claim antigo apenas
+porque o projeto voltou ao estado `running`. Compare a geracao da
+claim com a geracao atual e verifique a mesma no RPC privilegiado
+`factory_assert_project_execution_epoch` (server-side, sem nova
+credencial, sem grant publico). A ausencia de geracao em run roteada
+e qualquer divergencia devem ser classificadas como
+`project_execution_epoch_revoked`, estado duravel de espera/
+reconciliacao, **nao como trabalho concluido**.
+
+A observacao de um merge humano ja ocorrido pode reconciliar
+read-only o release com a autorizacao operacional atual; nao deve
+reexecutar a claim antiga nem chamar auto-merge. Continue exigindo
+SHA do PR, release receipt, policy, gate humano de producao e
+idempotencia. Uma chamada externa aceita antes da pausa nao pode
+ser cancelada retroativamente.
