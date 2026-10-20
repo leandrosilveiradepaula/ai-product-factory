@@ -1095,34 +1095,49 @@ jobs:
 
 
   continuation-offline-preflight:
-    # Uses the already allowlisted trusted runner workflow identity. There is
-    # intentionally no OpenAI API key, model flag, write token or claim.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true }}
+    # Owner issue comments are a read-only trigger when the GitHub connector
+    # has no workflow_dispatch. Normal scheduler/worker jobs remain gated.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-offline-preflight ')) }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
     permissions:
       contents: read
+      issues: read
       id-token: write
     env:
       PYTHONPATH: src
       GITHUB_TOKEN: ${{ github.token }}
-      PROJECT_KEY: ${{ inputs.project_key }}
-      PRODUCT_RUN_ID: ${{ inputs.offline_run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Validate exact owner command before requesting OIDC credentials
+        id: target
+        env:
+          FACTORY_EVENT_NAME: ${{ github.event_name }}
+          FACTORY_DISPATCH_ENABLED: ${{ inputs.run_offline_preflight == true && 'true' || 'false' }}
+          FACTORY_JOURNEY_ENABLED: ${{ inputs.run_journey_audit == true && 'true' || 'false' }}
+          FACTORY_DISPATCH_PROJECT_KEY: ${{ inputs.project_key }}
+          FACTORY_DISPATCH_RUN_ID: ${{ inputs.offline_run_id }}
+          FACTORY_COMMENT_BODY: ${{ github.event.comment.body }}
+          FACTORY_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          FACTORY_ISSUE_IS_PR: ${{ github.event.issue.pull_request && 'true' || 'false' }}
+        shell: bash
+        run: python -m ai_product_factory.offline_preflight_trigger
+      - uses: ./.github/actions/control-plane-oidc
       - name: Inspect one recorded run without claim or model
+        env:
+          PROJECT_KEY: ${{ steps.target.outputs.project_key }}
+          PRODUCT_RUN_ID: ${{ steps.target.outputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
           if [ -z "$PROJECT_KEY" ] || [ -z "$PRODUCT_RUN_ID" ]; then
-            echo "::error::Offline preflight requires project_key and offline_run_id"
+            echo "::error::Offline preflight needs a validated project and run"
             exit 2
           fi
           python scripts/audit_offline_product_preflight.py \

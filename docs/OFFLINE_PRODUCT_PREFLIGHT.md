@@ -48,3 +48,27 @@ infrastructure has separate provider quotas, which are still respected. Only
 after a real Start/new continuation, verified source inputs and free tests
 may an inherently semantic stage use the paid provider within the Control
 Plane ledger ceiling. Never pay to probe quota/auth or repeat known failures.
+
+## Execucao pelo orquestrador conectado (sem clique manual no Actions)
+
+Quando o conector GitHub nao expuser workflow_dispatch, publicar pelo conector
+um comentario **exato** na issue existente do repositorio Factory:
+
+```text
+/factory-offline-preflight ai-product-factory 16b12d17-9cb0-4578-a0e2-0d601f36b856
+```
+
+Esse comentario da conta OWNER gera um evento issue_comment (created).
+Um job independente verifica OWNER, issue real (nao PR), sintaxe estrita,
+project_key e UUID. A validacao ocorre antes da obtencao de token OIDC.
+As permissoes GitHub desse job sao contents:read, issues:read e id-token:write.
+Ele nao recebe OPENAI_API_KEY, nao invoca agentes/modelos e nao utiliza RPC de
+claim, retry ou escrita no Control Plane. O comentario nao e comando Start.
+
+Os workers continuam dependentes de schedule-probe, que so reage ao comando
+exato /factory-wake, nunca /factory-offline-preflight. O outro comando
+/factory-alerts continua independente. Verificar o workflow e o JSON
+sanitizado no artifact (7 dias); comentario criado nao comprova sucesso.
+
+O modo manual workflow_dispatch permanece compativel e opcional, nao e
+uma etapa que deva ser delegada ao usuario quando o conector puder comentar.
