@@ -13,6 +13,9 @@ from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_
 
 class RuntimeCliTests(unittest.TestCase):
     def setUp(self):
+        self._followup_control_patch=patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard")
+        self._followup_control_patch.start()
+        self.addCleanup(self._followup_control_patch.stop)
         self._routed_epoch_patch=patch("ai_product_factory.runtime_cli.assert_routed_epoch")
         self._routed_epoch_patch.start()
         self.addCleanup(self._routed_epoch_patch.stop)
