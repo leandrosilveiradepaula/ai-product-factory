@@ -356,3 +356,11 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Bloquear **mutação de recovery** em paused/stopped: cinco RPCs de leases, Change Sets, especialistas, decisões e retry de failed run. Não reexecutar runs históricas ou modelos em teste.
 - [ ] Verificar concorrência com pausa usando locks de controle `FOR SHARE`; teste PostgreSQL isolado real, CI, e só então solicitar merge de produção e nova autorização de migration.
 - [ ] Reconciliação de `supabase db push` deve comparar version IDs MCP por nome/assinatura, sem replays automáticos; origem Git permanece fonte de verdade do SQL.
+
+## 20/10/2026 — Sem efeitos determinísticos após Pause/Stop (#894)
+
+- [x] #1011 mergeada em `dde76b4a402be98eea26acac2302c7b6c0b5a941` com CI main #39483075109 verde. Migration de recovery aguarda autorização/aplicação, não pressupor banco atualizado.
+- [ ] Proteger side effects pós-claim: despacho de CI, deploy/browser de Preview, review specialist e release observer com checkpoint current state + geração ativa; retornar espera sem inventar delivery ou false-green.
+- [ ] Garantir fair continuation: candidata pausada não pode mascarar outro projeto em `run_ci_once`, `run_release_once` e `run_preview_once`, com limites de observação e sem loops.
+- [ ] Executar testes offline e CI, testar pausa concorrente HTTP 409, autorização desconhecida, dados adulterados, nenhuma escrita/dispatch para paused. CI sucesso não remove gates de Preview/produção/migração.
+- [ ] Autorizar migration de recuperação #1011 separadamente; depois validar cenários greenfield/existing em PostgreSQL isolado e Control Plane leitura.
