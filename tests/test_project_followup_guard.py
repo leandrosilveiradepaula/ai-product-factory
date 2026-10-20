@@ -132,7 +132,7 @@ class FollowupPauseIntegrationTests(unittest.TestCase):
         for label,runner,queue_type in functions:
             with self.subTest(label=label), \
                  patch("ai_product_factory.runtime_cli."+queue_type) as queue, \
-                 patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard") as gate, \
+                 patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard",autospec=True) as gate, \
                  patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
                  patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as store:
                 queue.return_value.next_pending.side_effect=[self.item,None] if label.startswith("preview") else None
@@ -146,7 +146,7 @@ class FollowupPauseIntegrationTests(unittest.TestCase):
 
     def test_specialist_pause_after_claim_does_not_persist_evaluation(self):
         with patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue") as queue, \
-             patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard") as gate, \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard",autospec=True) as gate, \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore") as trace:
             queue.return_value.claim.return_value=self.item
@@ -162,7 +162,7 @@ class FollowupPauseIntegrationTests(unittest.TestCase):
         newer=SimpleNamespace(**{**vars(self.item),"run_id":"new","project_key":"active-project"})
         queue=MagicMock()
         queue.next_pending.side_effect=[older,newer]
-        with patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard") as gate:
+        with patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard",autospec=True) as gate:
             gate.return_value.assert_running.side_effect=[
                 ProjectFollowupPaused("project_control_waiting"),3,
             ]
