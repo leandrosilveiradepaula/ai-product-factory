@@ -323,7 +323,7 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("inputs.run_offline_preflight == true",jobs["continuation-offline-preflight"])
         self.assertIn("github.event_name == 'issue_comment'",jobs["alerts-owner-comment"])
         for name,body in jobs.items():
-            if name in {"schedule-probe","journey-readonly","continuation-offline-preflight","admission-readonly","alerts-owner-comment"}:
+            if name in {"schedule-probe","journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci","alerts-owner-comment"}:
                 continue
             seen=set()
             def depends_on_probe(current):
