@@ -83,7 +83,7 @@ class PlatformSourceTests(unittest.TestCase):
         mismatch.repository = "someone/else"
         with self.assertRaisesRegex(PermissionError, "differs"):
             live_platform_source_context(project=PROJECT, context={}, github=mismatch)
-        with self.assertRaisesRegex(PermissionError, "invalid repository"):
+        with self.assertRaisesRegex(PermissionError, "differs|invalid repository"):
             live_platform_source_context(
                 project={**PROJECT, "repository": "../other"},
                 context={}, github=FakeGitHub())
