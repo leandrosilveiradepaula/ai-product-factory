@@ -1,3 +1,11 @@
+## 20/10/2026 — Readiness global pós-release: evidência operacional e handoff proposto
+
+- PRs #999 e #1000 mergeadas na Factory; `main=dc29fec23688bfc962861f07eededcc97401a012`, validate push #39455535021 SUCCESS. A execução real de `admission-readonly` #39455676878 (project-level) e #39455945061 (run-level) mostrou `status=waiting` sem novos trabalhos, `paid_calls=0`, `writes=0`, e job único; workers foram skipped.
+- Control Plane: release da Factory em 20/10/2026 com `product_readiness={ready:false,status:not_assessed}`; o reconciliador corrente escreve `operations` com `gaps=[]`, apagando a distinção operacional entre release de work item e prontidão global. O **candidato** propõe handoff de seis domínios para próximas reconciliações autorizadas, sempre sem afirmar `product_ready`.
+- Escopo do candidato: Python, teste, documentação; sem migrations, modelo pago, nova run, auto-merge, alteração de permissões nem Preview Console. Não declarar o handoff implantado antes da CI, merge humano e observação de uma próxima reconciliação real.
+
+---
+
 ## 20/10/2026 — Release real de Change Set #997 concluido; auditor E2E com tres falsos negativos
 
 - PR #997 produzida pela Factory, posteriormente corrigida e reconciliada no SHA
