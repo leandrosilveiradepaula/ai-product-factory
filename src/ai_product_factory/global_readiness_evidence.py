@@ -186,8 +186,135 @@ def _valid_linked_evaluation(*, project_id: str, sha: str,
             "result":row.get("result")}
 
 
+
+MAX_SHA_WORKFLOW_RUNS = 100
+MAX_VISUAL_ARTIFACTS = 10
+VISUAL_WORKFLOW = "Authenticated Console visual evidence"
+VISUAL_WORKFLOW_PATH = ".github/workflows/authenticated-visual-evidence.yml"
+
+
+def _same_sha_runs(repository: str, sha: str, github_get) -> list[dict]:
+    """Bounded GitHub source of truth; no guessed check-run to workflow mapping."""
+    payload = github_get("/repos/"+repository+"/actions/runs?head_sha="+sha+"&per_page=100")
+    if (not isinstance(payload, dict)
+            or type(payload.get("total_count")) is not int
+            or payload["total_count"] > MAX_SHA_WORKFLOW_RUNS
+            or payload["total_count"] < 1
+            or not isinstance(payload.get("workflow_runs"),list)
+            or len(payload["workflow_runs"]) != payload["total_count"]):
+        raise GlobalReadinessEvidenceError("unverifiable same-SHA workflow inventory")
+    runs = payload["workflow_runs"]
+    if any(not isinstance(row,dict) or row.get("head_sha") != sha
+           or (row.get("repository") or {}).get("full_name") != repository
+           or type(row.get("id")) is not int or row["id"] <= 0 for row in runs):
+        raise GlobalReadinessEvidenceError("cross-SHA/repository workflow inventory")
+    if len({row["id"] for row in runs}) != len(runs):
+        raise GlobalReadinessEvidenceError("duplicate workflow run identity")
+    return runs
+
+
+def find_current_validation_run(*,repository: str,sha: str,branch: str,github_get) -> int:
+    """An authenticated visual event cannot substitute itself for validate."""
+    candidates = [x for x in _same_sha_runs(_repo(repository),_sha(sha),github_get)
+                  if x.get("name") == "validate" and x.get("event") == "push"
+                  and x.get("head_branch") == branch]
+    if len(candidates) != 1 or candidates[0].get("status") != "completed" or candidates[0].get("conclusion") != "success":
+        raise GlobalReadinessEvidenceError("exact successful main validate run missing or ambiguous")
+    return candidates[0]["id"]
+
+
+def _workflow_jobs(github_get, prefix: str, run_id: int, sha: str, expected: set[str]) -> list[str]:
+    payload = github_get(prefix+"/actions/runs/"+str(run_id)+"/jobs?per_page=100")
+    if (not isinstance(payload,dict) or type(payload.get("total_count")) is not int
+            or not 1 <= payload["total_count"] <= MAX_CHECKS
+            or not isinstance(payload.get("jobs"),list)
+            or len(payload["jobs"]) != payload["total_count"]):
+        raise GlobalReadinessEvidenceError("incomplete executed workflow jobs")
+    names = []
+    for job in payload["jobs"]:
+        if (not isinstance(job,dict) or job.get("run_id") != run_id
+                or job.get("head_sha") != sha or type(job.get("id")) is not int
+                or job["id"] <= 0 or not isinstance(job.get("name"),str)
+                or job.get("status") != "completed" or job.get("conclusion") != "success"):
+            raise GlobalReadinessEvidenceError("job identity or execution not verified")
+        names.append(job["name"])
+    if len(set(names)) != len(names) or not expected.issubset(set(names)):
+        raise GlobalReadinessEvidenceError("expected executed jobs missing or duplicated")
+    return sorted(names)
+
+
+def _authenticated_visual_receipt(runs: list[dict],*,repo: str,sha: str,
+                                  branch: str,prefix: str,github_get,
+                                  expected_run_id: int | None = None) -> dict:
+    relevant = [x for x in runs if x.get("name") == VISUAL_WORKFLOW and x.get("event") == "push"
+                and x.get("head_branch") == branch]
+    if len(relevant) > 1:
+        raise GlobalReadinessEvidenceError("ambiguous authenticated visual workflow")
+    if not relevant:
+        if expected_run_id is not None:
+            raise GlobalReadinessEvidenceError("visual trigger has no matching exact-SHA run")
+        return {"status":"not_observed","scope":"not_an_executed_browser_audit"}
+    row = relevant[0]
+    rid = row["id"]
+    if (row.get("path") != VISUAL_WORKFLOW_PATH or row.get("run_attempt") != 1
+            or (expected_run_id is not None and expected_run_id != rid)):
+        raise GlobalReadinessEvidenceError("untrusted or replayed authenticated visual provenance")
+    if row.get("status") != "completed":
+        if expected_run_id is not None:
+            raise GlobalReadinessEvidenceError("visual completion event references unfinished run")
+        return {"status":"pending","workflow_run_id":rid,"source":"github_exact_sha_workflow"}
+    if row.get("conclusion") != "success":
+        return {"status":"failed","workflow_run_id":rid,
+                "reason_code":"authenticated_browser_audit_not_successful",
+                "source":"github_exact_sha_workflow"}
+    jobs = _workflow_jobs(github_get,prefix,rid,sha,{"capture"})
+    artifacts = github_get(prefix+"/actions/runs/"+str(rid)+"/artifacts?per_page=100")
+    if (not isinstance(artifacts,dict) or type(artifacts.get("total_count")) is not int
+            or not 1 <= artifacts["total_count"] <= MAX_VISUAL_ARTIFACTS
+            or not isinstance(artifacts.get("artifacts"),list)
+            or len(artifacts["artifacts"]) != artifacts["total_count"]):
+        raise GlobalReadinessEvidenceError("missing or incomplete encrypted browser receipt")
+    matches = [a for a in artifacts["artifacts"] if isinstance(a,dict)
+               and a.get("name") == "authenticated-console-"+str(rid)]
+    if len(matches) != 1:
+        raise GlobalReadinessEvidenceError("missing or duplicate authenticated visual artifact")
+    a = matches[0]
+    provenance = a.get("workflow_run")
+    if (type(a.get("id")) is not int or a["id"] <= 0 or a.get("expired") is not False
+            or type(a.get("size_in_bytes")) is not int or a["size_in_bytes"] < 1
+            or not isinstance(provenance,dict)
+            or provenance.get("id") != rid or provenance.get("head_sha") != sha
+            or provenance.get("head_branch") != branch):
+        raise GlobalReadinessEvidenceError("encrypted visual artifact identity mismatch")
+    # The encrypted payload is never read or decrypted here. A completed
+    # trusted workflow + successful capture job + same-SHA artifact is
+    # operational evidence, not an independent full UI accessibility audit.
+    return {"status":"verified","workflow_run_id":rid,"artifact_id":a["id"],
+            "executed_jobs":jobs,"scope":"trusted_authenticated_browser_suite",
+            "source":"github_exact_sha_workflow_and_encrypted_artifact"}
+
+
+def _same_sha_provider_status(prefix: str,sha: str,github_get) -> dict:
+    payload = github_get(prefix+"/commits/"+sha+"/status")
+    if (not isinstance(payload,dict) or payload.get("sha") != sha
+            or not isinstance(payload.get("statuses"),list)):
+        raise GlobalReadinessEvidenceError("same-SHA deployment status unavailable")
+    matches = [x for x in payload["statuses"] if isinstance(x,dict)
+               and x.get("context") == "Vercel"]
+    if len(matches) > 1:
+        raise GlobalReadinessEvidenceError("ambiguous same-SHA Vercel commit status")
+    if not matches:
+        return {"status":"not_reported","scope":"provider_status_only"}
+    status = matches[0].get("state")
+    if status not in ("success","pending","error","failure"):
+        raise GlobalReadinessEvidenceError("unexpected provider commit status")
+    return {"status":{"success":"provider_reported_ready","pending":"pending",
+                      "error":"failed","failure":"failed"}[status],
+            "provider":"Vercel","scope":"github_commit_status_not_live_health"}
+
+
 def observe_current_product(*, repository: str, sha: str, validation_run_id: int,
-                            github_get, cp_get) -> dict:
+                            github_get, cp_get, visual_trigger_run_id: int | None = None) -> dict:
     """Correlate production HEAD, exact CI, Control Plane owner and independent eval."""
     repository = _repo(repository)
     sha = _sha(sha)
@@ -229,6 +356,12 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
         github_get(prefix+"/actions/runs/"+str(validation_run_id)+"/jobs?per_page=100"),
         sha,validation_run_id,
     )
+    live_runs = _same_sha_runs(repository,sha,github_get)
+    visual = _authenticated_visual_receipt(
+        live_runs,repo=repository,sha=sha,branch=branch,prefix=prefix,
+        github_get=github_get,expected_run_id=visual_trigger_run_id,
+    )
+    production = _same_sha_provider_status(prefix,sha,github_get)
     evaluation = _valid_linked_evaluation(project_id=pid,sha=sha,
                                          kind="product_readiness",cp_get=cp_get)
     baseline = (_valid_linked_evaluation(project_id=pid,sha=sha,
@@ -241,13 +374,33 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
          "baseline_ref":evaluation.get("baseline_ref") if evaluation else None},
         sha,project_kind=kind,existing_baseline=baseline
     ) if evaluation else ({"status":"not_assessed","ready":False},False)
+    # A recorded pass cannot defeat a contradictory, newer same-SHA visual
+    # or deployment failure. A non-passing visual run is not a certification.
+    if passed and (visual["status"] in ("failed","pending")
+                   or production["status"] == "failed"):
+        passed = False
+        summary = {**summary,"ready":False,"status":"not_ready",
+                   "reason":"current SHA has contradictory or unfinished operational evidence"}
     unverified = [
         d for d in REQUIRED_DOMAINS
         if not passed or summary.get("domains",{}).get(d,{}).get("status") not in ("passed","not_applicable")
     ]
+    next_actions = dict(NEXT_ACTION)
+    if visual["status"] == "verified":
+        next_actions["product_experience"] = "review_full_product_surface_inventory_and_accessibility_gaps"
+        next_actions["test_strategy"] = "verify_other_critical_journeys_and_cross_project_regressions"
+    if production["status"] == "provider_reported_ready":
+        next_actions["observability_operations"] = "verify_incidents_recovery_alerting_and_rollback"
     work_plan = [{
         "domain": d, "required_coverage": list(REQUIRED_COVERAGE_BY_DOMAIN[d]),
-        "next_step": NEXT_ACTION[d], "work_type":"independent_verification",
+        "next_step": next_actions[d], "work_type":"independent_verification",
+        "observed_evidence": (
+            (["exact_sha_ci"] if d == "test_strategy" else []) +
+            (["authenticated_console_browser"] if visual["status"] == "verified"
+             and d in ("test_strategy","product_experience") else []) +
+            (["vercel_provider_status"] if production["status"] == "provider_reported_ready"
+             and d == "observability_operations" else [])
+        ),
         "start_authorized": False, "paid_calls_authorized": False,
     } for d in unverified]
     if kind=="existing" and not passed:
@@ -273,6 +426,13 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
             "scope":"entire_product_at_exact_current_head",
         },
         "source_inventory":inventory, "ci_evidence":{**checks,"validation_jobs":validated_jobs},
+        "current_sha_operational_evidence":{
+            "ci":{"status":"verified","validated_run_id":validation_run_id,
+                  "source":"completed_validate_jobs"},
+            "authenticated_console":visual,
+            "production_deployment":production,
+            "scope":"executed_signals_not_product_readiness_attestation",
+        },
         "evidence_scope":"independent_github_and_control_plane_read_only",
         "work_proposals":work_plan,"writes":0,"paid_calls":0,
     }
