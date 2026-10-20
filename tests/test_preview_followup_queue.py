@@ -75,6 +75,35 @@ class Tests(unittest.TestCase):
                 url="https://x.supabase.co",secret_key="sb_secret_x"
             ).next_pending())
 
+    def test_excluded_paused_candidate_is_not_looked_up_or_deployed(self):
+        runs=[
+            {"id":"paused","task_id":"t0","branch_name":"factory/paused",
+             "candidate_commit":"p","metadata":{"github_issue":{"number":5}}},
+            {"id":"running","task_id":"t1","branch_name":"factory/running",
+             "candidate_commit":"q","metadata":{"github_issue":{"number":6}}},
+        ]
+        rows=[
+            runs, [], [{"project_id":"p1"}],
+            [{"project_key":"running-project","repository":"org/repo","manifest":{}}],
+            [{"metadata":{"pr":26,"head_sha":"q"}}],
+            [{"status":"success","baseline_ref":"q","result":{"passed":True}}],
+        ]
+        with patch("urllib.request.urlopen",side_effect=[Response(x) for x in rows]) as call:
+            item=SupabasePreviewFollowupQueue(
+                url="https://x.supabase.co",secret_key="sb_secret_x",
+            ).next_pending(exclude_run_ids=("paused",))
+        self.assertEqual(item.run_id,"running")
+        self.assertEqual(call.call_count,6)
+        self.assertNotIn("run_id=eq.paused","|".join(x.args[0].full_url for x in call.call_args_list))
+
+    def test_invalid_preview_lookahead_filters_fail_before_network(self):
+        q=SupabasePreviewFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
+        for invalid in ((" ",),("x",)*13,["not tuple"],(None,),("x",1)):
+            with self.subTest(invalid=invalid),patch("urllib.request.urlopen") as call:
+                with self.assertRaises(ValueError):
+                    q.next_pending(exclude_run_ids=invalid)
+                call.assert_not_called()
+
     def test_different_sha_does_not_inherit_prior_quota_failure(self):
         rows=[
             [{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"new","metadata":{"github_issue":{"number":7}}}],
