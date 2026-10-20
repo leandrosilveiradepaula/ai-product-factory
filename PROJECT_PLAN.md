@@ -331,3 +331,14 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Migration proposta: acrescentar filtro por `running` e `generation>0` aos seletores `factory_portfolio_candidates` e `factory_peek_planned_work`. A ausência desse filtro anunciava elegibilidade falsa, embora o claim v2 bloqueasse execução indevida.
 - [x] RPCs legados sem esse filtro não têm grant para `service_role`, `anon` ou `authenticated` e o adapter atual usa v2: não reativar APIs antigas.
 - [ ] CI e aprovação humana para migration de produção, depois conferir contratos reais sem iniciar runs/modelos. Não misturar auditoria histórica de E2E com novo bootstrap.
+
+## 20/10/2026 — Sinais de fila obedecem execução humana (candidato)
+
+- [x] Produção inspecionada: scheduler signals ainda anunciam Product Stage,
+  Direct/Codex manual e specialists em projetos sem `running`; filtros
+  de dispatch `#1007` estão versionados, mas não aplicados no Supabase.
+- [ ] Corrigir `factory_scheduler_queue_signals()` para ignorar projetos
+  draft/paused/stopped/pausing/stopping e geração zero nos seis sinais ativos,
+  preservando observação read-only e claims/gates existentes.
+- [ ] Exigir CI, depois **autorização humana separada para migrations de
+  produção** e verificação SQL no banco antes de declarar correção ativa.
