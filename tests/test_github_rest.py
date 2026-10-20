@@ -105,6 +105,74 @@ class GitHubRestAdapterTests(unittest.TestCase):
         files=self.github.get_pull_request_files(9)
         self.assertEqual(files,("apps/console/app/page.tsx","src/core.py"))
 
+    def test_changed_file_page_two_is_required_for_preview_policy(self):
+        from urllib.parse import parse_qs,urlsplit
+        from ai_product_factory.preview_policy import evaluate_preview_applicability
+        class FilePages(FakeGitHubTransport):
+            def __call__(self,method,url,headers,body):
+                if "/pulls/9/files?" in url:
+                    page=int(parse_qs(urlsplit(url).query).get("page",["1"])[0])
+                    if page==1:
+                        return 200,[{"filename":f"src/mod_{i:03d}.py"} for i in range(100)]
+                    return 200,[{"filename":"apps/console/app/page.tsx"}]
+                return super().__call__(method,url,headers,body)
+        tr=FilePages()
+        gh=GitHubRestAdapter(repository="owner/repo",token="local",transport=tr)
+        paths=gh.get_pull_request_files(9)
+        self.assertEqual(len(paths),101)
+        self.assertTrue(evaluate_preview_applicability(
+            manifest={"preview":{"required_paths":["apps/console/**"]}},
+            changed_files=paths,
+        ).required)
+        self.assertEqual(len(gh.get_pull_request_file_details(9)),101)
+
+    def test_renaming_a_console_file_does_not_bypass_preview(self):
+        from ai_product_factory.preview_policy import evaluate_preview_applicability
+        class Renamed(FakeGitHubTransport):
+            def __call__(self,method,url,headers,body):
+                if "/pulls/9/files?" in url:
+                    return 200,[{"filename":"src/moved.py","status":"renamed",
+                                 "previous_filename":"apps/console/app/page.tsx"}]
+                return super().__call__(method,url,headers,body)
+        gh=GitHubRestAdapter(repository="owner/repo",token="local",transport=Renamed())
+        paths=gh.get_pull_request_files(9)
+        self.assertEqual(paths,("src/moved.py","apps/console/app/page.tsx"))
+        self.assertTrue(evaluate_preview_applicability(
+            manifest={"preview":{"required_paths":["apps/console/**"]}},
+            changed_files=paths,
+        ).required)
+
+    def test_truncated_duplicate_and_oversized_pr_pages_fail_closed(self):
+        from urllib.parse import parse_qs,urlsplit
+        for mode in ("duplicate","oversized","limit"):
+            class InvalidPages(FakeGitHubTransport):
+                def __call__(self,method,url,headers,body):
+                    if "/pulls/9/files?" in url:
+                        page=int(parse_qs(urlsplit(url).query).get("page",["1"])[0])
+                        if mode=="oversized":
+                            return 200,[{"filename":f"a_{i}.py"} for i in range(101)]
+                        if mode=="duplicate":
+                            return 200,[{"filename":f"x_{i}.py"} for i in range(100)] if page==1 else [{"filename":"x_0.py"}]
+                        return 200,[{"filename":f"page_{page}_{i}.py"} for i in range(100)]
+                    return super().__call__(method,url,headers,body)
+            gh=GitHubRestAdapter(repository="owner/repo",token="local",transport=InvalidPages())
+            with self.subTest(mode=mode),self.assertRaises(RuntimeError):
+                gh.get_pull_request_files(9)
+
+    def test_commit_proof_checks_real_sha_without_write(self):
+        sha="a"*40
+        class Commits(FakeGitHubTransport):
+            def __call__(self,method,url,headers,body):
+                if "/commits/"+sha in url and method=="GET":
+                    return 200,{"sha":sha}
+                return super().__call__(method,url,headers,body)
+        transport=Commits()
+        gh=GitHubRestAdapter(repository="owner/repo",token="local",transport=transport)
+        self.assertTrue(gh.commit_exists(sha))
+        self.assertEqual(transport.calls,[])
+        with self.assertRaises(ValueError):
+            gh.commit_exists("unverified")
+
     def test_repository_file_tree_is_exact_and_blob_only(self):
         paths=self.github.list_file_paths(ref="base123")
         self.assertEqual(paths,("AGENTS.md","src/app/debug/page.tsx"))

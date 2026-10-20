@@ -31,6 +31,37 @@ on:
         required: false
         default: false
         type: boolean
+      run_journey_audit:
+        description: "ONLY audit an existing human Start; never initiate work"
+        required: false
+        default: false
+        type: boolean
+      journey_since_utc:
+        description: "UTC Start cutoff, required only in read-only journey mode"
+        required: false
+        type: string
+      journey_run_id:
+        description: "Optional exact operator Start bootstrap run UUID"
+        required: false
+        type: string
+      journey_stage:
+        description: "Minimum verified stage, read-only journey mode"
+        required: false
+        type: choice
+        default: manual_start
+        options:
+          - manual_start
+          - discovery
+          - specification
+          - planning
+          - routing
+          - implementation
+          - review
+          - github_ci
+          - preview
+          - awaiting_release
+          - human_release_observed
+          - operations
   workflow_run:
     # Reuses existing trusted six-hour OIDC preflight cron, no new timer.
     workflows: ["Control Plane OIDC preflight"]
@@ -52,7 +83,8 @@ concurrency:
 
 jobs:
   schedule-probe:
-    if: ${{ (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
+    # In audit-only mode skip the scheduler probe and ALL dependent workers.
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_journey_audit != true) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -997,3 +1029,55 @@ jobs:
           # Presence is a configuration preflight, NOT a successful login.
           # The protected Codex worker must separately validate runtime auth.
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+  journey-readonly:
+    # Reuse the trusted Factory runner OIDC identity. The broker intentionally
+    # does not authorize a new standalone privileged workflow.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      id-token: write
+      issues: read
+      pull-requests: read
+      checks: read
+      actions: read
+      statuses: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      PROJECT_KEY: ${{ inputs.project_key }}
+      SINCE_UTC: ${{ inputs.journey_since_utc }}
+      ROOT_RUN_ID: ${{ inputs.journey_run_id }}
+      REQUIRE_STAGE: ${{ inputs.journey_stage }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Audit exact human Start lineage without running agents or paid models
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$PROJECT_KEY" ] || [ -z "$SINCE_UTC" ]; then
+            echo "::error::Read-only journey needs a project key and UTC Start cutoff"
+            exit 2
+          fi
+          args=(--project-key "$PROJECT_KEY" --since-utc "$SINCE_UTC" --require-at-least "$REQUIRE_STAGE")
+          if [ -n "$ROOT_RUN_ID" ]; then args+=(--run-id "$ROOT_RUN_ID"); fi
+          python scripts/audit_autonomy_journey.py "${args[@]}" \
+            | tee "$RUNNER_TEMP/factory-autonomy-journey.json"
+      - name: Preserve sanitized audit artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fresh-factory-autonomy-journey-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-autonomy-journey.json
+          if-no-files-found: warn
+          retention-days: 7
+

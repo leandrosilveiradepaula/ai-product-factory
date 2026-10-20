@@ -69,7 +69,7 @@ class OwnerAlertsOnlyContract(unittest.TestCase):
         self.assertIn("github.event.comment.author_association == 'OWNER'",root)
         self.assertNotIn("/factory-alerts",root)
         for name,body in self.jobs.items():
-            if name in ("schedule-probe","alerts-owner-comment"):
+            if name in ("schedule-probe","alerts-owner-comment","journey-readonly"):
                 continue
             seen=set()
             pending=[name]
@@ -80,6 +80,19 @@ class OwnerAlertsOnlyContract(unittest.TestCase):
                 seen.add(current)
                 pending.extend(job_needs(self.jobs[current]))
             self.assertIn("schedule-probe",seen,name)
+
+    def test_read_only_auditor_is_separate_and_cannot_wake_scheduler(self):
+        audit=self.jobs["journey-readonly"]
+        self.assertIn("github.event_name == 'workflow_dispatch'",audit)
+        self.assertIn("inputs.run_journey_audit == true",audit)
+        self.assertIn("audit_autonomy_journey.py",audit)
+        self.assertEqual(job_needs(audit),set())
+        self.assertIn("inputs.run_journey_audit != true",self.jobs["schedule-probe"])
+        for invalid in ("--mode product","--mode dispatch","--mode direct",
+                        "--mode codex","--mode preview","--mode release",
+                        "FACTORY_PRIMARY_MODEL_ENABLED","CODEX_ACCESS_TOKEN"):
+            with self.subTest(invalid=invalid):
+                self.assertNotIn(invalid,audit)
 
     def test_existing_alerts_only_dispatch_and_cron_are_unchanged(self):
         self.assertIn("inputs.run_alerts == true",self.jobs["alerts"])

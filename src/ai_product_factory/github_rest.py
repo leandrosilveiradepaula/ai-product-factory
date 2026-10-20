@@ -278,19 +278,76 @@ class GitHubRestAdapter:
             head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
         )
 
+    def _all_pr_file_rows(self, pr_number: int) -> tuple[dict[str, Any], ...]:
+        """Read every candidate file; a truncated page must never waive Preview.
+
+        GitHub returns at most 100 files/page and caps its list at 3000.
+        The exact 3000-boundary is rejected rather than treated as complete.
+        """
+        if type(pr_number) is not int or pr_number < 1:
+            raise ValueError("invalid pull request number")
+        files: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for page in range(1, 31):
+            rows = self._call(
+                "GET", f"/repos/{self.repository}/pulls/{pr_number}/files",
+                query={"per_page": "100", "page": str(page)},
+            )
+            if not isinstance(rows, list) or len(rows) > 100:
+                raise RuntimeError("unbounded or malformed PR file response")
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise RuntimeError("malformed PR file record")
+                name = row.get("filename")
+                if (not isinstance(name, str) or not name or name in seen
+                    or name.startswith("/") or "\\" in name
+                    or any(p in ("", ".", "..") for p in name.split("/"))):
+                    raise RuntimeError("invalid or duplicate PR changed-file path")
+                previous = row.get("previous_filename")
+                if previous is not None and (
+                    not isinstance(previous, str) or not previous
+                    or previous.startswith("/") or "\\" in previous
+                    or any(p in ("", ".", "..") for p in previous.split("/"))
+                ):
+                    raise RuntimeError("invalid renamed PR file path")
+                seen.add(name)
+                files.append(row)
+            if len(rows) < 100:
+                return tuple(files)
+        raise RuntimeError("PR changed-file inventory reached unverified GitHub limit")
+
     def get_pull_request_files(self, pr_number: int) -> tuple[str, ...]:
-        rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
-        return tuple(str(row["filename"]) for row in rows if row.get("filename"))
+        paths: list[str] = []
+        for row in self._all_pr_file_rows(pr_number):
+            paths.append(row["filename"])
+            if row.get("status") == "renamed" and row.get("previous_filename"):
+                # Both old and new paths matter for Preview required_paths.
+                paths.append(row["previous_filename"])
+        return tuple(dict.fromkeys(paths))
 
     def get_pull_request_file_details(self, pr_number: int) -> tuple[dict[str, Any], ...]:
-        rows = self._call("GET", f"/repos/{self.repository}/pulls/{pr_number}/files", query={"per_page": "100"})
         return tuple({
-            "filename": str(row.get("filename") or ""),
+            "filename": row["filename"],
             "status": str(row.get("status") or ""),
             "patch": str(row.get("patch") or ""),
             "additions": int(row.get("additions") or 0),
             "deletions": int(row.get("deletions") or 0),
-        } for row in rows if row.get("filename"))
+        } for row in self._all_pr_file_rows(pr_number))
+
+    def commit_exists(self, sha: str) -> bool:
+        """Check an implementation commit really exists in the target repository."""
+        import re
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("implementation commit must be an exact lowercase SHA")
+        try:
+            record = self._call("GET", f"/repos/{self.repository}/commits/{sha}")
+        except GitHubRequestError as exc:
+            if exc.status == 404:
+                return False
+            raise
+        if not isinstance(record, dict) or record.get("sha") != sha:
+            raise RuntimeError("GitHub commit identity mismatch")
+        return True
 
 
     def _fine_grained_ci_evidence(self, head_sha: str) -> tuple[list[dict], list[dict]]:

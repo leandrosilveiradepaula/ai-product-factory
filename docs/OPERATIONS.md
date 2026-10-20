@@ -1140,3 +1140,41 @@ Contexto: após a limpeza auditada do backlog, a Factory permaneceu sem filas ex
 5. Evidências: regressões em test_github_rest, test_runtime_cli, test_ci_followup_queue, test_supabase_operational_health e test_operational_alerts cobrem SHA/branch, workflows parciais/falhos, Vercel isolado, validação de permissões, deduplicação, alerta e não execução de modelos.
 
 Esta mudança não contém migrations, alterações de RLS, Console nem auto-merge. Não altera o teto financeiro de US$10 ou reserva US$0,50. Aplica-se Preview N/A para a própria Factory por não tocar em apps/console/**; não inventar deployment. Gate de merge de produção permanece humano. Mesmo após CI verde, readiness global do produto só pode ser comprovada por um novo fluxo real até o gate de release.
+
+## 2026-10-19 — Verificador de jornada E2E sem disparo nem custo
+
+A proxima comprovacao da autonomia NAO e reabrir tasks historicas nem criar fake run. O procedimento versionado em docs/AUTONOMY_JOURNEY_EVIDENCE.md recebe um Start humano com cutoff UTC, recusa eventos de outro projeto/run, confirma commits e PR no repositorio real e diferencia CI, Preview, release e operacao. A nova GitHub Action e workflow_dispatch manual e usa apenas GET no Control Plane/GitHub; nenhum provider, merge, deploy ou DDL e invocado. Cadastro draft isolado e precondicao de teste, nunca autostart. Somente evidencias futuras de execucao real podem fechar a pendencia de autonomia; mocks e testes unitarios validam o avaliador, nao a Factory inteira.
+
+
+## 2026-10-19 — Auditor de jornada: aderencia aos eventos reais (#984)
+
+Consulta read-only evidenciou tres incompatibilidades corrigidas no auditor:
+nomes de Product Stage distintos entre greenfield e existing, eventos
+release.awaiting_human_merge/preview_not_required com project_id NULL, e
+release.human_merge_observed moderno contendo candidate_commit+merge_sha
+sem pr_number. Eventual NULL-project e aceito apenas pelo run_id exato,
+SHA/PR; console human merge requer testemunha extra do mesmo run com PR
+e repository. Todas as evidencias de delivery pertencem ao unico run da
+create_pr, e cada Work Unit deve ser ancestral do commit candidato.
+Nenhuma evidencia posterior permite pular etapas ou rotular uma jornada
+como completa. Nao executar Start automatico, modelo pago nem SQL de escrita.
+
+## 2026-10-19 — Auditor de jornada via workflow OIDC JA confiavel
+
+Antes da liberacao da PR #984, a revisao de identidade descobriu que o
+workflow independente proposto nao pertencia aos workflow_ref permitidos
+pelo broker do Control Plane; GETs e GitHub App token retornariam 403.
+Sem ampliar nenhuma permissão OIDC/App, o audit agora usa
+autonomous-runner.yml (workflow_dispatch, run_journey_audit=true) no main.
+O schedule-probe e TODOS os seus descendentes ficam skipped nesse modo;
+o unico job executado e journey-readonly, que usa broker e GitHub App ja
+autorizados, com GETs exatos e artifact JSON sanitizado. A antiga Action
+independente foi eliminada. Testes regressivos garantem encadeamento dos
+jobs e ausencias de modelos, workers, deploy, merge e migrations no modo
+auditoria. Para acionar apos Start humano: usar projeto, cutoff UTC, run
+UUID e stage minimo; sem Start o retorno e not_started (nao E2E aprovado).
+
+
+## 2026-10-19 — Auditoria da sintaxe do workflow de jornada (#984)
+
+Revisao do PR apos CI revelou oito expressoes ${{ }} indevidamente precedidas por barra invertida e uma expansao Bash de argumentos escapada. Essa sintaxe pode inviabilizar condition, token, arquivo artifact e argumentos na execucao real. O PR remove esses nove escapes e inclui teste estatico de regressao para o workflow OIDC existente. Nenhum deploy, Start automatico ou modelo pago e disparado por essa mudanca.
