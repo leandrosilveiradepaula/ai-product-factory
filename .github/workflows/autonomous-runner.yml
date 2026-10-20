@@ -53,6 +53,15 @@ on:
         description: "Optional exact operator Start bootstrap run UUID"
         required: false
         type: string
+      run_admission_diagnosis:
+        description: "Read-only per-project/run work admission; no scheduler or models"
+        required: false
+        default: false
+        type: boolean
+      admission_run_id:
+        description: "Optional exact run UUID for admission diagnosis"
+        required: false
+        type: string
       journey_stage:
         description: "Minimum verified stage, read-only journey mode"
         required: false
@@ -93,7 +102,7 @@ concurrency:
 jobs:
   schedule-probe:
     # In audit-only mode skip the scheduler probe and ALL dependent workers.
-    if: ${{ (github.event_name != 'workflow_dispatch' || (inputs.run_journey_audit != true && inputs.run_offline_preflight != true)) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (inputs.run_journey_audit != true && inputs.run_offline_preflight != true && inputs.run_admission_diagnosis != true)) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1044,7 +1053,7 @@ jobs:
   journey-readonly:
     # Audits on an OWNER issue comment use the existing trusted main OIDC
     # job; the scheduler and every dependent paid worker remain skipped.
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-journey-audit ')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true && inputs.run_admission_diagnosis != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-journey-audit ')) }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -1107,7 +1116,7 @@ jobs:
   continuation-offline-preflight:
     # Owner issue comments are a read-only trigger when the GitHub connector
     # has no workflow_dispatch. Normal scheduler/worker jobs remain gated.
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-offline-preflight ')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true && inputs.run_admission_diagnosis != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-offline-preflight ')) }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -1159,5 +1168,59 @@ jobs:
         with:
           name: factory-offline-preflight-${{ github.run_id }}
           path: ${{ runner.temp }}/factory-offline-product-preflight.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  admission-readonly:
+    # Trusted OIDC read-only job; owner comment cannot wake scheduler/workers.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_admission_diagnosis == true && inputs.run_journey_audit != true && inputs.run_offline_preflight != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-admission-diagnose ')) }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      id-token: write
+      issues: read
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Validate exact owner command before OIDC
+        id: target
+        shell: bash
+        env:
+          FACTORY_EVENT_NAME: ${{ github.event_name }}
+          FACTORY_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          FACTORY_ISSUE_IS_PR: ${{ github.event.issue.pull_request && 'true' || 'false' }}
+          FACTORY_COMMENT_BODY: ${{ github.event.comment.body }}
+          FACTORY_ADMISSION_ENABLED: ${{ inputs.run_admission_diagnosis == true && 'true' || 'false' }}
+          FACTORY_JOURNEY_ENABLED: ${{ inputs.run_journey_audit == true && 'true' || 'false' }}
+          FACTORY_OFFLINE_ENABLED: ${{ inputs.run_offline_preflight == true && 'true' || 'false' }}
+          FACTORY_DISPATCH_PROJECT_KEY: ${{ inputs.project_key }}
+          FACTORY_DISPATCH_RUN_ID: ${{ inputs.admission_run_id }}
+        run: python -m ai_product_factory.admission_audit_trigger
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Read project and optional exact run admission, without claims
+        shell: bash
+        env:
+          PROJECT_KEY: ${{ steps.target.outputs.project_key }}
+          ADMISSION_RUN_ID: ${{ steps.target.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          args=(--project-key "$PROJECT_KEY")
+          if [ -n "$ADMISSION_RUN_ID" ]; then args+=(--run-id "$ADMISSION_RUN_ID"); fi
+          python scripts/audit_admission_diagnostics.py "${args[@]}" \
+            | tee "$RUNNER_TEMP/factory-admission-diagnosis.json"
+      - name: Preserve sanitized admission artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-admission-diagnosis-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-admission-diagnosis.json
           if-no-files-found: warn
           retention-days: 7
