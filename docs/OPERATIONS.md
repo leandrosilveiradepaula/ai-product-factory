@@ -1299,3 +1299,10 @@ Nao chamar `/factory-wake` para apenas auditar; isso poderia habilitar
 workers. A auditagem nao aprova merge, nao reabre trabalhos historicos e
 nao substitui o human release gate. Conferir `status=observed_complete`
 E `highest_verified=operations` em run real, no mesmo SHA/PR.
+
+
+## 2026-10-20 — Evidência operacional de admissão (#987)
+
+Além do modo local `python -m ai_product_factory.runtime_cli --mode admission-diagnose --project-key <key> [--run-id UUID]`, o próprio workflow OIDC confiável `.github/workflows/autonomous-runner.yml` fornece a via owner-only `/factory-admission-diagnose <project_key> [run_uuid]` como comentário em issue real. O comando é validado antes do OIDC e o job `admission-readonly` preserva JSON redigido como artefato. Nenhum agendamento, claim, modelo, CI, Preview ou merge é acionado por esta via. Para detalhes, testes e limites, consultar `docs/ADMISSION_DIAGNOSTICS.md`.
+
+Correção importante: `preview_ready` de auditorias manuais históricas (`source=dogfood_manual_audit`) não representa pendência de Preview real; runs roteadas sem claim não são Product Stage. `in_progress` exige comprovante de claim/início da run. Evidência CI de PR valida código, não substitui prova da execução do diagnóstico no Control Plane; após merge, requer job real com artefato e o SHA da main.

@@ -13,7 +13,8 @@ def snapshot(state="running", status=None, cost=None, commands=None, planned=Non
     return dict(project={"id":P,"project_key":"demo","is_active":True},
        control={"project_id":P,"state":state},
        commands=commands or [],tasks=[{"id":T,"project_id":P,"status":"queued"}] if status else [],
-       runs=[{"id":R,"task_id":T,"status":status}] if status else [],
+       runs=[{"id":R,"task_id":T,"status":status,"metadata":{},
+               "started_at":"2026-10-20T12:00:00Z" if status == "running" else None}] if status else [],
        run_id=R if status else None,
        cost=cost or {"state":"available","reason":"within_budget"},
        planned=planned or [],portfolio=portfolio or [])
@@ -92,6 +93,60 @@ class AdmissionTests(unittest.TestCase):
         health=SimpleNamespace(read=lambda **kw:SimpleNamespace(known_cost=Decimal("1"),unknown_cost_events=1))
         reader=SupabaseAdmissionReader(get=lambda path:[],policy_reader=policy,health_reader=health)
         self.assertEqual(reader._cost()["reason"],"paid_cost_unknown")
+
+
+    def test_real_historical_manual_audit_previews_are_not_delivery_work(self):
+        # Two real CRM audit-only preview_ready records (2026-10-07); not pending Preview.
+        rows=[{"id":R,"task_id":T,"status":"preview_ready",
+               "metadata":{"source":"dogfood_manual_audit"}},
+              {"id":OTHER,"task_id":T,"status":"preview_ready",
+               "metadata":{"source":"dogfood_manual_audit"}}]
+        x=snapshot()
+        x.update(tasks=[{"id":T,"project_id":P,"status":"completed"}],runs=rows,run_id=None)
+        self.assertEqual(classify(**x)["reason_code"],"no_current_eligible_work")
+        x["run_id"]=R
+        self.assertEqual(classify(**x)["reason_code"],"historical_preview_audit_only")
+        self.assertEqual(classify(**x)["next_step"],"no_new_action")
+
+    def test_routed_direct_is_not_misreported_as_product_stage(self):
+        x=snapshot(status="queued")
+        x["tasks"][0]["status"]="queued_execution"
+        x["runs"][0]["execution_route"]="direct"
+        result=classify(**x)
+        self.assertEqual(result["status"],"waiting")
+        self.assertEqual(result["reason_code"],"routed_execution_not_yet_claimed")
+        self.assertEqual(result["evidence"]["run"]["run_id"],R)
+        self.assertEqual(result["eligibility_scope"],"database_observation_not_claim_authorization")
+
+    def test_running_requires_run_claim_receipt_not_heartbeat(self):
+        x=snapshot(status="running")
+        x["runs"][0]["started_at"]=None
+        self.assertEqual(classify(**x)["reason_code"],"running_without_claim_receipt")
+        x["runs"][0]["started_at"]="2026-10-20T12:00:00Z"
+        self.assertEqual(classify(**x)["status"],"in_progress")
+
+    def test_resume_without_start_does_not_fake_missing_bootstrap(self):
+        x=snapshot(commands=[{"project_id":P,"command":"resume"}])
+        self.assertEqual(classify(**x)["reason_code"],"no_current_eligible_work")
+
+    def test_metadata_and_run_status_must_be_well_formed(self):
+        for row in (
+            {"id":R,"task_id":T,"status":"queued","metadata":"secret"},
+            {"id":R,"task_id":T,"status":"unrecognized","metadata":{}},
+        ):
+            with self.subTest(row=row):
+                x=snapshot(status="queued")
+                x["runs"]=[row]
+                with self.assertRaises(RuntimeError):
+                    classify(**x)
+
+    def test_project_control_and_run_evidence_are_restricted_fields(self):
+        x=snapshot(status="queued")
+        x["runs"][0]["metadata"]={"prompt":"must not leak this"}
+        result=classify(**x)
+        self.assertNotIn("must not leak this",str(result))
+        self.assertEqual(result["evidence"]["run"]["task_id"],T)
+        self.assertEqual(result["evidence"]["control"]["state"],"running")
 
 
 if __name__=="__main__":

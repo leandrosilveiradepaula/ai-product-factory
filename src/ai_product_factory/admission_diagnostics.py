@@ -9,7 +9,8 @@ from urllib.parse import quote
 
 from .project_execution_control import ProjectExecutionState
 from .primary_cost_config import SupabasePrimaryCostPolicyReader
-from .supabase_operational_health import SupabaseOperationalHealthReader
+from .supabase_operational_health import SupabaseOperationalHealthReader, KNOWN_RUN_STATUSES
+from .preview_eligibility import is_delivery_preview_run
 from .supabase_server import resolve_supabase_server_config
 
 KEY = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$")
@@ -70,6 +71,10 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         rid = _id(run.get("id"))
         if rid in seen or _id(run.get("task_id")) not in task_ids:
             raise RuntimeError("cross-project, orphan or duplicate run")
+        if run.get("status") not in KNOWN_RUN_STATUSES:
+            raise RuntimeError("unknown run status")
+        if run.get("metadata") is not None and not isinstance(run["metadata"],dict):
+            raise RuntimeError("malformed run metadata")
         seen.add(rid)
     for command in commands:
         if _id(command.get("project_id")) != pid or command.get("command") not in {"start","resume","restart","pause","stop"}:
@@ -82,37 +87,61 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         raise RuntimeError("run not found within project")
     if not isinstance(cost, dict) or cost.get("state") not in {"available","blocked","unknown"}:
         raise RuntimeError("invalid cost observation")
+    # A run receipt is an exact run/task identity, not a workflow heartbeat.
+    receipt = next((r for r in runs if run_id and r["id"].lower() == run_id.lower()),None)
+    def delivery_wait(r: dict) -> bool:
+        return r.get("status") in WAITING and (
+            r.get("status") != "preview_ready" or is_delivery_preview_run(r)
+        )
+    def credible_running(r: dict) -> bool:
+        return r.get("status") in RUNNING and isinstance(r.get("started_at"),str) and bool(r["started_at"].strip())
     if state != "running":
         status,reason,next_step = "blocked","project_"+state,"operator_control"
     elif run_id:
-        selected = next(r for r in runs if r["id"].lower() == run_id.lower())
+        selected = receipt
+        assert selected is not None
         selected_task = next(t for t in tasks if t["id"].lower() == selected["task_id"].lower())
         s = selected.get("status")
         if s in RUNNING:
-            status,reason,next_step = "in_progress","run_"+s,"worker_or_recovery"
+            if credible_running(selected):
+                status,reason,next_step = "in_progress","run_"+s,"worker_or_recovery"
+            else:
+                status,reason,next_step = "blocked","running_without_claim_receipt","inspect_run_claim"
+        elif s == "preview_ready" and not is_delivery_preview_run(selected):
+            status,reason,next_step = "waiting","historical_preview_audit_only","no_new_action"
         elif s in WAITING:
             status,reason,next_step = "waiting","run_"+s,WAITING[s]
         elif s in TERMINAL:
             status,reason,next_step = "blocked" if s in {"failed","blocked"} else "waiting","run_"+s,"review_terminal_run" if s in {"failed","blocked"} else "no_new_action"
         elif s in PRODUCT:
-            if selected_task.get("status") != "queued":
+            if selected_task.get("status") == "queued_execution" and selected.get("execution_route") in {"direct","codex"}:
+                status,reason,next_step = "waiting","routed_execution_not_yet_claimed","agent_scheduler"
+            elif selected_task.get("status") != "queued":
                 status,reason,next_step = "blocked","run_not_product_eligible","inspect_task_state"
             else:
                 status,reason,next_step = "eligible","product_stage_queued","product_stage"
         else:
             raise RuntimeError("unknown run status")
     elif any(r.get("status") in RUNNING for r in runs):
-        status,reason,next_step = "in_progress","running_work_observed","worker_or_recovery"
-    elif any(r.get("status") in WAITING for r in runs):
-        current = next(r for r in runs if r.get("status") in WAITING)
-        status,reason,next_step = "waiting","run_"+current["status"],WAITING[current["status"]]
+        receipt = next(r for r in runs if r.get("status") in RUNNING)
+        if credible_running(receipt):
+            status,reason,next_step = "in_progress","running_work_observed","worker_or_recovery"
+        else:
+            status,reason,next_step = "blocked","running_without_claim_receipt","inspect_run_claim"
+    elif any(delivery_wait(r) for r in runs):
+        receipt = next(r for r in runs if delivery_wait(r))
+        status,reason,next_step = "waiting","run_"+receipt["status"],WAITING[receipt["status"]]
     elif any(r.get("status") in PRODUCT and any(t["id"] == r["task_id"] and t.get("status") == "queued" for t in tasks) for r in runs):
+        receipt = next(r for r in runs if r.get("status") in PRODUCT and any(t["id"] == r["task_id"] and t.get("status") == "queued" for t in tasks))
         status,reason,next_step = "eligible","product_stage_queued","product_stage"
+    elif any(r.get("status") == "queued" and r.get("execution_route") in {"direct","codex"} and any(t["id"] == r["task_id"] and t.get("status") == "queued_execution" for t in tasks) for r in runs):
+        receipt = next(r for r in runs if r.get("status") == "queued" and r.get("execution_route") in {"direct","codex"} and any(t["id"] == r["task_id"] and t.get("status") == "queued_execution" for t in tasks))
+        status,reason,next_step = "waiting","routed_execution_not_yet_claimed","agent_scheduler"
     elif planned and portfolio:
         status,reason,next_step = "eligible","planned_work_admitted","dispatch"
     elif planned:
         status,reason,next_step = "blocked","portfolio_not_eligible","inspect_portfolio_constraints"
-    elif commands and not runs:
+    elif any(c["command"] == "start" for c in commands) and not runs:
         status,reason,next_step = "blocked","start_without_bootstrap","inspect_bootstrap"
     elif not commands and not runs:
         status,reason,next_step = "waiting","no_start_or_bootstrap","operator_start"
@@ -120,9 +149,19 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         status,reason,next_step = "waiting","no_current_eligible_work","review_project_backlog"
     if status == "eligible" and next_step in {"product_stage","dispatch"} and cost["state"] != "available":
         status,reason,next_step = "blocked",cost.get("reason") or "cost_unverified","review_cost_policy_and_ledger"
+    task_by_id = {t["id"].lower(): t for t in tasks}
+    run_evidence = None
+    if receipt is not None:
+        run_evidence = {"run_id":_id(receipt["id"]),"task_id":_id(receipt["task_id"]),
+                        "run_status":receipt["status"],
+                        "task_status":task_by_id[_id(receipt["task_id"])].get("status")}
     return {"project_key":project["project_key"],"project_id":pid,"run_id":run_id,
             "project_state":state,"status":status,"reason_code":reason,"next_step":next_step,
-            "evidence":{"command_count":len(commands),"task_count":len(tasks),"run_count":len(runs),
+            "eligibility_scope":"database_observation_not_claim_authorization",
+            "evidence":{"control":{"state":state,"version":control.get("version"),
+                                   "generation":control.get("generation")},
+                        "run":run_evidence,"command_count":len(commands),
+                        "task_count":len(tasks),"run_count":len(runs),
                         "planned_admitted_count":len(planned),"portfolio_eligible":bool(portfolio),
                         "cost":cost},"read_only":True}
 
@@ -182,7 +221,7 @@ class SupabaseAdmissionReader:
         tasks=_many(self._get("factory_tasks?select=id,project_id,status&project_id=eq."+pid+"&order=created_at.desc&limit=101"),"tasks")
         if tasks:
             tids=",".join(_id(t.get("id")) for t in tasks)
-            runs=_many(self._get("factory_runs?select=id,task_id,status&task_id=in.("+tids+")&order=created_at.desc&limit=101"),"runs")
+            runs=_many(self._get("factory_runs?select=id,task_id,status,metadata,execution_route,started_at&task_id=in.("+tids+")&order=created_at.desc&limit=101"),"runs")
         else:
             runs=[]
         # Existing atomic-dispatch read contract, not task counts.

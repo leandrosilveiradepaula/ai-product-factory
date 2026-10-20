@@ -69,7 +69,7 @@ class OwnerAlertsOnlyContract(unittest.TestCase):
         self.assertIn("github.event.comment.author_association == 'OWNER'",root)
         self.assertNotIn("/factory-alerts",root)
         for name,body in self.jobs.items():
-            if name in ("schedule-probe","alerts-owner-comment","journey-readonly","continuation-offline-preflight"):
+            if name in ("schedule-probe","alerts-owner-comment","journey-readonly","continuation-offline-preflight","admission-readonly"):
                 continue
             seen=set()
             pending=[name]
