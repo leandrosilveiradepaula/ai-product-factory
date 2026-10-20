@@ -12,6 +12,41 @@ from .candidate_source_evidence import collect_candidate_source_evidence
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\Z")
 _GOVERNANCE = ("AGENTS.md", "PROJECT_PLAN.md")
+_ISSUE_REF = re.compile(r"\b(?:issue|tarefa)\s*#([1-9][0-9]{0,5})\b", re.IGNORECASE)
+_PATH_HINT = re.compile(
+    r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
+    r"[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs)"
+)
+
+
+def _issue_path_hints(github: object, summary: object) -> tuple[int | None, tuple[str, ...]]:
+    """Extract *paths only* from one repository issue; never import its instructions.
+
+    An issue is mutable/untrusted and is not authorization to edit files.
+    Fail closed if the referenced issue cannot be fetched or verified.
+    """
+    if not isinstance(summary, str) or not summary:
+        return None, ()
+    issues = set(_ISSUE_REF.findall(summary))
+    if not issues:
+        return None, ()
+    if len(issues) != 1:
+        raise PermissionError("continuation refers to multiple GitHub issues")
+    number = int(next(iter(issues)))
+    issue = github.get_issue(number)
+    if getattr(issue, "number", None) != number:
+        raise PermissionError("issue lookup did not match requested identity")
+    body = getattr(issue, "body", None)
+    if not isinstance(body, str) or len(body.encode("utf-8")) > 20000:
+        raise PermissionError("issue scope body missing or oversized")
+    paths = tuple(dict.fromkeys(
+        path for path in _PATH_HINT.findall(body)
+        if ".." not in path.split("/")
+    ))
+    if len(paths) > 20:
+        raise PermissionError("issue scope inventory exceeds safe bound")
+    return number, paths
+
 
 
 def live_platform_source_context(*, project: dict, context: dict, github: object) -> dict:
@@ -41,9 +76,16 @@ def live_platform_source_context(*, project: dict, context: dict, github: object
     manifest = manifest if isinstance(manifest, dict) else {}
     continuation = manifest.get("continuation_request")
     summary = continuation.get("summary") if isinstance(continuation, dict) else None
+    issue_number, issue_paths = _issue_path_hints(github, summary)
+    # Source retrieval is bounded to filenames; the mutable issue body is
+    # not treated as authority or copied into model prompts.
+    requested_source = (summary or "") + "\n" + "\n".join(issue_paths)
     evidence = collect_candidate_source_evidence(
-        governance["PROJECT_PLAN.md"], github, sha=sha, continuation_request=summary,
+        governance["PROJECT_PLAN.md"], github, sha=sha,
+        continuation_request=requested_source,
     )
+    evidence["issue_reference"] = issue_number
+    evidence["issue_path_hint_count"] = len(issue_paths)
     if evidence.get("assessed_commit") != sha:
         raise PermissionError("platform source evidence is not SHA exact")
     # The branch must still agree after bounded reads. A moving main cannot

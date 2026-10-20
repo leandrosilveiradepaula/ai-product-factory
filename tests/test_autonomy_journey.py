@@ -263,7 +263,7 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("journey-readonly:",workflow)
         self.assertIn("inputs.run_journey_audit != true",workflow)
         self.assertIn(
-            "if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}",
+            "if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true }}",
             workflow,
         )
         # A preceding backslash breaks workflow expressions and shell argv
@@ -294,9 +294,11 @@ class JourneyReaderContractTests(unittest.TestCase):
         jobs=dict(pieces)
         self.assertIn("schedule-probe",jobs)
         self.assertIn("journey-readonly",jobs)
+        self.assertIn("continuation-offline-preflight",jobs)
+        self.assertIn("inputs.run_offline_preflight == true",jobs["continuation-offline-preflight"])
         self.assertIn("github.event_name == 'issue_comment'",jobs["alerts-owner-comment"])
         for name,body in jobs.items():
-            if name in {"schedule-probe","journey-readonly","alerts-owner-comment"}:
+            if name in {"schedule-probe","journey-readonly","continuation-offline-preflight","alerts-owner-comment"}:
                 continue
             seen=set()
             def depends_on_probe(current):

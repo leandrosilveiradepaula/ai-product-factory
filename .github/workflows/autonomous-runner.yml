@@ -31,6 +31,15 @@ on:
         required: false
         default: false
         type: boolean
+      run_offline_preflight:
+        description: "Read-only source preflight of existing Product Stage run; no agents or paid models"
+        required: false
+        default: false
+        type: boolean
+      offline_run_id:
+        description: "Existing Product Stage run UUID, used only by offline preflight"
+        required: false
+        type: string
       run_journey_audit:
         description: "ONLY audit an existing human Start; never initiate work"
         required: false
@@ -84,7 +93,7 @@ concurrency:
 jobs:
   schedule-probe:
     # In audit-only mode skip the scheduler probe and ALL dependent workers.
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_journey_audit != true) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (inputs.run_journey_audit != true && inputs.run_offline_preflight != true)) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -228,9 +237,11 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      issues: read
     timeout-minutes: 8
     env:
       PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
@@ -1033,7 +1044,7 @@ jobs:
   journey-readonly:
     # Reuse the trusted Factory runner OIDC identity. The broker intentionally
     # does not authorize a new standalone privileged workflow.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -1081,3 +1092,47 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+
+
+  continuation-offline-preflight:
+    # Uses the already allowlisted trusted runner workflow identity. There is
+    # intentionally no OpenAI API key, model flag, write token or claim.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_offline_preflight == true && inputs.run_journey_audit != true }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      PROJECT_KEY: ${{ inputs.project_key }}
+      PRODUCT_RUN_ID: ${{ inputs.offline_run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Inspect one recorded run without claim or model
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$PROJECT_KEY" ] || [ -z "$PRODUCT_RUN_ID" ]; then
+            echo "::error::Offline preflight requires project_key and offline_run_id"
+            exit 2
+          fi
+          python scripts/audit_offline_product_preflight.py \
+            --project-key "$PROJECT_KEY" --run-id "$PRODUCT_RUN_ID" \
+            | tee "$RUNNER_TEMP/factory-offline-product-preflight.json"
+      - name: Preserve sanitized no-model preflight evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-offline-preflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-offline-product-preflight.json
+          if-no-files-found: warn
+          retention-days: 7

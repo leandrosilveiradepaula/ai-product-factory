@@ -133,3 +133,13 @@ nessa invocacao. GitHub App segue o caminho oficial de token efemero
 (nao confundir GITHUB_TOKEN do proprio repo com permissao cross-repo).
 O caminho do auditor nao recebe nem persiste private keys, tokens ou prompts.
 
+
+
+## Preflight de Product Stage sem modelos (20/10/2026)
+
+O auditor E2E por Start permanece a prova final e não deve ser substituído por
+um ensaio offline. Como diagnóstico anterior à API paga, o modo opt-in
+\`run_offline_preflight\` do MESMO runner confiável verifica uma run já existente
+somente por GET. Ele nunca reivindica uma run, grava Change Set, executa modelo
+ou confunde uma run terminal com retomada.
+Veja \`docs/OFFLINE_PRODUCT_PREFLIGHT.md\`.
