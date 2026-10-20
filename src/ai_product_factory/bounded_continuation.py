@@ -19,7 +19,7 @@ _WAITING = frozenset({
     "awaiting_nonproduction_merge", "wait_preview_merge_deployment",
     "wait_postmerge_browser_evidence",
     "nonproduction_candidate_not_released",
-    "project_control_waiting",
+    "project_control_waiting", "project_execution_epoch_revoked",
 })
 
 
