@@ -37,6 +37,11 @@ def github():
 
 
 class NonproductionMergeObserverTests(unittest.TestCase):
+    def setUp(self):
+        self._control=patch("ai_product_factory.runtime_cli._assert_project_followup",return_value=1)
+        self._control.start()
+        self.addCleanup(self._control.stop)
+
     def test_observes_exact_preview_merge_without_production_release(self):
         g=github()
         result=verify_nonproduction_preview_merge(g,item(),pr())
