@@ -1315,3 +1315,19 @@ Releases humanos confirmados podem reconciliar o projeto para `operations`, mas 
 O próximo ciclo **explicitamente autorizado** recebe `current_state_facts.global_product_readiness` do Control Plane, inclusive em projetos legados por consulta somente leitura do último report. A etapa Planning pode distinguir falta de evidência de defeito de implementação. Não produzir Work Units só porque o domínio não foi auditado; somente falhas atuais e escopo autorizado justificam código novo. Um report `passed` no SHA candidato permanece `candidate_only` até prova independente após merge no HEAD atual. Dados não verificados produzem `status=unknown,ready=false` e deixam o fluxo de release observável sem reexecutar chamadas pagas.
 
 O comando `admission-diagnose` também retorna a obrigação de prontidão quando a fila está vazia e o projeto está em `operations`; isso explica `idle_with_unassessed_global_product_readiness` sem inferir um worker. Não atualizar retroativamente os reports históricos e não transformar esse diagnóstico em `product_ready`. Validação: `tests/test_post_release_readiness.py`, testes de release e runtime, CI exata antes de merge; Preview N/A para este bloco sem `apps/console/**`.
+
+
+## 20/10/2026 — Auditor global independente pós-CI (candidato da #713)
+
+Nova trilha somente leitura: um `workflow_run` disparado por `validate`
+SUCCESS de push em `main` observa HEAD exato, CI, inventário completo
+da árvore GitHub e `factory_evaluations` vinculada ao projeto. A avaliação
+global permanece `not_assessed` se faltar algum recibo necessário; cada
+domínio gera pacote de verificação pendente, não run/task/issue automática.
+
+O token GitHub é somente leitura para o próprio repo do Actions; a identidade
+do projeto é resolvida pelo Control Plane, não por client hardcode. Se `main`
+mover entre CI e coleta, o observador falha fechado; não publica estado
+enganosamente verde nem invoca LLM. A evidência deve ser conferida no
+artefato da execução real pós-merge. Consultar
+`docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.
