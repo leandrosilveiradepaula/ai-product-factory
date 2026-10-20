@@ -36,7 +36,7 @@ def _one(rows: object, label: str, *, optional: bool = False) -> dict | None:
 
 
 def _many(rows: object, label: str) -> list[dict]:
-    if not isinstance(rows, list) or len(rows) > MAX_ROWS or any(not isinstance(x, dict) for x in rows):
+    if not isinstance(rows, list) or len(rows) >= MAX_ROWS or any(not isinstance(x, dict) for x in rows):
         raise RuntimeError("incomplete or inconsistent " + label)
     return rows
 
@@ -52,6 +52,8 @@ def classify(*, project: dict, control: dict, commands: list[dict],
              cost: dict, planned: list[dict], portfolio: list[dict]) -> dict:
     """Pure classification; absence of a claim is not proof of scheduler health."""
     pid = _id(project.get("id"))
+    if not isinstance(project.get("project_key"), str) or not project["project_key"]:
+        raise RuntimeError("invalid project key")
     if _id(control.get("project_id")) != pid or control.get("state") not in ProjectExecutionState._value2member_map_:
         raise RuntimeError("inconsistent project execution control")
     state = control["state"]
@@ -84,6 +86,7 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         status,reason,next_step = "blocked","project_"+state,"operator_control"
     elif run_id:
         selected = next(r for r in runs if r["id"].lower() == run_id.lower())
+        selected_task = next(t for t in tasks if t["id"].lower() == selected["task_id"].lower())
         s = selected.get("status")
         if s in RUNNING:
             status,reason,next_step = "in_progress","run_"+s,"worker_or_recovery"
@@ -92,7 +95,10 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         elif s in TERMINAL:
             status,reason,next_step = "blocked" if s in {"failed","blocked"} else "waiting","run_"+s,"review_terminal_run" if s in {"failed","blocked"} else "no_new_action"
         elif s in PRODUCT:
-            status,reason,next_step = "eligible","product_stage_queued","product_stage"
+            if selected_task.get("status") != "queued":
+                status,reason,next_step = "blocked","run_not_product_eligible","inspect_task_state"
+            else:
+                status,reason,next_step = "eligible","product_stage_queued","product_stage"
         else:
             raise RuntimeError("unknown run status")
     elif any(r.get("status") in RUNNING for r in runs):
@@ -100,7 +106,7 @@ def classify(*, project: dict, control: dict, commands: list[dict],
     elif any(r.get("status") in WAITING for r in runs):
         current = next(r for r in runs if r.get("status") in WAITING)
         status,reason,next_step = "waiting","run_"+current["status"],WAITING[current["status"]]
-    elif any(r.get("status") in PRODUCT for r in runs):
+    elif any(r.get("status") in PRODUCT and any(t["id"] == r["task_id"] and t.get("status") == "queued" for t in tasks) for r in runs):
         status,reason,next_step = "eligible","product_stage_queued","product_stage"
     elif planned and portfolio:
         status,reason,next_step = "eligible","planned_work_admitted","dispatch"
@@ -168,6 +174,8 @@ class SupabaseAdmissionReader:
         if run_id is not None and (not isinstance(run_id,str) or not UUID.fullmatch(run_id)):
             raise ValueError("invalid --run-id")
         project=_one(self._get("factory_projects?select=id,project_key,is_active&project_key=eq."+quote(project_key)+"&limit=2"),"project")
+        if project.get("project_key") != project_key:
+            raise RuntimeError("project identity mismatch")
         pid=_id(project.get("id"))
         control=_one(self._get("factory_project_execution_controls?select=project_id,state,version,generation&project_id=eq."+pid+"&limit=2"),"control")
         commands=_many(self._get("factory_project_execution_commands?select=project_id,command&project_id=eq."+pid+"&order=created_at.desc&limit=101"),"commands")
