@@ -1400,3 +1400,22 @@ disponível em `docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.
 O Control Plane real revelou que `factory_portfolio_candidates(integer)` e `factory_peek_planned_work(text,integer)` ainda podem enumerar Work Units de projeto `draft`, `pausing`, `paused`, `stopping` ou `stopped`. O claim transacional de produção `factory_dispatch_preapproved_planned_task_v2` já aplica `factory_assert_project_running`, portanto o bloqueio existe no último gate, mas a sinalização anterior do scheduler fica enganosa. A migration `20261020181000_fence_scheduler_eligibility_manual_control.sql` reconcilia as **definições SQL obtidas diretamente da produção** e só adiciona filtro `control.state='running' AND generation>0` aos dois seletores. Não cria runs, não muda prioridades, não reabre trabalho histórico e não toca no ciclo Start/Stop.
 
 Os RPCs antigos `factory_dispatch_preapproved_planned_task` e `factory_dispatch_next_planned_task` foram inspecionados no banco: estão **sem EXECUTE para service_role, anon e authenticated**, não fazem parte do adapter atual (que usa `_v2`). Não reabrir permissões nem duplicar a implementação. As RLS intencionais das tabelas Factory permanecem fail-closed. Essa migration **precisa ser aprovada/aplicada em produção pelo operador**, somente depois de CI e verificação. O plano não aplica SQL automaticamente.
+
+## 20/10/2026 — Sinais de acordar scheduler e controle humano
+
+O RPC `factory_scheduler_queue_signals()` é usado como inventário do probe,
+não como autorização de claim. A versão atual em produção não correlacionava
+`product_work`, `routed_execution_work`, `codex_manual_work` e três
+`specialist_*_work` com `factory_project_execution_controls`. A nova migration
+`20261020183500_fence_scheduler_queue_signals_manual_control.sql` exige projeto
+ativo, `state=running` e `generation>0` nesses sinais. `integration_work`
+já tinha filtro. `ci_work` e `release_work` permanecem indicadores passivos,
+não grants de execução; suas mutações continuam sujeitas ao claim/gates
+independentes. A migration deve manter apenas `service_role` no EXECUTE e
+nenhuma ampliação RLS.
+
+Duas migrations aguardam autorização específica para produção: esta e
+`20261020181000_fence_scheduler_eligibility_manual_control.sql` (merge #1007).
+Executar em ordem de versão e confirmar após aplicação, via leitura de
+`pg_get_functiondef` e chamadas só de consulta, sem criar projetos/runs.
+Os testes de PR não são prova de aplicação real.

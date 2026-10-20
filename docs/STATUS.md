@@ -1,3 +1,12 @@
+## 20/10/2026 — Pós-merge #1007: scheduler queue signals ainda incompletos (candidato)
+
+- PR #1007 mergeada em `2fd93df2088cff7716c461415b75e0118a41bfee`; `validate` pós-merge #39474567146 SUCCESS.
+- Supabase produção consultado diretamente: migration `20261020181000_fence_scheduler_eligibility_manual_control.sql` ausente de `supabase_migrations.schema_migrations`. Os seletores `factory_portfolio_candidates` e `factory_peek_planned_work` ainda não têm filtros `state='running' AND generation>0`. Aplicação continua gate humano específico.
+- Novo defeito confirmado na definição real de `factory_scheduler_queue_signals`: `product_work`, `routed_execution_work`, `codex_manual_work` e os três sinais de lanes especialistas não consideram control state/generation; acordam jobs mesmo com projeto draft/paused/stopped. O `claim` v2 tem gate, mas o probe fica enganoso e pode consumir runners.
+- Novo candidato adiciona filtros apenas de leitura nesses seis sinais; preserva sinais observacionais de CI/release e toda a semântica de integração. Não aplica nenhuma migration nem cria runs/modelos. CI e SQL aplicado no banco de produção **não equivalem**; produção permanece pendente de autorização própria.
+
+---
+
 ## 20/10/2026 — Correção de corrida CI → auditoria visual (candidato #713)
 
 - PR #1005 mergeada em `e6c045cc20ce47040bdbe9d268fa2f1459bb221c`.
