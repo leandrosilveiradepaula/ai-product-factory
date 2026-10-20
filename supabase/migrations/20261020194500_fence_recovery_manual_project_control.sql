@@ -176,14 +176,14 @@ begin
   set status='queued',updated_at=now()
   from public.factory_runs r
   where u.run_id=r.id and u.status='running' and r.status='queued'
-    and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=t.project_id and p.is_active=true and c.state='running' and c.generation>0);
+    and exists(select 1 from public.factory_tasks t join public.factory_projects p on p.id=t.project_id join public.factory_project_execution_controls c on c.project_id=p.id where t.id=u.task_id and p.is_active=true and c.state='running' and c.generation>0);
   get diagnostics v_requeued=row_count;
 
   update public.factory_change_set_work_units u
   set status='failed',updated_at=now()
   from public.factory_runs r
   where u.run_id=r.id and u.status in ('running','queued') and r.status='failed'
-    and exists(select 1 from public.factory_projects p join public.factory_project_execution_controls c on c.project_id=p.id where p.id=t.project_id and p.is_active=true and c.state='running' and c.generation>0);
+    and exists(select 1 from public.factory_tasks t join public.factory_projects p on p.id=t.project_id join public.factory_project_execution_controls c on c.project_id=p.id where t.id=u.task_id and p.is_active=true and c.state='running' and c.generation>0);
 
   update public.factory_change_sets s
   set status='blocked',lease_owner=null,lease_expires_at=null,updated_at=now(),
