@@ -1,3 +1,12 @@
+## 20/10/2026 — Console operador: UX e prontidão global (PR candidata)
+
+- A PR #1003 foi mergeada em `393d91fe4dbd4542e0e73b5a10827bc6bd21bd45`. `validate` main #39462503402 SUCCESS; workflow OIDC confiável #39462579687 executou somente `global-readiness-post-ci` com 20 workers skipped, `status=observed, product_ready=false` e seis domínios sem avaliação, US$ 0 e writes 0. Artefato #12284110616.
+- Lacuna de operação real no Console: projeto `operations` sugeria apenas acompanhar operações apesar de `not_assessed`; setup greenfield continha texto de Service Desk e proprietário GitHub fixo. Tema base ainda tinha tipografia 9–12px, embora revisões parciais já existissem.
+- Candidato da #713: seis domínios obrigatórios visíveis no projeto, etapa `operations` aponta auditoria, repositório genérico sem hardcode de cliente/owner, fonte legível, teclas de navegação com skip link, ações móveis com alvo ≥44px. Captura autenticada existente passa a validar legibilidade/touch/overflow real, sem criar tarefas, contas persistentes ou modelos.
+- Mudança de `apps/console/**`: CI Python e Console typecheck/build **e Preview no SHA final são exigidos antes do merge humano**. Não declarar UI validada por navegador até existir artefato real.
+
+---
+
 ## 20/10/2026 — Falha OIDC do auditor global e correção fail-closed (candidato)
 
 - PR #1002 mergeada em `b015a8811324d5aeb147a0793b9e821bb2efd35b`; `validate` push #39460100571 SUCCESS.

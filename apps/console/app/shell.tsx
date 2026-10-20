@@ -48,6 +48,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   </div>;
  }
  return <div className="consoleShell">
+  <Link href="#main-content" className="skipToMain">Pular para o conteúdo principal</Link>
   <aside className="sidebar">
    <div className="brandRow">
     <Link href="/" className="brandBlock">
@@ -80,7 +81,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
-   <main className="main">
+   <main className="main" id="main-content" tabIndex={-1}>
     {context.advanced?<details className="technicalRouteHelp">
      <summary>Sobre esta área técnica</summary>
      <p>{context.purpose}</p>

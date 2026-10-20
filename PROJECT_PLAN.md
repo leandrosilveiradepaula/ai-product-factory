@@ -293,3 +293,19 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [x] #1002: código e contrato global de seis domínios integrados à main, CI #39460100571 SUCCESS.
 - [ ] Execução real pós-main falhou no broker OIDC (#39460182317). Reutilizar `autonomous-runner.yml` confiável sem ampliar allowlists; `validate` main push só dispara auditoria, nunca scheduler/workers pagos.
 - [ ] Exigir recibo exato com `test` + `factory-acceptance` do próprio run `validate`, HEAD ainda corrente e `product_ready=false` até avaliações globais independentes. CI/Preview/merge humano obrigatórios antes de registrar sucesso.
+
+
+## 20/10/2026 — Bloco de operabilidade do Console (#713, candidato)
+
+- [x] Auditor de prontidão global `global-readiness-post-ci` comprovado de
+  forma independente no workflow #39462579687, SHA de `main`
+  `393d91fe4dbd4542e0e73b5a10827bc6bd21bd45`, 6 domínios pendentes.
+- [ ] Resolver lacunas concretas no Console: próximo passo `operations`
+  deve destacar auditoria global; setup não pode conter nome/owner fixos;
+  tipografia/touch/mobile/teclado devem ser verificáveis; seis domínios
+  devem continuar visíveis mesmo sem avaliação durável. Candidato precisa
+  CI completo e Preview/browser evidence no SHA exato antes de merge.
+- [ ] Consolidar produto globalmente pronto só após **execução real** da
+  auditoria de segurança/isolamento, E2E de projetos de naturezas diferentes,
+  recuperação/idempotência, operações, UX/a11y e runbooks em HEAD atual,
+  sem alterar gate humano ou política financeira.
