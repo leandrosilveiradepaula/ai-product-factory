@@ -182,6 +182,10 @@ class OfflineWorkflowIsolationTests(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         text=(root/".github/workflows/autonomous-runner.yml").read_text()
         self.assertIn("inputs.run_offline_preflight != true",text)
+        product=text.split("\n  product-stage:\n",1)[1].split("\n  change-set-integration:\n",1)[0]
+        self.assertIn("GITHUB_TOKEN: ${{ github.token }}",product)
+        self.assertIn("issues: read",product)
+        self.assertIn("contents: read",product)
         self.assertIn("continuation-offline-preflight:",text)
         job=text.split("\n  continuation-offline-preflight:\n",1)[1]
         self.assertIn("inputs.run_offline_preflight == true",job)

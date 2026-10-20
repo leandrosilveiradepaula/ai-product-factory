@@ -237,9 +237,11 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      issues: read
     timeout-minutes: 8
     env:
       PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_IDENTITY_PROVIDER_ID: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       OPENAI_SERVICE_ACCOUNT_ID: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
