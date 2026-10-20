@@ -1394,3 +1394,9 @@ criptografado e status Vercel; falha real de navegador/provider bloqueia
 qualquer promoção de prontidão. Evidência de CI/UX é parcial, jamais
 `product_ready` completo. A saída não contém token/chave. Relatório
 disponível em `docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.
+
+## 20/10/2026 — Seletores da fila respeitam o controle humano (candidato)
+
+O Control Plane real revelou que `factory_portfolio_candidates(integer)` e `factory_peek_planned_work(text,integer)` ainda podem enumerar Work Units de projeto `draft`, `pausing`, `paused`, `stopping` ou `stopped`. O claim transacional de produção `factory_dispatch_preapproved_planned_task_v2` já aplica `factory_assert_project_running`, portanto o bloqueio existe no último gate, mas a sinalização anterior do scheduler fica enganosa. A migration `20261020181000_fence_scheduler_eligibility_manual_control.sql` reconcilia as **definições SQL obtidas diretamente da produção** e só adiciona filtro `control.state='running' AND generation>0` aos dois seletores. Não cria runs, não muda prioridades, não reabre trabalho histórico e não toca no ciclo Start/Stop.
+
+Os RPCs antigos `factory_dispatch_preapproved_planned_task` e `factory_dispatch_next_planned_task` foram inspecionados no banco: estão **sem EXECUTE para service_role, anon e authenticated**, não fazem parte do adapter atual (que usa `_v2`). Não reabrir permissões nem duplicar a implementação. As RLS intencionais das tabelas Factory permanecem fail-closed. Essa migration **precisa ser aprovada/aplicada em produção pelo operador**, somente depois de CI e verificação. O plano não aplica SQL automaticamente.
