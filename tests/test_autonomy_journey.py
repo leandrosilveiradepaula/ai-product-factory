@@ -263,9 +263,14 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("journey-readonly:",workflow)
         self.assertIn("inputs.run_journey_audit != true",workflow)
         self.assertIn(
-            "if: \${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}",
+            "if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}",
             workflow,
         )
+        # A preceding backslash breaks workflow expressions and shell argv
+        # but escaped examples can accidentally pass pure Python tests.
+        self.assertNotIn("\\${{",workflow)
+        self.assertNotIn("\\${args[@]}",workflow)
+        self.assertIn("python scripts/audit_autonomy_journey.py \"${args[@]}\"",workflow)
         self.assertIn("control-plane-oidc",workflow)
         self.assertIn("persist-credentials: false",workflow)
         self.assertIn("audit_autonomy_journey.py",workflow)

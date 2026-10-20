@@ -1174,3 +1174,7 @@ jobs e ausencias de modelos, workers, deploy, merge e migrations no modo
 auditoria. Para acionar apos Start humano: usar projeto, cutoff UTC, run
 UUID e stage minimo; sem Start o retorno e not_started (nao E2E aprovado).
 
+
+## 2026-10-19 — Auditoria da sintaxe do workflow de jornada (#984)
+
+Revisao do PR apos CI revelou oito expressoes ${{ }} indevidamente precedidas por barra invertida e uma expansao Bash de argumentos escapada. Essa sintaxe pode inviabilizar condition, token, arquivo artifact e argumentos na execucao real. O PR remove esses nove escapes e inclui teste estatico de regressao para o workflow OIDC existente. Nenhum deploy, Start automatico ou modelo pago e disparado por essa mudanca.

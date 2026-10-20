@@ -1033,7 +1033,7 @@ jobs:
   journey-readonly:
     # Reuse the trusted Factory runner OIDC identity. The broker intentionally
     # does not authorize a new standalone privileged workflow.
-    if: \${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -1047,11 +1047,11 @@ jobs:
       statuses: read
     env:
       PYTHONPATH: src
-      GITHUB_TOKEN: \${{ github.token }}
-      PROJECT_KEY: \${{ inputs.project_key }}
-      SINCE_UTC: \${{ inputs.journey_since_utc }}
-      ROOT_RUN_ID: \${{ inputs.journey_run_id }}
-      REQUIRE_STAGE: \${{ inputs.journey_stage }}
+      GITHUB_TOKEN: ${{ github.token }}
+      PROJECT_KEY: ${{ inputs.project_key }}
+      SINCE_UTC: ${{ inputs.journey_since_utc }}
+      ROOT_RUN_ID: ${{ inputs.journey_run_id }}
+      REQUIRE_STAGE: ${{ inputs.journey_stage }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -1070,14 +1070,14 @@ jobs:
           fi
           args=(--project-key "$PROJECT_KEY" --since-utc "$SINCE_UTC" --require-at-least "$REQUIRE_STAGE")
           if [ -n "$ROOT_RUN_ID" ]; then args+=(--run-id "$ROOT_RUN_ID"); fi
-          python scripts/audit_autonomy_journey.py "\${args[@]}" \
+          python scripts/audit_autonomy_journey.py "${args[@]}" \
             | tee "$RUNNER_TEMP/factory-autonomy-journey.json"
       - name: Preserve sanitized audit artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: fresh-factory-autonomy-journey-\${{ github.run_id }}
-          path: \${{ runner.temp }}/factory-autonomy-journey.json
+          name: fresh-factory-autonomy-journey-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-autonomy-journey.json
           if-no-files-found: warn
           retention-days: 7
 
