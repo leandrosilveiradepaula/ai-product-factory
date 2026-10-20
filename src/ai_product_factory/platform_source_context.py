@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from .candidate_source_evidence import collect_candidate_source_evidence
+from .source_scope_admission import assess_bounded_source_scope
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\Z")
@@ -86,8 +87,11 @@ def live_platform_source_context(*, project: dict, context: dict, github: object
     )
     evidence["issue_reference"] = issue_number
     evidence["issue_path_hint_count"] = len(issue_paths)
-    if evidence.get("assessed_commit") != sha:
-        raise PermissionError("platform source evidence is not SHA exact")
+    admission = assess_bounded_source_scope(evidence, sha=sha)
+    # The trusted source receipt is checked BEFORE Product Stage can call
+    # a paid model. Missing files can be intentional creation work, and large
+    # scopes can be partial. Neither is called complete or treated as a
+    # human gate. Incorrect SHA or contradictory evidence blocks safely.
     # The branch must still agree after bounded reads. A moving main cannot
     # silently become the verified baseline of a paid Product Stage.
     if github.get_branch_sha("main") != sha:
@@ -110,6 +114,7 @@ def live_platform_source_context(*, project: dict, context: dict, github: object
         "verified_open_pr": None,
         "governance": governance,
         "source_evidence": evidence,
+        "source_admission": admission,
         "limitation": (
             "main is a read-only planning baseline; no open candidate PR "
             "or CI/Preview verification is implied"

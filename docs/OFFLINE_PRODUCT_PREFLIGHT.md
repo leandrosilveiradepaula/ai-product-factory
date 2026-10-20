@@ -72,3 +72,31 @@ sanitizado no artifact (7 dias); comentario criado nao comprova sucesso.
 
 O modo manual workflow_dispatch permanece compativel e opcional, nao e
 uma etapa que deva ser delegada ao usuario quando o conector puder comentar.
+
+
+## Fonte autenticada e escopo sem hardcodes de produto (20/10/2026)
+
+Na reconciliacao platform, o worker e o auditor partilham avaliacao
+deterministica do SHA GitHub e de caminhos de fonte sem usar modelo.
+O recibo valido classifica explicitamente:
+
+- `complete`: cada arquivo amostrado esta inteiro e os caminhos explicitos
+  foram contemplados dentro do limite atual de snippets
+- `partial`: parte do codigo esta inspecionada; arquivos ausentes,
+  caminhos omitidos pelo limite, ou trechos truncados ficam contados
+- `new_files_only`: os caminhos citados ainda nao existem, possivelmente
+  porque o objetivo e justamente criar nova implementacao
+- `unscoped`: o briefing nao nomeia codigo; jamais afirmar inspecao
+
+Nenhuma das ultimas tres categorias e gate humano automatico. O modelo
+pode ser estritamente necessario para descoberta semantica ou planejamento
+de novos arquivos quando as verificacoes gratis nao sao suficientes,
+sempre subordinado ao ledger. Esses casos ficam `partial` no relatorio
+offline, nunca falsamente `verified`.
+
+Apenas recibos invalidos ou contraditorios bloqueiam o worker antes de
+gastar: `source_sha_unverified`, `source_evidence_inconsistent` ou
+`source_paths_not_inspected`. O motivo e fixo/sem secrets e aparece na
+run historica; nenhum RPC novo. `source_preflight=verified` continua
+significando fonte completa e verificada SOMENTE no SHA, nao teste/CI,
+Preview, release nem E2E autonomo.

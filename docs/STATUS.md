@@ -1,3 +1,9 @@
+## 20/10/2026 — Candidato: classificacao de fonte gratuita em toda reconciliacao platform
+
+- A execucao real de issue_comment 39359305907 validou preflight gratis com path scripts/audit_autonomy_journey.py no SHA 5b590825; Product Stage e workers pagos ficaram skipped. Run original #987 permanece failed; isto NAO comprova E2E.
+- A reconciliacao platform ja le fonte GitHub antes do modelo, mas nao diferenciava fonte completa, parcial, arquivos ainda a criar ou briefing sem paths. Evidencia estrutural forjada (SHA mismatch, path inconsistente, recibo contraditorio) deve bloquear consumo de API com razao duravel.
+- Novo contrato classifica complete/partial/new_files_only/unscoped SEM criar gates artificiais: arquivo faltante pode ser justamente a funcionalidade pedida; grandes tarefas nao podem ficar paradas por limite de snippet. Auditor somente leitura reporta parcial de forma honesta, e claim bloqueia apenas recibos invalidos.
+- Testes gratuitos em code/test fakes, integracao de claim com erro redigido, leitura de issue e isolamento de modelos. Sem migration/Console/auto-merge; CI no SHA exato antes de liberar producao.
 ## 20/10/2026 — Candidato: Product Stage preflight real e gratuito por run
 
 - Merge #988 confirmou CI e Console saudável, mas a run real 16b12d17-9cb0-4578-a0e2-0d601f36b856 continua failed, sem replay. Na verificação mais recente, zero runs executáveis, zero Change Sets ativos e zero eventos novos de modelos pagos.

@@ -1,15 +1,10 @@
-## 20/10/2026 — Preflight autonomo e gratuito disparado via comentario OWNER (candidato)
+## 2026-10-20 — Fonte no SHA exato: auditoria sem modelo e classificacao sem gate artificial (candidato)
 
-O conector pode postar o comando exato `/factory-offline-preflight ai-product-factory
-16b12d17-9cb0-4578-a0e2-0d601f36b856` como comentario na issue #987,
-sem solicitacao manual de Run workflow. O workflow existente do main exige OWNER
-e issue real, rejeita payload malformado antes de pedir OIDC, le somente
-Control Plane e codigo no SHA exato, publica JSON sanitizado em artifact.
-Este evento nao atende /factory-wake ou /factory-alerts, portanto nenhum
-worker, dispatch, modelo, Preview ou release deve executar. Depois do merge,
-acompanhar run GitHub real e conferir logs/status, inclusive skips dos workers.
-Nunca inferir sucesso apenas da publicacao de comentario e nao reabrir run
-historica. Sem mudanca de RLS ou budget.
+Em um novo Start ou continuidade explicita, a Factory usa o claim RPC existente com fencing de generation e gate de custos. Para reconciliation do tipo platform, a leitura de codigo e governanca GitHub no SHA exato ocorre antes de qualquer chamada de modelo. O avaliador compartilhado classifica scope como complete (codigo lido), partial (faltante/omitido/truncado mas ainda possivel planejar), new_files_only (arquivos citados a criar) ou unscoped (pedido livre sem paths).
+
+Nao usar essas categorias para fingir codigo verificado nem para solicitar aprovacoes humanas artificiais. Apenas recibos corrompidos/inconsistentes (SHA errado, path invalido, evidencia contraditoria) bloqueiam antes do modelo, encerrando o claim pela RPC ja existente com reason_code estavel e sem segredos. O auditor offline imprime categorias honestas e nao chama modelos/retries/Start. O runtime nao chama LLM para verificar paths/SHAs. Em tarefas verdadeiramente semanticas, respeitar budget/ledger.
+
+Falhas genericas de auth/IO mantem o motivo fail-closed e nao sao prova de defeito no codigo. Run historica #987 permanece terminal. Sem RLS, migrations, refresh de token humano, auto-merge ou API paga para sondagem.
 ## 2026-10-20 - Continuacao na propria Factory: duplo clique e contexto platform (candidato)
 
 Operador abriu Novo pedido na Factory; os dois cliques de Iniciar novo ciclo foram observados como uma unica task/run no banco. A run 16b12d17-9cb0-4578-a0e2-0d601f36b856 chegou a run.claimed e falhou em 39352319002 antes do modelo: `SupabaseRuntimeQueue._live_candidate_context` exigiu `project_kind=existing`, mas `ai-product-factory` e `platform`. Diagnostico verificado por GitHub Action e Control Plane; nao fazer retry do run antes do merge/correcao e sem avaliar budget.
