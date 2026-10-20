@@ -69,6 +69,14 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
         "/repos/"+REPO+"/git/commits/"+S:{"sha":S,"tree":{"sha":TREE}},
         "/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1":{
             "sha":TREE,"truncated":False,"tree":paths},
+        "/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100":{
+            "total_count":2,"jobs":[
+                {"id":31,"run_id":RUN,"head_sha":S,"name":"test",
+                 "status":"completed","conclusion":"success"},
+                {"id":32,"run_id":RUN,"head_sha":S,"name":"factory-acceptance",
+                 "status":"completed","conclusion":"success"},
+            ],
+        },
         "/repos/"+REPO+"/commits/"+S+"/check-runs?per_page=100":{
             "total_count":2,"check_runs":[
                 {"head_sha":S,"status":"completed","conclusion":"success","name":"test"},
@@ -114,6 +122,7 @@ class GlobalReadinessTests(unittest.TestCase):
         self.assertTrue(all(not x["start_authorized"] and not x["paid_calls_authorized"]
                             and x["work_type"]=="independent_verification" for x in report["work_proposals"]))
         self.assertEqual(report["ci_evidence"]["checks_observed"],2)
+        self.assertEqual(report["ci_evidence"]["validation_jobs"]["verification_state"],"executed_same_SHA")
         self.assertEqual(report["source_inventory"]["tracked_files"],7)
         self.assertTrue(report["source_inventory"]["documents_present"]["operations"])
         self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
@@ -160,6 +169,11 @@ class GlobalReadinessTests(unittest.TestCase):
             ("truncated inventory",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"].update(truncated=True)),
             ("symlink",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"]["tree"].append({"type":"blob","mode":"120000","path":"secret"})),
             ("incomplete checks",lambda gh,cp:gh["/repos/"+REPO+"/commits/"+S+"/check-runs?per_page=100"].update(total_count=200)),
+            ("incomplete run jobs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"].update(total_count=200)),
+            ("failed required validate job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(conclusion="failure")),
+            ("unrelated validation job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(name="invented-success")),
+            ("cross SHA validate job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(head_sha="f"*40)),
+
         ]
         for label,change in tests:
             with self.subTest(label=label):
