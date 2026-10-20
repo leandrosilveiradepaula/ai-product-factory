@@ -44,8 +44,12 @@ class SupabasePreviewFollowupQueue:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
-    def next_pending(self) -> PreviewFollowupItem | None:
-        # A quota-blocked oldest run must not starve later candidates.
+    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = ()) -> PreviewFollowupItem | None:
+        # A paused or quota-blocked candidate must not starve active delivery.
+        if (not isinstance(exclude_run_ids, tuple) or len(exclude_run_ids)>12
+            or any(not isinstance(x,str) or not x.strip() for x in exclude_run_ids)):
+            raise ValueError("invalid bounded Preview exclusion set")
+        ignored=set(exclude_run_ids)
         runs=self._get(
             "factory_runs?select=id,task_id,branch_name,candidate_commit,metadata"
             "&status=eq.preview_ready&order=created_at.asc&limit=50"
@@ -55,7 +59,9 @@ class SupabasePreviewFollowupQueue:
         cutoff=(datetime.now(timezone.utc)-timedelta(hours=24)).isoformat().replace("+00:00","Z")
         run=None
         for row in runs:
-            if not is_delivery_preview_run(row):
+            if not isinstance(row,dict) or not isinstance(row.get("id"),str):
+                raise RuntimeError("invalid Preview candidate identity")
+            if row["id"] in ignored or not is_delivery_preview_run(row):
                 continue
             blocks=self._get(
                 "factory_deployments?select=run_id,metadata"
