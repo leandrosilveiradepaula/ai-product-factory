@@ -47,7 +47,11 @@ class SupabaseProjectFollowupGuard:
             with urllib.request.urlopen(req, timeout=20) as response:
                 body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            # Never leak token, SQL detail or response body.
+            # PT409 from the privileged SQL assertion means the operator
+            # paused after the read; defer rather than converting pause to
+            # a failed runner or exposing the database response payload.
+            if exc.code == 409 and endpoint == "rpc/factory_assert_project_running":
+                raise ProjectFollowupPaused("project_control_waiting") from None
             raise RuntimeError("project control checkpoint unavailable") from None
         except urllib.error.URLError:
             raise RuntimeError("project control checkpoint unavailable") from None
