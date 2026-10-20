@@ -153,7 +153,7 @@ def classify(*, project: dict, control: dict, commands: list[dict],
     # findings. Never manufacture work, restart historical runs, or imply
     # global readiness from release completion.
     if (not run_id and status == "waiting"
-            and reason == "no_current_eligible_work"
+            and reason in {"no_current_eligible_work", "no_start_or_bootstrap"}
             and project.get("lifecycle_stage") == "operations"
             and isinstance(readiness, dict) and readiness.get("ready") is False):
         reason = "idle_with_unassessed_global_product_readiness"
