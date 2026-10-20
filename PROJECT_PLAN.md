@@ -269,3 +269,21 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Preservar gap auditável de prontidão global após release, associando relatório, project/run e merge exato, sem fabricar tarefas nem apagar gaps no snapshot de `operations`; validar CI e observação operacional pós-merge.
 - [ ] Completar auditor global de seis domínios com evidência atual por SHA, inclusive experiência Console/móvel, segurança, E2E representativo e operação; até lá `product_ready` é `not_assessed`/`not_ready`.
 - [ ] Com autorização de execução já vigente no projeto, garantir que a Factory use gaps verificados como contexto para trabalho subsequente sem rodar modelos apenas para verificar disponibilidade ou gerar replays de tarefas encerradas.
+
+
+## Continuidade pós-#1001 — Auditor global verificável (#713, candidato)
+
+- [x] PR #1001: emissão de handoff de lacunas `not_assessed` após release e
+  inclusão no contexto de futuras reconciliações. Após merge no
+  `772183c169976c78d4a073ba9d5d4b202e8c1874`, CI #39458416997
+  SUCCESS e read-only live #39458546205 comprovou
+  `idle_with_unassessed_global_product_readiness`.
+- [ ] Implementar e executar automaticamente auditor read-only de produto
+  **no HEAD exato validado**, com recibo de CI, Git tree completo, projeto
+  autêntico, avaliação durável de seis domínios e baseline adicional para
+  existentes. PR candidata com testes negativos; não supor implementada
+  até merge e artefato real pós-main.
+- [ ] Conduzir verificação real de segurança/isolamento, UX/artefatos visuais,
+  E2E críticos, rollback/ops, documentação e funcionalidade em diversos
+  tipos de projetos, produzindo avaliações independentes antes de
+  declarar `product_ready`.

@@ -1,3 +1,21 @@
+## 20/10/2026 — Próximo bloco: evidência global vinculada ao HEAD da main (candidato)
+
+- PR #1001 mergeada no `772183c169976c78d4a073ba9d5d4b202e8c1874`.
+  `validate` pós-merge #39458416997 passou; read-only #39458546205
+  observou de fato `idle_with_unassessed_global_product_readiness`,
+  seis domínios não avaliados, custo 0 e writes 0.
+- A Factory não tem `factory_evaluations.eval_type=product_readiness`
+  PASS para esse HEAD, nem evidência integral de UI móvel/a11y,
+  segurança/RLS, E2E crítico, documentação, operação e funcionalidade.
+- O candidato implementa observação independente após `validate` SUCCESS
+  em `main`, com SHA exato e Control Plane real, sem modelos e sem novo
+  scheduler; gera work proposals de **verificação**, não backlog auto iniciado.
+- Não declarar `product_ready` com base no output de inventário. Ainda
+  são necessários recibos executados, PR/CI e observação real pós-merge
+  deste candidato; Preview N/A por não tocar `apps/console/**`.
+
+---
+
 ## 20/10/2026 — Readiness global pós-release: evidência operacional e handoff proposto
 
 - PRs #999 e #1000 mergeadas na Factory; `main=dc29fec23688bfc962861f07eededcc97401a012`, validate push #39455535021 SUCCESS. A execução real de `admission-readonly` #39455676878 (project-level) e #39455945061 (run-level) mostrou `status=waiting` sem novos trabalhos, `paid_calls=0`, `writes=0`, e job único; workers foram skipped.

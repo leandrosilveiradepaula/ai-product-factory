@@ -171,3 +171,20 @@ Um release reconciliado em `operations` pode manter `product_ready=false`. A fon
 O reconciliador escreve um snapshot `operations` com as **obrigações de auditoria** e guarda um handoff sanitizado em `manifest.product_readiness_followup`. Novas reconciliações podem herdar esses fatos, sem propagação de prompts, dados de negócio nem alegações de avaliação executada. O runtime não cria nova run por um relatório incompleto: continuar desenvolvimento exige autorização operacional vigente, pedido válido, custos/gates preservados e evidência concreta de trabalho. Um auditor global independente continua necessário para promover `product_ready`.
 
 Cobertura negativa offline: recibo ausente/trocado/duplicado, SHA não correspondente, status antigo `ready_for_human_release`, payload malformado, report indisponível e tentativa de forjar `ready=true` nunca passam a prontidão. CI verde valida o contrato, não equivale a auditoria global.
+
+
+## Evidência global em HEAD atual (candidato 20/10/2026)
+
+`global_readiness_evidence.observe_current_product` reutiliza
+`release_intelligence._verified_product_assessment` ao aceitar uma
+avaliação durável `product_readiness` de seis domínios no SHA atual,
+com `evaluation_status` separado do corpo JSON e run/task vinculada ao
+projeto. Um projeto `existing` exige também um `existing_project_baseline`
+independente no mesmo SHA. Sem isso, o relatório é
+`product_ready=false` com gaps de evidência por domínio.
+
+O observador `workflow_run` **não é produtor** de avaliações de segurança,
+a11y, RLS nem browser. Contar arquivos ou citar um CI do HEAD não satisfaz
+uma avaliação inteira. O relatório é um inventory e plano de trabalho para
+que avaliações independentes sejam realmente executadas e registradas
+conforme o contrato de seis domínios, sem faturamento de modelos.
