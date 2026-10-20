@@ -1,3 +1,13 @@
+## 20/10/2026 — Recovery seguro após migrations de controle (candidato)
+
+- As três migrations autorizadas das PRs #1007, #1009 e #1010 foram **aplicadas e verificadas** no Supabase `fjplmxfcshhbmzgvyqlm`. Nomes/version IDs Supabase: `fence_scheduler_eligibility_manual_control=20261020185723`, `fence_scheduler_queue_signals_manual_control=20261020190213`, `fence_agent_specialist_and_repair_control=20261020190346`.
+- Verificação real: filtros `running + generation>0` nos RPCs `portfolio/peek/wake`; seis RPCs de agentes/especialistas protegidos; ACL `service_role` exclusivo; 52 tabelas Factory com RLS habilitada; sinais e filas consultadas sem trabalho pendente. Nenhuma nova run ou chamada paga.
+- Próximo problema funcional confirmado no DB: `factory_recover_expired_runs`, `factory_recover_change_sets`, `factory_recover_specialist_lanes`, `factory_resume_resolved_decisions` e `factory_retry_failed_run` ainda poderiam alterar status/criar trabalho durante pausa. O assert de projeto anterior verificava apenas `state`, não `generation>0` nem `is_active`.
+- Candidato de recovery #894: migrar essas cinco funções e fortalecer o assert comum, com locks `FOR SHARE`, work-unit filters e testes reais no PostgreSQL isolado para `paused` versus `running`. Nenhuma DDL executada em produção até novo gate. `factory_recover_expired_agent_slots` continua exclusivamente limpeza de claims/escopos; não cria task/run nem requeue.
+- A migration nova é separada das três **já aplicadas**. O Supabase atribuiu versões de histórico diferentes do timestamp dos arquivos Git; conciliar antes de qualquer `db push` automatizado para impedir replay.
+
+---
+
 ## 20/10/2026 — Caminhos de agente e especialista continuam sem controle humano (candidato)
 
 - PR #1009 mergeada em `e29a83e7a2bd6403993a4ada49488efbea357666`; CI push #39476776418 SUCCESS. Migrations `20261020181000` e `20261020183500` ainda ausentes do histórico Supabase, logo seus filtros não estão ativos.
