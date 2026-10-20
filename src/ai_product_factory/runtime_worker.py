@@ -135,10 +135,19 @@ class RuntimeWorker:
                     raise ValueError("stage handler must return a mapping")
                 if any(not isinstance(key,str) for key in output):
                     raise ValueError("stage handler output keys must be strings")
-                if output.get("requires_model") is True and output.get("mode")=="deterministic":
-                    # A placeholder is evidence of deferred work, never completed product work.
-                    if not isinstance(output.get("project_key"),str):
-                        raise ValueError("deterministic stage evidence missing project key")
+                mode = output.get("mode")
+                if (output.get("requires_model") is True
+                        or output.get("deferred") is True
+                        or (isinstance(mode, str) and mode.strip().lower() in {
+                            "placeholder", "mock", "fixture", "simulated", "simulation",
+                            "dry_run", "dry-run",
+                        })):
+                    # Deterministic and mock responses are useful for offline
+                    # simulation only. A result that explicitly defers real
+                    # work cannot be recorded as completed Product Stage.
+                    # A genuinely completed deterministic tool result without
+                    # these markers remains supported.
+                    raise ValueError("product stage is deferred or mock; no completed evidence")
 
                 if callable(checkpoint):
                     checkpoint(item)

@@ -11,9 +11,16 @@ class Provider:
     def __init__(self): self.requests=[]
     def execute(self,request):
         self.requests.append(request)
+        output=(
+            {"tasks":[{"task_key":"unit-test-builder","required_capabilities":["implementation"],
+                       "scope_keys":["src/unit_test_module.py"],"depends_on":[]}],
+             "decisions_needed":[]}
+            if request.objective.startswith("Return explicit tasks array for implementation")
+            else {"stage":"ok","assumptions":[]}
+        )
         return ModelResult(
             ModelRole.PRIMARY,
-            json.dumps({"stage":"ok","assumptions":[]}),
+            json.dumps(output),
             provider_ref=f"ref-{len(self.requests)}",
             usage={"input_tokens":10},
         )
@@ -42,6 +49,24 @@ def existing_item():
 
 
 class ProductStageExecutorTests(unittest.TestCase):
+    def test_planning_without_tasks_or_decisions_is_not_successful(self):
+        class EmptyProvider:
+            def execute(self,request):
+                return ModelResult(ModelRole.PRIMARY,json.dumps({"tasks":[],"decisions_needed":[]}))
+        handler=ProductStageExecutor(ModelExecutor(primary=EmptyProvider()))
+        with self.assertRaisesRegex(ValueError,"no actionable tasks or decisions"):
+            handler.execute(item(),"planning")
+        self.assertNotIn(("r","planning"),handler.outputs)
+
+    def test_missing_tasks_array_is_not_silent_completion(self):
+        class MissingProvider:
+            def execute(self,request):
+                return ModelResult(ModelRole.PRIMARY,json.dumps({"architecture":"summary"}))
+        handler=ProductStageExecutor(ModelExecutor(primary=MissingProvider()))
+        with self.assertRaisesRegex(ValueError,"explicit tasks array"):
+            handler.execute(item(),"planning")
+        self.assertNotIn(("r","planning"),handler.outputs)
+
     def test_crm_conditions_builder_mix_validates_without_pre_pr_qa(self):
         from ai_product_factory.product_stage_executor import _validate_pre_pr_planning_tasks
         agents=(

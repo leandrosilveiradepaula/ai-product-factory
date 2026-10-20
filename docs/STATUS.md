@@ -1,3 +1,10 @@
+## 20/10/2026 — Progresso verificado e proxima salvaguarda (candidato)
+
+- #992 mergeada em main `d3dd384a929d60b37372fcccadd01326822b0908`, validate push `39361245632` SUCCESS.
+- Preflight GET real `39361323663`: `source_preflight=verified`, `source_scope_status=complete`, codigo scripts/audit_autonomy_journey.py lido no SHA d3dd384a; Product Stage/Direct/Codex/scheduler SKIPPED, zero modelos pagos e zero writes. Run historica #987 continua failed; NENHUM E2E real foi concluido.
+- Novo candidato: impedir que placeholders `requires_model` e planos sem tarefas/decisoes avancem como Product Stage completed. CI/testes sem API paga requeridos.
+- Esta alteracao nao inicia novo ciclo. Proxima prova autonomica continua exigindo Start explicito do operador e evidencia de implementacao real.
+
 ## 20/10/2026 — Candidato: classificacao de fonte gratuita em toda reconciliacao platform
 
 - A execucao real de issue_comment 39359305907 validou preflight gratis com path scripts/audit_autonomy_journey.py no SHA 5b590825; Product Stage e workers pagos ficaram skipped. Run original #987 permanece failed; isto NAO comprova E2E.
