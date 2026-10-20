@@ -1433,3 +1433,33 @@ As três migrations `20261020181000`, `20261020183500`, `20261020190000` foram a
 A revisão de recovery encontrou cinco entradas mutantes que não conferiam `running` ou `generation`: recuperação de leases de run, Change Sets, specialists, materialização de decisões já aprovadas e retry manual de run falhada. A migration candidata `20261020194500_fence_recovery_manual_project_control.sql` fortalece o guard `factory_assert_project_running` para projeto ativo + geração positiva e introduz checks transacionais com lock `FOR SHARE`, impedindo requeue/criação de work enquanto paused/stopped. Recovery de recurso expirado/agent slot separado continua limitado à liberação de reserva (não é work requeue) e deve ser auditado como cleanup.
 
 A validação dessa migration usa o script `scripts/verify_recovery_manual_project_control_postgres.py` somente com `FACTORY_RECOVERY_CONTROL_TEST_ISOLATED=true` e DSN localhost `factory_recovery_control_test`; o job de GitHub Actions usa PostgreSQL 16 efêmero. Nenhum credencial, cron, modelo pago, storage ou produção é necessário para essa suite. **Não aplicar a migration candidata antes de CI e autorização específica de produção.**
+
+## 20/10/2026 — Checkpoint de Pause/Stop em followups determinísticos
+
+O estado de controle humano é verificado por `SupabaseProjectFollowupGuard`
+antes das continuações effectful `run_ci_once`, `run_preview_once`,
+`run_specialist_once` e `run_release_once`. O checkpoint usa somente
+Supabase server-side e o RPC existente
+`factory_assert_project_running(project_id)`, sem credenciais no browser
+nem mudanças de ACL. Também verifica por leitura `is_active=true`,
+`state=running`, `generation>0`, recusando ausência, estado desconhecido
+ou dados malformados. A corrida em que Pause chega entre a leitura e a
+asserção do RPC retorna HTTP 409 e é classificada como
+`project_control_waiting`.
+
+`project_control_waiting` é apenas observação de candidato, sem dispatch
+de CI, deploy, browser, avaliação Specialist ou reconciliação de release.
+A continuation limitada o contabiliza como *waiting*, não como work entregue;
+Preview usa skip por run para não bloquear outro projeto autorizado.
+Retomar um projeto revalida o estado no próximo wake; não cria novo run,
+não substitui idempotência de CI, não libera orçamento, não faz merge
+automático.
+
+Limite de atomicidade: não é possível manter lock de banco através de uma
+chamada externa GitHub/Vercel, e um request externo já aceito não pode
+ser desfeito pela pausa. O checkpoint é uma barreira imediata adicional
+aos guards transacionais de claims/leases; são necessários rechecks e
+recibos exatos antes de gravar sucesso. A migration de recuperação
+`20261020194500_fence_recovery_manual_project_control.sql` de #1011
+continua pendente de autorização de produção; não confundir esta entrega
+Python com a sua aplicação.
