@@ -13,6 +13,15 @@ import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader
 
 const stages=["discovery","specification","planning","implementation","review","validation","preview","human_gate","release","operations"];
 const stageLabels=["Descoberta","Especificação","Plano","Implementação","Revisão","Testes / Avaliações","Prévia","Aprovação","Liberação","Operação"];
+// Whole-product checks are required even when an individual release is complete.
+const productAuditDomains=[
+ {key:"security",label:"Segurança e isolamento",next:"Revisar autenticação, autorização, limites de dados e segredos"},
+ {key:"observability_operations",label:"Operação e recuperação",next:"Verificar saúde, alertas, incidentes e recuperação"},
+ {key:"test_strategy",label:"Testes e E2E críticos",next:"Comprovar testes executados e fluxos essenciais"},
+ {key:"product_experience",label:"Experiência e acessibilidade",next:"Verificar telas, celular, teclado e estados"},
+ {key:"documentation",label:"Documentação e rollback",next:"Conferir configuração, operação e reversão"},
+ {key:"functional_completeness",label:"Completude funcional",next:"Reconciliar requisitos, funcionalidades e dívida herdada"},
+] as const;
 const macroStages=[
  {label:"Entender",detail:"Descoberta e especificação",members:["discovery","specification"]},
  {label:"Planejar",detail:"Plano técnico e backlog",members:["planning"]},
@@ -26,7 +35,7 @@ function nextAction(stage:string,hasPendingDatabase:boolean,activeTasks:number){
  if(hasPendingDatabase)return {title:"Conectar o banco de dados",body:"A Factory está aguardando a conexão mínima necessária para reconciliar e executar o trabalho com evidência real.",href:"#databases",label:"Ver banco de dados"};
  if(stage==="human_gate")return {title:"Tomar a decisão pendente",body:"A automação chegou a um gate humano. Revise o motivo e decida antes de a Factory continuar.",href:"/gates",label:"Abrir aprovações"};
  if(stage==="release")return {title:"Verificar as condições do release",body:"A etapa registrada não comprova CI, auditoria ou Preview. Verifique as evidências antes de qualquer merge humano de produção.",href:"/deployments",label:"Ver implantações"};
- if(stage==="operations")return {title:"Acompanhar a operação",body:"O projeto já está em operação. Use as evidências e implantações para acompanhar saúde e novos trabalhos.",href:"/deployments",label:"Ver implantações"};
+ if(stage==="operations")return {title:"Verificar a prontidão global do produto",body:"O projeto chegou à Operação, mas um release concluído não certifica o sistema inteiro. Consulte os domínios pendentes e as evidências atuais antes de considerá-lo pronto.",href:"#product-readiness",label:"Revisar prontidão"};
  if(activeTasks===0)return {title:"Nenhuma ação necessária agora",body:"Não há tarefas abertas neste projeto. Acompanhe novas evidências ou inicie um novo trabalho quando necessário.",href:"/projects",label:"Voltar aos projetos"};
  if(["discovery","specification"].includes(stage))return {title:"Descoberta registrada; verificar execução",body:"O projeto pode estar apenas enfileirado. O processamento depende de um worker ativo e, para etapas semânticas, de autenticação, quota e orçamento de modelo aprovados. A existência da tarefa não comprova que a Descoberta começou.",href:"/runs",label:"Ver execuções"};
  if(stage==="planning")return {title:"Aguardar o plano de execução",body:"A Factory está decompondo o trabalho, escolhendo agentes e organizando dependências. Nenhuma escolha técnica manual é necessária.",href:"/queue",label:"Ver fila"};
@@ -213,8 +222,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   {!p.repository&&p.kind==="greenfield"?<section className="section" id="repository-setup">
    <SectionHeader title="Preparar repositório para implementação" action={<StatusPill status="attention" label="Ação administrativa"/>}/>
    <div className="card denseStack">
-    <p>O Service Desk precisa de um repositório GitHub próprio antes de receber issues, branches e código. A Factory não criará repositórios usando credenciais que não possua, nem ampliará a instalação da GitHub App sem sua autorização.</p>
-    <p><strong>Nome previsto:</strong> <code>{"leandrosilveiradepaula/"+p.key}</code>. Crie um repositório <strong>privado</strong>, com README e branch <code>main</code>.</p>
+    <p>Este projeto precisa de um repositório GitHub próprio antes de receber issues, branches e código. A Factory não criará repositórios usando credenciais que não possua, nem ampliará a instalação da GitHub App sem sua autorização.</p>
+    <p><strong>Nome sugerido:</strong> <code>{p.key}</code>. Escolha a conta ou organização que controla o projeto; não existe proprietário GitHub pré-definido. Crie o repositório <strong>privado</strong>, com README e branch <code>main</code>.</p>
     <div className="actions">
      <a className="linkButton primary" href={"https://github.com/new?name="+encodeURIComponent(p.key)+"&visibility=private"} target="_blank" rel="noreferrer">1. Criar repositório privado no GitHub</a>
      <a className="linkButton" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">2. Autorizar repositório na GitHub App</a>
@@ -261,6 +270,14 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <div className="card denseStack">
     <div className="badgeLine"><strong>{p.productReadiness.ready?"A avaliação global passou para o SHA registrado. Isso não comprova que o HEAD atual permanece igual nem libera produção.":p.productReadiness.status==="not_assessed"?"Nenhuma auditoria global de produto foi registrada ainda.":"Existem domínios ou blockers que impedem declarar o produto pronto."}</strong>{p.productReadiness.assessedCommit?<span className="muted mono">{p.productReadiness.assessedCommit.slice(0,12)}</span>:null}</div>
     {p.productReadiness.blockers.length?<div><span className="detailLabel">Bloqueios que impedem a liberação</span><ul>{p.productReadiness.blockers.map((item,i)=><li key={i}>{item}</li>)}</ul></div>:null}
+     <div className="readinessDomainChecklist" role="list" aria-label="Domínios exigidos para a prontidão global">
+      {productAuditDomains.map(domain=><div className="readinessDomain" role="listitem" key={domain.key}>
+       <div className="readinessDomainHeading"><strong>{domain.label}</strong><StatusPill status={p.productReadiness.ready?"verified":"attention"} label={p.productReadiness.ready?"Avaliado no SHA registrado":"Comprovação pendente"}/></div>
+       <p>{domain.next}.</p>
+      </div>)}
+     </div>
+     <p className="readinessDomainDisclaimer">Os seis domínios são obrigatórios. Sem avaliação global independente para o SHA atual, nenhuma aprovação é inferida de CI, release ou existência de arquivos. Esta consulta não inicia tarefas nem modelos.</p>
+     <div className="actions"><ActionLink href="/evals" variant="ghostButton">Examinar avaliações</ActionLink><ActionLink href="/deployments" variant="ghostButton">Examinar implantações</ActionLink></div>
     <details className="readinessEvidence"><summary>Ver avaliação detalhada e evidências</summary>
     {Object.keys(p.productReadiness.domains).length?<div className="detailGrid">{Object.entries(p.productReadiness.domains).map(([key,value])=><div className="detailItem" key={key}><span className="detailLabel">{humanizeStatus(key)}</span><StatusPill status={value.status} label={humanizeStatus(value.status)}/>{value.verification_state?<span className="muted">verificação · {humanizeStatus(value.verification_state)}</span>:null}{value.coverage?.length?<span className="muted">cobertura · {value.coverage.map(humanizeStatus).join(" · ")}</span>:null}{value.reason?<span className="muted">{value.reason}</span>:null}</div>)}</div>:<p className="muted" style={{margin:0}}>A Factory não infere prontidão a partir de CI, Preview, release ou ausência de issues. É necessária uma avaliação global explícita.</p>}
     </details>
