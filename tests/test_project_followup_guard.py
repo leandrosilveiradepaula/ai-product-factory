@@ -92,6 +92,19 @@ class ProjectFollowupGuardTests(unittest.TestCase):
                 guard.assert_running("crm-infodive")
         self.assertNotIn("credential leaked",str(err.exception))
 
+    def test_race_pause_during_rpc_returns_waiting_not_runner_error(self):
+        guard=SupabaseProjectFollowupGuard(url="https://x.supabase.co",secret_key="sb_secret_test")
+        raced=urllib.error.HTTPError("https://x.supabase.co/rest/v1/rpc/factory_assert_project_running",
+                                     409,"PT409 operator paused",{},None)
+        with patch("urllib.request.urlopen",side_effect=[
+            Response([{"id":PID,"is_active":True}]),
+            Response([{"project_id":PID,"state":"running","generation":1}]),
+            raced,
+        ]) as calls:
+            with self.assertRaises(ProjectFollowupPaused):
+                guard.assert_running("crm-infodive")
+        self.assertEqual(calls.call_count,3)
+
     def test_project_control_mismatch_is_fail_closed(self):
         guard=SupabaseProjectFollowupGuard(url="https://x.supabase.co",secret_key="sb_secret_test")
         with patch("urllib.request.urlopen",side_effect=[
