@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/*manual_project_execution_controls.sql"
+      - "supabase/migrations/*fence_scheduler_eligibility_manual_control.sql"
+      - "scripts/verify_scheduler_control_eligibility_postgres.py"
       - "supabase/migrations/*project_control_wake_outbox.sql"
       - "supabase/migrations/*repin_nonproduction_target.sql"
       - "supabase/migrations/*guard_stale_change_set_integration.sql"
@@ -228,3 +230,33 @@ jobs:
           FACTORY_PLATFORM_RECOVERY_TEST_ISOLATED: "true"
           FACTORY_PLATFORM_RECOVERY_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_platform_recovery_test"
         run: python scripts/verify_platform_kind_recovery_postgres.py
+
+  scheduler-control-eligibility-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: factory_ci
+          POSTGRES_DB: factory_scheduler_eligibility_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_scheduler_eligibility_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Execute actual SQL with draft, running, paused, stopped and dedupe
+        env:
+          FACTORY_SCHEDULER_ELIGIBILITY_TEST_ISOLATED: "true"
+          FACTORY_SCHEDULER_ELIGIBILITY_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_scheduler_eligibility_test"
+        run: python scripts/verify_scheduler_control_eligibility_postgres.py
