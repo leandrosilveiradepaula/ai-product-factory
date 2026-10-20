@@ -1,3 +1,38 @@
+## 20/10/2026 — Auditor de E2E por Console continuation e candidato reconciliado (candidato)
+
+Ciclo real observado: projeto ai-product-factory, continuation root run
+`945c0da5-f36f-46da-a454-072037a988a5` solicitado no Console em
+03:07:16Z, Change Set `f95e3840-555e-40d7-8c91-011802debf8a`.
+A solicitacao autenticada usa `project.continuation.requested` com actor
+`human/factory-console` e `project.reconciliation.enqueued` com
+`system/factory-console`, ambos ligados a mesmissimos
+project_id/task_id/run_id/request_id; o run metadata exige
+`source=factory-console` e `continuation_request_id` exato. A trilha
+classica `factory_project_execution_commands/start` continua aceita
+separadamente. Nao usar mera existencia de tarefa/run para forjar Start.
+
+Integracao Work Unit: codigo de `d653d4b4...` foi copiado para
+`c555249c...` (blobs identicos no SHA exato, sem relacao ancestral direta).
+O candidato final `4b0e1cf3...` descende de `c555249c...`
+por fast-forward auditado via `factory_reconcile_change_set_ci_candidate`.
+Auditor le o `create_pr` imutavel, a RPC `reconcile_pr_candidate`, a
+Change Set, o PR HEAD e compara paths/ancestralidade reais na API GitHub;
+para cada Work Unit exige byte-for-byte equality com o candidato inicial
+e presencia do commit no repositorio. O SHA final exige CI exato no GitHub.
+Nao fazer GET de branch mutavel como fonte de comprovacao.
+
+Gate de producao: aceitar evento legado `release.awaiting_human_merge`
+OU o par auditado `release.policy.decided=ready_for_human_release` e
+`run.status.updated=awaiting_release` no mesmo run/SHA depois de QA/CI
+e Preview verificado/N/A. Merge precisa ser humano e observado, com
+release_report.status=released, evento release.human_merge_observed ligado
+ao PR, e project.state.reconciled_after_release=operations no merge SHA.
+
+Executar apenas auditor read-only com corte UTC anterior ao request
+e root run especifico; `product_ready=false` por padrao, nao reinterpretar
+E2E de uma tarefa como prontida universal da Factory. Nenhum Start, modelo,
+retry, merge, migration ou deploy deve resultar da auditoria.
+
 ## 20/10/2026 — Recuperacao de Work Unit platform bloqueada antes de codigo
 
 Cenario real: projeto `ai-product-factory` e `project_kind=platform`.
@@ -1241,3 +1276,26 @@ UUID e stage minimo; sem Start o retorno e not_started (nao E2E aprovado).
 ## 2026-10-19 — Auditoria da sintaxe do workflow de jornada (#984)
 
 Revisao do PR apos CI revelou oito expressoes ${{ }} indevidamente precedidas por barra invertida e uma expansao Bash de argumentos escapada. Essa sintaxe pode inviabilizar condition, token, arquivo artifact e argumentos na execucao real. O PR remove esses nove escapes e inclui teste estatico de regressao para o workflow OIDC existente. Nenhum deploy, Start automatico ou modelo pago e disparado por essa mudanca.
+
+
+### Acionamento seguro do auditor por comentario OWNER, sem workflow_dispatch
+
+Quando o conector GitHub nao oferecer `workflow_dispatch`, o operador
+conectado pode publicar o comando **exato** em issue do proprio repo Factory:
+
+```text
+/factory-journey-audit ai-product-factory 945c0da5-f36f-46da-a454-072037a988a5 2026-10-20T03:00:00Z
+```
+
+O comando usa o job `journey-readonly` do workflow confiavel
+`.github/workflows/autonomous-runner.yml` no `main`. A expressao de
+job exige `OWNER`, `issue_comment created`, issue real e prefixo
+exato; parser Python fail-closed valida os 3 argumentos e escopo antes
+de solicitar OIDC. O runner nao expoe API de modelo nem token com escrita,
+nao aciona `schedule-probe`, e escreve somente JSON redigido no artifact
+`fresh-factory-autonomy-journey-<run_id>` (7 dias).
+
+Nao chamar `/factory-wake` para apenas auditar; isso poderia habilitar
+workers. A auditagem nao aprova merge, nao reabre trabalhos historicos e
+nao substitui o human release gate. Conferir `status=observed_complete`
+E `highest_verified=operations` em run real, no mesmo SHA/PR.

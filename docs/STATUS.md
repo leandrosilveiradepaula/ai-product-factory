@@ -1,3 +1,36 @@
+## 20/10/2026 — Release real de Change Set #997 concluido; auditor E2E com tres falsos negativos
+
+- PR #997 produzida pela Factory, posteriormente corrigida e reconciliada no SHA
+  `4b0e1cf358e067727a3b0b7e31a8b1465e86211a`. CI #39423426244:
+  1.722 testes Python e 47 Factory Acceptance PASS. Reviews security/QA/operations PASS.
+  Preview N/A comprovado (sem alteracao em `apps/console/**`).
+- Merge humano confirmado no SHA
+  `ab5d832ba9074d01c0c0a16a8946cd486afe9dd4`; CI main #39424896875
+  SUCCESS. Release observer #39425224377 SUCCESS: run
+  `4c1fcef6-7561-4da4-b13e-083dcf447b4b` merged; Change Set
+  `f95e3840-555e-40d7-8c91-011802debf8a` completed;
+  factory_release_reports.status released; evidencia human_release e
+  project.state.reconciled_after_release stage operations.
+- O auditor `SupabaseJourneyReader` ainda tinha falsos negativos para este
+  E2E real: um request humano autenticado do Console gera par
+  project.continuation.requested/project.reconciliation.enqueued em vez de
+  project_execution_commands.start; a integracao COPIA o conteudo da Work
+  Unit em novo commit independente; a PR teve candidate corrigido por RPC
+  atomica `reconcile_pr_candidate`, criando SHA distinto do create_pr inicial.
+  Ademais, gate atual e expresso por release.policy.decided +
+  run.status.updated(awaiting_release), nao necessariamente pelo evento legado.
+- Candidato corrige leitura exclusivamente GET com receipts exatos de
+  project+root run+task+request_id+auth role; SHA atual exige PR, recibo
+  atomico, ancestralidade fast-forward, inventario de arquivos e CI atual.
+  Codigo original da Work Unit e comparado por bytes ao primeiro candidato,
+  nao por simples existencia do commit. O status operations exige ainda
+  comprovante final do reconciliador do projeto. Recibos contraditorios
+  continuam fail-closed.
+- Auditor E2E sobre um ciclo especifico NAO concede automaticamente
+  `product_ready` global: o release_report registra snapshot premerge de
+  `product_readiness=not_assessed`. Sem modelo pago, migrations, Preview extra
+  ou auto-merge. CI da PR candidata e prova real read-only ainda exigidos.
+
 ## 20/10/2026 — Incidente real de implementacao platform apos novo ciclo #987
 
 - Pedido registrado 03:07:16Z, run Product Stage

@@ -85,7 +85,15 @@ def _event(
 ) -> bool:
     required = payload or {}
     for row in events:
-        if row.get("event_type") != name or row.get("project_id") != audit_project:
+        if row.get("event_type") != name:
+            continue
+        if row.get("project_id") != audit_project and not (
+            # Legacy quality-gate events have project_id=NULL, but are scoped
+            # to the exact release run and candidate SHA below.
+            row.get("project_id") is None and name == "quality_gate.passed"
+            and isinstance(required.get("candidate_commit"), str)
+            and SHA.fullmatch(required["candidate_commit"])
+        ):
             continue
         if row.get("run_id") not in run_ids:
             continue
@@ -145,6 +153,7 @@ def evaluate_journey(
     release_reports: Sequence[Mapping[str, Any]],
     github: Mapping[str, Any] | None,
     preview_required: bool | None,
+    candidate_reconciliations: Sequence[Mapping[str, Any]] = (),
 ) -> JourneyReport:
     """Correlate actual evidence with a fresh explicit Start, never a project-wide count.
 
@@ -158,10 +167,12 @@ def evaluate_journey(
     repo = project.get("repository")
     if not all(isinstance(v, str) and v.strip() for v in (key, pid, repo, root_run_id)):
         raise ValueError("invalid project or root run identity")
-    if start_command.get("command") != "start" or str((start_command.get("result") or {}).get("run_id")) != root_run_id:
-        raise ValueError("evidence is not linked to an explicit Start")
+    start_kind=start_command.get("command")
+    if (start_kind not in ("start","console_continuation")
+        or str((start_command.get("result") or {}).get("run_id")) != root_run_id):
+        raise ValueError("evidence is not linked to an explicit operator action")
     if not isinstance(start_command.get("actor_id"), str) or not start_command["actor_id"].strip():
-        raise ValueError("explicit Start has no operator identity")
+        raise ValueError("explicit operator action has no actor identity")
     run_ids = {str(row.get("id")) for row in runs}
     if root_run_id not in run_ids:
         raise ValueError("Start run is missing from bounded lineage")
@@ -169,6 +180,38 @@ def evaluate_journey(
         raise ValueError("duplicate run in bounded lineage")
     blockers: list[str] = []
     primary = [r for r in runs if r.get("id") == root_run_id][0]
+    if start_kind == "console_continuation":
+        request_id=start_command.get("request_id")
+        metadata=primary.get("metadata")
+        if (not isinstance(request_id,str)
+            or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",request_id)
+            or start_command.get("actor_id")!="factory-console"
+            or not isinstance(metadata,dict)
+            or metadata.get("source")!="factory-console"
+            or metadata.get("continuation_request_id")!=request_id
+            or not any(
+                event.get("project_id")==pid
+                and event.get("run_id")==root_run_id
+                and event.get("task_id")==primary.get("task_id")
+                and event.get("event_type")=="project.continuation.requested"
+                and event.get("actor_type")=="human"
+                and event.get("actor_ref")=="factory-console"
+                and isinstance(event.get("payload"),dict)
+                and event["payload"].get("request_id")==request_id
+                for event in events
+            )
+            or not any(
+                event.get("project_id")==pid
+                and event.get("run_id")==root_run_id
+                and event.get("task_id")==primary.get("task_id")
+                and event.get("event_type")=="project.reconciliation.enqueued"
+                and event.get("actor_type")=="system"
+                and event.get("actor_ref")=="factory-console"
+                and isinstance(event.get("payload"),dict)
+                and event["payload"].get("request_id")==request_id
+                for event in events
+            )):
+            raise ValueError("operator continuation is not backed by exact human and queue receipts")
     if primary.get("status") in ("failed", "blocked", "cancelled"):
         blockers.append("root_run_terminal_without_success")
     if any(r.get("status") in ("failed", "blocked") for r in runs):
@@ -232,6 +275,37 @@ def evaluate_journey(
         if sha in receipt_pairs and receipt_pairs[sha] != pair:
             raise ValueError("conflicting create_pr receipts for same commit")
         receipt_pairs[sha] = pair
+    # A later repair may move a PR head ONLY through the existing atomic,
+    # audited candidate reconciliation RPC. The original create_pr receipt
+    # stays immutable and must match the previous SHA, run and PR number.
+    reconciled_receipts: dict[str,tuple[int,str]] = {}
+    if not isinstance(candidate_reconciliations,(list,tuple)) or len(candidate_reconciliations)>10:
+        raise ValueError("candidate reconciliations are malformed or unbounded")
+    for row in candidate_reconciliations:
+        if not isinstance(row,dict) or row.get("operation")!="reconcile_pr_candidate" or row.get("run_id") not in run_ids:
+            raise ValueError("candidate reconciliation is not scoped to this run")
+        meta=row.get("metadata")
+        if not isinstance(meta,dict):
+            raise ValueError("candidate reconciliation receipt is malformed")
+        prev=meta.get("previous_commit")
+        curr=meta.get("candidate_commit")
+        pr_no=meta.get("pr_number")
+        if (not isinstance(prev,str) or not SHA.fullmatch(prev)
+            or not isinstance(curr,str) or not SHA.fullmatch(curr)
+            or curr not in candidate_shas
+            or prev not in receipt_pairs
+            or str(pr_no)!=str(receipt_pairs[prev][0])
+            or row["run_id"]!=receipt_pairs[prev][1]
+            or meta.get("change_set_id") not in cs_ids
+            or meta.get("repository")!=repo
+            or meta.get("compare_status")!="ahead"
+            or not isinstance(meta.get("changed_files"),list)
+            or github is None or github.get("candidate_reconciliation_verified") is not True):
+            raise ValueError("candidate reconciliation identity or GitHub proof is invalid")
+        if curr in reconciled_receipts or curr in receipt_pairs:
+            raise ValueError("duplicate or ambiguous candidate reconciliation")
+        reconciled_receipts[curr]=receipt_pairs[prev]
+    receipt_pairs.update(reconciled_receipts)
     candidate = None
     pr_number = None
     delivery_run_id = None
@@ -279,11 +353,15 @@ def evaluate_journey(
     def delivery(evidence: str) -> bool:
         return _event(
             events, "delivery.evidence.recorded",
-            run_ids=delivery_runs, payload={"evidence_type":evidence,"status":"passed"},
+            run_ids=delivery_runs,
+            payload={"evidence_type":evidence,"status":"passed",
+                     "evidence_ref":candidate},
             audit_project=pid,
         ) or _event(
             events, "delivery.evidence.recorded",
-            run_ids=delivery_runs, payload={"evidence_type":evidence,"status":"success"},
+            run_ids=delivery_runs,
+            payload={"evidence_type":evidence,"status":"success",
+                     "evidence_ref":candidate},
             audit_project=pid,
         )
     reviewed = bool(candidate and delivery("qa") and delivery("security") and
@@ -314,11 +392,20 @@ def evaluate_journey(
     # A terminal run may already be completed AFTER a human release.
     # The immutable audit event is the evidence that the boundary existed;
     # looking only at today's status would erase a legitimate past gate.
-    release_gate = bool(
-        candidate_bound
-        and _release_event(events,"release.awaiting_human_merge",project_id=pid,
-                           sha=candidate,pr_number=pr_number,run_ids=delivery_runs)
+    # Both contracts represent a real, explicit human release boundary:
+    # legacy exact-PR event, or a newer policy decision AND exact candidate
+    # transition to awaiting_release. Never infer a gate from CI alone.
+    legacy_gate=_release_event(events,"release.awaiting_human_merge",project_id=pid,
+                               sha=candidate,pr_number=pr_number,run_ids=delivery_runs)
+    policy_gate=bool(
+        _event(events,"release.policy.decided",run_ids=delivery_runs,
+               payload={"outcome":"ready_for_human_release"},audit_project=pid)
+        and _event(events,"run.status.updated",run_ids=delivery_runs,
+                   payload={"status":"awaiting_release","candidate_commit":candidate},
+                   audit_project=pid)
+        and preview_done and reviewed and ci
     )
+    release_gate=bool(candidate_bound and (legacy_gate or policy_gate))
     merge_sha = github_pr.get("merge_commit_sha") if candidate_bound else None
     # Newer release observer events contain candidate_commit+merge_sha but
     # omit the PR number; the console's separately audited human merge DOES
@@ -354,7 +441,13 @@ def evaluate_journey(
     )
     if candidate_bound and github_pr.get("merged") is True and not released:
         blockers.append("merged_candidate_without_verified_release")
-    operations = bool(released and delivery("operations"))
+    operations = bool(
+        released and delivery("operations")
+        and _event(events,"project.state.reconciled_after_release",
+                   run_ids=delivery_runs,
+                   payload={"merge_sha":merge_sha,"lifecycle_stage":"operations"},
+                   audit_project=pid)
+    )
     checks = (
         True, discovered, specified, planned, routed, implemented, reviewed,
         ci, preview_done, release_gate, released, operations,

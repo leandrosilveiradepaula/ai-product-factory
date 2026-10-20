@@ -32,17 +32,17 @@ def scenario(*,preview_required=False,merged=False,operations=False):
         ev("product.stage.persisted",stage="planning"),
         ev("change_set.materialized",change_set_id=CS),
         ev("change_set.work_unit.dispatched",work_unit_id=UNIT),
-        ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="qa",status="passed"),
-        ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="security",status="passed"),
+        ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="qa",status="passed",evidence_ref=SHA),
+        ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="security",status="passed",evidence_ref=SHA),
         ev("quality_gate.passed",RELEASE_RUN,candidate_commit=SHA),
-        ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="github_ci",status="passed"),
+        ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="github_ci",status="passed",evidence_ref=SHA),
         ev("release.awaiting_human_merge",RELEASE_RUN,head_sha=SHA,pr=17),
     ]
     deployments=[]
     if preview_required:
         events.extend((
-            ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="preview",status="passed"),
-            ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="browser_evidence",status="passed"),
+            ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="preview",status="passed",evidence_ref=SHA),
+            ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="browser_evidence",status="passed",evidence_ref=SHA),
             ev("preview.browser_evidence_recorded",RELEASE_RUN,status="success"),
         ))
         deployments=[{"run_id":RELEASE_RUN,"environment":"preview","status":"success"}]
@@ -55,7 +55,9 @@ def scenario(*,preview_required=False,merged=False,operations=False):
         release_reports.append({"candidate_commit":SHA,"status":"released","run_id":RELEASE_RUN})
     if operations:
         events.append(ev("delivery.evidence.recorded",RELEASE_RUN,evidence_type="operations",
-                         status="passed"))
+                         status="passed",evidence_ref=SHA))
+        events.append(ev("project.state.reconciled_after_release",RELEASE_RUN,
+                         merge_sha=MERGE_SHA,lifecycle_stage="operations"))
     return dict(
         project={"id":PID,"project_key":"fresh-journey","repository":REPO},
         root_run_id=ROOT_RUN,
@@ -235,7 +237,7 @@ class JourneyReaderContractTests(unittest.TestCase):
             result=reader.read(project_key="fresh",
                                since=datetime.now(timezone.utc)-timedelta(minutes=10))
         self.assertEqual(result.status,"not_started")
-        get.assert_called_once()
+        self.assertEqual(get.call_count, 2)  # Start + authenticated continuation
         github.assert_not_called()
 
     def test_missing_server_credentials_blocks_without_fallback(self):
@@ -277,10 +279,11 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("run_journey_audit:",workflow)
         self.assertIn("journey-readonly:",workflow)
         self.assertIn("inputs.run_journey_audit != true",workflow)
-        self.assertIn(
-            "if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true }}",
-            workflow,
-        )
+        self.assertIn("github.event_name == 'workflow_dispatch'",workflow)
+        self.assertIn("github.event.comment.author_association == 'OWNER'",workflow)
+        self.assertIn("!github.event.issue.pull_request",workflow)
+        self.assertIn("startsWith(github.event.comment.body, '/factory-journey-audit ')",workflow)
+        self.assertIn("python -m ai_product_factory.journey_audit_trigger",workflow)
         # A preceding backslash breaks workflow expressions and shell argv
         # but escaped examples can accidentally pass pure Python tests.
         self.assertNotIn("\\${{",workflow)
@@ -290,6 +293,13 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("persist-credentials: false",workflow)
         self.assertIn("audit_autonomy_journey.py",workflow)
         self.assertIn("upload-artifact@",workflow)
+        audit_job=workflow.split("\n  journey-readonly:\n",1)[1].split("\n  continuation-offline-preflight:\n",1)[0]
+        self.assertLess(audit_job.index("journey_audit_trigger"),
+                        audit_job.index("uses: ./.github/actions/control-plane-oidc"))
+        self.assertNotIn("      contents: write",audit_job)
+        self.assertNotIn("      issues: write",audit_job)
+        self.assertNotIn("      pull-requests: write",audit_job)
+        self.assertNotIn("OPENAI_API_KEY",audit_job)
         self.assertNotIn("autonomy-journey-readonly.yml",broker)
         self.assertIn(".github/workflows/autonomous-runner.yml@refs/heads/main",broker)
         audit=workflow.split("\n  journey-readonly:\n",1)[1]

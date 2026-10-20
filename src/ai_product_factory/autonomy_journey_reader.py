@@ -10,6 +10,9 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from .autonomy_journey import evaluate_journey, no_start_report, SHA
+from .journey_candidate_provenance import (
+    validate_reconciliation_receipt, verify_copied_work_units,
+)
 from .github_rest import GitHubRestAdapter
 from .preview_policy import evaluate_preview_applicability
 from .supabase_server import resolve_supabase_server_config
@@ -26,6 +29,7 @@ GLOBAL_RELEASE_EVENTS = (
     "release.awaiting_human_merge",
     "release.preview_not_required",
     "release.human_merge_observed",
+    "quality_gate.passed",
 )
 
 
@@ -178,8 +182,6 @@ class SupabaseJourneyReader:
             +"&order=created_at.desc",
             limit=51,
         )
-        if not commands:
-            return no_start_report(project_key)
         matching=[
             row for row in commands
             if row.get("project_id")==pid
@@ -187,15 +189,77 @@ class SupabaseJourneyReader:
             and isinstance(row["result"].get("run_id"),str)
             and (run_id is None or row["result"]["run_id"]==run_id)
         ]
-        if not matching:
-            if run_id:
-                raise RuntimeError("requested run has no explicit Start receipt")
-            raise RuntimeError("Start has no durable bootstrap run")
-        start=matching[0]
-        root_run_id=_uuid(start["result"]["run_id"])
+        # The Console's explicit "submit continuation" action creates an
+        # authenticated human audit + deterministic queue receipt in the
+        # same transaction, NOT a project_execution_commands/start row.
+        # Accept only the exact paired receipts, never a generic queued run.
+        if matching:
+            start=matching[0]
+            root_run_id=_uuid(start["result"]["run_id"])
+        else:
+            continuation=self._get(
+                "factory_audit_events?select=project_id,task_id,run_id,event_type,"
+                "actor_type,actor_ref,payload,created_at"
+                "&project_id=eq."+pid
+                + "&event_type=in.(project.continuation.requested,project.reconciliation.enqueued)"
+                + "&created_at=gte."+_utc_filter(since)
+                + "&order=created_at.desc",
+                limit=101,
+            )
+            if any(row.get("project_id")!=pid for row in continuation):
+                raise RuntimeError("cross-project continuation audit")
+            requests=[
+                row for row in continuation
+                if row.get("event_type")=="project.continuation.requested"
+                and row.get("actor_type")=="human"
+                and row.get("actor_ref")=="factory-console"
+                and isinstance(row.get("payload"),dict)
+                and (run_id is None or row.get("run_id")==run_id)
+            ]
+            eligible=[]
+            for request in requests:
+                request_id=request["payload"].get("request_id")
+                target=request.get("run_id")
+                task_id=request.get("task_id")
+                if (not isinstance(request_id,str)
+                    or not isinstance(target,str)
+                    or not isinstance(task_id,str)):
+                    continue
+                try:
+                    _uuid(request_id)
+                    _uuid(target)
+                    _uuid(task_id)
+                except ValueError:
+                    continue
+                if any(
+                    row.get("event_type")=="project.reconciliation.enqueued"
+                    and row.get("actor_type")=="system"
+                    and row.get("actor_ref")=="factory-console"
+                    and row.get("run_id")==target
+                    and row.get("task_id")==task_id
+                    and isinstance(row.get("payload"),dict)
+                    and row["payload"].get("request_id")==request_id
+                    and row["payload"].get("task_id")==task_id
+                    for row in continuation
+                ):
+                    eligible.append((request,request_id))
+            if not eligible:
+                if not commands and not requests and run_id is None:
+                    return no_start_report(project_key)
+                raise RuntimeError("no verified explicit Start or Console continuation for requested run")
+            if len({row["run_id"] for row,_ in eligible})!=len(eligible):
+                raise RuntimeError("duplicate operator continuation receipt")
+            picked,req_id=eligible[0]
+            root_run_id=_uuid(picked["run_id"])
+            start={
+                "command":"console_continuation",
+                "actor_id":"factory-console",
+                "result":{"run_id":root_run_id},
+                "request_id":req_id,
+            }
         root_run=self._one(
             "factory_runs",
-            "select=id,task_id,status,candidate_commit,created_at"
+            "select=id,task_id,status,candidate_commit,created_at,metadata"
             "&id=eq."+root_run_id,
         )
         if root_run is None:
@@ -208,6 +272,17 @@ class SupabaseJourneyReader:
         )
         if root_task is None or root_task.get("project_id")!=pid:
             raise RuntimeError("Start points outside project task ownership")
+        if start.get("command")=="console_continuation":
+            metadata=root_run.get("metadata")
+            if (root_task.get("parent_task_id") is not None
+                or root_task.get("id")!=next(
+                    (row.get("task_id") for row in continuation
+                     if row.get("run_id")==root_run_id
+                     and row.get("event_type")=="project.continuation.requested"),None)
+                or not isinstance(metadata,dict)
+                or metadata.get("source")!="factory-console"
+                or metadata.get("continuation_request_id")!=start["request_id"]):
+                raise RuntimeError("Console continuation is not bound to root run/task")
         start_time=_timestamp(root_task.get("created_at"))
         tasks=self._get(
             "factory_tasks?select=id,project_id,parent_task_id,status,created_at"
@@ -228,14 +303,14 @@ class SupabaseJourneyReader:
         if root_task_id not in {row.get("id") for row in tasks}:
             raise RuntimeError("start bootstrap absent from task lineage")
         runs=self._many_ids(
-            "factory_runs",cols="id,task_id,status,candidate_commit,source_commit,branch_name,created_at",
+            "factory_runs",cols="id,task_id,status,candidate_commit,source_commit,branch_name,created_at,metadata",
             fk="task_id",ids=children,
         )
         if root_run_id not in {row.get("id") for row in runs}:
             raise RuntimeError("Start run not present in run lineage")
         run_ids={_uuid(row["id"]) for row in runs}
         sets_all=self._get(
-            "factory_change_sets?select=id,project_id,root_task_id,status,source_commit,candidate_commit,created_at"
+            "factory_change_sets?select=id,project_id,root_task_id,status,source_commit,candidate_commit,integration_branch,metadata,created_at"
             "&project_id=eq."+pid+"&created_at=gte."+_utc_filter(start_time)
             +"&order=created_at.asc,id.asc",
             limit=101,
@@ -246,13 +321,13 @@ class SupabaseJourneyReader:
         cs_ids={_uuid(row["id"]) for row in sets}
         units=self._many_ids(
             "factory_change_set_work_units",
-            cols="id,change_set_id,task_id,run_id,status,output_commit,created_at",
+            cols="id,change_set_id,task_id,run_id,status,output_commit,changed_files,created_at",
             fk="change_set_id",ids=cs_ids,
         )
         if any(row.get("task_id") not in children for row in units):
             raise RuntimeError("Change Set work unit is outside Start lineage")
         events=self._get(
-            "factory_audit_events?select=id,project_id,task_id,run_id,event_type,payload,created_at"
+            "factory_audit_events?select=id,project_id,task_id,run_id,event_type,actor_type,actor_ref,payload,created_at"
             "&project_id=eq."+pid+"&created_at=gte."+_utc_filter(start_time)
             +"&order=created_at.asc,id.asc",
             limit=MAX_PROJECT_EVENTS+1,
@@ -260,11 +335,11 @@ class SupabaseJourneyReader:
         if any(row.get("project_id")!=pid for row in events):
             raise RuntimeError("cross-project audit evidence")
         # Project-bound SELECT omits historical release receipts written with
-        # project_id=NULL. Read only the THREE known event types for scoped run
+        # project_id=NULL. Read only the FOUR known event types for scoped run
         # IDs, and fail closed if a database row violates that contract.
         global_events=self._many_ids(
             "factory_audit_events",
-            cols="id,project_id,task_id,run_id,event_type,payload,created_at",
+            cols="id,project_id,task_id,run_id,event_type,actor_type,actor_ref,payload,created_at",
             fk="run_id",ids=run_ids,
             extra=("project_id=is.null&event_type=in.("
                    + ",".join(GLOBAL_RELEASE_EVENTS) + ")"),
@@ -284,6 +359,10 @@ class SupabaseJourneyReader:
             "factory_tool_usage",cols="id,run_id,operation,metadata",fk="run_id",
             ids=run_ids,extra="operation=eq.create_pr",
         )
+        reconcile_pr=self._many_ids(
+            "factory_tool_usage",cols="id,run_id,operation,metadata",fk="run_id",
+            ids=run_ids,extra="operation=eq.reconcile_pr_candidate",
+        )
         deploy=self._many_ids(
             "factory_deployments",cols="id,run_id,environment,status,metadata",fk="run_id",
             ids=run_ids,
@@ -294,54 +373,109 @@ class SupabaseJourneyReader:
             limit=101,
         )
         release_reports=[row for row in release_reports if row.get("run_id") in run_ids]
-        # Resolve an exact candidate from BOTH the Change Set and create_pr
-        # receipt; unbound or operator-updated SHA is never promoted by guessing.
+        # A create_pr receipt is immutable. The only legitimate new SHA
+        # after a repair is an exact, atomically audited reconciliation whose
+        # original candidate is an ancestor of the repaired candidate.
         shas={cs.get("candidate_commit") for cs in sets if
               isinstance(cs.get("candidate_commit"),str) and SHA.fullmatch(cs["candidate_commit"])}
-        matches=[
-            row["metadata"] for row in create_pr
-            if isinstance(row.get("metadata"),dict)
-            and row["metadata"].get("head_sha") in shas
-        ]
+        matches=[]
+        for cs in sets:
+            target=cs.get("candidate_commit")
+            if target not in shas:
+                continue
+            for entry in create_pr:
+                meta=entry.get("metadata")
+                if not isinstance(meta,dict) or meta.get("change_set_id")!=cs.get("id"):
+                    continue
+                original=meta.get("head_sha")
+                number=meta.get("pr")
+                if not isinstance(original,str) or not SHA.fullmatch(original) or type(number) is not int or number<1:
+                    continue
+                if target==original:
+                    matches.append((cs,entry,None))
+                else:
+                    for rec in reconcile_pr:
+                        data=rec.get("metadata")
+                        if (rec.get("run_id")==entry.get("run_id")
+                            and isinstance(data,dict)
+                            and data.get("previous_commit")==original
+                            and data.get("candidate_commit")==target
+                            and data.get("change_set_id")==cs.get("id")
+                            and str(data.get("pr_number"))==str(number)):
+                            matches.append((cs,entry,rec))
         github_evidence=None
         preview_required=None
+        if len(matches)>1:
+            raise RuntimeError("multiple candidate identities fit the same Start lineage")
         if len(matches)==1:
-            receipt=matches[0]
-            pr_number=receipt.get("pr")
-            if type(pr_number) is int and pr_number>0:
-                github=self.github_factory(repository=project["repository"])
-                pr=github.get_pull_request(pr_number)
+            cs,create,repair=matches[0]
+            meta=create["metadata"]
+            pr_number=meta["pr"]
+            original=meta["head_sha"]
+            target=cs["candidate_commit"]
+            github=self.github_factory(repository=project["repository"])
+            pr=github.get_pull_request(pr_number)
+            release_request=(cs.get("metadata") or {}).get("integration_release_request") or {}
+            exact_branch=cs.get("integration_branch")
+            reconciliation_verified=repair is None
+            if repair is not None:
+                reconciliation_verified=bool(
+                    isinstance(exact_branch,str)
+                    and validate_reconciliation_receipt(
+                        github,receipt=repair["metadata"],old_sha=original,
+                        candidate_sha=target,pr_number=pr_number,
+                        repository=project["repository"],change_set_id=cs["id"],
+                        branch=exact_branch,
+                    )
+                )
+            # Never promote an unverified updated PR head as a valid source
+            # of CI, release or model-generated implementation evidence.
+            if reconciliation_verified and pr.head_sha==target and (
+                pr.head_repository==project["repository"]
+                and (repair is None or
+                     release_request.get("candidate_commit")==target)
+            ):
                 paths=github.get_pull_request_files(pr_number)
                 policy=evaluate_preview_applicability(
                     manifest=project.get("manifest") or {},
                     changed_files=paths,
                 )
                 preview_required=policy.required
-                verified_units=[
-                    row["output_commit"] for row in units
+                selected_units=[
+                    row for row in units
+                    if row.get("change_set_id")==cs["id"]
+                    and row.get("run_id") in run_ids
+                ]
+                if len(selected_units)>30:
+                    raise RuntimeError("commit verification exceeds bounded limit")
+                completed=[
+                    row["output_commit"] for row in selected_units
                     if row.get("status") in ("completed","integrated")
                     and isinstance(row.get("output_commit"),str)
                     and SHA.fullmatch(row["output_commit"])
-                    and row.get("run_id") in run_ids
                 ]
-                if len(verified_units)>30:
-                    raise RuntimeError("commit verification exceeds bounded limit")
-                # Existence alone is insufficient: a real commit on an
-                # unrelated branch is NOT code integrated in this PR.
-                commits_ok=(
-                    pr.head_sha == receipt["head_sha"]
-                    and candidate_contains_work_units(
-                        github, pr.head_sha, set(verified_units)
+                if len(completed)!=len(selected_units) or not completed:
+                    commits_ok=False
+                elif all(isinstance(row.get("changed_files"),list)
+                         and row.get("changed_files") for row in selected_units):
+                    commits_ok=verify_copied_work_units(
+                        github,original_candidate=original,
+                        final_candidate=target,units=selected_units,
                     )
-                )
-                ci_state=github.get_ci_state(pr_number)
+                else:
+                    # Legacy direct-commit path: requires real ancestry, not
+                    # merely a commit object existing in the repository.
+                    commits_ok=candidate_contains_work_units(
+                        github,target,set(completed)
+                    )
                 github_evidence={
                     "repository":project["repository"],"number":pr.number,
                     "head_sha":pr.head_sha,"head_repository":pr.head_repository,
                     "base_ref":pr.base_ref,"merged":pr.merged,
                     "merge_commit_sha":pr.merge_commit_sha,
                     "work_unit_commit_verified":commits_ok,
-                    "ci_state":ci_state,
+                    "candidate_reconciliation_verified":reconciliation_verified,
+                    "ci_state":github.get_ci_state(pr_number),
                 }
         return evaluate_journey(
             project=project,root_run_id=root_run_id,start_command=start,
@@ -349,4 +483,5 @@ class SupabaseJourneyReader:
             create_pr_receipts=create_pr,deployments=deploy,
             release_reports=release_reports,github=github_evidence,
             preview_required=preview_required,
+            candidate_reconciliations=reconcile_pr,
         )

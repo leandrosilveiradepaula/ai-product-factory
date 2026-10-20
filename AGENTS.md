@@ -174,3 +174,29 @@ pontual so pode ocorrer por RPC versionada, explicitamente autorizada,
 com provas de escopo, identidade do run, generation, work unit sem
 base/output e blocker imutavel. Proibido retry generico ou repassar a
 mesma run de Product Stage ao modelo.
+
+
+## Auditoria E2E de um Start ou continuation iniciado por humano
+
+Nao inferir prontida completa da Factory somente por CI, PR ou release.
+O auditor `autonomy_journey_reader` deve aceitar somente: (1) Start real
+e autenticado em `factory_project_execution_commands`, ou (2)
+continuation humano do Console com par de audit events e mesmo
+project_id/root_task_id/root_run_id/request_id e metadata de origem exata.
+Tarefa enfileirada sozinha nao e pedido humano.
+
+No fluxo Change Set, a integracao pode copiar arquivos verificados para um
+novo commit sem herdar a ancestralidade da Work Unit: exigir blob identico
+nos SHAs imutaveis de output e primeiro candidato. Reparo posterior de PR
+so e aceito com `reconcile_pr_candidate` vinculada a create_pr original,
+mesma branch, repo, id, paths e compare GitHub fast-forward. Sem esse
+recibo, candidate drift continua bloqueado. Release requer gate registrado,
+merge humano observado, report released e estado do projeto reconciliado.
+Auditoria permanece GET-only, sem LLM, Start, write, merge ou deploy.
+
+
+Para auditoria read-only apos um merge humano, usar somente o comando
+owner-only `/factory-journey-audit <project_key> <root_run_uuid> <cutoff_utc>`
+em issue real ou `workflow_dispatch` explicito; nao usar /factory-wake
+como substituto. Parser obrigatorio antes do OIDC, job exclusivo sem
+permissao de escrita, sem modelo e sem executor, artifact sanitized.

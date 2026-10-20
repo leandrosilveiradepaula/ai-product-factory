@@ -1042,9 +1042,9 @@ jobs:
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
 
   journey-readonly:
-    # Reuse the trusted Factory runner OIDC identity. The broker intentionally
-    # does not authorize a new standalone privileged workflow.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true }}
+    # Audits on an OWNER issue comment use the existing trusted main OIDC
+    # job; the scheduler and every dependent paid worker remain skipped.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_journey_audit == true && inputs.run_offline_preflight != true) || (github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-journey-audit ')) }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6
@@ -1059,26 +1059,38 @@ jobs:
     env:
       PYTHONPATH: src
       GITHUB_TOKEN: ${{ github.token }}
-      PROJECT_KEY: ${{ inputs.project_key }}
-      SINCE_UTC: ${{ inputs.journey_since_utc }}
-      ROOT_RUN_ID: ${{ inputs.journey_run_id }}
-      REQUIRE_STAGE: ${{ inputs.journey_stage }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: ./.github/actions/control-plane-oidc
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Audit exact human Start lineage without running agents or paid models
+      - name: Validate exact OWNER issue audit command before OIDC
+        id: target
+        shell: bash
+        env:
+          FACTORY_EVENT_NAME: ${{ github.event_name }}
+          FACTORY_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          FACTORY_ISSUE_IS_PR: ${{ github.event.issue.pull_request && 'true' || 'false' }}
+          FACTORY_COMMENT_BODY: ${{ github.event.comment.body }}
+          FACTORY_DISPATCH_ENABLED: ${{ inputs.run_journey_audit == true && 'true' || 'false' }}
+          FACTORY_OFFLINE_ENABLED: ${{ inputs.run_offline_preflight == true && 'true' || 'false' }}
+          FACTORY_DISPATCH_PROJECT_KEY: ${{ inputs.project_key }}
+          FACTORY_DISPATCH_RUN_ID: ${{ inputs.journey_run_id }}
+          FACTORY_DISPATCH_SINCE_UTC: ${{ inputs.journey_since_utc }}
+          FACTORY_DISPATCH_REQUIRE_STAGE: ${{ inputs.journey_stage }}
+        run: python -m ai_product_factory.journey_audit_trigger
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Audit exact human Start or Console continuation without agents
+        env:
+          PROJECT_KEY: ${{ steps.target.outputs.project_key }}
+          SINCE_UTC: ${{ steps.target.outputs.since_utc }}
+          ROOT_RUN_ID: ${{ steps.target.outputs.run_id }}
+          REQUIRE_STAGE: ${{ steps.target.outputs.require_stage }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$PROJECT_KEY" ] || [ -z "$SINCE_UTC" ]; then
-            echo "::error::Read-only journey needs a project key and UTC Start cutoff"
-            exit 2
-          fi
           args=(--project-key "$PROJECT_KEY" --since-utc "$SINCE_UTC" --require-at-least "$REQUIRE_STAGE")
           if [ -n "$ROOT_RUN_ID" ]; then args+=(--run-id "$ROOT_RUN_ID"); fi
           python scripts/audit_autonomy_journey.py "${args[@]}" \
@@ -1091,8 +1103,6 @@ jobs:
           path: ${{ runner.temp }}/factory-autonomy-journey.json
           if-no-files-found: warn
           retention-days: 7
-
-
 
   continuation-offline-preflight:
     # Owner issue comments are a read-only trigger when the GitHub connector
