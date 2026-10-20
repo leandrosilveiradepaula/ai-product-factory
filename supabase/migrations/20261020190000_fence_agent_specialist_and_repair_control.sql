@@ -211,6 +211,7 @@ begin
  for update skip locked
  limit 1;
  if v_job.id is null then return null; end if;
+ perform public.factory_assert_project_running(v_job.project_id);
 
  select * into v_run from public.factory_runs where id=v_job.run_id;
  if v_run.candidate_commit is distinct from v_job.candidate_commit then
