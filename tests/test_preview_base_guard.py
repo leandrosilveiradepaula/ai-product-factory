@@ -30,6 +30,12 @@ def github_for(base_ref="preview/hardening-release-candidate"):
 
 
 class PreviewBaseGuardTests(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        self._control=patch("ai_product_factory.runtime_cli._assert_project_followup",return_value=1)
+        self._control.start()
+        self.addCleanup(self._control.stop)
+
     def test_exact_base_requires_no_comparison_or_content_reads(self):
         github, pr = github_for()
         github.get_branch_sha.return_value = OLD
