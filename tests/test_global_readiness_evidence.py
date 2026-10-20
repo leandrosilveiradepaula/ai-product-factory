@@ -69,6 +69,14 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
         "/repos/"+REPO+"/git/commits/"+S:{"sha":S,"tree":{"sha":TREE}},
         "/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1":{
             "sha":TREE,"truncated":False,"tree":paths},
+        "/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100":{
+            "total_count":2,"jobs":[
+                {"id":31,"run_id":RUN,"head_sha":S,"name":"test",
+                 "status":"completed","conclusion":"success"},
+                {"id":32,"run_id":RUN,"head_sha":S,"name":"factory-acceptance",
+                 "status":"completed","conclusion":"success"},
+            ],
+        },
         "/repos/"+REPO+"/commits/"+S+"/check-runs?per_page=100":{
             "total_count":2,"check_runs":[
                 {"head_sha":S,"status":"completed","conclusion":"success","name":"test"},
@@ -114,6 +122,7 @@ class GlobalReadinessTests(unittest.TestCase):
         self.assertTrue(all(not x["start_authorized"] and not x["paid_calls_authorized"]
                             and x["work_type"]=="independent_verification" for x in report["work_proposals"]))
         self.assertEqual(report["ci_evidence"]["checks_observed"],2)
+        self.assertEqual(report["ci_evidence"]["validation_jobs"]["verification_state"],"executed_same_SHA")
         self.assertEqual(report["source_inventory"]["tracked_files"],7)
         self.assertTrue(report["source_inventory"]["documents_present"]["operations"])
         self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
@@ -160,6 +169,11 @@ class GlobalReadinessTests(unittest.TestCase):
             ("truncated inventory",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"].update(truncated=True)),
             ("symlink",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"]["tree"].append({"type":"blob","mode":"120000","path":"secret"})),
             ("incomplete checks",lambda gh,cp:gh["/repos/"+REPO+"/commits/"+S+"/check-runs?per_page=100"].update(total_count=200)),
+            ("incomplete run jobs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"].update(total_count=200)),
+            ("failed required validate job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(conclusion="failure")),
+            ("unrelated validation job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(name="invented-success")),
+            ("cross SHA validate job",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"]["jobs"][0].update(head_sha="f"*40)),
+
         ]
         for label,change in tests:
             with self.subTest(label=label):
@@ -189,25 +203,42 @@ class GlobalReadinessTests(unittest.TestCase):
                                         github_get=gg,cp_get=cg)
 
     def test_workflow_is_only_successful_main_push_with_no_paid_worker(self):
-        flow=(Path(__file__).resolve().parents[1]/".github/workflows/global-product-readiness.yml").read_text()
+        root=Path(__file__).resolve().parents[1]
+        yaml=(root/".github/workflows/autonomous-runner.yml").read_text()
+        broker=(root/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertFalse((root/".github/workflows/global-product-readiness.yml").exists())
+        self.assertIn('workflows: ["Control Plane OIDC preflight", "validate"]',yaml)
+        self.assertIn('const TRUSTED_BACKUP_WORKFLOW_REF = "leandrosilveiradepaula/ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main"',broker)
+        self.assertIn('const GENERIC_PROXY_WORKFLOW_REFS = new Set([',broker)
+        self.assertNotIn('"leandrosilveiradepaula/ai-product-factory/.github/workflows/global-product-readiness.yml@refs/heads/main"',broker)
+        probe=yaml.split("\n  schedule-probe:",1)[1].split("\n  github-access-preflight:",1)[0]
+        self.assertIn("github.event.workflow_run.event == 'schedule'",probe)
+        self.assertIn("steps.backup_wake.outputs.wake == 'true'",probe)
+        self.assertNotIn('global-readiness-post-ci',probe)
+        job=yaml.split("\n  global-readiness-post-ci:",1)[1]
         for term in (
-            "workflows: [\"validate\"]","types: [completed]","branches: [main]",
+            "github.event_name == 'workflow_run'",
+            "github.event.workflow_run.name == 'validate'",
             "github.event.workflow_run.event == 'push'",
             "github.event.workflow_run.conclusion == 'success'",
+            "github.event.workflow_run.status == 'completed'",
+            "github.event.workflow_run.head_branch == 'main'",
             "github.event.workflow_run.repository.full_name == github.repository",
             "github.event.workflow_run.head_sha",
-            "permissions:","  contents: read","  actions: read","  checks: read",
-            "  id-token: write","environment: openai-api",
-            "persist-credentials: false","uses: ./.github/actions/control-plane-oidc",
+            "    environment: openai-api",
+            "      contents: read","      actions: read","      checks: read",
+            "      id-token: write","GITHUB_TOKEN: ${{ github.token }}",
+            "persist-credentials: false",
+            "uses: ./.github/actions/control-plane-oidc",
             "audit_global_readiness.py","retention-days: 7",
         ):
-            with self.subTest(term=term):self.assertIn(term,flow)
+            with self.subTest(term=term):self.assertIn(term,job)
         for forbidden in ("FACTORY_GITHUB_TOKEN","OPENAI_API_KEY",
                           "schedule:","workflow_dispatch:","merge_pull_request",
                           "contents: write","pull-requests: write",
                           "--mode product","--mode dispatch",
                           "factory_claim_next_run","FACTORY_PRIMARY_MODEL_ENABLED"):
-            self.assertNotIn(forbidden,flow)
+            self.assertNotIn(forbidden,job)
 
     def test_script_rejects_forged_event_and_does_not_echo_exceptions(self):
         path=Path(__file__).resolve().parents[1]/"scripts/audit_global_readiness.py"
@@ -234,6 +265,9 @@ class GlobalReadinessTests(unittest.TestCase):
                 status=mod.main(["--event-path",str(source),"--output",str(out)])
             self.assertEqual(status,2)
             self.assertFalse(json.loads(out.read_text())["product_ready"])
+            self.assertEqual(json.loads(out.read_text())["reason_code"],
+                             "control_plane_oidc_unavailable")
+            self.assertEqual(json.loads(out.read_text())["error_class"],"RuntimeError")
             self.assertNotIn("secret value",out.read_text())
             self.assertNotIn("secret value",stdout.getvalue())
 

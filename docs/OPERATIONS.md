@@ -1331,3 +1331,17 @@ mover entre CI e coleta, o observador falha fechado; não publica estado
 enganosamente verde nem invoca LLM. A evidência deve ser conferida no
 artefato da execução real pós-merge. Consultar
 `docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.
+
+## 20/10/2026 — Reparação do auditor global por OIDC sem ampliar credenciais
+
+A execução `39460182317` da PR #1002 falhou: GitHub OIDC token
+foi emitido, mas o broker `factory-runtime-control-plane` recusou a
+identidade do novo workflow. A causa foi reconciliada com a whitelist
+`GENERIC_PROXY_WORKFLOW_REFS` e a regra específica de
+`workflow_run`. A solução é realocar o job de auditoria para o workflow
+**já confiável** `autonomous-runner.yml`, não adicionar o novo workflow
+aos privilégios do broker. Proibir execução de Product Stage/Direct,
+integração, CI/release, Preview e Codex a partir do evento `validate`.
+A trilha de evidência deve manter jobs de CI exatos e razões de falha
+sanitizadas, sem ampliar RLS ou credenciais. Consultar
+`docs/GLOBAL_PRODUCT_READINESS_EVIDENCE.md`.

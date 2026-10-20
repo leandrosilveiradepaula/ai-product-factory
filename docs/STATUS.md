@@ -1,3 +1,12 @@
+## 20/10/2026 — Falha OIDC do auditor global e correção fail-closed (candidato)
+
+- PR #1002 mergeada em `b015a8811324d5aeb147a0793b9e821bb2efd35b`; `validate` push #39460100571 SUCCESS.
+- O novo workflow global-readiness tentou coletar dados em #39460182317, mas falhou (artefato `blocked`). A análise do broker `factory-runtime-control-plane` revelou whitelist exclusiva para `autonomous-runner.yml`, `control-plane-oidc-preflight.yml` e `cross-repo-preview-browser-evidence.yml`, com `workflow_run` restrito ao primeiro.
+- Em vez de ampliar acesso, o candidato move o observador para a lane isolada do workflow confiável existente, gatilhada por CI validate push main. `schedule-probe` ignora esses eventos; nenhum worker/custo permitido. Acrescenta verificação dos dois jobs reais do run e erro por estágio sem credenciais.
+- O candidato **não** está em produção até CI/merge; próximo gate é evidência real pós-merge com status e artifact. Nenhuma chamada paga/migração/novo Start.
+
+---
+
 ## 20/10/2026 — Próximo bloco: evidência global vinculada ao HEAD da main (candidato)
 
 - PR #1001 mergeada no `772183c169976c78d4a073ba9d5d4b202e8c1874`.

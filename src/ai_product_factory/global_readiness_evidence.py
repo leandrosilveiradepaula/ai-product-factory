@@ -131,6 +131,37 @@ def _check_runs(payload: object, sha: str) -> dict:
             "checks_observed": payload["total_count"], "source":"github_exact_commit_checks"}
 
 
+def _validated_workflow_jobs(payload: object, sha: str, run_id: int) -> dict:
+    """Validate the ACTUAL completed validate jobs, never arbitrary check names.
+
+    Check-runs for the same commit can contain historical retries or the
+    currently running observer itself; those do not replace the trusted CI run.
+    """
+    if (not isinstance(payload,dict) or type(payload.get("total_count")) is not int
+            or payload["total_count"] < 1 or payload["total_count"] > MAX_CHECKS
+            or not isinstance(payload.get("jobs"),list)
+            or len(payload["jobs"]) != payload["total_count"]):
+        raise GlobalReadinessEvidenceError("missing or incomplete validation jobs")
+    actual = set()
+    for row in payload["jobs"]:
+        if (not isinstance(row,dict) or row.get("head_sha") != sha
+                or row.get("run_id") != run_id or type(row.get("id")) is not int
+                or row["id"] <= 0 or not isinstance(row.get("name"),str)
+                or not re.fullmatch(r"[a-zA-Z0-9_. -]{1,80}",row["name"],re.ASCII)):
+            raise GlobalReadinessEvidenceError("validation job identity mismatch")
+        name = row["name"]
+        if name in actual or row.get("status") != "completed" or row.get("conclusion") != "success":
+            raise GlobalReadinessEvidenceError("duplicate, failing or unfinished validation job")
+        actual.add(name)
+    # Only this repository's validate workflow is observed by this trusted
+    # workflow-run lane. Its declared job names are mandatory, not advisory.
+    if not {"test","factory-acceptance"}.issubset(actual):
+        raise GlobalReadinessEvidenceError("required Factory validation jobs missing")
+    return {"validated_run_id":run_id,"jobs":sorted(actual),
+            "verification_state":"executed_same_SHA",
+            "required_gates":["test","factory-acceptance"]}
+
+
 def _valid_linked_evaluation(*, project_id: str, sha: str,
                              kind: str, cp_get) -> dict | None:
     # Evaluation status and baseline_ref are authoritative *columns*, never
@@ -194,6 +225,10 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
         raise GlobalReadinessEvidenceError("immutable Git commit/tree proof missing")
     inventory = _inventory(_paths(github_get(prefix+"/git/trees/"+tree_sha+"?recursive=1"),tree_sha))
     checks = _check_runs(github_get(prefix+"/commits/"+sha+"/check-runs?per_page=100"),sha)
+    validated_jobs = _validated_workflow_jobs(
+        github_get(prefix+"/actions/runs/"+str(validation_run_id)+"/jobs?per_page=100"),
+        sha,validation_run_id,
+    )
     evaluation = _valid_linked_evaluation(project_id=pid,sha=sha,
                                          kind="product_readiness",cp_get=cp_get)
     baseline = (_valid_linked_evaluation(project_id=pid,sha=sha,
@@ -237,7 +272,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
             "blockers": len(work_plan),
             "scope":"entire_product_at_exact_current_head",
         },
-        "source_inventory":inventory, "ci_evidence":checks,
+        "source_inventory":inventory, "ci_evidence":{**checks,"validation_jobs":validated_jobs},
         "evidence_scope":"independent_github_and_control_plane_read_only",
         "work_proposals":work_plan,"writes":0,"paid_calls":0,
     }
