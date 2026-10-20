@@ -10,6 +10,7 @@ from urllib.parse import quote
 from .preview_eligibility import is_delivery_preview_run, is_quota_blocked_candidate
 
 from .supabase_server import resolve_supabase_server_config
+from .followup_execution_epoch import run_followup_epoch
 from .candidate_pr_receipt import validate_create_pr_candidate
 
 
@@ -25,6 +26,8 @@ class PreviewFollowupItem:
     pr_number: int
     candidate_commit: str
     risk: dict
+    execution_generation: int | None = None
+    require_execution_generation: bool = False
 
 
 class SupabasePreviewFollowupQueue:
@@ -51,7 +54,7 @@ class SupabasePreviewFollowupQueue:
             raise ValueError("invalid bounded Preview exclusion set")
         ignored=set(exclude_run_ids)
         runs=self._get(
-            "factory_runs?select=id,task_id,branch_name,candidate_commit,metadata"
+            "factory_runs?select=id,task_id,branch_name,candidate_commit,execution_route,metadata"
             "&status=eq.preview_ready&order=created_at.asc&limit=50"
         )
         if not runs:
@@ -75,6 +78,7 @@ class SupabasePreviewFollowupQueue:
             break
         if run is None:
             return None
+        execution_generation, require_execution_generation = run_followup_epoch(run)
         run_id=str(run["id"])
         task_id=str(run["task_id"])
         candidate=str(run.get("candidate_commit") or "")
@@ -116,4 +120,6 @@ class SupabasePreviewFollowupQueue:
             run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
             manifest=project.get("manifest") or {},issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
             risk=tasks[0].get("risk") or {},
+            execution_generation=execution_generation,
+            require_execution_generation=require_execution_generation,
         )

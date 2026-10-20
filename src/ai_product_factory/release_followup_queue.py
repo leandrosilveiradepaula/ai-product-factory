@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
+from .followup_execution_epoch import run_followup_epoch
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,8 @@ class ReleaseFollowupItem:
     risk: dict
     merge_sha: str | None = None
     release_source: str = "delivery"
+    execution_generation: int | None = None
+    require_execution_generation: bool = False
 
 
 class SupabaseReleaseFollowupQueue:
@@ -48,13 +51,14 @@ class SupabaseReleaseFollowupQueue:
             or any(not isinstance(v, str) or not v.strip() for v in exclude_run_ids)):
             raise ValueError("invalid bounded follow-up exclusion set")
         limit = 12 if exclude_run_ids else 1
-        runs=self._get("factory_runs?select=id,task_id,branch_name,candidate_commit,metadata&status=eq.awaiting_release&order=created_at.asc&limit="+str(limit))
+        runs=self._get("factory_runs?select=id,task_id,branch_name,candidate_commit,execution_route,metadata&status=eq.awaiting_release&order=created_at.asc&limit="+str(limit))
         if not isinstance(runs, list) or any(not isinstance(row, dict) for row in runs):
             raise RuntimeError("invalid follow-up queue response")
         skipped = set(exclude_run_ids)
         run = next((row for row in runs if str(row.get("id") or "") not in skipped), None)
         if run is None:
             return None
+        execution_generation, require_execution_generation = run_followup_epoch(run)
         run_id=str(run["id"])
         task_id=str(run["task_id"])
         candidate=str(run.get("candidate_commit") or "")
@@ -90,6 +94,7 @@ class SupabaseReleaseFollowupQueue:
                 run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
                 issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
                 risk=tasks[0].get("risk") or {},merge_sha=merge_sha,release_source="console_report",
+                execution_generation=execution_generation,require_execution_generation=require_execution_generation,
             )
 
         if issue_number is None:
@@ -109,4 +114,5 @@ class SupabaseReleaseFollowupQueue:
             run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
             issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
             risk=tasks[0].get("risk") or {},
+            execution_generation=execution_generation,require_execution_generation=require_execution_generation,
         )
