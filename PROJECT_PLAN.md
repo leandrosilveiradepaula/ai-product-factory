@@ -342,3 +342,10 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
   preservando observação read-only e claims/gates existentes.
 - [ ] Exigir CI, depois **autorização humana separada para migrations de
   produção** e verificação SQL no banco antes de declarar correção ativa.
+
+## 20/10/2026 — Fencing dos caminhos de agente/especialista (#894)
+
+- [x] Seis funções de produção sem guard próprio foram identificadas na consulta `pg_get_functiondef`; scripts antigos já revogados não foram reativados.
+- [ ] Versionar migration `20261020190000` para atribuições, specialist claims, specialist lane creation e repair sem execução em paused/stopped, preservando locks da assert de projeto.
+- [ ] Exigir CI, testes de integração isolados e gate de migration de produção; não inferir instalação no banco pelo merge.
+- [ ] Revisar recovery de lease/change set e continuidade de decisões sob pausa antes de declarar controle do ciclo integralmente concluído.
