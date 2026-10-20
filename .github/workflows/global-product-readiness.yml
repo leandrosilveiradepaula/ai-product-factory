@@ -1,0 +1,53 @@
+name: Factory global product readiness evidence
+
+on:
+  workflow_run:
+    workflows: ["validate"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  id-token: write
+
+# No cron, no scheduler wake, no paid model. A single observer follows a
+# successful push CI on main, using that CI's exact SHA.
+concurrency:
+  group: factory-global-readiness-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: openai-api
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Independently inspect exact main SHA and Control Plane
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit_global_readiness.py \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/factory-global-product-readiness.json"
+      - name: Preserve non-sensitive observation even if blocked
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-global-readiness-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-global-product-readiness.json
+          if-no-files-found: warn
+          retention-days: 7
