@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
+from .followup_execution_epoch import run_followup_epoch
+from .followup_active_project_query import active_project_followup_query
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,9 @@ class CIFollowupItem:
     candidate_commit: str
     human_gate_required: bool
     change_set_id: str | None = None
+    project_id: str | None = None
+    execution_generation: int | None = None
+    require_execution_generation: bool = False
 
 
 class SupabaseCIFollowupQueue:
@@ -90,7 +95,7 @@ class SupabaseCIFollowupQueue:
             or any(not isinstance(v, str) or not v.strip() for v in exclude_run_ids)):
             raise ValueError("invalid bounded follow-up exclusion set")
         limit = 12 if exclude_run_ids else 1
-        runs=self._get("factory_runs?select=id,task_id,branch_name,candidate_commit,metadata&status=eq.ci_pending&order=created_at.asc&limit="+str(limit))
+        runs=self._get(active_project_followup_query(status="ci_pending",limit=limit))
         if not isinstance(runs, list) or any(not isinstance(row, dict) for row in runs):
             raise RuntimeError("invalid follow-up queue response")
         skipped = set(exclude_run_ids)
@@ -101,6 +106,7 @@ class SupabaseCIFollowupQueue:
         task_id=str(run["task_id"])
         candidate=str(run.get("candidate_commit") or "")
         branch=str(run.get("branch_name") or "")
+        execution_generation, require_execution_generation = run_followup_epoch(run)
         metadata=run.get("metadata") or {}
         issue_data=metadata.get("github_issue") or {}
         issue_number=int(issue_data.get("number") or 0)
@@ -157,4 +163,7 @@ class SupabaseCIFollowupQueue:
             candidate_commit=candidate,
             human_gate_required=human_gate,
             change_set_id=change_set_id,
+            project_id=project_id,
+            execution_generation=execution_generation,
+            require_execution_generation=require_execution_generation,
         )

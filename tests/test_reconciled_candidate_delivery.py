@@ -64,7 +64,7 @@ class CandidateReceiptTests(unittest.TestCase):
               Response([{"metadata":{"pr":180,"head_sha":"old"}}]),
               Response([{"task_id":"t","metadata":runmeta()}]),
               Response(receipt()),
-              Response([{"acceptance_criteria":["works"]}])]
+              Response([{"project_id":"123e4567-e89b-42d3-a456-426614174000","acceptance_criteria":["works"]}])]
         with patch("urllib.request.urlopen",side_effect=rows):
             obj=SupabaseSpecialistLaneQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
             item=obj.claim("security","worker")

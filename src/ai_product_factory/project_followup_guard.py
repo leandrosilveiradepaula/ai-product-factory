@@ -26,6 +26,10 @@ class ProjectFollowupPaused(PermissionError):
     """Known disallowed project state; never start a new external effect."""
 
 
+class ProjectFollowupRevoked(ProjectFollowupPaused):
+    """An earlier Start/Resume epoch cannot authorize new external effects."""
+
+
 class SupabaseProjectFollowupGuard:
     def __init__(self, *, url: str | None = None, secret_key: str | None = None,
                  service_role_key: str | None = None) -> None:
@@ -50,7 +54,8 @@ class SupabaseProjectFollowupGuard:
             # PT409 from the privileged SQL assertion means the operator
             # paused after the read; defer rather than converting pause to
             # a failed runner or exposing the database response payload.
-            if exc.code == 409 and endpoint == "rpc/factory_assert_project_running":
+            if exc.code == 409 and endpoint in ("rpc/factory_assert_project_running",
+                                                "rpc/factory_assert_project_execution_epoch"):
                 raise ProjectFollowupPaused("project_control_waiting") from None
             raise RuntimeError("project control checkpoint unavailable") from None
         except urllib.error.URLError:
@@ -62,9 +67,29 @@ class SupabaseProjectFollowupGuard:
         except (ValueError, TypeError):
             raise RuntimeError("invalid project control checkpoint response") from None
 
-    def assert_running(self, project_key: str) -> int:
+    def assert_running(
+        self,
+        project_key: str,
+        *,
+        expected_project_id: str | None = None,
+        expected_generation: int | None = None,
+        require_generation: bool = False,
+    ) -> int:
         if not isinstance(project_key, str) or not _PROJECT_KEY.fullmatch(project_key):
             raise RuntimeError("invalid project checkpoint identity")
+        if type(require_generation) is not bool:
+            raise RuntimeError("invalid generation requirement")
+        if expected_project_id is not None:
+            try:
+                expected_project_id = str(uuid.UUID(expected_project_id))
+            except (ValueError, TypeError, AttributeError):
+                raise RuntimeError("invalid expected project identity") from None
+        if expected_generation is not None and (
+            type(expected_generation) is not int or expected_generation < 1
+        ):
+            raise RuntimeError("invalid expected execution generation")
+        if require_generation and expected_generation is None:
+            raise ProjectFollowupRevoked("project_execution_epoch_revoked")
         projects = self._request(
             "factory_projects?select=id,is_active&project_key=eq."
             + quote(project_key, safe="") + "&limit=2")
@@ -75,6 +100,8 @@ class SupabaseProjectFollowupGuard:
             project_id = str(uuid.UUID(str(project["id"])))
         except (KeyError, TypeError, ValueError, AttributeError):
             raise RuntimeError("invalid project checkpoint UUID") from None
+        if expected_project_id is not None and project_id != expected_project_id:
+            raise RuntimeError("followup project identity mismatch")
         if project.get("is_active") is not True:
             raise ProjectFollowupPaused("project_control_waiting")
         controls = self._request(
@@ -92,7 +119,12 @@ class SupabaseProjectFollowupGuard:
             if control.get("state") not in ("draft", "pausing", "paused", "stopping", "stopped"):
                 raise RuntimeError("unknown project execution state")
             raise ProjectFollowupPaused("project_control_waiting")
-        # Single-statement privileged database assertion. The SQL migration
-        # #1011 additionally enforces generation and project liveness.
-        self._request("rpc/factory_assert_project_running", payload={"p_project_id": project_id})
+        if expected_generation is not None and generation != expected_generation:
+            raise ProjectFollowupRevoked("project_execution_epoch_revoked")
+        # Pin an exact generation with the privileged transactional RPC.
+        # A Pause -> Resume between the GET and RPC cannot authorize old work.
+        self._request(
+            "rpc/factory_assert_project_execution_epoch",
+            payload={"p_project_id": project_id, "p_generation": generation},
+        )
         return generation

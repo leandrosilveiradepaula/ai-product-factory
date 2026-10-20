@@ -64,7 +64,7 @@ from .delivery_metrics import SupabaseDeliveryMetricsReader
 from .project_release_reconciliation import SupabaseProjectReleaseReconciler
 from .admission_diagnostics import SupabaseAdmissionReader
 from .project_github_access import SupabaseProjectGitHubAccessStore
-from .project_followup_guard import SupabaseProjectFollowupGuard, ProjectFollowupPaused
+from .project_followup_guard import SupabaseProjectFollowupGuard, ProjectFollowupPaused, ProjectFollowupRevoked
 from .github_capability_preflight import run_project_github_preflight
 
 def require_primary_runtime_enabled()->None:
@@ -363,37 +363,47 @@ def reconcile_ci_candidate_once(*,expected_run_id:str,expected_pr_number:int,all
   previous_commit=old,new_commit=new,verified_evidence=evidence)
 
 
-def _assert_project_followup(item)->int:
- # Re-evaluate the operator's current durable control immediately before
- # external action; a wake or historical CI does not authorize work.
- return SupabaseProjectFollowupGuard().assert_running(item.project_key)
+def _assert_project_followup(item,*,human_merge_observation:bool=False)->int:
+ # A new CI/Preview/Specialist effect belongs to its original claimed
+ # generation. Observation of an already human-merged PR is distinct:
+ # it must not replay or claim work, and only needs current authorization.
+ return SupabaseProjectFollowupGuard().assert_running(
+  item.project_key,
+  expected_project_id=getattr(item,"project_id",None),
+  expected_generation=(None if human_merge_observation else getattr(item,"execution_generation",None)),
+  require_generation=(False if human_merge_observation else getattr(item,"require_execution_generation",False)),
+ )
 
-def _project_followup_waiting(item)->dict:
- return {"claimed":True,"status":"project_control_waiting",
+def _project_followup_waiting(item,exc:ProjectFollowupPaused|None=None)->dict:
+ code="project_execution_epoch_revoked" if isinstance(exc,ProjectFollowupRevoked) else "project_control_waiting"
+ return {"claimed":True,"status":code,
          "run_id":item.run_id,"pr_number":item.pr_number}
 
 def _next_authorized_preview(queue):
- # A paused oldest candidate cannot block later active projects.
+ # A paused or epoch-revoked oldest candidate cannot block other projects.
  deferred=[]
+ first_status="project_control_waiting"
  for _ in range(12):
    item=(queue.next_pending(exclude_run_ids=tuple(deferred))
          if deferred else queue.next_pending())
    if item is None:
-     return None,({"claimed":True,"status":"project_control_waiting",
+     return None,({"claimed":True,"status":first_status,
                    "run_id":deferred[0]} if deferred else None)
    try:_assert_project_followup(item)
-   except ProjectFollowupPaused:
+   except ProjectFollowupPaused as exc:
+     if not deferred and isinstance(exc,ProjectFollowupRevoked):
+       first_status="project_execution_epoch_revoked"
      deferred.append(item.run_id)
      continue
    return item,None
- return None,{"claimed":True,"status":"project_control_waiting","run_id":deferred[0]}
+ return None,{"claimed":True,"status":first_status,"run_id":deferred[0]}
 
 def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  queue=SupabaseCIFollowupQueue()
  item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:
@@ -411,7 +421,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  # must never be interpreted as successful CI or a production release.
  if getattr(pr,"merged",False):
   try:_assert_project_followup(item)
-  except ProjectFollowupPaused:return _project_followup_waiting(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   merge_sha=str(getattr(pr,"merge_commit_sha",None) or "")
   if not merge_sha:raise RuntimeError("merged PR has no verifiable merge SHA")
   result=store.block_early_merged_ci_candidate(
@@ -425,7 +435,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  loop=AutonomousGitHubLoop(github,store)
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
  status=decision.action.value
  if (
@@ -442,7 +452,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
     "run_id":item.run_id,"pr_number":item.pr_number,
     "candidate_commit":item.candidate_commit}
   try:_assert_project_followup(item)
-  except ProjectFollowupPaused:return _project_followup_waiting(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   github.dispatch_workflow("validate.yml",ref=item.branch)
   store.record_tool_usage(
    run_id=item.run_id,tool_family="github",operation="dispatch_ci",
@@ -456,7 +466,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
   return {"claimed":True,"status":"ci_triggered","run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
  if decision.action.value=="preview_ready":
   try:_assert_project_followup(item)
-  except ProjectFollowupPaused:return _project_followup_waiting(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   quality=evaluate_quality_gate(evals=(EvalResult("github_ci",True,required=True),))
   if not quality.passed:raise RuntimeError("quality gate did not pass after successful CI")
   store.record_evaluation(run_id=item.run_id,eval_type="quality_gate",status="success",baseline_ref=item.candidate_commit,result={"passed":True,"reasons":list(quality.reasons),"source":"github_ci"})
@@ -477,12 +487,12 @@ def run_specialist_once(role:str,worker_id:str)->dict:
  item=queue.claim(role,worker_id)
  if item is None:return {"claimed":False,"status":"empty","role":role}
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return {"claimed":True,"status":"project_control_waiting",
+ except ProjectFollowupPaused as exc:return {"claimed":True,"status":("project_execution_epoch_revoked" if isinstance(exc,ProjectFollowupRevoked) else "project_control_waiting"),
                                      "run_id":item.run_id,"job_id":item.job_id}
  github=GitHubRestAdapter(repository=item.repository)
  result=evaluate_specialist_lane(item,github)
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return {"claimed":True,"status":"project_control_waiting",
+ except ProjectFollowupPaused as exc:return {"claimed":True,"status":("project_execution_epoch_revoked" if isinstance(exc,ProjectFollowupRevoked) else "project_control_waiting"),
                                      "run_id":item.run_id,"job_id":item.job_id}
  completed=queue.complete(item,status=result.status,findings=list(result.findings),evidence=result.evidence)
  SupabaseTraceabilityStore().record_delivery_evidence(
@@ -564,7 +574,7 @@ def run_preview_once()->dict:
  changed_files=github.get_pull_request_files(item.pr_number)
  applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  store=SupabaseDeliveryStore()
  if base_evidence:
   store.record_audit_event(
@@ -588,7 +598,7 @@ def run_preview_once()->dict:
    raise RuntimeError("GitHub PR identity changed before non-Preview release readiness")
   _require_current_preview_base(github,refreshed_pr)
   try:_assert_project_followup(item)
-  except ProjectFollowupPaused:return _project_followup_waiting(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   status=loop.finalize_preview_not_required(session,reason=applicability.reason,changed_files=changed_files)
   return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
    "preview_required":False,"reason":applicability.reason,"release_report_id":recorded.get("report_id")}
@@ -608,7 +618,7 @@ def run_preview_once()->dict:
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  try:
   try:_assert_project_followup(item)
-  except ProjectFollowupPaused:return _project_followup_waiting(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
  except PreviewDeferred as exc:
   store.record_resource_limit_signal(
@@ -641,7 +651,7 @@ def run_preview_once()->dict:
   metadata={"repository":item.repository,"candidate_commit":item.candidate_commit,"deployment_ref":verified.deployment.deployment_ref},
  )
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  trace=SupabaseTraceabilityStore()
  trace.record_delivery_evidence(
   run_id=item.run_id,evidence_type="preview",status="passed",evidence_ref=verified.deployment.deployment_ref,
@@ -660,7 +670,7 @@ def run_preview_once()->dict:
    "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
    "policy_reasons":list(assessment.decision.reasons)}
  try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  status=loop.finalize_verified_preview(session,verified)
  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,
   "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
@@ -670,8 +680,8 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
  queue=SupabaseReleaseFollowupQueue()
  item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
  if item is None:return {"claimed":False,"status":"empty"}
- try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ try:_assert_project_followup(item,human_merge_observation=True)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches verified release candidate")
@@ -710,8 +720,8 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
       or final_pr.head_sha!=item.candidate_commit
       or final_pr.base_ref!=receipt["base_ref"]):
    raise RuntimeError("nonproduction PR identity changed after browser receipt")
-  try:_assert_project_followup(item)
-  except ProjectFollowupPaused:return _project_followup_waiting(item)
+  try:_assert_project_followup(item,human_merge_observation=True)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   result=store.observe_nonproduction_preview_merge(
    run_id=item.run_id,pr_number=item.pr_number,candidate_commit=item.candidate_commit,
    merge_sha=receipt["merge_sha"],base_ref=receipt["base_ref"],
@@ -722,8 +732,8 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
    "release_completed":False,"integration":result}
  if getattr(pr,"base_ref",None) not in (None,"main"):
   return {"claimed":True,"status":"nonproduction_candidate_not_released","run_id":item.run_id,"pr_number":item.pr_number}
- try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ try:_assert_project_followup(item,human_merge_observation=True)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  store=SupabaseDeliveryStore()
  if item.merge_sha:
   if not pr.merged or not pr.merge_commit_sha:
@@ -745,8 +755,8 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
   merge_sha=loop.observe_manual_merge(session)
   if merge_sha is None:return {"claimed":True,"status":"awaiting_release","run_id":item.run_id,"pr_number":item.pr_number}
   merged={"status":"merged","idempotent":False}
- try:_assert_project_followup(item)
- except ProjectFollowupPaused:return _project_followup_waiting(item)
+ try:_assert_project_followup(item,human_merge_observation=True)
+ except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  SupabaseTraceabilityStore().record_delivery_evidence(
   run_id=item.run_id,evidence_type="human_release",status="passed",evidence_ref=merge_sha,
   metadata={"source":"observed_manual_merge","pr_number":item.pr_number}
