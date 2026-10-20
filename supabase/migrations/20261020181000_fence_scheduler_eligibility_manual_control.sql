@@ -76,7 +76,7 @@ begin
  from (select * from eligible order by coalesce(incident_rank,9),priority_rank,deadline nulls last,customer_impact desc,project_key limit p_limit) q;
  return v_rows;
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.factory_peek_planned_work(p_project_key text, p_limit integer DEFAULT 100)
  RETURNS jsonb
@@ -129,7 +129,7 @@ begin
  ) q;
  return v_items;
 end;
-$function$
+$function$;
 
 REVOKE ALL ON FUNCTION public.factory_portfolio_candidates(integer) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.factory_portfolio_candidates(integer) TO service_role;
