@@ -6,6 +6,7 @@ import urllib.request
 from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
+from .post_release_readiness import summarize_released_product
 
 
 _STAGE_RANK={
@@ -62,6 +63,24 @@ class SupabaseProjectReleaseReconciler:
         manifest["last_release"]={"run_id":run_id,"merge_sha":merge_sha,"source":"observed_human_merge"}
 
         if not already:
+            # Never equate a human-merged release with global product readiness.
+            # The release report is an additional observation: if unavailable,
+            # preserve a fail-closed audit obligation, without replaying workers.
+            try:
+                reports = self._request(
+                    "GET",
+                    "factory_release_reports?"
+                    "select=project_id,run_id,status,candidate_commit,report"
+                    f"&project_id=eq.{quote(project_id,safe='')}"
+                    f"&run_id=eq.{quote(run_id,safe='')}&limit=2",
+                )
+            except (RuntimeError, OSError, ValueError, TypeError):
+                reports = None
+            followup = summarize_released_product(
+                project_id=project_id, run_id=run_id,
+                merge_sha=merge_sha, report_rows=reports,
+            )
+            manifest["product_readiness_followup"] = followup
             self._request(
                 "PATCH",
                 f"factory_projects?id=eq.{quote(project_id)}",
@@ -76,9 +95,20 @@ class SupabaseProjectReleaseReconciler:
                     "observed_stage":"operations",
                     "summary":"Release humano observado; estado do projeto reconciliado com a entrega real.",
                     "evidence":[{"type":"human_release","merge_sha":merge_sha}],
-                    "gaps":[],
+                    # Not a new executable task. Evidence required for a
+                    # full-product audit is retained for future explicit work.
+                    "gaps":[
+                        {"kind":"global_readiness_evidence_required","domain":domain,
+                         "reason_code":followup["reason_code"]}
+                        for domain in followup["pending_domains"]
+                    ],
                     "constraints":[],
-                    "source_status":{"release":"merged"},
+                    "source_status":{
+                        "release":"merged",
+                        "product_readiness":followup["status"],
+                        "product_readiness_scope":"current_product_after_release",
+                        "product_readiness_report_verified":followup["report_verified"],
+                    },
                 },
             )
             self._request(
@@ -90,7 +120,11 @@ class SupabaseProjectReleaseReconciler:
                     "actor_type":"system",
                     "actor_ref":"release-followup",
                     "event_type":"project.state.reconciled_after_release",
-                    "payload":{"merge_sha":merge_sha,"lifecycle_stage":target_stage},
+                    "payload":{
+                        "merge_sha":merge_sha,"lifecycle_stage":target_stage,
+                        "product_readiness":followup["status"],
+                        "product_readiness_reason_code":followup["reason_code"],
+                    },
                 },
             )
         return {"project_id":project_id,"lifecycle_stage":target_stage,"merge_sha":merge_sha,"idempotent":already}
