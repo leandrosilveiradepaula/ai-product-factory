@@ -117,3 +117,12 @@ O auditor separado \`scripts/audit_offline_product_preflight.py\` é somente
 leitura e nunca reabre runs. \`source_preflight=verified\` não significa
 Product Stage concluído nem E2E verificado. \`docs/OFFLINE_PRODUCT_PREFLIGHT.md\`
 é o procedimento operacional.
+
+## Execucao direta de auditorias gratuitas
+
+Se o conector GitHub da conversa nao expuser workflow_dispatch, preferir o
+canal owner-only de issue_comment com o comando exato
+`/factory-offline-preflight <project_key> <run_uuid>` na issue da Factory.
+O job usa workflow main ja autorizado, apenas GET, parsing estrito e
+permissoes read-only de GitHub. Nao converter isso em Start/retry/merge
+automaticos ou autorizacao para uso de modelo pago.

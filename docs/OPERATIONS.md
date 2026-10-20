@@ -1,3 +1,15 @@
+## 20/10/2026 — Preflight autonomo e gratuito disparado via comentario OWNER (candidato)
+
+O conector pode postar o comando exato `/factory-offline-preflight ai-product-factory
+16b12d17-9cb0-4578-a0e2-0d601f36b856` como comentario na issue #987,
+sem solicitacao manual de Run workflow. O workflow existente do main exige OWNER
+e issue real, rejeita payload malformado antes de pedir OIDC, le somente
+Control Plane e codigo no SHA exato, publica JSON sanitizado em artifact.
+Este evento nao atende /factory-wake ou /factory-alerts, portanto nenhum
+worker, dispatch, modelo, Preview ou release deve executar. Depois do merge,
+acompanhar run GitHub real e conferir logs/status, inclusive skips dos workers.
+Nunca inferir sucesso apenas da publicacao de comentario e nao reabrir run
+historica. Sem mudanca de RLS ou budget.
 ## 2026-10-20 - Continuacao na propria Factory: duplo clique e contexto platform (candidato)
 
 Operador abriu Novo pedido na Factory; os dois cliques de Iniciar novo ciclo foram observados como uma unica task/run no banco. A run 16b12d17-9cb0-4578-a0e2-0d601f36b856 chegou a run.claimed e falhou em 39352319002 antes do modelo: `SupabaseRuntimeQueue._live_candidate_context` exigiu `project_kind=existing`, mas `ai-product-factory` e `platform`. Diagnostico verificado por GitHub Action e Control Plane; nao fazer retry do run antes do merge/correcao e sem avaliar budget.
