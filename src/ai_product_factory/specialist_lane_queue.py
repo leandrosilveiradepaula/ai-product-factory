@@ -25,6 +25,7 @@ class SpecialistLaneItem:
     acceptance_criteria:tuple[object,...]
     execution_generation:int|None=None
     require_execution_generation:bool=False
+    project_id:str|None=None
 
 
 class SupabaseSpecialistLaneQueue:
@@ -83,8 +84,10 @@ class SupabaseSpecialistLaneQueue:
         )
         task_id=str(runs[0]["task_id"])
         issue_number=int(((runs[0].get("metadata") or {}).get("github_issue") or {}).get("number") or 0)
-        tasks=self._get("factory_tasks?select=acceptance_criteria&id=eq."+quote(task_id)+"&limit=1")
-        criteria=tuple((tasks[0].get("acceptance_criteria") or [])) if tasks else ()
+        tasks=self._get("factory_tasks?select=project_id,acceptance_criteria&id=eq."+quote(task_id)+"&limit=1")
+        if not tasks or not isinstance(tasks[0],dict) or not isinstance(tasks[0].get("project_id"),str):
+            raise RuntimeError("specialist run task has no project binding")
+        criteria=tuple(tasks[0].get("acceptance_criteria") or [])
         return SpecialistLaneItem(
             job_id=str(data["job_id"]),run_id=run_id,project_key=str(data["project_key"]),
             repository=str(data["repository"]),role=str(data["role"]),
@@ -92,6 +95,7 @@ class SupabaseSpecialistLaneQueue:
             issue_number=issue_number,manifest=dict(data.get("manifest") or {}),
             acceptance_criteria=criteria,
             execution_generation=generation,require_execution_generation=required,
+            project_id=tasks[0]["project_id"],
         )
 
     def complete(self,item:SpecialistLaneItem,*,status:str,findings:list[dict],evidence:dict)->dict:
