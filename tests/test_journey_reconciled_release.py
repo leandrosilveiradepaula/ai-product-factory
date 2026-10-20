@@ -73,6 +73,9 @@ def fixtures():
                        actor_ref="factory-console",request_id=REQ))
     events.append(event("project.reconciliation.enqueued",actor_ref="factory-console",
                        request_id=REQ,task_id=ROOT_TASK))
+    # The RPC persists task_id in both the audit row AND the durable payload.
+    # They must match; the reader correctly rejects a missing payload field.
+    events[1]["payload"]["task_id"]=ROOT_TASK
     events.extend([
         event("product.stage.persisted",stage="reconciliation"),
         event("product.stage.persisted",stage="gap_analysis"),
