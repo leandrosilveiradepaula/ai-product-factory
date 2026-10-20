@@ -193,7 +193,7 @@ class RuntimeGenerationFenceTests(unittest.TestCase):
                project_id=PID,pr_number=9,repository="owner/repo",
                execution_generation=4,require_execution_generation=True)
     def test_effectful_worker_pins_original_epoch(self):
-        with patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard") as guard:
+        with patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard",autospec=True) as guard:
             _assert_project_followup(self.item())
         guard.return_value.assert_running.assert_called_once_with(
             "crm-infodive",expected_project_id=PID,
@@ -201,7 +201,7 @@ class RuntimeGenerationFenceTests(unittest.TestCase):
         )
 
     def test_human_merge_observation_revalidates_running_but_does_not_reclaim(self):
-        with patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard") as guard:
+        with patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard",autospec=True) as guard:
             _assert_project_followup(self.item(),human_merge_observation=True)
         guard.return_value.assert_running.assert_called_once_with(
             "crm-infodive",expected_project_id=PID,
@@ -210,7 +210,7 @@ class RuntimeGenerationFenceTests(unittest.TestCase):
 
     def test_revoked_ci_item_never_reads_github_or_dispatches(self):
         with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue") as queue, \
-             patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard") as guard, \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectFollowupGuard",autospec=True) as guard, \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             queue.return_value.next_pending.return_value=self.item()
             guard.return_value.assert_running.side_effect=ProjectFollowupRevoked("project_execution_epoch_revoked")
