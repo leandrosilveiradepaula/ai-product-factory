@@ -267,6 +267,28 @@ try {
         .slice(0,12));
       throw new Error(`mobile horizontal overflow on ${route.path}: ${layout.scrollWidth} > ${layout.innerWidth}; offenders=${JSON.stringify(offenders)}`);
     }
+    // Executed layout and touch readability, not screenshots alone. Record
+    // metrics only: never include operator content, cookie or form fields.
+    const readability = await page.evaluate(() => {
+      const px = element => Number.parseFloat(getComputedStyle(element).fontSize);
+      const main = document.querySelector("main.main");
+      const mobileMenu = document.querySelector(".mobileNav > summary");
+      const skip = document.querySelector('a.skipToMain[href="#main-content"]');
+      const quickTargets = [...document.querySelectorAll("nav.mobileQuickNav a")].map(el => ({
+        fontPx:px(el), heightPx:Math.round(el.getBoundingClientRect().height)
+      }));
+      return {bodyPx:px(document.body),mainPx:main?px(main):0,
+        mainLandmark:main?.id==="main-content"&&main?.tabIndex===-1,
+        keyboardSkipPresent:Boolean(skip),
+        menuHeightPx:mobileMenu?Math.round(mobileMenu.getBoundingClientRect().height):0,
+        quickTargets};
+    });
+    if (readability.bodyPx < 14 || readability.mainPx < 14 || !readability.mainLandmark ||
+        !readability.keyboardSkipPresent || readability.menuHeightPx < 44 ||
+        readability.quickTargets.length !== 3 ||
+        readability.quickTargets.some(target => target.fontPx < 12 || target.heightPx < 44)) {
+      throw new Error(`mobile readability/touch audit failed on ${route.path}: ${JSON.stringify(readability)}`);
+    }
     const quickNavHrefs = await page.locator("nav.mobileQuickNav a").evaluateAll(links =>
       links.map(link => new URL(link.href).pathname)
     );
@@ -295,7 +317,7 @@ try {
     }
     await menuSummary.click();
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
-    interactionEvidence.mobile.push({...route,status:response.status(),layout,quickNavHrefs,expandedLayout});
+    interactionEvidence.mobile.push({...route,status:response.status(),layout,readability,quickNavHrefs,expandedLayout});
   }
 
   // A real project-detail route must remain usable on a phone, not just /projects.
@@ -318,7 +340,19 @@ try {
   if (JSON.stringify(lifecycleMobile) !== JSON.stringify(lifecycleDesktop)) {
     throw new Error("mobile/desktop lifecycle controls disagree");
   }
-  await page.screenshot({path:path.join(outDir,"project-detail-mobile.png"),fullPage:true});
+  const readinessDomains = await page.locator(".readinessDomainChecklist [role='listitem']").count();
+  if (readinessDomains !== 6) {
+    throw new Error(`project readiness requires six visible audit domains, found ${readinessDomains}`);
+  }
+  const keyboardSkip = page.locator('a.skipToMain[href="#main-content"]');
+  await keyboardSkip.focus();
+  const skipVisible = await keyboardSkip.evaluate(el => {
+    const bounds = el.getBoundingClientRect();
+    return bounds.y >= 0 && bounds.height >= 44 && getComputedStyle(el).visibility !== "hidden";
+  });
+  if (!skipVisible) throw new Error("keyboard skip link does not become visible on focus");
+  await keyboardSkip.blur();
+    await page.screenshot({path:path.join(outDir,"project-detail-mobile.png"),fullPage:true});
   await page.unroute(mutationGuardPattern,projectMutationGuard);
   if (blockedProjectMutations.length) throw new Error("blocked project mutation request in mobile audit");
   interactionEvidence.mobile.push({
@@ -326,6 +360,8 @@ try {
     status:mobileDetailResponse.status(),
     layout:mobileDetailLayout,
     lifecycle:lifecycleMobile,
+    readinessDomains,
+    skipVisible,
     verifiedWithoutMutation:true,
   });
 
