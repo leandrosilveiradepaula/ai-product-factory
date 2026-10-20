@@ -309,3 +309,18 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
   auditoria de segurança/isolamento, E2E de projetos de naturezas diferentes,
   recuperação/idempotência, operações, UX/a11y e runbooks em HEAD atual,
   sem alterar gate humano ou política financeira.
+
+## 20/10/2026 — Gate pós-browser de prontidão, sem custo (#713)
+
+- [x] #1005 mergeada em `e6c045cc20ce47040bdbe9d268fa2f1459bb221c`:
+  GitHub validate, Console build, Preview e browser no SHA candidato; após
+  release, Vercel production READY, captura autenticada #39467414056
+  SUCCESS com artifact criptografado, e global observer #39467480783 SUCCESS.
+- [ ] Bloqueio estrutural factual: o observer pós-CI executou **antes** da
+  captura autenticada, então o snapshot não inclui a evidência operacional
+  mais recente. Candidato reconcilia conclusão do browser no mesmo workflow
+  OIDC confiável, sem iniciar scheduler, ampliar acesso ou gerar billing.
+- [ ] Após merge humano do candidato e próxima mudança autorizada no Console,
+  observar dois recibos independentes (CI e browser), comparando sha, jobs,
+  artifact e Vercel; manter `product_ready=false` até avaliação formal
+  de seis domínios e cenários greenfield/existing.

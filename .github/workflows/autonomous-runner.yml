@@ -82,7 +82,7 @@ on:
           - operations
   workflow_run:
     # Reuses existing trusted six-hour OIDC preflight cron, no new timer.
-    workflows: ["Control Plane OIDC preflight", "validate"]
+    workflows: ["Control Plane OIDC preflight", "validate", "Authenticated Console visual evidence"]
     types: [completed]
     branches: [main]
   schedule:
@@ -1227,9 +1227,10 @@ jobs:
 
   global-readiness-post-ci:
     # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
-    # A validated push is NOT a scheduler wake: schedule-probe only accepts
-    # workflow_run(event=schedule), so every dependent worker stays skipped.
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'validate' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository }}
+    # Validate and visual completion are observer signals, NEVER scheduler wakes.
+    # schedule-probe accepts workflow_run only when upstream event=schedule;
+    # visual failure is observed as a blocker, never treated as verified.
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository && ((github.event.workflow_run.name == 'validate' && github.event.workflow_run.conclusion == 'success') || (github.event.workflow_run.name == 'Authenticated Console visual evidence' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'))) }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 6

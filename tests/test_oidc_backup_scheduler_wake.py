@@ -14,10 +14,14 @@ class BackupWakeContract(unittest.TestCase):
     def test_reuses_existing_schedule_not_new_cron(self):
         self.assertEqual(W.count("    - cron:"),2)
         self.assertEqual(P.count("    - cron:"),1)
-        self.assertIn('workflows: ["Control Plane OIDC preflight", "validate"]',W)
+        self.assertIn('workflows: ["Control Plane OIDC preflight", "validate", "Authenticated Console visual evidence"]',W)
         self.assertIn("github.event.workflow_run.event == 'schedule'",block("schedule-probe"))
         self.assertIn("github.event.workflow_run.event == 'push'",block("global-readiness-post-ci"))
         self.assertIn("github.event.workflow_run.name == 'validate'",block("global-readiness-post-ci"))
+        self.assertIn("github.event.workflow_run.name == 'Authenticated Console visual evidence'",block("global-readiness-post-ci"))
+        self.assertIn("github.event.workflow_run.conclusion == 'failure'",block("global-readiness-post-ci"))
+        self.assertNotIn("Authenticated Console visual evidence",block("schedule-probe"))
+        self.assertNotIn("global-readiness-post-ci",block("schedule-probe"))
     def test_origin_and_success_filter(self):
         j=block("schedule-probe")
         for expected in ("github.event.workflow_run.event == 'schedule'",

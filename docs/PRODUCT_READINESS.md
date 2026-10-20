@@ -209,3 +209,19 @@ precisa corresponder ao deployment e candidato exatos.
 A emissão de uma avaliação `passed` de produto inteiro continua fora do
 escopo deste ajuste UX. Isso preserva `product_ready=false` até provas
 de segurança, operação, critical E2E, documentação e funcionalidade.
+
+## Post-visual evidence is not a product certificate (20/10/2026)
+
+The main-push CI global observer may run before the authenticated browser
+workflow finishes. A second read-only report now follows the completed
+trusted visual workflow; successful CI, successful capture with same-SHA
+encrypted artifact, and Vercel provider status are separately displayed
+as **executed operational signals**.
+
+They do not by themselves satisfy security, full product experience,
+critical E2E across supported project types, recovery/rollback or
+documentation review. `factory_evaluations.product_readiness` and
+`release_intelligence` remain the only authority for product-level
+`ready`; if same-SHA provider or browser subsequently fails, block
+promotion despite an older evaluation. No paid call or new Factory run
+is permitted for observational collection.
