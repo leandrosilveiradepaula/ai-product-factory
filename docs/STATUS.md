@@ -1,3 +1,11 @@
+## 21/10/2026 — Owner wake recupera housekeeping determinística (#894/#713, candidato)
+
+- Evidência real: após migration de prontidão legado `recover_latest_legacy_release_readiness` aplicada sob versão MCP `20261021144519`, o comando OWNER exato `/factory-wake` no GitHub issue #713 iniciou o runner `39621332271` na `main` `c2c3a3811fea7279cd09c934897173e8a9ceb16e`. O job `schedule-probe` autenticou OIDC, executou recuperação de leases e queue probe; entretanto `project-control-settle`, `release-state-settle`, `legacy-release-readiness-repair` e `project-control-wake` ficaram **skipped** apesar do wake OWNER válido.
+- Falha de roteamento de evento (não erro SQL): cada um desses quatro passos autorizava `schedule`, `repository_dispatch`, `workflow_dispatch` e backup `workflow_run`, mas não o evento `issue_comment` do comando manual. A release humana legada #997 continuou elegível, sem `release.legacy_readiness_backfilled` e com snapshot `gaps=[]`; sucesso do runner sozinho nunca certifica reparo.
+- Correção candidata: step `owner_wake` gera recibo apenas com `issue_comment`, body exatamente `/factory-wake` e author_association `OWNER` (além do gate do próprio job); somente os quatro passos determinísticos acima aceitam esse recibo. Não habilita Product Stage, Direct, Codex, Preview ou merge fora da política/filas existentes.
+- Validação: seis contratos Python offline cobrindo eventos falsos, owner/command, lanes, ausência de credenciais/modelo/merge e separação de auditoria de jornada. CI no SHA exato antes do gate humano; sem migration, API paga, mudança de Console nem Preview.
+- `/factory-wake` não substitui `/factory-journey-audit` para demonstrar autonomia E2E. Mesmo após wake, exigir `product_readiness_followup.ready=false`, seis gaps no novo snapshot e auditoria `release.legacy_readiness_backfilled` para a release #997, antes de afirmar recuperação real. Novo merge publica produção e continua humano.
+
 ## 21/10/2026 — Recuperação de readiness de release humano LEGADO (candidato #713/#894)
 
 - Produção reconciliada: `main` `5e0a7a8c78cffcc74b7c53ede448caadd3134983` (#1025 mergeada), CI posterior verde; Supabase `fjplmxfcshhbmzgvyqlm` registra `atomic_release_state_and_replay_outbox` com versão MCP `20261021131818`.

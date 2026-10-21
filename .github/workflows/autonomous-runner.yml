@@ -134,6 +134,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Authenticate exact owner wake for deterministic settlement
+        id: owner_wake
+        # Two independent fences: top-level job gate and this explicit receipt.
+        # Untrusted comments never enable release/Control Plane mutations.
+        if: ${{ github.event_name == 'issue_comment' && github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER' }}
+        shell: bash
+        run: echo 'verified=true' >> "$GITHUB_OUTPUT"
       - name: Verify backup scheduler wake is necessary
         if: ${{ github.event_name == 'workflow_run' }}
         id: backup_wake
@@ -159,13 +166,13 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode recovery --max-attempts 3
       - name: Settle quiescent manual project controls
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') || (github.event_name == 'issue_comment' && steps.owner_wake.outputs.verified == 'true') }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode project-control-settle
       - name: Settle only previously observed human release state
         # This scan only reads a service-role-only, durable release outbox.
         # It does not claim runs, merge GitHub PRs, create projects or call models.
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') || (github.event_name == 'issue_comment' && steps.owner_wake.outputs.verified == 'true') }}
         continue-on-error: true
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode release-state-settle --batch-items 4
@@ -173,12 +180,12 @@ jobs:
         # Optional SQL capability: before its authorized migration, the
         # bounded command reports blocked_migration_not_applied with zero writes.
         # No queue claim, GitHub write, Preview, paid model, or pull-request merge.
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') || (github.event_name == 'issue_comment' && steps.owner_wake.outputs.verified == 'true') }}
         continue-on-error: true
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode legacy-release-readiness-repair --batch-items 4
       - name: Observe committed project control wake
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') || (github.event_name == 'issue_comment' && steps.owner_wake.outputs.verified == 'true') }}
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode project-control-wake --worker-id "gha-control-${{ github.run_id }}"
       - name: Probe durable work queues without side effects

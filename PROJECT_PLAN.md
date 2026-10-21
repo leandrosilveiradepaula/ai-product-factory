@@ -423,3 +423,12 @@ A release antecipada do Service Desk permanece bloqueada, não é prova para pro
 4. [x] Integrar caminho Python/CLI/workflow offline-first independente do outbox recente, validando página inteira e sem model calls, deploy, merge ou bootstrap.
 5. [ ] Executar QA unitário + PostgreSQL 16 isolado + CI; corrigir bugs reais antes de submeter uma única PR ao gate humano. Nova migration `20261021135000_recover_latest_legacy_release_readiness.sql` exige autorização específica posterior. Control Plane real permanece inalterado até tal gate.
 
+
+## 21/10/2026 — OWNER /factory-wake e settlement real (#894/#713)
+
+1. [x] Reconciliar `main`, Supabase e scheduler. Migration legado registrada; candidato #997 comprovado via RPC read-only.
+2. [x] Acionar /factory-wake com login GitHub do OWNER e constatar `schedule-probe` real + OIDC verde; notar 4 steps determinísticos `skipped` por filtro de evento.
+3. [x] Preparar gate redundante exato owner+comando, sem abrir via issue_comment genérico ou bot.
+4. [x] Permitir apenas nos 4 passos existentes: controle manual, outbox de release humano, readiness legado, project-control wake. Manter fila de modelos/CI/Preview independente e sem auto-merge.
+5. [ ] CI + QA de 6 contratos offline e merge humano em produção; depois repetir wake e observar evidence SQL verdadeira para release #997. Se o cron entregar primeiro, não criar jobs redundantes nem duplicar reparo.
+
