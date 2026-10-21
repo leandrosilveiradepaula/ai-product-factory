@@ -62,13 +62,14 @@ class AutonomousGitHubLoop:
             session.issue, session.branch, session.run_id, session.base_sha, session.plan_commit, pr
         )
 
-    def evaluate(self, session: GitHubWorkSession, *, human_gate_required: bool) -> GitHubLoopDecision:
+    def evaluate(self, session: GitHubWorkSession, *, human_gate_required: bool, persist: bool = True) -> GitHubLoopDecision:
         if session.pull_request is None:
             raise ValueError("pull request has not been opened")
         decision = self.ci.evaluate(
             pr_number=session.pull_request.number,
             run_id=session.run_id,
             human_gate_required=human_gate_required,
+            persist=persist,
         )
         self.store.record_tool_usage(
             run_id=session.run_id, tool_family="github", operation="evaluate_ci",

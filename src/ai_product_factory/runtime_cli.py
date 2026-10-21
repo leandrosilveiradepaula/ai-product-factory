@@ -33,6 +33,8 @@ from .github_scheduler_health import GithubNativeScheduledRunReader,evaluate_nat
 from .supabase_backlog_inventory import SupabaseBacklogInventoryReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
+from .ci_repair_queue import DurableCIFailure,SupabaseCIRepairQueue
+from .github_loop import GitHubLoopAction
 from .release_followup_queue import SupabaseReleaseFollowupQueue
 from .preview_followup_queue import SupabasePreviewFollowupQueue
 from .project_preview_config import resolve_project_vercel_preview_config
@@ -460,8 +462,53 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
  session=GitHubWorkSession(issue,item.branch,item.run_id,"","",pr)
  try:_assert_project_followup(item)
  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
- decision=loop.evaluate(session,human_gate_required=item.human_gate_required)
+ # A CI failure is special: status mutation and repair-work materialization
+ # must share one Control Plane transaction.  Do not let the generic loop
+ # write needs_correction before exact-SHA evidence has been accepted.
+ decision=loop.evaluate(session,human_gate_required=item.human_gate_required,persist=False)
  status=decision.action.value
+ if decision.action.value==GitHubLoopAction.RETURN_TO_IMPLEMENTATION.value:
+  try:
+   failures=github.get_failed_checks(item.pr_number,expected_head_sha=item.candidate_commit)
+  except (RuntimeError,ValueError) as exc:
+   store.update_run_status(item.run_id,"failed_gate")
+   store.record_audit_event(
+    run_id=item.run_id,event_type="ci.repair_evidence_rejected",
+    payload={"candidate_commit":item.candidate_commit,"reason":str(exc)[:500]},actor_ref="ci-repair",
+   )
+   return {"claimed":True,"status":"ci_repair_evidence_rejected","run_id":item.run_id,
+    "pr_number":item.pr_number,"candidate_commit":item.candidate_commit}
+  if not failures:
+   store.update_run_status(item.run_id,"failed_gate")
+   store.record_audit_event(
+    run_id=item.run_id,event_type="ci.repair_evidence_missing",
+    payload={"candidate_commit":item.candidate_commit,"pr_number":item.pr_number},actor_ref="ci-repair",
+   )
+   return {"claimed":True,"status":"ci_repair_evidence_missing","run_id":item.run_id,
+    "pr_number":item.pr_number,"candidate_commit":item.candidate_commit}
+  try:_assert_project_followup(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
+  try:
+   repair=SupabaseCIRepairQueue().enqueue_failure(
+    item=item,failures=tuple(DurableCIFailure.from_github(failure) for failure in failures),max_attempts=2,
+   )
+  except ValueError as exc:
+   store.update_run_status(item.run_id,"failed_gate")
+   store.record_audit_event(
+    run_id=item.run_id,event_type="ci.repair_request_rejected",
+    payload={"candidate_commit":item.candidate_commit,"reason":str(exc)[:500]},actor_ref="ci-repair",
+   )
+   return {"claimed":True,"status":"ci_repair_request_rejected","run_id":item.run_id,
+    "pr_number":item.pr_number,"candidate_commit":item.candidate_commit}
+  return {"claimed":True,"status":str(repair.get("status") or "ci_repair_requested"),
+   "run_id":item.run_id,"pr_number":item.pr_number,"candidate_commit":item.candidate_commit,
+   "repair":repair,"failure_classes":sorted({failure.failure_class for failure in failures})}
+ if decision.action.value==GitHubLoopAction.WAIT_CI.value:
+  store.update_run_status(item.run_id,"ci_pending")
+ elif decision.action.value==GitHubLoopAction.WAIT_HUMAN.value:
+  store.update_run_status(item.run_id,"awaiting_human")
+ elif decision.action.value==GitHubLoopAction.PREVIEW_READY.value:
+  store.update_run_status(item.run_id,"preview_ready")
  if (
   decision.action.value=="wait_ci"
   and item.repository==os.getenv("GITHUB_REPOSITORY","").strip()
@@ -504,7 +551,8 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
   )
   routed=SupabaseSpecialistLaneQueue().enqueue(item.run_id)
   status=str(routed.get("status") or "specialist_review_pending")
- return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value}
+ return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value,
+  "ci_repair_result":"recorded_by_run_transition" if decision.action.value=="preview_ready" else None}
 
 def run_specialist_once(role:str,worker_id:str)->dict:
  queue=SupabaseSpecialistLaneQueue()

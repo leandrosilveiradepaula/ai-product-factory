@@ -60,6 +60,7 @@ class GitHubCheckFailure:
     conclusion: str
     details_url: str | None = None
     summary: str | None = None
+    failure_class: str = "unknown"
 
 
 class GitHubRestAdapter:
@@ -475,8 +476,42 @@ class GitHubRestAdapter:
             return CIState.PENDING
         return CIState.SUCCESS
 
-    def get_failed_checks(self, pr_number: int) -> tuple[GitHubCheckFailure, ...]:
+    @staticmethod
+    def _failure_class(*, name: object, conclusion: object, summary: object) -> str:
+        """Classify only from bounded check metadata, never opaque log content."""
+        value = " ".join(str(part or "") for part in (name, conclusion, summary)).lower()
+        if any(token in value for token in ("permission", "forbidden", "unauthorized", "access denied", "authentication")):
+            return "permission"
+        if any(token in value for token in ("quota", "rate limit", "billing", "credit", "capacity exhausted")):
+            return "quota"
+        if any(token in value for token in ("runner", "no hosted runner", "runner unavailable", "runner lost")):
+            return "runner"
+        if any(token in value for token in ("infrastructure", "service unavailable", "network", "outage", "platform incident")):
+            return "infrastructure"
+        if any(token in value for token in ("test", "pytest", "lint", "typecheck", "type check", "build", "compile", "coverage")):
+            return "code"
+        return "unknown"
+
+    @classmethod
+    def _check_failure(cls, *, name: object, conclusion: object, details_url: object = None, summary: object = None) -> GitHubCheckFailure:
+        safe_name = str(name or "unnamed-check")[:240]
+        safe_conclusion = str(conclusion or "failure")[:80]
+        safe_summary = str(summary)[:2000] if summary else None
+        safe_url = str(details_url)[:1000] if details_url else None
+        return GitHubCheckFailure(
+            name=safe_name, conclusion=safe_conclusion, details_url=safe_url,
+            summary=safe_summary,
+            failure_class=cls._failure_class(name=safe_name, conclusion=safe_conclusion, summary=safe_summary),
+        )
+
+    def get_failed_checks(self, pr_number: int, *, expected_head_sha: str | None = None) -> tuple[GitHubCheckFailure, ...]:
         pr = self.get_pull_request(pr_number)
+        if expected_head_sha is not None:
+            import re
+            if not re.fullmatch(r"[0-9a-f]{40}", expected_head_sha):
+                raise ValueError("expected CI failure evidence SHA is invalid")
+            if pr.head_sha != expected_head_sha:
+                raise RuntimeError("CI failure evidence PR head diverged from candidate SHA")
         source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha,pr.head_ref)
         passing = {"success", "neutral", "skipped"}
         failures = []
@@ -485,46 +520,36 @@ class GitHubRestAdapter:
                 conclusion = str(run.get("conclusion") or "")
                 if str(run.get("status") or "") != "completed" or conclusion in passing:
                     continue
-                failures.append(
-                    GitHubCheckFailure(
-                        name=str(run.get("name") or "github-actions"),
-                        conclusion=conclusion or "failure",
-                        details_url=run.get("html_url"),
-                        summary=f"GitHub Actions workflow concluded {conclusion or 'failure'}",
-                    )
-                )
+                failures.append(self._check_failure(
+                    name=run.get("name") or "github-actions", conclusion=conclusion or "failure",
+                    details_url=run.get("html_url"),
+                    summary=f"GitHub Actions workflow concluded {conclusion or 'failure'}",
+                ))
             for status in statuses:
                 state = str(status.get("state") or "")
                 if state not in {"error", "failure"}:
                     continue
-                failures.append(
-                    GitHubCheckFailure(
-                        name=str(status.get("context") or "commit-status"),
-                        conclusion=state,
-                        details_url=status.get("target_url"),
-                        summary=status.get("description"),
-                    )
-                )
+                failures.append(self._check_failure(
+                    name=status.get("context") or "commit-status", conclusion=state,
+                    details_url=status.get("target_url"), summary=status.get("description"),
+                ))
             return tuple(failures)
         for check in primary:
             if check.get("status") != "completed" or check.get("conclusion") in passing:
                 continue
             output = check.get("output") or {}
-            failures.append(
-                GitHubCheckFailure(
-                    name=check.get("name") or "unnamed-check",
-                    conclusion=check.get("conclusion") or "failure",
-                    details_url=check.get("details_url"),
-                    summary=output.get("summary") or output.get("title"),
-                )
-            )
+            failures.append(self._check_failure(
+                name=check.get("name") or "unnamed-check",
+                conclusion=check.get("conclusion") or "failure",
+                details_url=check.get("details_url"), summary=output.get("summary") or output.get("title"),
+            ))
         seen = {(failure.name, failure.conclusion) for failure in failures}
         for run in self.last_ci_workflow_runs:
             conclusion = str(run.get("conclusion") or "")
             if run.get("status") == "completed" and conclusion not in passing:
                 name = str(run.get("name") or "github-actions")
                 if (name, conclusion) not in seen:
-                    failures.append(GitHubCheckFailure(
+                    failures.append(self._check_failure(
                         name=name, conclusion=conclusion or "failure",
                         details_url=run.get("html_url"),
                         summary="GitHub Actions workflow concluded " + conclusion,

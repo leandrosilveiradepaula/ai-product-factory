@@ -48,10 +48,12 @@ class GitHubLoopCoordinator:
         self.github = github
         self.store = store
 
-    def evaluate(self, *, pr_number: int, run_id: str, human_gate_required: bool) -> GitHubLoopDecision:
+    def evaluate(self, *, pr_number: int, run_id: str, human_gate_required: bool, persist: bool = True) -> GitHubLoopDecision:
         ci_state = self.github.get_ci_state(pr_number)
         decision = decide_after_ci(ci_state, human_gate_required=human_gate_required)
 
+        if not persist:
+            return decision
         if decision.action == GitHubLoopAction.WAIT_CI:
             self.store.update_run_status(run_id, "ci_pending")
         elif decision.action == GitHubLoopAction.RETURN_TO_IMPLEMENTATION:
