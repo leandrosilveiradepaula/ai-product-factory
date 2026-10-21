@@ -1,3 +1,15 @@
+## 21/10/2026 — Observações de release no mesmo commit SQL (candidato, migration não aplicada)
+
+`run_release_once` observa merge real, grava report `released` e depois reconcilia o projeto. Historicamente eram três writes REST (project, snapshot, audit), permitindo `operations` com snapshot sem gaps ou auditoria sem manifest. O erro não autoriza reprocessar implementação/CI/modelo nem tocar na liberação manual: apenas persistir, de forma confiável, consequências de um merge humano já comprovado.
+
+Nova migration `20261021090000_atomic_release_state_and_replay_outbox.sql`: transação da marcação `released` exige run realmente `merged`, report pronto, SHA merge real e audit `release.human_merge_observed`; gera `release.reconciliation_requested` com o próprio projeto/run/SHA e deduplica por lock do report. O reconciliador versionado lê apenas report `released` do projeto e do run exatos, confere identidade da candidata, hash de merge, audit testemunha e recusa release mais antiga que outra já liberada. Em um único SQL COMMIT escreve manifest de `operations`, snapshot com seis gaps de prontidão `not_assessed` e audit `project.state.reconciled_after_release`. Um erro no snapshot, report ou auditoria faz ROLLBACK de tudo. Tentativas repetidas dão `idempotent=true` sem novos registros.
+
+O leitor de outbox usa paginação por `factory_audit_events.id` (keyset), limite 16/consulta e batch 4 no worker OIDC existente. Eventos incompatíveis geram `release.reconciliation_needs_review` permanente, sem liberar produção; erros de infraestrutura não são suprimidos como resolvidos e podem ser tentados novamente. Nenhum evento de release histórico é retroativamente enfileirado; portanto, o `infodive-service-desk`, bloqueado após merge antes de CI/quality gate, NÃO será promovido. As quatro funções são `SECURITY INVOKER`, `EXECUTE` apenas para `service_role`, sem grants/policies públicos, sem função de merge.
+
+Validação proposta: PostgreSQL 16 descartável com role ACL, ausência de testemunha, SHA adulterado, greenfield/existing, snapshot forçado a falhar e rollback completo, dedupe de release e auditoria, duas liberações na ordem contrária, marcador de review liberando a fairness do outro projeto. CI, Factory Acceptance, posterior merge humano e autorização distinta para executar a migration são exigidos. No intervalo após merge e antes de migration, o worker novo falha fechado se o RPC não existir; não se deve simular sucesso nem executar `db push` cego.
+
+---
+
 ## 21/10/2026 — Specialist completion e traceability transacionais (candidato)
 
 Problema: o worker gravava review, reparo e status por `factory_complete_specialist_lane_atomic`, e so depois ligava requirements e Definition of Done por `factory_record_delivery_evidence`. A segunda chamada podia falhar apos o primeiro commit; no proximo wake o job ja nao esta `claimed` e o recibo da entrega fica ausente, impedindo rastreabilidade confiavel.

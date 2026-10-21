@@ -1,3 +1,13 @@
+## 21/10/2026 — Fechamento de releases humanos em uma transação (candidato #894/#713)
+
+**Problema observado em produção, sem inferir prontidão:** a release humana #997 da Factory tinha report `released`, project em `operations` e auditoria, mas o snapshot de `operations` tinha `gaps=[]` e não havia `manifest.product_readiness_followup`, apesar de seis domínios `not_assessed`. O reconciliador escrevia project manifest, snapshot e audit por três HTTP requests separadas; após uma falha, a run já `merged` não era mais selecionada pelo worker de release.
+
+**Bloco funcional:** `20261021090000_atomic_release_state_and_replay_outbox.sql` em substituição de `factory_mark_release_report_released` e novas RPCs privadas: `factory_reconcile_observed_release_v1`, `factory_pending_release_reconciliations_v1`, `factory_defer_release_reconciliation_v1`. A marcação de relatório `released` emite outbox durável somente se já houver audit de merge humano exato. O reconciliador revalida run/task/projeto, report candidate/merge SHA e token de proveniência, escreve operações+manifest+seis gaps+audit numa transação e é idempotente. A lista do outbox só enumera observações futuras; rejeitadas ficam `needs_review` com receipt, sem bloquear outros projetos, e falhas transitórias permanecem reexecutáveis. O runner OIDC existente executa reconciliação curta em schedule/backup; não inicia trabalho novo ou API paga.
+
+**Controle humano:** o merge da Service Desk PR #7 antes de CI/Preview continua corretamente bloqueado. Não reabrir sua fila, revalidar um release antigo, remendar snapshots históricos ou declarar `product_ready=true`. A correção só entra na main após CI/PR e gate de merge humano, e a migration **não está aplicada em produção** (requer autorização específica); sem SQL, o novo reconciliador falha fechado, nunca recorre aos PATCHs antigos.
+
+---
+
 ## 21/10/2026 — Transacao unica de especialista ate evidencia DoD (PR candidata)
 
 - **Ambiente reconciliado**: #1022 mergeada na main `902ee1cb5adcb350e866e35a4843273547d1d5c9`. Migrations `20261021030000` e `20261021040500` aplicadas no Supabase como `20261021031829` e `20261021031917`, ACLs service_role somente; Control Plane 0 runs e especialistas ativos.
