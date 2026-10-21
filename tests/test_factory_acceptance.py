@@ -398,6 +398,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261020032500_retry_blocked_platform_kind.sql",
             "20261021135000_recover_latest_legacy_release_readiness.sql",
             "20261021213414_durable_ci_repair_requests.sql",
+            "20261021234500_ci_repair_replay_idempotency.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
