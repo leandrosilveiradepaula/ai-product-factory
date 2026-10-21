@@ -288,6 +288,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
         }
         expected_history = {
+            "20261021021000_quarantine_cross_epoch_recovery_replay.sql",
             "20261021014000_fence_terminal_descendant_recovery_manual_control.sql",
             "20261020194500_fence_recovery_manual_project_control.sql",
             "20261020190000_fence_agent_specialist_and_repair_control.sql",

@@ -1,3 +1,17 @@
+## 21/10/2026 — Run epoch recuperada nao equivale a nova autorizacao
+
+Caminho reproduzivel: o operador pausa um projeto no final de um lease; com nenhum lease ativo remanescente ele e `paused`. O operador retoma; `generation` sobe. A recuperacao original selecionava `r.status=running/implementing`, lease expirado, `state=running`, mas nao conferia `r.metadata.execution_generation`. Portanto uma run da geracao antiga poderia voltar para `queued` e adquirir nova geracao no claim, repetindo HTTP/API/commit ja aceito.
+
+A migration `20261021021000_quarantine_cross_epoch_recovery_replay.sql` substitui cinco funcoes existentes mantendo SECURITY INVOKER e grants server-side. Ela: (1) coloca expirados antigos e queued antigos em `blocked` com auditoria e sem novo run; (2) propaga o bloqueio ao work unit e Change Set; (3) exclui claims antigas antes do LIMIT nos Product e Direct workers; (4) revalida a geracao durante a transacao; (5) remove capacidade antiga de retries realmente solicitados pelo operador, preservando a procedencia.
+
+`blocked` e um gate de reconciliacao de efeitos/custos externos, nunca um gatilho para recarga de modelo. Nao reabrir em massa e nao executar nova tentativa sem evidencias de idempotencia. A funcao de especialistas, cujos jobs legados nao possuem geracao duravel, permanece fail-closed pelo controle humano mas deve ser avaliada separadamente antes de concluir garantia de exactly-once em todos os terceiros.
+
+Valide `recovery-operator-control-postgres` e `validate` no SHA do PR. No fixture local de PostgreSQL, uma antiga gen1 expirada apos Resume(gen2) fica blocked; uma gen2 expirada requeue; Product/Direct ignoram antigas queued antes do LIMIT; retry solicitado gera uma unica nova run com procedencia; auditoria e unit states nao duplicam. Sem uso de OpenAI, alteracao em piloto ou Preview de Console.
+
+**Nao aplicar no Supabase enquanto nao houver autorizacao separada.** A migration `20261021014000` tambem permanece pendente e deve ser aplicada/registrada antes da nova, se ainda ausente; reconciliar IDs Supabase e arquivo Git, nunca usar db push cego.
+
+---
+
 ## 21/10/2026 — Fencing do reconciliador de descendentes em recovery (#894, candidato)
 
 Depois da migration de recovery `20261020194500` aplicada e validada no banco sob version ID `20261021012144`, a funcao `factory_reconcile_terminal_task_descendants()` permaneceu sem checagem de controle humano. Ela e executada por `run_recovery_once` e pode cancelar um child queued ou marcar Change Set superseded quando o projeto inteiro estiver paused/stopped se o parent/root estiver `cancelled`. O banco de producao tinha zero candidatos na auditoria, mas a falha existe na definicao atual.
