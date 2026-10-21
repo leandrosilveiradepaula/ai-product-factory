@@ -414,3 +414,12 @@ A release antecipada do Service Desk permanece bloqueada, não é prova para pro
 - [x] Change Set completado na mesma transacao de estado do projeto, snapshot e audit.
 - [x] Pause/Stop + geracao impedem reconciliacao atrasada e starvation entre projetos.
 - [ ] Exigir PostgreSQL isolado, Python e CI verdes apos este conjunto antes de merge humano; migration continua gate separado.
+
+## 21/10/2026 — Recuperação seletiva de readiness histórico (#713/#894)
+
+1. [x] Reconciliar a versão aplicada da RPC atômica (#1025) no Supabase real sem repetir SQL e registrar falha remanescente na release #997.
+2. [x] Projetar seletor de provenance sobre `last_release` atual, merge humano auditado, projeto ativo e geração, sem admitir Change Set antecipado.
+3. [x] Preparar wrapper que reconcilia manifesto/snapshot/gaps e auditoria na mesma transação com idempotência, seleção limitada e revisão durável de inconsistências.
+4. [x] Integrar caminho Python/CLI/workflow offline-first independente do outbox recente, validando página inteira e sem model calls, deploy, merge ou bootstrap.
+5. [ ] Executar QA unitário + PostgreSQL 16 isolado + CI; corrigir bugs reais antes de submeter uma única PR ao gate humano. Nova migration `20261021135000_recover_latest_legacy_release_readiness.sql` exige autorização específica posterior. Control Plane real permanece inalterado até tal gate.
+

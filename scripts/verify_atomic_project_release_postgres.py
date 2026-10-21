@@ -23,6 +23,8 @@ if (os.environ.get("FACTORY_RELEASE_ATOMIC_TEST_ISOLATED")!="true"
 
 MIGRATION=(Path(__file__).resolve().parents[1]/
     "supabase/migrations/20261021090000_atomic_release_state_and_replay_outbox.sql").read_text()
+LEGACY_MIGRATION=(Path(__file__).resolve().parents[1]/
+    "supabase/migrations/20261021135000_recover_latest_legacy_release_readiness.sql").read_text()
 
 ORIG="a"*40
 MERGE="b"*40
@@ -100,6 +102,7 @@ with psycopg.connect(DSN,autocommit=True) as conn:
         conn.execute("CREATE ROLE "+role+" NOLOGIN")
     conn.execute(SCHEMA)
     conn.execute(MIGRATION)
+    conn.execute(LEGACY_MIGRATION)
 
     def one(sql,args=()):
         return conn.execute(sql,args).fetchone()[0]
@@ -179,6 +182,9 @@ with psycopg.connect(DSN,autocommit=True) as conn:
       "factory_pending_release_reconciliations_v1(bigint,integer)",
       "factory_reconcile_observed_release_v1(uuid,uuid,text,jsonb,jsonb)",
       "factory_defer_release_reconciliation_v1(bigint)",
+      "factory_pending_legacy_release_readiness_v1(uuid,integer)",
+      "factory_reconcile_latest_legacy_release_v1(uuid,uuid,text,jsonb,jsonb)",
+      "factory_defer_legacy_release_readiness_v1(uuid,uuid,text)",
     )
     for signature in signatures:
         qualified="public."+signature
@@ -355,5 +361,135 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     assert one("SELECT status FROM public.factory_change_sets WHERE release_run_id=%s",(blocked_run,))=="blocked"
     assert count("factory_project_state_snapshots","run_id=%s",(blocked_run,))==0
 
+
+    # Historical split-REST release: audit exists, but gaps=[] and the
+    # manifest lacks a current-release readiness follow-up. The old outbox
+    # excludes this row; the new selector must still find it exactly once.
+    def legacy_fixture(key):
+        pid=project(key,kind="greenfield")
+        rid,_=released_candidate(pid)
+        human_receipt(pid,rid)
+        mark(rid)
+        old={"preserve":"legacy-operator-data",
+             "last_release":{"run_id":str(rid),"merge_sha":MERGE,
+                             "source":"observed_human_merge"}}
+        conn.execute("UPDATE public.factory_projects SET lifecycle_stage='operations',"
+                     "manifest=%s::jsonb WHERE id=%s",(json.dumps(old),pid))
+        conn.execute("UPDATE public.factory_change_sets SET status='completed',"
+                     "metadata=jsonb_build_object('release',jsonb_build_object("
+                     "'run_id',%s::text,'merge_sha',%s::text,'observed',true))"
+                     "WHERE release_run_id=%s",(str(rid),MERGE,rid))
+        conn.execute(
+          "INSERT INTO public.factory_project_state_snapshots("
+          "project_id,run_id,observed_stage,summary,evidence,gaps,source_status)"
+          "VALUES(%s,%s,'operations','legacy split write',"
+          "%s::jsonb,'[]'::jsonb,'{\"release\":\"merged\"}'::jsonb)",
+          (pid,rid,json.dumps([{"type":"human_release","merge_sha":MERGE}])))
+        conn.execute(
+          "INSERT INTO public.factory_audit_events("
+          "project_id,run_id,actor_type,actor_ref,event_type,payload)"
+          "VALUES(%s,%s,'system','legacy-observer',"
+          "'project.state.reconciled_after_release',%s::jsonb)",
+          (pid,rid,json.dumps({"merge_sha":MERGE,"lifecycle_stage":"operations"})))
+        return pid,rid
+
+    def legacy_candidates(after=None):
+        return one("SELECT public.factory_pending_legacy_release_readiness_v1(%s,16)",(after,))
+
+    def repair_legacy(pid,rid,sha=MERGE,summary=None):
+        return one("SELECT public.factory_reconcile_latest_legacy_release_v1"
+                   "(%s,%s,%s,%s::jsonb,%s::jsonb)",
+                   (pid,rid,sha,json.dumps(current_report(rid)),
+                    json.dumps(summary if summary is not None else followup(rid,sha))))
+
+    legacy,legacy_run=legacy_fixture("real-pr-997-pattern")
+    assert rows_after()==[], "old outbox should suppress already-audited releases"
+    current=legacy_candidates()
+    assert len(current)==1 and current[0]["project_id"]==str(legacy),current
+    assert current[0]["run_id"]==str(legacy_run) and current[0]["merge_sha"]==MERGE
+    assert legacy_candidates(legacy)==[]
+    fix=repair_legacy(legacy,legacy_run)
+    assert fix["legacy_backfill"] and fix["backfill_audit_written"],fix
+    assert fix["pending_domains"]==6 and not fix["product_ready"],fix
+    assert fix["snapshot_written"] and not fix["idempotent"],fix
+    assert one("SELECT manifest->>'preserve' FROM public.factory_projects WHERE id=%s",
+               (legacy,))=="legacy-operator-data"
+    assert one("SELECT manifest #> '{product_readiness_followup,pending_domains}' "
+               "FROM public.factory_projects WHERE id=%s",(legacy,))==list(DOMAINS)
+    assert one("SELECT manifest #> '{product_readiness_followup,ready}' "
+               "FROM public.factory_projects WHERE id=%s",(legacy,)) is False
+    assert count("factory_project_state_snapshots","run_id=%s",(legacy_run,))==2
+    assert one("SELECT jsonb_array_length(gaps) FROM "
+               "public.factory_project_state_snapshots WHERE run_id=%s "
+               "ORDER BY created_at DESC,id DESC LIMIT 1",(legacy_run,))==6
+    assert count("factory_audit_events","run_id=%s AND "
+                 "event_type='release.legacy_readiness_backfilled'",
+                 (legacy_run,))==1
+    assert legacy_candidates()==[]
+    again=repair_legacy(legacy,legacy_run)
+    assert again["idempotent"] and not again["backfill_audit_written"],again
+    assert count("factory_project_state_snapshots","run_id=%s",(legacy_run,))==2
+    assert count("factory_audit_events","run_id=%s AND "
+                 "event_type='release.legacy_readiness_backfilled'",
+                 (legacy_run,))==1
+
+    # An operator pause blocks both candidate selection and the effectful
+    # wrapper after selection, including concurrent Pause/Resume drift.
+    hold,hold_run=legacy_fixture("paused-readiness-recovery")
+    conn.execute("UPDATE public.factory_project_execution_controls "
+                 "SET state='paused' WHERE project_id=%s",(hold,))
+    assert legacy_candidates()==[]
+    rejected(lambda:repair_legacy(hold,hold_run),states=("PT423",))
+    assert count("factory_audit_events","run_id=%s AND "
+                 "event_type='release.legacy_readiness_backfilled'",
+                 (hold_run,))==0
+    conn.execute("UPDATE public.factory_project_execution_controls "
+                 "SET state='running' WHERE project_id=%s",(hold,))
+    assert len(legacy_candidates())==1
+    assert repair_legacy(hold,hold_run)["pending_domains"]==6
+
+    # Invalid domain handoff remains rejected; durable service-only review
+    # prevents one poisoned legacy release from starving other projects.
+    invalid,invalid_run=legacy_fixture("invalid-legacy-readiness-candidate")
+    bad=followup(invalid_run)
+    bad["pending_domains"]=["security"]
+    rejected(lambda:repair_legacy(invalid,invalid_run,summary=bad))
+    deferrals=one("SELECT public.factory_defer_legacy_release_readiness_v1(%s,%s,%s)",
+                  (invalid,invalid_run,MERGE))
+    assert deferrals["status"]=="needs_review" and not deferrals["idempotent"]
+    assert one("SELECT public.factory_defer_legacy_release_readiness_v1(%s,%s,%s)",
+               (invalid,invalid_run,MERGE))["idempotent"]
+    assert legacy_candidates()==[]
+    assert count("factory_audit_events","run_id=%s AND "
+                 "event_type='release.legacy_readiness_needs_review'",
+                 (invalid_run,))==1
+
+    # Even an otherwise valid old release never displaces a newer one.
+    stale,stale_run=legacy_fixture("stale-legacy-readiness-not-replayed")
+    conn.execute("UPDATE public.factory_release_reports "
+                 "SET updated_at=now()-interval '2 days' WHERE run_id=%s",(stale_run,))
+    newer,_=released_candidate(stale,MERGE2)
+    human_receipt(stale,newer,MERGE2)
+    mark(newer,MERGE2)
+    assert legacy_candidates()==[]
+    rejected(lambda:repair_legacy(stale,stale_run))
+    assert count("factory_audit_events","run_id=%s AND "
+                 "event_type='release.legacy_readiness_backfilled'",
+                 (stale_run,))==0
+    assert count("factory_project_state_snapshots","run_id=%s",(stale_run,))==1
+
+    # A forged external merge with no released report cannot be caught up.
+    premature=project("premature-human-merge-not-a-release")
+    prem_run,_=released_candidate(premature)
+    human_receipt(premature,prem_run)
+    conn.execute("UPDATE public.factory_projects SET lifecycle_stage='operations',"
+                 "manifest=%s::jsonb WHERE id=%s",
+                 (json.dumps({"last_release":{"run_id":str(prem_run),
+                    "merge_sha":MERGE,"source":"observed_human_merge"}}),premature))
+    assert legacy_candidates()==[]
+    rejected(lambda:repair_legacy(premature,prem_run))
+    assert count("factory_project_state_snapshots","run_id=%s",(prem_run,))==0
+
+    assert not any(x["project_id"]==str(invalid) for x in legacy_candidates())
 
 print("FACTORY_ATOMIC_RELEASE_POSTGRES_PASS=1")
