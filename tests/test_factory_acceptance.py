@@ -1087,9 +1087,13 @@ class ExtendedFactoryAcceptanceTests(unittest.TestCase):
         assert "enforce_write_scopes" in worker
         assert "Change Set implementation requires a durable context packet" in producer
         assert "bounded Context Packet" in codex
-        assert "factory_enqueue_repair_from_specialist" in lanes
-        assert '"p_max_cycles":3' in lanes
-        assert "factory_close_repairs_after_specialist_pass" in lanes
+        handoff=(ROOT/"supabase/migrations/20261021040500_atomic_specialist_repair_handoff.sql").read_text()
+        assert "factory_enqueue_repair_from_specialist" in handoff
+        assert "factory_close_repairs_after_specialist_pass" in handoff
+        assert "post_review_applied" in handoff
+        assert "post_review_applied" in lanes
+        assert "factory_enqueue_repair_from_specialist" not in lanes
+        assert "factory_close_repairs_after_specialist_pass" not in lanes
         assert "factory_work_unit_context_packets" in migration
         assert "factory_repair_jobs" in migration
         assert "cycle between 1 and 3" in migration

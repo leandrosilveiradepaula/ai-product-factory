@@ -55,6 +55,8 @@ CREATE TABLE public.factory_change_sets(
  status text NOT NULL DEFAULT 'integrating',
  current_wave integer NOT NULL DEFAULT 1,
  attempt_count integer NOT NULL DEFAULT 0,
+ release_run_id uuid REFERENCES public.factory_runs(id),
+ lease_owner text,lease_expires_at timestamptz,
  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
  updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE public.factory_change_set_work_units(
