@@ -7,6 +7,8 @@ on:
       - "supabase/migrations/*fence_scheduler_eligibility_manual_control.sql"
       - "supabase/migrations/*fence_recovery_manual_project_control.sql"
       - "supabase/migrations/*fence_terminal_descendant_recovery_manual_control.sql"
+      - "supabase/migrations/*quarantine_cross_epoch_recovery_replay.sql"
+      - "tests/test_cross_epoch_recovery_fence.py"
       - "tests/test_terminal_descendant_operator_fence.py"
       - "scripts/verify_recovery_manual_project_control_postgres.py"
       - "tests/test_recovery_operator_control_contract.py"

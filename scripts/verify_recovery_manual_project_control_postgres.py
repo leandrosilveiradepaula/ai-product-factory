@@ -22,10 +22,12 @@ if (
 root = Path(__file__).resolve().parents[1]
 migration = (root / "supabase/migrations/20261020194500_fence_recovery_manual_project_control.sql").read_text()
 terminal_migration = (root / "supabase/migrations/20261021014000_fence_terminal_descendant_recovery_manual_control.sql").read_text()
+epoch_migration = (root / "supabase/migrations/20261021021000_quarantine_cross_epoch_recovery_replay.sql").read_text()
 schema = """
 CREATE TABLE public.factory_projects(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),project_key text NOT NULL UNIQUE,
- is_active bool NOT NULL DEFAULT true);
+ is_active bool NOT NULL DEFAULT true,
+ repository text NOT NULL DEFAULT 'owner/repo',manifest jsonb NOT NULL DEFAULT '{}'::jsonb);
 CREATE TABLE public.factory_project_execution_controls(
  project_id uuid PRIMARY KEY REFERENCES public.factory_projects(id),
  state text NOT NULL,generation int NOT NULL);
@@ -45,6 +47,7 @@ CREATE TABLE public.factory_runs(
  status text NOT NULL,execution_route text,metadata jsonb DEFAULT '{}'::jsonb,
  attempt_count int DEFAULT 0,lease_owner text,
  lease_expires_at timestamptz,created_at timestamptz DEFAULT now(),
+ started_at timestamptz,
  finished_at timestamptz,source_commit text,candidate_commit text,
  branch_name text,last_error text);
 CREATE TABLE public.factory_human_gates(
@@ -61,6 +64,7 @@ CREATE TABLE public.factory_change_set_work_units(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),task_id uuid REFERENCES public.factory_tasks(id),
  run_id uuid REFERENCES public.factory_runs(id),
  change_set_id uuid REFERENCES public.factory_change_sets(id),
+ plan_task_key text DEFAULT 'fixture',wave integer DEFAULT 1,
  status text NOT NULL,updated_at timestamptz DEFAULT now());
 CREATE TABLE public.factory_specialist_lane_jobs(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -71,16 +75,37 @@ CREATE TABLE public.factory_specialist_lane_jobs(
  completed_at timestamptz,updated_at timestamptz DEFAULT now(),
  required boolean NOT NULL DEFAULT true,
  findings jsonb NOT NULL DEFAULT '[]'::jsonb);
+CREATE TABLE public.factory_agents(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ agent_key text NOT NULL UNIQUE,is_active boolean NOT NULL DEFAULT true);
+CREATE TABLE public.factory_run_agent_assignments(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ run_id uuid REFERENCES public.factory_runs(id),
+ agent_id uuid REFERENCES public.factory_agents(id),
+ status text NOT NULL DEFAULT 'assigned',
+ assigned_at timestamptz DEFAULT now(),
+ claimed_at timestamptz);
 CREATE TABLE public.factory_audit_events(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  project_id uuid,task_id uuid,run_id uuid,actor_type text,
  actor_ref text,event_type text,payload jsonb);
+CREATE OR REPLACE FUNCTION public.factory_assert_project_execution_epoch(p_project_id uuid,p_generation bigint)
+RETURNS void LANGUAGE plpgsql SET search_path TO '' AS $fixture$
+DECLARE v_state text;v_generation bigint;
+BEGIN
+  SELECT state,generation INTO v_state,v_generation
+  FROM public.factory_project_execution_controls WHERE project_id=p_project_id FOR SHARE;
+  IF v_state IS DISTINCT FROM 'running' OR v_generation IS DISTINCT FROM p_generation
+    OR p_generation<1 THEN RAISE EXCEPTION 'project epoch revoked' USING errcode='PT409'; END IF;
+END;
+$fixture$;
 """
 
 with psycopg.connect(dsn, autocommit=True) as conn:
     conn.execute(schema)
     conn.execute(migration)
     conn.execute(terminal_migration)
+    conn.execute(epoch_migration)
     def single(sql, args=()):
         return conn.execute(sql, args).fetchone()[0]
     def project(key, state, generation=1):
@@ -110,8 +135,8 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     # Expired run recovery must NEVER requeue or terminal-fail a paused run.
     tp=task(paused,"implementing")
     tr=task(running,"implementing")
-    rp=run(tp,"implementing",expired=True)
-    rr=run(tr,"implementing",expired=True)
+    rp=run(tp,"implementing",expired=True,metadata='{"execution_generation":1}')
+    rr=run(tr,"implementing",expired=True,metadata='{"execution_generation":1}')
     output=single("SELECT public.factory_recover_expired_runs(3)")
     assert output["requeued"]==1 and output["failed"]==0,output
     assert single("SELECT status FROM public.factory_runs WHERE id=%s",(rp,))=="implementing"
@@ -307,5 +332,136 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     assert single("SELECT public.factory_reconcile_terminal_task_descendants()")=={
         "completed_children":0,"cancelled_children":0,"superseded_change_sets":0
     }
+
+
+    # Live-condition reproducer: a claimed gen1 run can have an expired
+    # lease when the operator Pauses, then Resume advances project epoch to
+    # gen2. Never replay unknown network/model effects with a new claim.
+    epoch=project("cross-epoch-control","running",2)
+    def status(run_id):
+        return single("SELECT status FROM public.factory_runs WHERE id=%s",(run_id,))
+    def task_status(task_id):
+        return single("SELECT status FROM public.factory_tasks WHERE id=%s",(task_id,))
+    def set_date(run_id,day):
+        conn.execute("UPDATE public.factory_runs SET created_at=%s::timestamptz WHERE id=%s",(day,run_id))
+    def create_direct(pid,gen,stamp,day):
+        tid=task(pid,"queued_execution")
+        rid=run(tid,"queued",metadata=('{"execution_generation":%d}'%stamp if stamp else "{}"))
+        conn.execute("UPDATE public.factory_runs SET execution_route='direct' WHERE id=%s",(rid,))
+        set_date(rid,day)
+        cs=single("""INSERT INTO public.factory_change_sets(project_id,root_task_id,status)
+                      VALUES (%s,%s,'building') RETURNING id""",(pid,tid))
+        unit=single("""INSERT INTO public.factory_change_set_work_units(task_id,run_id,change_set_id,status)
+                        VALUES (%s,%s,%s,'queued') RETURNING id""",(tid,rid,cs))
+        agent_id=single("SELECT id FROM public.factory_agents WHERE agent_key='direct-test'")
+        conn.execute("""INSERT INTO public.factory_run_agent_assignments(run_id,agent_id,status)
+                        VALUES (%s,%s,'assigned')""",(rid,agent_id))
+        return tid,rid,cs,unit
+
+    # Pure classic claiming must skip an older stale queued run before LIMIT.
+    stale_task=task(epoch,"queued")
+    stale=run(stale_task,"queued",metadata='{"stages":[],"execution_generation":1}')
+    set_date(stale,"2001-01-01 00:00:00+00")
+    fresh_task=task(epoch,"queued")
+    fresh=run(fresh_task,"queued",metadata='{"stages":[]}')
+    set_date(fresh,"2001-01-02 00:00:00+00")
+    received=single("SELECT public.factory_claim_next_run('epoch-fixture')")
+    assert received["run_id"]==str(fresh),received
+    assert status(stale)=="queued" and status(fresh)=="running"
+    assert single("SELECT metadata->>'execution_generation' FROM public.factory_runs WHERE id=%s",(fresh,))=="2"
+
+    # Direct claims likewise must not keep selecting the oldest stale item.
+    conn.execute("INSERT INTO public.factory_agents(agent_key) VALUES ('direct-test')")
+    dt_stale,dr_stale,cs_stale,u_stale=create_direct(epoch,2,1,"2000-01-01 00:00:00+00")
+    dt_fresh,dr_fresh,cs_fresh,u_fresh=create_direct(epoch,2,0,"2000-01-02 00:00:00+00")
+    chosen=single("SELECT public.factory_claim_next_agent_direct_run('direct-fixture')")
+    assert chosen["run_id"]==str(dr_fresh),chosen
+    assert status(dr_stale)=="queued" and status(dr_fresh)=="implementing"
+    assert single("SELECT metadata->>'execution_generation' FROM public.factory_runs WHERE id=%s",(dr_fresh,))=="2"
+
+    # Direct Change Set recovery called independently of global recovery
+    # quarantines a stale implementing lease, while a same-epoch work unit
+    # remains automatically recoverable.
+    d_stale_task=task(epoch,"implementing")
+    d_stale=run(d_stale_task,"implementing",expired=True,
+                metadata='{"execution_generation":1}',attempts=1)
+    conn.execute("UPDATE public.factory_runs SET execution_route='direct' WHERE id=%s",(d_stale,))
+    d_stale_cs=single("""INSERT INTO public.factory_change_sets(project_id,root_task_id,status)
+                        VALUES (%s,%s,'building') RETURNING id""",(epoch,d_stale_task))
+    d_stale_u=single("""INSERT INTO public.factory_change_set_work_units(task_id,run_id,change_set_id,status)
+                       VALUES (%s,%s,%s,'running') RETURNING id""",(d_stale_task,d_stale,d_stale_cs))
+    d_valid_task=task(epoch,"implementing")
+    d_valid=run(d_valid_task,"implementing",expired=True,
+                metadata='{"execution_generation":2}',attempts=1)
+    conn.execute("UPDATE public.factory_runs SET execution_route='direct' WHERE id=%s",(d_valid,))
+    d_valid_cs=single("""INSERT INTO public.factory_change_sets(project_id,root_task_id,status)
+                        VALUES (%s,%s,'building') RETURNING id""",(epoch,d_valid_task))
+    d_valid_u=single("""INSERT INTO public.factory_change_set_work_units(task_id,run_id,change_set_id,status)
+                       VALUES (%s,%s,%s,'running') RETURNING id""",(d_valid_task,d_valid,d_valid_cs))
+    changed=single("SELECT public.factory_recover_change_sets(3)")
+    assert changed["stale_direct_requeued"]==1,changed
+    assert status(d_stale)=="blocked" and task_status(d_stale_task)=="blocked"
+    assert single("SELECT status FROM public.factory_change_set_work_units WHERE id=%s",(d_stale_u,))=="blocked"
+    assert single("SELECT status FROM public.factory_change_sets WHERE id=%s",(d_stale_cs,))=="blocked"
+    assert single("SELECT metadata->>'blocker' FROM public.factory_change_sets WHERE id=%s",(d_stale_cs,))=="stale_execution_epoch"
+    assert status(d_valid)=="queued"
+    assert single("SELECT status FROM public.factory_change_set_work_units WHERE id=%s",(d_valid_u,))=="queued"
+
+    # Resume of paused old claims: expired gen1, unknown gen, and a stale
+    # queued run are quarantined; an expired gen2 lease is safely requeued.
+    paused_epoch=project("epoch-paused-before-resume","paused",1)
+    stale_paused_task=task(paused_epoch,"running")
+    stale_paused=run(stale_paused_task,"running",expired=True,
+                     metadata='{"execution_generation":1,"stages":[]}')
+    pre=single("SELECT public.factory_recover_expired_runs(3)")
+    assert status(stale_paused)=="running",pre
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='running',generation=2 WHERE project_id=%s",(paused_epoch,))
+    live_task=task(epoch,"running")
+    valid_expired=run(live_task,"running",expired=True,metadata='{"execution_generation":2,"stages":[]}')
+    unknown_task=task(epoch,"running")
+    unknown=run(unknown_task,"running",expired=True,metadata='{"stages":[]}')
+    count_before=single("SELECT count(*) FROM public.factory_runs")
+    out=single("SELECT public.factory_recover_expired_runs(3)")
+    assert out["requeued"]==1 and out["failed"]==0,out
+    assert status(stale_paused)=="blocked" and task_status(stale_paused_task)=="blocked"
+    assert status(stale)=="blocked" and task_status(stale_task)=="blocked"
+    assert status(dr_stale)=="blocked" and task_status(dt_stale)=="blocked"
+    assert status(unknown)=="blocked" and task_status(unknown_task)=="blocked"
+    assert status(valid_expired)=="queued"
+    assert single("SELECT count(*) FROM public.factory_runs")==count_before
+    ev_count=single("""SELECT count(*) FROM public.factory_audit_events
+                       WHERE event_type='run.stale_execution_epoch_quarantined'""")
+    assert ev_count>=4,ev_count
+
+    # A later recovery reconciles the original stale direct Change Set unit
+    # to blocked instead of silently replaying it in another wave.
+    again=single("SELECT public.factory_recover_change_sets(3)")
+    assert again["stale_direct_requeued"]==0,again
+    assert single("SELECT status FROM public.factory_change_set_work_units WHERE id=%s",(u_stale,))=="blocked"
+    assert single("SELECT status FROM public.factory_change_sets WHERE id=%s",(cs_stale,))=="blocked"
+
+    # A second recovery cannot create a run, cost or duplicate audit receipt.
+    single("SELECT public.factory_recover_expired_runs(3)")
+    single("SELECT public.factory_recover_change_sets(3)")
+    assert single("SELECT count(*) FROM public.factory_runs")==count_before
+    assert single("""SELECT count(*) FROM public.factory_audit_events
+                     WHERE event_type='run.stale_execution_epoch_quarantined'""")==ev_count
+
+    # Explicit retry is a new operator-authorized run; provenance of the
+    # old generation stays, but its execution capability must not be copied.
+    failed_task=task(epoch,"failed")
+    failed_run=run(failed_task,"failed",metadata='{"stages":[],"execution_generation":1}')
+    retry=single("SELECT public.factory_retry_failed_run(%s,'operator-reviewed')",(failed_run,))
+    new_run=retry["run_id"]
+    epoch_copied=single("""SELECT metadata ? 'execution_generation'
+                           FROM public.factory_runs WHERE id=%s""",(new_run,))
+    assert epoch_copied is False
+    assert single("SELECT metadata->>'retry_source_generation' FROM public.factory_runs WHERE id=%s",(new_run,))=="1"
+    try:
+        conn.execute("SELECT public.factory_retry_failed_run(%s,'again')",(failed_run,))
+        raise AssertionError("duplicate retry created")
+    except psycopg.Error:
+        pass
+    assert single("SELECT count(*) FROM public.factory_runs WHERE task_id=%s",(failed_task,))==2
 
 print("RECOVERY_MANUAL_CONTROL_POSTGRES_PASS=1")

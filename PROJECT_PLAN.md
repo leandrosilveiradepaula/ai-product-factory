@@ -350,6 +350,13 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Exigir CI, testes de integração isolados e gate de migration de produção; não inferir instalação no banco pelo merge.
 - [ ] Revisar recovery de lease/change set e continuidade de decisões sob pausa antes de declarar controle do ciclo integralmente concluído.
 
+## 21/10/2026 — Retomada sem replay implicito de execucao (#894)
+
+- [x] Codigo de producao investigado: recuperacao de lease e claim antigo nao vinculavam metadata.execution_generation a geracao atual apos Resume.
+- [ ] Provar com PostgreSQL isolado as 5 funcoes do candidato cross-epoch, incluindo Product/Direct, Change Sets e retry explicito.
+- [ ] Apos merge humano e gate SQL individual, aplicar migration `20261021021000_quarantine_cross_epoch_recovery_replay.sql` sem usar `db push` historico; registrar version ID real.
+- [ ] Validar recuperacao de especialista e operacoes externas nao idempotentes como risco residual separado.
+
 ## 21/10/2026 — Fechamento do Pause/Stop para terminal-descendant recovery (#894)
 
 - [x] Auditoria read-only verificou migration de recovery aplicada no Control Plane e identificou RPC terminal-descendant sem controle humano.

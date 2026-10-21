@@ -1,3 +1,12 @@
+## 21/10/2026 — Bloqueio de replay apos Pause/Resume (candidato)
+
+- O SQL ja em producao de `factory_recover_expired_runs` e `factory_recover_change_sets` somente checava `state=running`; nao revalidava `metadata.execution_generation` contra `c.generation`. Um lease de gen1 expirado apos Resume(gen2) podia ser automaticamente requeued, e uma run antiga queued podia ser reclamada com epoch2, arriscando efeitos/creditos duplicados.
+- Novo candidato `20261021021000_quarantine_cross_epoch_recovery_replay.sql` restaura fronteira para runs expiradas e queued, work units e ambas claims (Product/Direct). Gera `blocked` com recibo `run.stale_execution_epoch_quarantined` ou `execution.direct.stale_epoch_quarantined`, sem inventar sucesso. O mesmo projeto retoma outro trabalho elegivel. Repetir recovery nao gera segundo recibo.
+- Retry novo, explicitamente solicitado pelo operador, preserva `retry_source_generation` e limpa capability anterior no metadado; nao eh replay implicito. Nenhum pagamento/LLM foi executado.
+- A migration anterior de terminal-descendant `20261021014000` foi mergeada na #1019 mas continua sem confirmacao de aplicacao em producao. Este novo SQL eh somente codigo, depende de CI e outra autorizacao especifica para producao.
+
+---
+
 ## 21/10/2026 — Terminal descendant recovery e Pause/Stop (#894, candidato)
 
 - Supabase confirmado com `fence_recovery_manual_project_control` aplicado como versao `20261021012144`; merge #1018 em main `4412f5ab4b5ba1ddb4b484c0c86a117bfc19a62a`, CI verde.
