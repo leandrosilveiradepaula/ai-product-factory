@@ -148,3 +148,11 @@ tests.test_oidc_backup_scheduler_wake -v`. After merge, inspect **two**
 distinct OIDC observer runs: the CI-completion receipt and the visual-
 completion receipt. No fresh paid E2E may be created for this verification;
 the next Console change naturally exercises the path.
+
+## 21/10/2026 — Inventário CI por push (reconciliacao da PR #1013)
+
+O runner global pode observar muitos `issue_comment`, `schedule`, `workflow_run` e runs skipped no mesmo SHA de `main`. O endpoint GitHub `head_sha` **sem filtro por evento** soma esses workflows estranhos ao CI, e o limite fechado de 100 pode impedir a observacao de `validate` e visual mesmo quando seus recibos sao validos. Nao se deve contornar o limite, nem presumir `product_ready` por um unico `validate` verde.
+
+A selecao agora usa `head_sha=<sha>&event=push&per_page=100` e rejeita entradas que nao sejam push, nao tenham SHA exato/repo/ID, estejam incompletas ou excedam 100 verdadeiros push runs. O `validate.yml` e verificado pelo path do workflow e o run individual, e nao so pelo nome. O fluxo visual independente continua exigindo seus proprios checks, browser evidence, SHA e proveniencia. Nao altera jobs, gatilhos, billing, RLS nem grants. Testes cobrem 302 `issue_comment`, spoof, dados parciais e overflow real.
+
+A correcao nao certifica automaticamente os seis dominios do produto. O observer no merge #1020 (SHA `de754d14063a38e11060ffbc6ca5dee80c140069`) continuava reportando `product_ready=false`. As migrations `20261021014000` e `20261021021000` permanecem pendentes de autorizacao especifica de producao.

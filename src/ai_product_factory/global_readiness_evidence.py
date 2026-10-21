@@ -194,8 +194,14 @@ VISUAL_WORKFLOW_PATH = ".github/workflows/authenticated-visual-evidence.yml"
 
 
 def _same_sha_runs(repository: str, sha: str, github_get) -> list[dict]:
-    """Bounded GitHub source of truth; no guessed check-run to workflow mapping."""
-    payload = github_get("/repos/"+repository+"/actions/runs?head_sha="+sha+"&per_page=100")
+    """Read only same-SHA *push* workflows, not all comment/schedule runs.
+
+    GitHub issue comments and scheduled workflows reuse the current main
+    SHA. Their count is unbounded while that SHA stays unchanged. Those
+    unrelated runs must never exhaust the 100-run verification window and
+    permanently block an otherwise valid product audit.
+    """
+    payload = github_get("/repos/"+repository+"/actions/runs?head_sha="+sha+"&event=push&per_page=100")
     if (not isinstance(payload, dict)
             or type(payload.get("total_count")) is not int
             or payload["total_count"] > MAX_SHA_WORKFLOW_RUNS
@@ -205,6 +211,7 @@ def _same_sha_runs(repository: str, sha: str, github_get) -> list[dict]:
         raise GlobalReadinessEvidenceError("unverifiable same-SHA workflow inventory")
     runs = payload["workflow_runs"]
     if any(not isinstance(row,dict) or row.get("head_sha") != sha
+           or row.get("event") != "push"
            or (row.get("repository") or {}).get("full_name") != repository
            or type(row.get("id")) is not int or row["id"] <= 0 for row in runs):
         raise GlobalReadinessEvidenceError("cross-SHA/repository workflow inventory")
@@ -217,6 +224,7 @@ def find_current_validation_run(*,repository: str,sha: str,branch: str,github_ge
     """An authenticated visual event cannot substitute itself for validate."""
     candidates = [x for x in _same_sha_runs(_repo(repository),_sha(sha),github_get)
                   if x.get("name") == "validate" and x.get("event") == "push"
+                  and x.get("path") == ".github/workflows/validate.yml"
                   and x.get("head_branch") == branch]
     if len(candidates) != 1 or candidates[0].get("status") != "completed" or candidates[0].get("conclusion") != "success":
         raise GlobalReadinessEvidenceError("exact successful main validate run missing or ambiguous")
@@ -342,6 +350,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
     run = github_get(prefix+"/actions/runs/"+str(validation_run_id))
     if (not isinstance(run,dict) or run.get("id") != validation_run_id
             or run.get("name") != "validate" or run.get("event") != "push"
+            or run.get("path") != ".github/workflows/validate.yml"
             or run.get("head_branch") != branch or run.get("head_sha") != sha
             or run.get("conclusion") != "success" or run.get("status") != "completed"
             or (run.get("repository") or {}).get("full_name") != repository):
