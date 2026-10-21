@@ -14,41 +14,54 @@ def item(role="security"):
 
 
 class RepairRuntimeTests(unittest.TestCase):
-    def test_failed_security_lane_queues_bounded_repair(self):
+    def test_failed_security_lane_commits_one_atomic_repair_rpc(self):
         queue=SupabaseSpecialistLaneQueue.__new__(SupabaseSpecialistLaneQueue)
-        queue._rpc=MagicMock(side_effect=[
-            {"job_id":"job","status":"failed","run_status":"specialist_review_failed"},
-            {"created":True,"repair_job_id":"repair","cycle":1,"max_cycles":3,"status":"repair_pending"},
-        ])
-        out=queue.complete(
-            item("security"),status="failed",
-            findings=[{"code":"security_definer","scope_keys":["supabase/migrations/x.sql"]}],
-            evidence={"candidate_commit":"abc"},
-        )
+        queue._rpc=MagicMock(return_value={
+            "job_id":"job","status":"failed","run_status":"repair_pending",
+            "post_review_applied":True,
+            "repair":{"created":True,"repair_job_id":"repair","cycle":1,"max_cycles":3},
+            "repair_recheck":None,
+        })
+        findings=[{"code":"security_definer","scope_keys":["supabase/migrations/x.sql"]}]
+        out=queue.complete(item("security"),status="failed",findings=findings,evidence={"candidate_commit":"abc"})
         self.assertEqual(out["run_status"],"repair_pending")
         self.assertTrue(out["repair"]["created"])
-        self.assertEqual(queue._rpc.call_args_list[1].args[0],"factory_enqueue_repair_from_specialist")
-        self.assertEqual(queue._rpc.call_args_list[1].args[1]["p_max_cycles"],3)
+        queue._rpc.assert_called_once()
+        name,payload=queue._rpc.call_args.args
+        self.assertEqual(name,"factory_complete_specialist_lane_atomic")
+        self.assertEqual(payload["p_findings"],findings)
+        self.assertNotEqual(payload["p_evidence"]["_factory_claim_token"],None)
 
-    def test_failed_operations_lane_never_auto_repairs(self):
+    def test_operations_never_attempts_auto_repair(self):
         queue=SupabaseSpecialistLaneQueue.__new__(SupabaseSpecialistLaneQueue)
-        queue._rpc=MagicMock(return_value={"job_id":"job","status":"failed","run_status":"specialist_review_failed"})
-        out=queue.complete(
-            item("operations"),status="failed",
-            findings=[{"code":"unknown_cost","severity":"error"}],evidence={},
-        )
-        self.assertNotIn("repair",out)
-        self.assertEqual(queue._rpc.call_count,1)
+        queue._rpc=MagicMock(return_value={
+            "job_id":"job","status":"failed","run_status":"specialist_review_failed",
+            "post_review_applied":True,"repair":None,"repair_recheck":None,
+        })
+        out=queue.complete(item("operations"),status="failed",
+                           findings=[{"code":"unknown_cost","severity":"error"}],evidence={})
+        self.assertIsNone(out["repair"])
+        queue._rpc.assert_called_once()
 
-    def test_passed_security_lane_closes_integrated_repair(self):
+    def test_passed_security_commits_atomic_recheck(self):
         queue=SupabaseSpecialistLaneQueue.__new__(SupabaseSpecialistLaneQueue)
-        queue._rpc=MagicMock(side_effect=[
-            {"job_id":"job","status":"passed","run_status":"preview_ready"},
-            {"updated":1,"status":"passed","candidate_commit":"abc"},
-        ])
+        queue._rpc=MagicMock(return_value={
+            "job_id":"job","status":"passed","run_status":"preview_ready",
+            "post_review_applied":True,"repair":None,
+            "repair_recheck":{"updated":1,"status":"passed","candidate_commit":"abc"},
+        })
         out=queue.complete(item("security"),status="passed",findings=[],evidence={})
         self.assertEqual(out["repair_recheck"]["updated"],1)
-        self.assertEqual(queue._rpc.call_args_list[1].args[0],"factory_close_repairs_after_specialist_pass")
+        queue._rpc.assert_called_once()
+
+    def test_old_half_committed_completion_is_not_silently_accepted(self):
+        queue=SupabaseSpecialistLaneQueue.__new__(SupabaseSpecialistLaneQueue)
+        queue._rpc=MagicMock(return_value={
+            "job_id":"job","status":"failed","run_status":"specialist_review_failed"
+        })
+        with self.assertRaisesRegex(RuntimeError,"atomic post-review"):
+            queue.complete(item("security"),status="failed",findings=[{"code":"missing"}],evidence={})
+        queue._rpc.assert_called_once()
 
 
 if __name__=="__main__":

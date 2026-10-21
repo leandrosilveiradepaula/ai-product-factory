@@ -19,6 +19,7 @@ if (os.environ.get("FACTORY_SPECIALIST_EPOCH_TEST_ISOLATED")!="true"
 
 root=Path(__file__).resolve().parents[1]
 migration=(root/"supabase/migrations/20261021030000_fence_specialist_epoch_and_lease_token.sql").read_text()
+repair_migration=(root/"supabase/migrations/20261021040500_atomic_specialist_repair_handoff.sql").read_text()
 schema="""
 CREATE TABLE public.factory_projects(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -31,7 +32,14 @@ CREATE TABLE public.factory_project_execution_controls(
  state text NOT NULL,generation bigint NOT NULL);
 CREATE TABLE public.factory_tasks(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
- project_id uuid NOT NULL REFERENCES public.factory_projects(id));
+ project_id uuid NOT NULL REFERENCES public.factory_projects(id),
+ parent_task_id uuid REFERENCES public.factory_tasks(id),
+ external_key text,title text NOT NULL DEFAULT 'Synthetic task',
+ description text NOT NULL DEFAULT '',
+ status text NOT NULL DEFAULT 'queued',complexity text NOT NULL DEFAULT 'medium',
+ risk jsonb NOT NULL DEFAULT '{}'::jsonb,
+ acceptance_criteria jsonb NOT NULL DEFAULT '[]'::jsonb,
+ depends_on jsonb NOT NULL DEFAULT '[]'::jsonb);
 CREATE TABLE public.factory_runs(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  task_id uuid NOT NULL REFERENCES public.factory_tasks(id),
@@ -40,6 +48,23 @@ CREATE TABLE public.factory_execution_team_plans(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  project_id uuid NOT NULL REFERENCES public.factory_projects(id),
  version int NOT NULL,status text NOT NULL,plan jsonb NOT NULL);
+CREATE TABLE public.factory_change_sets(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ project_id uuid NOT NULL REFERENCES public.factory_projects(id),
+ root_task_id uuid REFERENCES public.factory_tasks(id),
+ status text NOT NULL DEFAULT 'integrating',
+ current_wave integer NOT NULL DEFAULT 1,
+ attempt_count integer NOT NULL DEFAULT 0,
+ release_run_id uuid REFERENCES public.factory_runs(id),
+ lease_owner text,lease_expires_at timestamptz,
+ metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+ updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE public.factory_change_set_work_units(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ change_set_id uuid NOT NULL REFERENCES public.factory_change_sets(id),
+ task_id uuid NOT NULL REFERENCES public.factory_tasks(id),
+ plan_task_key text NOT NULL,agent_key text NOT NULL,
+ wave integer NOT NULL,status text NOT NULL);
 CREATE TABLE public.factory_specialist_lane_jobs(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  run_id uuid NOT NULL REFERENCES public.factory_runs(id),
@@ -51,6 +76,21 @@ CREATE TABLE public.factory_specialist_lane_jobs(
  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
  completed_at timestamptz,
  UNIQUE(run_id,role,candidate_commit));
+CREATE TABLE public.factory_repair_jobs(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ project_id uuid NOT NULL REFERENCES public.factory_projects(id),
+ change_set_id uuid NOT NULL REFERENCES public.factory_change_sets(id),
+ source_run_id uuid NOT NULL REFERENCES public.factory_runs(id),
+ specialist_job_id uuid NOT NULL REFERENCES public.factory_specialist_lane_jobs(id),
+ source_role text NOT NULL,
+ cycle integer NOT NULL,max_cycles integer NOT NULL DEFAULT 3,
+ owner_agent_key text NOT NULL,candidate_commit text NOT NULL,
+ finding jsonb NOT NULL,write_scopes jsonb NOT NULL DEFAULT '[]'::jsonb,
+ status text NOT NULL DEFAULT 'queued',
+ task_id uuid REFERENCES public.factory_tasks(id),
+ work_unit_id uuid REFERENCES public.factory_change_set_work_units(id),
+ created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(specialist_job_id,cycle));
 CREATE TABLE public.factory_evaluations(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  run_id uuid NOT NULL REFERENCES public.factory_runs(id),
@@ -76,8 +116,23 @@ $body$;
 """
 
 with psycopg.connect(dsn,autocommit=True) as conn:
+    # Reproduce Supabase's three API roles in this disposable, isolated DB.
+    # PostgreSQL has PUBLIC EXECUTE by default; wrapper must explicitly
+    # revoke it while granting only the privileged server-side role.
+    for role in ("anon","authenticated","service_role"):
+        conn.execute("CREATE ROLE "+role+" NOLOGIN")
     conn.execute(schema)
     conn.execute(migration)
+    conn.execute(repair_migration)
+    actual=conn.execute("""
+      select has_function_privilege('anon',
+               'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE'),
+             has_function_privilege('authenticated',
+               'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE'),
+             has_function_privilege('service_role',
+               'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE')
+    """).fetchone()
+    assert actual==(False,False,True),actual
 
     def one(sql,args=()):
         return conn.execute(sql,args).fetchone()[0]
@@ -100,9 +155,10 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     def claim(worker):
         return one("SELECT public.factory_claim_specialist_lane('security',%s,600)",(worker,))
 
-    def complete(job,token,status="passed"):
+    def complete(job,token,status="passed",findings=None):
         proof={"candidate_commit":"a"*40,"_factory_claim_token":token,"model_call":False}
-        return one("SELECT public.factory_complete_specialist_lane(%s,%s,'[]'::jsonb,%s::jsonb)",(job,status,json.dumps(proof)))
+        return one("SELECT public.factory_complete_specialist_lane_atomic(%s,%s,%s::jsonb,%s::jsonb)",
+                   (job,status,json.dumps(findings if findings is not None else []),json.dumps(proof)))
 
     def recover():
         return one("SELECT public.factory_recover_specialist_lanes(3)")
@@ -208,7 +264,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     enqueue(shared_run)
     receipt=claim("worker-share")
     with psycopg.connect(dsn) as finishing, psycopg.connect(dsn,autocommit=True) as pauser:
-        finishing.execute("SELECT public.factory_complete_specialist_lane(%s,'passed','[]'::jsonb,%s::jsonb)",(receipt["job_id"],json.dumps({"_factory_claim_token":receipt["claim_token"]})))
+        finishing.execute("SELECT public.factory_complete_specialist_lane_atomic(%s,'passed','[]'::jsonb,%s::jsonb)",(receipt["job_id"],json.dumps({"_factory_claim_token":receipt["claim_token"]})))
         pauser.execute("SET lock_timeout='200ms'")
         assert_rejected(lambda: pauser.execute(
             "UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(shared,)),"55P03")
@@ -217,5 +273,89 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert job_status(shared_run)=="passed"
     assert one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s",(shared_run,))==1
     assert claim("worker-after-pause") is None
+
+    # After a failed review, repair is inserted into the same SQL transaction.
+    # Another HTTP retry cannot turn one finding into a second work unit/cycle.
+    def changeset(pid,rid):
+        tid=one("SELECT task_id FROM public.factory_runs WHERE id=%s",(rid,))
+        cs=one("INSERT INTO public.factory_change_sets(project_id,root_task_id) VALUES (%s,%s) RETURNING id",(pid,tid))
+        conn.execute("UPDATE public.factory_runs SET metadata=jsonb_set(metadata,'{change_set_id}',to_jsonb(%s::text)) WHERE id=%s",(str(cs),rid))
+        return cs
+
+    finding=[{"code":"unsafe_endpoint","scope_keys":["src/endpoint.py"]}]
+    repair_project=project("atomic-repair")
+    failure_run=run(repair_project)
+    repair_set=changeset(repair_project,failure_run)
+    enqueue(failure_run)
+    failed_claim=claim("atomic-failure-worker")
+    failed=complete(failed_claim["job_id"],failed_claim["claim_token"],"failed",finding)
+    assert failed["post_review_applied"] is True,failed
+    assert failed["repair"]["created"] is True and failed["run_status"]=="repair_pending",failed
+    repair_id=failed["repair"]["repair_job_id"]
+    assert one("SELECT status FROM public.factory_runs WHERE id=%s",(failure_run,))=="repair_pending"
+    assert one("SELECT status FROM public.factory_change_sets WHERE id=%s",(repair_set,))=="building"
+    assert one("SELECT count(*) FROM public.factory_repair_jobs WHERE specialist_job_id=%s",(failed_claim["job_id"],))==1
+    baseline_tasks=one("SELECT count(*) FROM public.factory_tasks WHERE project_id=%s",(repair_project,))
+    baseline_units=one("SELECT count(*) FROM public.factory_change_set_work_units WHERE change_set_id=%s",(repair_set,))
+    assert baseline_tasks==2 and baseline_units==1,(baseline_tasks,baseline_units)
+    again=one("SELECT public.factory_enqueue_repair_from_specialist(%s,%s::jsonb,3)",
+              (failed_claim["job_id"],json.dumps(finding)))
+    assert again["created"] is False and again["reason"]=="already_enqueued",again
+    assert str(again["repair_job_id"])==str(repair_id)
+    assert_rejected(lambda: one("SELECT public.factory_enqueue_repair_from_specialist(%s,%s::jsonb,3)",
+                                (failed_claim["job_id"],json.dumps([{"scope_keys":["other.py"]}]))))
+    assert one("SELECT count(*) FROM public.factory_tasks WHERE project_id=%s",(repair_project,))==baseline_tasks
+    assert one("SELECT count(*) FROM public.factory_change_set_work_units WHERE change_set_id=%s",(repair_set,))==baseline_units
+    assert_rejected(lambda: complete(failed_claim["job_id"],failed_claim["claim_token"],"failed",finding))
+    assert one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s",(failure_run,))==1
+
+    # If the operator pauses, neither an old post-review replay nor a
+    # subsequent Resume may authorize stale repair creation/close.
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(repair_project,))
+    assert_rejected(lambda: one("SELECT public.factory_enqueue_repair_from_specialist(%s,%s::jsonb,3)",
+                                (failed_claim["job_id"],json.dumps(finding))))
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='running',generation=2 WHERE project_id=%s",(repair_project,))
+    assert_rejected(lambda: one("SELECT public.factory_enqueue_repair_from_specialist(%s,%s::jsonb,3)",
+                                (failed_claim["job_id"],json.dumps(finding))))
+    assert one("SELECT count(*) FROM public.factory_repair_jobs WHERE specialist_job_id=%s",(failed_claim["job_id"],))==1
+
+    # When downstream repair fails, the *entire* specialist completion rolls
+    # back: no false PASS/FAIL evaluation or half-committed review.
+    rollback_project=project("atomic-rollback")
+    broken_run=run(rollback_project)
+    conn.execute("UPDATE public.factory_runs SET metadata=jsonb_set(metadata,'{change_set_id}','\"not-a-uuid\"'::jsonb) WHERE id=%s",(broken_run,))
+    enqueue(broken_run)
+    broken_claim=claim("atomic-rollback-worker")
+    prior_eval=one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s",(broken_run,))
+    try:
+        complete(broken_claim["job_id"],broken_claim["claim_token"],"failed",finding)
+        raise AssertionError("review committed with invalid downstream repair")
+    except psycopg.Error as exc:
+        assert exc.sqlstate=="22P02",(exc.sqlstate,str(exc))
+    assert job_status(broken_run)=="claimed"
+    assert one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s",(broken_run,))==prior_eval
+    assert one("SELECT count(*) FROM public.factory_repair_jobs WHERE source_run_id=%s",(broken_run,))==0
+    # Repair the synthetic reference and finish the SAME exact claim.
+    valid_cs=changeset(rollback_project,broken_run)
+    repaired=complete(broken_claim["job_id"],broken_claim["claim_token"],"failed",finding)
+    assert repaired["repair"]["created"] is True,repaired
+
+    # A later successful independent review closes integrated repairs once,
+    # in its own atomic specialist completion. A duplicate recheck is a no-op.
+    passed_run=run(rollback_project)
+    conn.execute("UPDATE public.factory_runs SET metadata=jsonb_set(metadata,'{change_set_id}',to_jsonb(%s::text)) WHERE id=%s",(str(valid_cs),passed_run))
+    repair_job=repaired["repair"]["repair_job_id"]
+    conn.execute("UPDATE public.factory_repair_jobs SET status='integrated' WHERE id=%s",(repair_job,))
+    enqueue(passed_run)
+    passed_claim=claim("repair-recheck-worker")
+    passed=complete(passed_claim["job_id"],passed_claim["claim_token"],"passed")
+    assert passed["post_review_applied"] is True,passed
+    assert passed["repair_recheck"]["updated"]==1,passed
+    assert one("SELECT status FROM public.factory_repair_jobs WHERE id=%s",(repair_job,))=="passed"
+    redundant=one("SELECT public.factory_close_repairs_after_specialist_pass(%s)",(passed_claim["job_id"],))
+    assert redundant["updated"]==0,redundant
+    assert one("SELECT count(*) FROM public.factory_audit_events WHERE event_type='repair.recheck.passed'")==1
+    # A second project can still complete while a separate project is paused.
+    assert claim("no-pending-work") is None
 
     print("SPECIALIST_EPOCH_POSTGRES_PASS=1")
