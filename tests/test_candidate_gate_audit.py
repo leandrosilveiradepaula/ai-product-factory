@@ -85,6 +85,8 @@ def observer(cp,gh, *, key=PROJECT,number=PR,sha=SHA):
             prefix+"/commits/"+sha+"/check-runs?per_page=100":gh["checks"],
             prefix+"/actions/runs?head_sha="+sha+"&per_page=100":gh["runs"],
         }
+        if path=="/repos/"+cp["project"][0]["repository"] and path not in lookup:
+            return gh["repo"]
         if path not in lookup:raise AssertionError("Unexpected GitHub GET "+path)
         return lookup[path]
     report=observe_candidate_gates(
@@ -396,6 +398,8 @@ class OwnerCommandTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden,job)
+        self.assertIn("needs: schedule-probe",job)
+        self.assertIn("always() && github.event_name",job)
         self.assertEqual(job.count("FACTORY_GITHUB_TOKEN"),2)
 
 

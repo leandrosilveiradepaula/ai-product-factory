@@ -1057,7 +1057,8 @@ jobs:
   # Owner exact-PR diagnostic reuses trusted Control Plane OIDC and is
   # independent of scheduler, agents, CI/Preview dispatch and production.
   candidate-gates-readonly:
-    if: ${{ github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.number == 713 && !github.event.issue.pull_request && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/factory-candidate-gates ') }}
+    needs: schedule-probe
+    if: ${{ always() && github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.number == 713 && !github.event.issue.pull_request && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/factory-candidate-gates ') }}
     environment: openai-api
     runs-on: ubuntu-latest
     timeout-minutes: 7
