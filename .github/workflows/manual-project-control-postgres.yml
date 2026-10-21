@@ -6,6 +6,8 @@ on:
       - "supabase/migrations/*manual_project_execution_controls.sql"
       - "supabase/migrations/*fence_scheduler_eligibility_manual_control.sql"
       - "supabase/migrations/*fence_recovery_manual_project_control.sql"
+      - "supabase/migrations/*fence_terminal_descendant_recovery_manual_control.sql"
+      - "tests/test_terminal_descendant_operator_fence.py"
       - "scripts/verify_recovery_manual_project_control_postgres.py"
       - "tests/test_recovery_operator_control_contract.py"
       - "scripts/verify_scheduler_control_eligibility_postgres.py"

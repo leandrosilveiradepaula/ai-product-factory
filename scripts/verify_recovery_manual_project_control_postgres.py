@@ -21,6 +21,7 @@ if (
 
 root = Path(__file__).resolve().parents[1]
 migration = (root / "supabase/migrations/20261020194500_fence_recovery_manual_project_control.sql").read_text()
+terminal_migration = (root / "supabase/migrations/20261021014000_fence_terminal_descendant_recovery_manual_control.sql").read_text()
 schema = """
 CREATE TABLE public.factory_projects(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),project_key text NOT NULL UNIQUE,
@@ -48,8 +49,9 @@ CREATE TABLE public.factory_runs(
  branch_name text,last_error text);
 CREATE TABLE public.factory_change_sets(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),project_id uuid REFERENCES public.factory_projects(id),
+ root_task_id uuid REFERENCES public.factory_tasks(id),
  status text NOT NULL,lease_owner text,lease_expires_at timestamptz,
- updated_at timestamptz DEFAULT now(),attempt_count int DEFAULT 0,
+ created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(),attempt_count int DEFAULT 0,
  metadata jsonb DEFAULT '{}'::jsonb);
 CREATE TABLE public.factory_change_set_work_units(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),task_id uuid REFERENCES public.factory_tasks(id),
@@ -74,6 +76,7 @@ CREATE TABLE public.factory_audit_events(
 with psycopg.connect(dsn, autocommit=True) as conn:
     conn.execute(schema)
     conn.execute(migration)
+    conn.execute(terminal_migration)
     def single(sql, args=()):
         return conn.execute(sql, args).fetchone()[0]
     def project(key, state, generation=1):
@@ -202,5 +205,103 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         raise AssertionError("inactive project admitted")
     except psycopg.Error as e:
         assert e.sqlstate=="PT409"
+
+
+    # Terminal reconciliation was the remaining unfenced recovery RPC.
+    # A cancelled parent is not permission to modify its paused/stopped children.
+    # Independent running projects must still make progress in this same call.
+    live = project("terminal-running","running")
+    def cancelled_parent(pid):
+        return task(pid,"cancelled")
+    parent_paused = cancelled_parent(paused)
+    parent_stopped = cancelled_parent(stopped)
+    parent_running = cancelled_parent(live)
+    child_paused = task(paused,"queued")
+    child_stopped = task(stopped,"queued")
+    child_running = task(live,"queued")
+    child_integrated = task(live,"integrated")
+    # Deliberately cross-project parent: no project may cancel another project's child.
+    cross_project_child = task(live,"queued")
+    for child_id,parent_id in ((child_paused,parent_paused),(child_stopped,parent_stopped),
+                               (child_running,parent_running),(child_integrated,parent_running),
+                               (cross_project_child,parent_paused)):
+        conn.execute("UPDATE public.factory_tasks SET parent_task_id=%s WHERE id=%s",
+                     (parent_id,child_id))
+    def change_set_for(pid,root):
+        return single(
+            "INSERT INTO public.factory_change_sets(project_id,root_task_id,status) VALUES (%s,%s,'integrating') RETURNING id",
+            (pid,root),
+        )
+    cs_paused=change_set_for(paused,parent_paused)
+    cs_stopped=change_set_for(stopped,parent_stopped)
+    cs_running=change_set_for(live,parent_running)
+    counts=single("SELECT public.factory_reconcile_terminal_task_descendants()")
+    assert counts=={"completed_children":1,"cancelled_children":1,"superseded_change_sets":1},counts
+    for tid in (child_paused,child_stopped,cross_project_child):
+        assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(tid,))=="queued"
+    assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(child_integrated,))=="completed"
+    assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(child_running,))=="cancelled"
+    for sid in (cs_paused,cs_stopped):
+        assert single("SELECT status FROM public.factory_change_sets WHERE id=%s",(sid,))=="integrating"
+    assert single("SELECT status FROM public.factory_change_sets WHERE id=%s",(cs_running,))=="superseded"
+    assert single("SELECT public.factory_reconcile_terminal_task_descendants()")=={
+        "completed_children":0,"cancelled_children":0,"superseded_change_sets":0
+    }
+    # Resume preserves old work until an authorized recovery, with no new run.
+    before_runs=single("SELECT count(*) FROM public.factory_runs")
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='running',generation=2 WHERE project_id=%s",(paused,))
+    counts=single("SELECT public.factory_reconcile_terminal_task_descendants()")
+    assert counts=={"completed_children":0,"cancelled_children":1,"superseded_change_sets":1},counts
+    assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(child_paused,))=="cancelled"
+    assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(cross_project_child,))=="queued"
+    assert single("SELECT status FROM public.factory_change_sets WHERE id=%s",(cs_paused,))=="superseded"
+    assert single("SELECT count(*) FROM public.factory_runs")==before_runs
+
+    # Simulate an in-flight operator pause with the control row locked. A
+    # second worker must SKIP that project instead of blocking/deadlocking,
+    # and must still reconcile an unrelated running project's ready child.
+    race=project("terminal-pausing","running")
+    race_parent=cancelled_parent(race)
+    race_child=task(race,"queued")
+    conn.execute("UPDATE public.factory_tasks SET parent_task_id=%s WHERE id=%s",(race_parent,race_child))
+    live_2=project("terminal-independent","running")
+    other_parent=cancelled_parent(live_2)
+    other_child=task(live_2,"queued")
+    conn.execute("UPDATE public.factory_tasks SET parent_task_id=%s WHERE id=%s",(other_parent,other_child))
+    with psycopg.connect(dsn) as pausing:
+        pausing.execute("UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(race,))
+        with psycopg.connect(dsn,autocommit=True) as recovering:
+            recovering.execute("SET statement_timeout='2000ms'")
+            race_count=recovering.execute("SELECT public.factory_reconcile_terminal_task_descendants()").fetchone()[0]
+            assert race_count["cancelled_children"]==1,race_count
+            assert recovering.execute("SELECT status FROM public.factory_tasks WHERE id=%s",(race_child,)).fetchone()[0]=="queued"
+            assert recovering.execute("SELECT status FROM public.factory_tasks WHERE id=%s",(other_child,)).fetchone()[0]=="cancelled"
+        pausing.commit()
+    assert single("SELECT public.factory_reconcile_terminal_task_descendants()")=={
+        "completed_children":0,"cancelled_children":0,"superseded_change_sets":0
+    }
+    assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(race_child,))=="queued"
+
+    # Reverse interleave: recovery holds a shared project-control lock until
+    # its transaction commits; Pause cannot commit between guard and mutation.
+    share=project("terminal-share-lock","running")
+    share_parent=cancelled_parent(share)
+    share_child=task(share,"queued")
+    conn.execute("UPDATE public.factory_tasks SET parent_task_id=%s WHERE id=%s",(share_parent,share_child))
+    with psycopg.connect(dsn) as reconciler, psycopg.connect(dsn,autocommit=True) as pauser:
+        first=reconciler.execute("SELECT public.factory_reconcile_terminal_task_descendants()").fetchone()[0]
+        assert first["cancelled_children"]==1,first
+        pauser.execute("SET lock_timeout='200ms'")
+        try:
+            pauser.execute("UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(share,))
+            raise AssertionError("Pause committed through an in-flight terminal recovery")
+        except psycopg.Error as e:
+            assert e.sqlstate=="55P03",(e.sqlstate,str(e))
+        reconciler.commit()
+        pauser.execute("UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(share,))
+    assert single("SELECT status FROM public.factory_tasks WHERE id=%s",(share_child,))=="cancelled"
+    assert single("SELECT public.factory_reconcile_terminal_task_descendants()")=={
+        "completed_children":0,"cancelled_children":0,"superseded_change_sets":0
+    }
 
 print("RECOVERY_MANUAL_CONTROL_POSTGRES_PASS=1")
