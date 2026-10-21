@@ -403,7 +403,8 @@ with psycopg.connect(DSN,autocommit=True) as conn:
                     json.dumps(summary if summary is not None else followup(rid,sha))))
 
     legacy,legacy_run=legacy_fixture("real-pr-997-pattern")
-    assert rows_after()==[], "old outbox should suppress already-audited releases"
+    assert all(x["run_id"]!=str(legacy_run) for x in rows_after()), (
+        "legacy release must be excluded from normal outbox despite other pending runs")
     current=legacy_candidates()
     assert len(current)==1 and current[0]["project_id"]==str(legacy),current
     assert current[0]["run_id"]==str(legacy_run) and current[0]["merge_sha"]==MERGE

@@ -172,7 +172,7 @@ jobs:
       - name: Repair readiness for current verified legacy human releases
         # Optional SQL capability: before its authorized migration, the
         # bounded command reports blocked_migration_not_applied with zero writes.
-        # No queue claim, GitHub write, Preview, paid model, or auto-merge.
+        # No queue claim, GitHub write, Preview, paid model, or pull-request merge.
         if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
         continue-on-error: true
         shell: bash
