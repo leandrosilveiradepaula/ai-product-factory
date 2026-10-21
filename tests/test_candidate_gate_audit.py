@@ -46,7 +46,8 @@ def fixtures(preview=None,with_block=True):
               "draft":True,"changed_files":2,
               "head":{"sha":SHA,"ref":BRANCH,"repo":{"full_name":REPO}},
               "base":{"ref":"main","repo":{"full_name":REPO}}},
-        "files":[{"filename":"src/web/main.tsx"},{"filename":"supabase/migrations/002.sql"}],
+        "files":[{"filename":"src/web/main.tsx","status":"modified"},
+                 {"filename":"supabase/migrations/002.sql","status":"added"}],
         "checks":{"total_count":2,"check_runs":[
             {"id":10,"name":"runner-preflight","head_sha":SHA,
              "status":"completed","conclusion":"failure","app":{"slug":"github-actions"}},
@@ -130,6 +131,7 @@ class CandidateGateTests(unittest.TestCase):
     def test_native_green_and_explicit_no_preview_still_require_merge(self):
         cp,gh=fixtures(preview={"required":False,"reason":"no deployable surface"},with_block=False)
         mark_ci_green(gh)
+        gh["pr"]["draft"]=False
         report,_=observer(cp,gh)
         self.assertEqual(report["native_ci"]["status"],"verified")
         self.assertEqual(report["preview"]["status"],"not_applicable_by_explicit_policy_or_changed_paths")
@@ -146,9 +148,22 @@ class CandidateGateTests(unittest.TestCase):
         self.assertEqual(report["preview"]["status"],"browser_evidence_not_verified")
         self.assertIn("preview_browser_evidence_not_verified",report["reason_codes"])
 
+    def test_rename_out_of_required_preview_path_is_not_treated_as_no_change(self):
+        cp,gh=fixtures(preview={"provider":"vercel","required_paths":["src/web/**"]})
+        mark_ci_green(gh)
+        gh["files"]=[{
+            "filename":"src/core/moved.ts","status":"renamed",
+            "previous_filename":"src/web/main.tsx",
+        }]
+        gh["pr"]["changed_files"]=1
+        report,_=observer(cp,gh)
+        self.assertTrue(report["preview"]["required"])
+        self.assertEqual(report["preview"]["matched_path_count"],1)
+        self.assertIn("preview_browser_evidence_not_verified",report["reason_codes"])
+
     def test_explicit_scoped_no_preview_on_other_codepath(self):
         cp,gh=fixtures(preview={"provider":"vercel","required_paths":["apps/console/**"]})
-        gh["files"]=[{"filename":"src/ai_product_factory/safe_worker.py"}]
+        gh["files"]=[{"filename":"src/ai_product_factory/safe_worker.py","status":"modified"}]
         gh["pr"]["changed_files"]=1
         report,_=observer(cp,gh)
         self.assertFalse(report["preview"]["required"])
@@ -177,6 +192,13 @@ class CandidateGateTests(unittest.TestCase):
                 r,_=observer(cp,gh)
                 self.assertIn("project_not_running",r["reason_codes"])
                 self.assertFalse(r["ready_for_production"])
+
+    def test_draft_candidate_is_an_explicit_release_blocker(self):
+        cp,gh=fixtures(preview={"required":False,"reason":"backend-only"},with_block=False)
+        mark_ci_green(gh)
+        report,_=observer(cp,gh)
+        self.assertIn("candidate_pr_draft",report["reason_codes"])
+        self.assertFalse(report["release"]["authorized"])
 
     def test_head_sha_must_match_actual_open_pr(self):
         alterations=[
@@ -242,6 +264,36 @@ class CandidateGateTests(unittest.TestCase):
         gh["runs"]["total_count"]=3
         r,_=observer(cp,gh)
         self.assertEqual(r["native_ci"]["status"],"blocked")
+
+    def test_every_latest_native_pr_workflow_must_pass(self):
+        cp,gh=fixtures()
+        mark_ci_green(gh)
+        gh["runs"]["workflow_runs"].append({
+            "id":75,"name":"Security verification","head_sha":SHA,
+            "event":"pull_request","status":"completed","conclusion":"failure",
+            "head_branch":BRANCH,"path":".github/workflows/security.yml",
+            "repository":{"full_name":REPO},
+        })
+        gh["runs"]["total_count"]=3
+        r,_=observer(cp,gh)
+        self.assertEqual(r["native_ci"]["status"],"blocked")
+        self.assertEqual(r["native_ci"]["latest_pr_workflows"],2)
+        self.assertEqual(r["native_ci"]["failed_pr_workflows"],1)
+
+    def test_pending_native_pr_workflow_blocks_even_when_another_is_green(self):
+        cp,gh=fixtures()
+        mark_ci_green(gh)
+        gh["runs"]["workflow_runs"].append({
+            "id":75,"name":"Security verification","head_sha":SHA,
+            "event":"pull_request","status":"in_progress","conclusion":None,
+            "head_branch":BRANCH,"path":".github/workflows/security.yml",
+            "repository":{"full_name":REPO},
+        })
+        gh["runs"]["total_count"]=3
+        r,_=observer(cp,gh)
+        self.assertEqual(r["native_ci"]["status"],"blocked")
+        self.assertEqual(r["native_ci"]["latest_pr_workflow_state"],"missing_or_pending")
+        self.assertEqual(r["native_ci"]["pending_pr_workflows"],1)
 
     def test_ci_skipped_is_never_success(self):
         cp,gh=fixtures()
@@ -311,6 +363,19 @@ class CandidateGateTests(unittest.TestCase):
         gh["files"][1]["filename"]=gh["files"][0]["filename"]
         with self.assertRaises(CandidateGateEvidenceError):
             observer(cp,gh)
+
+    def test_changed_file_status_and_rename_provenance_fail_closed(self):
+        cp,gh=fixtures()
+        for row in (
+            {"filename":"src/a.py"},
+            {"filename":"src/a.py","status":"renamed"},
+            {"filename":"src/a.py","status":"renamed","previous_filename":"src/a.py"},
+            {"filename":"src/a.py","status":"modified","previous_filename":"src/old.py"},
+        ):
+            gh["files"]=[row]
+            gh["pr"]["changed_files"]=1
+            with self.subTest(row=row),self.assertRaises(CandidateGateEvidenceError):
+                observer(cp,gh)
 
 
 class OwnerCommandTests(unittest.TestCase):

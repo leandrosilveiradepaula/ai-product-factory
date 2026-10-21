@@ -173,6 +173,10 @@ def evaluate_journey(
         raise ValueError("evidence is not linked to an explicit operator action")
     if not isinstance(start_command.get("actor_id"), str) or not start_command["actor_id"].strip():
         raise ValueError("explicit operator action has no actor identity")
+    if (not isinstance(runs,(list,tuple))
+        or any(not isinstance(row,Mapping) or not isinstance(row.get("id"),str)
+               or not row["id"].strip() for row in runs)):
+        raise ValueError("malformed bounded run lineage")
     run_ids = {str(row.get("id")) for row in runs}
     if root_run_id not in run_ids:
         raise ValueError("Start run is missing from bounded lineage")
@@ -232,9 +236,31 @@ def evaluate_journey(
         discovered = has_stage("discovery")
         specified = has_stage("specification")
     planned = has_stage("planning")
+    if (not isinstance(change_sets,(list,tuple))
+        or any(not isinstance(cs,Mapping) or cs.get("project_id")!=pid
+               or not isinstance(cs.get("id"),str) or not cs["id"].strip()
+               for cs in change_sets)):
+        raise ValueError("Change Set is outside the audited project")
     cs_ids = {str(cs.get("id")) for cs in change_sets}
     if len(cs_ids) != len(change_sets):
         raise ValueError("duplicate Change Set in bounded lineage")
+    # Materialization precedes dispatch: pending Work Units intentionally have
+    # run_id=NULL in the versioned Change Set schema. A NULL run can never
+    # prove routing, implementation or completion. Once work is assigned,
+    # its run must be a descendant of the selected human Start.
+    def _valid_unit_run(unit: Mapping[str, Any]) -> bool:
+        run = unit.get("run_id")
+        if run is None:
+            return unit.get("status") == "pending" and unit.get("output_commit") is None
+        return isinstance(run, str) and run in run_ids
+
+    if (not isinstance(work_units,(list,tuple))
+        or any(not isinstance(unit,Mapping)
+               or str(unit.get("change_set_id")) not in cs_ids
+               or not _valid_unit_run(unit)
+               or not isinstance(unit.get("id"),str) or not unit["id"].strip()
+               for unit in work_units)):
+        raise ValueError("Work Unit is outside the audited Change Set lineage")
     unit_ids = {str(u.get("id")) for u in work_units}
     if len(unit_ids) != len(work_units):
         raise ValueError("duplicate Work Unit in bounded lineage")
@@ -260,6 +286,15 @@ def evaluate_journey(
     ]
     candidate_shas = {str(cs.get("candidate_commit")) for cs in change_sets
                       if isinstance(cs.get("candidate_commit"), str) and SHA.fullmatch(cs["candidate_commit"])}
+    if (not isinstance(deployments,(list,tuple))
+        or any(not isinstance(row,Mapping) or str(row.get("run_id")) not in run_ids
+               for row in deployments)):
+        raise ValueError("deployment is outside the audited run lineage")
+    if (not isinstance(release_reports,(list,tuple))
+        or any(not isinstance(row,Mapping) or row.get("project_id")!=pid
+               or str(row.get("run_id")) not in run_ids
+               for row in release_reports)):
+        raise ValueError("release report is outside the audited project lineage")
     receipt_pairs: dict[str, tuple[int, str]] = {}
     for row in create_pr_receipts:
         if row.get("run_id") not in run_ids or row.get("operation") != "create_pr":

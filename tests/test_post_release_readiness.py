@@ -72,6 +72,17 @@ class PostReleaseReadinessTests(unittest.TestCase):
             report_rows=[report({"ready":False,"status":"not_ready"})])
         self.assertEqual(failed["status"],"not_ready")
 
+    def test_untrusted_release_identity_is_redacted_before_any_followup(self):
+        out=summarize_released_product(
+            project_id="unsafe/project",run_id="run;secret",merge_sha="sk-proj-secret",
+            report_rows=[report()],
+        )
+        self.assertEqual(out["status"],"unknown")
+        self.assertEqual(out["reason_code"],"release_identity_unverified")
+        self.assertFalse(out["report_verified"])
+        self.assertEqual((out["release_run_id"],out["merge_sha"]),("", ""))
+        self.assertNotIn("secret",str(out))
+
     def test_manifest_tampering_fails_validation_without_leaking(self):
         correct=summarize_released_product(project_id=P,run_id=R,merge_sha=M,report_rows=[report()])
         tests=[

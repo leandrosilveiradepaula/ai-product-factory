@@ -6,6 +6,13 @@
 - Cinco blocos funcionais propostos e codificados: (1) identidade cross-repo exata de projeto/PR/head/default_branch; (2) CI do destino com checks e workflows reais, rejeitando skips e QA de outro repo; (3) applicability Preview usando diff e manifest; (4) execution control e Change Sets bloqueados sem replay; (5) comando owner-only e artefato sanitizado com testes de regressao.
 - Novo auditor emite status blocked e razoes evidenciadas, nunca autoriza release ou modelo pago. Validar CI da PR antes do merge humano; so apos merge exercitar comando real e consultar artefato.
 
+### Complemento: proveniência completa de workflow, Preview e linhagem
+
+- O auditor agrupa os runs `pull_request` pelo arquivo do workflow nativo e exige sucesso no retry mais recente de **cada** grupo no repository, branch e SHA candidatos exatos. Um único run com id maior não pode ocultar outro workflow pendente ou falho no mesmo commit.
+- A política Preview recebe os dois paths de um rename. Remover/mover um arquivo de `required_paths` não converte Preview em N/A. Inventário sem status, rename sem origem ou path ambíguo falha fechado.
+- A evidência da jornada recusa Change Set, Work Unit, deployment ou release report fora do projeto/linhagem do Start selecionado. Identidade inválida de release não é refletida no follow-up operacional.
+- Essas barreiras continuam somente leitura: não criam run, não chamam modelo pago, não aplicam migration e não autorizam merge. Uma PR draft expõe `candidate_pr_draft`; mesmo com todas as demais provas, `human_production_merge_pending` e `authorized=false` permanecem até ação humana.
+
 ## 21/10/2026 — Diagnóstico de integração de run terminal com Change Set (candidato #713)
 
 - Evidência real: auditor E2E owner-only #39627896075 confirmou **12/12** etapas da continuação platform Factory `945c0da5-f36f-46da-a454-072037a988a5`, PR #997, `operations`; isso não certifica `product_ready` (permanece `false`, 6 domínios pendentes).

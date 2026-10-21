@@ -40,6 +40,13 @@ def summarize_released_product(*, project_id: str, run_id: str,
     "passed" on the *candidate* is not proof of the current merged HEAD or
     full-product status. Never copy report free text into downstream prompts.
     """
+    # This helper is shared by the release reconciler and read-only
+    # observability.  Do not echo an unvalidated identifier from a malformed
+    # queue/event into a durable follow-up or dashboard report.
+    if (not isinstance(project_id,str) or not _UUID.fullmatch(project_id)
+            or not isinstance(run_id,str) or not _UUID.fullmatch(run_id)
+            or not isinstance(merge_sha,str) or not _SHA.fullmatch(merge_sha)):
+        return _unknown(reason="release_identity_unverified",run_id="",merge_sha="")
     if not isinstance(report_rows, list) or len(report_rows) != 1:
         return _unknown(reason="release_report_unavailable_or_ambiguous",
                         run_id=run_id, merge_sha=merge_sha)
@@ -106,6 +113,7 @@ def validated_manifest_followup(manifest: object) -> dict | None:
             or raw.get("pending_domains") != list(_DOMAINS)):
         return None
     allowed_reasons = {
+        "release_identity_unverified",
         "release_report_unavailable_or_ambiguous", "release_report_identity_unverified",
         "release_report_provenance_unverified", "global_readiness_not_assessed",
         "candidate_readiness_not_ready", "candidate_assessment_not_current_head",
