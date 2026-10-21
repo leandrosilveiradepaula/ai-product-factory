@@ -1588,3 +1588,31 @@ Python com a sua aplicação.
 - **Prontidao global**: somente os seis dominios reais geram gaps; subset ou lista fraudada nao pode parecer um produto avaliado.
 - Cobertura ampliada no PostgreSQL descartavel: compatibilidade do RPC, Change Set atômico, rollback de snapshot tambem desfaz Change Set, Pause e fairness, stale generation, blocked CS. Nenhuma alteracao em producao, custos ou pilotagem.
 
+## 21/10/2026 — Reparo durável de CI nativa (#1036, candidato)
+
+Uma falha de CI de um candidato Change Set não deve mais ser tratada como
+um simples `needs_correction`. O runtime coleta somente metadados
+sanitizados de checks GitHub Actions do **SHA exato** do PR e chama a RPC
+`factory_enqueue_ci_repair`. A RPC verifica `run`, `project`, Change Set,
+PR, branch, recibo `create_pr`, SHA e `execution_generation` no mesmo
+commit antes de criar uma Work Unit de reparo limitada no Change Set.
+
+Somente falha classificada positivamente como `code` pode materializar a
+Work Unit. Runner, infraestrutura, permissão, quota ou classe desconhecida
+ficam registrados como bloqueio durável, sem patch especulativo, sem nova
+chamada de modelo e sem tentar contornar a CI. Tentativas de código são
+limitadas a duas por padrão (máximo três); ao esgotar, a run fica em
+`failed_gate` e o Change Set é bloqueado.
+
+O worker existente Direct/Codex continua dono do lease, escopo, orçamento e
+fencing de geração. A integração existente produz o novo SHA no mesmo PR;
+triggers do Control Plane registram `integrated`, `awaiting_ci` e `passed`
+atomicamente com as transições de Change Set/run. Pausa, Stop, SHA divergente
+ou ausência da migration recusam a continuação. Não existe auto-merge,
+Preview antes de CI verde, migration automática ou chamada paga de smoke.
+
+Esta migration candidata (`20261021213414_durable_ci_repair_requests.sql`)
+**não foi aplicada** no Supabase de produção. Validar no PostgreSQL isolado,
+CI e candidato final; aplicar apenas pelo gate humano de migration do Control
+Plane. Docker/PostgreSQL local não estava disponível neste workstation.
+
