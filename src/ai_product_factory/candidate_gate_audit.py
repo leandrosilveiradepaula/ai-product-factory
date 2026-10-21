@@ -70,28 +70,50 @@ def _native_ci(checks: object, runs: object, repo: str, sha: str, branch: str) -
     for row in run_rows:
         identity=row.get("id")
         repository=(row.get("repository") or {}).get("full_name")
+        path=row.get("path")
         if (type(identity) is not int or identity<=0 or identity in seen_run_ids
             or row.get("head_sha")!=sha or repository!=repo
             or row.get("event") not in {"push","pull_request"}
-            or not isinstance(row.get("path"),str)
-            or not row["path"].startswith(".github/workflows/")
+            or not isinstance(path,str)
+            or not re.fullmatch(r"\.github/workflows/[A-Za-z0-9_.-]{1,180}\.ya?ml",path,re.ASCII)
             or row.get("head_branch")!=branch):
             raise CandidateGateEvidenceError("cross-repository or invalid native workflow")
         seen_run_ids.add(identity)
         matching.append(row)
-    # Require an actual successful pull_request workflow. A check from
-    # Factory, a successful push alone, or a skipped downstream job is not CI.
+    # Require every latest target-native pull_request workflow to pass.  It is
+    # not enough for the numerically newest run across all workflow files to
+    # succeed: another required workflow can be pending or failed on this same
+    # SHA.  A retry of the *same* workflow is represented by a newer run id.
+    # A check from Factory, a successful push alone, or a skipped downstream
+    # job is never substituted for target-native PR CI.
     prs=[x for x in matching if x["event"]=="pull_request"]
-    latest_pr=max(prs,key=lambda x:x["id"]) if prs else None
-    pull_verified=bool(latest_pr and latest_pr.get("status")=="completed"
-                       and latest_pr.get("conclusion")=="success")
+    latest_pr: dict[str,dict]={}
+    for row in prs:
+        key=row["path"]
+        if key not in latest_pr or row["id"]>latest_pr[key]["id"]:
+            latest_pr[key]=row
+    selected_pr=list(latest_pr.values())
+    pull_verified=bool(selected_pr) and all(
+        x.get("status")=="completed" and x.get("conclusion")=="success"
+        for x in selected_pr
+    )
+    if not selected_pr or any(row.get("status")!="completed" for row in selected_pr):
+        workflow_state="missing_or_pending"
+    elif any(row.get("conclusion")!="success" for row in selected_pr):
+        workflow_state="failure"
+    else:
+        workflow_state="success"
     failed=sum(x.get("status")=="completed" and x.get("conclusion")=="failure" for x in selected)
     skipped=sum(x.get("status")=="completed" and x.get("conclusion")=="skipped" for x in selected)
     return {
         "status":"verified" if check_verified and pull_verified else "blocked",
-        "latest_pr_workflow_state":(
-            latest_pr.get("conclusion") if latest_pr and latest_pr.get("status")=="completed"
-            else "missing_or_pending"),
+        "latest_pr_workflow_state":workflow_state,
+        "latest_pr_workflows":len(selected_pr),
+        "failed_pr_workflows":sum(
+            row.get("status")=="completed" and row.get("conclusion")!="success"
+            for row in selected_pr
+        ),
+        "pending_pr_workflows":sum(row.get("status")!="completed" for row in selected_pr),
         "checks_observed":len(check_rows),
         "latest_checks":len(selected),
         "failed_checks":failed,
@@ -101,18 +123,36 @@ def _native_ci(checks: object, runs: object, repo: str, sha: str, branch: str) -
     }
 
 
+def _safe_path(value: object) -> str | None:
+    if (not isinstance(value,str) or not value or len(value)>512
+        or value.startswith("/") or "\\" in value
+        or ".." in value.split("/") or "\n" in value or "\x00" in value):
+        return None
+    return value
+
+
 def _paths(payload: object, expected: int) -> tuple[str,...]:
     if (not 0 < expected <= _MAX_FILES or not isinstance(payload,list)
         or len(payload)!=expected):
         raise CandidateGateEvidenceError("incomplete changed-file inventory")
     paths=[]
     for row in payload:
-        name=row.get("filename") if isinstance(row,dict) else None
-        if (not isinstance(name,str) or not name or len(name)>512
-            or name.startswith("/") or ".." in name.split("/")
-            or "\n" in name or "\x00" in name):
+        if not isinstance(row,dict):
+            raise CandidateGateEvidenceError("invalid changed-file provenance")
+        name=_safe_path(row.get("filename"))
+        status=row.get("status")
+        if name is None or status not in {"added","modified","removed","renamed","copied","changed","unchanged"}:
             raise CandidateGateEvidenceError("invalid changed-file provenance")
         paths.append(name)
+        previous=row.get("previous_filename")
+        if status=="renamed":
+            previous=_safe_path(previous)
+            if previous is None or previous==name:
+                raise CandidateGateEvidenceError("invalid renamed-file provenance")
+            # A rename out of a deployable path is still a deployable change.
+            paths.append(previous)
+        elif previous is not None:
+            raise CandidateGateEvidenceError("unexpected previous changed-file path")
     if len(set(paths))!=len(paths):
         raise CandidateGateEvidenceError("duplicate changed-file provenance")
     return tuple(paths)
@@ -169,7 +209,9 @@ def observe_candidate_gates(
         or (head.get("repo") or {}).get("full_name")!=repo
         or (base.get("repo") or {}).get("full_name")!=repo
         or base.get("ref")!=default
-        or not isinstance(head.get("ref"),str)):
+        or not isinstance(head.get("ref"),str)
+        or not re.fullmatch(r"[A-Za-z0-9._/-]{1,100}",head["ref"])
+        or type(pr.get("draft")) is not bool):
         raise CandidateGateEvidenceError("PR is not the exact open target candidate")
     branch=head["ref"]
     changed=_paths(
@@ -207,6 +249,8 @@ def observe_candidate_gates(
     blockers=[]
     if ctrl["state"]!="running" or ctrl["generation"]<1:
         blockers.append("project_not_running")
+    if pr["draft"]:
+        blockers.append("candidate_pr_draft")
     if native["status"]!="verified":
         blockers.append("native_ci_not_verified")
     if preview_status in {"policy_missing","policy_not_justified"}:

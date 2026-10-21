@@ -68,13 +68,13 @@ def scenario(*,preview_required=False,merged=False,operations=False):
             {"id":RELEASE_RUN,"status":"completed" if merged else "awaiting_release"},
         ],
         events=events,
-        change_sets=[{"id":CS,"status":"ci_pending","candidate_commit":SHA}],
+        change_sets=[{"id":CS,"project_id":PID,"status":"ci_pending","candidate_commit":SHA}],
         work_units=[{"id":UNIT,"change_set_id":CS,"run_id":WORK_RUN,
                      "status":"completed","output_commit":WORK_SHA}],
         create_pr_receipts=[{"run_id":RELEASE_RUN,"operation":"create_pr",
                              "metadata":{"head_sha":SHA,"pr":17}}],
         deployments=deployments,
-        release_reports=release_reports,
+        release_reports=[{"project_id":PID,**row} for row in release_reports],
         github={"repository":REPO,"number":17,"head_sha":SHA,"head_repository":REPO,
                 "base_ref":"main","merged":merged,
                 "merge_commit_sha":MERGE_SHA if merged else None,
@@ -202,6 +202,19 @@ class JourneyEvidenceTests(unittest.TestCase):
         r=evaluate_journey(**d)
         self.assertEqual(r.status,"blocked")
         self.assertIn("descendant_run_failed_or_blocked",r.blockers)
+
+    def test_unscoped_delivery_rows_cannot_complete_another_start(self):
+        for collection,mutation in (
+            ("change_sets",lambda d:d["change_sets"][0].update(project_id="other-project")),
+            ("work_units",lambda d:d["work_units"][0].update(run_id="other-run")),
+            ("deployments",lambda d:d["deployments"].append({"run_id":"other-run","environment":"preview","status":"success"})),
+            ("release_reports",lambda d:d["release_reports"].append({"project_id":PID,"run_id":"other-run","candidate_commit":SHA,"status":"released"})),
+        ):
+            with self.subTest(collection=collection):
+                d=scenario(preview_required=True)
+                mutation(d)
+                with self.assertRaisesRegex(ValueError,"outside the audited"):
+                    evaluate_journey(**d)
 
     def test_wrong_start_or_conflicting_pr_receipts_fail_closed(self):
         for mutate in ({"command":"resume"},{"actor_id":""},{"result":{"run_id":"old"}}):

@@ -2,7 +2,19 @@
 
 Escopo: observacao consultiva, somente leitura, de candidatos. O codigo recusa credenciais cross-repo implicitas, associacoes de projeto inconsistentes, PR de fork, SHA incorreto, inventario truncado e politica Preview ausente.
 
-Cinco evidencias: (1) identidade exata Control Plane/GitHub e controle running/generation, (2) CI nativa da PR no repositorio correto com check runs de SHA e workflow pull_request real, (3) Preview applicability por manifest e arquivos alterados, sem confundir build e browser verificado, (4) quantidade de Change Sets bloqueados existentes sem novo claim, (5) gate humano de merge sempre preservado.
+Cinco evidencias: (1) identidade exata Control Plane/GitHub e controle running/generation, (2) CI nativa da PR no repositorio correto com check runs de SHA e **todos** os workflows `pull_request` mais recentes por arquivo de workflow, (3) Preview applicability por manifest e arquivos alterados — inclusive o caminho anterior de um rename — sem confundir build e browser verificado, (4) quantidade de Change Sets bloqueados existentes sem novo claim, (5) gate humano de merge sempre preservado.
+
+Um retry antigo falho do mesmo workflow pode ser superado por seu retry mais
+novo bem-sucedido. Um segundo workflow nativo no mesmo SHA que esteja falho,
+cancelado, skipped ou ainda em andamento mantém `native_ci_not_verified`; um
+workflow bem-sucedido de `push`, QA externa ou o maior `run_id` global não
+substitui essa verificação. A PR em draft também recebe
+`candidate_pr_draft`: o artefato continua consultivo e `authorized=false`.
+
+Cada item de `/pulls/{n}/files` é validado com status e path. Para
+`status=renamed`, os paths novo e anterior são entregues à política Preview;
+assim, mover/remover código de `required_paths` não permite afirmar Preview
+N/A. Inventário sem status, rename sem origem ou paths ambíguos falha fechado.
 
 Owner command na issue Factory #713:
 
