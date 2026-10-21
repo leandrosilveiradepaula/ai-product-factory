@@ -34,7 +34,7 @@ create table public.factory_projects (
  id uuid primary key, project_key text not null, repository text not null
 );
 create table public.factory_tasks (
- id uuid primary key, project_id uuid not null references public.factory_projects(id),
+ id uuid primary key default gen_random_uuid(), project_id uuid not null references public.factory_projects(id),
  parent_task_id uuid references public.factory_tasks(id),
  external_key text, title text not null default 'Task',
  description text not null default '', status text not null default 'queued',
