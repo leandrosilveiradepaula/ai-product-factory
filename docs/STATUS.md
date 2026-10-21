@@ -1,3 +1,11 @@
+## 21/10/2026 — Auditoria generica e fail-closed por PR e SHA (#713)
+
+- Evidencia real: cron native teve gap de ~3h50 entre 13:52 e 17:41 UTC, alerta #1031. O backup autorizado no workflow_run apos OIDC preflight 17:06 executou recovery/settlement/queue probe. A alerta native deve permanecer ate dois cron sucessivos; nao mascarar outage por wake manual.
+- A Factory tem 14 failed runs historicos, dos quais uma falha segue ligada a task em estado failed e produz alerta #989. Nao presumir que uma release posterior de outra task resolveu essa falha sem comprovacao exata.
+- Service Desk #5, SHA c7b061c6f18961bd1fdfea51f59e2985bbe8247a: QA isolado npm/React/TSX e PostgreSQL/RLS/JWT/Chromium passou. CI nativa no repositorio privado falhou antes de alocar runner, Preview do projeto nao tem politica, Change Set antigo bloqueado; merge humano permanece gate.
+- Cinco blocos funcionais propostos e codificados: (1) identidade cross-repo exata de projeto/PR/head/default_branch; (2) CI do destino com checks e workflows reais, rejeitando skips e QA de outro repo; (3) applicability Preview usando diff e manifest; (4) execution control e Change Sets bloqueados sem replay; (5) comando owner-only e artefato sanitizado com testes de regressao.
+- Novo auditor emite status blocked e razoes evidenciadas, nunca autoriza release ou modelo pago. Validar CI da PR antes do merge humano; so apos merge exercitar comando real e consultar artefato.
+
 ## 21/10/2026 — Diagnóstico de integração de run terminal com Change Set (candidato #713)
 
 - Evidência real: auditor E2E owner-only #39627896075 confirmou **12/12** etapas da continuação platform Factory `945c0da5-f36f-46da-a454-072037a988a5`, PR #997, `operations`; isso não certifica `product_ready` (permanece `false`, 6 domínios pendentes).

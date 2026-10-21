@@ -1053,6 +1053,63 @@ jobs:
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode alerts
 
+
+  # Owner exact-PR diagnostic reuses trusted Control Plane OIDC and is
+  # independent of scheduler, agents, CI/Preview dispatch and production.
+  candidate-gates-readonly:
+    if: ${{ github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.number == 713 && !github.event.issue.pull_request && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/factory-candidate-gates ') }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      pull-requests: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Validate exact owner comment before protected OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from scripts.audit_candidate_gates import validate_event
+          with open(os.environ["GITHUB_EVENT_PATH"],encoding="utf-8") as source:
+              event=json.load(source)
+          key,pr_number,sha=validate_event(
+              event,repository=os.environ["GITHUB_REPOSITORY"]
+          )
+          print("verified owner candidate gate request: "+key+" pr="+str(pr_number)+" sha="+sha)
+          PY
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Observe exact project, native CI, Preview applicability and gates
+        shell: bash
+        env:
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/audit_candidate_gates.py \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/factory-candidate-gates.json"
+      - name: Preserve bounded fail-closed candidate gate receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-candidate-gates-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-candidate-gates.json
+          if-no-files-found: warn
+          retention-days: 7
+
   codex-route-preflight:
     # Independent from Primary; run only when there is actual dispatch work.
     needs: [schedule-probe, product-stage]
