@@ -125,15 +125,15 @@ class SupabaseSpecialistLaneQueue:
             "p_findings":findings,
             "p_evidence":{**evidence,"_factory_claim_token":item.claim_token},
         }) or {}
+        # One SQL transaction now finalizes the review and its repair
+        # consequence. A token-only completion without an atomic receipt
+        # is not accepted as successful.
+        if completed.get("post_review_applied") is not True:
+            raise RuntimeError("specialist completion missing atomic post-review receipt")
         if status=="failed" and item.role in {"security","qa"}:
-            repair=self._rpc("factory_enqueue_repair_from_specialist",{
-                "p_job_id":item.job_id,"p_findings":findings,"p_max_cycles":3,
-            }) or {}
-            completed["repair"]=repair
-            if repair.get("created"):
-                completed["run_status"]="repair_pending"
+            if not isinstance(completed.get("repair"),dict):
+                raise RuntimeError("specialist completion missing repair decision")
         elif status=="passed" and item.role in {"security","qa"}:
-            completed["repair_recheck"]=self._rpc(
-                "factory_close_repairs_after_specialist_pass",{"p_job_id":item.job_id}
-            ) or {}
+            if not isinstance(completed.get("repair_recheck"),dict):
+                raise RuntimeError("specialist completion missing repair reconciliation")
         return completed
