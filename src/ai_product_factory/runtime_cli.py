@@ -791,6 +791,10 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
    "release_completed":False,"integration":result}
  if getattr(pr,"base_ref",None) not in (None,"main"):
   return {"claimed":True,"status":"nonproduction_candidate_not_released","run_id":item.run_id,"pr_number":item.pr_number}
+ # The versioned RPC is a read-only compatibility fence. Until its SQL
+ # migration is applied, no human-release observation is allowed to mutate
+ # a run/report without an outbox for repair after an interrupted handoff.
+ SupabaseProjectReleaseReconciler().require_atomic_capability()
  try:_assert_project_followup(item,human_merge_observation=True)
  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  store=SupabaseDeliveryStore()

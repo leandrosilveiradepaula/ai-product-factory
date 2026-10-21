@@ -80,6 +80,9 @@ BEGIN
  FROM (
   SELECT e.id,e.project_id,e.run_id,e.payload->>'merge_sha' merge_sha
   FROM public.factory_audit_events e
+  JOIN public.factory_projects p ON p.id=e.project_id AND p.is_active=true
+  JOIN public.factory_project_execution_controls c ON c.project_id=e.project_id
+    AND c.state='running' AND c.generation>0
   WHERE e.event_type='release.reconciliation_requested' AND e.id>p_after_event_id
     AND e.project_id IS NOT NULL AND e.run_id IS NOT NULL
     AND NOT EXISTS(
@@ -118,6 +121,10 @@ DECLARE
  v_project_done boolean;
  v_written_snapshot boolean:=false;
  v_written_audit boolean:=false;
+ v_generation bigint;
+ v_set public.factory_change_sets%rowtype;
+ v_set_count integer;
+ v_set_updated boolean:=false;
 BEGIN
  IF p_merge_sha IS NULL OR p_merge_sha !~ '^[0-9a-f]{40}$'
     OR jsonb_typeof(p_release_report) IS DISTINCT FROM 'object'
@@ -136,6 +143,11 @@ BEGIN
     OR jsonb_typeof(p_followup->'candidate_assessed_domains') IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'invalid fail-closed product readiness handoff' USING errcode='PT409';
  END IF;
+ -- Reject a forged subset: the global auditor has exactly six domains.
+ IF p_followup->'pending_domains' IS DISTINCT FROM
+    '["security","observability_operations","test_strategy","product_experience","documentation","functional_completeness"]'::jsonb THEN
+  RAISE EXCEPTION 'global readiness domains incomplete' USING errcode='PT409';
+ END IF;
  IF jsonb_array_length(p_followup->'pending_domains')<1
     OR jsonb_array_length(p_followup->'pending_domains')>16
     OR EXISTS (
@@ -147,10 +159,20 @@ BEGIN
   RAISE EXCEPTION 'invalid bounded readiness domains' USING errcode='PT409';
  END IF;
 
- -- Serialize all project write paths, including repeated/reordered observer wakes.
+ -- Pause/Stop serializes against this lock. The outbox selector also
+ -- excludes paused projects so they cannot starve other eligible projects.
+ SELECT c.generation INTO v_generation
+ FROM public.factory_project_execution_controls c
+ WHERE c.project_id=p_project_id AND c.state='running' AND c.generation>0
+ FOR SHARE OF c;
+ IF NOT FOUND THEN RAISE EXCEPTION 'project release waiting for Start/Resume'
+   USING errcode='PT423'; END IF;
  SELECT * INTO v_project FROM public.factory_projects
  WHERE id=p_project_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'release project not found' USING errcode='PT409'; END IF;
+ IF v_project.is_active IS NOT TRUE THEN
+  RAISE EXCEPTION 'release project inactive' USING errcode='PT423';
+ END IF;
 
  SELECT rp.* INTO v_report FROM public.factory_release_reports rp
  JOIN public.factory_runs r ON r.id=rp.run_id
@@ -158,6 +180,8 @@ BEGIN
  WHERE rp.project_id=p_project_id AND rp.run_id=p_run_id
    AND rp.status='released' AND t.project_id=p_project_id
    AND r.status='merged' AND r.candidate_commit=p_merge_sha
+   AND (r.metadata->>'execution_generation' IS NULL
+        OR r.metadata->>'execution_generation'=v_generation::text)
    AND rp.candidate_commit ~ '^[0-9a-f]{40}$'
    AND rp.report=p_release_report
    AND rp.report->>'merge_sha'=p_merge_sha
@@ -206,6 +230,39 @@ BEGIN
  IF jsonb_typeof(v_runtime)='object' THEN
   v_new_manifest:=jsonb_set(v_new_manifest,'{runtime_readiness}',v_runtime,true);
  END IF;
+ -- A completed project with a ci_pending Change Set is still incomplete.
+ -- Finalize its Change Set inside this very same release transaction.
+ SELECT count(*) INTO v_set_count FROM public.factory_change_sets cs
+ WHERE cs.release_run_id=p_run_id;
+ IF v_set_count>1 THEN
+  RAISE EXCEPTION 'multiple Change Sets reference release run' USING errcode='PT409';
+ END IF;
+ IF v_set_count=1 THEN
+  SELECT * INTO v_set FROM public.factory_change_sets cs
+  WHERE cs.release_run_id=p_run_id FOR UPDATE;
+  IF v_set.project_id IS DISTINCT FROM p_project_id THEN
+   RAISE EXCEPTION 'release Change Set project mismatch' USING errcode='PT409';
+  END IF;
+  IF v_set.status='ci_pending' THEN
+   UPDATE public.factory_change_sets
+   SET status='completed',
+       metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+         'release',jsonb_build_object('run_id',p_run_id,
+            'merge_sha',p_merge_sha,'observed',true)),
+       updated_at=now()
+   WHERE id=v_set.id;
+   v_set_updated:=true;
+  ELSIF v_set.status='completed' THEN
+   IF v_set.metadata->'release'->>'run_id' IS DISTINCT FROM p_run_id::text
+      OR v_set.metadata->'release'->>'merge_sha' IS DISTINCT FROM p_merge_sha
+      OR v_set.metadata->'release'->'observed' IS DISTINCT FROM 'true'::jsonb THEN
+    RAISE EXCEPTION 'completed Change Set release receipt conflicts' USING errcode='PT409';
+   END IF;
+  ELSE
+   RAISE EXCEPTION 'Change Set release is not eligible' USING errcode='PT409';
+  END IF;
+ END IF;
+
  v_project_done:=v_project.lifecycle_stage='operations'
    AND v_project.manifest=v_new_manifest;
 
@@ -261,7 +318,9 @@ BEGIN
   'lifecycle_stage','operations','merge_sha',p_merge_sha,
   'product_ready',false,'pending_domains',jsonb_array_length(v_gaps),
   'idempotent',v_project_done AND v_snapshot_done AND v_audit_done,
-  'snapshot_written',v_written_snapshot,'audit_written',v_written_audit
+  'snapshot_written',v_written_snapshot,'audit_written',v_written_audit,
+  'change_set_status',CASE WHEN v_set_count=0 THEN 'not_change_set' ELSE 'completed' END,
+  'change_set_updated',v_set_updated
  );
 END;
 $function$;

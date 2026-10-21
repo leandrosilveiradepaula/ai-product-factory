@@ -48,6 +48,20 @@ class SupabaseProjectReleaseReconciler:
             raise RuntimeError("release reconciliation Control Plane unavailable") from exc
         return None if not raw else json.loads(raw)
 
+    def require_atomic_capability(self)->None:
+        """Read-only migration check before changing an observed human release.
+
+        Without the new RPC an old mark-released call could persist 'merged'
+        without an outbox, losing the opportunity for deterministic recovery.
+        """
+        value=self._request("POST","rpc/factory_pending_release_reconciliations_v1",{
+            "p_after_event_id":0,"p_limit":1,
+        })
+        if not isinstance(value,list) or len(value)>1 or any(
+            not isinstance(row,dict) for row in value
+        ):
+            raise RuntimeError("atomic release recovery capability unavailable")
+
     def reconcile(self,*,project_id:str,run_id:str,merge_sha:str)->dict:
         if (not isinstance(project_id,str) or not _UUID.fullmatch(project_id)
             or not isinstance(run_id,str) or not _UUID.fullmatch(run_id)
@@ -80,6 +94,8 @@ class SupabaseProjectReleaseReconciler:
             or type(receipt.get("idempotent")) is not bool
             or type(receipt.get("snapshot_written")) is not bool
             or type(receipt.get("audit_written")) is not bool
+            or type(receipt.get("change_set_updated")) is not bool
+            or receipt.get("change_set_status") not in {"completed","not_change_set"}
             or type(receipt.get("pending_domains")) is not int
             or receipt["pending_domains"]!=len(summary["pending_domains"])):
             raise RuntimeError("inconsistent atomic release reconciliation receipt")
