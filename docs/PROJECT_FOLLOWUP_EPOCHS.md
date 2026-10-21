@@ -98,3 +98,35 @@ Regressao offline: python -m unittest tests.test_followup_active_project_query
 tests.test_followup_execution_epochs -v. Validar CI + acceptance no SHA exato.
 Nao exige DDL, novo grant/RLS ou credencial. Migration de recovery 20261020194500
 continua pendente de autorizacao separada.
+
+## Fairness cross-wake para CI e Release
+
+Um limite de oito observacoes que sempre reinicia no inicio da fila pode
+mascarar indefinidamente um nono projeto elegivel quando oito projetos
+ativos aguardam CI, ou um merge humano. O filtro de projetos nao-running
+da #1015 e necessario, mas nao resolve esses waits legitimos.
+
+Os workers CI e Release agora tem cursor **advisory** em eventos
+append-only ja permitidos pelo Control Plane (`factory_audit_events`,
+`followup.fair_scan_reserved`). Cada wake reserva sua proxima janela
+de oito posicoes *antes* da primeira consulta externa; o wake seguinte
+inspeciona a janela seguinte. Se a fila encolheu, a varredura retorna
+a primeira janela no mesmo wake. Os registros permanecem FIFO com
+ordenacao estavel `created_at,id`, sem alterar run status ou requeue.
+
+`wait_dispatched_ci` (CI ja solicitado) e `candidate_drift_blocked`
+(SHA de PR divergente) sao **waiting**, nao trabalho concluido.
+Em CI ou Release, drift gera diagnostico, sem adotar SHA inesperado,
+registrar sucesso ou bloquear outra run. Erros de API desconhecidos
+continuam fail-closed.
+
+O cursor e apenas ordenacao, nao transacao/lease/claim nem garantia
+de exactly-once contra operacoes externas. A serializacao global do GHA
+continua vigente; RPCs e gates por geracao, custo e merge humano
+sao as unicas autoridades para efeitos. Falha na persistencia do
+cursor bloqueia a nova varredura antes de consultar GitHub.
+
+Testes gratuitos: tests.test_followup_round_robin_fairness,
+tests.test_followup_fair_continuation e acceptance/CI SHA-exato.
+Sem Console, migration, ampliacao RLS, API paga ou auto-merge.
+A migration de recovery 20261020194500 permanece independente.

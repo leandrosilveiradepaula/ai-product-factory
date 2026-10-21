@@ -58,7 +58,8 @@ from .release_intelligence import build_release_assessment,load_default_release_
 from .release_policy_store import SupabaseReleasePolicyStore
 from .provenance_replay import SupabaseProvenanceStore
 from .schedule_probe import SupabaseScheduleProbe
-from .bounded_continuation import drain_deterministic_lane, drain_waiting_followups
+from .bounded_continuation import drain_deterministic_lane, drain_waiting_followups, drain_fair_waiting_followups
+from .followup_fair_cursor import SupabaseFollowupFairCursor
 from .product_worker_readiness import record_product_worker_readiness
 from .delivery_metrics import SupabaseDeliveryMetricsReader
 from .project_release_reconciliation import SupabaseProjectReleaseReconciler
@@ -398,9 +399,11 @@ def _next_authorized_preview(queue):
    return item,None
  return None,{"claimed":True,"status":first_status,"run_id":deferred[0]}
 
-def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
+def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
  queue=SupabaseCIFollowupQueue()
- item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
+ item=(queue.next_pending(exclude_run_ids=exclude_run_ids,offset=offset) if offset
+       else queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids
+       else queue.next_pending())
  if item is None:return {"claimed":False,"status":"empty"}
  try:_assert_project_followup(item)
  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
@@ -410,7 +413,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=())->dict:
   # Never adopt a changed PR head implicitly: the release candidate, durable
   # create_pr receipt, and change-set metadata must be reconciled atomically.
   # Emit an actionable diagnostic without mutating any release or CI state.
-  return {"claimed":False,"status":"candidate_drift_blocked",
+  return {"claimed":True,"status":"candidate_drift_blocked",
    "run_id":item.run_id,"pr_number":item.pr_number,
    "change_set_id":getattr(item,"change_set_id",None),
    "recorded_candidate_commit":item.candidate_commit,
@@ -676,15 +679,21 @@ def run_preview_once()->dict:
   "preview_required":True,"preview_url":verified.deployment.preview_url,"deployment_ref":verified.deployment.deployment_ref,
   "release_report_id":recorded.get("report_id")}
 
-def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
+def run_release_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
  queue=SupabaseReleaseFollowupQueue()
- item=queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids else queue.next_pending()
+ item=(queue.next_pending(exclude_run_ids=exclude_run_ids,offset=offset) if offset
+       else queue.next_pending(exclude_run_ids=exclude_run_ids) if exclude_run_ids
+       else queue.next_pending())
  if item is None:return {"claimed":False,"status":"empty"}
  try:_assert_project_followup(item,human_merge_observation=True)
  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
- if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches verified release candidate")
+ if pr.head_sha!=item.candidate_commit:
+  return {"claimed":True,"status":"candidate_drift_blocked",
+   "run_id":item.run_id,"pr_number":item.pr_number,
+   "recorded_candidate_commit":item.candidate_commit,
+   "observed_pr_head":pr.head_sha,"requires":"atomic_candidate_reconciliation"}
  if str(getattr(pr,"base_ref",None) or "").startswith("preview/"):
   if item.merge_sha or item.release_source!="delivery":
    raise RuntimeError("nonproduction merge cannot use a production Console release receipt")
@@ -771,10 +780,13 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=())->dict:
 
 def run_bounded_deterministic_lane(mode:str,worker_id:str,max_items:int,role:str|None=None)->dict:
  # No new reservations or paid model calls: delegates to existing guarded workers.
- if mode=="ci":
-  return drain_waiting_followups(lambda ignored:run_ci_once(exclude_run_ids=ignored),max_items=max_items)
- if mode=="release":
-  return drain_waiting_followups(lambda ignored:run_release_once(exclude_run_ids=ignored),max_items=max_items)
+ if mode in {"ci","release"}:
+  cursor=SupabaseFollowupFairCursor()
+  worker=run_ci_once if mode=="ci" else run_release_once
+  return drain_fair_waiting_followups(
+   lambda ignored,offset:worker(exclude_run_ids=ignored,offset=offset),
+   lane=mode,cursor=cursor,max_items=max_items,
+  )
  if mode=="change-set-integration":
   callback=lambda:run_change_set_integration_once(worker_id);key="change_set_id"
  elif mode=="specialist":

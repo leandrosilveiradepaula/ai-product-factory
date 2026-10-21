@@ -25,15 +25,18 @@ _ACTIVE_PREDICATE = (
 )
 
 
-def active_project_followup_query(*, status: str, limit: int) -> str:
+def active_project_followup_query(*, status: str, limit: int, offset: int = 0) -> str:
     if status not in _ALLOWED_STATUS:
         raise ValueError("unsupported follow-up state")
     if type(limit) is not int or not 1 <= limit <= 50:
         raise ValueError("invalid bounded active follow-up window")
+    if type(offset) is not int or not 0 <= offset <= 1000000:
+        raise ValueError("invalid bounded follow-up offset")
     return (
         "factory_runs?select=id,task_id,branch_name,candidate_commit,"
         "execution_route,metadata," + _ACTIVE_EMBED
         + "&status=eq." + status
         + _ACTIVE_PREDICATE
         + "&order=created_at.asc,id.asc&limit=" + str(limit)
+        + ("&offset=" + str(offset) if offset else "")
     )

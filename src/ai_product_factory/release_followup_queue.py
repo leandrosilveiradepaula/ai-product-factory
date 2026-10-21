@@ -45,14 +45,14 @@ class SupabaseReleaseFollowupQueue:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
-    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = ()) -> ReleaseFollowupItem | None:
+    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = (), offset: int = 0) -> ReleaseFollowupItem | None:
         # Read-only bounded FIFO lookahead. A pending external CI/human gate
         # must not mask later candidates already eligible for follow-up.
         if (not isinstance(exclude_run_ids, tuple) or len(exclude_run_ids) > 8
             or any(not isinstance(v, str) or not v.strip() for v in exclude_run_ids)):
             raise ValueError("invalid bounded follow-up exclusion set")
         limit = 12 if exclude_run_ids else 1
-        runs=self._get(active_project_followup_query(status="awaiting_release",limit=limit))
+        runs=self._get(active_project_followup_query(status="awaiting_release",limit=limit,offset=offset))
         if not isinstance(runs, list) or any(not isinstance(row, dict) for row in runs):
             raise RuntimeError("invalid follow-up queue response")
         skipped = set(exclude_run_ids)
