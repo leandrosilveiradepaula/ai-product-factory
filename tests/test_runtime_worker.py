@@ -56,7 +56,7 @@ class RuntimeWorkerTests(unittest.TestCase):
         ).run_once()
         self.assertEqual(result.status,WorkStatus.FAILED)
         self.assertEqual(result.evidence,())
-        self.assertIn("deferred or mock",result.error)
+        self.assertIn("product_stage_output_not_executed",result.error)
         self.assertFalse(any(x[0] in {"stage","complete"} for x in q.events))
         self.assertIn(("stage_event","discovery","failed"),q.events)
         self.assertEqual(q.events[-1][0],"fail")
@@ -70,6 +70,9 @@ class RuntimeWorkerTests(unittest.TestCase):
             {"mode":"mock","requires_model":False},
             {"mode":"dry_run"},
             {"deferred":True},
+            {"placeholder":True},
+            {"simulated":"true"},
+            {"execution_status":"deferred"},
         ):
             with self.subTest(output=output):
                 q=Queue(WorkItem("r","t","p","demo",("planning",),{}))
@@ -77,6 +80,19 @@ class RuntimeWorkerTests(unittest.TestCase):
                 self.assertEqual(result.status,WorkStatus.FAILED)
                 self.assertFalse(any(x[0] in {"stage","complete"} for x in q.events))
                 self.assertEqual(result.evidence,())
+
+    def test_product_content_discussing_a_fixture_is_not_execution_metadata(self):
+        class Completed:
+            def execute(self, item, stage):
+                return {
+                    "mode":"deterministic",
+                    "summary":"Use a fixture for the isolated regression test.",
+                    "acceptance_criteria":["Fixture covers the tenant boundary."],
+                }
+        q=Queue(WorkItem("r","t","p","demo",("planning",),{}))
+        result=RuntimeWorker(queue=q,handler=Completed(),worker_id="w").run_once()
+        self.assertEqual(result.status,WorkStatus.COMPLETED)
+        self.assertEqual(q.events[-1],("complete","r"))
 
     def test_empty_model_plan_cannot_finish_claimed_product_run(self):
         import json

@@ -17,6 +17,7 @@ from .github_rest import GitHubRestAdapter
 from .pinned_nonproduction_target import PinnedNonproductionTarget
 from .source_scope_admission import SourceScopeBlocked
 from .candidate_source_evidence import collect_candidate_source_evidence
+from .product_stage_output_contract import assert_executed_product_stage_output
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -364,6 +365,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise ValueError("invalid stage name")
         if not isinstance(evidence.output,dict):
             raise ValueError("stage output must be a mapping")
+        # Keep the durable adapter fail-closed even if a caller bypasses
+        # RuntimeWorker and constructs StageEvidence directly.
+        assert_executed_product_stage_output(evidence.output)
         self.assert_execution_epoch(item)
         self._rpc("factory_record_runtime_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_status":evidence.status,"p_output":evidence.output})
         persisted=self._rpc("factory_persist_product_stage",{"p_run_id":item.run_id,"p_stage":evidence.stage,"p_output":evidence.output}) or {}

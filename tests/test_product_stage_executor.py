@@ -151,6 +151,35 @@ class ProductStageExecutorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"invalid JSON"):
             h.execute(item(),"discovery")
 
+    def test_non_executed_marker_is_rejected_before_it_chains_to_next_stage(self):
+        class DeferredProvider:
+            def execute(self,request):
+                return ModelResult(
+                    ModelRole.PRIMARY,
+                    json.dumps({"placeholder":True,"summary":"not executed"}),
+                    provider_ref="provider-ref",
+                )
+        h=ProductStageExecutor(ModelExecutor(primary=DeferredProvider()))
+        with self.assertRaisesRegex(ValueError,"product_stage_output_not_executed"):
+            h.execute(item(),"discovery")
+        self.assertNotIn(("r","discovery"),h.outputs)
+
+    def test_status_marker_is_rejected_before_planning_can_materialize_work(self):
+        class SimulatedPlanProvider:
+            def execute(self,request):
+                return ModelResult(
+                    ModelRole.PRIMARY,
+                    json.dumps({
+                        "execution_status":"simulated",
+                        "tasks":[{"task_key":"unsafe","scope_keys":["src/app.py"],"depends_on":[]}],
+                    }),
+                    provider_ref="provider-ref",
+                )
+        h=ProductStageExecutor(ModelExecutor(primary=SimulatedPlanProvider()))
+        with self.assertRaisesRegex(ValueError,"product_stage_output_not_executed"):
+            h.execute(item(),"planning")
+        self.assertNotIn(("r","planning"),h.outputs)
+
     def test_codex_is_not_used_for_bootstrap(self):
         primary=Provider()
         class Codex:

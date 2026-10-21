@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from .model_executor import ModelExecutor, ModelRequest
 from .models import ExecutionRoute
+from .product_stage_output_contract import assert_executed_product_stage_output
 from .runtime_worker import WorkItem
 from .agent_scheduler import AgentProfile
 from .execution_team_planner import build_execution_team_plan, _canonical_routing_task, _choose_agent, _execution_lane
@@ -219,6 +220,10 @@ class ProductStageExecutor:
             raise ValueError(f"{stage} returned invalid JSON") from exc
         if not isinstance(output,dict):
             raise ValueError(f"{stage} output must be a JSON object")
+        # A response that declares itself deferred, simulated, or dependent on
+        # a later model call is not executed Product Stage evidence. Reject it
+        # before it can enter in-memory prior-stage context or durable storage.
+        assert_executed_product_stage_output(output)
         if stage=="planning":
             tasks=output.get("tasks")
             if isinstance(tasks,list):
