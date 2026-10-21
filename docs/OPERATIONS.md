@@ -1,3 +1,13 @@
+## 21/10/2026 — Fencing do reconciliador de descendentes em recovery (#894, candidato)
+
+Depois da migration de recovery `20261020194500` aplicada e validada no banco sob version ID `20261021012144`, a funcao `factory_reconcile_terminal_task_descendants()` permaneceu sem checagem de controle humano. Ela e executada por `run_recovery_once` e pode cancelar um child queued ou marcar Change Set superseded quando o projeto inteiro estiver paused/stopped se o parent/root estiver `cancelled`. O banco de producao tinha zero candidatos na auditoria, mas a falha existe na definicao atual.
+
+O novo arquivo `20261021014000_fence_terminal_descendant_recovery_manual_control.sql` substitui apenas a mesma funcao SQL, mantendo retorno, eventos de auditoria, status, SECURITY INVOKER e grants atuais. Os dois caminhos exigem projeto ativo e controle `running` com geracao positiva. O `FOR SHARE OF c,p SKIP LOCKED` mantem o controle bloqueado durante a transacao de recovery; se Pause/Stop ganhou o lock, o candidato e ignorado, em vez de bloquear ou sofrer efeito. Child parent e Change Set root precisam estar no mesmo projeto; nenhum chamado GitHub/Vercel/LLM ocorre.
+
+Evidence: testes unitarios novos e `recovery-operator-control-postgres` testam a funcao SQL real e Pause/Resume cruzados em PG16 isolado. A fila de outro projeto continua recuperavel em presenca de lock humano. Aplicar em Supabase producao **somente com nova autorizacao explicita**, depois conferir historia, definicao, permissions e RLS; nao executar `db push` historico nem usar version IDs dos arquivos Git como IDs do Supabase.
+
+---
+
 ## 20/10/2026 — Auditor de E2E por Console continuation e candidato reconciliado (candidato)
 
 Ciclo real observado: projeto ai-product-factory, continuation root run

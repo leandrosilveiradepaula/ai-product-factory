@@ -1,3 +1,13 @@
+## 21/10/2026 — Terminal descendant recovery e Pause/Stop (#894, candidato)
+
+- Supabase confirmado com `fence_recovery_manual_project_control` aplicado como versao `20261021012144`; merge #1018 em main `4412f5ab4b5ba1ddb4b484c0c86a117bfc19a62a`, CI verde.
+- Auditoria read-only identificou ultimo caminho mutante fora do controle do projeto no recovery: `factory_reconcile_terminal_task_descendants()` cancelava filhos e supersedia Change Sets com parent/root `cancelled`, mesmo sob `paused/stopped`. Nenhum candidato atual foi encontrado no banco; a falha e estrutural e deterministica, nao incidente de producao observado.
+- Candidato `20261021014000_fence_terminal_descendant_recovery_manual_control.sql` preserva a unica funcao e seus grants/retornos, filtra projeto ativo + `running` + geracao positiva nas duas selecoes, vincula parent/root ao mesmo projeto e usa row locks `FOR SHARE OF c,p SKIP LOCKED` junto ao lock do alvo. Pause concorrente impede mutacao do respectivo projeto, sem bloquear recuperacao de outros.
+- Tests: cenarios Postgres 16 de running/paused/stopped/resume, child integrated, Change Set e dedupe, projeto cruzado, duas ordens de corrida Pause vs recovery. Migration **NAO aplicada** nesta etapa; depende de gate humano separado apos CI.
+- Nao usar modelos pagos, nao criar novos runs e nao alterar CRM, Service Desk ou Agente SQL.
+
+---
+
 ## 20/10/2026 — Gate operador nos followups CI, Preview, especialistas e release (candidato)
 
 - PR #1011 **mergeada** em `dde76b4a402be98eea26acac2302c7b6c0b5a941`; `validate` pós-merge #39483075109 SUCCESS; zero PRs abertas no checkpoint. A nova migration `20261020194500_fence_recovery_manual_project_control.sql` continua **não aplicada** em Supabase produção e exige autorização específica.

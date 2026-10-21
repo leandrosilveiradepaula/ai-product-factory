@@ -350,6 +350,12 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Exigir CI, testes de integração isolados e gate de migration de produção; não inferir instalação no banco pelo merge.
 - [ ] Revisar recovery de lease/change set e continuidade de decisões sob pausa antes de declarar controle do ciclo integralmente concluído.
 
+## 21/10/2026 — Fechamento do Pause/Stop para terminal-descendant recovery (#894)
+
+- [x] Auditoria read-only verificou migration de recovery aplicada no Control Plane e identificou RPC terminal-descendant sem controle humano.
+- [ ] Deploy protegido da unica funcao `factory_reconcile_terminal_task_descendants()` apos CI/PR e autorizacao especifica da nova migration.
+- [ ] Validar nenhuma mutacao em paused/stopped durante Pause concorrente; manter cleanup e deduplicacao em projeto running no PostgreSQL isolado.
+
 ## 20/10/2026 — Recovery de leases após controle humano (#894)
 
 - [x] Três migrations do scheduler/agent-specialist aplicadas e verificadas no Control Plane real, com ACL/RLS preservados, histórico registrado sob versões MCP `20261020185723/20261020190213/20261020190346`.
