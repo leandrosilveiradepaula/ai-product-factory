@@ -52,6 +52,13 @@ class AtomicProjectReleaseTests(unittest.TestCase):
         self.assertIn("v_project.manifest=v_new_manifest",SQL)
         self.assertIn("FOR UPDATE",SQL)
         self.assertIn("FOR SHARE OF rp,r,t",SQL)
+        self.assertIn("FOR SHARE OF c",SQL)
+        self.assertIn("c.state='running'",SQL)
+        self.assertIn("global readiness domains incomplete",SQL)
+        self.assertIn("factory_change_sets cs",SQL)
+        self.assertIn("'change_set_status'",SQL)
+        self.assertIn("'change_set_updated'",SQL)
+        self.assertIn("release Change Set project mismatch",SQL)
 
     def test_no_split_rest_writes_or_stale_project_fallback(self):
         self.assertNotIn('"PATCH"',ADAPTER)
@@ -61,6 +68,10 @@ class AtomicProjectReleaseTests(unittest.TestCase):
         self.assertIn("rpc/factory_pending_release_reconciliations_v1",ADAPTER)
         self.assertIn("rpc/factory_defer_release_reconciliation_v1",ADAPTER)
         self.assertIn("ReleaseReconciliationRejected",ADAPTER)
+        self.assertIn("def require_atomic_capability(self)",ADAPTER)
+        prod=RUNTIME.split("def run_release_once(",1)[1].split("def run_bounded_deterministic_lane(",1)[0]
+        self.assertLess(prod.index(".require_atomic_capability()"),prod.index(".finalize_console_human_release("))
+        self.assertLess(prod.index(".require_atomic_capability()"),prod.index(".observe_manual_merge("))
         self.assertIn("release_reconciliation_retryable",ADAPTER)
         self.assertIn("run_release_state_settlement(",RUNTIME)
         self.assertIn('"release-state-settle"',RUNTIME)
@@ -72,6 +83,7 @@ class AtomicProjectReleaseTests(unittest.TestCase):
                        "factory_release_atomic_test","human_merge_observed",
                        "rollback","snapshot persistence failure",
                        "out-of-order-release-protection",
+                       "paused-operator-release","blocked-change-set-must-remain-blocked",
                        "factory_defer_release_reconciliation_v1",
                        "FACTORY_ATOMIC_RELEASE_POSTGRES_PASS=1"):
             self.assertIn(marker,SCRIPT)

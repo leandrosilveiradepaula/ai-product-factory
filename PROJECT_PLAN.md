@@ -408,3 +408,9 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 
 A release antecipada do Service Desk permanece bloqueada, não é prova para promoção retroativa; `product_ready=false` continua.
 
+
+### 21/10/2026 — Complementos obrigatorios ao handoff de release #1025
+- [x] Preflight versionado sem writes antes de converter run em merged/released.
+- [x] Change Set completado na mesma transacao de estado do projeto, snapshot e audit.
+- [x] Pause/Stop + geracao impedem reconciliacao atrasada e starvation entre projetos.
+- [ ] Exigir PostgreSQL isolado, Python e CI verdes apos este conjunto antes de merge humano; migration continua gate separado.

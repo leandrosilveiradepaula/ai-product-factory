@@ -1,3 +1,12 @@
+## 21/10/2026 — Revisao complementar da PR #1025 (mesmo candidato)
+
+- **Rollout SQL/Python fail-closed**: antes de registrar merge/release no Control Plane, o observer testa o RPC versionado `factory_pending_release_reconciliations_v1` em modo read-only. Se o SQL nao existe, falha antes da primeira escrita; nao deixa run terminal sem outbox de recovery.
+- **Handoff do Change Set**: `factory_reconcile_observed_release_v1` conclui o Change Set `ci_pending` no mesmo commit do manifesto, snapshot e auditoria. O caminho legado `finalize_released_run` passa a receber status `completed` idempotente. Crash entre as chamadas nao deixa Change Set orfao.
+- **Controle humano na recuperacao**: outbox ignora projetos pausados/inativos; a RPC serializa `generation` e `running` por lock e recusa replay de outra geracao. Falha por Pause/Stop continua retryable, nao marca needs_review. Projetos elegiveis independentes continuam.
+- **Prontidao global**: somente os seis dominios reais geram gaps; subset ou lista fraudada nao pode parecer um produto avaliado.
+- Cobertura ampliada no PostgreSQL descartavel: compatibilidade do RPC, Change Set atômico, rollback de snapshot tambem desfaz Change Set, Pause e fairness, stale generation, blocked CS. Nenhuma alteracao em producao, custos ou pilotagem.
+
+
 ## 21/10/2026 — Fechamento de releases humanos em uma transação (candidato #894/#713)
 
 **Problema observado em produção, sem inferir prontidão:** a release humana #997 da Factory tinha report `released`, project em `operations` e auditoria, mas o snapshot de `operations` tinha `gaps=[]` e não havia `manifest.product_readiness_followup`, apesar de seis domínios `not_assessed`. O reconciliador escrevia project manifest, snapshot e audit por três HTTP requests separadas; após uma falha, a run já `merged` não era mais selecionada pelo worker de release.

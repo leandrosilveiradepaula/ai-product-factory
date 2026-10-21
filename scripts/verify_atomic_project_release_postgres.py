@@ -42,6 +42,10 @@ CREATE TABLE public.factory_projects(
  manifest jsonb NOT NULL DEFAULT '{}'::jsonb,
  is_active boolean NOT NULL DEFAULT true,
  updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE public.factory_project_execution_controls(
+ project_id uuid PRIMARY KEY REFERENCES public.factory_projects(id),
+ state text NOT NULL DEFAULT 'running',
+ generation bigint NOT NULL DEFAULT 1);
 CREATE TABLE public.factory_tasks(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  project_id uuid NOT NULL REFERENCES public.factory_projects(id),
@@ -52,6 +56,13 @@ CREATE TABLE public.factory_runs(
  status text NOT NULL,
  candidate_commit text,
  metadata jsonb NOT NULL DEFAULT '{}'::jsonb);
+CREATE TABLE public.factory_change_sets(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ project_id uuid NOT NULL REFERENCES public.factory_projects(id),
+ release_run_id uuid NOT NULL REFERENCES public.factory_runs(id),
+ status text NOT NULL DEFAULT 'ci_pending',
+ metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+ updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE public.factory_release_reports(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  project_id uuid NOT NULL REFERENCES public.factory_projects(id),
@@ -99,7 +110,7 @@ with psycopg.connect(DSN,autocommit=True) as conn:
         return one("SELECT count(*) FROM public."+table+(" WHERE "+where if where else ""),args)
 
     def project(key,kind="greenfield",manifest=None):
-        return one(
+        pid=one(
             "INSERT INTO public.factory_projects(project_key,project_kind,manifest) "
             "VALUES (%s,%s,%s::jsonb) RETURNING id",
             (key,kind,json.dumps(manifest or {"preserve":"true",
@@ -107,6 +118,8 @@ with psycopg.connect(DSN,autocommit=True) as conn:
                                               "current_task":"temporary",
                                               "runtime_readiness":{"current_scope":"read_only_verification","preview":"verified"}})),
         )
+        conn.execute("INSERT INTO public.factory_project_execution_controls(project_id) VALUES (%s)",(pid,))
+        return pid
 
     def released_candidate(project_id,merge_sha=MERGE):
         tid=one("INSERT INTO public.factory_tasks(project_id) VALUES (%s) RETURNING id",(project_id,))
@@ -118,6 +131,8 @@ with psycopg.connect(DSN,autocommit=True) as conn:
                 "(project_id,run_id,candidate_commit,status,report)"
                 " VALUES (%s,%s,%s,'ready_for_human_release',%s::jsonb)"
                 " RETURNING id",(project_id,rid,ORIG,json.dumps(report)))
+        conn.execute("INSERT INTO public.factory_change_sets(project_id,release_run_id) VALUES (%s,%s)",
+                     (project_id,rid))
         return rid,rep
 
     def human_receipt(project_id,rid,merge_sha=MERGE):
@@ -202,6 +217,9 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     corrupt=followup(rid)
     corrupt["pending_domains"]=["security","security"]
     rejected(lambda: reconcile(green,rid,followup_override=corrupt))
+    corrupt=followup(rid)
+    corrupt["pending_domains"]=["security"]
+    rejected(lambda: reconcile(green,rid,followup_override=corrupt))
     assert one("SELECT lifecycle_stage FROM public.factory_projects WHERE id=%s",(green,))=="implementation"
     assert count("factory_project_state_snapshots")==0
 
@@ -209,6 +227,9 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     result=reconcile(green,rid)
     assert result["lifecycle_stage"]=="operations" and not result["idempotent"],result
     assert result["pending_domains"]==6 and not result["product_ready"],result
+    assert result["change_set_status"]=="completed" and result["change_set_updated"],result
+    assert one("SELECT status FROM public.factory_change_sets WHERE release_run_id=%s",(rid,))=="completed"
+    assert one("SELECT metadata->'release'->>'merge_sha' FROM public.factory_change_sets WHERE release_run_id=%s",(rid,))==MERGE
     new=one("SELECT manifest FROM public.factory_projects WHERE id=%s",(green,))
     assert new["preserve"]=="true" and new["head_sha"]==MERGE
     assert new["reported_stage"]=="operations"
@@ -224,7 +245,8 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     assert count("factory_project_state_snapshots","run_id=%s",(rid,))==1
     assert count("factory_audit_events","run_id=%s AND event_type='project.state.reconciled_after_release'",(rid,))==1
     assert rows_after()==[]
-    assert reconcile(green,rid)["idempotent"] is True
+    repeated=reconcile(green,rid)
+    assert repeated["idempotent"] is True and not repeated["change_set_updated"]
     assert count("factory_project_state_snapshots","run_id=%s",(rid,))==1
 
     # Delivery for a wholly separate existing product is not mixed into green.
@@ -262,12 +284,14 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     rejected(lambda: reconcile(broken,broken_run))
     assert one("SELECT lifecycle_stage FROM public.factory_projects WHERE id=%s",(broken,))=="implementation"
     assert one("SELECT manifest->>'last_release' FROM public.factory_projects WHERE id=%s",(broken,)) is None
+    assert one("SELECT status FROM public.factory_change_sets WHERE release_run_id=%s",(broken_run,))=="ci_pending"
     assert count("factory_project_state_snapshots","run_id=%s",(broken_run,))==0
     assert count("factory_audit_events",
                  "run_id=%s AND event_type='project.state.reconciled_after_release'",(broken_run,))==0
     assert [row["run_id"] for row in rows_after()]==[str(broken_run)]
     conn.execute("DROP TRIGGER fixture_snapshot_fails ON public.factory_project_state_snapshots")
     assert reconcile(broken,broken_run)["pending_domains"]==6
+    assert one("SELECT status FROM public.factory_change_sets WHERE release_run_id=%s",(broken_run,))=="completed"
     assert rows_after()==[]
     assert reconcile(broken,broken_run)["idempotent"] is True
 
@@ -295,6 +319,41 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     assert rows_after()==[]
     assert count("factory_audit_events","run_id=%s AND event_type='release.reconciliation_needs_review'",(old_run,))==1
     rejected(lambda: one("SELECT public.factory_defer_release_reconciliation_v1(%s)",(marker+1000000,)))
+
+    # Pause/Stop leaves the outbox pending without starving another project.
+    paused=project("paused-operator-release")
+    paused_run,_=released_candidate(paused)
+    human_receipt(paused,paused_run)
+    mark(paused_run)
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(paused,))
+    assert rows_after()==[]
+    rejected(lambda: reconcile(paused,paused_run),states=("PT423",))
+    other=project("eligible-while-another-paused",kind="existing")
+    other_run,_=released_candidate(other)
+    human_receipt(other,other_run)
+    mark(other_run)
+    assert [row["run_id"] for row in rows_after()]==[str(other_run)]
+    assert reconcile(other,other_run)["change_set_status"]=="completed"
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='running',generation=2 WHERE project_id=%s",(paused,))
+    conn.execute("UPDATE public.factory_runs SET metadata='{\"execution_generation\":\"1\"}'::jsonb WHERE id=%s",(paused_run,))
+    rejected(lambda: reconcile(paused,paused_run))
+    assert one("SELECT lifecycle_stage FROM public.factory_projects WHERE id=%s",(paused,))=="implementation"
+    # The operator may reconcile the already observed legacy release only
+    # after explicitly validating its run/epoch, without creating new paid work.
+    conn.execute("UPDATE public.factory_runs SET metadata='{}'::jsonb WHERE id=%s",(paused_run,))
+    assert reconcile(paused,paused_run)["change_set_status"]=="completed"
+
+    # An external premature/blocked Change Set cannot be declared completed
+    # merely because the GitHub SHA was observed somewhere.
+    blocked=project("blocked-change-set-must-remain-blocked")
+    blocked_run,_=released_candidate(blocked)
+    human_receipt(blocked,blocked_run)
+    mark(blocked_run)
+    conn.execute("UPDATE public.factory_change_sets SET status='blocked' WHERE release_run_id=%s",(blocked_run,))
+    rejected(lambda: reconcile(blocked,blocked_run))
+    assert one("SELECT lifecycle_stage FROM public.factory_projects WHERE id=%s",(blocked,))=="implementation"
+    assert one("SELECT status FROM public.factory_change_sets WHERE release_run_id=%s",(blocked_run,))=="blocked"
+    assert count("factory_project_state_snapshots","run_id=%s",(blocked_run,))==0
 
 
 print("FACTORY_ATOMIC_RELEASE_POSTGRES_PASS=1")

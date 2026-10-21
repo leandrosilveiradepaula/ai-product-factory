@@ -21,7 +21,8 @@ def receipt(idempotent=False):
     return {"project_id":PID,"run_id":RUN,"lifecycle_stage":"operations",
             "merge_sha":SHA,"product_ready":False,"pending_domains":6,
             "idempotent":idempotent,"snapshot_written":not idempotent,
-            "audit_written":not idempotent}
+            "audit_written":not idempotent,
+            "change_set_status":"completed","change_set_updated":not idempotent}
 
 
 class Response:
@@ -51,6 +52,22 @@ class Tests(unittest.TestCase):
                          "test_strategy","product_experience","documentation","functional_completeness"])
         self.assertFalse(f["ready"])
         self.assertTrue(f["report_verified"])
+
+    def test_atomic_migration_capability_is_read_only_and_fail_closed(self):
+        q=SupabaseProjectReleaseReconciler(url="https://example.test",secret_key="sb_secret_t")
+        calls=[]
+        def fake(req,timeout=30):
+            calls.append((req.method,req.full_url,json.loads(req.data) if req.data else None))
+            return Response([])
+        with patch("urllib.request.urlopen",side_effect=fake):
+            self.assertIsNone(q.require_atomic_capability())
+        self.assertEqual(len(calls),1)
+        self.assertEqual(calls[0][0],"POST")
+        self.assertTrue(calls[0][1].endswith("/rpc/factory_pending_release_reconciliations_v1"))
+        self.assertEqual(calls[0][2],{"p_after_event_id":0,"p_limit":1})
+        with patch("urllib.request.urlopen",return_value=Response({})):
+            with self.assertRaisesRegex(RuntimeError,"capability unavailable"):
+                q.require_atomic_capability()
 
     def test_idempotent_receipt_and_invalid_input(self):
         with patch("urllib.request.urlopen",side_effect=[
