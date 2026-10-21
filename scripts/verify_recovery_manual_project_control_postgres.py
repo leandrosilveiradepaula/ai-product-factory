@@ -47,6 +47,7 @@ CREATE TABLE public.factory_runs(
  status text NOT NULL,execution_route text,metadata jsonb DEFAULT '{}'::jsonb,
  attempt_count int DEFAULT 0,lease_owner text,
  lease_expires_at timestamptz,created_at timestamptz DEFAULT now(),
+ started_at timestamptz,
  finished_at timestamptz,source_commit text,candidate_commit text,
  branch_name text,last_error text);
 CREATE TABLE public.factory_human_gates(

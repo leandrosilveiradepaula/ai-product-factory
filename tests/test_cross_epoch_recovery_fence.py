@@ -47,7 +47,7 @@ class CrossEpochRecoveryFenceTests(unittest.TestCase):
         for key in ("REFUSING_NON_ISOLATED_RECOVERY_TEST_DATABASE",
                     "epoch_migration","cross-epoch-control","epoch-paused-before-resume",
                     "factory_claim_next_agent_direct_run","factory_claim_next_run",
-                    "recovery_quarantined_epoch","operator-reviewed",
+                    "run.stale_execution_epoch_quarantined","operator-reviewed",
                     "RECOVERY_MANUAL_CONTROL_POSTGRES_PASS=1"):
             self.assertIn(key,SCENARIO)
 
