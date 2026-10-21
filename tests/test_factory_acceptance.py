@@ -288,6 +288,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
         }
         expected_history = {
+            "20261021093000_atomic_release_project_state.sql",
             "20261021041000_atomic_specialist_traceability_evidence.sql",
             "20261021040500_atomic_specialist_repair_handoff.sql",
             "20261021030000_fence_specialist_epoch_and_lease_token.sql",
