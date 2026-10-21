@@ -131,7 +131,8 @@ class PostReleaseReadinessTests(unittest.TestCase):
             return {"project_id":P,"run_id":R,"merge_sha":M,
                     "lifecycle_stage":"operations","product_ready":False,
                     "idempotent":False,"snapshot_written":True,
-                    "audit_written":True,"pending_domains":6}
+                    "audit_written":True,"pending_domains":6,
+                    "change_set_status":"not_change_set","change_set_updated":False}
         rec=object.__new__(SupabaseProjectReleaseReconciler)
         rec._request=rpc
         out=rec.reconcile(project_id=P,run_id=R,merge_sha=M)

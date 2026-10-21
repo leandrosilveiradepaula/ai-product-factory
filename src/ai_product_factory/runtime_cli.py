@@ -791,6 +791,13 @@ def run_release_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
    "release_completed":False,"integration":result}
  if getattr(pr,"base_ref",None) not in (None,"main"):
   return {"claimed":True,"status":"nonproduction_candidate_not_released","run_id":item.run_id,"pr_number":item.pr_number}
+ # Reject a contradictory Console receipt before even probing the Control Plane.
+ # Neither a migration nor a database credential can legitimize a wrong merge SHA.
+ if item.merge_sha:
+  if not pr.merged or not pr.merge_commit_sha:
+   raise RuntimeError("released Console report points to a pull request that is not merged")
+  if pr.merge_commit_sha!=item.merge_sha:
+   raise RuntimeError("GitHub merge SHA does not match durable Console release report")
  # The versioned RPC is a read-only compatibility fence. Until its SQL
  # migration is applied, no human-release observation is allowed to mutate
  # a run/report without an outbox for repair after an interrupted handoff.
