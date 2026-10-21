@@ -13,6 +13,7 @@ from .supabase_operational_health import SupabaseOperationalHealthReader, KNOWN_
 from .preview_eligibility import is_delivery_preview_run
 from .supabase_server import resolve_supabase_server_config
 from .post_release_readiness import observe_manifest_release
+from .admission_terminal_lineage import terminal_root_lineage
 
 KEY = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$")
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
@@ -52,7 +53,8 @@ def _id(value: object) -> str:
 def classify(*, project: dict, control: dict, commands: list[dict],
              tasks: list[dict], runs: list[dict], run_id: str | None,
              cost: dict, planned: list[dict], portfolio: list[dict],
-             readiness: dict | None = None) -> dict:
+             readiness: dict | None = None,
+             terminal_lineage: dict | None = None) -> dict:
     """Pure classification; absence of a claim is not proof of scheduler health."""
     pid = _id(project.get("id"))
     if not isinstance(project.get("project_key"), str) or not project["project_key"]:
@@ -89,8 +91,27 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         raise RuntimeError("run not found within project")
     if not isinstance(cost, dict) or cost.get("state") not in {"available","blocked","unknown"}:
         raise RuntimeError("invalid cost observation")
+    if terminal_lineage is not None and (
+        not run_id or not isinstance(terminal_lineage,dict)
+        or terminal_lineage.get("status") not in {"blocked","waiting"}
+        or terminal_lineage.get("next_step") not in {
+            "review_obsolete_change_set_evidence","review_blocked_change_set",
+            "review_terminal_change_set","inspect_change_set_eligibility",
+            "verify_release_boundary","review_new_human_continuation",
+        }
+        or not isinstance(terminal_lineage.get("reason_code"),str)
+        or not terminal_lineage["reason_code"].startswith("root_change_set_")
+        or not isinstance(terminal_lineage.get("evidence"),dict)
+        or terminal_lineage["evidence"].get("delivery_verified") is not False
+    ):
+        raise RuntimeError("invalid exact terminal lineage evidence")
     # A run receipt is an exact run/task identity, not a workflow heartbeat.
     receipt = next((r for r in runs if run_id and r["id"].lower() == run_id.lower()),None)
+    if terminal_lineage is not None:
+        exact_task=next((t for t in tasks if receipt and t["id"].lower()==receipt["task_id"].lower()),None)
+        if (receipt is None or receipt.get("status") not in TERMINAL
+            or exact_task is None or exact_task.get("parent_task_id") is not None):
+            raise RuntimeError("terminal lineage not bound to a terminal root")
     def delivery_wait(r: dict) -> bool:
         return r.get("status") in WAITING and (
             r.get("status") != "preview_ready" or is_delivery_preview_run(r)
@@ -115,6 +136,12 @@ def classify(*, project: dict, control: dict, commands: list[dict],
             status,reason,next_step = "waiting","run_"+s,WAITING[s]
         elif s in TERMINAL:
             status,reason,next_step = "blocked" if s in {"failed","blocked"} else "waiting","run_"+s,"review_terminal_run" if s in {"failed","blocked"} else "no_new_action"
+            # Product Stage completion alone never proves that a descendant
+            # Change Set reached CI, Preview, or human release.
+            if terminal_lineage is not None:
+                status=terminal_lineage["status"]
+                reason=terminal_lineage["reason_code"]
+                next_step=terminal_lineage["next_step"]
         elif s in PRODUCT:
             if selected_task.get("status") == "queued_execution" and selected.get("execution_route") in {"direct","codex"}:
                 status,reason,next_step = "waiting","routed_execution_not_yet_claimed","agent_scheduler"
@@ -166,6 +193,8 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         run_evidence = {"run_id":_id(receipt["id"]),"task_id":_id(receipt["task_id"]),
                         "run_status":receipt["status"],
                         "task_status":task_by_id[_id(receipt["task_id"])].get("status")}
+    extra_evidence=({"terminal_change_set":terminal_lineage["evidence"]}
+                    if terminal_lineage is not None else {})
     return {"project_key":project["project_key"],"project_id":pid,"run_id":run_id,
             "project_state":state,"status":status,"reason_code":reason,"next_step":next_step,
             "eligibility_scope":"database_observation_not_claim_authorization",
@@ -175,7 +204,7 @@ def classify(*, project: dict, control: dict, commands: list[dict],
                         "task_count":len(tasks),"run_count":len(runs),
                         "planned_admitted_count":len(planned),"portfolio_eligible":bool(portfolio),
                         "cost":cost,
-                        "product_readiness":readiness},"read_only":True}
+                        "product_readiness":readiness,**extra_evidence},"read_only":True}
 
 
 class SupabaseAdmissionReader:
@@ -230,12 +259,47 @@ class SupabaseAdmissionReader:
         pid=_id(project.get("id"))
         control=_one(self._get("factory_project_execution_controls?select=project_id,state,version,generation&project_id=eq."+pid+"&limit=2"),"control")
         commands=_many(self._get("factory_project_execution_commands?select=project_id,command&project_id=eq."+pid+"&order=created_at.desc&limit=101"),"commands")
-        tasks=_many(self._get("factory_tasks?select=id,project_id,status&project_id=eq."+pid+"&order=created_at.desc&limit=101"),"tasks")
+        tasks=_many(self._get("factory_tasks?select=id,project_id,parent_task_id,status&project_id=eq."+pid+"&order=created_at.desc&limit=101"),"tasks")
         if tasks:
             tids=",".join(_id(t.get("id")) for t in tasks)
             runs=_many(self._get("factory_runs?select=id,task_id,status,metadata,execution_route,started_at&task_id=in.("+tids+")&order=created_at.desc&limit=101"),"runs")
         else:
             runs=[]
+        # Exact-root Change Set inventory: only for a terminal run whose task
+        # has no parent. Stale Change Sets may not be assigned to another root.
+        terminal_lineage=None
+        if run_id:
+            selected_run=next((r for r in runs if r.get("id")==run_id),None)
+            selected_task=next((t for t in tasks if selected_run and
+                 t.get("id")==selected_run.get("task_id")),None)
+            if (selected_run and selected_task
+                and selected_task.get("parent_task_id") is None
+                and selected_run.get("status") in TERMINAL):
+                root_id=_id(selected_task["id"])
+                sets=_many(self._get(
+                    "factory_change_sets?select=id,project_id,root_task_id,"
+                    "status,release_run_id,created_at"
+                    "&project_id=eq."+pid+"&root_task_id=eq."+root_id
+                    +"&order=created_at.desc&limit=31"
+                ),"exact root Change Sets")
+                if len(sets)>30:
+                    raise RuntimeError("too many exact-root Change Sets")
+                units=[]
+                if sets:
+                    cs_ids=",".join(_id(x["id"]) for x in sets)
+                    units=_many(self._get(
+                        "factory_change_set_work_units?select=id,change_set_id,"
+                        "status,output_commit&change_set_id=in.("+cs_ids+")"
+                        "&limit=31"
+                    ),"exact root Work Units")
+                    if len(units)>30:
+                        raise RuntimeError("too many exact-root Work Units")
+                terminal_lineage=terminal_root_lineage(
+                    project_id=pid,root_task_id=root_id,
+                    root_run=selected_run,
+                    current_generation=control.get("generation"),
+                    change_sets=sets,work_units=units,
+                )
         # Existing atomic-dispatch read contract, not task counts.
         planned=self._rpc_read("factory_peek_planned_work",{"p_project_key":project_key,"p_limit":100})
         portfolio=self._rpc_read("factory_portfolio_candidates",{"p_limit":100})
@@ -248,4 +312,4 @@ class SupabaseAdmissionReader:
             runs=runs,run_id=run_id,cost=self._cost(),
             planned=_many(planned,"planned candidates"),
             portfolio=[p for p in portfolio if isinstance(p,dict) and p.get("project_id")==pid],
-            readiness=readiness)
+            readiness=readiness,terminal_lineage=terminal_lineage)
