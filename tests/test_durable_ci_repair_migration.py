@@ -29,6 +29,13 @@ class DurableCIRepairMigrationTests(unittest.TestCase):
         self.assertIn("status <> 'exhausted' and attempt <= max_attempts", SQL)
         self.assertIn("if v_attempt>p_max_attempts then", SQL)
 
+    def test_plpgsql_composite_into_does_not_mix_record_and_scalars(self):
+        self.assertNotIn("select r.*,t.project_id into v_run,v_project_id", SQL)
+        self.assertNotIn("select r.*,c.state,c.generation into v_run,v_state,v_generation", SQL)
+        self.assertIn("select r.* into v_run", SQL)
+        self.assertIn("select t.project_id into v_project_id", SQL)
+        self.assertIn("select c.state,c.generation into v_state,v_generation", SQL)
+
     def test_reuses_change_set_and_records_later_ci_result(self):
         self.assertIn("factory_change_set_work_units", SQL)
         self.assertIn("factory_sync_ci_repair_request", SQL)

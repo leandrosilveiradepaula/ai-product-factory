@@ -136,9 +136,10 @@ begin
                  or f.value->>'failure_class' not in ('code','infrastructure','runner','permission','quota','unknown')) then
   raise exception 'invalid exact CI repair request' using errcode='PT400';
  end if;
- select r.*,t.project_id into v_run,v_project_id
+ select r.* into v_run
  from public.factory_runs r join public.factory_tasks t on t.id=r.task_id
  where r.id=p_source_run_id for update of r;
+ select t.project_id into v_project_id from public.factory_tasks t where t.id=v_run.task_id;
  if not found or v_project_id is distinct from p_project_id
     or v_run.status is distinct from 'ci_pending'
     or v_run.candidate_commit is distinct from p_candidate_commit
@@ -297,9 +298,13 @@ begin
  select * into v_request from public.factory_ci_repair_requests
  where release_run_id=p_release_run_id and repaired_commit=p_candidate_commit and status='awaiting_ci' for update;
  if not found then return jsonb_build_object('updated',false,'reason','no_awaiting_ci_repair'); end if;
- select r.*,c.state,c.generation into v_run,v_state,v_generation from public.factory_runs r
+ select r.* into v_run from public.factory_runs r
  join public.factory_tasks t on t.id=r.task_id join public.factory_project_execution_controls c on c.project_id=t.project_id
  where r.id=p_release_run_id for share of r,c;
+ select c.state,c.generation into v_state,v_generation
+ from public.factory_project_execution_controls c
+ join public.factory_tasks t on t.project_id=c.project_id
+ where t.id=v_run.task_id for share of c;
  if not found or v_run.candidate_commit is distinct from p_candidate_commit or v_state is distinct from 'running'
     or v_generation is distinct from v_request.execution_generation
     or v_run.metadata->>'execution_generation' is distinct from v_request.execution_generation::text then
