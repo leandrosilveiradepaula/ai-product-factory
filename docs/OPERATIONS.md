@@ -1,3 +1,15 @@
+## 21/10/2026 — Observações de release no mesmo commit SQL (candidato, migration não aplicada)
+
+`run_release_once` observa merge real, grava report `released` e depois reconcilia o projeto. Historicamente eram três writes REST (project, snapshot, audit), permitindo `operations` com snapshot sem gaps ou auditoria sem manifest. O erro não autoriza reprocessar implementação/CI/modelo nem tocar na liberação manual: apenas persistir, de forma confiável, consequências de um merge humano já comprovado.
+
+Nova migration `20261021090000_atomic_release_state_and_replay_outbox.sql`: transação da marcação `released` exige run realmente `merged`, report pronto, SHA merge real e audit `release.human_merge_observed`; gera `release.reconciliation_requested` com o próprio projeto/run/SHA e deduplica por lock do report. O reconciliador versionado lê apenas report `released` do projeto e do run exatos, confere identidade da candidata, hash de merge, audit testemunha e recusa release mais antiga que outra já liberada. Em um único SQL COMMIT escreve manifest de `operations`, snapshot com seis gaps de prontidão `not_assessed` e audit `project.state.reconciled_after_release`. Um erro no snapshot, report ou auditoria faz ROLLBACK de tudo. Tentativas repetidas dão `idempotent=true` sem novos registros.
+
+O leitor de outbox usa paginação por `factory_audit_events.id` (keyset), limite 16/consulta e batch 4 no worker OIDC existente. Eventos incompatíveis geram `release.reconciliation_needs_review` permanente, sem liberar produção; erros de infraestrutura não são suprimidos como resolvidos e podem ser tentados novamente. Nenhum evento de release histórico é retroativamente enfileirado; portanto, o `infodive-service-desk`, bloqueado após merge antes de CI/quality gate, NÃO será promovido. As quatro funções são `SECURITY INVOKER`, `EXECUTE` apenas para `service_role`, sem grants/policies públicos, sem função de merge.
+
+Validação proposta: PostgreSQL 16 descartável com role ACL, ausência de testemunha, SHA adulterado, greenfield/existing, snapshot forçado a falhar e rollback completo, dedupe de release e auditoria, duas liberações na ordem contrária, marcador de review liberando a fairness do outro projeto. CI, Factory Acceptance, posterior merge humano e autorização distinta para executar a migration são exigidos. No intervalo após merge e antes de migration, o worker novo falha fechado se o RPC não existir; não se deve simular sucesso nem executar `db push` cego.
+
+---
+
 ## 21/10/2026 — Specialist completion e traceability transacionais (candidato)
 
 Problema: o worker gravava review, reparo e status por `factory_complete_specialist_lane_atomic`, e so depois ligava requirements e Definition of Done por `factory_record_delivery_evidence`. A segunda chamada podia falhar apos o primeiro commit; no proximo wake o job ja nao esta `claimed` e o recibo da entrega fica ausente, impedindo rastreabilidade confiavel.
@@ -1529,3 +1541,12 @@ recibos exatos antes de gravar sucesso. A migration de recuperação
 `20261020194500_fence_recovery_manual_project_control.sql` de #1011
 continua pendente de autorização de produção; não confundir esta entrega
 Python com a sua aplicação.
+
+## 21/10/2026 — Revisao complementar da PR #1025 (mesmo candidato)
+
+- **Rollout SQL/Python fail-closed**: antes de registrar merge/release no Control Plane, o observer testa o RPC versionado `factory_pending_release_reconciliations_v1` em modo read-only. Se o SQL nao existe, falha antes da primeira escrita; nao deixa run terminal sem outbox de recovery.
+- **Handoff do Change Set**: `factory_reconcile_observed_release_v1` conclui o Change Set `ci_pending` no mesmo commit do manifesto, snapshot e auditoria. O caminho legado `finalize_released_run` passa a receber status `completed` idempotente. Crash entre as chamadas nao deixa Change Set orfao.
+- **Controle humano na recuperacao**: outbox ignora projetos pausados/inativos; a RPC serializa `generation` e `running` por lock e recusa replay de outra geracao. Falha por Pause/Stop continua retryable, nao marca needs_review. Projetos elegiveis independentes continuam.
+- **Prontidao global**: somente os seis dominios reais geram gaps; subset ou lista fraudada nao pode parecer um produto avaliado.
+- Cobertura ampliada no PostgreSQL descartavel: compatibilidade do RPC, Change Set atômico, rollback de snapshot tambem desfaz Change Set, Pause e fairness, stale generation, blocked CS. Nenhuma alteracao em producao, custos ou pilotagem.
+

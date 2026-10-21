@@ -397,3 +397,20 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [x] Detectada chamada de evidencia fora da transacao de review/reparo. Novo RPC fail-closed para nao haver sucesso parcial durante rollout.
 - [ ] Validar PostgreSQL isolado com DoD ligado/erro/rollback e auditoria unica; certificar CI da PR.
 - [ ] Merge humano e gate de migration separado para `20261021041000_atomic_specialist_traceability_evidence.sql` (nenhum paid test).
+
+## 21/10/2026 — Observação transacional e recuperação de releases humanos (#894/#713)
+
+1. [x] Identificar defeito funcional no Control Plane real: release humana #997 em `operations` com snapshot sem gaps e sem follow-up auditável, proveniente de múltiplas escritas REST independentes.
+2. [x] Preparar função SQL versionada que comprova run/report/merge SHA e grava operações, manifest, gaps e auditoria atomicamente.
+3. [x] Preparar outbox a partir de marcação `released` comprovada, com reparo autônomo somente de releases previamente observados, sem agir sobre merge/CI/modelo.
+4. [x] Isolar registros de proveniência definitivamente inválida com `needs_review`, preservando fairness e idempotência; manter erros transitórios reexecutáveis.
+5. [ ] Confirmar testes Python e PostgreSQL 16 isolado em CI; somente depois submeter PR única ao gate humano de merge. Migration `20261021090000_atomic_release_state_and_replay_outbox.sql` só pode ser aplicada com autorização específica posterior.
+
+A release antecipada do Service Desk permanece bloqueada, não é prova para promoção retroativa; `product_ready=false` continua.
+
+
+### 21/10/2026 — Complementos obrigatorios ao handoff de release #1025
+- [x] Preflight versionado sem writes antes de converter run em merged/released.
+- [x] Change Set completado na mesma transacao de estado do projeto, snapshot e audit.
+- [x] Pause/Stop + geracao impedem reconciliacao atrasada e starvation entre projetos.
+- [ ] Exigir PostgreSQL isolado, Python e CI verdes apos este conjunto antes de merge humano; migration continua gate separado.
