@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from urllib.parse import quote
@@ -8,123 +9,124 @@ from urllib.parse import quote
 from .supabase_server import resolve_supabase_server_config
 from .post_release_readiness import summarize_released_product
 
-
-_STAGE_RANK={
-    "discovery":0,
-    "specification":1,
-    "planning":2,
-    "implementation":3,
-    "review":4,
-    "validation":5,
-    "release":6,
-    "operations":7,
-}
+_UUID=re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
+_SHA=re.compile(r"^[0-9a-f]{40}$")
+_PAGE=16
+_MAX_PAGES=32
 
 
 class SupabaseProjectReleaseReconciler:
+    """An observed human release is reconciled exactly once, atomically.
+
+    The versioned RPC must exist; never fall back to PATCH+POST+POST. Production
+    merges stay human-only and this adapter neither dispatches nor merges.
+    """
+
     def __init__(self,*,url:str|None=None,secret_key:str|None=None,service_role_key:str|None=None)->None:
         cfg=resolve_supabase_server_config(url=url,secret_key=secret_key,service_role_key=service_role_key)
         self.url=cfg.url
         self.headers=cfg.headers
 
     def _request(self,method:str,path:str,payload:dict|None=None):
+        if method not in {"GET","POST"} or (method=="POST" and not path.startswith("rpc/")):
+            raise ValueError("release reconciler only allows read-only GET or RPC")
         body=None if payload is None else json.dumps(payload).encode()
-        headers=self.headers if payload is None else {**self.headers,"Content-Type":"application/json","Prefer":"return=representation"}
+        headers=self.headers if payload is None else {**self.headers,"Content-Type":"application/json"}
         req=urllib.request.Request(f"{self.url}/rest/v1/{path}",data=body,headers=headers,method=method)
         try:
             with urllib.request.urlopen(req,timeout=30) as response:
                 raw=response.read().decode()
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"control-plane request failed: {method} {path} ({exc.code})") from exc
+        except (urllib.error.HTTPError,urllib.error.URLError,TimeoutError) as exc:
+            raise RuntimeError("release reconciliation Control Plane unavailable") from exc
         return None if not raw else json.loads(raw)
 
     def reconcile(self,*,project_id:str,run_id:str,merge_sha:str)->dict:
-        if not merge_sha.strip():
-            raise ValueError("merge sha is required")
-        rows=self._request("GET",f"factory_projects?select=id,lifecycle_stage,manifest&id=eq.{quote(project_id)}&limit=1") or []
-        if not rows:
-            raise RuntimeError("project not found")
-        project=rows[0]
-        current_stage=str(project.get("lifecycle_stage") or "")
-        target_stage="operations" if _STAGE_RANK.get(current_stage,-1) < _STAGE_RANK["operations"] else current_stage
+        if (not isinstance(project_id,str) or not _UUID.fullmatch(project_id)
+            or not isinstance(run_id,str) or not _UUID.fullmatch(run_id)
+            or not isinstance(merge_sha,str) or not _SHA.fullmatch(merge_sha)):
+            raise ValueError("invalid exact human-release identity")
+        rows=self._request(
+            "GET","factory_release_reports?"
+            "select=project_id,run_id,status,candidate_commit,report"
+            f"&project_id=eq.{quote(project_id,safe='')}"
+            f"&run_id=eq.{quote(run_id,safe='')}&limit=2"
+        )
+        if not isinstance(rows,list) or len(rows)!=1 or not isinstance(rows[0],dict):
+            raise RuntimeError("exact released report unavailable")
+        summary=summarize_released_product(
+            project_id=project_id,run_id=run_id,
+            merge_sha=merge_sha,report_rows=rows,
+        )
+        if summary["report_verified"] is not True or summary["ready"] is not False:
+            raise RuntimeError("release evidence is not verified for reconciliation")
+        receipt=self._request("POST","rpc/factory_reconcile_observed_release_v1",{
+            "p_project_id":project_id,"p_run_id":run_id,"p_merge_sha":merge_sha,
+            "p_release_report":rows[0]["report"],"p_followup":summary,
+        })
+        if (not isinstance(receipt,dict)
+            or receipt.get("project_id")!=project_id
+            or receipt.get("run_id")!=run_id
+            or receipt.get("merge_sha")!=merge_sha
+            or receipt.get("lifecycle_stage")!="operations"
+            or receipt.get("product_ready") is not False
+            or type(receipt.get("idempotent")) is not bool
+            or type(receipt.get("snapshot_written")) is not bool
+            or type(receipt.get("audit_written")) is not bool
+            or type(receipt.get("pending_domains")) is not int
+            or receipt["pending_domains"]!=len(summary["pending_domains"])):
+            raise RuntimeError("inconsistent atomic release reconciliation receipt")
+        return receipt
 
-        manifest=dict(project.get("manifest") or {})
-        already=(manifest.get("last_release") or {}).get("merge_sha")==merge_sha and target_stage==current_stage
-        manifest["head_sha"]=merge_sha
-        manifest["reported_stage"]="operations"
-        manifest.pop("current_task",None)
-        if manifest.get("autonomy")=="read_only_verification":
-            manifest.pop("autonomy",None)
-        readiness=dict(manifest.get("runtime_readiness") or {})
-        if readiness.get("current_scope")=="read_only_verification":
-            readiness.pop("current_scope",None)
-        if readiness:
-            manifest["runtime_readiness"]=readiness
-        manifest["last_release"]={"run_id":run_id,"merge_sha":merge_sha,"source":"observed_human_merge"}
-
-        if not already:
-            # Never equate a human-merged release with global product readiness.
-            # The release report is an additional observation: if unavailable,
-            # preserve a fail-closed audit obligation, without replaying workers.
-            try:
-                reports = self._request(
-                    "GET",
-                    "factory_release_reports?"
-                    "select=project_id,run_id,status,candidate_commit,report"
-                    f"&project_id=eq.{quote(project_id,safe='')}"
-                    f"&run_id=eq.{quote(run_id,safe='')}&limit=2",
-                )
-            except (RuntimeError, OSError, ValueError, TypeError):
-                reports = None
-            followup = summarize_released_product(
-                project_id=project_id, run_id=run_id,
-                merge_sha=merge_sha, report_rows=reports,
-            )
-            manifest["product_readiness_followup"] = followup
-            self._request(
-                "PATCH",
-                f"factory_projects?id=eq.{quote(project_id)}",
-                {"lifecycle_stage":target_stage,"manifest":manifest},
-            )
-            self._request(
-                "POST",
-                "factory_project_state_snapshots",
-                {
-                    "project_id":project_id,
-                    "run_id":run_id,
-                    "observed_stage":"operations",
-                    "summary":"Release humano observado; estado do projeto reconciliado com a entrega real.",
-                    "evidence":[{"type":"human_release","merge_sha":merge_sha}],
-                    # Not a new executable task. Evidence required for a
-                    # full-product audit is retained for future explicit work.
-                    "gaps":[
-                        {"kind":"global_readiness_evidence_required","domain":domain,
-                         "reason_code":followup["reason_code"]}
-                        for domain in followup["pending_domains"]
-                    ],
-                    "constraints":[],
-                    "source_status":{
-                        "release":"merged",
-                        "product_readiness":followup["status"],
-                        "product_readiness_scope":"current_product_after_release",
-                        "product_readiness_report_verified":followup["report_verified"],
-                    },
-                },
-            )
-            self._request(
-                "POST",
-                "factory_audit_events",
-                {
-                    "project_id":project_id,
-                    "run_id":run_id,
-                    "actor_type":"system",
-                    "actor_ref":"release-followup",
-                    "event_type":"project.state.reconciled_after_release",
-                    "payload":{
-                        "merge_sha":merge_sha,"lifecycle_stage":target_stage,
-                        "product_readiness":followup["status"],
-                        "product_readiness_reason_code":followup["reason_code"],
-                    },
-                },
-            )
-        return {"project_id":project_id,"lifecycle_stage":target_stage,"merge_sha":merge_sha,"idempotent":already}
+    def settle_pending(self,*,max_items:int=32)->dict:
+        if type(max_items) is not int or not 1<=max_items<=128:
+            raise ValueError("invalid bounded release settlement")
+        scanned=0
+        reconciled=0
+        idempotent=0
+        failed=[]
+        cursor=0
+        exhausted=False
+        for page in range(_MAX_PAGES):
+            rows=self._request("POST","rpc/factory_pending_release_reconciliations_v1",{
+                "p_after_event_id":cursor,"p_limit":_PAGE,
+            })
+            if (not isinstance(rows,list) or len(rows)>_PAGE
+                or any(not isinstance(row,dict) for row in rows)):
+                raise RuntimeError("invalid pending human release scan")
+            if not rows:
+                exhausted=True
+                break
+            for row in rows:
+                event_id=row.get("event_id")
+                if type(event_id) is not int or event_id<=cursor:
+                    raise RuntimeError("invalid release keyset cursor")
+                cursor=event_id
+                scanned+=1
+                # This loop only completes already-observed releases. A broken
+                # release is isolated so another project's receipt still lands.
+                try:
+                    result=self.reconcile(
+                        project_id=row.get("project_id"),
+                        run_id=row.get("run_id"),
+                        merge_sha=row.get("merge_sha"),
+                    )
+                except (RuntimeError,ValueError) as exc:
+                    failed.append({"event_id":event_id,
+                                   "reason":"release_reconciliation_requires_review"})
+                else:
+                    if result["idempotent"]:
+                        idempotent+=1
+                    else:
+                        reconciled+=1
+                if scanned>=max_items:
+                    return {"status":"partial" if failed else "bounded",
+                            "scanned":scanned,"reconciled":reconciled,
+                            "idempotent":idempotent,"needs_review":failed,
+                            "truncated":True}
+            if len(rows)<_PAGE:
+                exhausted=True
+                break
+        return {"status":"partial" if failed else "complete",
+                "scanned":scanned,"reconciled":reconciled,
+                "idempotent":idempotent,"needs_review":failed,
+                "truncated":not exhausted}
