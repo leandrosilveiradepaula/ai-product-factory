@@ -120,7 +120,7 @@ class SupabaseSpecialistLaneQueue:
             raise RuntimeError("specialist evidence contains reserved claim token")
         # A token is a one-claim capability, checked transactionally by SQL.
         # It is stripped before storing normal specialist evidence.
-        completed=self._rpc("factory_complete_specialist_lane_atomic",{
+        completed=self._rpc("factory_complete_specialist_lane_with_trace",{
             "p_job_id":item.job_id,"p_status":status,
             "p_findings":findings,
             "p_evidence":{**evidence,"_factory_claim_token":item.claim_token},
@@ -130,6 +130,12 @@ class SupabaseSpecialistLaneQueue:
         # is not accepted as successful.
         if completed.get("post_review_applied") is not True:
             raise RuntimeError("specialist completion missing atomic post-review receipt")
+        trace=completed.get("traceability")
+        if (completed.get("traceability_recorded") is not True
+            or not isinstance(trace,dict)
+            or any(type(trace.get(k)) is not int or trace[k]<0
+                   for k in ("requirements_linked","dod_checks_linked"))):
+            raise RuntimeError("specialist completion missing atomic traceability receipt")
         if status=="failed" and item.role in {"security","qa"}:
             if not isinstance(completed.get("repair"),dict):
                 raise RuntimeError("specialist completion missing repair decision")

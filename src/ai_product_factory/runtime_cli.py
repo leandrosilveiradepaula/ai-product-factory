@@ -519,13 +519,12 @@ def run_specialist_once(role:str,worker_id:str)->dict:
  except ProjectFollowupPaused as exc:return {"claimed":True,"status":("project_execution_epoch_revoked" if isinstance(exc,ProjectFollowupRevoked) else "project_control_waiting"),
                                      "run_id":item.run_id,"job_id":item.job_id}
  completed=queue.complete(item,status=result.status,findings=list(result.findings),evidence=result.evidence)
- SupabaseTraceabilityStore().record_delivery_evidence(
-  run_id=item.run_id,evidence_type=role,status=result.status,evidence_ref=item.candidate_commit,
-  metadata={"source":"specialist_lane","role":role,"job_id":item.job_id,"findings_count":len(result.findings)}
- )
+ # Traceability, DoD, review, repair, status and audit share one SQL commit:
+ # no second write can be lost after Pause or an HTTP timeout.
  return {"claimed":True,"role":role,"job_id":item.job_id,"run_id":item.run_id,"status":result.status,
   "run_status":completed.get("run_status"),"findings":list(result.findings),
-  "repair":completed.get("repair"),"repair_recheck":completed.get("repair_recheck")}
+  "repair":completed.get("repair"),"repair_recheck":completed.get("repair_recheck"),
+  "traceability":completed.get("traceability")}
 
 def _assess_release_policy(*,run_id:str,candidate_commit:str,changed_files:tuple[str,...],risk:dict)->tuple[object,dict]:
  policy_store=SupabaseReleasePolicyStore()

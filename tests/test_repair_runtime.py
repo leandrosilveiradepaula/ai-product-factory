@@ -19,6 +19,8 @@ class RepairRuntimeTests(unittest.TestCase):
         queue._rpc=MagicMock(return_value={
             "job_id":"job","status":"failed","run_status":"repair_pending",
             "post_review_applied":True,
+            "traceability_recorded":True,
+            "traceability":{"requirements_linked":0,"dod_checks_linked":0},
             "repair":{"created":True,"repair_job_id":"repair","cycle":1,"max_cycles":3},
             "repair_recheck":None,
         })
@@ -28,7 +30,7 @@ class RepairRuntimeTests(unittest.TestCase):
         self.assertTrue(out["repair"]["created"])
         queue._rpc.assert_called_once()
         name,payload=queue._rpc.call_args.args
-        self.assertEqual(name,"factory_complete_specialist_lane_atomic")
+        self.assertEqual(name,"factory_complete_specialist_lane_with_trace")
         self.assertEqual(payload["p_findings"],findings)
         self.assertNotEqual(payload["p_evidence"]["_factory_claim_token"],None)
 
@@ -36,7 +38,9 @@ class RepairRuntimeTests(unittest.TestCase):
         queue=SupabaseSpecialistLaneQueue.__new__(SupabaseSpecialistLaneQueue)
         queue._rpc=MagicMock(return_value={
             "job_id":"job","status":"failed","run_status":"specialist_review_failed",
-            "post_review_applied":True,"repair":None,"repair_recheck":None,
+            "post_review_applied":True,
+            "traceability_recorded":True,
+            "traceability":{"requirements_linked":0,"dod_checks_linked":0},"repair":None,"repair_recheck":None,
         })
         out=queue.complete(item("operations"),status="failed",
                            findings=[{"code":"unknown_cost","severity":"error"}],evidence={})
@@ -47,7 +51,9 @@ class RepairRuntimeTests(unittest.TestCase):
         queue=SupabaseSpecialistLaneQueue.__new__(SupabaseSpecialistLaneQueue)
         queue._rpc=MagicMock(return_value={
             "job_id":"job","status":"passed","run_status":"preview_ready",
-            "post_review_applied":True,"repair":None,
+            "post_review_applied":True,
+            "traceability_recorded":True,
+            "traceability":{"requirements_linked":0,"dod_checks_linked":0},"repair":None,
             "repair_recheck":{"updated":1,"status":"passed","candidate_commit":"abc"},
         })
         out=queue.complete(item("security"),status="passed",findings=[],evidence={})
