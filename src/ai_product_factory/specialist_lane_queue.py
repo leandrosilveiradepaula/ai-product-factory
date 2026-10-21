@@ -120,7 +120,7 @@ class SupabaseSpecialistLaneQueue:
             raise RuntimeError("specialist evidence contains reserved claim token")
         # A token is a one-claim capability, checked transactionally by SQL.
         # It is stripped before storing normal specialist evidence.
-        completed=self._rpc("factory_complete_specialist_lane",{
+        completed=self._rpc("factory_complete_specialist_lane_atomic",{
             "p_job_id":item.job_id,"p_status":status,
             "p_findings":findings,
             "p_evidence":{**evidence,"_factory_claim_token":item.claim_token},

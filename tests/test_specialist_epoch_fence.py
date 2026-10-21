@@ -74,7 +74,7 @@ class SpecialistEpochContract(unittest.TestCase):
         self.assertEqual(out["status"],"passed")
         self.assertEqual(rpc.call_count,1)
         name,payload=rpc.call_args.args
-        self.assertEqual(name,"factory_complete_specialist_lane")
+        self.assertEqual(name,"factory_complete_specialist_lane_atomic")
         self.assertEqual(payload["p_evidence"],{"model_call":False,"_factory_claim_token":token})
 
     def test_real_pg16_regression_is_isolated_and_covers_pause_races(self):

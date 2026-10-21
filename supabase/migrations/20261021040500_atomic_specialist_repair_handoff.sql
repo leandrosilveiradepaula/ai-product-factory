@@ -251,4 +251,21 @@ begin
    'post_review_applied',true,'repair',v_repair,'repair_recheck',v_recheck);
 end;
 $function$;
+-- Compatibility fence for staggered application and SQL deployment:
+-- the next Python worker calls only this new, service-role-only endpoint.
+-- If migration is absent, PostgREST returns 404 BEFORE any write; it never
+-- calls the old half-committed function.
+CREATE OR REPLACE FUNCTION public.factory_complete_specialist_lane_atomic(
+ p_job_id uuid,p_status text,p_findings jsonb DEFAULT '[]'::jsonb,
+ p_evidence jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE sql
+ SECURITY INVOKER
+ SET search_path TO ''
+AS $function$
+ SELECT public.factory_complete_specialist_lane(p_job_id,p_status,p_findings,p_evidence);
+$function$;
+REVOKE ALL ON FUNCTION public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb) TO service_role;
+
 COMMIT;

@@ -14,12 +14,16 @@ class AtomicReviewRepairContract(unittest.TestCase):
         self.assertEqual(re.findall(r"CREATE OR REPLACE FUNCTION public\.(factory_[a-z_]+)\(",SQL),
                          ["factory_enqueue_repair_from_specialist",
                           "factory_close_repairs_after_specialist_pass",
-                          "factory_complete_specialist_lane"])
-        self.assertEqual(SQL.count("$function$;"),3)
+                          "factory_complete_specialist_lane",
+                          "factory_complete_specialist_lane_atomic"])
+        self.assertEqual(SQL.count("$function$;"),4)
         self.assertTrue(SQL.strip().endswith("COMMIT;"))
-        for forbidden in ("SECURITY DEFINER","GRANT EXECUTE","CREATE POLICY",
+        for forbidden in ("SECURITY DEFINER","CREATE POLICY",
                           "CREATE TABLE","DROP FUNCTION","OPENAI_API_KEY","merge_pull_request"):
             self.assertNotIn(forbidden,SQL)
+        self.assertIn("REVOKE ALL ON FUNCTION public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb) FROM PUBLIC,anon,authenticated",SQL)
+        self.assertIn("GRANT EXECUTE ON FUNCTION public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb) TO service_role",SQL)
+        self.assertIn("SECURITY INVOKER",SQL)
 
     def test_complete_invokes_repair_in_same_transaction(self):
         body=SQL.split("CREATE OR REPLACE FUNCTION public.factory_complete_specialist_lane(",1)[1]
@@ -31,6 +35,8 @@ class AtomicReviewRepairContract(unittest.TestCase):
         self.assertNotIn("factory_enqueue_repair_from_specialist",QUEUE)
         self.assertNotIn("factory_close_repairs_after_specialist_pass",QUEUE)
         self.assertIn("post_review_applied",QUEUE)
+        self.assertIn('self._rpc("factory_complete_specialist_lane_atomic"',QUEUE)
+        self.assertNotIn('self._rpc("factory_complete_specialist_lane",{',QUEUE)
 
     def test_both_direct_rpcs_enforce_same_epoch_and_identity(self):
         for name in ("factory_enqueue_repair_from_specialist","factory_close_repairs_after_specialist_pass"):

@@ -116,9 +116,23 @@ $body$;
 """
 
 with psycopg.connect(dsn,autocommit=True) as conn:
+    # Reproduce Supabase's three API roles in this disposable, isolated DB.
+    # PostgreSQL has PUBLIC EXECUTE by default; wrapper must explicitly
+    # revoke it while granting only the privileged server-side role.
+    for role in ("anon","authenticated","service_role"):
+        conn.execute("CREATE ROLE "+role+" NOLOGIN")
     conn.execute(schema)
     conn.execute(migration)
     conn.execute(repair_migration)
+    actual=conn.execute("""
+      select has_function_privilege('anon',
+               'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE'),
+             has_function_privilege('authenticated',
+               'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE'),
+             has_function_privilege('service_role',
+               'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE')
+    """).fetchone()
+    assert actual==(False,False,True),actual
 
     def one(sql,args=()):
         return conn.execute(sql,args).fetchone()[0]
@@ -143,7 +157,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
 
     def complete(job,token,status="passed",findings=None):
         proof={"candidate_commit":"a"*40,"_factory_claim_token":token,"model_call":False}
-        return one("SELECT public.factory_complete_specialist_lane(%s,%s,%s::jsonb,%s::jsonb)",
+        return one("SELECT public.factory_complete_specialist_lane_atomic(%s,%s,%s::jsonb,%s::jsonb)",
                    (job,status,json.dumps(findings if findings is not None else []),json.dumps(proof)))
 
     def recover():
@@ -250,7 +264,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     enqueue(shared_run)
     receipt=claim("worker-share")
     with psycopg.connect(dsn) as finishing, psycopg.connect(dsn,autocommit=True) as pauser:
-        finishing.execute("SELECT public.factory_complete_specialist_lane(%s,'passed','[]'::jsonb,%s::jsonb)",(receipt["job_id"],json.dumps({"_factory_claim_token":receipt["claim_token"]})))
+        finishing.execute("SELECT public.factory_complete_specialist_lane_atomic(%s,'passed','[]'::jsonb,%s::jsonb)",(receipt["job_id"],json.dumps({"_factory_claim_token":receipt["claim_token"]})))
         pauser.execute("SET lock_timeout='200ms'")
         assert_rejected(lambda: pauser.execute(
             "UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(shared,)),"55P03")

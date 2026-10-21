@@ -28,7 +28,7 @@ class RepairRuntimeTests(unittest.TestCase):
         self.assertTrue(out["repair"]["created"])
         queue._rpc.assert_called_once()
         name,payload=queue._rpc.call_args.args
-        self.assertEqual(name,"factory_complete_specialist_lane")
+        self.assertEqual(name,"factory_complete_specialist_lane_atomic")
         self.assertEqual(payload["p_findings"],findings)
         self.assertNotEqual(payload["p_evidence"]["_factory_claim_token"],None)
 

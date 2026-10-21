@@ -4,6 +4,8 @@ Depois de `factory_complete_specialist_lane` completar uma avaliacao, a versao a
 
 A migration `20261021040500_atomic_specialist_repair_handoff.sql` faz a acao de pos-review no mesmo commit SQL, sob o lock de controle ja tomado por `factory_complete_specialist_lane`. Os dois RPCs secundários passam a exigir o job original `failed/passed`, vinculo run/task/project/candidate, `metadata.execution_generation` e `evidence._factory_epoch`, projeto ativo `running` com geracao exata e `FOR SHARE OF c,p`. O enqueue compara `p_findings` com as findings persistidas e retorna recibo idempotente se o mesmo specialist_job_id ja gerou reparo. O recheck so atualiza reparos `integrated` do projeto/Change Set certo e, repetido, retorna updated=0.
 
+Rollout sem meia transacao: o runtime passa a chamar exclusivamente `factory_complete_specialist_lane_atomic`, RPC novo criado nesta migration com `SECURITY INVOKER`, `REVOKE` para PUBLIC/anon/authenticated e `GRANT` estritamente a service_role. Antes de aplicar esta migration, nao existe esse RPC e o Python falha ANTES de executar a conclusao antiga. Nunca habilitar permissao publica para contornar um 404.
+
 O Python agora faz UMA chamada de completion, exige o marcador `post_review_applied=true` e recebe `repair` e `repair_recheck` na mesma resposta. Se o backend nao tiver esta migration, o worker rejeita o sucesso parcial; ativar SQL e app de forma coordenada.
 
 Este candidato NAO foi aplicado em producao. Supabase migration anterior `20261021030000` de #1021 tambem esta pendente e deve antecede-lo. Testes de PostgreSQL isolado e CI devem estar verdes antes do merge humano e do gate SQL. Se API responder com timeout apos commit, consultar a evidencia duravel em vez de repetir revisao de modelo.
