@@ -1,3 +1,13 @@
+## 21/10/2026 — Atomicidade de especialista para reparo e recheck (candidato)
+
+- #1021 mergeada em `865dd30bce9a88e91b61968be32a738b990b3210`, CI pós-merge verde. A migration specialist epoch/token `20261021030000` ainda nao foi aplicada em producao (gate independente).
+- Falha funcional adicional: `SupabaseSpecialistLaneQueue.complete` fazia duas RPCs separadas: completion e enqueue-repair/close-recheck. Pause, timeouts HTTP ou crashes no intervalo geravam estados de review concluso com reparo ausente. A RPC direta de repair podia criar segunda wave/tarefa em chamadas repetidas do mesmo especialista; close-recheck nao checava Pause/geracao sequer.
+- Migration candidata `20261021040500_atomic_specialist_repair_handoff.sql` substitui tres funcoes existentes com guard de geracao + lock compartilhado do projeto, job/resultado autentico e idempotencia por specialist_job_id. Conclusao, reparo, status e auditoria compartilham uma transacao. O Python exige receipt `post_review_applied` e nao faz mais segunda RPC.
+- PostgreSQL 16 isolado valida 1 review failed -> 1 repair, retry HTTP sem duplicacao, Pause/Resume bloqueado, review de recheck fecha repair uma so vez e erro downstream faz rollback total. Sem chamadas pagas.
+- **Nao aplicada em producao**; depois do merge humano necessita autorizacao especifica. Ordem exigida: aplicar primeiro `20261021030000`, depois `20261021040500`; nunca usar `db push` cego.
+
+---
+
 ## 21/10/2026 — RPC especialista protege Pause/Resume e claim token (#894, candidato)
 
 - As migrations `20261021014000` e `20261021021000` foram aplicadas e verificadas sob version IDs Supabase `20261021020934` e `20261021021025`; PR #1013 mergeada em `8c8cc53fee96696905879f07552e86c254033bae`. Nenhum trabalho executavel foi alterado nem houve custo de modelo.

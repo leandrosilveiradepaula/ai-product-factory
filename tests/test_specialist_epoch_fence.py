@@ -69,7 +69,7 @@ class SpecialistEpochContract(unittest.TestCase):
     def test_token_is_bound_to_exact_rpc_and_not_echoed_into_evidence(self):
         queue=SupabaseSpecialistLaneQueue(url="https://x.supabase.co",secret_key="sb_secret_test")
         token="123e4567-e89b-42d3-a456-426614174099"
-        with patch.object(queue,"_rpc",return_value={"status":"passed"}) as rpc:
+        with patch.object(queue,"_rpc",return_value={"status":"passed","post_review_applied":True}) as rpc:
             out=queue.complete(item(token),status="passed",findings=[],evidence={"model_call":False})
         self.assertEqual(out["status"],"passed")
         self.assertEqual(rpc.call_count,1)
