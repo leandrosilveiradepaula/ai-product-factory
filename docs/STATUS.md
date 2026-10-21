@@ -1,3 +1,12 @@
+## 21/10/2026 — Diagnóstico de integração de run terminal com Change Set (candidato #713)
+
+- Evidência real: auditor E2E owner-only #39627896075 confirmou **12/12** etapas da continuação platform Factory `945c0da5-f36f-46da-a454-072037a988a5`, PR #997, `operations`; isso não certifica `product_ready` (permanece `false`, 6 domínios pendentes).
+- Auditor E2E CRM #39628083541 identificou **5/12** etapas para a continuação autenticada `8b607ffb-008c-4ae4-aa29-2f624f27988b`, com próxima etapa de implementação não comprovada. **Não** reutilizar outros runs para inflar a evidência desse ciclo.
+- Diagnóstico de admissão owner-only CRM #39628780893 retornou `run_completed/no_new_action`, mas esse root gerou Work Unit `42aa0d07-a143-4955-a24f-517ef37cdc8b` com SHA `b135b920043b4eeac87db9aba597af9142a33b53` e Change Set `552fd082-7c8e-4ed7-a712-2a550bb50a52` **superseded**, sem release próprio (retirement de 19/10). Run root antigo tinha generation 4; controle do projeto está na 6. Resultado esperado: não reabrir esse trabalho nem dizer `no_new_action` como explicação completa da entrega.
+- Correção candidata **read-only**: admitir somente Change Sets do exato `root_task_id`, verificar project_id, status, inventário limitado, outputs imutáveis e generation; distinguir `superseded`, `blocked`, active e `completed` sem confundir Work Unit concluída com release certificado. Ação é revisão de evidência/planejamento novo *se necessário*, nunca replay implícito.
+- Cinco blocos: inventário vinculado ao root; fail-closed contra dados cruzados/limites; classificação de Change Set terminal; epoch fencing e outputs sem vazamento de metadados; contrato de testes Python + auditoria real após merge humano.
+- Não modificar CRM, Service Desk, Control Plane, schema/migration, Console ou PR antiga. Nenhuma chamada de modelo, Preview Vercel ou gate de produção bypass. Esta mudança na Factory exige CI e merge humano de produção.
+
 ## 21/10/2026 — Owner wake recupera housekeeping determinística (#894/#713, candidato)
 
 - Evidência real: após migration de prontidão legado `recover_latest_legacy_release_readiness` aplicada sob versão MCP `20261021144519`, o comando OWNER exato `/factory-wake` no GitHub issue #713 iniciou o runner `39621332271` na `main` `c2c3a3811fea7279cd09c934897173e8a9ceb16e`. O job `schedule-probe` autenticou OIDC, executou recuperação de leases e queue probe; entretanto `project-control-settle`, `release-state-settle`, `legacy-release-readiness-repair` e `project-control-wake` ficaram **skipped** apesar do wake OWNER válido.

@@ -432,3 +432,12 @@ A release antecipada do Service Desk permanece bloqueada, não é prova para pro
 4. [x] Permitir apenas nos 4 passos existentes: controle manual, outbox de release humano, readiness legado, project-control wake. Manter fila de modelos/CI/Preview independente e sem auto-merge.
 5. [ ] CI + QA de 6 contratos offline e merge humano em produção; depois repetir wake e observar evidence SQL verdadeira para release #997. Se o cron entregar primeiro, não criar jobs redundantes nem duplicar reparo.
 
+
+## 21/10/2026 — Diagnóstico verídico de Change Set terminal #713
+
+1. [x] Auditar a continuação real #987 da Factory: 12/12 etapas verificados por job read-only e merge observado, produto inteiro ainda not_assessed.
+2. [x] Auditar CRM `8b607...`: 5/12; apontar implementação não vinculada, sem considerar outras runs como prova.
+3. [x] Reconciliar diagnóstico `run_completed/no_new_action` com evidências do Change Set `552fd082...` marcado superseded e geração antiga, protegendo origem por projeto/root.
+4. [x] Preparar leitor e classificador offline-first, bounds, rejeição de identidades cruzadas e inferência zero de entrega; testes para CRM, Service Desk, epoch, múltiplas linhagens e sanitização.
+5. [ ] CI Python/Factory Acceptance no SHA exato, merge humano de produção e repetir auditoria de admissão CRM para verificar sinal correto. Sem migration, modelos pagos ou Preview do Console.
+
