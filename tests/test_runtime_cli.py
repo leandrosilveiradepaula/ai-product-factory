@@ -665,7 +665,10 @@ class RuntimeCliTests(unittest.TestCase):
 
     def test_specialist_persists_deterministic_result(self):
         item=SimpleNamespace(job_id="j",run_id="r",repository="owner/repo",role="qa",candidate_commit="abc")
-        queue=MagicMock();queue.claim.return_value=item;queue.complete.return_value={"run_status":"preview_ready"}
+        queue=MagicMock();queue.claim.return_value=item;queue.complete.return_value={
+            "run_status":"preview_ready",
+            "traceability":{"requirements_linked":1,"dod_checks_linked":1}
+        }
         result=SimpleNamespace(status="passed",findings=(),evidence={"model_call":False})
         trace=MagicMock()
         with patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue",return_value=queue), \
@@ -677,8 +680,8 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["run_status"],"preview_ready")
         evaluate.assert_called_once()
         queue.complete.assert_called_once_with(item,status="passed",findings=[],evidence={"model_call":False})
-        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_type"],"qa")
-        self.assertEqual(trace.record_delivery_evidence.call_args.kwargs["evidence_ref"],"abc")
+        trace.record_delivery_evidence.assert_not_called()
+        self.assertEqual(out["traceability"],{"requirements_linked":1,"dod_checks_linked":1})
 
     def test_closed_pr_preview_probe_does_not_start_browser(self):
         item=SimpleNamespace(run_id="r",repository="owner/repo",pr_number=19,candidate_commit="sha",manifest={})

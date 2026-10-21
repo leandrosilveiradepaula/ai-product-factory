@@ -35,7 +35,7 @@ class AtomicReviewRepairContract(unittest.TestCase):
         self.assertNotIn("factory_enqueue_repair_from_specialist",QUEUE)
         self.assertNotIn("factory_close_repairs_after_specialist_pass",QUEUE)
         self.assertIn("post_review_applied",QUEUE)
-        self.assertIn('self._rpc("factory_complete_specialist_lane_atomic"',QUEUE)
+        self.assertIn('self._rpc("factory_complete_specialist_lane_with_trace"',QUEUE)
         self.assertNotIn('self._rpc("factory_complete_specialist_lane",{',QUEUE)
 
     def test_both_direct_rpcs_enforce_same_epoch_and_identity(self):

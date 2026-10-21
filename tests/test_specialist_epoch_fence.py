@@ -69,12 +69,16 @@ class SpecialistEpochContract(unittest.TestCase):
     def test_token_is_bound_to_exact_rpc_and_not_echoed_into_evidence(self):
         queue=SupabaseSpecialistLaneQueue(url="https://x.supabase.co",secret_key="sb_secret_test")
         token="123e4567-e89b-42d3-a456-426614174099"
-        with patch.object(queue,"_rpc",return_value={"status":"passed","post_review_applied":True}) as rpc:
+        with patch.object(queue,"_rpc",return_value={
+            "status":"passed","post_review_applied":True,
+            "traceability_recorded":True,
+            "traceability":{"requirements_linked":0,"dod_checks_linked":0}
+        }) as rpc:
             out=queue.complete(item(token),status="passed",findings=[],evidence={"model_call":False})
         self.assertEqual(out["status"],"passed")
         self.assertEqual(rpc.call_count,1)
         name,payload=rpc.call_args.args
-        self.assertEqual(name,"factory_complete_specialist_lane_atomic")
+        self.assertEqual(name,"factory_complete_specialist_lane_with_trace")
         self.assertEqual(payload["p_evidence"],{"model_call":False,"_factory_claim_token":token})
 
     def test_real_pg16_regression_is_isolated_and_covers_pause_races(self):

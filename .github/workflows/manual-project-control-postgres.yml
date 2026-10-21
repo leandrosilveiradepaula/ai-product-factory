@@ -10,6 +10,8 @@ on:
       - "supabase/migrations/*quarantine_cross_epoch_recovery_replay.sql"
       - "supabase/migrations/*fence_specialist_epoch_and_lease_token.sql"
       - "supabase/migrations/*atomic_specialist_repair_handoff.sql"
+      - "supabase/migrations/*atomic_specialist_traceability_evidence.sql"
+      - "tests/test_specialist_traceability_atomicity.py"
       - "tests/test_atomic_specialist_repair_handoff.py"
       - "src/ai_product_factory/specialist_lane_queue.py"
       - "scripts/verify_specialist_epoch_postgres.py"

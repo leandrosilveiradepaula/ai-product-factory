@@ -390,3 +390,10 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [x] Falha entre `factory_complete_specialist_lane` e `factory_enqueue_repair_from_specialist` delimitada; close-recheck sem controle de geracao tambem identificado.
 - [ ] Certificar transacao unica de reviews, reparos e close no PostgreSQL isolado, rollback e idempotencia HTTP.
 - [ ] Apos merge e autorizacao separada, ativar as migrations `20261021030000` e `20261021040500` na ordem, reconciliando IDs de historico do Supabase antes de aplicar.
+
+## 21/10/2026 — Conclusao especialista com Definition of Done sem transacao parcial
+
+- [x] Reconciliacao main + migrations anteriores aplicadas e ausencia de work ativo no Control Plane.
+- [x] Detectada chamada de evidencia fora da transacao de review/reparo. Novo RPC fail-closed para nao haver sucesso parcial durante rollout.
+- [ ] Validar PostgreSQL isolado com DoD ligado/erro/rollback e auditoria unica; certificar CI da PR.
+- [ ] Merge humano e gate de migration separado para `20261021041000_atomic_specialist_traceability_evidence.sql` (nenhum paid test).

@@ -1,3 +1,13 @@
+## 21/10/2026 — Specialist completion e traceability transacionais (candidato)
+
+Problema: o worker gravava review, reparo e status por `factory_complete_specialist_lane_atomic`, e so depois ligava requirements e Definition of Done por `factory_record_delivery_evidence`. A segunda chamada podia falhar apos o primeiro commit; no proximo wake o job ja nao esta `claimed` e o recibo da entrega fica ausente, impedindo rastreabilidade confiavel.
+
+A nova migration `20261021041000_atomic_specialist_traceability_evidence.sql` cria `factory_complete_specialist_lane_with_trace` (**novo** endpoint). Ele chama a funcao atomica anterior e, sob os mesmos locks de projeto/geracao, registra evidence em `factory_record_delivery_evidence`. Nao aumenta grants: `REVOKE PUBLIC/anon/authenticated`, EXECUTE somente `service_role`, `SECURITY INVOKER`. O worker troca para o novo RPC sem fallback ao anterior, logo antes da migration a chamada falha sem mutacao parcial. `traceability_recorded=true` mais contagens `requirements_linked`/`dod_checks_linked` sao obrigatorios para reportar sucesso; zeros sao permitidos quando nao existem requisitos/DoD vinculados, mas auditoria ainda e persistida.
+
+PG16 isolado usa a funcao historica real de evidencias em fixture, testa links com evidencias, `DoD` invalido causando rollback e tentativa posterior, Pause/Resume, deduplicacao de evaluacoes e auditoria. Evitar novas chamadas de modelo. A migration e separadamente aprovada pelo operador depois do merge humano e deve seguir a historia real no Supabase, **nunca db push cego**.
+
+---
+
 ## 21/10/2026 — Transacao unica de review, repair e recheck (candidato)
 
 Depois de `factory_complete_specialist_lane` completar uma avaliacao, a versao antiga do Python chamava outro endpoint para `factory_enqueue_repair_from_specialist` ou `factory_close_repairs_after_specialist_pass`. Uma pausa no meio da sequencia nao retroagia a avaliacao. Uma resposta HTTP perdida podia repetir a RPC de reparo e alocar outra wave/tarefa para o mesmo job.

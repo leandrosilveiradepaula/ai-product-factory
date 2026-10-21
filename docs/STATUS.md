@@ -1,3 +1,13 @@
+## 21/10/2026 — Transacao unica de especialista ate evidencia DoD (PR candidata)
+
+- **Ambiente reconciliado**: #1022 mergeada na main `902ee1cb5adcb350e866e35a4843273547d1d5c9`. Migrations `20261021030000` e `20261021040500` aplicadas no Supabase como `20261021031829` e `20261021031917`, ACLs service_role somente; Control Plane 0 runs e especialistas ativos.
+- **Falha estrutural real**: `run_specialist_once` conclui review/reparo na RPC atomica, mas registra requirement/Definition of Done com `factory_record_delivery_evidence` em segunda chamada. Crash, timeout HTTP ou Pause nesse intervalo preserva review concluido sem evidência. Um novo claim nao reconstitui automaticamente o recibo e repetir trabalho pode cobrar ou alterar terceiros.
+- Candidato `20261021041000_atomic_specialist_traceability_evidence.sql` cria endpoint invoker versionado somente service_role. No mesmo commit SQL, executa a conclusao atomica anterior e chama a funcao existente de rastreabilidade usando run, role e SHA persistidos do job. Se falhar DoD/links/audit, rollback integral de especialista, avaliacao, reparo e evidence. O Python novo faz apenas uma RPC; sem migration o endpoint novo nao existe e a entrega falha antes de gravar.
+- PostgreSQL isolado cobre requisito vinculado + DoD, deduplicacao e rollback quando o DoD esta invalido, com retry do mesmo token apos corrigir a fixture. CI/QA por SHA necessario.
+- **Nao aplicada em producao**; merge humano + autorizacao especifica de migration, sem paid LLM/benchmark e sem Preview de Console.
+
+---
+
 ## 21/10/2026 — Atomicidade de especialista para reparo e recheck (candidato)
 
 - #1021 mergeada em `865dd30bce9a88e91b61968be32a738b990b3210`, CI pós-merge verde. A migration specialist epoch/token `20261021030000` ainda nao foi aplicada em producao (gate independente).
