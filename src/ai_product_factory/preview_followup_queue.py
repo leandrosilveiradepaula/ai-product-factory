@@ -4,6 +4,7 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -48,15 +49,27 @@ class SupabasePreviewFollowupQueue:
             raise RuntimeError(f"control-plane read failed: {path} ({exc.code})") from exc
         return [] if not raw else json.loads(raw)
 
-    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = ()) -> PreviewFollowupItem | None:
+    def next_pending(self, *, exclude_run_ids: tuple[str, ...] = (), offset: int = 0, required_run_id: str | None = None) -> PreviewFollowupItem | None:
         # A paused or quota-blocked candidate must not starve active delivery.
         if (not isinstance(exclude_run_ids, tuple) or len(exclude_run_ids)>12
             or any(not isinstance(x,str) or not x.strip() for x in exclude_run_ids)):
             raise ValueError("invalid bounded Preview exclusion set")
+        if type(offset) is not int or not 0 <= offset <= 1000000 or offset % 12:
+            raise ValueError("invalid bounded Preview cursor position")
+        if required_run_id is not None:
+            if not isinstance(required_run_id,str):
+                raise ValueError("invalid pinned Preview run ID")
+            try:
+                canonical=str(uuid.UUID(required_run_id))
+            except ValueError:
+                raise ValueError("invalid pinned Preview run ID") from None
+            if canonical != required_run_id or offset or exclude_run_ids:
+                raise ValueError("ambiguous or invalid pinned Preview selection")
         ignored=set(exclude_run_ids)
-        runs=self._get(
-            active_project_followup_query(status="preview_ready",limit=50)
-        )
+        query=active_project_followup_query(status="preview_ready",limit=50,offset=offset)
+        if required_run_id is not None:
+            query+="&id=eq."+quote(required_run_id,safe="")
+        runs=self._get(query)
         if not runs:
             return None
         cutoff=(datetime.now(timezone.utc)-timedelta(hours=24)).isoformat().replace("+00:00","Z")
@@ -64,6 +77,8 @@ class SupabasePreviewFollowupQueue:
         for row in runs:
             if not isinstance(row,dict) or not isinstance(row.get("id"),str):
                 raise RuntimeError("invalid Preview candidate identity")
+            if required_run_id is not None and row["id"] != required_run_id:
+                raise RuntimeError("Preview selection changed after probe")
             if row["id"] in ignored or not is_delivery_preview_run(row):
                 continue
             blocks=self._get(

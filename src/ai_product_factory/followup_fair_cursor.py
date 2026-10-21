@@ -20,14 +20,18 @@ class SupabaseFollowupFairCursor:
         self.url = config.url
         self.headers = config.headers
 
-    @staticmethod
-    def _lane(lane: str) -> None:
-        if lane not in {"ci", "release"}:
+    _LANE_STRIDES = {"ci": 8, "release": 8, "preview": 12}
+
+    @classmethod
+    def _lane(cls, lane: str) -> None:
+        if not isinstance(lane, str) or lane not in cls._LANE_STRIDES:
             raise ValueError("unsupported follow-up cursor lane")
 
-    @staticmethod
-    def _offset(value: int) -> None:
-        if type(value) is not int or not 0 <= value <= 1000000 or value % 8:
+    @classmethod
+    def _offset(cls, lane: str, value: int) -> None:
+        cls._lane(lane)
+        if (type(value) is not int or not 0 <= value <= 1000000
+            or value % cls._LANE_STRIDES[lane]):
             raise ValueError("invalid bounded follow-up cursor position")
 
     def read_offset(self, lane: str) -> int:
@@ -55,14 +59,14 @@ class SupabaseFollowupFairCursor:
             raise RuntimeError("unexpected durable follow-up cursor format")
         offset = data.get("next_offset")
         try:
-            self._offset(offset)
+            self._offset(lane, offset)
         except ValueError:
             raise RuntimeError("invalid durable follow-up cursor position") from None
         return offset
 
     def reserve_next(self, lane: str, next_offset: int) -> None:
         self._lane(lane)
-        self._offset(next_offset)
+        self._offset(lane, next_offset)
         event = {
             "actor_type": "system", "actor_ref": lane + "-followup",
             "event_type": "followup.fair_scan_reserved",

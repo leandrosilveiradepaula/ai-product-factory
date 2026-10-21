@@ -19,6 +19,13 @@ class RuntimeCliTests(unittest.TestCase):
         self._routed_epoch_patch=patch("ai_product_factory.runtime_cli.assert_routed_epoch")
         self._routed_epoch_patch.start()
         self.addCleanup(self._routed_epoch_patch.stop)
+        # A Preview scheduler wake reserves a durable advisory cursor before
+        # reading GitHub. Offline unit tests must mock this existing Control
+        # Plane dependency; production still fails closed if it is absent.
+        self._preview_cursor_patch=patch("ai_product_factory.runtime_cli.SupabaseFollowupFairCursor")
+        cursor_class=self._preview_cursor_patch.start()
+        cursor_class.return_value.read_offset.return_value=0
+        self.addCleanup(self._preview_cursor_patch.stop)
 
     def test_runtime_builds_primary_handler_for_api_key(self):
         scheduler=MagicMock();scheduler.profiles.return_value=()

@@ -910,7 +910,7 @@ jobs:
             echo "control_plane=false" >> "$GITHUB_OUTPUT"
             echo "Preview follow-up is inert: Control Plane credentials are not configured."
           fi
-      - name: Probe Preview queue without side effects
+      - name: Select Preview candidate and reserve the next bounded window
         if: ${{ steps.readiness.outputs.control_plane == 'true' }}
         id: preview_probe
         shell: bash
@@ -918,11 +918,27 @@ jobs:
           python -m ai_product_factory.runtime_cli --mode preview-probe > /tmp/preview-probe.json
           cat /tmp/preview-probe.json
           python - <<'PY'
-          import json, os
+          import json, os, re, uuid
           data=json.load(open("/tmp/preview-probe.json"))
+          claimed=data.get("claimed") is True
+          run_id=data.get("run_id")
+          sha=data.get("candidate_commit")
+          if claimed:
+              if (not isinstance(run_id,str) or not isinstance(sha,str)
+                  or not re.fullmatch(r"[0-9a-f]{40}",sha)):
+                  raise RuntimeError("Preview probe has no valid run/SHA receipt")
+              try:
+                  canonical=str(uuid.UUID(run_id))
+              except ValueError:
+                  raise RuntimeError("Preview probe has an invalid run ID") from None
+              if canonical!=run_id:
+                  raise RuntimeError("Preview probe run ID is not canonical")
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:
-              out.write(f"work={'true' if data.get('claimed') else 'false'}\n")
-              out.write(f"browser={'true' if data.get('preview_required') else 'false'}\n")
+              out.write(f"work={'true' if claimed else 'false'}\n")
+              out.write(f"browser={'true' if claimed and data.get('preview_required') is True else 'false'}\n")
+              if claimed:
+                  out.write(f"run_id={run_id}\n")
+                  out.write(f"candidate_sha={sha}\n")
           PY
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ steps.preview_probe.outputs.browser == 'true' }}
@@ -940,7 +956,10 @@ jobs:
       - name: Run at most one verified Preview
         if: ${{ steps.preview_probe.outputs.work == 'true' }}
         shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode preview
+        env:
+          FACTORY_PREVIEW_EXPECTED_RUN_ID: ${{ steps.preview_probe.outputs.run_id }}
+          FACTORY_PREVIEW_EXPECTED_SHA: ${{ steps.preview_probe.outputs.candidate_sha }}
+        run: python -m ai_product_factory.runtime_cli --mode preview --run-id "$FACTORY_PREVIEW_EXPECTED_RUN_ID" --expected-preview-sha "$FACTORY_PREVIEW_EXPECTED_SHA"
 
   alerts:
     # Alert collector failure must be visible, but must not invalidate the
