@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse,json,os,socket,re
+import argparse,json,os,socket,re,uuid
 from decimal import Decimal, InvalidOperation
 from .model_executor import ModelExecutor
 from .metered_provider import MeteredPrimaryProvider
@@ -380,13 +380,17 @@ def _project_followup_waiting(item,exc:ProjectFollowupPaused|None=None)->dict:
  return {"claimed":True,"status":code,
          "run_id":item.run_id,"pr_number":item.pr_number}
 
-def _next_authorized_preview(queue):
- # A paused or epoch-revoked oldest candidate cannot block other projects.
+def _next_authorized_preview(queue,*,offset:int=0):
+ # A revoked first window does not exhaust every future scheduler wake.
+ if type(offset) is not int or not 0<=offset<=1000000 or offset%12:
+  raise ValueError("invalid bounded Preview scan window")
  deferred=[]
  first_status="project_control_waiting"
  for _ in range(12):
-   item=(queue.next_pending(exclude_run_ids=tuple(deferred))
-         if deferred else queue.next_pending())
+   kw={}
+   if deferred:kw["exclude_run_ids"]=tuple(deferred)
+   if offset:kw["offset"]=offset
+   item=queue.next_pending(**kw)
    if item is None:
      return None,({"claimed":True,"status":first_status,
                    "run_id":deferred[0]} if deferred else None)
@@ -398,6 +402,23 @@ def _next_authorized_preview(queue):
      continue
    return item,None
  return None,{"claimed":True,"status":first_status,"run_id":deferred[0]}
+
+
+def _next_authorized_preview_with_cursor(queue,cursor):
+ # Reserve the next window before GitHub, Vercel or browser effects.
+ # This is ordering only; the per-item transactional epoch guard remains.
+ start=cursor.read_offset("preview")
+ if type(start) is not int or not 0<=start<=1000000 or start%12:
+  raise RuntimeError("invalid durable Preview scan cursor")
+ next_offset=start+12 if start+12<=1000000 else 0
+ cursor.reserve_next("preview",next_offset)
+ item,waiting=_next_authorized_preview(queue,offset=start)
+ if item is None and waiting is None and start:
+  # The queue shrank between wakes; wrap now and recheck the first window.
+  cursor.reserve_next("preview",12)
+  return _next_authorized_preview(queue,offset=0)
+ return item,waiting
+
 
 def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
  queue=SupabaseCIFollowupQueue()
@@ -528,35 +549,65 @@ def _require_current_preview_base(github:GitHubRestAdapter,pr)->dict:
  return verify_preview_base_compatibility(github,pr)
 
 def run_preview_probe_once()->dict:
- item,waiting=_next_authorized_preview(SupabasePreviewFollowupQueue())
- if waiting:return {**waiting,"preview_required":False}
+ # Prepare browser dependencies for this EXACT run+SHA, not just any Preview.
+ # The advisory cursor advances here only, never twice within the workflow.
+ item,waiting=_next_authorized_preview_with_cursor(
+  SupabasePreviewFollowupQueue(),SupabaseFollowupFairCursor())
+ if waiting:return {**waiting,"claimed":False,"preview_required":False}
  if item is None:return {"claimed":False,"status":"empty","preview_required":False}
+ receipt={"run_id":item.run_id,"candidate_commit":item.candidate_commit}
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if getattr(pr,"state","open")!="open" or getattr(pr,"merged",False):
   if getattr(pr,"merged",False):
    return {"claimed":False,"status":"merged_pr_requires_release_observation",
-    "run_id":item.run_id,"pr_number":item.pr_number,"preview_required":False}
+    "pr_number":item.pr_number,"preview_required":False,**receipt}
   if pr.head_sha!=item.candidate_commit:
    raise RuntimeError("closed PR head does not match durable candidate")
-  return {"claimed":True,"status":"reconcile_closed_pr","run_id":item.run_id,
-   "pr_number":item.pr_number,"preview_required":False}
+  return {"claimed":True,"status":"reconcile_closed_pr",
+   "pr_number":item.pr_number,"preview_required":False,**receipt}
  if pr.head_sha!=item.candidate_commit:raise RuntimeError("GitHub PR head no longer matches preview candidate")
- base_evidence=_require_current_preview_base(github,pr)
+ _require_current_preview_base(github,pr)
  changed_files=github.get_pull_request_files(item.pr_number)
  applicability=evaluate_preview_applicability(manifest=item.manifest,changed_files=changed_files)
  if not applicability.required:
-  return {"claimed":True,"status":"ready","run_id":item.run_id,"preview_required":False,"reason":applicability.reason}
+  return {"claimed":True,"status":"ready","preview_required":False,
+   "reason":applicability.reason,**receipt}
  try:
   project_cfg=resolve_project_vercel_preview_config(repository=item.repository,manifest=item.manifest)
  except ValueError as exc:
-  return {"claimed":True,"status":"blocked","run_id":item.run_id,"preview_required":True,"error":str(exc)}
- return {"claimed":True,"status":"ready","run_id":item.run_id,"preview_required":True,"preview_mode":project_cfg.mode}
+  return {"claimed":True,"status":"blocked","preview_required":True,
+   "error":str(exc),**receipt}
+ return {"claimed":True,"status":"ready","preview_required":True,
+  "preview_mode":project_cfg.mode,**receipt}
 
-def run_preview_once()->dict:
- item,waiting=_next_authorized_preview(SupabasePreviewFollowupQueue())
- if waiting:return waiting
- if item is None:return {"claimed":False,"status":"empty"}
+
+def run_preview_once(*,expected_run_id:str|None=None,expected_candidate_sha:str|None=None)->dict:
+ # CI/Preview handoff: bind execution to the run and candidate observed by
+ # the earlier browser-readiness probe. A changed queue can never deploy
+ # a different PR with the prepared browser environment.
+ pinned=(expected_run_id is not None or expected_candidate_sha is not None)
+ if pinned:
+  if (not isinstance(expected_run_id,str) or
+      not isinstance(expected_candidate_sha,str) or
+      not re.fullmatch(r"[0-9a-f]{40}",expected_candidate_sha)):
+   raise ValueError("invalid pinned Preview handoff")
+  try:canonical=str(uuid.UUID(expected_run_id))
+  except ValueError:raise ValueError("invalid pinned Preview run ID") from None
+  if canonical!=expected_run_id:raise ValueError("noncanonical pinned Preview run ID")
+  item=SupabasePreviewFollowupQueue().next_pending(required_run_id=expected_run_id)
+  if item is None:
+   return {"claimed":False,"status":"preview_candidate_unavailable",
+    "run_id":expected_run_id}
+  if item.run_id!=expected_run_id or item.candidate_commit!=expected_candidate_sha:
+   raise RuntimeError("Preview probe candidate changed before execution")
+  try:_assert_project_followup(item)
+  except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
+ else:
+  item,waiting=_next_authorized_preview_with_cursor(
+   SupabasePreviewFollowupQueue(),SupabaseFollowupFairCursor())
+  if waiting:return waiting
+  if item is None:return {"claimed":False,"status":"empty"}
  github=GitHubRestAdapter(repository=item.repository)
  pr=github.get_pull_request(item.pr_number)
  if getattr(pr,"state","open")!="open" or getattr(pr,"merged",False):
@@ -962,7 +1013,7 @@ from .project_control_wake_outbox import ControlWakeOutbox
 from .nonproduction_candidate_repin import repin_one
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","project-control-wake","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","project-control-wake","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--expected-preview-sha");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="reconcile-ci-candidate":
   if not args.source_run_id or not args.pr_number:raise ValueError("--source-run-id and --pr-number required")
@@ -991,7 +1042,7 @@ def main()->int:
   out=run_retry_once(args.source_run_id,args.retry_reason)
  elif args.mode=="agent-matrix":out=SupabaseAgentScheduler().work_matrix(args.max_items)
  elif args.mode=="preview-probe":out=run_preview_probe_once()
- elif args.mode=="preview":out=run_preview_once()
+ elif args.mode=="preview":out=run_preview_once(expected_run_id=args.run_id,expected_candidate_sha=args.expected_preview_sha)
  elif args.mode=="release":out=run_bounded_deterministic_lane("release",args.worker_id,args.batch_items)
  elif args.mode=="ci":out=run_bounded_deterministic_lane("ci",args.worker_id,args.batch_items)
  elif args.mode=="specialist":

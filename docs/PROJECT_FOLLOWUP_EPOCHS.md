@@ -130,3 +130,34 @@ Testes gratuitos: tests.test_followup_round_robin_fairness,
 tests.test_followup_fair_continuation e acceptance/CI SHA-exato.
 Sem Console, migration, ampliacao RLS, API paga ou auto-merge.
 A migration de recovery 20261020194500 permanece independente.
+
+## 21/10/2026 — Preview: fairness entre wakes e binding Probe→Execucao
+
+O worker Preview antes escaneava somente os primeiros 12 candidatos.
+Doze runs antigas com epoch revogada apos Pause/Resume poderiam
+impedir indefinidamente um 13o projeto de chegar a Preview. Alem
+disso, o GitHub Actions executa preview-probe antes de instalar o
+browser e relia a fila para executar; uma mudanca da fila durante
+instalacao poderia preparar o browser para a run A e tentar a run B.
+
+Corrigido: Preview herda o cursor advisory em factory_audit_events
+com stride 12; CI e Release continuam stride 8. O preview-probe reserva
+a proxima janela uma unica vez antes de qualquer efeito externo e
+seleciona ate 12 itens, respeitando Pause/Stop, geracao original,
+quota e audit-only. Se todos estao revogados, retorna work=false;
+o proximo wake avancara a janela. Fila encolhida retorna ao inicio
+na mesma rodada. Falhas de persistencia impedem trabalho externo.
+
+O probe fornece run_id UUID canonico e candidate_commit SHA exato.
+O workflow valida os dois antes de preparar browser e passa os valores
+somente via env; o worker Preview seleciona unicamente esse run_id,
+revalida geracao e SHA e NUNCA usa outra run encontrada no topo da
+fila. Handoff indisponivel = sem delivery, mudanca de identidade =
+erro fail-closed, nao fallback para candidato diferente. Preview
+N/A, release policy e merge humano seguem independentes.
+
+Invocacoes manuais nao vinculadas mantem selecao segura por cursor.
+Este bloco nao instala browser por candidata revogada, nao altera
+schema, nao consome creditos de modelo, nao modifica Console/pilotos
+e nao executa auto-merge. Tests/CI por SHA sao obrigatorios.
+Migration recovery 20261020194500 continua pendente.
