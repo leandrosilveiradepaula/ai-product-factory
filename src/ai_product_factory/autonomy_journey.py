@@ -244,10 +244,20 @@ def evaluate_journey(
     cs_ids = {str(cs.get("id")) for cs in change_sets}
     if len(cs_ids) != len(change_sets):
         raise ValueError("duplicate Change Set in bounded lineage")
+    # Materialization precedes dispatch: pending Work Units intentionally have
+    # run_id=NULL in the versioned Change Set schema. A NULL run can never
+    # prove routing, implementation or completion. Once work is assigned,
+    # its run must be a descendant of the selected human Start.
+    def _valid_unit_run(unit: Mapping[str, Any]) -> bool:
+        run = unit.get("run_id")
+        if run is None:
+            return unit.get("status") == "pending" and unit.get("output_commit") is None
+        return isinstance(run, str) and run in run_ids
+
     if (not isinstance(work_units,(list,tuple))
         or any(not isinstance(unit,Mapping)
                or str(unit.get("change_set_id")) not in cs_ids
-               or str(unit.get("run_id")) not in run_ids
+               or not _valid_unit_run(unit)
                or not isinstance(unit.get("id"),str) or not unit["id"].strip()
                for unit in work_units)):
         raise ValueError("Work Unit is outside the audited Change Set lineage")

@@ -203,6 +203,45 @@ class JourneyEvidenceTests(unittest.TestCase):
         self.assertEqual(r.status,"blocked")
         self.assertIn("descendant_run_failed_or_blocked",r.blockers)
 
+    def test_materialized_pending_work_unit_without_run_is_valid_in_progress(self):
+        # The real factory_materialize_change_set RPC inserts pending units
+        # before any dispatch; run_id is nullable until a worker is claimed.
+        d=scenario()
+        d["change_sets"][0]["candidate_commit"]=None
+        d["work_units"]=[{"id":UNIT,"change_set_id":CS,"run_id":None,
+                          "status":"pending","output_commit":None}]
+        d["events"]=[e for e in d["events"] if e["event_type"] in {
+            "product.stage.persisted","change_set.materialized"
+        }]
+        d["create_pr_receipts"]=[]
+        d["github"]=None
+        d["preview_required"]=None
+        report=evaluate_journey(**d)
+        self.assertEqual(report.status,"in_progress")
+        self.assertEqual(report.highest_verified,"planning")
+        self.assertEqual(report.stages[STAGES.index("routing")].status,"not_reached")
+        self.assertEqual(report.stages[STAGES.index("implementation")].status,"not_reached")
+        self.assertFalse(report.as_json()["product_ready"])
+
+        # Missing run remains unacceptable after work was executed, or when
+        # a supposedly unassigned unit already claims an output commit.
+        for status,output in (("running",None),("completed",WORK_SHA),
+                              ("integrated",WORK_SHA),("pending",WORK_SHA)):
+            with self.subTest(status=status,output=output):
+                d["work_units"][0].update(status=status,output_commit=output)
+                with self.assertRaisesRegex(ValueError,"outside the audited"):
+                    evaluate_journey(**d)
+
+    def test_materialized_pending_unit_cannot_borrow_another_start_run(self):
+        d=scenario()
+        d["change_sets"][0]["candidate_commit"]=None
+        d["work_units"]=[{"id":UNIT,"change_set_id":CS,"run_id":"other-run",
+                          "status":"pending","output_commit":None}]
+        d["create_pr_receipts"]=[]
+        d["github"]=None
+        with self.assertRaisesRegex(ValueError,"outside the audited"):
+            evaluate_journey(**d)
+
     def test_unscoped_delivery_rows_cannot_complete_another_start(self):
         for collection,mutation in (
             ("change_sets",lambda d:d["change_sets"][0].update(project_id="other-project")),
