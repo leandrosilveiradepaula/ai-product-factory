@@ -22,6 +22,13 @@ class DurableCIRepairMigrationTests(unittest.TestCase):
         self.assertIn("non_code_ci_failure", SQL)
         self.assertIn("repair_scope_unknown", SQL)
 
+    def test_exhaustion_sentinel_is_inside_table_constraint(self):
+        # With three actual attempts, the exhausted record uses attempt=4.
+        self.assertIn("attempt integer not null check (attempt between 1 and 4)", SQL)
+        self.assertIn("status = 'exhausted' and attempt = max_attempts + 1", SQL)
+        self.assertIn("status <> 'exhausted' and attempt <= max_attempts", SQL)
+        self.assertIn("if v_attempt>p_max_attempts then", SQL)
+
     def test_reuses_change_set_and_records_later_ci_result(self):
         self.assertIn("factory_change_set_work_units", SQL)
         self.assertIn("factory_sync_ci_repair_request", SQL)
