@@ -9,6 +9,7 @@ def item(role="security"):
         job_id="job",run_id="run",project_key="demo",repository="owner/repo",
         role=role,candidate_commit="abc",pr_number=12,issue_number=7,
         manifest={},acceptance_criteria=(),
+        claim_token="123e4567-e89b-42d3-a456-426614174099",
     )
 
 

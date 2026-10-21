@@ -168,7 +168,7 @@ begin
 
  select * into v_job from public.factory_specialist_lane_jobs where id=p_job_id for update;
  if not found then raise exception 'specialist lane job not found'; end if;
- if v_job.status<>'claimed' then raise exception 'specialist lane job is not claimed'; end if;
+ if v_job.status<>'claimed' then raise exception 'specialist lane job is not claimed' using errcode='PT409'; end if;
  -- The same transaction holds the project-control row until all evaluations,
  -- run status and audit writes commit. A racing Pause waits; a prior Pause
  -- or resumed generation revocation prevents every late completion effect.

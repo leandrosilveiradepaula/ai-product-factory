@@ -174,7 +174,8 @@ class DurableQueuePropagationTests(unittest.TestCase):
     def test_specialist_claim_is_bound_to_original_run_and_task_project(self):
         queue=SupabaseSpecialistLaneQueue(url="https://x.supabase.co",secret_key="sb_secret_dummy")
         response={"job_id":"job","run_id":"r4","project_key":"crm-infodive",
-                  "repository":"owner/repo","candidate_commit":"abc","role":"qa","manifest":{}}
+                  "repository":"owner/repo","candidate_commit":"abc","role":"qa","manifest":{},
+                  "claim_token":"123e4567-e89b-42d3-a456-426614174099","execution_generation":5}
         rows=[
             [{"metadata":{"pr":9,"head_sha":"abc"}}],
             [{"task_id":"t","execution_route":"direct","metadata":{"execution_generation":5}}],
