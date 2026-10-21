@@ -47,10 +47,8 @@ BEGIN
   RETURN jsonb_build_object('project_id',p_project_id,'merge_sha',p_merge_sha,
    'lifecycle_stage','operations','idempotent',true);
  END IF;
- IF existing->>'merge_sha' IS NOT NULL AND existing->>'merge_sha'<>p_merge_sha
- AND proj.lifecycle_stage='operations' THEN
-  RAISE EXCEPTION 'new release requires new transition' USING ERRCODE='PT409';
- END IF;
+ -- A new, separately verified release supersedes the prior HEAD; it does
+ -- not inherit its readiness. Exact current run/report checks above apply.
  v_manifest:=(v_manifest-'current_task')||
  jsonb_build_object('head_sha',p_merge_sha,'reported_stage','operations',
   'last_release',jsonb_build_object('run_id',p_run_id,'merge_sha',p_merge_sha,'source','observed_human_merge'),
