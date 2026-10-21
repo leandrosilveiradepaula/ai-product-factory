@@ -9,7 +9,7 @@ DECLARE proj public.factory_projects%rowtype;
  ctl public.factory_project_execution_controls%rowtype;
  run public.factory_runs%rowtype;
  rel public.factory_release_reports%rowtype;
- manifest jsonb; existing jsonb;
+ v_manifest jsonb; existing jsonb;
 BEGIN
  IF p_merge_sha !~ '^[0-9a-f]{40}$'
  OR jsonb_typeof(p_followup)<>'object'
@@ -40,8 +40,8 @@ BEGIN
  IF run.candidate_commit IS DISTINCT FROM p_merge_sha
  AND run.candidate_commit IS DISTINCT FROM rel.candidate_commit
  THEN RAISE EXCEPTION 'candidate mismatch' USING ERRCODE='PT409'; END IF;
- manifest:=coalesce(proj.manifest,'{}'::jsonb);
- existing:=manifest->'last_release';
+ v_manifest:=coalesce(proj.manifest,'{}'::jsonb);
+ existing:=v_manifest->'last_release';
  IF existing->>'merge_sha'=p_merge_sha AND existing->>'run_id'=p_run_id::text
  AND proj.lifecycle_stage='operations' THEN
   RETURN jsonb_build_object('project_id',p_project_id,'merge_sha',p_merge_sha,
@@ -51,17 +51,17 @@ BEGIN
  AND proj.lifecycle_stage='operations' THEN
   RAISE EXCEPTION 'new release requires new transition' USING ERRCODE='PT409';
  END IF;
- manifest:=(manifest-'current_task')||
+ v_manifest:=(manifest-'current_task')||
  jsonb_build_object('head_sha',p_merge_sha,'reported_stage','operations',
   'last_release',jsonb_build_object('run_id',p_run_id,'merge_sha',p_merge_sha,'source','observed_human_merge'),
   'product_readiness_followup',p_followup);
- IF manifest->>'autonomy'='read_only_verification'
- THEN manifest:=manifest-'autonomy'; END IF;
- IF manifest->'runtime_readiness'->>'current_scope'='read_only_verification' THEN
-  manifest:=jsonb_set(manifest,'{runtime_readiness}',
-   (manifest->'runtime_readiness')-'current_scope');
+ IF v_manifest->>'autonomy'='read_only_verification'
+ THEN v_manifest:=manifest-'autonomy'; END IF;
+ IF v_manifest->'runtime_readiness'->>'current_scope'='read_only_verification' THEN
+  v_manifest:=jsonb_set(manifest,'{runtime_readiness}',
+   (v_manifest->'runtime_readiness')-'current_scope');
  END IF;
- UPDATE public.factory_projects SET lifecycle_stage='operations',manifest=manifest
+ UPDATE public.factory_projects SET lifecycle_stage='operations',manifest=v_manifest
  WHERE id=p_project_id;
  INSERT INTO public.factory_project_state_snapshots(
  project_id,run_id,observed_stage,summary,evidence,gaps,constraints,source_status)
