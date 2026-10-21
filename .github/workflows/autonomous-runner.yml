@@ -169,6 +169,14 @@ jobs:
         continue-on-error: true
         shell: bash
         run: python -m ai_product_factory.runtime_cli --mode release-state-settle --batch-items 4
+      - name: Repair readiness for current verified legacy human releases
+        # Optional SQL capability: before its authorized migration, the
+        # bounded command reports blocked_migration_not_applied with zero writes.
+        # No queue claim, GitHub write, Preview, paid model, or pull-request merge.
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
+        continue-on-error: true
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode legacy-release-readiness-repair --batch-items 4
       - name: Observe committed project control wake
         if: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.run_alerts != true) || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true') }}
         shell: bash

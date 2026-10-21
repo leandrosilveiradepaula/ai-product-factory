@@ -19,6 +19,10 @@ class ReleaseReconciliationRejected(RuntimeError):
     """SQL PT409: exact durable evidence requires operator reconciliation."""
 
 
+class LegacyCapabilityUnavailable(RuntimeError):
+    """The optional, versioned legacy-repair migration is not activated."""
+
+
 class SupabaseProjectReleaseReconciler:
     """An observed human release is reconciled exactly once, atomically.
 
@@ -41,6 +45,9 @@ class SupabaseProjectReleaseReconciler:
             with urllib.request.urlopen(req,timeout=30) as response:
                 raw=response.read().decode()
         except urllib.error.HTTPError as exc:
+            if (exc.code==404
+                and path=="rpc/factory_pending_legacy_release_readiness_v1"):
+                raise LegacyCapabilityUnavailable("legacy release migration not applied") from exc
             if exc.code==409:
                 raise ReleaseReconciliationRejected("human release reconciliation rejected") from exc
             raise RuntimeError("release reconciliation Control Plane unavailable") from exc
@@ -62,7 +69,9 @@ class SupabaseProjectReleaseReconciler:
         ):
             raise RuntimeError("atomic release recovery capability unavailable")
 
-    def reconcile(self,*,project_id:str,run_id:str,merge_sha:str)->dict:
+    def reconcile(self,*,project_id:str,run_id:str,merge_sha:str,legacy:bool=False)->dict:
+        if type(legacy) is not bool:
+            raise ValueError("invalid legacy reconciliation mode")
         if (not isinstance(project_id,str) or not _UUID.fullmatch(project_id)
             or not isinstance(run_id,str) or not _UUID.fullmatch(run_id)
             or not isinstance(merge_sha,str) or not _SHA.fullmatch(merge_sha)):
@@ -81,7 +90,12 @@ class SupabaseProjectReleaseReconciler:
         )
         if summary["report_verified"] is not True or summary["ready"] is not False:
             raise RuntimeError("release evidence is not verified for reconciliation")
-        receipt=self._request("POST","rpc/factory_reconcile_observed_release_v1",{
+        # Never fall back to REST split writes or use the normal RPC for a
+        # historical catch-up: the wrapper locks the CURRENT release and
+        # records an explicit correction audit in the same transaction.
+        rpc=("rpc/factory_reconcile_latest_legacy_release_v1" if legacy
+             else "rpc/factory_reconcile_observed_release_v1")
+        receipt=self._request("POST",rpc,{
             "p_project_id":project_id,"p_run_id":run_id,"p_merge_sha":merge_sha,
             "p_release_report":rows[0]["report"],"p_followup":summary,
         })
@@ -99,6 +113,9 @@ class SupabaseProjectReleaseReconciler:
             or type(receipt.get("pending_domains")) is not int
             or receipt["pending_domains"]!=len(summary["pending_domains"])):
             raise RuntimeError("inconsistent atomic release reconciliation receipt")
+        if legacy and (receipt.get("legacy_backfill") is not True
+                       or type(receipt.get("backfill_audit_written")) is not bool):
+            raise RuntimeError("invalid atomic legacy repair receipt")
         return receipt
 
     def _defer_manual_review(self,event_id:int)->None:
@@ -174,3 +191,92 @@ class SupabaseProjectReleaseReconciler:
                 "scanned":scanned,"reconciled":reconciled,
                 "idempotent":idempotent,"needs_review":failed,
                 "truncated":not exhausted}
+
+    def _defer_legacy_review(self,*,project_id:str,run_id:str,merge_sha:str)->None:
+        receipt=self._request("POST","rpc/factory_defer_legacy_release_readiness_v1",{
+            "p_project_id":project_id,"p_run_id":run_id,"p_merge_sha":merge_sha,
+        })
+        if (not isinstance(receipt,dict)
+            or receipt.get("project_id")!=project_id
+            or receipt.get("run_id")!=run_id
+            or receipt.get("merge_sha")!=merge_sha
+            or receipt.get("status")!="needs_review"
+            or type(receipt.get("idempotent")) is not bool):
+            raise RuntimeError("invalid durable legacy review receipt")
+
+    def repair_legacy_readiness(self,*,max_items:int=4)->dict:
+        """Bounded repair of CURRENT historical human releases, never replay.
+
+        Separate from the normal release outbox: old split-REST code already
+        emitted an audit marker, which would suppress ordinary outbox recovery.
+        The service-role SQL selector verifies current release, proof of human
+        merge, Pause/Stop, six-domain gaps and fair keyset paging BEFORE any RPC.
+        Absent migration fails closed and produces an explicit blocked status.
+        """
+        if type(max_items) is not int or not 1<=max_items<=32:
+            raise ValueError("invalid legacy release repair bound")
+        scanned=repaired=idempotent=0
+        issues=[]
+        cursor=None
+        exhausted=False
+        for page in range(_MAX_PAGES):
+            try:
+                rows=self._request("POST","rpc/factory_pending_legacy_release_readiness_v1",{
+                    "p_after_project_id":cursor,"p_limit":_PAGE,
+                })
+            except LegacyCapabilityUnavailable:
+                return {"status":"blocked_migration_not_applied",
+                        "scanned":0,"repaired":0,"idempotent":0,
+                        "needs_review":[],"truncated":False}
+            if (not isinstance(rows,list) or len(rows)>_PAGE
+                or any(not isinstance(row,dict) for row in rows)):
+                raise RuntimeError("invalid bounded legacy readiness selection")
+            if not rows:
+                exhausted=True
+                break
+            # Reject an untrusted page before writing even one project's state.
+            inspected=cursor
+            for row in rows:
+                pid=row.get("project_id")
+                run=row.get("run_id")
+                sha=row.get("merge_sha")
+                if (not isinstance(pid,str) or not _UUID.fullmatch(pid)
+                    or inspected is not None and pid<=inspected
+                    or not isinstance(run,str) or not _UUID.fullmatch(run)
+                    or not isinstance(sha,str) or not _SHA.fullmatch(sha)):
+                    raise RuntimeError("invalid legacy release keyset identity")
+                inspected=pid
+            for row in rows:
+                pid=row["project_id"]
+                run=row["run_id"]
+                sha=row["merge_sha"]
+                cursor=pid
+                scanned+=1
+                try:
+                    result=self.reconcile(
+                        project_id=pid,run_id=run,merge_sha=sha,legacy=True)
+                except (RuntimeError,ValueError) as exc:
+                    permanent=(isinstance(exc,(ReleaseReconciliationRejected,ValueError))
+                        or str(exc) in (
+                            "exact released report unavailable",
+                            "release evidence is not verified for reconciliation"))
+                    if permanent:
+                        self._defer_legacy_review(project_id=pid,run_id=run,merge_sha=sha)
+                    issues.append({"project_id":pid,
+                        "reason":("legacy_release_needs_review" if permanent
+                                  else "legacy_release_retryable")})
+                else:
+                    if result["idempotent"]:
+                        idempotent+=1
+                    else:
+                        repaired+=1
+                if scanned>=max_items:
+                    return {"status":"partial" if issues else "bounded",
+                        "scanned":scanned,"repaired":repaired,"idempotent":idempotent,
+                        "needs_review":issues,"truncated":True}
+            if len(rows)<_PAGE:
+                exhausted=True
+                break
+        return {"status":"partial" if issues else "complete",
+            "scanned":scanned,"repaired":repaired,"idempotent":idempotent,
+            "needs_review":issues,"truncated":not exhausted}

@@ -1,3 +1,13 @@
+## 21/10/2026 — Recuperação de readiness de release humano LEGADO (candidato #713/#894)
+
+- Produção reconciliada: `main` `5e0a7a8c78cffcc74b7c53ede448caadd3134983` (#1025 mergeada), CI posterior verde; Supabase `fjplmxfcshhbmzgvyqlm` registra `atomic_release_state_and_replay_outbox` com versão MCP `20261021131818`.
+- Falha real que a primeira migration **não** corrige: release humano da Factory #997, run `4c1fcef6-7561-4da4-b13e-083dcf447b4b`, merge `ab5d832ba9074d01c0c0a16a8946cd486afe9dd4`, tem `project.state.reconciled_after_release` legado, snapshot `gaps=[]`, mas manifesto sem `product_readiness_followup`. O seletor original de outbox ignora esse evento por já existir audit marker; não equivale a `product_ready`.
+- Candidato isolado: migration `20261021135000_recover_latest_legacy_release_readiness.sql` acrescenta seletor somente da release **mais atual** em `last_release` com report released, run merged, SHA exato e merge humano auditado; exige controle `running`/generation e ausência de release posterior. Wrapper SQL chama a RPC atômica aprovada e adiciona auditoria de correção na mesma transação. Registros que não possam ser corrigidos recebem `needs_review`, sem reprocessar trabalho.
+- Python `--mode legacy-release-readiness-repair --batch-items 4` é independente de `release-state-settle`, com cursor por projeto, validação antecipada da página completa e falha segura se a migration ainda não existir. Worker agendado não faz merge, CI, Preview, modelos pagos, transições de Start ou alteração de `product_ready`.
+- QA: testes Python de contratos e PostgreSQL 16 isolado (migrações v1 + v2; provas de idempotência, Pause/Resume, revisão, release obsoleta e candidato prematuro). Execução real em produção e a migration nova ficam **pendentes de CI, merge humano e autorização separada**.
+- O Change Set Service Desk permanece `blocked` por merge humano antecipado sem CI/Preview/release gate verificados; não reclassificar.
+- Nenhuma migration adicional foi aplicada ao banco neste candidato. Consulte `docs/LEGACY_RELEASE_READINESS_RECOVERY.md`.
+
 ## 21/10/2026 — Revisao complementar da PR #1025 (mesmo candidato)
 
 - **Rollout SQL/Python fail-closed**: antes de registrar merge/release no Control Plane, o observer testa o RPC versionado `factory_pending_release_reconciliations_v1` em modo read-only. Se o SQL nao existe, falha antes da primeira escrita; nao deixa run terminal sem outbox de recovery.
