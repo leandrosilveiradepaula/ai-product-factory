@@ -20,6 +20,7 @@ _WAITING = frozenset({
     "wait_postmerge_browser_evidence",
     "nonproduction_candidate_not_released",
     "project_control_waiting", "project_execution_epoch_revoked",
+    "wait_dispatched_ci", "candidate_drift_blocked",
 })
 
 
@@ -78,6 +79,45 @@ def drain_waiting_followups(
         "items": ready,
         "waiting": waiting,
     }
+
+
+
+def drain_fair_waiting_followups(
+    once: Callable[[tuple[str, ...], int], dict[str, Any]],
+    *, lane: str, cursor: Any, max_items: int = 1,
+    max_observations: int = 8,
+) -> dict[str, Any]:
+    """Advance a durable advisory FIFO window before external observations."""
+    if lane not in {"ci", "release"}:
+        raise ValueError("unsupported fair follow-up lane")
+    if type(max_items) is not int or not 1 <= max_items <= 4:
+        raise ValueError("follow-up item limit must be 1..4")
+    if (type(max_observations) is not int or
+        not max_items <= max_observations <= 8):
+        raise ValueError("follow-up observation limit must be bounded")
+    offset = cursor.read_offset(lane)
+    if type(offset) is not int or not 0 <= offset <= 1000000:
+        raise ContinuationBlocked("invalid durable follow-up cursor")
+    following = offset + max_observations
+    if following > 1000000:
+        following = 0
+    cursor.reserve_next(lane, following)
+    result = drain_waiting_followups(
+        lambda ignored: once(ignored, offset),
+        max_items=max_items, max_observations=max_observations,
+    )
+    wrapped = False
+    if result["observed"] == 0 and offset:
+        # Entries may have completed after the last wake. Wrap immediately.
+        cursor.reserve_next(lane, max_observations)
+        result = drain_waiting_followups(
+            lambda ignored: once(ignored, 0),
+            max_items=max_items, max_observations=max_observations,
+        )
+        wrapped = True
+    return {**result, "fair_scan_start": offset,
+            "fair_scan_next": max_observations if wrapped else following,
+            "fair_scan_wrapped": wrapped}
 
 
 def drain_deterministic_lane(
