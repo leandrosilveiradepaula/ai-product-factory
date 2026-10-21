@@ -15,6 +15,10 @@ _PAGE=16
 _MAX_PAGES=32
 
 
+class ReleaseReconciliationRejected(RuntimeError):
+    """SQL PT409: exact durable evidence requires operator reconciliation."""
+
+
 class SupabaseProjectReleaseReconciler:
     """An observed human release is reconciled exactly once, atomically.
 
@@ -36,7 +40,11 @@ class SupabaseProjectReleaseReconciler:
         try:
             with urllib.request.urlopen(req,timeout=30) as response:
                 raw=response.read().decode()
-        except (urllib.error.HTTPError,urllib.error.URLError,TimeoutError) as exc:
+        except urllib.error.HTTPError as exc:
+            if exc.code==409:
+                raise ReleaseReconciliationRejected("human release reconciliation rejected") from exc
+            raise RuntimeError("release reconciliation Control Plane unavailable") from exc
+        except (urllib.error.URLError,TimeoutError) as exc:
             raise RuntimeError("release reconciliation Control Plane unavailable") from exc
         return None if not raw else json.loads(raw)
 
@@ -77,6 +85,15 @@ class SupabaseProjectReleaseReconciler:
             raise RuntimeError("inconsistent atomic release reconciliation receipt")
         return receipt
 
+    def _defer_manual_review(self,event_id:int)->None:
+        receipt=self._request("POST","rpc/factory_defer_release_reconciliation_v1",{
+            "p_event_id":event_id,
+        })
+        if (not isinstance(receipt,dict) or receipt.get("event_id")!=event_id
+            or receipt.get("status")!="needs_review"
+            or type(receipt.get("idempotent")) is not bool):
+            raise RuntimeError("inconsistent durable release review receipt")
+
     def settle_pending(self,*,max_items:int=32)->dict:
         if type(max_items) is not int or not 1<=max_items<=128:
             raise ValueError("invalid bounded release settlement")
@@ -111,8 +128,19 @@ class SupabaseProjectReleaseReconciler:
                         merge_sha=row.get("merge_sha"),
                     )
                 except (RuntimeError,ValueError) as exc:
+                    # Only a proven identity/provenance violation is parked;
+                    # outages and unknown failures remain retryable. Parking
+                    # is a service-role-only audit effect, never a release.
+                    permanent=(isinstance(exc,(ReleaseReconciliationRejected,ValueError))
+                      or str(exc) in (
+                        "exact released report unavailable",
+                        "release evidence is not verified for reconciliation",
+                      ))
+                    if permanent:
+                        self._defer_manual_review(event_id)
                     failed.append({"event_id":event_id,
-                                   "reason":"release_reconciliation_requires_review"})
+                                   "reason":("release_reconciliation_needs_review" if permanent
+                                             else "release_reconciliation_retryable")})
                 else:
                     if result["idempotent"]:
                         idempotent+=1

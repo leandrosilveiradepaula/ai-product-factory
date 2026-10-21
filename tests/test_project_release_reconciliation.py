@@ -96,15 +96,27 @@ class Tests(unittest.TestCase):
             self.fail("unwanted network request")
         q._request=remote
         def reconcile(*,project_id,run_id,merge_sha):
-            if project_id==PID:raise RuntimeError("unverified merge report")
+            if project_id==PID:raise RuntimeError("exact released report unavailable")
             return {"idempotent":False}
         q.reconcile=reconcile
+        q._defer_manual_review=lambda event_id:requests.append(("POST","deferred",event_id))
         out=q.settle_pending(max_items=2)
         self.assertEqual(out["scanned"],2)
         self.assertEqual(out["reconciled"],1)
         self.assertEqual(len(out["needs_review"]),1)
         self.assertTrue(out["truncated"])
-        self.assertEqual(len(requests),1)
+        self.assertEqual(len(requests),2)
+        self.assertEqual(requests[1],("POST","deferred",12))
+
+    def test_transient_failure_never_parks_a_human_release(self):
+        q=object.__new__(SupabaseProjectReleaseReconciler)
+        q._request=lambda method,path,payload=None:[
+          {"event_id":7,"project_id":PID,"run_id":RUN,"merge_sha":SHA}
+        ]
+        q.reconcile=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("release reconciliation Control Plane unavailable"))
+        q._defer_manual_review=lambda event_id:self.fail("transient database failure cannot be parked")
+        out=q.settle_pending(max_items=1)
+        self.assertEqual(out["needs_review"][0]["reason"],"release_reconciliation_retryable")
 
     def test_out_of_order_keyset_refused(self):
         q=object.__new__(SupabaseProjectReleaseReconciler)

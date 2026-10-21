@@ -88,6 +88,13 @@ BEGIN
        AND done.event_type='project.state.reconciled_after_release'
        AND done.payload->>'merge_sha'=e.payload->>'merge_sha'
     )
+    AND NOT EXISTS(
+      SELECT 1 FROM public.factory_audit_events reviewed
+      WHERE reviewed.project_id=e.project_id AND reviewed.run_id=e.run_id
+       AND reviewed.event_type='release.reconciliation_needs_review'
+       AND reviewed.payload->>'merge_sha'=e.payload->>'merge_sha'
+       AND reviewed.payload->>'event_id'=e.id::text
+    )
   ORDER BY e.id ASC LIMIT p_limit
  ) q;
  RETURN v_result;
@@ -259,6 +266,56 @@ BEGIN
 END;
 $function$;
 
+
+-- An unreconcilable, previously observed merge is not executable work.
+-- Park its exact outbox event for explicit review; never retry it ahead
+-- of another eligible project forever, never infer release permission.
+CREATE OR REPLACE FUNCTION public.factory_defer_release_reconciliation_v1(
+ p_event_id bigint
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path TO ''
+AS $function$
+DECLARE
+ v_event public.factory_audit_events%rowtype;
+ v_already boolean;
+BEGIN
+ IF p_event_id IS NULL OR p_event_id<1 THEN
+  RAISE EXCEPTION 'invalid human release outbox identity' USING errcode='PT409';
+ END IF;
+ SELECT * INTO v_event FROM public.factory_audit_events
+ WHERE id=p_event_id AND event_type='release.reconciliation_requested'
+ FOR UPDATE;
+ IF NOT FOUND OR v_event.project_id IS NULL OR v_event.run_id IS NULL
+    OR COALESCE(v_event.payload->>'merge_sha','') !~ '^[0-9a-f]{40}$' THEN
+  RAISE EXCEPTION 'human release outbox receipt missing' USING errcode='PT409';
+ END IF;
+ SELECT EXISTS(
+  SELECT 1 FROM public.factory_audit_events e
+  WHERE e.project_id=v_event.project_id AND e.run_id=v_event.run_id
+    AND e.event_type='release.reconciliation_needs_review'
+    AND e.payload->>'event_id'=p_event_id::text
+    AND e.payload->>'merge_sha'=v_event.payload->>'merge_sha'
+ ) INTO v_already;
+ IF NOT v_already THEN
+  INSERT INTO public.factory_audit_events(
+   project_id,run_id,actor_type,actor_ref,event_type,payload
+  ) VALUES(
+   v_event.project_id,v_event.run_id,'system','release-reconciliation',
+   'release.reconciliation_needs_review',
+   jsonb_build_object('event_id',p_event_id,
+                      'merge_sha',v_event.payload->>'merge_sha',
+                      'reason_code','release_provenance_requires_review',
+                      'automatic_replay',false)
+  );
+ END IF;
+ RETURN jsonb_build_object(
+  'event_id',p_event_id,'status','needs_review','idempotent',v_already);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.factory_defer_release_reconciliation_v1(bigint)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.factory_defer_release_reconciliation_v1(bigint)
+ TO service_role;
 REVOKE ALL ON FUNCTION public.factory_mark_release_report_released(uuid,text)
  FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.factory_mark_release_report_released(uuid,text)

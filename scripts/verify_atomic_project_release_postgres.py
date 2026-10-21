@@ -163,6 +163,7 @@ with psycopg.connect(DSN,autocommit=True) as conn:
       "factory_mark_release_report_released(uuid,text)",
       "factory_pending_release_reconciliations_v1(bigint,integer)",
       "factory_reconcile_observed_release_v1(uuid,uuid,text,jsonb,jsonb)",
+      "factory_defer_release_reconciliation_v1(bigint)",
     )
     for signature in signatures:
         qualified="public."+signature
@@ -287,5 +288,13 @@ with psycopg.connect(DSN,autocommit=True) as conn:
     outstanding=rows_after()
     assert len(outstanding)==1 and outstanding[0]["run_id"]==str(old_run)
     assert count("factory_audit_events","run_id=%s AND event_type='release.reconciliation_requested'",(old_run,))==1
+    marker=outstanding[0]["event_id"]
+    parked=one("SELECT public.factory_defer_release_reconciliation_v1(%s)",(marker,))
+    assert parked["status"]=="needs_review" and not parked["idempotent"]
+    assert one("SELECT public.factory_defer_release_reconciliation_v1(%s)",(marker,))["idempotent"]
+    assert rows_after()==[]
+    assert count("factory_audit_events","run_id=%s AND event_type='release.reconciliation_needs_review'",(old_run,))==1
+    rejected(lambda: one("SELECT public.factory_defer_release_reconciliation_v1(%s)",(marker+1000000,)))
+
 
 print("FACTORY_ATOMIC_RELEASE_POSTGRES_PASS=1")
