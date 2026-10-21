@@ -47,6 +47,10 @@ CREATE TABLE public.factory_runs(
  lease_expires_at timestamptz,created_at timestamptz DEFAULT now(),
  finished_at timestamptz,source_commit text,candidate_commit text,
  branch_name text,last_error text);
+CREATE TABLE public.factory_human_gates(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ run_id uuid NOT NULL REFERENCES public.factory_runs(id),
+ status text NOT NULL);
 CREATE TABLE public.factory_change_sets(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),project_id uuid REFERENCES public.factory_projects(id),
  root_task_id uuid REFERENCES public.factory_tasks(id),

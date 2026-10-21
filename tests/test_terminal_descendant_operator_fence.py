@@ -45,7 +45,7 @@ class TerminalRecoveryFenceContract(unittest.TestCase):
                        "lock_timeout='200ms'","RECOVERY_MANUAL_CONTROL_POSTGRES_PASS=1"):
             self.assertIn(marker,scenario)
         workflow=WORKFLOW.read_text()
-        self.assertIn("20261021014000_fence_terminal_descendant_recovery_manual_control.sql",workflow)
+        self.assertIn("supabase/migrations/*fence_terminal_descendant_recovery_manual_control.sql",workflow)
         self.assertIn("python scripts/verify_recovery_manual_project_control_postgres.py",workflow)
 
 
