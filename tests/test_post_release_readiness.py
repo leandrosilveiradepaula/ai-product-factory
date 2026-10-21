@@ -122,48 +122,39 @@ class PostReleaseReadinessTests(unittest.TestCase):
         self.assertEqual(unknown["status"],"unknown")
         self.assertNotIn("secret-key-in-error",str(unknown))
 
-    def test_release_reconciler_persists_nonexecutable_audit_gaps(self):
+    def test_release_reconciler_passes_six_nonexecutable_audit_gaps_to_atomic_rpc(self):
         observed=[]
-        project={"id":P,"lifecycle_stage":"review","manifest":{"legacy":"preserved"}}
         def rpc(method,path,payload=None):
             observed.append((method,path,payload))
-            if method=="GET" and path.startswith("factory_projects?"):
-                return [project]
-            if method=="GET" and path.startswith("factory_release_reports?"):
+            if method=="GET":
                 return [report()]
-            return [{"ok":True}]
+            return {"project_id":P,"run_id":R,"merge_sha":M,
+                    "lifecycle_stage":"operations","product_ready":False,
+                    "idempotent":False,"snapshot_written":True,
+                    "audit_written":True,"pending_domains":6}
         rec=object.__new__(SupabaseProjectReleaseReconciler)
         rec._request=rpc
         out=rec.reconcile(project_id=P,run_id=R,merge_sha=M)
         self.assertEqual(out["lifecycle_stage"],"operations")
-        patch=next(x[2] for x in observed if x[0]=="PATCH")
-        self.assertEqual(patch["manifest"]["legacy"],"preserved")
-        self.assertEqual(patch["manifest"]["product_readiness_followup"]["status"],"not_assessed")
-        snap=next(x[2] for x in observed if x[1]=="factory_project_state_snapshots")
-        self.assertEqual(len(snap["gaps"]),6)
-        self.assertEqual({x["domain"] for x in snap["gaps"]},set(REQUIRED_DOMAINS))
-        self.assertEqual(snap["source_status"]["release"],"merged")
-        self.assertEqual(snap["source_status"]["product_readiness"],"not_assessed")
-        self.assertTrue(all(x["kind"]=="global_readiness_evidence_required" for x in snap["gaps"]))
+        self.assertEqual([x[0] for x in observed],["GET","POST"])
+        self.assertEqual(observed[1][1],"rpc/factory_reconcile_observed_release_v1")
+        followup=observed[1][2]["p_followup"]
+        self.assertEqual(followup["status"],"not_assessed")
+        self.assertFalse(followup["ready"])
+        self.assertEqual(followup["pending_domains"],list(REQUIRED_DOMAINS))
+        self.assertFalse(any(method=="PATCH" for method,_,_ in observed))
 
-    def test_report_read_failure_does_not_replay_or_pass_product(self):
+    def test_release_report_read_failure_does_not_promote_product(self):
         observed=[]
         def rpc(method,path,payload=None):
             observed.append((method,path,payload))
-            if path.startswith("factory_projects?"):
-                return [{"id":P,"lifecycle_stage":"operations","manifest":{}}]
-            if path.startswith("factory_release_reports?"):
-                raise RuntimeError("release read unavailable")
-            return [{"ok":True}]
+            raise RuntimeError("release read unavailable")
         rec=object.__new__(SupabaseProjectReleaseReconciler)
         rec._request=rpc
-        rec.reconcile(project_id=P,run_id=R,merge_sha=M)
-        patch=next(x[2] for x in observed if x[0]=="PATCH")
-        followup=patch["manifest"]["product_readiness_followup"]
-        self.assertEqual(followup["status"],"unknown")
-        self.assertFalse(followup["report_verified"])
-        self.assertFalse(followup["ready"])
-        self.assertFalse(any("run.claim" in p for _,p,_ in observed))
+        with self.assertRaisesRegex(RuntimeError,"release read unavailable"):
+            rec.reconcile(project_id=P,run_id=R,merge_sha=M)
+        self.assertEqual(len(observed),1)
+        self.assertEqual(observed[0][0],"GET")
 
     def test_followup_injected_into_next_authorized_reconciliation_only(self):
         queue=object.__new__(SupabaseRuntimeQueue)

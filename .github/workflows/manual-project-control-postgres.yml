@@ -11,6 +11,10 @@ on:
       - "supabase/migrations/*fence_specialist_epoch_and_lease_token.sql"
       - "supabase/migrations/*atomic_specialist_repair_handoff.sql"
       - "supabase/migrations/*atomic_specialist_traceability_evidence.sql"
+      - "supabase/migrations/*atomic_release_state_and_replay_outbox.sql"
+      - "src/ai_product_factory/project_release_reconciliation.py"
+      - "scripts/verify_atomic_project_release_postgres.py"
+      - "tests/test_atomic_project_release_reconciliation.py"
       - "tests/test_specialist_traceability_atomicity.py"
       - "tests/test_atomic_specialist_repair_handoff.py"
       - "src/ai_product_factory/specialist_lane_queue.py"
@@ -333,3 +337,33 @@ jobs:
           FACTORY_SPECIALIST_EPOCH_TEST_ISOLATED: "true"
           FACTORY_SPECIALIST_EPOCH_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_specialist_epoch_test"
         run: python scripts/verify_specialist_epoch_postgres.py
+
+  project-release-atomic-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: factory_ci
+          POSTGRES_DB: factory_release_atomic_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_release_atomic_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify durable human release, exact provenance, rollback and replay
+        env:
+          FACTORY_RELEASE_ATOMIC_TEST_ISOLATED: "true"
+          FACTORY_RELEASE_ATOMIC_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_release_atomic_test"
+        run: python scripts/verify_atomic_project_release_postgres.py

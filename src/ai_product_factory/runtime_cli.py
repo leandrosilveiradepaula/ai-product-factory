@@ -1003,6 +1003,12 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  return out
 
 
+def run_release_state_settlement(max_items:int=4)->dict:
+ # Repair ONLY already-human-merged, outbox-backed observations. This cannot
+ # merge, dispatch CI, spend model budget or unpause any project.
+ return SupabaseProjectReleaseReconciler().settle_pending(max_items=max_items)
+
+
 def run_project_control_settlement()->dict:
     """Settle only already-quiescent projects; never change a running project."""
     from .project_control_settlement import SupabaseProjectControlSettlement
@@ -1012,7 +1018,7 @@ from .project_control_wake_outbox import ControlWakeOutbox
 from .nonproduction_candidate_repin import repin_one
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","project-control-wake","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--expected-preview-sha");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","release-state-settle","project-control-wake","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--expected-preview-sha");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="reconcile-ci-candidate":
   if not args.source_run_id or not args.pr_number:raise ValueError("--source-run-id and --pr-number required")
@@ -1050,6 +1056,7 @@ def main()->int:
  elif args.mode=="alerts":out=run_alerts_once()
  elif args.mode=="recovery":out=run_recovery_once(args.max_attempts)
  elif args.mode=="project-control-settle":out=run_project_control_settlement()
+ elif args.mode=="release-state-settle":out=run_release_state_settlement(max_items=args.batch_items)
  elif args.mode=="project-control-wake":out=ControlWakeOutbox().observe_one(owner=args.worker_id)
  elif args.mode=="direct":out=run_direct_once(args.worker_id,args.agent_key,args.run_id)
  elif args.mode=="codex":out=run_codex_once(args.worker_id,args.agent_key,args.run_id)

@@ -113,27 +113,27 @@ DECLARE
  v_written_audit boolean:=false;
 BEGIN
  IF p_merge_sha IS NULL OR p_merge_sha !~ '^[0-9a-f]{40}$'
-    OR jsonb_typeof(p_release_report)<>'object'
-    OR jsonb_typeof(p_followup)<>'object'
-    OR p_followup->>'scope'<>'current_product_after_release'
+    OR jsonb_typeof(p_release_report) IS DISTINCT FROM 'object'
+    OR jsonb_typeof(p_followup) IS DISTINCT FROM 'object'
+    OR p_followup->>'scope' IS DISTINCT FROM 'current_product_after_release'
     OR p_followup->>'release_run_id' IS DISTINCT FROM p_run_id::text
     OR p_followup->>'merge_sha' IS DISTINCT FROM p_merge_sha
     OR p_followup->'ready' IS DISTINCT FROM 'false'::jsonb
     OR p_followup->'report_verified' IS DISTINCT FROM 'true'::jsonb
-    OR p_followup->>'status' NOT IN ('not_assessed','not_ready','candidate_only','unknown')
-    OR p_followup->>'reason_code' NOT IN (
+    OR COALESCE(p_followup->>'status','') NOT IN ('not_assessed','not_ready','candidate_only','unknown')
+    OR COALESCE(p_followup->>'reason_code','') NOT IN (
        'global_readiness_not_assessed','candidate_readiness_not_ready',
        'candidate_assessment_not_current_head','global_readiness_evidence_incomplete'
      )
-    OR jsonb_typeof(p_followup->'pending_domains')<>'array'
-    OR jsonb_typeof(p_followup->'candidate_assessed_domains')<>'array' THEN
+    OR jsonb_typeof(p_followup->'pending_domains') IS DISTINCT FROM 'array'
+    OR jsonb_typeof(p_followup->'candidate_assessed_domains') IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'invalid fail-closed product readiness handoff' USING errcode='PT409';
  END IF;
  IF jsonb_array_length(p_followup->'pending_domains')<1
     OR jsonb_array_length(p_followup->'pending_domains')>16
     OR EXISTS (
       SELECT 1 FROM jsonb_array_elements_text(p_followup->'pending_domains') x(domain)
-      WHERE domain !~ '^[a-z][a-z_0-9]{0,63}$'
+      WHERE domain IS NULL OR domain !~ '^[a-z][a-z_0-9]{0,63}$'
     )
     OR (SELECT count(*) FROM jsonb_array_elements_text(p_followup->'pending_domains')) <>
        (SELECT count(DISTINCT domain) FROM jsonb_array_elements_text(p_followup->'pending_domains') x(domain)) THEN
