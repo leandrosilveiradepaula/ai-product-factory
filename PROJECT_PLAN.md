@@ -377,3 +377,10 @@ A jornada E2E real da Factory foi comprovada em 12/12 etapas até operação; a 
 - [ ] Garantir fair continuation: candidata pausada não pode mascarar outro projeto em `run_ci_once`, `run_release_once` e `run_preview_once`, com limites de observação e sem loops.
 - [ ] Executar testes offline e CI, testar pausa concorrente HTTP 409, autorização desconhecida, dados adulterados, nenhuma escrita/dispatch para paused. CI sucesso não remove gates de Preview/produção/migração.
 - [ ] Autorizar migration de recuperação #1011 separadamente; depois validar cenários greenfield/existing em PostgreSQL isolado e Control Plane leitura.
+
+## 21/10/2026 — Fencing final de especialistas apos Resume (#894)
+
+- [x] Confirmadas no Control Plane real as migrations terminal-descendant e cross-epoch com historico versionado e privilegios restritos.
+- [x] Identificada ausencia de protecao transacional em `factory_complete_specialist_lane`; queue/recover tambem nao vinculavam epoch do job.
+- [ ] Validar migration de quatro funcoes e worker Python no PostgreSQL 16 isolado, com dois interleavings Pause/complete, lease token, dedupe e fair selection.
+- [ ] Apos CI + merge humano, obter autorizacao especifica para `20261021030000_fence_specialist_epoch_and_lease_token.sql` e aplicar em producao. Sem credenciais de modelo ou auto-merge.

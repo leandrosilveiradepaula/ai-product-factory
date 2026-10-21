@@ -1,3 +1,15 @@
+## 21/10/2026 — Specialist epoch/lease-token fencing (candidate; not applied)
+
+A run's original execution generation is pinned in `factory_specialist_lane_jobs.evidence._factory_epoch` when enqueuing security, QA and operations lanes. Claim and recovery compare both this immutable original epoch and `factory_runs.metadata.execution_generation` to the current project generation before selecting any work. Jobs from an earlier Pause/Resume generation and legacy/unmarked jobs fail closed; recovery quarantines them once with `specialist.lane.epoch_quarantined` instead of replaying specialist work.
+
+Every fresh claim generates `_factory_claim_token` stored only inside the server-side Control Plane job. The worker receives this opaque token and includes it in the existing completion RPC payload. SQL requires exact match and a live, unexpired lease before mutating evaluations, run status or audit, then strips the token from published evidence. An old worker cannot complete after another worker reclaims the job.
+
+The completion RPC takes `FOR SHARE` locks on both project and execution control, binding the same epoch across all completion effects. If Pause/Stop commits first, completion aborts with PT409; if completion holds the shared lock, Pause/Stop waits until it commits. The recovery selector uses SKIP LOCKED so pausing a project cannot block unrelated active projects.
+
+Migration `20261021030000_fence_specialist_epoch_and_lease_token.sql` is NOT active until separately approved. The runtime Python companion will intentionally fail closed if a deployed DB still returns old tokenless claim receipts; this may defer new specialist work until migration activation. The post-merge operator must reconcile migration versions and confirm no active specialist jobs before applying.
+
+---
+
 ## 21/10/2026 — Gate de proveniencia do auditor global rebaseado (#1013)
 
 Ao revalidar evidencias de CI/visual do mesmo SHA, filtre GitHub Actions por `event=push` antes da checagem de `total_count` e valide que cada item realmente veio de push. Runs via issue_comment, schedule, workflow_run e dispatch nao sao CI da main e nao podem esgotar o limite 100. O path da workflow trusted `.github/workflows/validate.yml` tambem precisa ser exato; falha de historico ainda bloqueia certificacao. Nao transformar um `validate` ou observer SUCCESS em `product_ready=true`: as seis areas independentes continuam avaliadas separadamente.
