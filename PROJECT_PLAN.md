@@ -441,3 +441,12 @@ A release antecipada do Service Desk permanece bloqueada, não é prova para pro
 4. [x] Preparar leitor e classificador offline-first, bounds, rejeição de identidades cruzadas e inferência zero de entrega; testes para CRM, Service Desk, epoch, múltiplas linhagens e sanitização.
 5. [ ] CI Python/Factory Acceptance no SHA exato, merge humano de produção e repetir auditoria de admissão CRM para verificar sinal correto. Sem migration, modelos pagos ou Preview do Console.
 
+
+## 21/10/2026 — Five-block exact candidate gate auditor (#713)
+
+1. [x] Provar scheduler native com gap real e backup funcional, sem apagar alertas.
+2. [x] Preparar reader cross-repo project/PR SHA e controle operacional com bounds.
+3. [x] Preparar CI de repositorio de destino, diferenciando skipped/retry e QA de outro repo.
+4. [x] Preparar avaliacao Preview por politica e diff e historico de Change Sets bloqueados, sem release/replay.
+5. [x] Preparar owner-only trigger, artefato de evidencia e regressao offline; [ ] CI e merge humano, seguido de auditoria real do Service Desk #5 sem mudancas de banco.
+

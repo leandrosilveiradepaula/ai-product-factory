@@ -1,3 +1,15 @@
+## 21/10/2026 — Comando OWNER para verificar gates exatos de PR
+
+Comente exclusivamente na issue #713 da Factory o comando de exemplo:
+
+    /factory-candidate-gates infodive-service-desk pr=5 sha=c7b061c6f18961bd1fdfea51f59e2985bbe8247a
+
+O job candidate-gates-readonly do autonomous-runner.yml exige comentario OWNER, numero da issue e texto integral exatos antes do broker OIDC. Consulta apenas via GET o projeto registrado no Control Plane, seu controle operacional, a PR HEAD real no GitHub, checks de CI nativos e workflow pull_request no repositorio de destino. O token GitHub do Actions vale so no proprio repo da Factory: cross-repo usa GitHub App autorizado ou FACTORY_GITHUB_TOKEN explicito; ausencia falha fechado.
+
+Policy Preview ausente significa policy_missing; quando required, falta de browser evidence continua bloqueada. Quando o Preview nao se aplica a paths do diff, o escopo e explicitamente explicado, nunca inferido da ausencia de deployment. Change Sets previamente bloqueados sao contados, mas nao retomados. Mesmo todos os checks verdes nao geram autorizacao: ready_for_production=false, product_ready=false, writes=0, paid_calls=0.
+
+Auditoria retorna success ao provar status blocked com evidencia completa; ausencia de prova retorna unverifiable_live_evidence e falha. O JSON sanitizado vai ao artefato GitHub com 7 dias de retencao. Sem chamada de modelo, merge automatico, migration, nova credencial publica ou Preview criado. O codigo e um diagnostico consultivo, nao um mecanismo de liberacao.
+
 ## 21/10/2026 — Run terminal não certifica entrega descendente
 
 A auditoria owner-only `/factory-admission-diagnose <project_key> <run_uuid>` era suficiente para estados de `run`, mas responder `no_new_action` a `run.status=completed` ignorava o Change Set materializado para a mesma raiz. No caso real do CRM, a continuação concluída terminou em um Change Set `superseded`; 1 Work Unit produziu um commit, mas a auditoria E2E da mesma origem só verificou 5/12 etapas. Reabrir o Change Set, reproduzir modelo ou certificar integração sem PR/SHA seria incorreto.
