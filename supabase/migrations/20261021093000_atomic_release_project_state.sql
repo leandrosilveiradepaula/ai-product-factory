@@ -51,14 +51,14 @@ BEGIN
  AND proj.lifecycle_stage='operations' THEN
   RAISE EXCEPTION 'new release requires new transition' USING ERRCODE='PT409';
  END IF;
- v_manifest:=(manifest-'current_task')||
+ v_manifest:=(v_manifest-'current_task')||
  jsonb_build_object('head_sha',p_merge_sha,'reported_stage','operations',
   'last_release',jsonb_build_object('run_id',p_run_id,'merge_sha',p_merge_sha,'source','observed_human_merge'),
   'product_readiness_followup',p_followup);
  IF v_manifest->>'autonomy'='read_only_verification'
- THEN v_manifest:=manifest-'autonomy'; END IF;
+ THEN v_manifest:=v_manifest-'autonomy'; END IF;
  IF v_manifest->'runtime_readiness'->>'current_scope'='read_only_verification' THEN
-  v_manifest:=jsonb_set(manifest,'{runtime_readiness}',
+  v_manifest:=jsonb_set(v_manifest,'{runtime_readiness}',
    (v_manifest->'runtime_readiness')-'current_scope');
  END IF;
  UPDATE public.factory_projects SET lifecycle_stage='operations',manifest=v_manifest
