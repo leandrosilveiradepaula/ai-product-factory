@@ -35,6 +35,10 @@ class PreviewBaseGuardTests(unittest.TestCase):
         self._control=patch("ai_product_factory.runtime_cli._assert_project_followup",return_value=1)
         self._control.start()
         self.addCleanup(self._control.stop)
+        self._preview_cursor=patch("ai_product_factory.runtime_cli.SupabaseFollowupFairCursor")
+        mock_cursor=self._preview_cursor.start()
+        mock_cursor.return_value.read_offset.return_value=0
+        self.addCleanup(self._preview_cursor.stop)
 
     def test_exact_base_requires_no_comparison_or_content_reads(self):
         github, pr = github_for()

@@ -118,6 +118,10 @@ class ProjectFollowupGuardTests(unittest.TestCase):
 
 class FollowupPauseIntegrationTests(unittest.TestCase):
     def setUp(self):
+        self._preview_cursor=patch("ai_product_factory.runtime_cli.SupabaseFollowupFairCursor")
+        mock_cursor=self._preview_cursor.start()
+        mock_cursor.return_value.read_offset.return_value=0
+        self.addCleanup(self._preview_cursor.stop)
         self.item=SimpleNamespace(
             run_id="run-1",job_id="lane-1",project_id=PID,project_key="crm-infodive",
             repository="owner/repo",pr_number=25,candidate_commit="a"*40,
