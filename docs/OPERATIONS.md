@@ -1,3 +1,9 @@
+## 21/10/2026 — Gate de proveniencia do auditor global rebaseado (#1013)
+
+Ao revalidar evidencias de CI/visual do mesmo SHA, filtre GitHub Actions por `event=push` antes da checagem de `total_count` e valide que cada item realmente veio de push. Runs via issue_comment, schedule, workflow_run e dispatch nao sao CI da main e nao podem esgotar o limite 100. O path da workflow trusted `.github/workflows/validate.yml` tambem precisa ser exato; falha de historico ainda bloqueia certificacao. Nao transformar um `validate` ou observer SUCCESS em `product_ready=true`: as seis areas independentes continuam avaliadas separadamente.
+
+---
+
 ## 21/10/2026 — Run epoch recuperada nao equivale a nova autorizacao
 
 Caminho reproduzivel: o operador pausa um projeto no final de um lease; com nenhum lease ativo remanescente ele e `paused`. O operador retoma; `generation` sobe. A recuperacao original selecionava `r.status=running/implementing`, lease expirado, `state=running`, mas nao conferia `r.metadata.execution_generation`. Portanto uma run da geracao antiga poderia voltar para `queued` e adquirir nova geracao no claim, repetindo HTTP/API/commit ja aceito.

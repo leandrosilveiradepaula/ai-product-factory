@@ -1,3 +1,11 @@
+## 21/10/2026 — Convergencia do auditor global (#1013)
+
+- PR #1020 mergeada no SHA `de754d14063a38e11060ffbc6ca5dee80c140069`; `validate` pos-merge SUCCESS e observer OIDC SUCCESS com `product_ready=false`, seis dominios nao certificados.
+- PR #1013, antes em conflito com a main antiga, foi reconciliada para a main atual. Filtro do inventario por `head_sha+event=push` e path de `validate.yml` fecham uma causa de starvation do auditor que independe de workload de produto; testes negativos nao geram custos.
+- Migrations de terminal descendant e cross-epoch continuam somente no Git (`20261021014000`, `20261021021000`), sem autorizacao para aplicar no banco. Nenhuma nova run ou modelo pago.
+
+---
+
 ## 21/10/2026 — Bloqueio de replay apos Pause/Resume (candidato)
 
 - O SQL ja em producao de `factory_recover_expired_runs` e `factory_recover_change_sets` somente checava `state=running`; nao revalidava `metadata.execution_generation` contra `c.generation`. Um lease de gen1 expirado apos Resume(gen2) podia ser automaticamente requeued, e uma run antiga queued podia ser reclamada com epoch2, arriscando efeitos/creditos duplicados.

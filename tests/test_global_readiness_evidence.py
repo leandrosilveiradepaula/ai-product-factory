@@ -65,8 +65,9 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
         "/repos/"+REPO+"/actions/runs/"+str(RUN):{
             "id":RUN,"name":"validate","event":"push","head_branch":"main",
             "head_sha":S,"conclusion":"success","status":"completed",
+            "path":".github/workflows/validate.yml","run_attempt":1,
             "repository":{"full_name":REPO}},
-        "/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100":{
+        "/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100":{
             "total_count":1,"workflow_runs":[
                 {"id":RUN,"name":"validate","event":"push","head_branch":"main",
                  "head_sha":S,"path":".github/workflows/validate.yml",
@@ -169,6 +170,55 @@ class GlobalReadinessTests(unittest.TestCase):
         _,_,gg,cg=fixture(kind="existing",evaluations=[complete_eval()],baseline=[baseline_eval()])
         self.assertTrue(self.audit(github_get=gg,cp_get=cg)["global_readiness"]["product_ready"])
 
+    def test_comment_event_flood_cannot_stall_exact_sha_ci_and_readiness(self):
+        # Real main can receive hundreds of issue_comment/schedule events
+        # without producing a new commit. They must not count as CI evidence.
+        gh,cp,gg,cg=fixture()
+        old_uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"
+        gh[old_uri]={"total_count":302,"workflow_runs":[
+            {"id":1000+i,"event":"issue_comment","name":"Factory autonomous runner",
+             "head_sha":S,"repository":{"full_name":REPO}}
+            for i in range(100)
+        ]}
+        calls=[]
+        def read(path):
+            calls.append(path)
+            return gg(path)
+        report=self.audit(github_get=read,cp_get=cg)
+        self.assertFalse(report["global_readiness"]["product_ready"])
+        self.assertEqual(report["ci_evidence"]["validation_jobs"]["validated_run_id"],RUN)
+        self.assertNotIn(old_uri,calls)
+        self.assertIn("/repos/"+REPO+"/actions/runs?head_sha="+S+
+                      "&event=push&per_page=100",calls)
+        self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
+
+    def test_trusted_validate_path_cannot_be_impersonated_by_name(self):
+        gh,cp,gg,cg=fixture()
+        gh["/repos/"+REPO+"/actions/runs/"+str(RUN)]["path"]=".github/workflows/unsafe.yml"
+        with self.assertRaisesRegex(GlobalReadinessEvidenceError,"validation workflow"):
+            self.audit(github_get=gg,cp_get=cg)
+        from ai_product_factory.global_readiness_evidence import find_current_validation_run
+        gh,cp,gg,cg=fixture()
+        uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"
+        gh[uri]["workflow_runs"][0]["path"]=".github/workflows/unsafe.yml"
+        with self.assertRaisesRegex(GlobalReadinessEvidenceError,"validate run"):
+            find_current_validation_run(repository=REPO,sha=S,branch="main",github_get=gg)
+
+    def test_push_only_inventory_fails_closed_if_filtered_api_is_not_honest(self):
+        uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"
+        for label,mutate in (
+            ("non-push result",lambda obj:obj["workflow_runs"][0].update(event="issue_comment")),
+            ("wrong SHA",lambda obj:obj["workflow_runs"][0].update(head_sha="f"*40)),
+            ("wrong repository",lambda obj:obj["workflow_runs"][0]["repository"].update(full_name="other/repo")),
+            ("incomplete count",lambda obj:obj.update(total_count=2)),
+            ("overfull true push history",lambda obj:obj.update(total_count=101)),
+        ):
+            with self.subTest(label=label):
+                gh,cp,gg,cg=fixture()
+                mutate(gh[uri])
+                with self.assertRaises(GlobalReadinessEvidenceError):
+                    self.audit(github_get=gg,cp_get=cg)
+
     def test_project_identity_and_remote_sha_are_authoritative(self):
         tests=[
             ("head drift", lambda gh,cp:gh["/repos/"+REPO+"/git/ref/heads/main"]["object"].update(sha="c"*40)),
@@ -180,8 +230,8 @@ class GlobalReadinessTests(unittest.TestCase):
             ("truncated inventory",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"].update(truncated=True)),
             ("symlink",lambda gh,cp:gh["/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1"]["tree"].append({"type":"blob","mode":"120000","path":"secret"})),
             ("incomplete checks",lambda gh,cp:gh["/repos/"+REPO+"/commits/"+S+"/check-runs?per_page=100"].update(total_count=200)),
-            ("ambiguous same-SHA runs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"].update(total_count=200)),
-            ("wrong workflow run SHA",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][0].update(head_sha="f"*40)),
+            ("ambiguous same-SHA runs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"].update(total_count=200)),
+            ("wrong workflow run SHA",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"]["workflow_runs"][0].update(head_sha="f"*40)),
             ("untrusted Vercel status SHA",lambda gh,cp:gh["/repos/"+REPO+"/commits/"+S+"/status"].update(sha="f"*40)),
 
             ("incomplete run jobs",lambda gh,cp:gh["/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100"].update(total_count=200)),
@@ -301,7 +351,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
              "conclusion":conclusion if status=="completed" else None,
              "run_attempt":1,"path":".github/workflows/authenticated-visual-evidence.yml",
              "repository":{"full_name":REPO}}
-        uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"
+        uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"
         gh[uri]["workflow_runs"].append(row)
         gh[uri]["total_count"] += 1
         gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/jobs?per_page=100"]={
@@ -368,9 +418,9 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
 
     def test_visual_identity_artifact_and_job_guards_fail_closed(self):
         altered=[
-            ("rerun replay",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][1].update(run_attempt=2)),
-            ("unexpected workflow",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][1].update(path="evil.yml")),
-            ("wrong event",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"]["workflow_runs"][1].update(event="pull_request")),
+            ("rerun replay",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"]["workflow_runs"][1].update(run_attempt=2)),
+            ("unexpected workflow",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"]["workflow_runs"][1].update(path="evil.yml")),
+            ("wrong event",lambda gh,n:gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"]["workflow_runs"][1].update(event="pull_request")),
             ("failed capture job",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/jobs?per_page=100"]["jobs"][0].update(conclusion="failure")),
             ("wrong capture SHA",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/jobs?per_page=100"]["jobs"][0].update(head_sha="f"*40)),
             ("expired evidence",lambda gh,n:gh["/repos/"+REPO+"/actions/runs/"+str(n)+"/artifacts?per_page=100"]["artifacts"][0].update(expired=True)),
@@ -392,7 +442,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         gh,cp,gg,cg,visual=self.visual()
         self.assertEqual(find_current_validation_run(repository=REPO,sha=S,
                                                      branch="main",github_get=gg),RUN)
-        k="/repos/"+REPO+"/actions/runs?head_sha="+S+"&per_page=100"
+        k="/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"
         gh[k]["workflow_runs"][0].update(conclusion="failure")
         with self.assertRaises(GlobalReadinessEvidenceError):
             find_current_validation_run(repository=REPO,sha=S,branch="main",github_get=gg)
