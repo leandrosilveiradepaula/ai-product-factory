@@ -1,3 +1,12 @@
+## 21/10/2026 — RPC especialista protege Pause/Resume e claim token (#894, candidato)
+
+- As migrations `20261021014000` e `20261021021000` foram aplicadas e verificadas sob version IDs Supabase `20261021020934` e `20261021021025`; PR #1013 mergeada em `8c8cc53fee96696905879f07552e86c254033bae`. Nenhum trabalho executavel foi alterado nem houve custo de modelo.
+- Lacuna real subsequente: `factory_complete_specialist_lane` nao tinha filtro do project-control nem geracao da run dentro da transacao. `factory_claim_specialist_lane` e recovery ignoravam geracao original e podiam reexecutar specialist apos Resume. Um guard Python antes da conclusao nao fecha a corrida Pause vs SQL.
+- Novo candidato `20261021030000_fence_specialist_epoch_and_lease_token.sql` protege enqueue, claim, complete e recovery; guarda epoch no evidence reservado do job, exige token de lease aleatorio em cada claim e verifica o estado/geracao sob row lock compartilhado antes de qualquer avaliacao/efeito. Runs e jobs legados sem epoch sao quarantined e requerem reconciliacao, nao execucao implicita.
+- PostgreSQL isolado testa fila mista, Pause/Resume, re-claim com token diferente, repeticao de completions, concorrencia e auditoria. **Nao aplicou esta terceira migration na producao**; requer nova autorizacao especifica apos CI/merge humano.
+
+---
+
 ## 21/10/2026 — Convergencia do auditor global (#1013)
 
 - PR #1020 mergeada no SHA `de754d14063a38e11060ffbc6ca5dee80c140069`; `validate` pos-merge SUCCESS e observer OIDC SUCCESS com `product_ready=false`, seis dominios nao certificados.
