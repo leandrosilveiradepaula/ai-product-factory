@@ -16,12 +16,16 @@ create table public.factory_ci_repair_requests (
  original_candidate_commit text not null check (original_candidate_commit ~ '^[0-9a-f]{40}$'),
  repaired_commit text check (repaired_commit is null or repaired_commit ~ '^[0-9a-f]{40}$'),
  execution_generation bigint not null check (execution_generation > 0),
- attempt integer not null check (attempt between 1 and 3),
+ attempt integer not null check (attempt between 1 and 4),
  max_attempts integer not null check (max_attempts between 1 and 3),
  failure_class text not null check (failure_class in ('code','infrastructure','runner','permission','quota','unknown')),
  failures jsonb not null check (jsonb_typeof(failures) = 'array' and jsonb_array_length(failures) between 1 and 20),
  write_scopes jsonb not null default '[]'::jsonb check (jsonb_typeof(write_scopes) = 'array'),
  status text not null check (status in ('queued','running','integrated','awaiting_ci','passed','ci_failed','blocked','exhausted','failed_gate')),
+ constraint factory_ci_repair_attempt_bound check (
+  (status = 'exhausted' and attempt = max_attempts + 1)
+  or (status <> 'exhausted' and attempt <= max_attempts)
+ ),
  blocker_reason text,
  lease_owner text,
  lease_expires_at timestamptz,
