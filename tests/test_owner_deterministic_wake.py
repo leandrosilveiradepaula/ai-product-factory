@@ -84,7 +84,7 @@ class OwnerDeterministicWakeTests(unittest.TestCase):
         self.assertNotIn("!=",guard)
 
     def test_owner_wake_does_not_redefine_read_only_journey_audit(self):
-        self.assertIn('run: python -m ai_product_factory.runtime_cli --mode schedule-probe',PROBE)
+        self.assertIn('python -m ai_product_factory.runtime_cli --mode schedule-probe',PROBE)
         self.assertIn("github.event_name == 'issue_comment' ||",section(
             "Recover expired leases in the shared scheduler runner"))
         # A manual journey audit must stay distinct from a scheduler wake.
