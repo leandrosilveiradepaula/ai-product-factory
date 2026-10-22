@@ -55,12 +55,43 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertLess(contents,apply_call)
         self.assertIn("required_checks",POLICY.read_text())
 
-    def test_management_api_uses_official_migrations_endpoint_not_generic_query(self):
+    def test_management_api_uses_read_scoped_migration_details_not_generic_query(self):
         text=MODULE.read_text()
         self.assertIn("/database/migrations",text)
         self.assertNotIn("/database/query",text)
-        self.assertIn("migrationNameSet",text)
+        self.assertIn("migrationVersionByName",text)
+        self.assertIn("requireVerifiedMigrationSource",text)
+        self.assertIn("verifyMigrationInHistory",text)
         self.assertIn("alreadyApplied:true",text)
+        self.assertNotIn("appliedNames.has(",text)
+
+    def test_name_only_migration_history_never_completes_gate(self):
+        text=MODULE.read_text()
+        source=(ROOT/"apps/console/lib/migration-history-integrity.mjs").read_text()
+        tests=(ROOT/"apps/console/tests/migration-history-integrity.test.mjs").read_text()
+        self.assertIn("existingVersion!==null",text)
+        self.assertIn("await verifyMigrationInHistory",text)
+        self.assertIn("source_integrity:",text)
+        self.assertIn("exact_sql_verified",text)
+        self.assertIn("supabase_migration_version",text)
+        self.assertIn("migration_applied_sql_mismatch",source)
+        self.assertIn("migration_name_ambiguous",source)
+        self.assertIn("statements.join",source)
+        self.assertIn("same name/version with different SQL cannot resolve",tests)
+
+    def test_applied_sql_is_verified_before_gate_resolution_on_both_paths(self):
+        text=MODULE.read_text()
+        first=text.index("if(existingVersion!==null)")
+        second=text.index('eventType:"human_migration.console_already_applied"')
+        third=text.index("await resolveAppliedGate",first)
+        self.assertLess(first,second)
+        self.assertIn("await verifyMigrationInHistory",text[first:third])
+        after=text.index("await applyMigration(configured.supabase_project_ref")
+        success=text.index('eventType:"human_migration.console_apply_succeeded"')
+        self.assertIn("await verifyMigrationInHistory",text[after:success])
+        self.assertLess(after,success)
+        self.assertNotIn("const detail=await response.text()",text)
+
 
     def test_preflight_is_audited_and_post_is_idempotent(self):
         text=MODULE.read_text()
