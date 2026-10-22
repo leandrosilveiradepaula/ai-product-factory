@@ -365,6 +365,19 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 q.record_stage(item,StageEvidence("planning","completed",{}))
             call.assert_not_called()
 
+    def test_non_executed_stage_evidence_cannot_bypass_worker_to_persistence(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        item=WorkItem("r","t","p","demo",(),{},3,"worker")
+        for output in (
+            {"placeholder":True},
+            {"simulated":"true"},
+            {"execution_mode":"dry-run"},
+        ):
+            with self.subTest(output=output), patch("urllib.request.urlopen") as call:
+                with self.assertRaisesRegex(ValueError,"product_stage_output_not_executed"):
+                    q.record_stage(item,StageEvidence("planning","completed",output))
+                call.assert_not_called()
+
     def test_retry_failed_run_uses_privileged_rpc_without_leaking_secret_in_body(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         payload={"source_run_id":"old","run_id":"new","status":"queued","task_status":"queued"}

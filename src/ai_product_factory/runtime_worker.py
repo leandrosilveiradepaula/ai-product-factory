@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
+from .product_stage_output_contract import assert_executed_product_stage_output
+
 
 class WorkStatus(StrEnum):
     CLAIMED = "claimed"
@@ -135,19 +137,7 @@ class RuntimeWorker:
                     raise ValueError("stage handler must return a mapping")
                 if any(not isinstance(key,str) for key in output):
                     raise ValueError("stage handler output keys must be strings")
-                mode = output.get("mode")
-                if (output.get("requires_model") is True
-                        or output.get("deferred") is True
-                        or (isinstance(mode, str) and mode.strip().lower() in {
-                            "placeholder", "mock", "fixture", "simulated", "simulation",
-                            "dry_run", "dry-run",
-                        })):
-                    # Deterministic and mock responses are useful for offline
-                    # simulation only. A result that explicitly defers real
-                    # work cannot be recorded as completed Product Stage.
-                    # A genuinely completed deterministic tool result without
-                    # these markers remains supported.
-                    raise ValueError("product stage is deferred or mock; no completed evidence")
+                assert_executed_product_stage_output(output)
 
                 if callable(checkpoint):
                     checkpoint(item)
