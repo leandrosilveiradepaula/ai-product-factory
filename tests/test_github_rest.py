@@ -86,6 +86,27 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(pr.base_sha, "base123")
         self.assertEqual(pr.head_repository, "owner/repo")
 
+    def test_draft_pr_flag_is_preserved_from_real_github_response(self):
+        class DraftResponse(FakeGitHubTransport):
+            def __init__(self, draft):
+                super().__init__()
+                self.draft = draft
+
+            def __call__(self, method, url, headers, body):
+                status, row = super().__call__(method, url, headers, body)
+                if method == "GET" and url.endswith("/pulls/9"):
+                    row = dict(row)
+                    if self.draft is not None:
+                        row["draft"] = self.draft
+                return status, row
+
+        for value in (True, False, None):
+            gh = GitHubRestAdapter(repository="owner/repo", token="token-placeholder",
+                                   transport=DraftResponse(value))
+            with self.subTest(draft=value):
+                pr = gh.get_pull_request(9)
+                self.assertIs(pr.draft, value)
+
     def test_token_is_only_in_authorization_header(self):
         self.github.get_issue(5)
         _, _, headers, _ = self.transport.calls[-1]
