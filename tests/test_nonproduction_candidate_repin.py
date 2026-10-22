@@ -1,6 +1,7 @@
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from ai_product_factory.nonproduction_candidate_repin import (
     ExistingCandidatePolicy, NativeCIWorkflowPolicy, repin_existing_projects,
@@ -36,7 +37,7 @@ def github(repo, *, conclusion="success", attempt=2):
     g.get_branch_sha.return_value = NEW
     g.get_pull_request.return_value = SimpleNamespace(
         number=56, state="open", merged=False, head_sha=NEW, head_ref="preview/candidate",
-        head_repository=repo, base_ref="main")
+        head_repository=repo, base_ref="main", draft=False)
     g.compare_commits.return_value = {"status": "ahead", "ahead_by": 4, "behind_by": 0}
     g._call.return_value = {"total_count": 1, "workflow_runs": [{
         "id": 99, "workflow_id": 12, "run_number": 44, "run_attempt": attempt,
@@ -47,7 +48,41 @@ def github(repo, *, conclusion="success", attempt=2):
     return g
 
 
+def receipt(body):
+    return {"status": "updated", "project_key": body["p_project_key"],
+            "old_sha": body["p_expected_sha"], "new_sha": body["p_new_sha"],
+            "generation": body["p_expected_generation"] + 1,
+            "version": body["p_expected_version"] + 1}
+
+
+def project_fetcher(projects):
+    """PostgREST mock honoring exact offset and limit, including controller GETs."""
+    ordered = sorted(projects, key=lambda p: p["project_key"])
+    def get(url, headers):
+        _ = headers
+        q = parse_qs(urlsplit(url).query)
+        if "factory_project_execution_controls" in url:
+            pid = q["project_id"][0].removeprefix("eq.")
+            return [p["execution_control"] for p in ordered if p["id"] == pid]
+        if "factory_projects" in url:
+            rows = ordered
+            if "project_key" in q:
+                requested = q["project_key"][0].removeprefix("eq.")
+                rows = [p for p in ordered if p["project_key"] == requested]
+            offset = int(q.get("offset", ["0"])[0])
+            limit = int(q.get("limit", ["20"])[0])
+            return [{k: v for k, v in p.items() if k != "execution_control"}
+                    for p in rows[offset:offset + limit]]
+        raise AssertionError("unexpected read endpoint")
+    return get
+
+
 class CandidateRePinTests(unittest.TestCase):
+    @staticmethod
+    def mock_config():
+        return patch("ai_product_factory.nonproduction_candidate_repin.resolve_supabase_server_config",
+                     return_value=SupabaseServerConfig("https://example.test", "key", {"apikey": "key"}))
+
     def policy(self):
         item = project()
         return ExistingCandidatePolicy.parse(item["manifest"], repository=item["repository"])
@@ -89,7 +124,7 @@ class CandidateRePinTests(unittest.TestCase):
                 NativeCIWorkflowPolicy.parse(invalid)
 
     def test_repin_rpc_receives_current_epoch_and_exact_evidence(self):
-        item = project(); g = github(item["repository"]); rpc = MagicMock(return_value={"status": "updated", "generation": 7})
+        item = project(); g = github(item["repository"]); rpc = MagicMock(side_effect=lambda _name, body: receipt(body))
         result = repin_project(item, github_factory=lambda _: g, rpc=rpc)
         self.assertEqual(result["status"], "updated")
         body = rpc.call_args.args[1]
@@ -106,20 +141,17 @@ class CandidateRePinTests(unittest.TestCase):
 
     def test_two_existing_projects_are_independent_after_first_error(self):
         first, second = project("alpha", "owner/alpha"), project("beta", "owner/beta")
-        controls = {"alpha-id": [first["execution_control"]], "beta-id": [second["execution_control"]]}
-        def fetch(url, _headers):
-            if "factory_project_execution_controls" in url:
-                return next(rows for ident, rows in controls.items() if ident in url)
-            return [{k: v for k, v in first.items() if k != "execution_control"}, {k: v for k, v in second.items() if k != "execution_control"}]
+        fetch = project_fetcher([first, second])
         def factory(repo):
             if repo == "owner/alpha":
                 raise RuntimeError("cross-repo token unavailable")
             return github(repo)
-        cfg = SupabaseServerConfig("https://example.test", "key", {"apikey": "key"})
-        with patch("ai_product_factory.nonproduction_candidate_repin.resolve_supabase_server_config", return_value=cfg):
-            result = repin_existing_projects(max_projects=2, project_fetcher=fetch, control_fetcher=fetch,
-                                             github_factory=factory, rpc=lambda *_: {"status": "updated"})
+        with self.mock_config():
+            result = repin_existing_projects(max_projects=2, rotation_slot=0,
+                                             project_fetcher=fetch, control_fetcher=fetch,
+                                             github_factory=factory, rpc=lambda _name, body: receipt(body))
         self.assertEqual([row["status"] for row in result["results"]], ["error", "updated"])
+        self.assertEqual(result["status"], "partial_failure")
         self.assertEqual(result["results"][1]["project_key"], "beta")
 
     def test_repin_never_claims_paid_release_or_merge(self):
