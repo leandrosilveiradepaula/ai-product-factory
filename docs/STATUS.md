@@ -1,3 +1,10 @@
+## 22/10/2026 — Preview Vercel: correlação exata do verificador autenticado (candidato)
+
+- A implementação da PR #1047 revelou um defeito do gate de Preview: o job `browser-evidence` do workflow `exact-preview-browser-evidence.yml` encontrou o Preview READY e acionou `console-browser-evidence.yml`; o filho realmente executou Playwright e registrou checks `page_load/http_status/body_visible/expected_text/console_clean` com status SUCCESS, mas o gate pai falhou com `Timed out waiting for trusted main browser verifier` porque selecionava um run por janela de tempo e aguardava o status agregado do workflow, atrasado no GitHub.
+- O candidato agora envia um `request_id` UUID ao browser confiável da main, fixa o SHA da main no despacho e usa `selectBrowserRun` já testado para exigir coincidência exata de nonce, workflow path, event, branch, SHA, attempt, URL e tempo. Não aceita run de outro operador ou sessão.
+- Quando o workflow pai permanece `in_progress` após seu único browser job concluir, o gate verifica diretamente o job `browser-evidence` único, com `run_id`, SHA da main, ID, status completed e conclusion success. Job pendente, falho, duplicado, de outro run, workflow agregado terminal falho ou listing malformado continua bloqueado. A condição de sucesso atesta o job executado e não certifica prontidão global do produto.
+- A correção é adicionada à mesma PR #1047 do verificador de SQL de migrations. O workflow existente já possui permissões GitHub Actions; nenhuma ampliação de segredo, OIDC, modelo, produção, banco ou release. Novo SHA demanda nova captura Preview e CI; merge de main humano.
+
 ## 22/10/2026 — Console: não reconciliar migration só pelo nome (candidato)
 
 - Após o merge humano #1035 na main `9737231d53005aa54b1d86457df7659a9a4569ca`, o job oficial de admissão OWNER `39795111546` constatou `idle_with_unassessed_global_product_readiness`: projeto running, custo ledger within_budget, zero tarefas elegíveis, seis domínios independentes ainda não certificados; nenhum Start foi criado, nenhum modelo foi chamado. Observador pós-push `39791506659` confirmou `product_ready=false`, sem escrita.
