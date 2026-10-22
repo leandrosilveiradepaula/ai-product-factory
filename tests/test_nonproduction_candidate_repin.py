@@ -267,6 +267,22 @@ class CandidateRePinTests(unittest.TestCase):
         self.assertEqual(result["policy_disabled"], 1)
         self.assertFalse(result["results"])
 
+    def test_cli_reports_partial_failure_after_bounded_batch(self):
+        import contextlib
+        import io
+        import json
+        from ai_product_factory import runtime_cli
+        for status, expected in (("idle", 0), ("completed", 0), ("partial_failure", 2)):
+            with patch("sys.argv", ["factory-runtime", "--mode", "candidate-repin"]):
+                with patch.object(runtime_cli, "repin_existing_projects",
+                                  return_value={"status": status, "results": []}):
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        code = runtime_cli.main()
+            with self.subTest(status=status):
+                self.assertEqual(code, expected)
+                self.assertEqual(json.loads(output.getvalue())["status"], status)
+
     def test_repin_never_claims_paid_release_or_merge(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
