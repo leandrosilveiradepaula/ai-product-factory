@@ -1129,5 +1129,9 @@ def main()->int:
  elif args.mode=="change-set-integration":out=run_bounded_deterministic_lane("change-set-integration",args.worker_id,args.batch_items)
  elif args.mode=="dispatch":out=run_dispatch_once(args.project_key,args.max_items)
  else:out=run_product_once(args.worker_id)
- print(json.dumps(out));return 0 if not out.get("error") else 2
+ print(json.dumps(out))
+ # Finish the bounded batch before surfacing failure; one blocked project
+ # must never hide the next, but failed eligibility cannot silently green CI.
+ if args.mode=="candidate-repin" and out.get("status")=="partial_failure":return 2
+ return 0 if not out.get("error") else 2
 if __name__=="__main__":raise SystemExit(main())
