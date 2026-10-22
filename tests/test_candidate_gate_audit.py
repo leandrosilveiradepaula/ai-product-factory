@@ -75,6 +75,9 @@ def observer(cp,gh, *, key=PROJECT,number=PR,sha=SHA):
         if path.startswith("factory_projects?"):return cp["project"]
         if path.startswith("factory_project_execution_controls?"):return cp["control"]
         if path.startswith("factory_change_sets?"):return cp["blocked"]
+        if path.startswith("factory_project_state_snapshots?"):return cp.get("snapshots",[])
+        if path.startswith("factory_tasks?"):return cp.get("root_tasks",[])
+        if path.startswith("factory_runs?"):return cp.get("root_runs",[])
         raise AssertionError(path)
     pr_reads=0
     def github_get(path):
@@ -97,11 +100,21 @@ def observer(cp,gh, *, key=PROJECT,number=PR,sha=SHA):
         }
         if path=="/repos/"+cp["project"][0]["repository"] and path not in lookup:
             return gh["repo"]
+        if path==prefix+"/commits/"+sha+"/status" and "vercel_status" in gh:
+            return gh["vercel_status"]
         if path not in lookup:raise AssertionError("Unexpected GitHub GET "+path)
         return lookup[path]
+    def factory_get(path):
+        paths.append(("factory","GET",path))
+        prefix="/repos/leandrosilveiradepaula/ai-product-factory/actions/runs/"
+        if path==prefix+str(gh.get("browser_run_id",39841239361)):
+            return gh.get("browser_run")
+        if path==prefix+str(gh.get("browser_run_id",39841239361))+"/jobs?per_page=100":
+            return gh.get("browser_jobs")
+        raise AssertionError("Unexpected Factory verifier GET "+path)
     report=observe_candidate_gates(
         project_key=key,pr_number=number,candidate_sha=sha,
-        cp_get=cp_get,github_get=github_get,
+        cp_get=cp_get,github_get=github_get,factory_get=factory_get,
     )
     return report,paths
 
@@ -462,6 +475,108 @@ class CandidateGateTests(unittest.TestCase):
             "unverifiable_live_evidence",
         )
 
+
+    def test_exact_sha_browser_verifier_is_reflected_but_does_not_release(self):
+        from datetime import timedelta, timezone
+        cp,gh=fixtures(preview={"provider":"vercel","required":True},with_block=False)
+        mark_ci_green(gh)
+        gh["pr"]["draft"]=False
+        now=datetime.now(timezone.utc)
+        rid=39841239361
+        fsha="1489291c0ea1d46e0cbe99dfa7648ea3868e482a"
+        nonce="4f678198-f1d5-4e80-a88d-1c46f572240b"
+        browser_url="https://crm-infodive-git-preview-hard-e330ec-leandros-projects-102e32ab.vercel.app"
+        verifier_url=f"https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/{rid}"
+        cp["snapshots"]=[{
+            "id":"2ebb6fe2-9819-41b1-9133-d9e70e1dfc72",
+            "project_id":PID, "run_id":None,"observed_stage":"verification",
+            "created_at":now.isoformat(),"gaps":[],
+            "evidence":{"target_repository":REPO,"candidate_commit":SHA,
+                        "preview":{"provider":"vercel","status":"browser_verified",
+                                   "url":browser_url,
+                                   "browser_request_id":nonce,
+                                   "browser_verifier_run_id":rid,
+                                   "browser_verifier_run_url":verifier_url,
+                                   "verifier_factory_commit":fsha}},
+            "source_status":{"github_target":"verified","vercel_preview":"resolved",
+                             "browser_visual_validation":"success"},
+            "constraints":{"production_merge_authorized":False,
+                           "product_ready_inferred":False,
+                           "release_candidate_ready_inferred":False},
+        }]
+        gh["browser_run"]={
+            "id":rid,"repository":{"full_name":"leandrosilveiradepaula/ai-product-factory"},
+            "path":".github/workflows/console-browser-evidence.yml",
+            "event":"workflow_dispatch","run_attempt":1,
+            "head_branch":"main","head_sha":fsha,
+            "display_title":"Console evidence "+nonce,"status":"completed",
+            "conclusion":"success","html_url":verifier_url,
+            "created_at":(now-timedelta(seconds=60)).isoformat(),
+            "updated_at":(now-timedelta(seconds=25)).isoformat(),
+        }
+        gh["browser_jobs"]={"total_count":1,"jobs":[{
+            "name":"browser-evidence","run_id":rid,"head_sha":fsha,
+            "status":"completed","conclusion":"success",
+        }]}
+        gh["vercel_status"]={"sha":SHA,"statuses":[{"context":"Vercel","state":"success"}]}
+        gh["browser_run_id"]=rid
+        report,calls=observer(cp,gh)
+        self.assertEqual(report["preview"]["status"],"browser_verified")
+        self.assertTrue(report["preview"]["browser_verified"])
+        self.assertEqual(report["preview"]["browser_verification_scope"],
+                         "public_preview_browser_smoke_only")
+        self.assertFalse(report["ready_for_production"])
+        self.assertFalse(report["product_ready"])
+        self.assertEqual(report["reason_codes"],["human_production_merge_pending"])
+        self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
+        self.assertTrue(any(k=="factory" for k,_,_ in calls))
+
+    def test_old_sha_blocked_change_sets_are_not_current_candidate_gates(self):
+        cp,gh=fixtures(preview={"required":False,"reason":"backend-only"})
+        mark_ci_green(gh)
+        gh["pr"]["draft"]=False
+        cp["blocked"][0]["candidate_commit"]="f"*40
+        cp["control"][0]["generation"]=6
+        cp["root_tasks"]=[{"id":cp["blocked"][0]["root_task_id"],
+                            "project_id":PID,"status":"completed"}]
+        cp["root_runs"]=[{"id":"7adf7ac6-f43b-4bd6-9b26-c4df4546c3fe",
+                          "task_id":cp["blocked"][0]["root_task_id"],
+                          "status":"failed","metadata":{"execution_generation":"3"}}]
+        report,_=observer(cp,gh)
+        self.assertEqual(report["historical_blocked_change_sets"],1)
+        self.assertEqual(report["historical_unrelated_blocked_change_sets"],1)
+        self.assertEqual(report["current_or_unattributed_blocked_change_sets"],0)
+        self.assertNotIn("historical_blocked_change_set_review",report["reason_codes"])
+        self.assertFalse(report["release"]["authorized"])
+
+    def test_same_sha_and_missing_sha_blockers_remain_fail_closed(self):
+        for candidate in (SHA,None,"invalid"):
+            cp,gh=fixtures(preview={"required":False,"reason":"backend-only"})
+            mark_ci_green(gh)
+            cp["blocked"][0]["candidate_commit"]=candidate
+            report,_=observer(cp,gh)
+            self.assertEqual(report["current_or_unattributed_blocked_change_sets"],1)
+            self.assertIn("historical_blocked_change_set_review",report["reason_codes"])
+
+
+    def test_other_sha_in_current_epoch_remains_a_real_blocker(self):
+        cp,gh=fixtures(preview={"required":False,"reason":"backend-only"})
+        cp["control"][0]["generation"]=6
+        cp["blocked"][0]["candidate_commit"]="f"*40
+        cp["root_tasks"]=[{"id":cp["blocked"][0]["root_task_id"],
+                            "project_id":PID,"status":"completed"}]
+        cp["root_runs"]=[{"id":"7adf7ac6-f43b-4bd6-9b26-c4df4546c3fe",
+                          "task_id":cp["blocked"][0]["root_task_id"],
+                          "status":"failed","metadata":{"execution_generation":"6"}}]
+        report,_=observer(cp,gh)
+        self.assertEqual(report["current_or_unattributed_blocked_change_sets"],1)
+        self.assertIn("historical_blocked_change_set_review",report["reason_codes"])
+        # Running/unattributed lineage is also fail-closed.
+        cp["root_runs"][0]["metadata"]={}
+        self.assertEqual(observer(cp,gh)[0]["historical_unrelated_blocked_change_sets"],0)
+        cp["root_runs"][0]["metadata"]={"execution_generation":"3"}
+        cp["root_tasks"][0]["status"]="queued"
+        self.assertEqual(observer(cp,gh)[0]["historical_unrelated_blocked_change_sets"],0)
 
 class OwnerCommandTests(unittest.TestCase):
     def event(self,body="/factory-candidate-gates infodive-service-desk pr=5 sha="+SHA):

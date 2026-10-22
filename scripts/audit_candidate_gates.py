@@ -101,9 +101,28 @@ def main(argv: list[str] | None = None) -> int:
                 if parsed.query else None,
             )
 
+        # Browser verifier provenance is checked with this workflow's own
+        # repo-scoped GITHUB_TOKEN, never a cross-repo target installation token.
+        factory=GitHubRestAdapter(repository=_REPO)
+        def factory_get(path:str):
+            parsed=parse.urlsplit(path)
+            prefix="/repos/"+_REPO+"/actions/runs/"
+            if (parsed.scheme or parsed.netloc
+                or not re.fullmatch(
+                    re.escape(prefix)+r"[1-9][0-9]*(?:/jobs)?",
+                    parsed.path, re.ASCII)):
+                raise ValueError("GitHub GET outside trusted verifier run path")
+            is_jobs=parsed.path.endswith("/jobs")
+            if (is_jobs and parsed.query!="per_page=100") or (not is_jobs and parsed.query):
+                raise ValueError("unexpected Factory verifier query")
+            return factory._call(
+                "GET", parsed.path,
+                query={"per_page":"100"} if is_jobs else None,
+            )
+
         result=observe_candidate_gates(
             project_key=key,pr_number=number,candidate_sha=sha,
-            cp_get=cp_get,github_get=github_get,
+            cp_get=cp_get,github_get=github_get,factory_get=factory_get,
         )
         result["evidence_state"]="observed_exact_candidate"
         code=0
