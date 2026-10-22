@@ -7,6 +7,7 @@ on:
       - "scripts/verify_ci_repair_attempts_postgres.py"
       - "scripts/verify_ci_repair_e2e_postgres.py"
       - "supabase/migrations/*ci_repair_replay_idempotency.sql"
+      - "supabase/migrations/*ci_repair_cumulative_scopes.sql"
       - ".github/workflows/ci-repair-attempts-postgres.yml"
 permissions:
   contents: read
