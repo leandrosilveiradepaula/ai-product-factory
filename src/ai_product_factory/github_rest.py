@@ -625,14 +625,10 @@ class GitHubRestAdapter:
                     details_url=run.get("html_url"),
                     summary=f"GitHub Actions workflow concluded {conclusion or 'failure'}",
                 ))
-            for status in statuses:
-                state = str(status.get("state") or "")
-                if state not in {"error", "failure"}:
-                    continue
-                failures.append(self._check_failure(
-                    name=status.get("context") or "commit-status", conclusion=state,
-                    details_url=status.get("target_url"), summary=status.get("description"),
-                ))
+            # Commit statuses include Vercel/Preview and other deployment
+            # providers.  They are not native CI failures and must never
+            # turn an exact-SHA code repair into an unknown/quota failure.
+            # The candidate CI gate already uses authoritative Actions runs.
             return tuple(failures)
         for check in primary:
             if check.get("status") != "completed" or check.get("conclusion") in passing:
