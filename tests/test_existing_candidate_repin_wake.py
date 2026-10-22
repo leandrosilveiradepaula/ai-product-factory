@@ -1,6 +1,7 @@
 """Offline contract for the isolated, owner-only existing candidate reconciliation lane."""
 import unittest
 from pathlib import Path
+import re
 
 from scripts.summarize_candidate_repin_run import summarize
 
@@ -11,10 +12,11 @@ SHA = "a" * 40
 
 
 def job(name):
-    anchor = f"  {name}:\n"
-    if WORKFLOW.count(anchor) != 1:
+    match = re.search(r"(?ms)^  " + re.escape(name) +
+                      r":\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)", WORKFLOW)
+    if match is None:
         raise AssertionError(f"expected one {name} job")
-    return WORKFLOW.split(anchor, 1)[1].split("\n  ", 1)[0]
+    return match.group(1)
 
 
 def example(*, projects=1, eligible=1, limit=3, group=0, outcome="unchanged"):
