@@ -1,3 +1,10 @@
+## 22/10/2026 — Console: não reconciliar migration só pelo nome (candidato)
+
+- Após o merge humano #1035 na main `9737231d53005aa54b1d86457df7659a9a4569ca`, o job oficial de admissão OWNER `39795111546` constatou `idle_with_unassessed_global_product_readiness`: projeto running, custo ledger within_budget, zero tarefas elegíveis, seis domínios independentes ainda não certificados; nenhum Start foi criado, nenhum modelo foi chamado. Observador pós-push `39791506659` confirmou `product_ready=false`, sem escrita.
+- Conferência read-only do Supabase: `ci_repair_cumulative_scopes` aplicada sob versão remota `20261022141432`; o único `statements[1]` do histórico remoto é **byte-idêntico** aos 14.700 caracteres do arquivo Git `20261022125100_ci_repair_cumulative_scopes.sql`. Não reaplicar nem editar manualmente `supabase_migrations`; divergência do número é compatível com a atribuição de versão do Management API.
+- Defeito detectado no Console `migration-operator.ts`: o ramo `already_applied` confiava apenas no nome, sem verificar a versão real ou o SQL executado. O candidato usa GET oficial de migration `/{version}` (mesmo escopo `database_migrations_read` da listagem) e exige conteúdo SQL **exato** antes de marcar gate aprovado, tanto para reaplicação idempotente quanto depois de POST. Nome duplicado, statements ausentes/ambíguos ou SQL diferente bloqueiam.
+- Validação offline via Node `--test` cobre 10 cenários positivos/negativos; CI adicionada à workflow `validate`. Alteração em `apps/console/**` requer Preview verificado, além de CI e merge de produção humano. Nenhum schema/ACL, modelo pago, nova tarefa no Control Plane ou auto-merge.
+
 ## 22/10/2026 — Reparo de CI em Change Sets multi-wave (candidato)
 
 - Fato verificado, somente leitura, em `fjplmxfcshhbmzgvyqlm`: um Change Set histórico de **8 waves** tem **44 paths distintos** em Work Units `integrated`, mas apenas **4 paths** em `metadata.integrated_files`. Outro Change Set de 2 waves possui 2 paths distintos, e apenas 1 na metadata final. Esses Change Sets permanecem históricos: **não** foram reabertos, reprocessados nem alterados.
