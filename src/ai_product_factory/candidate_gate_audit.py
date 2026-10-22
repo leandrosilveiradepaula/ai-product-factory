@@ -18,7 +18,8 @@ _SHA = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z", re.ASCII)
 _MAX_CHECKS = 100
 _MAX_RUNS = 100
-_MAX_FILES = 100
+_MAX_FILES = 3000  # GitHub PR files API hard cap; larger inventories remain blocked.
+_FILE_PAGE_SIZE = 100
 _MAX_BLOCKED = 25
 
 class CandidateGateEvidenceError(RuntimeError):
@@ -158,6 +159,33 @@ def _paths(payload: object, expected: int) -> tuple[str,...]:
     return tuple(paths)
 
 
+def _read_all_changed_files(
+    github_get: Callable[[str],object], *, prefix: str, pr_number: int,
+    expected: int,
+) -> tuple[str,...]:
+    """Read every declared PR file, bounded by GitHub's 3,000-file API ceiling.
+
+    A missing/short/oversized page is not a valid smaller diff. Per-page
+    completeness, cross-page duplicates, renamed sources and total count
+    are checked before any Preview applicability decision.
+    """
+    if type(expected) is not int or not 1 <= expected <= _MAX_FILES:
+        raise CandidateGateEvidenceError("incomplete changed-file inventory")
+    rows: list[dict] = []
+    page_count = (expected + _FILE_PAGE_SIZE - 1) // _FILE_PAGE_SIZE
+    for page in range(1, page_count + 1):
+        suffix = "" if page == 1 else f"&page={page}"
+        batch = github_get(
+            f"{prefix}/pulls/{pr_number}/files?per_page={_FILE_PAGE_SIZE}{suffix}"
+        )
+        required = min(_FILE_PAGE_SIZE, expected - len(rows))
+        if (not isinstance(batch,list) or len(batch) != required
+                or any(not isinstance(row,dict) for row in batch)):
+            raise CandidateGateEvidenceError("incomplete changed-file inventory")
+        rows.extend(batch)
+    return _paths(rows, expected)
+
+
 def observe_candidate_gates(
     *, project_key: str, pr_number: int, candidate_sha: str,
     cp_get: Callable[[str],object], github_get: Callable[[str],object],
@@ -214,15 +242,31 @@ def observe_candidate_gates(
         or type(pr.get("draft")) is not bool):
         raise CandidateGateEvidenceError("PR is not the exact open target candidate")
     branch=head["ref"]
-    changed=_paths(
-        github_get(prefix+"/pulls/"+str(pr_number)+"/files?per_page=100"),
-        pr.get("changed_files"),
+    changed=_read_all_changed_files(
+        github_get, prefix=prefix, pr_number=pr_number,
+        expected=pr.get("changed_files"),
     )
     native=_native_ci(
         github_get(prefix+"/commits/"+candidate_sha+"/check-runs?per_page=100"),
         github_get(prefix+"/actions/runs?head_sha="+candidate_sha+"&per_page=100"),
         repo,candidate_sha,branch,
     )
+    # Long, paginated reads are not an authorization to adopt a moving PR.
+    # Re-check the exact candidate after collecting every file and CI record.
+    pr_after=github_get(prefix+"/pulls/"+str(pr_number))
+    if (not isinstance(pr_after,dict)
+        or pr_after.get("number")!=pr_number
+        or pr_after.get("state")!="open"
+        or pr_after.get("merged") is not False
+        or pr_after.get("draft") is not pr.get("draft")
+        or type(pr_after.get("changed_files")) is not int
+        or pr_after["changed_files"]!=pr.get("changed_files")
+        or (pr_after.get("head") or {}).get("sha")!=candidate_sha
+        or (pr_after.get("head") or {}).get("ref")!=branch
+        or ((pr_after.get("head") or {}).get("repo") or {}).get("full_name")!=repo
+        or ((pr_after.get("base") or {}).get("repo") or {}).get("full_name")!=repo
+        or (pr_after.get("base") or {}).get("ref")!=default):
+        raise CandidateGateEvidenceError("candidate identity moved during audit")
     applicability=evaluate_preview_applicability(
         manifest=project["manifest"],changed_files=changed,
     )
@@ -270,6 +314,8 @@ def observe_candidate_gates(
         "repository":repo,
         "pr_number":pr_number,
         "pr_draft":pr.get("draft") is True,
+        "pr_identity_revalidated":True,
+        "changed_file_count":pr.get("changed_files"),
         "control":{"state":ctrl["state"],"generation":ctrl["generation"]},
         "native_ci":native,
         "preview":{

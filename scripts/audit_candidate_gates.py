@@ -10,7 +10,7 @@ import re
 import sys
 from urllib import parse, request
 
-from ai_product_factory.candidate_gate_audit import observe_candidate_gates
+from ai_product_factory.candidate_gate_audit import CandidateGateEvidenceError, observe_candidate_gates
 from ai_product_factory.github_rest import GitHubRestAdapter
 from ai_product_factory.supabase_server import resolve_supabase_server_config
 
@@ -40,6 +40,21 @@ def validate_event(event: object, *, repository: str) -> tuple[str,int,str]:
         raise ValueError("invalid exact owner candidate audit command")
     project_key,number,sha=found.groups()
     return project_key,int(number),sha
+
+
+
+def _safe_failure_reason(exc: Exception) -> str:
+    """Export only reviewed constant error codes, never raw GitHub/CP details."""
+    if not isinstance(exc, CandidateGateEvidenceError):
+        return "unverifiable_live_evidence"
+    return {
+        "incomplete changed-file inventory": "changed_file_inventory_incomplete",
+        "invalid changed-file provenance": "changed_file_provenance_invalid",
+        "invalid renamed-file provenance": "changed_file_provenance_invalid",
+        "unexpected previous changed-file path": "changed_file_provenance_invalid",
+        "duplicate changed-file provenance": "changed_file_provenance_invalid",
+        "candidate identity moved during audit": "candidate_identity_changed",
+    }.get(str(exc), "unverifiable_live_evidence")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -95,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         # No HTTP bodies or exceptions containing remote sensitive data.
         result["error_type"]=type(exc).__name__
+        result["reason_code"]=_safe_failure_reason(exc)
         result["evidence_state"]="insufficient_evidence"
     Path(args.output).write_text(
         json.dumps(result,sort_keys=True,ensure_ascii=False,indent=2)+"\n",
