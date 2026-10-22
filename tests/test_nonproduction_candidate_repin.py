@@ -172,7 +172,7 @@ class CandidateRePinTests(unittest.TestCase):
             else:
                 valid = g.get_pull_request.return_value
                 g.get_pull_request.side_effect = [
-                    valid, valid, SimpleNamespace(**{**vars(valid), "head_sha": OLD})]
+                    valid, SimpleNamespace(**{**vars(valid), "head_sha": OLD})]
             rpc = MagicMock()
             with self.subTest(actor=actor), self.assertRaisesRegex(PermissionError, "after exact-SHA"):
                 repin_project(item, github_factory=lambda _: g, rpc=rpc)
