@@ -1611,8 +1611,24 @@ atomicamente com as transições de Change Set/run. Pausa, Stop, SHA divergente
 ou ausência da migration recusam a continuação. Não existe auto-merge,
 Preview antes de CI verde, migration automática ou chamada paga de smoke.
 
-Esta migration candidata (`20261021213414_durable_ci_repair_requests.sql`)
-**não foi aplicada** no Supabase de produção. Validar no PostgreSQL isolado,
-CI e candidato final; aplicar apenas pelo gate humano de migration do Control
-Plane. Docker/PostgreSQL local não estava disponível neste workstation.
+**Estado verificado em 22/10/2026:** as migrations
+`20261021213414_durable_ci_repair_requests.sql` e
+`20261021234500_ci_repair_replay_idempotency.sql` foram executadas no
+Supabase `fjplmxfcshhbmzgvyqlm` mediante autorizacao humana e estao
+registradas em `supabase_migrations.schema_migrations`. A RPC de enqueue
+foi inspecionada quanto a `SECURITY INVOKER`, idempotencia de replay e ACL
+`service_role` somente; a fila estava vazia. Regressao E2E PostgreSQL 16
+em GitHub Actions concluiu verde; isso NAO prova um reparo real em producao.
+Nao reaplicar nenhuma migration nem criar incidencia simulada em producao.
+
+**Validação adicional (candidato, ainda não publicado):** o runtime deve
+considerar apenas a execucao mais recente de cada workflow GitHub Actions
+para o SHA e branch candidatos, preservando independencia por evento de CI.
+Ao usar checks nativos, associar jobs exclusivamente aos check suites dos
+workflows selecionados e escolher a tentativa de job mais recente. Uma falha
+antiga nao pode sobrepor um retry verde; um sucesso antigo nao pode liberar
+um retry novo pendente/falho. Check suites de observadores `issue_comment`
+e commit statuses Vercel/Preview nao sao falhas de CI nativa. Identidades de
+retries incompletas ou ambiguas bloqueiam a avaliacao. Esse comportamento
+passa por testes determinísticos sem modelo pago, deploy ou auto-merge.
 
