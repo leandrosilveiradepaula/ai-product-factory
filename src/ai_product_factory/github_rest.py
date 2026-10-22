@@ -52,6 +52,7 @@ class GitHubPullRequest:
     base_ref: str | None = None
     base_sha: str | None = None
     head_repository: str | None = None
+    draft: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -262,6 +263,7 @@ class GitHubRestAdapter:
             base_ref=row.get("base",{}).get("ref"),
             base_sha=row.get("base",{}).get("sha"),
             head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
+            draft=row.get("draft") if type(row.get("draft")) is bool else None,
         )
 
     def get_pull_request(self, pr_number: int) -> GitHubPullRequest:
@@ -277,6 +279,7 @@ class GitHubRestAdapter:
             base_ref=row.get("base",{}).get("ref"),
             base_sha=row.get("base",{}).get("sha"),
             head_repository=(row.get("head",{}).get("repo") or {}).get("full_name"),
+            draft=row.get("draft") if type(row.get("draft")) is bool else None,
         )
 
     def _all_pr_file_rows(self, pr_number: int) -> tuple[dict[str, Any], ...]:

@@ -1080,7 +1080,7 @@ def run_project_control_settlement()->dict:
     return SupabaseProjectControlSettlement().settle_pending()
 
 from .project_control_wake_outbox import ControlWakeOutbox
-from .nonproduction_candidate_repin import repin_one
+from .nonproduction_candidate_repin import repin_existing_projects,repin_one
 
 def main()->int:
  p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","release-state-settle","legacy-release-readiness-repair","project-control-wake","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--expected-preview-sha");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
@@ -1088,7 +1088,7 @@ def main()->int:
  if args.mode=="reconcile-ci-candidate":
   if not args.source_run_id or not args.pr_number:raise ValueError("--source-run-id and --pr-number required")
   out=reconcile_ci_candidate_once(expected_run_id=args.source_run_id,expected_pr_number=args.pr_number)
- elif args.mode=="candidate-repin":out=repin_one(args.project_key or "crm-infodive")
+ elif args.mode=="candidate-repin":out=(repin_one(args.project_key) if args.project_key else repin_existing_projects(max_projects=min(args.max_items,5)))
  elif args.mode=="health":out=run_health_once()
  elif args.mode=="admission-diagnose":
   if not args.project_key:raise ValueError("--project-key is required")
@@ -1129,5 +1129,9 @@ def main()->int:
  elif args.mode=="change-set-integration":out=run_bounded_deterministic_lane("change-set-integration",args.worker_id,args.batch_items)
  elif args.mode=="dispatch":out=run_dispatch_once(args.project_key,args.max_items)
  else:out=run_product_once(args.worker_id)
- print(json.dumps(out));return 0 if not out.get("error") else 2
+ print(json.dumps(out))
+ # Finish the bounded batch before surfacing failure; one blocked project
+ # must never hide the next, but failed eligibility cannot silently green CI.
+ if args.mode=="candidate-repin" and out.get("status")=="partial_failure":return 2
+ return 0 if not out.get("error") else 2
 if __name__=="__main__":raise SystemExit(main())
