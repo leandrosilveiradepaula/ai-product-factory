@@ -1,3 +1,10 @@
+## 22/10/2026 — CI nativa exata: tentativas recentes, sem evidência obsoleta (candidato)
+
+- Estado live reconciliado: PR #1041 mergeada no SHA `9d4fbe952dba5bb540bc5de7878b6831fa989df4`; migrations CI repair `20261021213414` e `20261021234500` aplicadas e registradas no Supabase, com RPC/ACL verificadas; fila CI repair vazia.
+- Falha funcional na avaliação Python: `GitHubRestAdapter` considerava **todas** as execuções GitHub Actions do mesmo commit, então um workflow antigo falho continuava marcando o SHA como FAIL mesmo após retry verde. Também incluía checks anteriores e statuses Vercel no fallback de falhas.
+- O candidato seleciona a execução mais recente por identidade de workflow e tipo de evento, exige SHA/branch, usa checks somente das suites escolhidas e a última tentativa por job; continua fail-closed com retry novo pendente/falho, suites ausentes, evidência ambígua e workflows independentes. Não transforma check do Preview em evidência de CI.
+- Nenhum merge automático, modelo pago, alteração de orçamento, migração, nova task/runs em produção ou deploy Vercel. O impacto ainda depende de CI verde e gate humano de merge antes de ser observado no runtime de produção. Testes PostgreSQL isolados de #1041 não comprovam falha real da CI sendo reparada automaticamente.
+
 ## 21/10/2026 — Auditoria generica e fail-closed por PR e SHA (#713)
 
 - Evidencia real: cron native teve gap de ~3h50 entre 13:52 e 17:41 UTC, alerta #1031. O backup autorizado no workflow_run apos OIDC preflight 17:06 executou recovery/settlement/queue probe. A alerta native deve permanecer ate dois cron sucessivos; nao mascarar outage por wake manual.
