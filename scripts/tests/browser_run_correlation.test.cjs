@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {evidenceRunTitle,selectBrowserRun} = require("../browser_run_correlation.cjs");
+const {evidenceRunTitle,selectBrowserRun,trustedBrowserJobOutcome} = require("../browser_run_correlation.cjs");
 const REQ="8f98edc4-323e-42af-9917-14a7d0a4a1e9";
 const SHA="a".repeat(40);
 const NOW=Date.parse("2026-10-15T10:00:00Z");
@@ -52,4 +52,43 @@ test("in-progress correlated child is not implicitly a successful result",()=>{
   const child=selectBrowserRun([run({status:"in_progress",conclusion:null})],identity);
   assert.equal(child.status,"in_progress");
   assert.equal(child.conclusion,null);
+});
+
+const child={...run(),status:"in_progress",conclusion:null};
+const browserJob={id:913,run_id:child.id,head_sha:SHA,name:"browser-evidence",status:"completed",conclusion:"success"};
+const receipt={total_count:1,jobs:[browserJob]};
+
+test("trusted browser job completes even if aggregate workflow status is delayed",()=>{
+  assert.equal(trustedBrowserJobOutcome(child,receipt,SHA),"verified");
+  assert.equal(trustedBrowserJobOutcome({...child,status:"completed",conclusion:"success"},receipt,SHA),"verified");
+});
+test("aggregate workflow failure overrides an otherwise successful browser job",()=>{
+  assert.equal(trustedBrowserJobOutcome({...child,status:"completed",conclusion:"failure"},receipt,SHA),"failed");
+  assert.equal(trustedBrowserJobOutcome({...child,status:"completed",conclusion:"cancelled"},receipt,SHA),"failed");
+});
+test("browser job must have exact run id, Factory SHA and active browser identity",()=>{
+  for(const variant of [{run_id:9},{head_sha:"b".repeat(40)},{name:"test"},{id:0},{status:"skipped"}]){
+    assert.throws(()=>trustedBrowserJobOutcome(child,{total_count:1,jobs:[{...browserJob,...variant}]},SHA),/correlated browser job identity invalid/);
+  }
+});
+test("incomplete, unrelated or multiple jobs fail closed",()=>{
+  for(const variant of [
+    {total_count:0,jobs:[]},
+    {total_count:2,jobs:[browserJob,browserJob]},
+    {total_count:1,jobs:[]},
+    null,
+  ]){
+    assert.throws(()=>trustedBrowserJobOutcome(child,variant,SHA),/incomplete correlated browser job evidence/);
+  }
+});
+test("nonfinal job cannot greenlight candidate and bad completions fail",()=>{
+  assert.equal(trustedBrowserJobOutcome(child,{total_count:1,jobs:[{...browserJob,status:"in_progress",conclusion:null}]},SHA),"pending");
+  for(const conclusion of ["failure","skipped","cancelled",null]){
+    assert.equal(trustedBrowserJobOutcome(child,{total_count:1,jobs:[{...browserJob,conclusion}]},SHA),"failed");
+  }
+});
+test("future or inconsistent workflow state is not trusted",()=>{
+  for(const row of [{...child,status:"garbage"},{...child,conclusion:"success"}]){
+    assert.throws(()=>trustedBrowserJobOutcome(row,receipt,SHA),/invalid correlated browser workflow status/);
+  }
 });

@@ -39,4 +39,34 @@ function selectBrowserRun(runs, {requestId, factorySha, startedAtMs}) {
   return matching[0] || null;
 }
 
-module.exports = {evidenceRunTitle, selectBrowserRun};
+/**
+ * Browser proof requires a unique correlated child and its one completed
+ * browser job. GitHub can report an in_progress workflow for several minutes
+ * AFTER its sole job completed successfully. Never reuse other jobs/runs or
+ * accept a skipped, canceled or incomplete browser job.
+ */
+function trustedBrowserJobOutcome(run, payload, factorySha) {
+  if (!run || typeof run !== "object" ||
+      typeof factorySha !== "string" || !SHA.test(factorySha) ||
+      !["queued", "in_progress", "completed", "pending"].includes(run.status) ||
+      (run.status !== "completed" && run.conclusion != null)) {
+    throw new Error("invalid correlated browser workflow status");
+  }
+  if (run.status === "completed" && run.conclusion !== "success") return "failed";
+  if (!payload || typeof payload !== "object" ||
+      payload.total_count !== 1 || !Array.isArray(payload.jobs) ||
+      payload.jobs.length !== 1) {
+    throw new Error("incomplete correlated browser job evidence");
+  }
+  const job = payload.jobs[0];
+  if (!job || job.run_id !== run.id || job.head_sha !== factorySha ||
+      job.name !== "browser-evidence" ||
+      !Number.isSafeInteger(job.id) || job.id < 1 ||
+      !["queued", "in_progress", "completed", "pending", "waiting"].includes(job.status)) {
+    throw new Error("correlated browser job identity invalid");
+  }
+  if (job.status !== "completed") return "pending";
+  return job.conclusion === "success" ? "verified" : "failed";
+}
+
+module.exports = {evidenceRunTitle, selectBrowserRun, trustedBrowserJobOutcome};
