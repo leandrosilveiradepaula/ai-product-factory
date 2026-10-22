@@ -1,3 +1,32 @@
+## 22/10/2026 — Gate de Preview com nonce por browser job autenticado
+
+O workflow `exact-preview-browser-evidence.yml` não pode correlacionar
+um `workflow_dispatch` de `console-browser-evidence.yml` somente por
+`created_at`: chamadas concorrentes recebem timestamp próximo e o
+estado agregado da run pode continuar `in_progress` depois que o
+único job confiável terminou. Após o Preview READY no SHA exato do
+candidato, o pai gera um UUID `request_id`, lê uma vez o SHA
+imutável da branch `main` e despacha o fluxo de browser da main
+com esse nonce.
+
+Ao consultar, `selectBrowserRun` exige o título `Console evidence
+<UUID>`, workflow path, `main`, SHA atual fixado, evento exato,
+`run_attempt=1` e URL/ID GitHub consistentes. A função
+`trustedBrowserJobOutcome` exige payload integral com **somente um**
+`browser-evidence` terminado e `success`, mesmo `run_id`
+e SHA da main, sob evidência de workflow correlacionado. Resultado
+agregado explicitamente failed/cancelled e todo job incompleto,
+ilegítimo ou duplicado **bloqueiam**. A transição de job concluído
+sem agregação ainda atualizada tem escopo estrito: browser verificado;
+não certifica os seis domínios do produto e não libera merge humano.
+
+A implementação não adiciona segredos, OIDC, chamadas pagas,
+permissões GitHub, migrations ou deploy de produção. Testes Node
+`scripts/tests/browser_run_correlation.test.cjs` são obrigatórios
+na workflow `validate`. Preview do próprio Console continua
+obrigatório no candidato, com SHA exato e commit status assinado pelo
+GitHub Actions, nunca por check Vercel Comments isolado.
+
 ## 22/10/2026 — Integridade das migrations aplicadas pelo Console
 
 O identificador local `20261022125100` do arquivo SQL do CI repair e o identificador remoto `20261022141432` são **diferentes**, mas o SQL remoto armazenado em `supabase_migrations.schema_migrations.statements[1]` é byte-idêntico ao arquivo de 14.700 caracteres (verificação read-only no projeto `fjplmxfcshhbmzgvyqlm`). A migration já está executada e não deve ser reaplicada, nem usar `db push` para “corrigir” historico.
