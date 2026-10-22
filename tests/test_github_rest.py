@@ -454,6 +454,22 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(self.github.last_ci_evidence_source, "github_actions_statuses")
         self.assertEqual(self.github.get_failed_checks(9), ())
 
+    def test_fallback_failed_ci_excludes_unrelated_deployment_statuses(self):
+        self.transport.check_runs_forbidden = True
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="failure",
+                                   name="unit-tests")
+        ]
+        self.transport.commit_statuses = [
+            {"context": "Vercel - Preview", "state": "failure",
+             "description": "deployment billing quota reached"}
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+        failures = self.github.get_failed_checks(9)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0].name, "unit-tests")
+        self.assertEqual(failures[0].failure_class, "code")
+
     def test_adapter_exposes_no_merge_operation(self):
         self.assertFalse(hasattr(self.github, "merge_pull_request"))
 
