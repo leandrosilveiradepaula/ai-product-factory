@@ -26,6 +26,7 @@ if (
 root = Path(__file__).resolve().parents[1]
 original = (root / "supabase/migrations/20261021213414_durable_ci_repair_requests.sql").read_text()
 correction = (root / "supabase/migrations/20261021234500_ci_repair_replay_idempotency.sql").read_text()
+cumulative_scopes = (root / "supabase/migrations/20261022125100_ci_repair_cumulative_scopes.sql").read_text()
 schema = """
 create role anon nologin;
 create role authenticated nologin;
@@ -68,7 +69,7 @@ create table public.factory_change_set_work_units (
  task_id uuid not null references public.factory_tasks(id),
  run_id uuid references public.factory_runs(id),
  plan_task_key text not null, agent_key text not null, wave integer not null,
- status text not null
+ status text not null, changed_files jsonb
 );
 create table public.factory_project_execution_controls (
  project_id uuid primary key references public.factory_projects(id),
@@ -135,6 +136,15 @@ def setup(conn: psycopg.Connection, *, sha: str, status: str = "ci_pending"):
            values (%s,'create_pr',%s::jsonb)""",
         (run, json.dumps({"pr": 73, "head_sha": sha, "change_set_id": str(change_set)})),
     )
+    # A ci_pending candidate has already integrated its builder work units.
+    # The fixture must mirror that durable history, not just the final-wave
+    # metadata. Those historical units are not new repair work units.
+    conn.execute(
+        """insert into public.factory_change_set_work_units
+           (change_set_id,task_id,plan_task_key,agent_key,wave,status,changed_files)
+           values (%s,%s,'initial-builder','development',1,'integrated',%s::jsonb)""",
+        (change_set, task, json.dumps(["src/core.py"])),
+    )
     return project, task, run, change_set
 
 
@@ -170,6 +180,7 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     conn.execute(schema)
     conn.execute(original)
     conn.execute(correction)
+    conn.execute(cumulative_scopes)
 
     # Confirm migration source and privilege boundaries as installed.
     installed = conn.execute("""
@@ -203,7 +214,7 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         "select status from public.factory_change_sets where id=%s", (ids[3],)
     ).fetchone()[0] == "building"
     assert conn.execute(
-        "select count(*) from public.factory_change_set_work_units where change_set_id=%s",
+        "select count(*) from public.factory_change_set_work_units where change_set_id=%s and status='pending'",
         (ids[3],),
     ).fetchone()[0] == 1
 
@@ -212,7 +223,7 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     assert replay["created"] is False and replay["repair_request_id"] == first["repair_request_id"], replay
     assert count(conn, ids[3]) == 1
     assert conn.execute(
-        "select count(*) from public.factory_change_set_work_units where change_set_id=%s",
+        "select count(*) from public.factory_change_set_work_units where change_set_id=%s and status='pending'",
         (ids[3],),
     ).fetchone()[0] == 1
     assert conn.execute("select count(*) from public.factory_audit_events").fetchone()[0] == 1
@@ -246,7 +257,7 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         (non_code_ids[2],),
     ).fetchone()[0] == "failed_gate"
     assert conn.execute(
-        "select count(*) from public.factory_change_set_work_units where change_set_id=%s",
+        "select count(*) from public.factory_change_set_work_units where change_set_id=%s and status='pending'",
         (non_code_ids[3],),
     ).fetchone()[0] == 0
     again = enqueue(conn, non_code_ids, sha=other_sha,
@@ -284,5 +295,145 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     terminal_replay = enqueue(conn, exhausted_ids, sha=final_sha, max_attempts=3)
     assert terminal_replay["created"] is False and terminal_replay["status"] == "exhausted"
     assert count(conn, cs) == 4
+
+    # A real multi-wave Change Set has a file ledger in every integrated
+    # Work Unit. The old metadata only retained the final wave's files.
+    cumulative_sha = "3" * 40
+    cumulative_ids = setup(conn, sha=cumulative_sha)
+    project, root_task, release_run, cumulative_cs = cumulative_ids
+    conn.execute(
+        """update public.factory_change_sets
+           set current_wave=2, metadata=%s::jsonb where id=%s""",
+        (json.dumps({"integrated_files": ["src/late.py"]}), cumulative_cs),
+    )
+    conn.execute(
+        """update public.factory_change_set_work_units
+           set changed_files=%s::jsonb where change_set_id=%s""",
+        (json.dumps(["src/shared.py", "src/early.py"]), cumulative_cs),
+    )
+    conn.execute(
+        """insert into public.factory_change_set_work_units
+           (change_set_id,task_id,plan_task_key,agent_key,wave,status,changed_files)
+           values (%s,%s,'second-builder','development',2,'integrated',%s::jsonb)""",
+        (cumulative_cs, root_task, json.dumps(["src/late.py", "src/shared.py"])),
+    )
+    result = enqueue(conn, cumulative_ids, sha=cumulative_sha)
+    assert result["status"] == "repair_pending", result
+    scopes = conn.execute(
+        "select write_scopes from public.factory_ci_repair_requests where id=%s",
+        (result["repair_request_id"],),
+    ).fetchone()[0]
+    assert scopes == ["src/early.py", "src/late.py", "src/shared.py"], scopes
+    task_scopes = conn.execute(
+        "select scope_keys from public.factory_tasks where id=%s",
+        (result["task_id"],),
+    ).fetchone()[0]
+    assert task_scopes == scopes
+    assert conn.execute(
+        """select count(*) from public.factory_change_set_work_units
+           where change_set_id=%s and status='pending'""",
+        (cumulative_cs,),
+    ).fetchone()[0] == 1
+    retry = enqueue(conn, cumulative_ids, sha=cumulative_sha)
+    assert retry["created"] is False
+    assert retry["repair_request_id"] == result["repair_request_id"]
+    assert count(conn, cumulative_cs) == 1
+
+    # Exercise the *real* context-source RPC with a routed repair run: the
+    # semantic packet and executor receive exactly the same cumulative scopes.
+    repair_run = uuid.uuid4()
+    conn.execute(
+        """insert into public.factory_runs(id,task_id,status,branch_name)
+           values (%s,%s,'queued',%s)""",
+        (repair_run, result["task_id"], branch),
+    )
+    conn.execute(
+        "update public.factory_change_set_work_units set run_id=%s where id=%s",
+        (repair_run, result["work_unit_id"]),
+    )
+    packet = conn.execute(
+        "select public.factory_work_unit_context_source(%s)", (repair_run,),
+    ).fetchone()[0]
+    assert packet["repair"]["repair_kind"] == "ci", packet
+    assert packet["repair"]["write_scopes"] == scopes, packet
+    assert packet["assignment"]["scope_keys"] == scopes, packet
+
+    # Untrusted broad final-wave metadata cannot expand the verified ledger.
+    metadata_sha = "4" * 40
+    metadata_ids = setup(conn, sha=metadata_sha)
+    conn.execute(
+        """update public.factory_change_sets set metadata=%s::jsonb where id=%s""",
+        (json.dumps({"integrated_files": [".github/workflows/validate.yml", "."]}),
+         metadata_ids[3]),
+    )
+    metadata_receipt = enqueue(conn, metadata_ids, sha=metadata_sha)
+    metadata_scopes = conn.execute(
+        "select write_scopes from public.factory_ci_repair_requests where id=%s",
+        (metadata_receipt["repair_request_id"],),
+    ).fetchone()[0]
+    assert metadata_scopes == ["src/core.py"], metadata_scopes
+
+    # A forged non-integrated historical unit blocks the Change Set, without
+    # adding another work unit, granting a broad scope or leaving CI pending.
+    inconsistent_sha = "5" * 40
+    inconsistent_ids = setup(conn, sha=inconsistent_sha)
+    conn.execute(
+        """update public.factory_change_set_work_units set status='completed'
+           where change_set_id=%s""",
+        (inconsistent_ids[3],),
+    )
+    invalid = enqueue(conn, inconsistent_ids, sha=inconsistent_sha)
+    assert invalid["status"] == "blocked"
+    assert invalid["reason"] == "repair_scope_inconsistent"
+    assert conn.execute(
+        "select status from public.factory_change_sets where id=%s",
+        (inconsistent_ids[3],),
+    ).fetchone()[0] == "blocked"
+    assert conn.execute(
+        "select status from public.factory_runs where id=%s",
+        (inconsistent_ids[2],),
+    ).fetchone()[0] == "failed_gate"
+    assert conn.execute(
+        """select count(*) from public.factory_change_set_work_units
+           where change_set_id=%s and status='pending'""",
+        (inconsistent_ids[3],),
+    ).fetchone()[0] == 0
+
+    # Unsafe historical file paths are never passed to the model or worker.
+    unsafe_sha = "6" * 40
+    unsafe_ids = setup(conn, sha=unsafe_sha)
+    conn.execute(
+        "update public.factory_change_set_work_units set changed_files=%s::jsonb where change_set_id=%s",
+        (json.dumps(["../escape.py"]), unsafe_ids[3]),
+    )
+    unsafe = enqueue(conn, unsafe_ids, sha=unsafe_sha)
+    assert unsafe["status"] == "blocked" and unsafe["reason"] == "repair_scope_unsafe_path"
+    assert count(conn, unsafe_ids[3]) == 1
+    assert conn.execute(
+        "select write_scopes from public.factory_ci_repair_requests where id=%s",
+        (unsafe["repair_request_id"],),
+    ).fetchone()[0] == []
+
+    # 500 distinct paths are allowed; 501 fail closed. Individual work unit
+    # arrays remain inside the <=500 item limit of integration evidence.
+    large_sha = "7" * 40
+    large_ids = setup(conn, sha=large_sha)
+    conn.execute(
+        "update public.factory_change_set_work_units set changed_files=%s::jsonb where change_set_id=%s",
+        (json.dumps([f"src/file_{i:04d}.py" for i in range(500)]), large_ids[3]),
+    )
+    conn.execute(
+        """insert into public.factory_change_set_work_units
+           (change_set_id,task_id,plan_task_key,agent_key,wave,status,changed_files)
+           values (%s,%s,'extra-integrated','development',1,'integrated',%s::jsonb)""",
+        (large_ids[3], large_ids[1], json.dumps(["src/one_extra.py"])),
+    )
+    excess = enqueue(conn, large_ids, sha=large_sha)
+    assert excess["status"] == "blocked" and excess["reason"] == "repair_scope_exceeds_limit"
+    assert conn.execute(
+        """select count(*) from public.factory_change_set_work_units
+           where change_set_id=%s and status='pending'""",
+        (large_ids[3],),
+    ).fetchone()[0] == 0
 
 print("CI_REPAIR_POSTGRES_E2E_PASS")

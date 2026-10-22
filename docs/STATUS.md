@@ -1,3 +1,11 @@
+## 22/10/2026 — Reparo de CI em Change Sets multi-wave (candidato)
+
+- Fato verificado, somente leitura, em `fjplmxfcshhbmzgvyqlm`: um Change Set histórico de **8 waves** tem **44 paths distintos** em Work Units `integrated`, mas apenas **4 paths** em `metadata.integrated_files`. Outro Change Set de 2 waves possui 2 paths distintos, e apenas 1 na metadata final. Esses Change Sets permanecem históricos: **não** foram reabertos, reprocessados nem alterados.
+- Defeito no RPC de produção `factory_enqueue_ci_repair`: a criação de tarefa de reparo usa somente `change_set.metadata.integrated_files`, que a integração atômica atual substitui na **última wave**. Assim uma falha de CI provocada por código de wave anterior pode ficar fora dos write scopes congelados do reparo, mesmo quando todos os arquivos fazem parte do candidato do PR.
+- Candidato `20261022125100_ci_repair_cumulative_scopes.sql`: preservar as validações de SHA/PR/epoch e replay da #1041; usar união **ordenada, deduplicada e limitada a 500 arquivos** de `changed_files` das Work Units integradas do mesmo Change Set. Histórico incompleto ou inconsistente, path inseguro ou limite excedido bloqueia duravelmente run/Change Set e registra auditoria, sem executar modelo ou conceder scope genérico.
+- Teste PostgreSQL 16 em CI aplica migrations v1 + v2 + v3 e verifica a execução de RPCs reais: primeira falha, replay, 2 waves com arquivo compartilhado, scopes da tarefa e do context-source, metadata não confiável, path traversal, histórico incoerente, excesso de 500 paths, Pause, classe de runner e attempts exhausted.
+- Esta migration **não** está aplicada até autorização separada após CI e merge humano na Factory. Nunca executar `db push`, benchmark SQL 63 perguntas, chamadas pagas de smoke ou auto-merge. O teste isolado não comprova reparo real em produção.
+
 ## 22/10/2026 — CI nativa exata: tentativas recentes, sem evidência obsoleta (candidato)
 
 - Estado live reconciliado: PR #1041 mergeada no SHA `9d4fbe952dba5bb540bc5de7878b6831fa989df4`; migrations CI repair `20261021213414` e `20261021234500` aplicadas e registradas no Supabase, com RPC/ACL verificadas; fila CI repair vazia.
