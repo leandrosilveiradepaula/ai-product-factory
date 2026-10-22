@@ -375,6 +375,17 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("inputs.run_offline_preflight == true",jobs["continuation-offline-preflight"])
         self.assertIn("github.event_name == 'issue_comment'",jobs["alerts-owner-comment"])
         for name,body in jobs.items():
+            if name == "candidate-repin":
+                # Separate bounded owner/schedule lane: no queue probe dependency,
+                # but must never wake from read-only workflow_dispatch audits.
+                self.assertIn("github.event_name == 'schedule'",body)
+                self.assertIn("github.event_name == 'issue_comment'",body)
+                self.assertIn("github.event.comment.body == '/factory-candidate-repin'",body)
+                self.assertIn("github.event.comment.author_association == 'OWNER'",body)
+                self.assertIn("github.actor == github.event.comment.user.login",body)
+                self.assertNotIn("github.event_name == 'workflow_dispatch'",body)
+                self.assertNotIn("inputs.run_journey_audit",body)
+                continue
             if name in {"schedule-probe","journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci","alerts-owner-comment"}:
                 continue
             seen=set()

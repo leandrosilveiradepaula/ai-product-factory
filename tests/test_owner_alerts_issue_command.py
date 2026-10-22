@@ -69,6 +69,18 @@ class OwnerAlertsOnlyContract(unittest.TestCase):
         self.assertIn("github.event.comment.author_association == 'OWNER'",root)
         self.assertNotIn("/factory-alerts",root)
         for name,body in self.jobs.items():
+            if name == "candidate-repin":
+                # Deliberate independent lane; own exact origin guard is
+                # stricter than queue admission, and cannot run on alerts.
+                self.assertIn("github.event_name == 'schedule'",body)
+                self.assertIn("github.event_name == 'issue_comment'",body)
+                self.assertIn("github.event.comment.body == '/factory-candidate-repin'",body)
+                self.assertIn("github.event.comment.author_association == 'OWNER'",body)
+                self.assertIn("github.actor == github.event.comment.user.login",body)
+                self.assertNotIn("github.event.comment.body == '/factory-alerts'",body)
+                self.assertNotIn("github.event_name == 'workflow_dispatch'",body)
+                self.assertEqual(job_needs(body),set())
+                continue
             if name in ("schedule-probe","alerts-owner-comment","journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci"):
                 continue
             seen=set()

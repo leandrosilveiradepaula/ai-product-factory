@@ -1,3 +1,15 @@
+## 22/10/2026 — Reconciliação de candidatos existentes isolada do scheduler de tarefas (candidato)
+
+A `candidate-repin` opera **somente** com políticas `manifest.delivery_target.repin_policy.enabled=true`. O worker lê um inventário limitado (100 projetos; 3 processados por run), confere o SHA da branch e a PR/CI nativa exata antes de qualquer avanço. `unchanged` é no-op absoluto no Control Plane, não produz nova geração, task ou PR; `updated` somente via CAS da RPC `factory_repin_nonproduction_target_v1` com quiescência. Ausência de política => `idle`. Uma falha por projeto não oculta os outros do mesmo lote; o resultado agregado `partial_failure` falha o job depois da avaliação bounded.
+
+O job GitHub Actions **`candidate-repin`** foi separado de `github-access-preflight` e agora tem apenas dois triggers:
+- `schedule` nos crons existentes `17 * * * *` e `47 * * * *` (best-effort; GitHub pode atrasar/omitir);
+- Comentário GitHub exatamente `/factory-candidate-repin` emitido pelo **OWNER** da Factory, mesma identidade `github.actor` e `github.event.comment.user.login`, repositório correto. É um wake diagnóstico e limitado, **não** um Start de produto, nem altera escopo/requisitos. Comentários arbitrários e o comando `/factory-wake` não o disparam. É possível executar esse comentário na issue operacional #1049 depois da publicação humana da PR deste job.
+
+A action preserva OIDC do Control Plane e GitHub App/token cross-repo oficial, **sem permissões novas**, sem `OPENAI_API_KEY`, Codex, modelos, deploy ou merge. O job não tem `issues:write` ou `contents:write`. O modo `workflow_run` permanece reservado à recuperação read-only/filas e **não** recebe novo direito de mint de GitHub App token cross-repo. O recibo JSON é validado por `scripts/summarize_candidate_repin_run.py`: até cinco resultados, contadores/paginação consistentes, sha válido e resultados permitidos. Apenas project_key/status/SHA passam ao GitHub Actions Step Summary; razões brutas, tokens, configuração de credencial e manifestos não são ecoados. `error/blocked` geram falha visível no job, sem repetir SQL.
+
+Para comprovar o piloto CRM já habilitado, verificar em um **novo** job `candidate-repin` no SHA de `main`: `eligible=1`, `crm-infodive/unchanged`, SHA `184adae8ecf246790f51d9dc01e7145d14c6b458`, nenhum evento novo `project.delivery_target.reconciled` e geração/versão ainda 6/5. Não concluir essa prova a partir de `validate` verde, job `schedule-probe` ou corrida antiga anterior à ativação. Mesmo com `unchanged` comprovado, a Factory **não** possui E2E novo para projeto `existing`: é necessário um Start legítimo e seu ciclo completo até operação.
+
 ## 22/10/2026 — Gate de Preview com nonce por browser job autenticado
 
 O workflow `exact-preview-browser-evidence.yml` não pode correlacionar

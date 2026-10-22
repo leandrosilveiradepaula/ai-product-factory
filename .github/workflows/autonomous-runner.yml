@@ -238,10 +238,6 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Reconcile declared existing-project candidate targets after GitHub preflight
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-        shell: bash
-        run: python -m ai_product_factory.runtime_cli --mode candidate-repin --max-items 3
       - name: Verify one project GitHub capability contract
         shell: bash
         run: |
@@ -254,6 +250,59 @@ jobs:
           else
             echo "GitHub capability preflight is inert: Control Plane credentials are not configured."
           fi
+
+  # Candidate reconciliation is separate from queue admission and model lanes.
+  # Schedule wakes work automatically; the exact owner-only issue comment
+  # provides a bounded, auditable smoke run when GitHub drops cron events.
+  candidate-repin:
+    if: >-
+      ${{
+        github.event_name == 'schedule' ||
+        (github.event_name == 'issue_comment' &&
+         github.event.comment.body == '/factory-candidate-repin' &&
+         github.event.comment.author_association == 'OWNER' &&
+         github.actor == github.event.comment.user.login &&
+         github.event.repository.full_name == github.repository)
+      }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+      issues: read
+      pull-requests: read
+      actions: read
+      checks: read
+      statuses: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Reconcile up to three explicitly enabled existing candidates
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          python -m ai_product_factory.runtime_cli --mode candidate-repin --max-items 3 > /tmp/factory-candidate-repin.json
+          exit_code=$?
+          set -e
+          if [ -s /tmp/factory-candidate-repin.json ]; then
+            python scripts/summarize_candidate_repin_run.py /tmp/factory-candidate-repin.json
+          else
+            echo "::error title=Candidate reconciliation::No structured receipt was produced"
+          fi
+          if [ "$exit_code" -ne 0 ]; then
+            echo "::error title=Candidate reconciliation::One or more candidates were blocked or failed; consult the bounded result"
+            exit "$exit_code"
+          fi
+          test -s /tmp/factory-candidate-repin.json
 
   product-stage:
     needs: schedule-probe
