@@ -1632,3 +1632,32 @@ e commit statuses Vercel/Preview nao sao falhas de CI nativa. Identidades de
 retries incompletas ou ambiguas bloqueiam a avaliacao. Esse comportamento
 passa por testes determinísticos sem modelo pago, deploy ou auto-merge.
 
+## 22/10/2026 — Reparo de CI: paths autorizados em todas as waves (candidato)
+
+`factory_enqueue_ci_repair` não pode determinar write scopes a partir de
+`factory_change_sets.metadata.integrated_files` somente: a função de integração
+`factory_complete_change_set_integration_epoch` guarda ali apenas o diff da
+wave final. Consulte `factory_change_set_work_units.changed_files` de todas
+as unidades `integrated` do mesmo Change Set para derivar **somente arquivos
+efetivamente integrados**. A nova migration
+`20261022125100_ci_repair_cumulative_scopes.sql` reimplementa o RPC já
+existente, preservando locks, SHA/PR/epoch, idempotência do replay e ACL
+`service_role`. Não cria tabelas nem amplia acesso.
+
+O novo caminho bloqueia em vez de especular em caso de zero units, unidade
+não integrada, ausência de array ou entradas vazias, path inválido
+(relativo com traversal, absoluto, barras invertidas, control chars) ou mais
+de **500 caminhos distintos**. Resultado durável: request `blocked`, run
+`failed_gate`, Change Set `blocked` e `ci.repair.blocked` auditado.
+Não reabrir automaticamente Change Sets bloqueados ou históricos. Antes de
+enfileirar uma wave de repair, os paths são ordenados/deduplicados e
+persistidos tanto na nova task quanto no registro do reparo. O
+`factory_work_unit_context_source` deve expor a mesma lista ao executor.
+
+**Gate de deploy:** SQL desta migration somente após CI PostgreSQL real no
+candidato, merge humano e autorização **específica** para migration de
+produção. Uma execução no SQL Editor exige reconciliação oficial posterior
+do histórico, sem executar o SQL duas vezes. Não usar `db push` no ambiente
+com migrations históricas divergentes. Esse teste não usa OpenAI/Codex e
+não demonstra um incidente de CI real. As migrations v1/v2 já estão
+registradas e nunca devem ser repetidas.
