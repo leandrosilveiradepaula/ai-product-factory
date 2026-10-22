@@ -76,13 +76,22 @@ def observer(cp,gh, *, key=PROJECT,number=PR,sha=SHA):
         if path.startswith("factory_project_execution_controls?"):return cp["control"]
         if path.startswith("factory_change_sets?"):return cp["blocked"]
         raise AssertionError(path)
+    pr_reads=0
     def github_get(path):
+        nonlocal pr_reads
         paths.append(("github","GET",path))
         prefix="/repos/"+REPO
+        if path==prefix+"/pulls/"+str(number):
+            pr_reads+=1
+            if pr_reads>=2 and "pr_after" in gh:
+                return gh["pr_after"]
+        if path.startswith(prefix+"/pulls/"+str(number)+"/files?per_page=100&page="):
+            page=int(path.rsplit("=",1)[-1])
+            return gh.get("file_pages",{}).get(page, gh["files"][(page-1)*100:page*100])
         lookup={
             prefix:gh["repo"],
             prefix+"/pulls/"+str(number):gh["pr"],
-            prefix+"/pulls/"+str(number)+"/files?per_page=100":gh["files"],
+            prefix+"/pulls/"+str(number)+"/files?per_page=100":gh["files"][:100],
             prefix+"/commits/"+sha+"/check-runs?per_page=100":gh["checks"],
             prefix+"/actions/runs?head_sha="+sha+"&per_page=100":gh["runs"],
         }
@@ -335,7 +344,7 @@ class CandidateGateTests(unittest.TestCase):
         with self.assertRaises(CandidateGateEvidenceError):
             observer(cp,gh)
         cp,gh=fixtures()
-        gh["pr"]["changed_files"]=101
+        gh["pr"]["changed_files"]=3001
         with self.assertRaises(CandidateGateEvidenceError):
             observer(cp,gh)
         cp,gh=fixtures()
@@ -376,6 +385,82 @@ class CandidateGateTests(unittest.TestCase):
             gh["pr"]["changed_files"]=1
             with self.subTest(row=row),self.assertRaises(CandidateGateEvidenceError):
                 observer(cp,gh)
+
+
+    def test_existing_project_with_400_files_is_fully_paged(self):
+        cp,gh=fixtures(preview={"provider":"vercel","mode":"github","required":True},with_block=False)
+        cp["project"][0]["project_kind"]="existing"
+        gh["files"]=[{"filename":f"src/contracts/file-{i:04d}.tsx","status":"modified"}
+                     for i in range(400)]
+        gh["pr"]["changed_files"]=400
+        gh["pr"]["draft"]=False
+        mark_ci_green(gh)
+        report,calls=observer(cp,gh)
+        pages=[path for source,method,path in calls
+               if source=="github" and "/files?per_page=100" in path]
+        self.assertEqual(len(pages),4)
+        self.assertEqual(pages[-1],f"/repos/{REPO}/pulls/{PR}/files?per_page=100&page=4")
+        self.assertEqual(report["changed_file_count"],400)
+        self.assertTrue(report["pr_identity_revalidated"])
+        self.assertTrue(report["preview"]["required"])
+        self.assertFalse(report["ready_for_production"])
+
+    def test_short_second_or_last_page_fails_closed(self):
+        for count,page in ((201,2),(201,3),(400,4)):
+            with self.subTest(count=count,page=page):
+                cp,gh=fixtures()
+                gh["pr"]["changed_files"]=count
+                gh["files"]=[{"filename":f"src/f-{i:04d}.tsx","status":"modified"}
+                             for i in range(count)]
+                batch=gh["files"][(page-1)*100:page*100]
+                gh["file_pages"]={page:batch[:-1]}
+                with self.assertRaisesRegex(CandidateGateEvidenceError,"incomplete changed-file inventory"):
+                    observer(cp,gh)
+
+    def test_duplicate_across_pages_and_rename_previous_path_are_checked(self):
+        cp,gh=fixtures(preview={"provider":"vercel","required_paths":["apps/console/**"]},with_block=False)
+        gh["pr"]["changed_files"]=120
+        gh["files"]=[{"filename":f"src/file-{i:04d}.tsx","status":"modified"}
+                     for i in range(120)]
+        gh["files"][100]={"filename":"src/moved.tsx","status":"renamed",
+                          "previous_filename":"apps/console/app/page.tsx"}
+        report,_=observer(cp,gh)
+        self.assertTrue(report["preview"]["required"])
+        self.assertEqual(report["preview"]["matched_path_count"],1)
+        gh["files"][100]={"filename":gh["files"][0]["filename"],"status":"modified"}
+        with self.assertRaisesRegex(CandidateGateEvidenceError,"duplicate changed-file provenance"):
+            observer(cp,gh)
+
+    def test_candidate_ref_or_inventory_count_drift_after_ci_is_rejected(self):
+        for mutation in (
+            lambda p:p["head"].update(sha="f"*40),
+            lambda p:p.update(changed_files=3),
+            lambda p:p["head"].update(ref="other-branch"),
+            lambda p:p["base"].update(ref="other-main"),
+            lambda p:p.update(state="closed"),
+        ):
+            with self.subTest(mutation=str(mutation)):
+                cp,gh=fixtures()
+                mark_ci_green(gh)
+                gh["pr_after"]=copy.deepcopy(gh["pr"])
+                mutation(gh["pr_after"])
+                with self.assertRaisesRegex(CandidateGateEvidenceError,"candidate identity moved"):
+                    observer(cp,gh)
+
+    def test_failure_receipts_expose_only_constant_bounded_codes(self):
+        from scripts.audit_candidate_gates import _safe_failure_reason
+        self.assertEqual(
+            _safe_failure_reason(CandidateGateEvidenceError("incomplete changed-file inventory")),
+            "changed_file_inventory_incomplete",
+        )
+        self.assertEqual(
+            _safe_failure_reason(CandidateGateEvidenceError("candidate identity moved during audit")),
+            "candidate_identity_changed",
+        )
+        self.assertEqual(
+            _safe_failure_reason(RuntimeError("token=private; URL=other-repo")),
+            "unverifiable_live_evidence",
+        )
 
 
 class OwnerCommandTests(unittest.TestCase):
