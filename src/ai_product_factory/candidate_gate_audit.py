@@ -11,6 +11,7 @@ from typing import Callable
 from urllib.parse import quote
 
 from .preview_policy import evaluate_preview_applicability
+from .candidate_browser_proof import observe_browser_proof
 
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z", re.ASCII)
 _PROJECT = re.compile(r"[a-z0-9][a-z0-9_-]{0,99}\Z", re.ASCII)
@@ -186,9 +187,73 @@ def _read_all_changed_files(
     return _paths(rows, expected)
 
 
+
+def _proved_old_generation_roots(
+    cp_get: Callable[[str],object], *, project_id: str,
+    generation: int, candidates: list[dict],
+) -> set[str]:
+    """Only isolate historical blockers with a fully terminal, older lineage.
+
+    A different SHA alone is NOT sufficient: an unresolved Change Set in
+    the current epoch must remain visible. The read is bounded, GET-only.
+    """
+    ids=sorted({x.get("root_task_id") for x in candidates
+                if isinstance(x.get("root_task_id"),str)
+                and _UUID.fullmatch(x["root_task_id"])})
+    if not ids or generation < 2:
+        return set()
+    quoted=",".join(ids)
+    tasks=cp_get(
+        "factory_tasks?select=id,project_id,status"
+        "&id=in.("+quoted+")&limit=26"
+    )
+    runs=cp_get(
+        "factory_runs?select=id,task_id,status,metadata"
+        "&task_id=in.("+quoted+")&limit=101"
+    )
+    if (not isinstance(tasks,list) or len(tasks)>len(ids)
+        or any(not isinstance(t,dict) or t.get("id") not in ids
+               or t.get("project_id")!=project_id for t in tasks)
+        or len({t["id"] for t in tasks})!=len(tasks)
+        or not isinstance(runs,list) or len(runs)>=101
+        or any(not isinstance(r,dict) or r.get("task_id") not in ids
+               for r in runs)):
+        return set()
+    final_tasks={"completed","cancelled","failed","merged","integrated"}
+    final_runs={"completed","failed","cancelled","merged","integrated"}
+    old=set()
+    for tid in ids:
+        match=[t for t in tasks if t["id"]==tid]
+        linked=[r for r in runs if r.get("task_id")==tid]
+        if len(match)!=1 or match[0].get("status") not in final_tasks or not linked:
+            continue
+        seen=set()
+        epochs=[]
+        valid=True
+        for r in linked:
+            ident=r.get("id")
+            md=r.get("metadata")
+            epoch=md.get("execution_generation") if isinstance(md,dict) else None
+            if (not isinstance(ident,str) or not _UUID.fullmatch(ident)
+                or ident in seen or r.get("status") not in final_runs
+                or type(epoch) not in {str,int} or not str(epoch).isdigit()):
+                valid=False
+                break
+            seen.add(ident)
+            value=int(epoch)
+            if value<1 or value>=generation:
+                valid=False
+                break
+            epochs.append(value)
+        if valid and epochs:
+            old.add(tid)
+    return old
+
+
 def observe_candidate_gates(
     *, project_key: str, pr_number: int, candidate_sha: str,
     cp_get: Callable[[str],object], github_get: Callable[[str],object],
+    factory_get: Callable[[str],object] | None = None,
 ) -> dict:
     """Return complete bounded evidence or raise; no mutating API calls."""
     if not isinstance(project_key,str) or not _PROJECT.fullmatch(project_key):
@@ -272,16 +337,22 @@ def observe_candidate_gates(
     )
     policy=project["manifest"].get("preview")
     # Never promote a provider status or a web build to browser-verified.
+    proof={"state":"not_required", "verified":False, "receipt_id":None,
+           "verifier_run_id":None, "verification_scope":None, "preview_url":None}
     if not isinstance(policy,dict):
         preview_status="policy_missing"
     elif applicability.required:
-        preview_status="browser_evidence_not_verified"
+        proof=observe_browser_proof(
+            project_id=pid,repository=repo,candidate_sha=candidate_sha,
+            cp_get=cp_get,target_get=github_get,factory_get=factory_get,
+        )
+        preview_status="browser_verified" if proof["verified"] else "browser_evidence_not_verified"
     elif policy.get("required") is False and not str(policy.get("reason") or "").strip():
         preview_status="policy_not_justified"
     else:
         preview_status="not_applicable_by_explicit_policy_or_changed_paths"
     blocked=cp_get(
-        "factory_change_sets?select=id,status,project_id,root_task_id,release_run_id"
+        "factory_change_sets?select=id,status,project_id,root_task_id,release_run_id,candidate_commit"
         "&project_id=eq."+pid+"&status=eq.blocked&limit=26"
     )
     if (not isinstance(blocked,list) or len(blocked)>_MAX_BLOCKED
@@ -290,6 +361,22 @@ def observe_candidate_gates(
                or not _UUID.fullmatch(x["id"])
                for x in blocked)):
         raise CandidateGateEvidenceError("incomplete blocked Change Set inventory")
+    # A different SHA alone cannot clear a blocker. Prove all root runs
+    # belong to terminal tasks from strictly older execution generations.
+    other_sha=[x for x in blocked
+               if isinstance(x.get("candidate_commit"),str)
+               and _SHA.fullmatch(x["candidate_commit"])
+               and x["candidate_commit"]!=candidate_sha]
+    old_roots=_proved_old_generation_roots(
+        cp_get,project_id=pid,generation=ctrl["generation"],candidates=other_sha,
+    )
+    candidate_blocked=[]
+    historical_unrelated=[]
+    for item in blocked:
+        if item in other_sha and item.get("root_task_id") in old_roots:
+            historical_unrelated.append(item)
+        else:
+            candidate_blocked.append(item)
     blockers=[]
     if ctrl["state"]!="running" or ctrl["generation"]<1:
         blockers.append("project_not_running")
@@ -299,9 +386,9 @@ def observe_candidate_gates(
         blockers.append("native_ci_not_verified")
     if preview_status in {"policy_missing","policy_not_justified"}:
         blockers.append("preview_policy_unconfigured")
-    elif applicability.required:
+    elif applicability.required and not proof["verified"]:
         blockers.append("preview_browser_evidence_not_verified")
-    if blocked:
+    if candidate_blocked:
         blockers.append("historical_blocked_change_set_review")
     # A PR that has not been human merged NEVER becomes release-authorized
     # from this diagnostic, regardless of all other signals.
@@ -323,9 +410,16 @@ def observe_candidate_gates(
             "required":applicability.required,
             "policy_reason":applicability.reason,
             "matched_path_count":len(applicability.matched_paths),
-            "browser_verified":False,
+            "browser_verified":proof["verified"],
+            "browser_evidence_state":proof["state"],
+            "browser_verification_scope":proof["verification_scope"],
+            "browser_receipt_id":proof["receipt_id"],
+            "browser_verifier_run_id":proof["verifier_run_id"],
+            "browser_preview_url":proof["preview_url"],
         },
         "historical_blocked_change_sets":len(blocked),
+        "historical_unrelated_blocked_change_sets":len(historical_unrelated),
+        "current_or_unattributed_blocked_change_sets":len(candidate_blocked),
         "release":{"status":"human_gate_pending","authorized":False},
         "reason_codes":blockers,
         "status":"blocked",
