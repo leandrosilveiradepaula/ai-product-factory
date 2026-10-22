@@ -1,3 +1,11 @@
+## 22/10/2026 — Integridade das migrations aplicadas pelo Console
+
+O identificador local `20261022125100` do arquivo SQL do CI repair e o identificador remoto `20261022141432` são **diferentes**, mas o SQL remoto armazenado em `supabase_migrations.schema_migrations.statements[1]` é byte-idêntico ao arquivo de 14.700 caracteres (verificação read-only no projeto `fjplmxfcshhbmzgvyqlm`). A migration já está executada e não deve ser reaplicada, nem usar `db push` para “corrigir” historico.
+
+Para novos gates humanos de migration no Console, conferir **nome + versão gerada pelo Supabase + SQL original** antes de resolver um gate como `already_applied`. A API oficial de leitura é `GET /v1/projects/{ref}/database/migrations/{version}` e requer `database_migrations_read`, o mesmo escopo usado na listagem. O SQL é obtido do arquivo GitHub no SHA do candidato, confirmado pelos checks. O verificador exige concatenação literal de `statements` idêntica ao arquivo, sem normalização de whitespace nem interpretação de SQL. Campos ausentes, duplicidade de nome/versão, payload incompleto ou SQL diferente causam recusa segura. Não exibir SQL remoto nem corpo de erro da Management API no Console/log/audit.
+
+Depois do POST, o Console relê a versão gerada e a fonte exata antes de emitir `human_migration.console_apply_succeeded` e resolver o gate. Em timeout após aplicação bem-sucedida, a nova tentativa consulta versão/SQL e recupera idempotentemente, sem fazer novo POST. Em erro de leitura, **não repetir SQL pelo SQL Editor** sem verificar antes se já foi aplicado. Esse mecanismo não amplia credenciais nem autoriza migration automática, modifica gate apenas após clique humano explícito e exige Preview autenticado quando o Console mudou.
+
 ## 21/10/2026 — Comando OWNER para verificar gates exatos de PR
 
 Comente exclusivamente na issue #713 da Factory o comando de exemplo:
