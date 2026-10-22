@@ -391,18 +391,105 @@ class GitHubRestAdapter:
 
     @staticmethod
     def _trusted_workflows(workflows: list[dict], sha: str, branch: str | None) -> list[dict]:
-        """Only candidate-bound PR/push/manual CI runs from GitHub Actions."""
-        trusted = []
+        """Keep the latest *attempt* of each candidate-bound workflow/event.
+
+        Actions lists every run on a SHA, not only the latest one.  A failed
+        earlier run must not poison a later successful retry; conversely an
+        older success cannot hide a newer pending/failed run.  Different
+        workflow files and trigger events retain independent CI obligations.
+        """
+        latest: dict[tuple, dict] = {}
         for run in workflows:
             if (run.get("head_sha") != sha
                 or run.get("event") not in {"pull_request", "push", "workflow_dispatch"}
                 or (branch and run.get("head_branch") != branch)):
                 continue
-            if (not isinstance(run.get("status"),str)
-                or not isinstance(run.get("name"),str) or not run["name"].strip()):
+            if (not isinstance(run.get("status"), str)
+                or not isinstance(run.get("name"), str) or not run["name"].strip()):
                 raise RuntimeError("trusted GitHub Actions run has invalid identity")
-            trusted.append(run)
-        return trusted
+            workflow_id = run.get("workflow_id")
+            path = run.get("path")
+            if workflow_id is not None:
+                if type(workflow_id) is not int or workflow_id < 1:
+                    raise RuntimeError("trusted GitHub Actions workflow ID is invalid")
+                identity = ("workflow_id", workflow_id)
+            elif path is not None:
+                if not isinstance(path, str) or not path.strip():
+                    raise RuntimeError("trusted GitHub Actions workflow path is invalid")
+                identity = ("path", path.strip())
+            else:
+                # Older test adapters expose only the display name.  A
+                # single record is safe; ambiguous retries fail closed.
+                identity = ("name", run["name"].strip())
+            key = (run["event"], identity)
+            previous = latest.get(key)
+            if previous is None:
+                latest[key] = run
+                continue
+            # Never select by response order: the API can return out of order.
+            current_id, previous_id = run.get("id"), previous.get("id")
+            current_attempt, previous_attempt = run.get("run_attempt", 1), previous.get("run_attempt", 1)
+            if (type(current_id) is not int or current_id < 1
+                or type(previous_id) is not int or previous_id < 1
+                or type(current_attempt) is not int or current_attempt < 1
+                or type(previous_attempt) is not int or previous_attempt < 1):
+                raise RuntimeError("ambiguous GitHub Actions workflow retry identity")
+            if (current_id, current_attempt) == (previous_id, previous_attempt):
+                if run != previous:
+                    raise RuntimeError("conflicting GitHub Actions workflow retry evidence")
+                continue
+            if (current_id, current_attempt) > (previous_id, previous_attempt):
+                latest[key] = run
+        return list(latest.values())
+
+    @staticmethod
+    def _latest_ci_checks(checks: list[dict], workflows: list[dict]) -> list[dict]:
+        """Bind GitHub Actions job checks to the selected workflow check suites.
+
+        Older attempts and unrelated issue_comment/observer suites on the
+        same SHA are not candidate CI evidence.  On reruns in one suite,
+        the highest check-run ID is the latest job attempt by its stable name.
+        """
+        if not workflows:
+            return []
+        workflow_suites = [run.get("check_suite_id") for run in workflows]
+        bound = any(suite is not None for suite in workflow_suites)
+        if bound and any(type(suite) is not int or suite < 1 for suite in workflow_suites):
+            raise RuntimeError("incomplete GitHub Actions workflow check-suite identity")
+        allowed_suites = set(workflow_suites) if bound else set()
+        newest: dict[tuple, dict] = {}
+        for check in checks:
+            suite = check.get("check_suite")
+            suite_id = suite.get("id") if isinstance(suite, dict) else None
+            if bound:
+                if type(suite_id) is not int or suite_id < 1:
+                    raise RuntimeError("GitHub Actions job check is missing a verifiable check suite")
+                if suite_id not in allowed_suites:
+                    continue
+            elif suite_id is not None:
+                # A partial workflow/check-suite contract cannot certify CI.
+                raise RuntimeError("check-suite IDs require workflow-suite evidence")
+            name = check.get("name") or "unnamed-check"
+            if not isinstance(name, str) or not name.strip():
+                raise RuntimeError("GitHub Actions job check has invalid name")
+            key = (suite_id, name)
+            previous = newest.get(key)
+            if previous is None:
+                newest[key] = check
+                continue
+            # Distinct jobs with the same name but no attempt IDs are
+            # ambiguous; do not silently allow a green result.
+            current_id, previous_id = check.get("id"), previous.get("id")
+            if (type(current_id) is not int or current_id < 1
+                or type(previous_id) is not int or previous_id < 1):
+                raise RuntimeError("ambiguous GitHub Actions check-run retry identity")
+            if current_id == previous_id:
+                if check != previous:
+                    raise RuntimeError("conflicting GitHub Actions check-run retry evidence")
+                continue
+            if current_id > previous_id:
+                newest[key] = check
+        return list(newest.values())
 
     @staticmethod
     def _ci_state_from_fine_grained_evidence(workflows: list[dict], statuses: list[dict]) -> CIState:
@@ -454,8 +541,9 @@ class GitHubRestAdapter:
                and check["app"].get("slug") == "github-actions"
                and check.get("head_sha") == head_sha
         ]
+        latest_checks = self._latest_ci_checks(github_actions_checks, trusted)
         self.last_ci_evidence_source = "github_checks"
-        return self.last_ci_evidence_source, github_actions_checks, statuses
+        return self.last_ci_evidence_source, latest_checks, statuses
 
     def get_ci_state(self, pr_number: int) -> CIState:
         pr = self.get_pull_request(pr_number)
@@ -467,6 +555,18 @@ class GitHubRestAdapter:
         if source == "github_actions_statuses":
             return workflow_state
         checks = primary
+        # Every successful workflow suite must have current job evidence.
+        # A missing suite must never be covered by an unrelated green job.
+        suites = [run.get("check_suite_id") for run in self.last_ci_workflow_runs]
+        if suites and all(type(s) is int and s > 0 for s in suites):
+            observed = {
+                check["check_suite"]["id"] for check in checks
+                if isinstance(check.get("check_suite"), dict)
+                and type(check["check_suite"].get("id")) is int
+            }
+            if any(run["check_suite_id"] not in observed
+                   for run in self.last_ci_workflow_runs if run.get("conclusion") == "success"):
+                return CIState.PENDING
         if not checks or any(check.get("status") != "completed" for check in checks):
             return CIState.PENDING
         passing = {"success", "neutral", "skipped"}
