@@ -1,4 +1,5 @@
 import {createHash} from "node:crypto";
+import {migrationVersionByName,requireVerifiedMigrationSource} from "./migration-history-integrity.mjs";
 import migrationPolicy from "../../../config/factory.supabase-migration-policy.v1.json";
 import {requireConsoleAdmin} from "./auth-server";
 import {getSupabaseServerConfig} from "./supabase-server";
@@ -10,6 +11,7 @@ type MigrationApplyResult={
  migrationName:string;
  projectRef:string;
  candidateCommit:string;
+ supabaseMigrationVersion:string;
 };
 
 const SHA_RE=/^[0-9a-f]{40}$/;
@@ -93,12 +95,7 @@ async function resolveAppliedGate(gateId:string,operatorRef:string,migrationName
  if(!response.ok)throw new Error("Migration aplicada, mas o gate não pôde ser reconciliado. Tente novamente; a operação é idempotente.");
 }
 
-function migrationNameSet(payload:any):Set<string>{
- const rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.migrations)?payload.migrations:[];
- return new Set(rows.map((x:any)=>String(x?.name||"")).filter(Boolean));
-}
-
-async function listMigrations(projectRef:string,token:string):Promise<Set<string>>{
+async function listMigrationVersion(projectRef:string,token:string,migrationName:string):Promise<string|null>{
  const response=await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(projectRef)}/database/migrations`,{
   headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},
   cache:"no-store",
@@ -107,8 +104,24 @@ async function listMigrations(projectRef:string,token:string):Promise<Set<string
   if(response.status===403||response.status===404)throw new Error("A conta/projeto Supabase não disponibiliza o endpoint de migrations para esta credencial.");
   throw new Error(`Não foi possível consultar migrations no Supabase (HTTP ${response.status}).`);
  }
- const payload=await response.json().catch(()=>[]);
- return migrationNameSet(payload);
+ // A bare name is NOT proof of the SQL that was applied. Retain the real
+ // generated Supabase version, which may differ from the Git filename.
+ const payload=await response.json().catch(()=>null);
+ return migrationVersionByName(payload,migrationName);
+}
+
+async function verifyMigrationInHistory(projectRef:string,token:string,migrationName:string,
+                                         version:string,sql:string):Promise<{version:string;sqlSha256:string}>{
+ // Official Management API GET /database/migrations/{version}; same
+ // database_migrations_read scope as listing. No generic database query.
+ const response=await fetch(
+  `https://api.supabase.com/v1/projects/${encodeURIComponent(projectRef)}/database/migrations/${encodeURIComponent(version)}`,{
+   headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},
+   cache:"no-store",
+  });
+ if(!response.ok)throw new Error(`Não foi possível confirmar o SQL aplicado no Supabase (HTTP ${response.status}).`);
+ const payload=await response.json().catch(()=>null);
+ return requireVerifiedMigrationSource(payload,{name:migrationName,version,sql});
 }
 
 function migrationIdempotencyKey(projectRef:string,candidateCommit:string,migrationName:string){
@@ -123,9 +136,9 @@ async function applyMigration(projectRef:string,token:string,migrationName:strin
   cache:"no-store",
  });
  if(!response.ok){
-  const detail=await response.text().catch(()=>"");
   if(response.status===403||response.status===404)throw new Error("O endpoint oficial de migrations do Supabase não está habilitado para esta conta/projeto.");
-  throw new Error(`Supabase recusou a migration (HTTP ${response.status})${detail?" — "+detail.slice(0,300):""}`);
+  // Never surface a Management API error body: it may contain source SQL.
+  throw new Error(`Supabase recusou a migration (HTTP ${response.status}).`);
  }
  return response.json().catch(()=>({}));
 }
@@ -217,10 +230,11 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  if(!sql.trim()||Buffer.byteLength(sql,"utf8")>maxBytes)throw new Error("Migration vazia ou acima do limite permitido.");
 
  const actorRef=operator.email||operator.userId;
+ const sqlSha256=createHash("sha256").update(sql,"utf8").digest("hex");
  const auditBase={
   repository,pr_number:prNumber,candidate_commit:candidate,
   pr_state:prState,pr_merged:prMerged,merge_commit_sha:prMerged?String(pr.merge_commit_sha||""):null,
-  migration_name:migrationName,migration_file:migrationFile,
+  migration_name:migrationName,migration_file:migrationFile,migration_sql_sha256:sqlSha256,
   supabase_project_ref:configured.supabase_project_ref,
  };
  await recordAudit({
@@ -229,9 +243,9 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  });
 
  const managementToken=process.env.FACTORY_SUPABASE_MANAGEMENT_TOKEN as string;
- let appliedNames:Set<string>;
+ let existingVersion:string|null;
  try{
-  appliedNames=await listMigrations(configured.supabase_project_ref,managementToken);
+  existingVersion=await listMigrationVersion(configured.supabase_project_ref,managementToken,migrationName);
  }catch(error){
   await recordAudit({
    projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
@@ -244,23 +258,42 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  await recordAudit({
   projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
   eventType:"human_migration.console_preflight_succeeded",
-  payload:{...auditBase,migration_history_checked:true,already_applied:appliedNames.has(migrationName)},
+  payload:{...auditBase,migration_history_checked:true,migration_name_present:existingVersion!==null},
  });
 
- if(appliedNames.has(migrationName)){
+ if(existingVersion!==null){
+  // No name-only shortcut to approving a production migration gate. A
+  // matching record must carry the exact SQL from the GitHub PR head.
+  let verified:{version:string;sqlSha256:string};
+  try{
+   verified=await verifyMigrationInHistory(configured.supabase_project_ref,managementToken,migrationName,existingVersion,sql);
+  }catch(error){
+   await recordAudit({
+    projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
+    eventType:"human_migration.console_apply_failed",
+    payload:{...auditBase,phase:"verify_existing",error_code:"applied_sql_unverifiable"},
+   }).catch(()=>undefined);
+   throw new Error("A migration já existe no histórico, mas seu SQL não pôde ser confirmado como idêntico ao candidato.");
+  }
+  if(verified.sqlSha256!==sqlSha256)throw new Error("O digest do SQL aplicado não corresponde ao candidato.");
   await recordAudit({
    projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
-   eventType:"human_migration.console_already_applied",payload:auditBase,
+   eventType:"human_migration.console_already_applied",
+   payload:{...auditBase,supabase_migration_version:verified.version,source_integrity:"exact_sql_verified"},
   });
   await resolveAppliedGate(gateId,actorRef,migrationName);
-  return{applied:false,alreadyApplied:true,migrationName,projectRef:configured.supabase_project_ref,candidateCommit:candidate};
+  return{applied:false,alreadyApplied:true,migrationName,projectRef:configured.supabase_project_ref,candidateCommit:candidate,supabaseMigrationVersion:verified.version};
  }
 
+ let verifiedVersion="";
  try{
   const idempotencyKey=migrationIdempotencyKey(configured.supabase_project_ref,candidate,migrationName);
   await applyMigration(configured.supabase_project_ref,managementToken,migrationName,sql,idempotencyKey);
-  const after=await listMigrations(configured.supabase_project_ref,managementToken);
-  if(!after.has(migrationName))throw new Error("Supabase aceitou a requisição, mas a migration não apareceu no histórico.");
+  const afterVersion=await listMigrationVersion(configured.supabase_project_ref,managementToken,migrationName);
+  if(afterVersion===null)throw new Error("Supabase aceitou a requisição, mas a migration não apareceu no histórico.");
+  const verified=await verifyMigrationInHistory(configured.supabase_project_ref,managementToken,migrationName,afterVersion,sql);
+  if(verified.sqlSha256!==sqlSha256)throw new Error("O digest do SQL aplicado não corresponde ao candidato.");
+  verifiedVersion=verified.version;
  }catch(error){
   await recordAudit({
    projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
@@ -272,8 +305,8 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
 
  await recordAudit({
   projectId:String(task.project_id),taskId:String(task.id),runId:String(run.id),actorRef,
-  eventType:"human_migration.console_apply_succeeded",payload:auditBase,
+  eventType:"human_migration.console_apply_succeeded",payload:{...auditBase,supabase_migration_version:verifiedVersion,source_integrity:"exact_sql_verified"},
  });
  await resolveAppliedGate(gateId,actorRef,migrationName);
- return{applied:true,alreadyApplied:false,migrationName,projectRef:configured.supabase_project_ref,candidateCommit:candidate};
+ return{applied:true,alreadyApplied:false,migrationName,projectRef:configured.supabase_project_ref,candidateCommit:candidate,supabaseMigrationVersion:verifiedVersion};
 }
