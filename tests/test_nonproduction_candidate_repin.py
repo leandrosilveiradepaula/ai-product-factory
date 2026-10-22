@@ -154,6 +154,119 @@ class CandidateRePinTests(unittest.TestCase):
         self.assertEqual(result["status"], "partial_failure")
         self.assertEqual(result["results"][1]["project_key"], "beta")
 
+
+    def test_draft_and_missing_pr_draft_metadata_fail_closed(self):
+        policy = self.policy()
+        for draft in (True, None):
+            g = github(policy.target.repository)
+            g.get_pull_request.return_value.draft = draft
+            with self.subTest(draft=draft), self.assertRaisesRegex(PermissionError, "draft"):
+                verify_candidate(g, target=policy.target, ci_policy=policy.ci, new_sha=NEW)
+
+    def test_pr_or_branch_drift_after_ci_blocks_repin_before_rpc(self):
+        item = project()
+        for actor in ("branch", "pr"):
+            g = github(item["repository"])
+            if actor == "branch":
+                g.get_branch_sha.side_effect = [NEW, NEW, OLD]
+            else:
+                valid = g.get_pull_request.return_value
+                g.get_pull_request.side_effect = [
+                    valid, valid, SimpleNamespace(**{**vars(valid), "head_sha": OLD})]
+            rpc = MagicMock()
+            with self.subTest(actor=actor), self.assertRaisesRegex(PermissionError, "after exact-SHA"):
+                repin_project(item, github_factory=lambda _: g, rpc=rpc)
+            rpc.assert_not_called()
+
+    def test_retry_same_number_attempt_different_id_is_ambiguous(self):
+        policy = self.policy()
+        g = github(policy.target.repository)
+        row = g._call.return_value["workflow_runs"][0]
+        g._call.return_value = {"total_count": 2, "workflow_runs": [
+            row, {**row, "id": 100}
+        ]}
+        with self.assertRaisesRegex(PermissionError, "ambiguous"):
+            verify_candidate(g, target=policy.target, ci_policy=policy.ci, new_sha=NEW)
+
+    def test_version_zero_is_legal_same_as_installed_cas_rpc(self):
+        p = project()
+        p["execution_control"]["version"] = 0
+        actual = repin_project(p, github_factory=github,
+                               rpc=lambda _name, body: receipt(body))
+        self.assertEqual(actual["version"], 1)
+        p["execution_control"]["version"] = -1
+        with self.assertRaisesRegex(PermissionError, "execution control"):
+            repin_project(p, github_factory=github,
+                          rpc=lambda _name, body: receipt(body))
+
+    def test_wrong_rpc_receipt_must_never_report_updated(self):
+        p = project()
+        good = receipt({"p_project_key": "crm-infodive", "p_expected_sha": OLD,
+                        "p_new_sha": NEW, "p_expected_generation": 6, "p_expected_version": 9})
+        for wrong in ({"status": "updated"}, {"status": "noop"},
+                      {**good, "project_key": "other"}, {**good, "new_sha": OLD},
+                      {**good, "generation": 6}, {**good, "version": 9}):
+            with self.subTest(wrong=wrong), self.assertRaisesRegex(RuntimeError, "receipt"):
+                repin_project(p, github_factory=github,
+                              rpc=lambda _name, _body: wrong)
+
+    def test_legacy_without_policy_does_not_consume_enabled_capacity(self):
+        projects = [project(f"a-disabled-{i:02d}", f"owner/disabled-{i:02d}") for i in range(7)]
+        for p in projects:
+            del p["manifest"]["delivery_target"]["repin_policy"]
+        projects.extend(project(f"b-eligible-{i:02d}", f"owner/eligible-{i:02d}")
+                        for i in range(4))
+        visited = []
+        fetch = project_fetcher(projects)
+        with self.mock_config():
+            result = repin_existing_projects(
+                max_projects=3, rotation_slot=0, project_fetcher=fetch, control_fetcher=fetch,
+                github_factory=lambda repo: visited.append(repo) or github(repo),
+                rpc=lambda _name, body: receipt(body))
+        self.assertEqual(result["scanned"], 11)
+        self.assertEqual(result["eligible"], 4)
+        self.assertEqual(result["policy_disabled"], 7)
+        self.assertEqual(result["total_groups"], 2)
+        self.assertEqual(len(visited), 3)
+        self.assertTrue(all("eligible" in repo for repo in visited))
+
+    def test_policy_enabled_many_projects_rotate_without_starvation(self):
+        projects = [project(f"candidate-{i:02d}", f"owner/candidate-{i:02d}")
+                    for i in range(24)]
+        visited = []
+        fetch = project_fetcher(projects)
+        with self.mock_config():
+            for cycle in range(8):
+                result = repin_existing_projects(
+                    max_projects=3, rotation_slot=cycle,
+                    project_fetcher=fetch, control_fetcher=fetch,
+                    github_factory=lambda repo: visited.append(repo) or github(repo),
+                    rpc=lambda _name, body: receipt(body))
+                self.assertEqual(len(result["results"]), 3)
+                self.assertEqual(result["scanned"], 24)
+                self.assertEqual(result["eligible"], 24)
+                self.assertEqual(result["total_groups"], 8)
+        self.assertEqual(len(visited), 24)
+        self.assertEqual(len(set(visited)), 24)
+
+    def test_oversized_inventory_fails_closed_not_partial_selection(self):
+        projects = [project(f"project-{i:03d}", f"owner/project-{i:03d}")
+                    for i in range(101)]
+        with self.mock_config(), self.assertRaisesRegex(RuntimeError, "exceeds bounded"):
+            repin_existing_projects(max_projects=3, rotation_slot=0,
+                                    project_fetcher=project_fetcher(projects))
+
+    def test_all_policy_disabled_is_safe_idle(self):
+        projects = [project("crm-infodive", "owner/crm")]
+        del projects[0]["manifest"]["delivery_target"]["repin_policy"]
+        with self.mock_config():
+            result = repin_existing_projects(max_projects=3, rotation_slot=0,
+                                             project_fetcher=project_fetcher(projects),
+                                             github_factory=lambda _: self.fail("unexpected GitHub access"))
+        self.assertEqual(result["status"], "idle")
+        self.assertEqual(result["policy_disabled"], 1)
+        self.assertFalse(result["results"])
+
     def test_repin_never_claims_paid_release_or_merge(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
