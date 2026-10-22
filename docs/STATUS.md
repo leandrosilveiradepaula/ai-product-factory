@@ -1,3 +1,10 @@
+## 22/10/2026 — Candidato: eliminar dependência do Console para novos ciclos de projetos existentes
+
+- Alvo: `ai-product-factory/main=003e10f821b0f8307a349dc05aea50b69ae4709e`, CRM `running` geração 6, sem raízes ativas; piloto PR #56 permanece sob gate humano. Evidência prévia da auditoria de candidato [#39849302770](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/39849302770) confirma CI nativa e Preview browser no SHA exato, porém não substitui novo Start E2E.
+- Criada [issue #1055](https://github.com/leandrosilveiradepaula/ai-product-factory/issues/1055) como interface OWNER para `/factory-start <project_key>\n<briefing>`. Até aprovar merge e ativar broker/RPC, este comando é inerte; não emitir antes. A issue é pública e não aceita dados confidenciais.
+- Código candidato: parser imutável actor/repo/issue/comment, OIDC broker com allowlist da nova RPC, SQL SECURITY INVOKER service-role-only com lock e idempotência `md5(issue:comment)` apenas para UUID; eventos `github-owner`, geração atual e wake local após commit; leitor da jornada aceita dupla prova de Start GitHub ou Console sem misturar origens. O modelo segue gateado por ledger e política existentes, Codex é seletivo e merge nunca automático.
+- **Ainda não implantado:** novo Start não foi acionado nem creditado; o broker Edge em produção exige aprovação de acesso e o banco exige aprovação de migration. Validar CI no SHA, regressões PostgreSQL concorrentes e o par de gates externos antes de qualquer evento real. Registrar `run_id` imutável e acompanhar E2E até Preview/awaiting_release após ativação.
+
 ## 22/10/2026 — Auditor candidato: recibo Browser real e isolamento seguro de blockers legados (candidato)
 
 - **Estado verificado antes do patch:** Factory `main=1489291c0ea1d46e0cbe99dfa7648ea3868e482a`; auditor exato [#39840628910](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/39840628910) leu os **400 arquivos** do CRM #56 e verificou CI nativa no SHA `184adae8ecf246790f51d9dc01e7145d14c6b458`. Relatório retornou falsamente `preview_browser_evidence_not_verified` porque o auditor ainda não lia os snapshots confiáveis.

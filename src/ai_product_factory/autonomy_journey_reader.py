@@ -14,6 +14,13 @@ from .journey_candidate_provenance import (
     validate_reconciliation_receipt, verify_copied_work_units,
 )
 from .github_rest import GitHubRestAdapter
+from .github_owner_start import (
+    FACTORY_REPO as OWNER_START_REPO,
+    OWNER_ID as OWNER_START_ID,
+    OWNER_LOGIN as OWNER_START_LOGIN,
+    ISSUE_NUMBER as OWNER_START_ISSUE,
+    request_uuid as github_owner_request_uuid,
+)
 from .preview_policy import evaluate_preview_applicability
 from .supabase_server import resolve_supabase_server_config
 
@@ -32,6 +39,29 @@ GLOBAL_RELEASE_EVENTS = (
     "quality_gate.passed",
 )
 
+
+
+
+def _valid_github_owner_request(payload: object) -> bool:
+    """The owner event must bind immutable issue/comment/actor to request id."""
+    if not isinstance(payload, dict) or payload.get("source")!="github-owner":
+        return False
+    github=payload.get("github")
+    if (not isinstance(github,dict)
+        or github.get("repository")!=OWNER_START_REPO
+        or type(github.get("issue_number")) is not int
+        or github["issue_number"]!=OWNER_START_ISSUE
+        or type(github.get("actor_id")) is not int
+        or github["actor_id"]!=OWNER_START_ID
+        or github.get("actor_login")!=OWNER_START_LOGIN
+        or type(github.get("comment_id")) is not int
+        or github["comment_id"]<=0
+        or type(payload.get("attachment_count")) is not int
+        or payload["attachment_count"]!=0):
+        return False
+    return payload.get("request_id")==github_owner_request_uuid(
+        OWNER_START_ISSUE, github["comment_id"]
+    )
 
 def _uuid(value: object) -> str:
     if not isinstance(value, str):
@@ -212,7 +242,7 @@ class SupabaseJourneyReader:
                 row for row in continuation
                 if row.get("event_type")=="project.continuation.requested"
                 and row.get("actor_type")=="human"
-                and row.get("actor_ref")=="factory-console"
+                and row.get("actor_ref") in ("factory-console","github-owner")
                 and isinstance(row.get("payload"),dict)
                 and (run_id is None or row.get("run_id")==run_id)
             ]
@@ -221,6 +251,9 @@ class SupabaseJourneyReader:
                 request_id=request["payload"].get("request_id")
                 target=request.get("run_id")
                 task_id=request.get("task_id")
+                actor_ref=request.get("actor_ref")
+                if actor_ref=="github-owner" and not _valid_github_owner_request(request["payload"]):
+                    continue
                 if (not isinstance(request_id,str)
                     or not isinstance(target,str)
                     or not isinstance(task_id,str)):
@@ -234,12 +267,16 @@ class SupabaseJourneyReader:
                 if any(
                     row.get("event_type")=="project.reconciliation.enqueued"
                     and row.get("actor_type")=="system"
-                    and row.get("actor_ref")=="factory-console"
+                    and row.get("actor_ref")==actor_ref
                     and row.get("run_id")==target
                     and row.get("task_id")==task_id
                     and isinstance(row.get("payload"),dict)
                     and row["payload"].get("request_id")==request_id
                     and row["payload"].get("task_id")==task_id
+                    and (actor_ref=="factory-console" or (
+                        row["payload"].get("source")=="github-owner"
+                        and row["payload"].get("github")==request["payload"].get("github")
+                    ))
                     for row in continuation
                 ):
                     eligible.append((request,request_id))
@@ -251,11 +288,13 @@ class SupabaseJourneyReader:
                 raise RuntimeError("duplicate operator continuation receipt")
             picked,req_id=eligible[0]
             root_run_id=_uuid(picked["run_id"])
+            github_origin=picked["payload"].get("github") if picked.get("actor_ref")=="github-owner" else None
             start={
-                "command":"console_continuation",
-                "actor_id":"factory-console",
+                "command":"github_owner_continuation" if github_origin else "console_continuation",
+                "actor_id":str(OWNER_START_ID) if github_origin else "factory-console",
                 "result":{"run_id":root_run_id},
                 "request_id":req_id,
+                "github_origin":github_origin,
             }
         root_run=self._one(
             "factory_runs",
@@ -272,17 +311,23 @@ class SupabaseJourneyReader:
         )
         if root_task is None or root_task.get("project_id")!=pid:
             raise RuntimeError("Start points outside project task ownership")
-        if start.get("command")=="console_continuation":
+        if start.get("command") in {"console_continuation","github_owner_continuation"}:
             metadata=root_run.get("metadata")
+            actor_source="github-owner" if start["command"]=="github_owner_continuation" else "factory-console"
             if (root_task.get("parent_task_id") is not None
                 or root_task.get("id")!=next(
                     (row.get("task_id") for row in continuation
                      if row.get("run_id")==root_run_id
                      and row.get("event_type")=="project.continuation.requested"),None)
                 or not isinstance(metadata,dict)
-                or metadata.get("source")!="factory-console"
-                or metadata.get("continuation_request_id")!=start["request_id"]):
-                raise RuntimeError("Console continuation is not bound to root run/task")
+                or metadata.get("source")!=actor_source
+                or metadata.get("continuation_request_id")!=start["request_id"]
+                or (start["command"]=="github_owner_continuation" and (
+                    not isinstance(metadata.get("continuation_request"),dict)
+                    or metadata["continuation_request"].get("github")!=start["github_origin"]
+                    or metadata["continuation_request"].get("attachment_count")!=0
+                ))):
+                raise RuntimeError("Owner continuation is not bound to root run/task")
         start_time=_timestamp(root_task.get("created_at"))
         tasks=self._get(
             "factory_tasks?select=id,project_id,parent_task_id,status,created_at"

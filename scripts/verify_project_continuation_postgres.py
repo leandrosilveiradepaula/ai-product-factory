@@ -13,6 +13,7 @@ from psycopg.types.json import Jsonb
 
 ROOT=Path(__file__).resolve().parents[1]
 MIG=ROOT/"supabase/migrations/20261014160500_atomic_project_continuation.sql"
+OWNER_MIG=ROOT/"supabase/migrations/20261022211500_factory_github_owner_continuation.sql"
 DSN=os.environ.get("FACTORY_CONTINUATION_PG_TEST_DSN","")
 
 def require_isolated():
@@ -33,6 +34,11 @@ CREATE TABLE public.factory_projects (
  project_kind text NOT NULL DEFAULT 'existing',
  manifest jsonb NOT NULL DEFAULT '{}'::jsonb, is_active boolean NOT NULL DEFAULT true,
  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.factory_project_execution_controls (
+ project_id uuid PRIMARY KEY REFERENCES public.factory_projects(id),
+ state text NOT NULL DEFAULT 'running',
+ generation bigint NOT NULL DEFAULT 6
 );
 CREATE TABLE public.factory_tasks (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES public.factory_projects(id),
@@ -73,6 +79,30 @@ def submit(key,req,request_id):
                     (key,req,request_id,0))
         return cur.fetchone()[0]
 
+
+def owner_submit(key, req, comment_id=55550, *, issue=1055, actor_id=256917842,
+                 actor_login="leandrosilveiradepaula"):
+    with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+        cur.execute(
+            "select public.factory_enqueue_github_owner_continuation_v1(%s,%s,%s,%s,%s,%s)",
+            (key,req,comment_id,issue,actor_id,actor_login),
+        )
+        return cur.fetchone()[0]
+
+def make_owner_project(*, project_kind="existing", state="running", generation=6):
+    key,pid=make_project()
+    with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+        cur.execute(
+            "update public.factory_projects set project_kind=%s where id=%s",
+            (project_kind,pid),
+        )
+        cur.execute(
+            "insert into public.factory_project_execution_controls"
+            "(project_id,state,generation) values (%s,%s,%s)",
+            (pid,state,generation),
+        )
+    return key,pid
+
 def bootstrap(key):
     with psycopg.connect(DSN) as conn,conn.cursor() as cur:
         cur.execute("select public.factory_enqueue_project_bootstrap(%s)",(key,))
@@ -93,6 +123,7 @@ class ContinuationTests(unittest.TestCase):
         with psycopg.connect(DSN,autocommit=True) as conn:
             conn.execute(SETUP)
             conn.execute(MIG.read_text())
+            conn.execute(OWNER_MIG.read_text())
 
     def test_same_request_concurrent_retries_share_one_run(self):
         key,pid=make_project()
@@ -175,6 +206,150 @@ class ContinuationTests(unittest.TestCase):
         with psycopg.connect(DSN) as conn,conn.cursor() as cur:
             cur.execute("select has_function_privilege('anon','public.factory_enqueue_project_continuation(text,text,uuid,integer)','EXECUTE'),has_function_privilege('authenticated','public.factory_enqueue_project_continuation(text,text,uuid,integer)','EXECUTE'),has_function_privilege('service_role','public.factory_enqueue_project_continuation(text,text,uuid,integer)','EXECUTE')")
             self.assertEqual(cur.fetchone(),(False,False,True))
+
+
+    def test_github_owner_start_writes_atomic_true_provenance_not_console(self):
+        import hashlib
+        from uuid import UUID
+        def request_uuid(issue_number, comment_id):
+            digest=hashlib.md5(
+                f"factory-owner-start-v1:{issue_number}:{comment_id}".encode("ascii")
+            ).hexdigest()
+            return str(UUID(hex=digest))
+        key,pid=make_owner_project()
+        receipt=owner_submit(key,"Corrigir issue #24 no CRM",124456)
+        self.assertTrue(receipt["created"])
+        self.assertEqual(receipt["source"],"github-owner")
+        self.assertEqual(receipt["request_id"],request_uuid(1055,124456))
+        self.assertEqual(receipt["generation"],6)
+        self.assertEqual(counts(pid),(1,2))
+        with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+            cur.execute(
+                "select metadata from public.factory_runs where id=%s",
+                (receipt["run_id"],),
+            )
+            metadata=cur.fetchone()[0]
+            self.assertEqual(metadata["source"],"github-owner")
+            self.assertEqual(metadata["execution_generation"],6)
+            origin=metadata["continuation_request"]["github"]
+            self.assertEqual(origin["comment_id"],124456)
+            self.assertEqual(origin["actor_id"],256917842)
+            self.assertEqual(origin["issue_number"],1055)
+            cur.execute(
+                "select actor_type,actor_ref,event_type,payload "
+                "from public.factory_audit_events where project_id=%s order by id",
+                (pid,),
+            )
+            events=cur.fetchall()
+            self.assertEqual([(e[0],e[1],e[2]) for e in events],[
+                ("human","github-owner","project.continuation.requested"),
+                ("system","github-owner","project.reconciliation.enqueued"),
+            ])
+            self.assertEqual(events[0][3]["github"],origin)
+            cur.execute(
+                "select estimated_cost from public.factory_tool_usage where run_id=%s",
+                (receipt["run_id"],),
+            )
+            self.assertEqual(float(cur.fetchone()[0]),0)
+            cur.execute("select manifest from public.factory_projects where id=%s",(pid,))
+            self.assertEqual(cur.fetchone()[0]["continuation_request"]["source"],"github-owner")
+
+    def test_owner_event_replay_is_idempotent_even_after_pause_or_completion(self):
+        key,pid=make_owner_project()
+        barrier=Barrier(2)
+        def worker():
+            barrier.wait()
+            return owner_submit(key,"Reconciliar issue #24",9988722)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            a,b=list(executor.map(lambda _:worker(),range(2)))
+        self.assertEqual(a["run_id"],b["run_id"])
+        self.assertEqual(sorted([a["created"],b["created"]]),[False,True])
+        with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+            cur.execute("update public.factory_project_execution_controls set state='paused' where project_id=%s",(pid,))
+            cur.execute("update public.factory_tasks set status='completed' where project_id=%s",(pid,))
+        self.assertFalse(owner_submit(key,"Reconciliar issue #24",9988722)["created"])
+        self.assertEqual(counts(pid),(1,2))
+        with self.assertRaisesRegex(psycopg.Error,"replay mismatch"):
+            owner_submit(key,"Alterado via comentario editado",9988722)
+
+    def test_simultaneous_distinct_owner_commands_cannot_admit_two_cycles(self):
+        key,pid=make_owner_project()
+        barrier=Barrier(2)
+        def worker(i):
+            barrier.wait()
+            try:return owner_submit(key,f"pedido owner {i}",50000+i)
+            except psycopg.Error as e:return str(e)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            a,b=list(pool.map(worker,[1,2]))
+        self.assertEqual(sum(isinstance(x,dict) for x in (a,b)),1)
+        self.assertEqual(sum("another active project cycle exists" in x
+                             for x in (a,b) if isinstance(x,str)),1)
+        self.assertEqual(counts(pid),(1,2))
+
+    def test_owner_start_rejects_invalid_actors_projects_and_paused_state(self):
+        cases=[
+            dict(issue=1056),dict(actor_id=123),dict(actor_login="attacker"),
+        ]
+        for arguments in cases:
+            key,pid=make_owner_project()
+            with self.assertRaisesRegex(psycopg.Error,"invalid GitHub owner continuation"):
+                owner_submit(key,"real request",4444,**arguments)
+            self.assertEqual(counts(pid),(0,0))
+        for kind,state in (("greenfield","running"),("existing","paused"),
+                           ("existing","stopped"),("existing","draft")):
+            key,pid=make_owner_project(project_kind=kind,state=state)
+            with self.assertRaises(psycopg.Error):
+                owner_submit(key,"new scope",3344)
+            self.assertEqual(counts(pid),(0,0))
+
+    def test_owner_start_respects_console_cycle_and_historical_orphan(self):
+        key,pid=make_owner_project()
+        old=submit(key,"console already active",uuid.uuid4())
+        self.assertTrue(old["created"])
+        with self.assertRaisesRegex(psycopg.Error,"another active project cycle exists"):
+            owner_submit(key,"same project different channel",445522)
+        self.assertEqual(counts(pid),(1,2))
+        key,pid=make_owner_project()
+        with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+            cur.execute("insert into public.factory_tasks(project_id,title,status) values (%s,'legacy root','completed') returning id",(pid,))
+            parent=cur.fetchone()[0]
+            cur.execute("insert into public.factory_tasks(project_id,parent_task_id,title,status) values (%s,%s,'old child','queued')",(pid,parent))
+        self.assertTrue(owner_submit(key,"a new real scoped request",446699)["created"])
+        self.assertEqual(counts(pid),(3,2))
+
+    def test_owner_start_rollback_if_audit_fails(self):
+        key,pid=make_owner_project()
+        with psycopg.connect(DSN,autocommit=True) as conn:
+            conn.execute(
+                "alter table public.factory_audit_events add constraint "
+                "reject_owner_audit check (actor_ref<>'github-owner') NOT VALID"
+            )
+        try:
+            with self.assertRaises(psycopg.Error):
+                owner_submit(key,"atomic github owner start",88899)
+            self.assertEqual(counts(pid),(0,0))
+            with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+                cur.execute("select manifest from public.factory_projects where id=%s",(pid,))
+                self.assertEqual(cur.fetchone()[0],{})
+        finally:
+            with psycopg.connect(DSN,autocommit=True) as conn:
+                conn.execute("alter table public.factory_audit_events drop constraint reject_owner_audit")
+
+    def test_new_owner_rpc_is_security_invoker_and_only_service_role(self):
+        signature=(
+            "public.factory_enqueue_github_owner_continuation_v1"
+            "(text,text,bigint,integer,bigint,text)"
+        )
+        with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+            cur.execute(
+                "select has_function_privilege('anon',%s,'EXECUTE'),"
+                "has_function_privilege('authenticated',%s,'EXECUTE'),"
+                "has_function_privilege('service_role',%s,'EXECUTE')",
+                (signature,signature,signature),
+            )
+            self.assertEqual(cur.fetchone(),(False,False,True))
+            cur.execute("select prosecdef from pg_proc where oid=%s::regprocedure",(signature,))
+            self.assertFalse(cur.fetchone()[0])
 
 if __name__=="__main__":
     require_isolated()

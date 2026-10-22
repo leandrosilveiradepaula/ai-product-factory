@@ -299,6 +299,18 @@ Deno.serve(async(req:Request)=>{
     }
     if(!["GET","POST","PATCH"].includes(req.method)) return json(405,{error:"method_not_allowed"});
     const suffix=allowedSuffix(requestUrl);
+    // Only the signed OWNER issue event in the trusted runner may enqueue
+    // a new cycle. Generic cron/workflow_dispatch identities are denied.
+    // Production rollout order: broker deployment before migration.
+    if(suffix==="/rest/v1/rpc/factory_enqueue_github_owner_continuation_v1") {
+      if(req.method!=="POST" || requestUrl.search
+         || String(identity.event_name||"")!=="issue_comment"
+         || String(identity.workflow_ref||"")!==TRUSTED_BACKUP_WORKFLOW_REF
+         || String(identity.actor_id||"")!==EXPECTED.repository_owner_id
+         || String(identity.actor||"")!=="leandrosilveiradepaula") {
+        return json(403,{error:"github_owner_start_oidc_required"});
+      }
+    }
     const headers=supabaseHeaders(key,req.headers.get("content-type"));
     const prefer=req.headers.get("prefer");
     if(prefer) headers.set("prefer",prefer);
