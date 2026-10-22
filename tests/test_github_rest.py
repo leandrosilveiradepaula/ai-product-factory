@@ -302,6 +302,158 @@ class GitHubRestAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,"100-run limit"):
             self.github.get_ci_state(9)
 
+    @staticmethod
+    def _workflow_attempt(*, run_id, suite, conclusion, workflow_id=707,
+                          event="pull_request", name="validate", status="completed",
+                          attempt=1):
+        return {
+            "id": run_id, "run_attempt": attempt, "workflow_id": workflow_id,
+            "check_suite_id": suite, "name": name, "status": status,
+            "conclusion": conclusion, "head_sha": "commit1",
+            "head_branch": "codex/refactor", "event": event,
+            "html_url": "https://example/actions/" + str(run_id),
+        }
+
+    @staticmethod
+    def _check_attempt(*, check_id, suite, conclusion, name="unit-tests",
+                       status="completed"):
+        return {
+            "id": check_id, "name": name, "head_sha": "commit1",
+            "status": status, "conclusion": conclusion,
+            "check_suite": {"id": suite},
+            "app": {"slug": "github-actions"},
+            "details_url": "https://example/jobs/" + str(check_id),
+            "output": {"summary": "tests failed" if conclusion == "failure" else ""},
+        }
+
+    def test_new_successful_retry_replaces_old_failure_on_same_sha(self):
+        old = self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
+        new = self._workflow_attempt(run_id=11, suite=101, conclusion="success")
+        self.transport.workflow_runs = [old, new]  # Deliberately oldest first.
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="failure"),
+            self._check_attempt(check_id=22, suite=101, conclusion="success"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
+        self.assertEqual(self.github.get_failed_checks(9), ())
+        self.assertEqual(
+            [row["id"] for row in self.github.last_ci_workflow_runs], [11]
+        )
+
+    def test_new_failed_retry_overrides_old_success_and_yields_only_current_failure(self):
+        old = self._workflow_attempt(run_id=10, suite=100, conclusion="success")
+        new = self._workflow_attempt(run_id=11, suite=101, conclusion="failure")
+        self.transport.workflow_runs = [new, old]  # Reverse listing order.
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="failure", name="stale-failure"),
+            self._check_attempt(check_id=22, suite=101, conclusion="failure", name="unit-tests"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+        failures = self.github.get_failed_checks(9)
+        self.assertTrue(any(f.name == "unit-tests" and f.failure_class == "code" for f in failures))
+        self.assertFalse(any(f.name == "stale-failure" for f in failures))
+
+    def test_new_pending_retry_never_inherits_old_green(self):
+        old = self._workflow_attempt(run_id=10, suite=100, conclusion="success")
+        new = self._workflow_attempt(run_id=11, suite=101, conclusion=None, status="in_progress")
+        self.transport.workflow_runs = [old, new]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="success"),
+            self._check_attempt(check_id=22, suite=101, conclusion=None, status="in_progress"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+        self.assertEqual(self.github.get_failed_checks(9), ())
+
+    def test_independent_workflow_ids_still_require_both_results(self):
+        first = self._workflow_attempt(run_id=10, suite=100, conclusion="success", workflow_id=707)
+        second = self._workflow_attempt(run_id=11, suite=101, conclusion="failure", workflow_id=708)
+        self.transport.workflow_runs = [first, second]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="success"),
+            self._check_attempt(check_id=22, suite=101, conclusion="failure", name="build"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+        self.assertEqual(len(self.github.last_ci_workflow_runs), 2)
+
+    def test_manual_dispatch_success_cannot_hide_pull_request_failure(self):
+        failed_pr = self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
+        manual = self._workflow_attempt(
+            run_id=11, suite=101, conclusion="success", event="workflow_dispatch"
+        )
+        self.transport.workflow_runs = [failed_pr, manual]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="failure"),
+            self._check_attempt(check_id=22, suite=101, conclusion="success"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+
+    def test_unrelated_issue_comment_suite_cannot_grant_green_ci(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="success"),
+            self._workflow_attempt(
+                run_id=11, suite=101, conclusion="success", event="issue_comment"
+            ),
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=22, suite=101, conclusion="success")
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.PENDING)
+        self.assertTrue(self.github.last_ci_evidence_present)
+
+    def test_latest_job_retry_in_same_check_suite_wins(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(
+                run_id=10, suite=100, conclusion="success", attempt=2
+            )
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="failure"),
+            self._check_attempt(check_id=22, suite=100, conclusion="success"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
+        self.assertEqual(self.github.get_failed_checks(9), ())
+
+    def test_newer_attempt_on_same_workflow_run_id_replaces_prior_attempt(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(
+                run_id=10, suite=100, conclusion="failure", attempt=1
+            ),
+            self._workflow_attempt(
+                run_id=10, suite=100, conclusion="success", attempt=2
+            ),
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=21, suite=100, conclusion="failure"),
+            self._check_attempt(check_id=22, suite=100, conclusion="success"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
+        self.assertEqual(self.github.get_failed_checks(9), ())
+
+    def test_missing_retry_ids_or_mixed_suite_identity_fail_closed(self):
+        old = self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
+        new = self._workflow_attempt(run_id=11, suite=101, conclusion="success")
+        old.pop("id")
+        self.transport.workflow_runs = [old, new]
+        with self.assertRaisesRegex(RuntimeError, "ambiguous GitHub Actions workflow"):
+            self.github.get_ci_state(9)
+        self.transport.workflow_runs = [new]
+        self.transport.check_runs = [{
+            **self._check_attempt(check_id=22, suite=101, conclusion="success"),
+            "check_suite": None,
+        }]
+        with self.assertRaisesRegex(RuntimeError, "verifiable check suite"):
+            self.github.get_ci_state(9)
+
+    def test_fallback_without_check_runs_retries_latest_workflow_only(self):
+        self.transport.check_runs_forbidden = True
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="failure"),
+            self._workflow_attempt(run_id=11, suite=101, conclusion="success"),
+        ]
+        self.assertEqual(self.github.get_ci_state(9), CIState.SUCCESS)
+        self.assertEqual(self.github.last_ci_evidence_source, "github_actions_statuses")
+        self.assertEqual(self.github.get_failed_checks(9), ())
+
     def test_adapter_exposes_no_merge_operation(self):
         self.assertFalse(hasattr(self.github, "merge_pull_request"))
 
