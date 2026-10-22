@@ -109,7 +109,22 @@ jobs:
           CANDIDATE_SHA: ${{ steps.preview.outputs.candidate_sha }}
         with:
           script: |
+            const {randomUUID} = require("node:crypto");
+            const {selectBrowserRun, trustedBrowserJobOutcome} = require(
+              process.env.GITHUB_WORKSPACE + "/scripts/browser_run_correlation.cjs"
+            );
             const workflowId = "console-browser-evidence.yml";
+            const requestId = randomUUID();
+            // Pin the already trusted main workflow identity at dispatch.
+            // The child main SHA is deliberately DIFFERENT from the Preview candidate.
+            const {data: branch} = await github.rest.repos.getBranch({
+              ...context.repo, branch:"main",
+            });
+            const factorySha = branch.commit.sha;
+            if (!/^[0-9a-f]{40}$/.test(factorySha)) {
+              core.setFailed("trusted main SHA not available");
+              return;
+            }
             const started = Date.now();
             await github.rest.actions.createWorkflowDispatch({
               ...context.repo,
@@ -118,10 +133,10 @@ jobs:
               inputs: {
                 preview_url: process.env.PREVIEW_URL,
                 expected_text: "Entrar na Factory",
+                request_id: requestId,
               },
             });
-            core.notice("Dispatched trusted main browser verifier for candidate " + process.env.CANDIDATE_SHA);
-            let selected = null;
+            core.notice("Dispatched exact-nonce trusted main browser verifier for candidate " + process.env.CANDIDATE_SHA);
             for (let attempt = 0; attempt < 90; attempt++) {
               await new Promise(resolve => setTimeout(resolve, 5000));
               const {data} = await github.rest.actions.listWorkflowRuns({
@@ -129,22 +144,41 @@ jobs:
                 workflow_id: workflowId,
                 event: "workflow_dispatch",
                 branch: "main",
-                per_page: 20,
+                per_page: 100,
               });
-              selected = data.workflow_runs.find(run =>
-                Date.parse(run.created_at) >= started - 5000 &&
-                run.event === "workflow_dispatch" &&
-                run.head_branch === "main"
-              ) || null;
+              const selected = selectBrowserRun(
+                data.workflow_runs,
+                {requestId, factorySha, startedAtMs: started},
+              );
               if (!selected) continue;
-              if (selected.status !== "completed") continue;
-              core.notice("Trusted browser verifier run: " + selected.html_url);
-              if (selected.conclusion !== "success") {
-                core.setFailed("Trusted browser verifier failed: " + selected.html_url);
+              if (selected.status === "completed" && selected.conclusion !== "success") {
+                core.setFailed("Exact-nonce trusted browser workflow failed: " + selected.html_url);
+                return;
               }
+              const {data: jobEvidence} = await github.rest.actions.listJobsForWorkflowRun({
+                ...context.repo,
+                run_id: selected.id,
+                per_page: 100,
+              });
+              // It takes time for GitHub to materialize the dispatched job.
+              if (jobEvidence.total_count === 0) continue;
+              // Require a single completed successful browser job. The parent
+              // workflow's aggregate state can lag several minutes after its
+              // only executed job succeeds; an in-progress job NEVER passes.
+              const outcome = trustedBrowserJobOutcome(selected, jobEvidence, factorySha);
+              if (outcome === "pending") continue;
+              if (outcome === "failed") {
+                core.setFailed("Exact-nonce trusted browser job failed: " + selected.html_url);
+                return;
+              }
+              core.setOutput("request_id", requestId);
+              core.setOutput("run_id", String(selected.id));
+              core.setOutput("candidate_sha", process.env.CANDIDATE_SHA);
+              core.notice("Exact-nonce browser job verified for candidate " +
+                process.env.CANDIDATE_SHA + ": " + selected.html_url);
               return;
             }
-            core.setFailed("Timed out waiting for trusted main browser verifier");
+            core.setFailed("Timed out waiting for exact-nonce trusted browser job");
 
       - name: Record exact browser evidence status
         if: ${{ always() && steps.preview.outputs.candidate_sha != '' }}
