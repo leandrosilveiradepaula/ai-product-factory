@@ -1,3 +1,9 @@
+## Start autenticado por GitHub OWNER (canal sem Console; rollout sujeito a gates)
+
+Um novo ciclo de **projeto existente** pode ser admitido somente por comentário GitHub OWNER no ponto operacional fixo #1055, comando exato na primeira linha `/factory-start <project_key>`, e descrição de escopo nas linhas seguintes (até 6000 caracteres). Não inventar um Start por SQL ad hoc, por ferramenta administrativa, por comentário de terceiros ou pela mera existência de `factory_runs`. O parser deve validar identidade imutável repo/owner/sender/comment/issue, main, evento `created`, e o broker OIDC restringe exclusivamente a nova RPC a `issue_comment` do OWNER no workflow principal. O evento é **público**: jamais colocar segredos ou informação confidencial na descrição.
+
+A RPC versionada `factory_enqueue_github_owner_continuation_v1`, SECURITY INVOKER/service-role-only, registra `source=github-owner`, par exato de auditoria humana/sistema, request id derivado do GitHub comment id, geração do controle e task/run sob lock único. O leitor de jornada deve aceitar essa proveniência apenas quando os recibos e root metadata correspondem, em paralelo ao caminho Console anterior. Estado pausado/parado, projeto novo, geração inválida, ciclo já ativo ou replay divergente bloqueiam. Wake de `workflow_dispatch` ocorre somente após commit e é best-effort; failure não cancela Start e cron pode recuperar. A Factory não aplica migration/deploy broker/produção, não amplia quota, não executa benchmark pago ou auto-merge implicitamente. Ordem de ativação: CI/QA → merge humano → deploy restritivo do broker autorizado → migration autorizada → comando OWNER legítimo → auditoria da jornada exata.
+
 # AGENTS.md
 
 ## Regra principal

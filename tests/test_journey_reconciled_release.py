@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 
 from ai_product_factory.autonomy_journey import evaluate_journey
 from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader
+from ai_product_factory.github_owner_start import request_uuid
 from ai_product_factory.github_loop import CIState
 from ai_product_factory.journey_candidate_provenance import (
     validate_reconciliation_receipt, verify_copied_work_units,
@@ -290,8 +291,32 @@ class ReleaseLineageContracts(unittest.TestCase):
 
 
 class RealReaderFromAuthorizedConsoleFixtures(unittest.TestCase):
-    def make_reader(self,*,authorized=True,correct_content=True):
+    def make_reader(self,*,authorized=True,correct_content=True,
+                    owner_start=False,forged_owner=False):
         d,tasks=fixtures()
+        if owner_start:
+            origin={
+                "repository":"leandrosilveiradepaula/ai-product-factory",
+                "issue_number":1055,"comment_id":8866882,
+                "actor_id":1234 if forged_owner else 256917842,
+                "actor_login":"leandrosilveiradepaula",
+            }
+            rid=request_uuid(1055,8866882)
+            d["runs"][0]["metadata"]={
+                "source":"github-owner",
+                "continuation_request_id":rid,
+                "continuation_request":{"summary":"Corrigir lacunas reais",
+                                        "attachment_count":0,"github":origin},
+            }
+            d["events"][0]["actor_ref"]="github-owner"
+            d["events"][0]["payload"].update(
+                request_id=rid,attachment_count=0,source="github-owner",
+                github=origin,
+            )
+            d["events"][1]["actor_ref"]="github-owner"
+            d["events"][1]["payload"].update(
+                request_id=rid,source="github-owner",github=origin,
+            )
         gh=FakeGitHub()
         gh.same=correct_content
         root_run={
@@ -359,6 +384,28 @@ class RealReaderFromAuthorizedConsoleFixtures(unittest.TestCase):
 
     def test_unpaired_console_queue_event_is_not_a_human_start(self):
         reader,gh=self.make_reader(authorized=False)
+        with self.assertRaisesRegex(RuntimeError,"no verified explicit Start"):
+            reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+        self.assertFalse(gh.reads)
+
+
+    def test_github_owner_start_creates_legitimate_read_only_journey_lineage(self):
+        reader,gh=self.make_reader(owner_start=True)
+        with patch("ai_product_factory.autonomy_journey_reader.evaluate_preview_applicability",
+                   return_value=SimpleNamespace(required=False)):
+            report=reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+        self.assertEqual(report.status,"observed_complete")
+        self.assertTrue(gh.reads)
+        self.assertFalse(report.as_json()["paid_calls"])
+
+    def test_github_owner_start_forged_actor_is_not_accepted_as_manual_start(self):
+        reader,gh=self.make_reader(owner_start=True,forged_owner=True)
+        with self.assertRaisesRegex(RuntimeError,"no verified explicit Start"):
+            reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+        self.assertFalse(gh.reads)
+
+    def test_github_owner_start_without_paired_system_audit_is_not_accepted(self):
+        reader,gh=self.make_reader(owner_start=True,authorized=False)
         with self.assertRaisesRegex(RuntimeError,"no verified explicit Start"):
             reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
         self.assertFalse(gh.reads)

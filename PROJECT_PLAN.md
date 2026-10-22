@@ -1,3 +1,12 @@
+## 22/10/2026 — Canal Owner Start sem Console (candidato em desenvolvimento)
+
+- [x] Diagnóstico: Console é atualmente única entrada de continuation com par auditado; GitHub OWNER possui OIDC já utilizado nos audits.
+- [x] Interface GitHub dedicada: issue #1055; comando exato OWNER com briefing e validação de event/repo/actor/issue.
+- [ ] CI da RPC owner e regressoes PostgreSQL concurrency, idempotência, autorização, epoch e fallback após falha.
+- [ ] CI da rota OIDC restrita ao evento owner, leitor de jornada aceitando recibos GitHub autênticos e wake local sem jobs pagos de sondagem.
+- [ ] Merge humano, deploy broker e migration de produção explicitamente autorizados, com provas read-only de grants.
+- [ ] Um novo Start real `crm-infodive` pela issue #1055, run/task/audit verificáveis; monitorar a jornada até review, CI/Preview e `awaiting_release`, sem auto-merge.
+
 # Plano do Projeto - AI Product Factory
 
 ## Visao
