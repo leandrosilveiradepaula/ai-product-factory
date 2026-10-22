@@ -209,7 +209,13 @@ class ContinuationTests(unittest.TestCase):
 
 
     def test_github_owner_start_writes_atomic_true_provenance_not_console(self):
-        from ai_product_factory.github_owner_start import request_uuid
+        import hashlib
+        from uuid import UUID
+        def request_uuid(issue_number, comment_id):
+            digest=hashlib.md5(
+                f"factory-owner-start-v1:{issue_number}:{comment_id}".encode("ascii")
+            ).hexdigest()
+            return str(UUID(hex=digest))
         key,pid=make_owner_project()
         receipt=owner_submit(key,"Corrigir issue #24 no CRM",124456)
         self.assertTrue(receipt["created"])
@@ -316,7 +322,7 @@ class ContinuationTests(unittest.TestCase):
         with psycopg.connect(DSN,autocommit=True) as conn:
             conn.execute(
                 "alter table public.factory_audit_events add constraint "
-                "reject_owner_audit check (actor_ref<>'github-owner')"
+                "reject_owner_audit check (actor_ref<>'github-owner') NOT VALID"
             )
         try:
             with self.assertRaises(psycopg.Error):

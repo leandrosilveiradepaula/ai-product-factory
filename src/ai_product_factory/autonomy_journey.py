@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from .github_loop import CIState
+from .github_owner_start import FACTORY_REPO, OWNER_ID, OWNER_LOGIN, ISSUE_NUMBER, request_uuid
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 STAGES = (
@@ -168,7 +169,7 @@ def evaluate_journey(
     if not all(isinstance(v, str) and v.strip() for v in (key, pid, repo, root_run_id)):
         raise ValueError("invalid project or root run identity")
     start_kind=start_command.get("command")
-    if (start_kind not in ("start","console_continuation")
+    if (start_kind not in ("start","console_continuation","github_owner_continuation")
         or str((start_command.get("result") or {}).get("run_id")) != root_run_id):
         raise ValueError("evidence is not linked to an explicit operator action")
     if not isinstance(start_command.get("actor_id"), str) or not start_command["actor_id"].strip():
@@ -216,6 +217,45 @@ def evaluate_journey(
                 for event in events
             )):
             raise ValueError("operator continuation is not backed by exact human and queue receipts")
+    if start_kind == "github_owner_continuation":
+        origin=start_command.get("github_origin")
+        request_id=start_command.get("request_id")
+        metadata=primary.get("metadata")
+        gh=metadata.get("continuation_request") if isinstance(metadata,dict) else None
+        if (not isinstance(origin,dict)
+            or origin.get("repository")!=FACTORY_REPO
+            or type(origin.get("actor_id")) is not int or origin["actor_id"]!=OWNER_ID
+            or origin.get("actor_login")!=OWNER_LOGIN
+            or type(origin.get("issue_number")) is not int
+            or origin["issue_number"]!=ISSUE_NUMBER
+            or type(origin.get("comment_id")) is not int or origin["comment_id"]<1
+            or not isinstance(request_id,str)
+            or request_id!=request_uuid(ISSUE_NUMBER,origin["comment_id"])
+            or start_command.get("actor_id")!=str(OWNER_ID)
+            or not isinstance(metadata,dict)
+            or metadata.get("source")!="github-owner"
+            or metadata.get("continuation_request_id")!=request_id
+            or not isinstance(gh,dict) or gh.get("github")!=origin
+            or gh.get("attachment_count")!=0):
+            raise ValueError("GitHub owner Start provenance invalid")
+        for event_name,actor_type in (
+            ("project.continuation.requested","human"),
+            ("project.reconciliation.enqueued","system"),
+        ):
+            if not any(
+                ev.get("project_id")==pid
+                and ev.get("run_id")==root_run_id
+                and ev.get("task_id")==primary.get("task_id")
+                and ev.get("event_type")==event_name
+                and ev.get("actor_type")==actor_type
+                and ev.get("actor_ref")=="github-owner"
+                and isinstance(ev.get("payload"),dict)
+                and ev["payload"].get("request_id")==request_id
+                and ev["payload"].get("github")==origin
+                and ev["payload"].get("source")=="github-owner"
+                for ev in events
+            ):
+                raise ValueError("GitHub owner Start lacks exact paired audits")
     if primary.get("status") in ("failed", "blocked", "cancelled"):
         blockers.append("root_run_terminal_without_success")
     if any(r.get("status") in ("failed", "blocked") for r in runs):
