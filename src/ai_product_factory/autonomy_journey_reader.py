@@ -215,7 +215,7 @@ class SupabaseJourneyReader:
         rows=self._get(
             "factory_audit_events?select=id,project_id,task_id,run_id,event_type,"
             "actor_type,actor_ref,payload,created_at"
-            "&project_id=eq."+pid
+            "&project_id=eq."+pid+
             "&event_type=in.(project.intake.created,project.attachments.finalized,project.bootstrap.enqueued)"
             "&order=created_at.asc,id.asc",limit=15,
         )
