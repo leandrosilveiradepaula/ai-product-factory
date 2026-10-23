@@ -13,6 +13,13 @@ _AUTHORIZED = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _H2 = re.compile(r"^##[ \t]+", re.MULTILINE)
+# Compare only singular explicit issue references in a compatible namespace.
+# Ambiguous or cross-repository mentions never authorize changes.
+_ISSUE_REF = re.compile(
+    r"\b(?:(?P<before>[A-Z][A-Z0-9_-]{1,31})[ \t]+)?"
+    r"[Ii]ssue[ \t]+(?:(?P<after>[A-Z][A-Z0-9_-]{1,31})[ \t]+)?"
+    r"#(?P<number>[1-9][0-9]{0,6})\b"
+)
 _BACKTICK = re.compile(r"\x60([^\x60\r\n]{1,240})\x60")
 _CODE_PATH = re.compile(
     r"^(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
@@ -27,15 +34,50 @@ _MAX_BYTES = 24000
 _MAX_FILE_BYTES = 14000
 
 
-def _latest_scope(task_record: str) -> tuple[str | None, list[str]]:
+def _latest_authorized_section(task_record: str) -> tuple[str | None, str]:
     if not isinstance(task_record, str):
         raise ValueError("candidate task record must be text")
     headings = list(_AUTHORIZED.finditer(task_record))
     if not headings:
-        return None, []
+        return None, ""
     latest = headings[-1]
     end = _H2.search(task_record, latest.end())
-    section = task_record[latest.end():end.start() if end else len(task_record)]
+    return latest.group().strip(), task_record[latest.end():end.start() if end else len(task_record)]
+
+
+def latest_authorization_excerpt(task_record: str) -> str | None:
+    """Send only the active section to paid planning; retain full GitHub GET proof."""
+    heading, section = _latest_authorized_section(task_record)
+    return None if heading is None else heading + "\n" + section.strip() + "\n"
+
+
+def _unique_issue_reference(value: str | None) -> tuple[str, int] | None:
+    if not isinstance(value, str):
+        return None
+    refs = {
+        ((match.group("after") or match.group("before") or ""), int(match.group("number")))
+        for match in _ISSUE_REF.finditer(value)
+    }
+    return next(iter(refs)) if len(refs) == 1 else None
+
+
+def source_issue_scope_alignment(task_record: str, continuation_request: str | None) -> dict:
+    """Mismatch avoids paid work; issue labels never grant a write capability."""
+    _, section = _latest_authorized_section(task_record)
+    authorized = _unique_issue_reference(section)
+    requested = _unique_issue_reference(continuation_request)
+    status = "unverified"
+    if authorized is not None and requested is not None and authorized[0] == requested[0]:
+        status = "matched" if authorized[1] == requested[1] else "conflict"
+    return {
+        "status": status,
+        "requested_issue": requested[1] if requested else None,
+        "authorized_issue": authorized[1] if authorized else None,
+    }
+
+
+def _latest_scope(task_record: str) -> tuple[str | None, list[str]]:
+    heading, section = _latest_authorized_section(task_record)
     paths: list[str] = []
     for raw in _BACKTICK.findall(section):
         path = raw.strip()
@@ -43,7 +85,7 @@ def _latest_scope(task_record: str) -> tuple[str | None, list[str]]:
             and ".." not in path.split("/")
             and path not in paths):
             paths.append(path)
-    return latest.group().strip(), paths
+    return heading, paths
 
 
 def _request_paths(continuation_request: str | None) -> list[str]:
@@ -86,11 +128,13 @@ def collect_candidate_source_evidence(
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise PermissionError("candidate source evidence requires exact SHA")
     heading, governed = _latest_scope(task_record)
+    issue_alignment = source_issue_scope_alignment(task_record, continuation_request)
     request_paths = _request_paths(continuation_request)
     requested = list(dict.fromkeys([*request_paths, *governed]))
     if not requested:
         return {
             "status": "no_scoped_source_paths", "scope_heading": heading,
+            "issue_scope_alignment": issue_alignment,
             "assessed_commit": sha, "inspected_files": [], "missing_paths": [],
             "limitation": "No repository code was inspected; do not infer missing implementation.",
         }
@@ -135,7 +179,8 @@ def collect_candidate_source_evidence(
         })
     return {
         "status": "bounded_source_inspected" if inspected else "scoped_source_missing",
-        "scope_heading": heading, "request_source_paths": request_paths,
+        "scope_heading": heading, "issue_scope_alignment": issue_alignment,
+        "request_source_paths": request_paths,
         "governance_scope_paths": governed,
         "assessed_commit": sha, "inspected_files": inspected,
         "missing_paths": missing,

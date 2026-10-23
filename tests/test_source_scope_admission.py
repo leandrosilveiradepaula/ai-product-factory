@@ -67,6 +67,14 @@ class SourceScopeAdmissionTests(unittest.TestCase):
         with self.assertRaises(SourceScopeBlocked):
             assess_bounded_source_scope(scope, sha=SHA)
 
+    def test_issue_mismatch_and_oversized_active_scope_are_fixed_reason_codes(self):
+        self.assertEqual(SourceScopeBlocked("source_authorization_issue_mismatch").code,
+                         "source_authorization_issue_mismatch")
+        self.assertEqual(SourceScopeBlocked("source_active_scope_oversized").code,
+                         "source_active_scope_oversized")
+        with self.assertRaises(ValueError):
+            SourceScopeBlocked("CRM issue #24: arbitrary source text")
+
     def test_missing_omitted_truncated_code_is_partial_not_a_human_gate(self):
         scenarios = (
             ("missing_paths", ["src/ai_product_factory/runtime_cli.py"], "missing_count"),

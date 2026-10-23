@@ -16,8 +16,14 @@ from .supabase_server import resolve_supabase_server_config
 from .github_rest import GitHubRestAdapter
 from .pinned_nonproduction_target import PinnedNonproductionTarget
 from .source_scope_admission import SourceScopeBlocked
-from .candidate_source_evidence import collect_candidate_source_evidence
-from .product_stage_output_contract import assert_executed_product_stage_output
+from .candidate_source_evidence import (
+    collect_candidate_source_evidence,
+    latest_authorization_excerpt,
+    source_issue_scope_alignment,
+)
+from .product_stage_output_contract import (
+    assert_executed_product_stage_output, NON_ACTIONABLE_PLANNING_EVIDENCE,
+)
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -261,13 +267,33 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             if not text.strip() or len(text.encode("utf-8")) > 65536:
                 raise PermissionError("repository governance missing or oversized")
             governance[path] = text
+        request = (
+            manifest.get("continuation_request", {}).get("summary")
+            if isinstance(manifest.get("continuation_request"), dict)
+            else None
+        )
+        alignment = source_issue_scope_alignment(
+            governance["docs/codex/CURRENT_TASK.md"], request
+        )
+        if alignment["status"] == "conflict":
+            # An OWNER Start does not override a different repository write
+            # authorization. This preflight happens before any paid stage.
+            raise SourceScopeBlocked("source_authorization_issue_mismatch")
+        active_task = latest_authorization_excerpt(governance["docs/codex/CURRENT_TASK.md"])
+        if active_task is not None and len(active_task.encode("utf-8")) > 16000:
+            raise SourceScopeBlocked("source_active_scope_oversized")
+        # Full CURRENT_TASK was fetched at the exact SHA. Historical tasks
+        # should not become new model priorities or increase paid prompt cost.
+        model_governance = {
+            **governance,
+            "docs/codex/CURRENT_TASK.md": (
+                "# Latest authorized task only; older sections are historical.\n"
+                + (active_task or "No recognized authorization: do not infer write scope.")
+            ),
+        }
         source_evidence = collect_candidate_source_evidence(
             governance["docs/codex/CURRENT_TASK.md"], github, sha=target.sha,
-            continuation_request=(
-                manifest.get("continuation_request", {}).get("summary")
-                if isinstance(manifest.get("continuation_request"), dict)
-                else None
-            ),
+            continuation_request=request,
         )
         candidate = {
             "repository": repo,
@@ -280,7 +306,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 "state": "open", "base_ref": "main", "head_ref": target.branch,
                 "head_sha": target.sha, "verified": True,
             },
-            "governance": governance,
+            "governance": model_governance,
+            "governance_selection": "exact_sha_latest_authorized_section_only",
             "source_evidence": source_evidence,
         }
         enriched = dict(context)
@@ -480,7 +507,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     # Recheck the pinned nonproduction candidate using GETs;
                     # a moved branch must not enter a new paid planning call.
                     context=self._live_candidate_context(data["project_id"],context)
-            except Exception:
+            except Exception as exc:
                 claimed=WorkItem(
                     run_id=data["run_id"],task_id=data["task_id"],
                     project_id=data["project_id"],project_key=data["project_key"],
@@ -488,8 +515,13 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     execution_generation=data["execution_generation"],
                     worker_id=worker_id,
                 )
+                reason = (
+                    "planning_resume_" + exc.code
+                    if isinstance(exc, SourceScopeBlocked)
+                    else "planning_resume_provenance_preflight_failed"
+                )
                 try:
-                    self.fail(claimed,"planning_resume_provenance_preflight_failed")
+                    self.fail(claimed,reason)
                 except Exception as settlement_error:
                     raise RuntimeError(
                         "claimed planning resume preflight failed and durable "
@@ -506,6 +538,18 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         self.assert_execution_epoch(item)
         self._rpc("factory_record_runtime_stage",{
             "p_run_id":item.run_id,"p_stage":stage,"p_status":status,"p_output":{}
+        })
+
+    def record_non_actionable_planning(self,item:WorkItem)->None:
+        """Store fixed evidence of an empty *paid* plan, not arbitrary model text."""
+        if "planning" not in item.stages:
+            raise ValueError("only a claimed planning stage may record this diagnostic")
+        self.assert_execution_epoch(item)
+        self._rpc("factory_record_runtime_stage",{
+            "p_run_id":item.run_id,
+            "p_stage":"planning",
+            "p_status":"failed",
+            "p_output":dict(NON_ACTIONABLE_PLANNING_EVIDENCE),
         })
 
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:

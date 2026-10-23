@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
-from .product_stage_output_contract import assert_executed_product_stage_output
+from .product_stage_output_contract import (
+    assert_executed_product_stage_output, PlanningNoActionableWork,
+)
 
 
 class WorkStatus(StrEnum):
@@ -160,8 +162,19 @@ class RuntimeWorker:
                 except Exception:
                     return WorkResult(WorkStatus.FAILED, tuple(evidence), str(exc))
             if current_stage is not None:
+                recorded = False
+                if current_stage == "planning" and isinstance(exc, PlanningNoActionableWork):
+                    # Retain a bounded typed diagnostic without exposing the
+                    # model response or converting failed work into success.
+                    preserve = getattr(self.queue, "record_non_actionable_planning", None)
+                    if callable(preserve):
+                        try:
+                            preserve(item)
+                            recorded = True
+                        except Exception:
+                            pass
                 recorder = getattr(self.queue, "record_stage_event", None)
-                if callable(recorder):
+                if not recorded and callable(recorder):
                     try:
                         recorder(item, current_stage, "failed")
                     except Exception:
