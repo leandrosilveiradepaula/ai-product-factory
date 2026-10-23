@@ -85,7 +85,7 @@ BEGIN
        OR v_request_id IS DISTINCT FROM v_project.manifest#>>'{continuation_request,id}'
        OR v_origin IS DISTINCT FROM v_project.manifest#>>'{continuation_request,source}'
        OR (v_source.metadata->'continuation_request') IS DISTINCT FROM
-          ((v_project.manifest->'continuation_request' - 'id'::text) - 'source'::text)
+          (((v_project.manifest->'continuation_request') - 'id'::text) - 'source'::text)
     THEN
         -- Reconcile any request shape drift before adding a new paid run.
         RAISE EXCEPTION 'continuation provenance drift' USING errcode='PT409';
