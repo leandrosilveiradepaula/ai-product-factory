@@ -5,6 +5,23 @@ class ProductStageOutputBlocked(ValueError):
     """A model response explicitly says that Product Stage was not executed."""
 
 
+NON_ACTIONABLE_PLANNING_EVIDENCE = {
+    "reason_code": "planning_non_actionable",
+    "observed_model_response": True,
+    "tasks_count": 0,
+    "decisions_count": 0,
+    "implementation_completed": False,
+    "requires_scope_reconciliation": True,
+}
+
+
+class PlanningNoActionableWork(ValueError):
+    """A real planning model returned no executable task or decision."""
+
+    def __init__(self) -> None:
+        super().__init__("planning has no actionable tasks or decisions")
+
+
 _BOOLEAN_NON_EXECUTION_MARKERS = frozenset(
     {
         "requires_model",

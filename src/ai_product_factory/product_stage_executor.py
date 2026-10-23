@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 from .model_executor import ModelExecutor, ModelRequest
 from .models import ExecutionRoute
-from .product_stage_output_contract import assert_executed_product_stage_output
+from .product_stage_output_contract import (
+    assert_executed_product_stage_output, PlanningNoActionableWork,
+)
 from .runtime_worker import WorkItem
 from .agent_scheduler import AgentProfile
 from .execution_team_planner import build_execution_team_plan, _canonical_routing_task, _choose_agent, _execution_lane
@@ -269,7 +271,7 @@ class ProductStageExecutor:
             if not isinstance(output.get("tasks"),list):
                 raise ValueError("planning requires an explicit tasks array")
             if not output["tasks"] and not output.get("decisions_needed"):
-                raise ValueError("planning has no actionable tasks or decisions")
+                raise PlanningNoActionableWork()
         if stage=="planning" and self.team_profiles is not None:
             _validate_pre_pr_planning_tasks(output,self.team_profiles)
             output["_team_plan"]=build_execution_team_plan(output,self.team_profiles)

@@ -17,6 +17,8 @@ _CODES = frozenset({
     "source_sha_unverified",
     "source_evidence_inconsistent",
     "source_paths_not_inspected",
+    "source_authorization_issue_mismatch",
+    "source_active_scope_oversized",
 })
 
 
