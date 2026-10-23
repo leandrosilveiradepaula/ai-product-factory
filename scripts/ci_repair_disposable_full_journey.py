@@ -35,7 +35,6 @@ def prove_full_journey(conn, setup, *, repository: str, branch: str):
     release_id = uuid.uuid4()
 
     class FakeGitHub:
-        repository = repository
         branch_sha = SOURCE
         message = ""
         commits = 0
@@ -120,6 +119,7 @@ def prove_full_journey(conn, setup, *, repository: str, branch: str):
             return self.get_pull_request(73)
 
     github = FakeGitHub()
+    github.repository = repository
 
     class RealPostgresRepairQueue(SupabaseCIRepairQueue):
         def __init__(self):
