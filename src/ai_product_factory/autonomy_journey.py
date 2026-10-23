@@ -169,7 +169,7 @@ def evaluate_journey(
     if not all(isinstance(v, str) and v.strip() for v in (key, pid, repo, root_run_id)):
         raise ValueError("invalid project or root run identity")
     start_kind=start_command.get("command")
-    if (start_kind not in ("start","console_continuation","github_owner_continuation")
+    if (start_kind not in ("start","console_continuation","github_owner_continuation","console_greenfield_intake")
         or str((start_command.get("result") or {}).get("run_id")) != root_run_id):
         raise ValueError("evidence is not linked to an explicit operator action")
     if not isinstance(start_command.get("actor_id"), str) or not start_command["actor_id"].strip():
@@ -185,6 +185,59 @@ def evaluate_journey(
         raise ValueError("duplicate run in bounded lineage")
     blockers: list[str] = []
     primary = [r for r in runs if r.get("id") == root_run_id][0]
+    if start_kind == "console_greenfield_intake":
+        manifest=project.get("manifest")
+        meta=primary.get("metadata")
+        draft=start_command.get("request_id")
+        operator=start_command.get("actor_id")
+        count=start_command.get("attachment_count")
+        task_id=start_command.get("bootstrap_task_id")
+        born=project.get("created_at")
+        uuid_pattern=r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+        if (project.get("project_kind")!="greenfield"
+            or not isinstance(manifest,dict)
+            or manifest.get("source")!="factory-console"
+            or manifest.get("onboarding_mode")!="greenfield"
+            or manifest.get("reconcile_first") is True
+            or not isinstance(draft,str) or not re.fullmatch(uuid_pattern,draft)
+            or not isinstance(operator,str) or not re.fullmatch(uuid_pattern,operator)
+            or not isinstance(task_id,str) or not re.fullmatch(uuid_pattern,task_id)
+            or type(count) is not int or not 0<=count<=10
+            or manifest.get("bootstrap_request_id")!=draft
+            or manifest.get("bootstrap_operator_id")!=operator
+            or type(manifest.get("bootstrap_attachment_count")) is not int
+            or manifest["bootstrap_attachment_count"]!=count
+            or not isinstance(born,str)
+            or primary.get("task_id")!=task_id
+            or not isinstance(meta,dict) or meta.get("source")!="factory-console"):
+            raise ValueError("Console greenfield intake provenance is not bound to root run")
+        kinds=("project.intake.created","project.attachments.finalized","project.bootstrap.enqueued")
+        receipts=[event for event in events if
+                  event.get("event_type") in kinds
+                  and event.get("project_id")==pid
+                  and event.get("created_at")==born]
+        if (len(receipts)!=3
+            or [e.get("event_type") for e in receipts]!=list(kinds)
+            or any(type(e.get("id")) is not int for e in receipts)
+            or not (receipts[0]["id"]<receipts[1]["id"]<receipts[2]["id"])
+            or any(e.get("actor_ref")!="factory-console" for e in receipts)
+            or [e.get("actor_type") for e in receipts]!=["human","human","system"]
+            or any(e.get("task_id") is not None for e in receipts)
+            or receipts[0].get("run_id") is not None
+            or receipts[1].get("run_id") is not None
+            or receipts[2].get("run_id")!=root_run_id):
+            raise ValueError("Console greenfield intake has no exact paired audit events")
+        intake,finalized,bootstrap=receipts
+        if (not isinstance(intake.get("payload"),dict)
+            or intake["payload"].get("project_key")!=key
+            or intake["payload"].get("project_kind")!="greenfield"
+            or not isinstance(finalized.get("payload"),dict)
+            or finalized["payload"].get("draft_id")!=draft
+            or type(finalized["payload"].get("count")) is not int
+            or finalized["payload"]["count"]!=count
+            or not isinstance(bootstrap.get("payload"),dict)
+            or bootstrap["payload"].get("task_id")!=task_id):
+            raise ValueError("Console greenfield intake request/attachments are unverified")
     if start_kind == "console_continuation":
         request_id=start_command.get("request_id")
         metadata=primary.get("metadata")

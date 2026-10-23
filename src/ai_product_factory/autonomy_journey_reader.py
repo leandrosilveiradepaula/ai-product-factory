@@ -185,6 +185,76 @@ class SupabaseJourneyReader:
             raise RuntimeError("duplicate evidence row across pages")
         return result
 
+    def _console_greenfield_intake_start(
+        self, project: dict, requested_run: str | None, since: datetime,
+    ) -> dict | None:
+        """Recognize only the atomic, operator-authenticated Console intake.
+
+        Historical bootstrap events alone are not Start authority. The three
+        distinct audit receipts must share the project's creation transaction,
+        and the manifest must bind a canonical request/operator identity.
+        """
+        manifest=project.get("manifest")
+        if (project.get("project_kind")!="greenfield"
+            or not isinstance(manifest,dict)
+            or manifest.get("source")!="factory-console"
+            or manifest.get("onboarding_mode")!="greenfield"
+            or "bootstrap_request_id" not in manifest):
+            return None
+        if manifest.get("reconcile_first") is True:
+            raise RuntimeError("greenfield intake unexpectedly chose reconciliation")
+        born=_timestamp(project.get("created_at"))
+        if born<since:
+            return None
+        draft=_uuid(manifest.get("bootstrap_request_id"))
+        operator=_uuid(manifest.get("bootstrap_operator_id"))
+        count=manifest.get("bootstrap_attachment_count")
+        if type(count) is not int or not 0<=count<=10:
+            raise RuntimeError("invalid atomic intake attachment count")
+        pid=_uuid(project.get("id"))
+        rows=self._get(
+            "factory_audit_events?select=id,project_id,task_id,run_id,event_type,"
+            "actor_type,actor_ref,payload,created_at"
+            "&project_id=eq."+pid
+            "&event_type=in.(project.intake.created,project.attachments.finalized,project.bootstrap.enqueued)"
+            "&order=created_at.asc,id.asc",limit=15,
+        )
+        receipts=[row for row in rows if _timestamp(row.get("created_at"))==born]
+        if (len(receipts)!=3 or
+            [row.get("event_type") for row in receipts]!=[
+                "project.intake.created",
+                "project.attachments.finalized",
+                "project.bootstrap.enqueued",
+            ] or any(row.get("project_id")!=pid for row in receipts)
+            or any(type(row.get("id")) is not int for row in receipts)
+            or not (receipts[0]["id"]<receipts[1]["id"]<receipts[2]["id"])):
+            raise RuntimeError("atomic Console intake has no unique ordered audit trio")
+        intake,finalized,bootstrap=receipts
+        if (any(row.get("actor_ref")!="factory-console" for row in receipts)
+            or [row.get("actor_type") for row in receipts]!=["human","human","system"]
+            or any(row.get("task_id") is not None for row in receipts)
+            or intake.get("run_id") is not None
+            or finalized.get("run_id") is not None
+            or not isinstance(intake.get("payload"),dict)
+            or intake["payload"].get("project_key")!=project.get("project_key")
+            or intake["payload"].get("project_kind")!="greenfield"
+            or not isinstance(finalized.get("payload"),dict)
+            or finalized["payload"].get("draft_id")!=draft
+            or type(finalized["payload"].get("count")) is not int
+            or finalized["payload"]["count"]!=count
+            or not isinstance(bootstrap.get("payload"),dict)):
+            raise RuntimeError("atomic Console intake actor/request evidence is incomplete")
+        bootstrap_run=_uuid(bootstrap.get("run_id"))
+        bootstrap_task=_uuid(bootstrap["payload"].get("task_id"))
+        if requested_run is not None and requested_run!=bootstrap_run:
+            raise RuntimeError("explicit audit run differs from Console intake")
+        return {
+            "command":"console_greenfield_intake","actor_id":operator,
+            "request_id":draft,"attachment_count":count,
+            "bootstrap_task_id":bootstrap_task,
+            "result":{"run_id":bootstrap_run},
+        }
+
     def read(self, *, project_key: str, since: datetime,
              run_id: str | None = None):
         if not isinstance(project_key,str) or not PROJECT_KEY.fullmatch(project_key):
@@ -196,7 +266,7 @@ class SupabaseJourneyReader:
             _uuid(run_id)
         project=self._one(
             "factory_projects",
-            "select=id,project_key,project_kind,repository,manifest,is_active"
+            "select=id,project_key,project_kind,repository,manifest,is_active,created_at"
             "&project_key=eq."+quote(project_key,safe=""),
         )
         if project is None or not project.get("is_active"):
@@ -281,22 +351,26 @@ class SupabaseJourneyReader:
                     for row in continuation
                 ):
                     eligible.append((request,request_id))
-            if not eligible:
-                if not commands and not requests and run_id is None:
-                    return no_start_report(project_key)
-                raise RuntimeError("no verified explicit Start or Console continuation for requested run")
-            if len({row["run_id"] for row,_ in eligible})!=len(eligible):
-                raise RuntimeError("duplicate operator continuation receipt")
-            picked,req_id=eligible[0]
-            root_run_id=_uuid(picked["run_id"])
-            github_origin=picked["payload"].get("github") if picked.get("actor_ref")=="github-owner" else None
-            start={
-                "command":"github_owner_continuation" if github_origin else "console_continuation",
-                "actor_id":str(OWNER_START_ID) if github_origin else "factory-console",
-                "result":{"run_id":root_run_id},
-                "request_id":req_id,
-                "github_origin":github_origin,
-            }
+            if eligible:
+                if len({row["run_id"] for row,_ in eligible})!=len(eligible):
+                    raise RuntimeError("duplicate operator continuation receipt")
+                picked,req_id=eligible[0]
+                root_run_id=_uuid(picked["run_id"])
+                github_origin=picked["payload"].get("github") if picked.get("actor_ref")=="github-owner" else None
+                start={
+                    "command":"github_owner_continuation" if github_origin else "console_continuation",
+                    "actor_id":str(OWNER_START_ID) if github_origin else "factory-console",
+                    "result":{"run_id":root_run_id},
+                    "request_id":req_id,
+                    "github_origin":github_origin,
+                }
+            else:
+                start=self._console_greenfield_intake_start(project,run_id,since)
+                if start is None:
+                    if not commands and not requests and run_id is None:
+                        return no_start_report(project_key)
+                    raise RuntimeError("no verified explicit Start or Console continuation for requested run")
+                root_run_id=_uuid(start["result"]["run_id"])
         root_run=self._one(
             "factory_runs",
             "select=id,task_id,status,candidate_commit,created_at,metadata"
@@ -307,7 +381,7 @@ class SupabaseJourneyReader:
         root_task_id=_uuid(root_run.get("task_id"))
         root_task=self._one(
             "factory_tasks",
-            "select=id,project_id,parent_task_id,status,created_at"
+            "select=id,project_id,parent_task_id,status,created_at,external_key"
             "&id=eq."+root_task_id,
         )
         if root_task is None or root_task.get("project_id")!=pid:
@@ -329,6 +403,30 @@ class SupabaseJourneyReader:
                     or metadata["continuation_request"].get("attachment_count")!=0
                 ))):
                 raise RuntimeError("Owner continuation is not bound to root run/task")
+        if start.get("command")=="console_greenfield_intake":
+            metadata=root_run.get("metadata")
+            born=_timestamp(project.get("created_at"))
+            if (root_task.get("parent_task_id") is not None
+                or root_task.get("external_key")!="product-bootstrap-v1"
+                or root_task_id!=start["bootstrap_task_id"]
+                or _timestamp(root_task.get("created_at"))!=born
+                or _timestamp(root_run.get("created_at"))!=born
+                or not isinstance(metadata,dict)
+                or metadata.get("source")!="factory-console"
+                or metadata.get("stages")!=["discovery","specification","planning"]):
+                raise RuntimeError("Console greenfield Start lacks exact root task/run identity")
+            manifest=project["manifest"]
+            attachments=self._get(
+                "factory_project_attachments?select=project_id,draft_id,operator_user_id,finalized_at"
+                "&project_id=eq."+pid+"&order=created_at.asc",limit=12,
+            )
+            if (len(attachments)!=start["attachment_count"]
+                or any(row.get("project_id")!=pid
+                       or row.get("draft_id")!=start["request_id"]
+                       or row.get("operator_user_id")!=start["actor_id"]
+                       or not isinstance(row.get("finalized_at"),str)
+                       for row in attachments)):
+                raise RuntimeError("atomic Console intake attachment ownership mismatch")
         start_time=_timestamp(root_task.get("created_at"))
         tasks=self._get(
             "factory_tasks?select=id,project_id,parent_task_id,status,created_at"
