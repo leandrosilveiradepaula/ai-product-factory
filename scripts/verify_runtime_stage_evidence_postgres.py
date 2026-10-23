@@ -21,7 +21,7 @@ if (os.environ.get("FACTORY_GREENFIELD_PG_TEST_ISOLATED")!="true"
     raise SystemExit("REFUSING_NON_ISOLATED_STAGE_DATABASE")
 
 root=Path(__file__).resolve().parents[1]
-sql=(root/"supabase/migrations/20261023145000_preserve_runtime_stage_evidence.sql").read_text()
+sql=(root/"supabase/migrations/20261023151218_preserve_runtime_stage_evidence.sql").read_text()
 sha="a"*40
 typed={"reason_code":"planning_non_actionable","observed_model_response":True,
        "tasks_count":0,"decisions_count":0,"implementation_completed":False,
