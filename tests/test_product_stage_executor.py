@@ -4,6 +4,7 @@ import unittest
 from ai_product_factory.agent_scheduler import AgentProfile
 from ai_product_factory.model_executor import ModelExecutor,ModelResult,ModelRole
 from ai_product_factory.product_stage_executor import ProductStageExecutor
+from ai_product_factory.product_stage_output_contract import PlanningNoActionableWork
 from ai_product_factory.runtime_worker import WorkItem
 
 
@@ -54,8 +55,9 @@ class ProductStageExecutorTests(unittest.TestCase):
             def execute(self,request):
                 return ModelResult(ModelRole.PRIMARY,json.dumps({"tasks":[],"decisions_needed":[]}))
         handler=ProductStageExecutor(ModelExecutor(primary=EmptyProvider()))
-        with self.assertRaisesRegex(ValueError,"no actionable tasks or decisions"):
+        with self.assertRaises(PlanningNoActionableWork) as outcome:
             handler.execute(item(),"planning")
+        self.assertIn("no actionable tasks or decisions", str(outcome.exception))
         self.assertNotIn(("r","planning"),handler.outputs)
 
     def test_missing_tasks_array_is_not_silent_completion(self):

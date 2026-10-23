@@ -60,6 +60,21 @@ class ClaimedReconciliationPreflightTests(unittest.TestCase):
         })
         queue._live_candidate_context.assert_called_once()
 
+    def test_explicit_issue_scope_mismatch_fails_before_model_execution(self):
+        from ai_product_factory.source_scope_admission import SourceScopeBlocked
+        queue, calls = self.make_queue()
+        queue._live_candidate_context = Mock(
+            side_effect=SourceScopeBlocked("source_authorization_issue_mismatch")
+        )
+        with self.assertRaises(SourceScopeBlocked):
+            queue.claim_next("worker")
+        self.assertEqual([name for name, _ in calls], [
+            "factory_claim_next_run", "factory_assert_claimed_run_epoch",
+            "factory_finish_run",
+        ])
+        self.assertEqual(calls[-1][1]["p_error"],
+                         "reconciliation_source_authorization_issue_mismatch")
+
     def test_other_source_error_is_redacted_before_storage(self):
         queue, calls = self.make_queue()
         queue._live_candidate_context = Mock(

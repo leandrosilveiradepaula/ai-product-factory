@@ -1,3 +1,11 @@
+## 23/10/2026 — Candidato: bloqueio gratuito de divergência de issue antes de modelo
+
+- Causa real: Start OWNER de 22/10 pediu CRM issue #24, mas a autorização mais recente do CRM em CURRENT_TASK refere CRM issue #33. O planning pago `80385a16-7fca-4525-9cc2-adfe360acf17` retornou zero tarefas/decisões e custo real de US$ 0,077604; nenhuma implementação/PR resultou dessa tentativa.
+- Preflight novo no read-only GitHub SHA exato detecta somente conflitos inequívocos de referência única e namespace comum entre pedido e seção autorizada; encerra run claimed com erro codificado **antes** de qualquer modelo. Ausência, duplicidade ou namespaces diferentes não dão permissão falsa. O controle de epoch continua obrigatório.
+- Prompt do modelo passa a conter apenas a seção vigente de CURRENT_TASK (o GET do arquivo completo continua verificado); tamanho acima de 16.000 bytes é bloqueado, nunca truncado como permissão. Fonte já limitada a 24.000 bytes. Isso evita reviver antigas tarefas e reduz tokens.
+- Planning com modelo real mas sem tarefas/decisões persiste um pequeno recibo fixo `planning_non_actionable` via RPC de stage já existente, status `failed`, sem saída privada do provider ou falso Change Set/DoD. Nenhuma migration, deploy Edge, alteração de orçamento, chamada paga para teste ou alteração de runs históricos.
+- Candidato aguarda CI e merge humano antes de valer na operação de produção.
+
 ## 23/10/2026 — Candidato: fonte de autorização PT-BR no SHA exato
 
 - Reproduzido sem modelo pago: o parser de candidate_source_evidence.py reconhecia somente Authorized task. No CRM PR #56, HEAD 184adae8ecf246790f51d9dc01e7145d14c6b458, a autorização mais recente está intitulada Tarefa autorizada (19/10/2026); a última autorização inglesa era de 10/10/2026. O leitor selecionava escopo de trabalho antigo.

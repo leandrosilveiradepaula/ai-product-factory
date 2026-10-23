@@ -110,6 +110,45 @@ class RuntimeWorkerTests(unittest.TestCase):
         self.assertFalse(any(x[0] in {"stage","complete"} for x in q.events))
         self.assertIn(("stage_event","planning","failed"),q.events)
 
+    def test_non_actionable_paid_plan_preserves_failed_only_diagnostic(self):
+        import json
+        from ai_product_factory.product_stage_executor import ProductStageExecutor
+        from ai_product_factory.model_executor import ModelExecutor, ModelResult, ModelRole
+        class EmptyPlan:
+            def execute(self, request):
+                return ModelResult(ModelRole.PRIMARY, json.dumps({
+                    "tasks": [], "decisions_needed": [], "architecture": "sensitive data",
+                }), provider_ref="untrusted-provider-ref", usage={"input_tokens": 1})
+        class RecordingQueue(InstrumentedQueue):
+            def record_non_actionable_planning(self, item):
+                self.events.append(("planning_non_actionable", item.run_id))
+        q = RecordingQueue(WorkItem("r", "t", "p", "demo", ("planning",), {}))
+        result = RuntimeWorker(
+            queue=q, handler=ProductStageExecutor(ModelExecutor(primary=EmptyPlan())),
+            worker_id="w",
+        ).run_once()
+        self.assertEqual(result.status, WorkStatus.FAILED)
+        self.assertIn(("planning_non_actionable", "r"), q.events)
+        self.assertNotIn(("stage_event", "planning", "failed"), q.events)
+        self.assertEqual(q.events[-1][0], "fail")
+        self.assertFalse(any(event[0] in {"stage", "complete"} for event in q.events))
+        self.assertNotIn("sensitive data", repr(q.events))
+        self.assertNotIn("untrusted-provider-ref", repr(q.events))
+
+    def test_failed_non_actionable_receipt_falls_back_to_plain_failed_stage(self):
+        from ai_product_factory.product_stage_output_contract import PlanningNoActionableWork
+        class EmptyHandler:
+            def execute(self, item, stage):
+                raise PlanningNoActionableWork()
+        class FailedReceiptQueue(InstrumentedQueue):
+            def record_non_actionable_planning(self, item):
+                raise RuntimeError("receipt persistence unavailable")
+        q = FailedReceiptQueue(WorkItem("r", "t", "p", "demo", ("planning",), {}))
+        result = RuntimeWorker(queue=q, handler=EmptyHandler(), worker_id="w").run_once()
+        self.assertEqual(result.status, WorkStatus.FAILED)
+        self.assertIn(("stage_event", "planning", "failed"), q.events)
+        self.assertEqual(q.events[-1][0], "fail")
+
     def test_revocation_before_first_stage_prevents_handler(self):
         q=FencedQueue(item(),1)
         result=RuntimeWorker(queue=q,handler=CompletedFixtureHandler(),worker_id="w1").run_once()

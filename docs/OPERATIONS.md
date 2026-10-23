@@ -1,3 +1,15 @@
+## 23/10/2026 — Preflight de issue autorizada e retenção de planning vazio (candidato)
+
+**Problema:** o pedido OWNER para CRM issue #24 não alterou o escopo de escrita vigente em CURRENT_TASK, que continua CRM issue #33. Assim, a Factory pagou por um planning que não tinha tarefa executável autorizada. Runs históricos `090cd768-...` e `80385a16-...` continuam falhos e não serão reativados por esta mudança.
+
+**Contrato novo:** no claim de reconciliation ou planning-only checkpoint de projeto existing, validar PR/branch/SHA fixos e ler integralmente AGENTS + CURRENT_TASK; comparar somente uma referência explícita de issue em cada documento/pedido e o mesmo namespace. Referências divergentes inequívocas produzem `reconciliation_source_authorization_issue_mismatch` ou `planning_resume_source_authorization_issue_mismatch` antes de usar modelo. Referências ausentes/ambíguas não se transformam em autorização. A mudança de escopo requer alinhamento legítimo de CURRENT_TASK, nunca bypass ad hoc.
+
+**Economia de tokens:** após provar a origem completa por GitHub GET no SHA exato, enviar ao contexto do modelo apenas a seção CURRENT_TASK mais recente (máx. 16.000 bytes). Excesso bloqueia. AGENTS permanece íntegro e source excerpts seguem limitados a 24.000 bytes. O histórico é retido no repositório, mas não influencia prompts futuros de implementação.
+
+**Planejamento vazio:** se output pago real apresentar `tasks=[]` e `decisions_needed=[]`, registrar stage failed e `metadata.stage_evidence.planning.output.reason_code=planning_non_actionable` com conjunto fixo de campos, usando `factory_record_runtime_stage` + `factory_finish_run(failed)` e epoch-fence. Nenhum dado arbitrário de modelo, nenhum Change Set, nenhuma aprovação inferida e nenhuma transição para Product Ready. Falha de gravação é tratada sem alegar evidência durável. Sem migration.
+
+**Operação:** verificar regressões offline, CI do SHA candidato e merge humano; só depois o comportamento se aplica a novas claims. Não refazer um modelo pago só para diagnosticar um run terminal.
+
 ## 23/10/2026 — Recuperar planejamento sem replay de modelo pago (candidato)
 
 **Diagnóstico:** o retry genérico `factory_retry_failed_run` copia `metadata.stages` completa. Nunca usá-lo no run CRM #24 `090cd768-b6e5-44ce-9d77-92f9ffe9620d`. Os outputs comprovados do run original são snapshot `c702b7e7-58b4-49ad-8be9-ee87b4f3c15d` (reconciliation), `factory_projects.manifest.gap_analysis`, audit events de `run.stage.recorded` + `product.stage.persisted`. Não há `metadata.stage_evidence` recuperável no run original: não reconstruir artificialmente uma saída completa inexistente.

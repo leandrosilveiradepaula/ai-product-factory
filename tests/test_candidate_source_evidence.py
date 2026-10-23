@@ -204,5 +204,52 @@ class CandidateSourceEvidenceTests(unittest.TestCase):
         self.assertIn("Tarefa autorizada", heading)
         self.assertEqual(paths, ["src/lib/safe.ts"])
 
+    def test_explicit_current_issue_mismatch_is_proven_without_model(self):
+        from ai_product_factory.candidate_source_evidence import (
+            source_issue_scope_alignment, latest_authorization_excerpt,
+        )
+        doc = (
+            "## Authorized task (2026-10-10): historical\n"
+            "Origem: CRM issue #24\n"
+            "## Tarefa autorizada (2026-10-19): automações\n"
+            "Origem: demanda autorizada do piloto, CRM issue #33.\n"
+            + self.tick + "src/lib/current.ts" + self.tick + "\n"
+        )
+        request = "Reconciliar a issue CRM #24 e implementar correções justificadas."
+        self.assertEqual(source_issue_scope_alignment(doc, request), {
+            "status": "conflict", "requested_issue": 24, "authorized_issue": 33,
+        })
+        excerpt = latest_authorization_excerpt(doc)
+        self.assertNotIn("historical", excerpt)
+        self.assertIn("2026-10-19", excerpt)
+        self.assertEqual(source_issue_scope_alignment(doc, "Reconciliar CRM issue #33.")["status"], "matched")
+
+    def test_ambiguous_and_different_namespace_issue_refs_are_not_conflicts(self):
+        from ai_product_factory.candidate_source_evidence import source_issue_scope_alignment
+        doc = "## Tarefa autorizada (2026-10-19)\nOrigem: CRM issue #33\n"
+        for request in (
+            "Auditar a Factory issue #24.",
+            "Auditar CRM issue #24 e CRM issue #33.",
+            "Auditar tema sem issue numerada.",
+            "Auditar a issue #24.",
+        ):
+            with self.subTest(request=request):
+                self.assertEqual(source_issue_scope_alignment(doc, request)["status"], "unverified")
+        self.assertEqual(source_issue_scope_alignment(doc, "Auditar CRM issue #24.")["status"], "conflict")
+
+    def test_mismatched_scope_receipt_does_not_grant_writes(self):
+        doc = (
+            "## Tarefa autorizada (2026-10-19): escopo atual\n"
+            "Origem: CRM issue #33\n"
+            + self.tick + "src/lib/current.ts" + self.tick
+        )
+        self.github.list_file_paths.return_value = ("src/lib/current.ts",)
+        receipt = collect_candidate_source_evidence(
+            doc, self.github, sha=SHA, continuation_request="Implementar CRM issue #24",
+        )
+        self.assertEqual(receipt["issue_scope_alignment"]["status"], "conflict")
+        self.assertEqual(receipt["governance_scope_paths"], ["src/lib/current.ts"])
+        self.assertEqual(receipt["assessed_commit"], SHA)
+
 if __name__ == "__main__":
     unittest.main()

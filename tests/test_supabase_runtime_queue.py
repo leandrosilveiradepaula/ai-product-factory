@@ -55,6 +55,107 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 operation()
         self.assertEqual(calls,["factory_assert_claimed_run_epoch"]*4)
 
+    def test_empty_paid_planning_records_only_fixed_failure_receipt(self):
+        from ai_product_factory.product_stage_output_contract import NON_ACTIONABLE_PLANNING_EVIDENCE
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        item = WorkItem("run", "task", "project", "existing", ("planning",), {}, 2, "worker")
+        observed = []
+        def rpc(name, payload):
+            observed.append((name, payload))
+            if name not in {"factory_assert_claimed_run_epoch", "factory_record_runtime_stage"}:
+                raise AssertionError("unexpected RPC: " + name)
+        q._rpc = rpc
+        q.record_non_actionable_planning(item)
+        self.assertEqual([name for name, _ in observed], [
+            "factory_assert_claimed_run_epoch", "factory_record_runtime_stage",
+        ])
+        self.assertEqual(observed[-1][1]["p_stage"], "planning")
+        self.assertEqual(observed[-1][1]["p_status"], "failed")
+        self.assertEqual(observed[-1][1]["p_output"], NON_ACTIONABLE_PLANNING_EVIDENCE)
+        self.assertNotIn("provider_ref", repr(observed[-1][1]))
+        with self.assertRaisesRegex(ValueError, "planning"):
+            q.record_non_actionable_planning(WorkItem(
+                "run", "task", "project", "existing", ("reconciliation",), {}, 2, "worker"
+            ))
+        self.assertEqual(len(observed), 2)
+
+    def test_candidate_issue_scope_conflict_blocks_before_code_scan(self):
+        from ai_product_factory.source_scope_admission import SourceScopeBlocked
+        from unittest.mock import MagicMock
+        from types import SimpleNamespace
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        sha = "b" * 40
+        target = {
+            "schema_version": 1, "mode": "open_pr_candidate",
+            "repository": "owner/crm", "branch": "preview/current", "sha": sha,
+            "candidate_pr_number": 56,
+        }
+        q._get = lambda path: [{"project_kind": "existing", "repository": "owner/crm",
+                                "manifest": {"delivery_target": target,
+                                             "continuation_request": {
+                                                 "summary": "Implementar a issue CRM #24."
+                                             }}}]
+        github = MagicMock()
+        github.repository = "owner/crm"
+        github.get_branch_sha.side_effect = lambda ref: sha if ref == "preview/current" else "a" * 40
+        github.get_pull_request.return_value = SimpleNamespace(
+            state="open", merged=False, head_sha=sha, head_ref="preview/current",
+            head_repository="owner/crm", base_ref="main",
+        )
+        github.get_file_text.side_effect = lambda path, ref: (
+            "## Tarefa autorizada (2026-10-19): atual\nOrigem: CRM issue #33\n"
+            if path == "docs/codex/CURRENT_TASK.md" else "# Repository governance\n"
+        )
+        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
+            with self.assertRaises(SourceScopeBlocked) as failure:
+                q._live_candidate_context("project", {})
+        self.assertEqual(failure.exception.code, "source_authorization_issue_mismatch")
+        github.list_file_paths.assert_not_called()
+
+    def test_only_latest_current_task_reaches_model_context(self):
+        from unittest.mock import MagicMock
+        from types import SimpleNamespace
+        q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
+        sha = "c" * 40
+        target = {"schema_version": 1, "mode": "open_pr_candidate", "repository": "owner/crm",
+                  "branch": "preview/current", "sha": sha, "candidate_pr_number": 56}
+        q._get = lambda path: [{"project_kind": "existing", "repository": "owner/crm",
+                                "manifest": {"delivery_target": target,
+                                             "continuation_request": {
+                                                 "summary": "Implementar a issue CRM #33."
+                                             }}}]
+        github = MagicMock()
+        github.repository = "owner/crm"
+        github.get_branch_sha.side_effect = lambda ref: sha if ref == "preview/current" else "a" * 40
+        github.get_pull_request.return_value = SimpleNamespace(
+            state="open", merged=False, head_sha=sha, head_ref="preview/current",
+            head_repository="owner/crm", base_ref="main",
+        )
+        tick = chr(96)
+        task = (
+            "## Authorized task (2026-10-10): obsolete\n"
+            "Old code and disabled requirements.\n"
+            "## Tarefa autorizada (2026-10-19): active\n"
+            "Origem: CRM issue #33\n"
+            + tick + "src/lib/current.ts" + tick + "\n"
+        )
+        github.get_file_text.side_effect = lambda path, ref: (
+            task if path == "docs/codex/CURRENT_TASK.md"
+            else ("export const safe = true;" if path == "src/lib/current.ts"
+                  else "# Repository governance\n")
+        )
+        github.list_file_paths.return_value = ("src/lib/current.ts",)
+        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
+            result = q._live_candidate_context("project", {})
+        candidate = result["current_state_facts"]["live_candidate"]
+        current = candidate["governance"]["docs/codex/CURRENT_TASK.md"]
+        self.assertNotIn("obsolete", current)
+        self.assertNotIn("Old code", current)
+        self.assertIn("2026-10-19", current)
+        self.assertEqual(candidate["source_evidence"]["issue_scope_alignment"]["status"], "matched")
+        self.assertEqual(candidate["governance_selection"],
+                         "exact_sha_latest_authorized_section_only")
+
     def test_claimed_run_without_epoch_cannot_write_stage_or_finish(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         with patch("urllib.request.urlopen",return_value=Response({
