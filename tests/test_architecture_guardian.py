@@ -52,5 +52,47 @@ class ArchitectureGuardianTests(unittest.TestCase):
         self.assertEqual(out.evidence["scanner"],"architecture_guardian_v1")
 
 
+    def test_missing_or_nontext_diff_blocks_security_certificate(self):
+        for patch in (None,"","  "):
+            with self.subTest(patch=patch):
+                out=scan_pull_request_files((
+                    {"filename":"src/core.py","status":"modified",
+                     "patch":patch,"additions":12,"deletions":3},
+                ))
+                self.assertIn("unreviewable_diff",{x["code"] for x in out.findings})
+                self.assertGreater(out.evidence["blocking_findings"],0)
+                self.assertFalse(out.evidence["coverage"]["secret_literals"])
+                self.assertFalse(out.evidence["coverage"]["diff_content_available"])
+                self.assertEqual(out.evidence["unreviewable_paths"],["src/core.py"])
+
+    def test_binary_and_deleted_unreadable_diff_cannot_pass_as_clean(self):
+        for status in ("added","modified","renamed","removed"):
+            with self.subTest(status=status):
+                out=scan_pull_request_files((
+                    {"filename":"assets/image.bin","status":status,
+                     "patch":"","additions":0,"deletions":0},
+                ))
+                self.assertIn("unreviewable_diff",{x["code"] for x in out.findings})
+                self.assertEqual(out.evidence["files_reviewed"],1)
+
+    def test_empty_or_unbounded_file_inventory_fails_closed(self):
+        out=scan_pull_request_files(())
+        self.assertIn("empty_diff_inventory",{x["code"] for x in out.findings})
+        self.assertIn("<empty PR>",out.evidence["unreviewable_paths"])
+        with self.assertRaisesRegex(RuntimeError,"inventory exceeds"):
+            scan_pull_request_files(
+                {"filename":f"src/file_{n}.py","status":"modified",
+                 "patch":"+changed=True"} for n in range(3001)
+            )
+
+    def test_available_safe_diff_retains_explicit_coverage(self):
+        out=scan_pull_request_files((
+            {"filename":"src/core.py","status":"modified","patch":"+value=1"},
+        ))
+        self.assertTrue(out.evidence["coverage"]["diff_content_available"])
+        self.assertEqual(out.evidence["unreviewable_paths"],[])
+        self.assertNotIn("diff_content_available",out.evidence["unknowns"])
+
+
 if __name__=="__main__":
     unittest.main()
