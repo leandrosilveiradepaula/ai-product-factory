@@ -174,6 +174,33 @@ class ProductStageExecutor:
         order=("discovery","specification","reconciliation","gap_analysis")
         prior={s:self.outputs[(item.run_id,s)] for s in order if (item.run_id,s) in self.outputs}
         objective=getattr(self.prompts,stage)
+        intake_context=item.context
+        resume=item.context.get("_verified_resume_prior_stages")
+        if resume is not None:
+            origin=item.context.get("_verified_resume_origin")
+            if (stage!="planning" or tuple(item.stages)!=("planning",)
+                or prior or not isinstance(resume,dict)
+                or set(resume)!={"reconciliation","gap_analysis"}
+                or not isinstance(origin,dict)
+                or origin.get("generation")!=item.execution_generation
+                or not all(isinstance(v,dict) for v in resume.values())
+                or not isinstance(resume["reconciliation"].get("summary"),str)
+                or not resume["reconciliation"]["summary"].strip()
+                or not isinstance(resume["gap_analysis"].get("recommended_next_work"),list)
+                or not resume["gap_analysis"]["recommended_next_work"]):
+                raise PermissionError("verified planning checkpoint is invalid")
+            for completed in resume.values():
+                assert_executed_product_stage_output(completed)
+            prior.update(resume)
+            # Checkpointed gap analysis is now the canonical prior stage;
+            # do not double-bill its tokens by echoing it in the manifest.
+            intake_context=dict(item.context)
+            intake_context.pop("_verified_resume_prior_stages",None)
+            manifest=intake_context.get("manifest")
+            if isinstance(manifest,dict):
+                manifest=dict(manifest)
+                manifest.pop("gap_analysis",None)
+                intake_context["manifest"]=manifest
         registry=None
         if stage=="planning" and self.team_profiles is not None:
             registry=[
@@ -188,7 +215,7 @@ class ProductStageExecutor:
         context=json.dumps(
             {
                 "project_key":item.project_key,
-                "intake":item.context,
+                "intake":intake_context,
                 "prior_stages":prior,
                 "execution_registry":registry,
             },

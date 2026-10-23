@@ -1,3 +1,12 @@
+## 23/10/2026 — Retomada do Product Stage sem repetir chamadas pagas (candidato)
+
+- [x] Confirmada execução real Start Github OWNER CRM root `090cd768-b6e5-44ce-9d77-92f9ffe9620d`, falha em `planning` por ledger/reserva (US$ 9,5020792 de US$ 10, reserva US$ 0,50). Duas chamadas reais de modelo geraram reconciliação e gap analysis já duráveis; 7 gaps e 6 trabalhos recomendados.
+- [x] Corrigir via RPC versionada `factory_resume_failed_product_planning_v1` que atesta source/snapshot/generation/audit/ausência de supersessão e cria apenas `planning`, sem invocar API nem modificar source run.
+- [x] Preparar parser e job GitHub OWNER com broker OIDC restrito e wake pós-commit; adaptar ProductStageExecutor para aproveitar checkpoint e remover duplicidade no prompt.
+- [ ] Testes offline e PostgreSQL isolado verdes no SHA final; corrigir regressões sem paid probes.
+- [ ] Merge humano da PR da Factory, deploy broker e migration ambos autorizados, verificação de grants. Usuário repôs US$ 10 reais na API OpenAI, mas teto **interno** ainda exige nova decisão humana.
+- [ ] Retomada real por OWNER após orçamento interno suficiente; PR de implementação CRM issue #24, CI nativa, Preview browser quando aplicável e `awaiting_release` até merge humano.
+
 ## 22/10/2026 — Canal Owner Start sem Console (candidato em desenvolvimento)
 
 - [x] Diagnóstico: Console é atualmente única entrada de continuation com par auditado; GitHub OWNER possui OIDC já utilizado nos audits.
