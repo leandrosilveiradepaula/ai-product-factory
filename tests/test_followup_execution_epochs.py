@@ -178,13 +178,14 @@ class DurableQueuePropagationTests(unittest.TestCase):
                   "claim_token":"123e4567-e89b-42d3-a456-426614174099","execution_generation":5}
         rows=[
             [{"metadata":{"pr":9,"head_sha":"abc"}}],
-            [{"task_id":"t","execution_route":"direct","metadata":{"execution_generation":5}}],
+            [{"task_id":"t","execution_route":"direct","branch_name":"factory/claim-a","metadata":{"execution_generation":5}}],
             [{"project_id":PID,"acceptance_criteria":["x"]}],
         ]
         with patch.object(queue,"_rpc",return_value=response),patch.object(queue,"_get",side_effect=rows),patch("ai_product_factory.specialist_lane_queue.validate_create_pr_candidate"):
             item=queue.claim("qa","worker")
         self.assertEqual(item.project_id,PID)
         self.assertEqual(item.execution_generation,5)
+        self.assertEqual(item.branch,"factory/claim-a")
         self.assertTrue(item.require_execution_generation)
 
 
