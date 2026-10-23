@@ -19,7 +19,7 @@ from .execution_worker import DirectExecutionWorker,ImplementationBlocked
 from .change_set_store import SupabaseChangeSetStore
 from .change_set_worker import ChangeSetBuilderWorker
 from .change_set_integrator import ChangeSetIntegrator
-from .github_rest import GitHubRestAdapter
+from .github_rest import GitHubRestAdapter,GitHubRequestError
 from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
@@ -538,7 +538,39 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
     "candidate_commit":item.candidate_commit}
   try:_assert_project_followup(item)
   except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
-  github.dispatch_workflow("validate.yml",ref=item.branch)
+  # Actions:write is deliberately limited to ci-followup. Re-read both the
+  # immutable candidate PR identity and live ref immediately before dispatch.
+  # Never dispatch a moved branch or record a false exact-SHA receipt.
+  live_pr=github.get_pull_request(item.pr_number)
+  if (live_pr.head_sha!=item.candidate_commit
+      or getattr(live_pr,"head_ref",None)!=item.branch
+      or getattr(live_pr,"head_repository",None)!=item.repository
+      or getattr(live_pr,"base_ref",None)!="main"
+      or getattr(live_pr,"state",None)!="open"
+      or getattr(live_pr,"merged",False)
+      or getattr(live_pr,"draft",None) is not False):
+   return {"claimed":True,"status":"ci_dispatch_identity_blocked",
+    "run_id":item.run_id,"pr_number":item.pr_number,
+    "candidate_commit":item.candidate_commit}
+  if github.get_branch_sha(item.branch)!=item.candidate_commit:
+   return {"claimed":True,"status":"ci_dispatch_branch_drift_blocked",
+    "run_id":item.run_id,"pr_number":item.pr_number,
+    "candidate_commit":item.candidate_commit}
+  try:
+   github.dispatch_workflow("validate.yml",ref=item.branch)
+  except GitHubRequestError as exc:
+   if exc.status not in (401,403):
+    raise
+   # Never call a denied dispatch "triggered" or invent its usage receipt.
+   store.record_audit_event(
+    run_id=item.run_id,event_type="ci.same_repo_dispatch_permission_denied",
+    payload={"candidate_commit":item.candidate_commit,"pr_number":item.pr_number,
+             "required_permission":"actions:write","http_status":exc.status},
+    actor_ref="ci-followup",
+   )
+   return {"claimed":True,"status":"ci_dispatch_permission_blocked",
+    "run_id":item.run_id,"pr_number":item.pr_number,
+    "candidate_commit":item.candidate_commit}
   store.record_tool_usage(
    run_id=item.run_id,tool_family="github",operation="dispatch_ci",
    metadata={"pr":item.pr_number,"head_sha":item.candidate_commit,"workflow":"validate.yml","ref":item.branch},

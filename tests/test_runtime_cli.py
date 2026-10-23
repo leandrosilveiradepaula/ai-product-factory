@@ -495,7 +495,12 @@ class RuntimeCliTests(unittest.TestCase):
         queue.has_ci_dispatch_receipt.return_value=False
         github=MagicMock();github.last_ci_evidence_present=False
         github.get_issue.return_value=SimpleNamespace(number=7)
-        github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc")
+        github.get_pull_request.return_value=SimpleNamespace(
+            number=9,head_sha="abc",head_ref="factory/change-set-x",
+            head_repository="owner/factory",base_ref="main",
+            state="open",merged=False,draft=False,
+        )
+        github.get_branch_sha.return_value="abc"
         store=MagicMock()
         loop=MagicMock();loop.evaluate.return_value=SimpleNamespace(action=SimpleNamespace(value="wait_ci"),ci_state=SimpleNamespace(value="pending"))
         with patch.dict("os.environ",{"GITHUB_REPOSITORY":"owner/factory"},clear=False), \
