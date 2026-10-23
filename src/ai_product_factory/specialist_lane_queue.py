@@ -28,6 +28,7 @@ class SpecialistLaneItem:
     require_execution_generation:bool=False
     project_id:str|None=None
     claim_token:str|None=None
+    branch:str|None=None
 
 
 class SupabaseSpecialistLaneQueue:
@@ -76,7 +77,7 @@ class SupabaseSpecialistLaneQueue:
         head_sha=str(meta.get("head_sha") or "")
         if pr_number<1:
             raise RuntimeError("specialist lane has invalid PR identity")
-        runs=self._get("factory_runs?select=task_id,execution_route,metadata&id=eq."+quote(run_id)+"&limit=1")
+        runs=self._get("factory_runs?select=task_id,execution_route,metadata,branch_name&id=eq."+quote(run_id)+"&limit=1")
         if not runs:raise RuntimeError("specialist lane run not found")
         generation,required=run_followup_epoch(runs[0])
         # The SQL claim must return a token bound to one exact lease and
@@ -96,6 +97,11 @@ class SupabaseSpecialistLaneQueue:
             original_head=head_sha,candidate_commit=str(data["candidate_commit"]),
             run_metadata=runs[0].get("metadata") or {},
         )
+        branch=runs[0].get("branch_name")
+        if (not isinstance(branch,str) or not branch.strip() or branch in {"main","master"}
+            or branch.startswith("/") or ".." in branch or "//" in branch or "\\" in branch
+            or any(char.isspace() or ord(char)<32 or ord(char)==127 for char in branch)):
+            raise RuntimeError("specialist review requires a verified nonproduction branch")
         task_id=str(runs[0]["task_id"])
         issue_number=int(((runs[0].get("metadata") or {}).get("github_issue") or {}).get("number") or 0)
         tasks=self._get("factory_tasks?select=project_id,acceptance_criteria&id=eq."+quote(task_id)+"&limit=1")
@@ -110,7 +116,7 @@ class SupabaseSpecialistLaneQueue:
             acceptance_criteria=criteria,
             execution_generation=generation,require_execution_generation=required,
             project_id=tasks[0]["project_id"],
-            claim_token=token,
+            claim_token=token,branch=branch,
         )
 
     def complete(self,item:SpecialistLaneItem,*,status:str,findings:list[dict],evidence:dict)->dict:

@@ -75,11 +75,26 @@ def scan_pull_request_files(rows:Iterable[dict])->GuardianReport:
     api_contracts=[]
     sql_lineage=[]
     workflow_paths=[]
+    unreviewable_paths=[]
+    total_files=0
 
     for row in rows:
+        total_files+=1
+        if total_files>3000:
+            raise RuntimeError("security diff inventory exceeds verified GitHub limit")
         path=str(row.get("filename") or "")
         status=str(row.get("status") or "")
-        patch=str(row.get("patch") or "")
+        raw_patch=row.get("patch")
+        patch=raw_patch if isinstance(raw_patch,str) else ""
+        if not patch.strip():
+            # GitHub omits patches for binary/large/unreviewable changes.
+            # A scanner cannot attest that code contains no secrets without bytes.
+            unreviewable_paths.append(path)
+            findings.append(_finding(
+                "unreviewable_diff","critical",
+                "GitHub did not provide reviewable patch content",path,
+                kind="evidence_completeness",
+            ))
         added=_added_text(patch)
         lower=path.lower()
 
@@ -118,6 +133,14 @@ def scan_pull_request_files(rows:Iterable[dict])->GuardianReport:
         if any(part in lower for part in ("auth","security","supabase/migrations",".github/workflows","vercel.json","package.json","lock")):
             sensitive_paths.add(path)
 
+    if total_files==0:
+        unreviewable_paths.append("<empty PR>")
+        findings.append(_finding(
+            "empty_diff_inventory","critical",
+            "An empty changed-file inventory cannot prove a security review",
+            "<empty PR>",kind="evidence_completeness",
+        ))
+
     if dependency_surfaces:
         findings.append(_finding(
             "dependency_surface_changed","warning",
@@ -138,14 +161,17 @@ def scan_pull_request_files(rows:Iterable[dict])->GuardianReport:
         "blocking_findings":len(blocking),
         "sensitive_paths":sorted(sensitive_paths),
         "workflow_paths":sorted(set(workflow_paths)),
+        "unreviewable_paths":sorted(set(unreviewable_paths)),
+        "files_reviewed":total_files,
         "dependency_surfaces":sorted(set(dependency_surfaces)),
         "api_contracts":api_contracts,
         "database_lineage":sql_lineage,
         "coverage":{
-            "secret_literals":True,
-            "client_server_secret_boundary":True,
-            "workflow_invariants":True,
-            "sql_rls_rpc_invariants":True,
+            "diff_content_available":not unreviewable_paths,
+            "secret_literals":not unreviewable_paths,
+            "client_server_secret_boundary":not unreviewable_paths,
+            "workflow_invariants":not unreviewable_paths,
+            "sql_rls_rpc_invariants":not unreviewable_paths,
             "dependency_vulnerability_scan":False,
             "sbom_generation":False,
             "full_sast":False,
@@ -157,6 +183,7 @@ def scan_pull_request_files(rows:Iterable[dict])->GuardianReport:
                 "sbom_generation":False,
                 "full_sast":False,
                 "api_semantic_compatibility":False,
+                "diff_content_available":not unreviewable_paths,
             }.items() if not value
         ],
     })

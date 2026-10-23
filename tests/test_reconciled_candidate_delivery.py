@@ -64,7 +64,7 @@ class CandidateReceiptTests(unittest.TestCase):
                  "execution_generation":4}
         rows=[Response(claimed),
               Response([{"metadata":{"pr":180,"head_sha":"old"}}]),
-              Response([{"task_id":"t","execution_route":"direct",
+              Response([{"task_id":"t","execution_route":"direct","branch_name":"factory/reconciled-candidate",
                          "metadata":{**runmeta(),"execution_generation":4}}]),
               Response(receipt()),
               Response([{"project_id":"123e4567-e89b-42d3-a456-426614174000","acceptance_criteria":["works"]}])]
@@ -73,6 +73,7 @@ class CandidateReceiptTests(unittest.TestCase):
             item=obj.claim("security","worker")
         self.assertEqual(item.pr_number,180)
         self.assertEqual(item.candidate_commit,"new")
+        self.assertEqual(item.branch,"factory/reconciled-candidate")
 
     def test_specialist_claim_rejects_mismatched_reconciliation(self):
         claimed={"run_id":"r","job_id":"j","project_key":"crm",
@@ -82,7 +83,7 @@ class CandidateReceiptTests(unittest.TestCase):
                  "execution_generation":4}
         rows=[Response(claimed),
               Response([{"metadata":{"pr":180,"head_sha":"old"}}]),
-              Response([{"task_id":"t","execution_route":"direct",
+              Response([{"task_id":"t","execution_route":"direct","branch_name":"factory/reconciled-candidate",
                          "metadata":{**runmeta(),"execution_generation":4}}]),
               Response(receipt(pr="181"))]
         with patch("urllib.request.urlopen",side_effect=rows):
