@@ -1,3 +1,11 @@
+## 23/10/2026 — Candidato: fonte de autorização PT-BR no SHA exato
+
+- Reproduzido sem modelo pago: o parser de candidate_source_evidence.py reconhecia somente Authorized task. No CRM PR #56, HEAD 184adae8ecf246790f51d9dc01e7145d14c6b458, a autorização mais recente está intitulada Tarefa autorizada (19/10/2026); a última autorização inglesa era de 10/10/2026. O leitor selecionava escopo de trabalho antigo.
+- Correção em PR de desenvolvimento: reconhecer ambos os idiomas e manter precedência estrita do último escopo; representar até quatro arquivos atuais e pequenos testes sob orçamento agregado de 24.000 bytes, com indicação explícita de truncamentos e omissões; alinhar validação de proveniência e relatório offline.
+- Start OWNER pediu CRM issue #24 (UX/hardening), mas a autorização vigente limita a escrita à tarefa de condições de automações da issue #33; a Factory não deve fabricar tarefas nem presumir autorização de escrita ampla. Nenhuma alteração foi feita no CRM nesta correção.
+- A correção permanece candidata até CI no SHA exato e merge humano. Zero chamadas pagas, nenhuma migration, nenhum deploy Edge ou Vercel/Console e nenhum merge de produção. Planejamento sem tarefas/decisões permanece fail-closed.
+
+
 ## 23/10/2026 — Candidato de recuperação por checkpoint do CRM #24
 
 - Fonte verificada em produção: start OWNER issue #1055, run `090cd768-b6e5-44ce-9d77-92f9ffe9620d`, geração 6, `failed`; `run.stage.recorded` e `product.stage.persisted` atestam `reconciliation` e `gap_analysis`. Snapshot `c702b7e7-58b4-49ad-8be9-ee87b4f3c15d` e `manifest.gap_analysis` guardam outputs; os metadados do run histórico **não contêm** `stage_evidence`, logo jamais inferir que há saída completa ali. A terceira etapa falhou com `reserved provider cost exceeds remaining budget`, não gerou PR CRM novo.
