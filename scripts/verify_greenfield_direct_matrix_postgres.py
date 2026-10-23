@@ -39,9 +39,14 @@ if match is None:
     raise SystemExit("current migration no longer contains the expected agent matrix")
 
 schema = """
-create role service_role nologin;
-create role anon nologin;
-create role authenticated nologin;
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role')
+ THEN CREATE ROLE service_role NOLOGIN; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon')
+ THEN CREATE ROLE anon NOLOGIN; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated')
+ THEN CREATE ROLE authenticated NOLOGIN; END IF;
+END $$;
 create table public.factory_agents(
   id uuid primary key default gen_random_uuid(), agent_key text not null,
   role text not null, is_active boolean not null default true,
@@ -122,5 +127,14 @@ with psycopg.connect(os.environ["FACTORY_GREENFIELD_PG_TEST_DSN"], autocommit=Tr
     )
     matrix = conn.execute("select public.factory_agent_work_matrix(32)").fetchone()[0]
     assert str(stale_run) not in {row["run_id"] for row in matrix["direct"]}
+
+    # Leave the shared disposable database ready for the other independent
+    # greenfield scripts.  This runs only after the isolation assertion above.
+    conn.execute("drop function public.factory_agent_work_matrix(integer)")
+    for table in (
+        "factory_run_agent_assignments", "factory_runs", "factory_tasks",
+        "factory_agents",
+    ):
+        conn.execute(f"drop table public.{table}")
 
 print("GREENFIELD_DIRECT_MATRIX_POSTGRES_PASS=1")
