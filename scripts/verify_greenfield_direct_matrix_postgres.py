@@ -29,13 +29,19 @@ root = Path(__file__).resolve().parents[1]
 source = (root / "supabase/migrations/20261014032600_codex_claim_agent_hardening.sql").read_text(
     encoding="utf-8"
 )
-match = re.search(
+function_match = re.search(
     r"CREATE OR REPLACE FUNCTION public\.factory_agent_work_matrix\(p_limit integer DEFAULT 12\).*?"
+    r"\$function\$;",
+    source,
+    flags=re.DOTALL,
+)
+acl_match = re.search(
+    r"revoke all on function public\.factory_agent_work_matrix\(integer\) from public,anon,authenticated;\s*"
     r"grant execute on function public\.factory_agent_work_matrix\(integer\) to service_role;",
     source,
     flags=re.DOTALL,
 )
-if match is None:
+if function_match is None or acl_match is None:
     raise SystemExit("current migration no longer contains the expected agent matrix")
 
 schema = """
@@ -70,7 +76,8 @@ create table public.factory_run_agent_assignments(
 
 with psycopg.connect(os.environ["FACTORY_GREENFIELD_PG_TEST_DSN"], autocommit=True) as conn:
     conn.execute(schema)
-    conn.execute(match.group(0))
+    conn.execute(function_match.group(0))
+    conn.execute(acl_match.group(0))
     acl = conn.execute(
         """select has_function_privilege('service_role',
              'public.factory_agent_work_matrix(integer)','EXECUTE'),
