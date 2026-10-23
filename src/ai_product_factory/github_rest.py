@@ -250,6 +250,31 @@ class GitHubRestAdapter:
                    payload={"sha": new_commit["sha"], "force": False})
         return new_commit["sha"]
 
+    def get_commit_provenance(self, sha: str) -> tuple[str, tuple[str, ...]]:
+        """Return the immutable message and parents for one Git commit.
+
+        This narrow read is used only to recover a Factory integration commit
+        after the GitHub ref update succeeded but the subsequent Control Plane
+        completion write did not.  It deliberately exposes neither commit
+        contents nor arbitrary API payloads to the caller.
+        """
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("commit provenance requires an exact lowercase SHA")
+        row = self._call("GET", f"/repos/{self.repository}/git/commits/{sha}")
+        message = row.get("message") if isinstance(row, dict) else None
+        parents = row.get("parents") if isinstance(row, dict) else None
+        if not isinstance(message, str) or not isinstance(parents, list):
+            raise RuntimeError("GitHub commit provenance is malformed")
+        parent_shas: list[str] = []
+        for parent in parents:
+            value = parent.get("sha") if isinstance(parent, dict) else None
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value):
+                raise RuntimeError("GitHub commit provenance has invalid parent")
+            parent_shas.append(value)
+        if len(parent_shas) != 1:
+            raise RuntimeError("GitHub integration recovery requires one parent")
+        return message, tuple(parent_shas)
+
     def create_pull_request(self, *, title: str, body: str, head: str, base: str = "main") -> GitHubPullRequest:
         row = self._call("POST", f"/repos/{self.repository}/pulls",
                          payload={"title": title, "body": body, "head": head, "base": base, "draft": False})

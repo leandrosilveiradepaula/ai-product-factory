@@ -234,3 +234,15 @@ reexecutar a claim antiga nem chamar auto-merge. Continue exigindo
 SHA do PR, release receipt, policy, gate humano de producao e
 idempotencia. Uma chamada externa aceita antes da pausa nao pode
 ser cancelada retroativamente.
+
+## Recuperacao de CI e integracao
+
+Uma falha de CI nativa so pode abrir reparo quando a evidencia pertence ao
+PR, branch e SHA candidato exatos. O reparo tem no maximo tres tentativas;
+infraestrutura, runner, permissao, quota ou evidencia desconhecida bloqueiam
+sem patch especulativo. Um SHA reparado com CI verde deve persistir o recibo
+`passed` antes de seguir para especialistas ou Preview. Se uma queda ocorrer
+apos o commit de integracao e antes da gravacao no Control Plane, a retomada
+aceita apenas o commit com parent, proveniencia e conteudo integral exatos;
+movimento concorrente de branch continua bloqueado. Isso nunca autoriza merge
+automatico, migracao de producao ou chamada paga de modelo.

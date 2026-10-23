@@ -6,6 +6,7 @@ from ai_product_factory.change_set_integrator import ChangeSetIntegrator
 from ai_product_factory.change_set_store import ChangeSetBinding,ChangeSetIntegrationItem
 from ai_product_factory.change_set_worker import ChangeSetBuilderWorker
 from ai_product_factory.execution_worker import DirectExecutionItem,ImplementationArtifact
+from ai_product_factory.commit_provenance import provenance_commit_message
 
 
 class ChangeSetTests(unittest.TestCase):
@@ -473,6 +474,48 @@ class ChangeSetTests(unittest.TestCase):
             ChangeSetIntegrator(github=github,store=store).integrate(item)
         store.complete_integration.assert_not_called()
         store.prepare_release.assert_not_called()
+
+    def test_integrator_recovers_exact_commit_after_control_plane_crash(self):
+        github=MagicMock()
+        github.get_file_text.side_effect=["data", "data"]
+        github.ensure_branch_at_sha.side_effect=RuntimeError("branch advanced")
+        github.get_branch_sha.return_value="c" * 40
+        message=provenance_commit_message(
+            "integrate(change-set): cs wave 1",
+            {"Factory-Change-Set":"cs","Factory-Wave":"1"},
+        )
+        github.get_commit_provenance.return_value=(message,("b" * 40,))
+        store=MagicMock()
+        store.complete_integration.return_value={
+            "status":"building","change_set_id":"cs","candidate_commit":"c" * 40,
+            "current_wave":2,"repair_jobs_integrated":1,
+        }
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","b" * 40,"b" * 40,"factory/change-set-cs",1,(
+                {"plan_task_key":"a","base_commit":"b" * 40,"output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        result=ChangeSetIntegrator(github=github,store=store).integrate(item)
+        self.assertEqual(result.candidate_commit,"c" * 40)
+        github.commit_files.assert_not_called()
+        store.complete_integration.assert_called_once_with(
+            item=item,candidate_commit="c" * 40,changed_files=("src/a.py",)
+        )
+
+    def test_integrator_rejects_unproven_branch_after_control_plane_crash(self):
+        github=MagicMock()
+        github.get_file_text.return_value="data"
+        github.ensure_branch_at_sha.side_effect=RuntimeError("branch advanced")
+        github.get_branch_sha.return_value="c" * 40
+        github.get_commit_provenance.return_value=("unrelated",("b" * 40,))
+        item=ChangeSetIntegrationItem(
+            "cs","demo","owner/repo","b" * 40,"b" * 40,"factory/change-set-cs",1,(
+                {"plan_task_key":"a","base_commit":"b" * 40,"output_commit":"out","changed_files":["src/a.py"]},
+            )
+        )
+        with self.assertRaisesRegex(RuntimeError,"without recoverable"):
+            ChangeSetIntegrator(github=github,store=MagicMock()).integrate(item)
+        github.commit_files.assert_not_called()
 
     def test_integrator_requires_each_unit_to_share_current_base(self):
         github=MagicMock();store=MagicMock()

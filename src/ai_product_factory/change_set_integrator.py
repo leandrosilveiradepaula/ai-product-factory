@@ -22,6 +22,29 @@ class ChangeSetIntegrator:
     def __init__(self,*,github:GitHubRestAdapter,store:SupabaseChangeSetStore)->None:
         self.github=github;self.store=store
 
+    def _recover_committed_candidate(
+        self, *, item: ChangeSetIntegrationItem, files: dict[str, str], message: str,
+    ) -> str | None:
+        """Recognize one exact commit left by a crash before DB completion.
+
+        A recovered commit is admissible only when the branch head has the
+        expected parent, the complete Factory provenance message, and every
+        declared file has the exact verified content.  Any concurrent or
+        ambiguous branch movement remains blocked rather than being rebased or
+        overwritten.
+        """
+        candidate = self.github.get_branch_sha(item.integration_branch)
+        try:
+            observed_message, parents = self.github.get_commit_provenance(candidate)
+        except (RuntimeError, ValueError):
+            return None
+        if observed_message != message or parents != (item.candidate_commit,):
+            return None
+        for path, expected in files.items():
+            if self.github.get_file_text(path, ref=candidate) != expected:
+                return None
+        return candidate
+
     def integrate(self,item:ChangeSetIntegrationItem)->ChangeSetIntegrationResult:
         if not item.work_units:
             raise ValueError("integration requires completed work units")
@@ -102,14 +125,21 @@ class ChangeSetIntegrator:
                 raise RuntimeError("integration source file is not text")
             files[path]=content
         # Do not create or reset an integration branch until every unit is verified.
-        self.github.ensure_branch_at_sha(item.integration_branch,item.candidate_commit)
-        candidate=self.github.commit_files(
-            item.integration_branch,files,
-            message=provenance_commit_message(
-                f"integrate(change-set): {item.change_set_id[:8]} wave {item.current_wave}",
-                {"Factory-Change-Set":item.change_set_id,"Factory-Wave":str(item.current_wave)},
-            ),
+        message=provenance_commit_message(
+            f"integrate(change-set): {item.change_set_id[:8]} wave {item.current_wave}",
+            {"Factory-Change-Set":item.change_set_id,"Factory-Wave":str(item.current_wave)},
         )
+        try:
+            self.github.ensure_branch_at_sha(item.integration_branch,item.candidate_commit)
+        except RuntimeError as exc:
+            # A retry may observe a commit that was written immediately before
+            # an interruption.  Recover only a complete, exact receipt; any
+            # other moved branch is still an unsafe candidate drift.
+            candidate=self._recover_committed_candidate(item=item,files=files,message=message)
+            if candidate is None:
+                raise RuntimeError("integration branch moved without recoverable Factory commit") from exc
+        else:
+            candidate=self.github.commit_files(item.integration_branch,files,message=message)
         if not isinstance(candidate,str) or not candidate.strip():
             raise RuntimeError("integration commit returned no candidate")
         if candidate==item.candidate_commit:

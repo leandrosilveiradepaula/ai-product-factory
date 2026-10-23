@@ -109,7 +109,7 @@ class SupabaseCIRepairQueue:
                 raise ValueError("invalid sanitized CI failure")
         return values
 
-    def enqueue_failure(self, *, item: CIFollowupItem, failures: Iterable[DurableCIFailure], max_attempts: int = 2) -> dict:
+    def enqueue_failure(self, *, item: CIFollowupItem, failures: Iterable[DurableCIFailure], max_attempts: int = 3) -> dict:
         values = self._validate(item, failures)
         if type(max_attempts) is not int or not 1 <= max_attempts <= 3:
             raise ValueError("CI repair max_attempts must be between one and three")
@@ -135,11 +135,19 @@ class SupabaseCIRepairQueue:
             raise ValueError("CI repair result requires exact run and candidate identities")
         if status not in {"passed", "failed"}:
             raise ValueError("CI repair result must be passed or failed")
-        return self._rpc("factory_record_ci_repair_result", {
+        result = self._rpc("factory_record_ci_repair_result", {
             "p_release_run_id": run_id,
             "p_candidate_commit": candidate_commit,
             "p_status": status,
         })
+        if type(result.get("updated")) is not bool:
+            raise RuntimeError("CI repair result response is missing updated flag")
+        if result["updated"]:
+            if result.get("status") != status or not isinstance(result.get("repair_request_id"), str):
+                raise RuntimeError("CI repair result response has invalid durable receipt")
+        elif result.get("reason") != "no_awaiting_ci_repair":
+            raise RuntimeError("CI repair result response has invalid no-op reason")
+        return result
 
     def has_release_repair(self, *, run_id: str, candidate_commit: str) -> bool:
         """Compatibility read: pre-migration normal CI must keep flowing."""

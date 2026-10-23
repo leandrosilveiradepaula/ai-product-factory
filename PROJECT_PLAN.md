@@ -59,6 +59,10 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Ler CI.
 - [x] CI failure evidence.
 - [x] Bounded auto-repair.
+- [x] Reparo duravel de CI: evidencia SHA-exata, Work Unit limitada, tres
+  tentativas, recuperacao idempotente de commit de integracao e recibo verde
+  persistido antes de especialistas/Preview. A prova de incidente real segue
+  pendente e nao autoriza auto-merge.
 - [x] Verified Preview para em `awaiting_release`; merge de producao e exclusivamente humano.
 - [x] Release follow-up observa o merge humano, registra evidencia e fecha a issue depois da acao humana.
 
