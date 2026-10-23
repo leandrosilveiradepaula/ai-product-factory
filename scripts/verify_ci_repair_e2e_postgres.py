@@ -436,4 +436,14 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         (large_ids[3],),
     ).fetchone()[0] == 0
 
+# Cross-layer fixture: real runtime entrypoint, real transactional SQL RPCs and
+# actual integration crash recovery with a fully simulated GitHub adapter.
+# sys.path is local source only; no installed external model/provider.
+import sys
+sys.path.insert(0, str(root / "src"))
+from ci_repair_disposable_full_journey import prove_full_journey
+
+with psycopg.connect(dsn, autocommit=True) as conn:
+    prove_full_journey(conn, setup, repository=repository, branch=branch)
+
 print("CI_REPAIR_POSTGRES_E2E_PASS")
