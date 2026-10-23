@@ -151,9 +151,11 @@ class FakeGitHub:
         self.actual_paths=[PATH]
         self.pr=SimpleNamespace(
             number=17,head_sha=FINAL,head_repository=REPO,
-            base_ref="main",merged=True,merge_commit_sha=MERGE,
+            base_ref="main",base_sha="e"*40,
+            state="closed",draft=False,merged=True,merge_commit_sha=MERGE,
             head_ref=BRANCH,
         )
+        self.branch_sha=FINAL
         self.reads=[]
 
     def compare_commits(self,old,new):
@@ -178,6 +180,10 @@ class FakeGitHub:
 
     def get_pull_request_files(self,number):
         return (PATH,)
+
+    def get_branch_sha(self,branch):
+        if branch!=BRANCH:raise AssertionError("unexpected ref")
+        return self.branch_sha
 
     def get_ci_state(self,number):
         return CIState.SUCCESS
@@ -381,6 +387,59 @@ class RealReaderFromAuthorizedConsoleFixtures(unittest.TestCase):
         self.assertEqual(result.candidate_sha,FINAL)
         self.assertTrue(gh.reads)
         self.assertFalse(any("password" in str(x) for x in result.as_json().values()))
+
+    def test_read_only_e2e_rejects_candidate_head_moved_during_ci_read(self):
+        reader,github=self.make_reader()
+        def ci_changes_candidate(_):
+            github.pr.head_sha="f"*40
+            return CIState.SUCCESS
+        github.get_ci_state=ci_changes_candidate
+        with patch("ai_product_factory.autonomy_journey_reader.evaluate_preview_applicability",
+                   return_value=SimpleNamespace(required=False)):
+            with self.assertRaisesRegex(RuntimeError,"candidate PR origin, state or SHA"):
+                reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+
+    def test_read_only_e2e_rejects_changed_base_during_preview_inventory(self):
+        reader,github=self.make_reader()
+        def files_change_base(_):
+            github.pr.base_sha="f"*40
+            return (PATH,)
+        github.get_pull_request_files=files_change_base
+        with patch("ai_product_factory.autonomy_journey_reader.evaluate_preview_applicability",
+                   return_value=SimpleNamespace(required=False)):
+            with self.assertRaisesRegex(RuntimeError,"identity drifted"):
+                reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+
+    def test_merged_candidate_does_not_depend_on_deleted_source_ref(self):
+        reader,github=self.make_reader()
+        def forbidden_branch_lookup(_):
+            raise AssertionError("already merged branch was deleted")
+        github.get_branch_sha=forbidden_branch_lookup
+        with patch("ai_product_factory.autonomy_journey_reader.evaluate_preview_applicability",
+                   return_value=SimpleNamespace(required=False)):
+            report=reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+        self.assertEqual(report.status,"observed_complete")
+
+    def test_open_candidate_branch_drift_blocks_before_ci(self):
+        reader,github=self.make_reader()
+        github.pr.state="open"
+        github.pr.merged=False
+        github.pr.merge_commit_sha=None
+        github.branch_sha="f"*40
+        def forbidden_ci(_):
+            raise AssertionError("should not inspect CI for moved branch")
+        github.get_ci_state=forbidden_ci
+        with self.assertRaisesRegex(RuntimeError,"candidate branch changed"):
+            reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
+
+    def test_draft_candidate_blocks_before_inspecting_files_or_ci(self):
+        reader,github=self.make_reader()
+        github.pr.draft=True
+        def forbidden_files(_):
+            raise AssertionError("should not inspect preview paths for draft PR")
+        github.get_pull_request_files=forbidden_files
+        with self.assertRaisesRegex(RuntimeError,"candidate PR origin, state or SHA"):
+            reader.read(project_key="factory-demo",since=NOW,run_id=ROOT)
 
     def test_unpaired_console_queue_event_is_not_a_human_start(self):
         reader,gh=self.make_reader(authorized=False)

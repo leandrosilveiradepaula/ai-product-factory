@@ -1,3 +1,7 @@
+## 23/10/2026 — J7: GitHub candidate witness em dois snapshots (candidato)
+
+A auditoria `SupabaseJourneyReader` consultava uma PR antes de inspecionar arquivos, código dos Work Units e CI; `GitHubRestAdapter.get_ci_state` faz outro GET da PR. Se head/base/branch mudassem entre leituras, o relatório poderia combinar evidências de SHAs diferentes. O candidato adota testemunho read-only com identidade completa da PR, SHA exato da branch quando aberta e segunda confirmação após CI. Para PR já mergeada, não exige branch deletada: verifica `state=closed`, `merged=true`, merge SHA e recibos de release. Diff vazio/fork/draft/ref drift falham fechados. Testes offline e runbook: `docs/JOURNEY_GITHUB_EVIDENCE_FENCE.md`. Nenhum Start, SQL, modelo pago, Preview novo ou merge de produção. A prova externa J3/J7 permanece pendente de sandbox autorizado; CI no SHA final é condição de revisão, não de `product_ready`.
+
 ## 23/10/2026 — Product Stage: corrigir checkpoint JSON vazio e replay pago idêntico (candidato)
 
 A auditoria read-only encontrou 130 runs sem metadata.stage_evidence, apesar de eventos \`run.stage.recorded\`. A causa reproduzida é \`jsonb_set\` sobre caminho de dois níveis quando falta o pai: a operação antiga retorna \`{}\` sem persistir o estágio. A migration privada \`20261023151218_preserve_runtime_stage_evidence.sql\` cria o pai sob row lock, conserva irmãos e demais metadados, recusa pai malformado, mantém função SECURITY INVOKER/service_role somente, sem RLS permissiva e **sem backfill histórico**.

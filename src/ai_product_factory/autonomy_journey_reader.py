@@ -13,6 +13,7 @@ from .autonomy_journey import evaluate_journey, no_start_report, SHA
 from .journey_candidate_provenance import (
     validate_reconciliation_receipt, verify_copied_work_units,
 )
+from .journey_github_witness import observe_candidate, require_unchanged_candidate
 from .github_rest import GitHubRestAdapter
 from .github_owner_start import (
     FACTORY_REPO as OWNER_START_REPO,
@@ -459,7 +460,6 @@ class SupabaseJourneyReader:
             original=meta["head_sha"]
             target=cs["candidate_commit"]
             github=self.github_factory(repository=project["repository"])
-            pr=github.get_pull_request(pr_number)
             release_request=(cs.get("metadata") or {}).get("integration_release_request") or {}
             exact_branch=cs.get("integration_branch")
             reconciliation_verified=repair is None
@@ -473,17 +473,23 @@ class SupabaseJourneyReader:
                         branch=exact_branch,
                     )
                 )
-            # Never promote an unverified updated PR head as a valid source
-            # of CI, release or model-generated implementation evidence.
-            if reconciliation_verified and pr.head_sha==target and (
-                pr.head_repository==project["repository"]
-                and (repair is None or
-                     release_request.get("candidate_commit")==target)
+            # Never combine files or green CI observed after a candidate PR
+            # moved with an earlier PR snapshot. Validate exact PR/ref before
+            # the reads and once more AFTER get_ci_state (which re-reads PR).
+            if reconciliation_verified and (
+                repair is None or release_request.get("candidate_commit")==target
             ):
+                witness=observe_candidate(
+                    github,number=pr_number,sha=target,
+                    repository=project["repository"],branch=exact_branch,
+                )
                 paths=github.get_pull_request_files(pr_number)
+                if (not isinstance(paths,(tuple,list)) or not paths
+                    or any(not isinstance(p,str) or not p for p in paths)):
+                    raise RuntimeError("candidate changed-file evidence is unavailable")
                 policy=evaluate_preview_applicability(
                     manifest=project.get("manifest") or {},
-                    changed_files=paths,
+                    changed_files=tuple(paths),
                 )
                 preview_required=policy.required
                 selected_units=[
@@ -508,19 +514,22 @@ class SupabaseJourneyReader:
                         final_candidate=target,units=selected_units,
                     )
                 else:
-                    # Legacy direct-commit path: requires real ancestry, not
-                    # merely a commit object existing in the repository.
+                    # Legacy direct-commit path: require exact ancestry, not
+                    # merely an existing object in the GitHub repository.
                     commits_ok=candidate_contains_work_units(
                         github,target,set(completed)
                     )
+                ci_state=github.get_ci_state(pr_number)
+                require_unchanged_candidate(github,witness)
                 github_evidence={
-                    "repository":project["repository"],"number":pr.number,
-                    "head_sha":pr.head_sha,"head_repository":pr.head_repository,
-                    "base_ref":pr.base_ref,"merged":pr.merged,
-                    "merge_commit_sha":pr.merge_commit_sha,
+                    "repository":project["repository"],"number":witness.number,
+                    "head_sha":witness.head_sha,
+                    "head_repository":witness.head_repository,
+                    "base_ref":witness.base_ref,"merged":witness.merged,
+                    "merge_commit_sha":witness.merge_sha,
                     "work_unit_commit_verified":commits_ok,
                     "candidate_reconciliation_verified":reconciliation_verified,
-                    "ci_state":github.get_ci_state(pr_number),
+                    "ci_state":ci_state,
                 }
         return evaluate_journey(
             project=project,root_run_id=root_run_id,start_command=start,
