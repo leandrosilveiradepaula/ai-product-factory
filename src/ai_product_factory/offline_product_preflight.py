@@ -128,7 +128,7 @@ def check_recorded_product_run(
             result["inspected_paths"] = [
                 str(row.get("path")) for row in evidence.get("inspected_files", [])
                 if isinstance(row, dict) and isinstance(row.get("path"), str)
-            ][:3]
+            ][:4]
             result["issue_reference"] = evidence.get("issue_reference")
             admission = live.get("source_admission")
             if isinstance(admission, dict):

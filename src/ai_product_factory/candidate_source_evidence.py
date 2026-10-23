@@ -8,7 +8,8 @@ from __future__ import annotations
 import re
 
 _AUTHORIZED = re.compile(
-    r"^##[ \t]+(?:Additional[ \t]+)?Authorized[ \t]+task\b[^\n]*$",
+    r"^##[ \t]+(?:(?:Additional[ \t]+)?Authorized[ \t]+task|"
+    r"Tarefa[ \t]+autorizada)\b[^\n]*$",
     re.IGNORECASE | re.MULTILINE,
 )
 _H2 = re.compile(r"^##[ \t]+", re.MULTILINE)
@@ -21,7 +22,7 @@ _SECRET_MATERIAL = re.compile(
     r"(?i)(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|"
     r"(?:sk-proj-|sb_secret_|github_pat_|ghp_)[A-Za-z0-9_-]{10,})"
 )
-_MAX_FILES = 3
+_MAX_FILES = 4
 _MAX_BYTES = 24000
 _MAX_FILE_BYTES = 14000
 
@@ -62,9 +63,15 @@ def _bounded_excerpt(source: str, limit: int) -> tuple[str, bool]:
     encoded = source.encode("utf-8")
     if len(encoded) <= limit:
         return source, True
-    prefix = encoded[:limit * 2 // 3].decode("utf-8", "ignore")
-    suffix = encoded[-(limit // 3):].decode("utf-8", "ignore")
-    return prefix + "\n\n[OMITTED MIDDLE: partial source evidence]\n\n" + suffix, False
+    marker = "\n\n[OMITTED MIDDLE: partial source evidence]\n\n".encode("utf-8")
+    if limit <= len(marker):
+        return encoded[:limit].decode("utf-8", "ignore"), False
+    source_budget = limit - len(marker)
+    prefix_bytes = source_budget * 2 // 3
+    suffix_bytes = source_budget - prefix_bytes
+    prefix = encoded[:prefix_bytes].decode("utf-8", "ignore")
+    suffix = encoded[-suffix_bytes:].decode("utf-8", "ignore") if suffix_bytes else ""
+    return prefix + marker.decode("utf-8") + suffix, False
 
 
 def collect_candidate_source_evidence(
@@ -95,22 +102,37 @@ def collect_candidate_source_evidence(
     existing = set(all_paths)
     missing = [path for path in requested if path not in existing]
     available = [path for path in requested if path in existing]
-    inspected = []
-    used = 0
+    # Keep all four current task paths represented, including companion tests,
+    # without increasing the fixed total prompt byte budget.
+    sources: list[tuple[str, str]] = []
     for path in available[:_MAX_FILES]:
         source = github.get_file_text(path, ref=sha)
         if not isinstance(source, str) or not source.strip():
             raise PermissionError("candidate source is blank or invalid")
         if _SECRET_MATERIAL.search(source):
             raise PermissionError("candidate source contains potential secret material")
-        excerpt, complete = _bounded_excerpt(source, min(_MAX_FILE_BYTES, _MAX_BYTES - used))
+        sources.append((path, source))
+    limits = [min(_MAX_FILE_BYTES, len(source.encode("utf-8"))) for _, source in sources]
+    while sum(limits) > _MAX_BYTES:
+        largest = max(limits)
+        indices = [index for index, size in enumerate(limits) if size == largest]
+        next_largest = max((size for size in limits if size < largest), default=0)
+        overflow = sum(limits) - _MAX_BYTES
+        level_bytes = (largest - next_largest) * len(indices)
+        if level_bytes <= overflow:
+            for index in indices:
+                limits[index] = next_largest
+        else:
+            reduction, remainder = divmod(overflow, len(indices))
+            for position, index in enumerate(indices):
+                limits[index] -= reduction + int(position < remainder)
+    inspected = []
+    for (path, source), limit in zip(sources, limits):
+        excerpt, complete = _bounded_excerpt(source, limit)
         inspected.append({
             "path": path, "assessed_commit": sha, "content": excerpt,
             "complete": complete, "total_lines": source.count("\n") + 1,
         })
-        used += len(excerpt.encode("utf-8"))
-        if used >= _MAX_BYTES:
-            break
     return {
         "status": "bounded_source_inspected" if inspected else "scoped_source_missing",
         "scope_heading": heading, "request_source_paths": request_paths,

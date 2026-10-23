@@ -44,6 +44,29 @@ class SourceScopeAdmissionTests(unittest.TestCase):
         self.assertNotIn("model", outcome)
         self.assertNotIn("release", outcome)
 
+
+    def test_four_current_source_files_are_admitted_but_fifth_is_rejected(self):
+        scope = evidence()
+        for path in (
+            "src/lib/builder.ts",
+            "src/lib/builder.test.ts",
+            "src/components/Builder.test.tsx",
+        ):
+            scope["inspected_files"].append({
+                "path": path, "assessed_commit": SHA,
+                "content": "verified source at exact SHA",
+                "complete": True,
+            })
+        assessed = assess_bounded_source_scope(scope, sha=SHA)
+        self.assertEqual(assessed["inspected_count"], 4)
+        self.assertEqual(assessed["status"], "complete")
+        scope["inspected_files"].append({
+            "path": "src/lib/unbounded.ts", "assessed_commit": SHA,
+            "content": "should be rejected", "complete": True,
+        })
+        with self.assertRaises(SourceScopeBlocked):
+            assess_bounded_source_scope(scope, sha=SHA)
+
     def test_missing_omitted_truncated_code_is_partial_not_a_human_gate(self):
         scenarios = (
             ("missing_paths", ["src/ai_product_factory/runtime_cli.py"], "missing_count"),

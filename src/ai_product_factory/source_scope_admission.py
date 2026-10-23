@@ -58,7 +58,7 @@ def assess_bounded_source_scope(evidence: object, *, sha: str) -> dict:
     omitted = _checked_paths(evidence.get("omitted_paths", []))
     status = evidence.get("status")
     inspected = evidence.get("inspected_files")
-    if not isinstance(inspected, list) or len(inspected) > 3:
+    if not isinstance(inspected, list) or len(inspected) > 4:
         raise SourceScopeBlocked("source_evidence_inconsistent")
     seen: set[str] = set()
     truncated = 0
