@@ -65,7 +65,12 @@ BEGIN
     WHERE t.id=v_source.task_id AND t.project_id=v_project.id FOR UPDATE;
 
     IF v_source.status IS DISTINCT FROM 'failed'
-       OR v_task.id IS NULL OR v_task.status IS DISTINCT FROM 'failed'
+       OR v_task.id IS NULL
+       OR (v_task.status IS DISTINCT FROM 'failed' AND NOT EXISTS(
+           SELECT 1 FROM public.factory_runs retry
+           WHERE retry.task_id=v_task.id
+             AND retry.metadata#>>'{resume_checkpoint,source_run_id}'=p_source_run_id::text
+       ))
        OR v_task.parent_task_id IS NOT NULL
        OR v_source.execution_route IS DISTINCT FROM 'direct'
        OR v_source.metadata->'stages' IS DISTINCT FROM
