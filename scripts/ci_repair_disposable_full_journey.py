@@ -487,6 +487,6 @@ def prove_two_worker_replay(conn, setup, *, dsn: str, repository: str, branch: s
     ).fetchone()[0] == 1
     assert conn.execute(
         "select count(*) from public.factory_audit_events "
-        "where run_id=%s and event_type='ci.repair_requested'", (source_run,),
-    ).fetchone()[0] <= 1
+        "where run_id=%s and event_type='ci.repair.queued'", (source_run,),
+    ).fetchone()[0] == 1
     print("CI_REPAIR_TWO_WORKERS_SINGLE_RECEIPT_PASS")
