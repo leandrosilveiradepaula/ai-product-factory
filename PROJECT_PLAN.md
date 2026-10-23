@@ -120,6 +120,7 @@ A fabrica conduz discovery, especificacao, planejamento, implementacao, review, 
 - [x] Validar que fluxo low-risk pode chegar autonomamente ate Preview; producao permanece sempre sob gate humano.
 - [x] Validar greenfield offline com 0 chamadas de Codex/modelo.
 - [x] Rejeitar saltos de Preview/Blocked direto para Release/Operations na maquina de estados; caminho seguro fica em `human_gate` (#713). Este teste offline **nao comprova** merge humano observado ou E2E greenfield real.
+- [x] Corrigir a continuidade do Start OWNER ate o worker Direct: o wake autenticado agora propaga `run_direct=true` para a mesma workflow, e a matriz do runner prioriza somente receipts de atribuições recém-confirmadas sem ignorar epoch, ledger ou limites de concorrência (#1068). Testes unitários e PostgreSQL16 descartável cobrem a fronteira; isto ainda **não** é a prova GitHub externa de branch/PR/CI.
 - [ ] Demonstrar o ciclo greenfield completo com issue/branch/Direct/CI/Preview verificado/gate humano/merge observado/release/operacoes, guardando evidencias SHA-exatas. Contrato de estado sozinho nao substitui esta prova.
 - [x] Revisar gates e ampliar autonomia ate o limite seguro: non-prod low-risk autonomo; apenas riscos definidos e producao exigem humano.
 

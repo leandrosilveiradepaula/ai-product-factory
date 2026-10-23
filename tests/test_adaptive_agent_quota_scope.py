@@ -157,6 +157,40 @@ class AdaptiveAgentQuotaScopeTests(unittest.TestCase):
             "blocked",
         )
 
+    def test_fresh_atomic_assignment_is_prioritized_over_global_window(self):
+        instance, _ = self.controller([VERCEL_BLOCKED])
+        older = [
+            {"run_id": f"old-{n}", "agent_key": "development", "role": "development"}
+            for n in range(32)
+        ]
+        fresh = {
+            "run_id": "fresh-commit-receipt", "agent_key": "development",
+            "role": "development",
+        }
+        instance.scheduler.work_matrix = lambda limit: {
+            "direct": older, "codex": [],
+        }
+        # The policy still limits the same agent to one worker; the only
+        # change is choosing the exact freshly committed assignment rather
+        # than letting an older read window strand it until another wake.
+        result = instance.work_matrix(1, required={"direct": [fresh]})
+        self.assertEqual(result["direct"], [fresh])
+        self.assertEqual(result["codex"], [])
+
+    def test_required_assignment_never_bypasses_cost_or_quota_gate(self):
+        instance, _ = self.controller([
+            {"provider": "openai", "resource_key": "primary",
+             "metric_key": "requests", "status": "blocked"},
+        ])
+        fresh = {"run_id": "fresh", "agent_key": "development", "role": "development"}
+        result = instance.work_matrix(1, required={"direct": [fresh]})
+        self.assertEqual(result["direct"], [])
+
+    def test_required_assignment_rejects_unverifiable_worker_identity(self):
+        instance, _ = self.controller([VERCEL_BLOCKED])
+        with self.assertRaisesRegex(RuntimeError, "incomplete"):
+            instance.work_matrix(1, required={"direct": [{"run_id": "fresh"}]})
+
 
 if __name__ == "__main__":
     unittest.main()

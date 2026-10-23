@@ -148,7 +148,9 @@ class OwnerStartRpcTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["p_comment_id"],COMMENT_ID)
         self.assertEqual(calls[0][1]["p_actor_id"],OWNER_ID)
         self.assertEqual(calls[0][1]["p_issue_number"],ISSUE_NUMBER)
-        self.assertEqual(calls[1][1],{"ref":"main","inputs":{"project_key":"crm-infodive"}})
+        self.assertEqual(calls[1][1],{"ref":"main","inputs":{
+            "project_key":"crm-infodive","run_direct":"true",
+        }})
         self.assertTrue(calls[1][0].endswith(
             "/actions/workflows/autonomous-runner.yml/dispatches"))
         self.assertNotIn("Authorization",calls[0][2])
@@ -267,6 +269,8 @@ class OwnerStartWorkflowContractTests(unittest.TestCase):
             self.assertIn(invariant,job)
         self.assertLess(job.index("--mode validate"),
                         job.index("uses: ./.github/actions/control-plane-oidc"))
+        owner_start_source=(ROOT/"src/ai_product_factory/github_owner_start.py").read_text()
+        self.assertIn('"run_direct": "true"',owner_start_source)
         for forbidden in (
             "OPENAI_API_KEY","CODEX_ACCESS_TOKEN","FACTORY_GITHUB_TOKEN",
             "VERCEL_TOKEN","issues: write","contents: write",

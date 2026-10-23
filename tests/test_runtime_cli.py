@@ -908,7 +908,8 @@ class RuntimeCliTests(unittest.TestCase):
         dispatch=MagicMock();dispatch.dispatch_next_any.side_effect=[direct,None]
         scheduler=MagicMock()
         scheduler.schedule_eligible_direct.side_effect=[
-            SimpleNamespace(assignment_id="slot",run_id="direct-run"),None]
+            SimpleNamespace(assignment_id="slot",run_id="direct-run",
+                            agent_key="ui",role="development"),None]
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
         with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
@@ -918,8 +919,10 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["scheduling"]["assigned"],1)
         self.assertEqual(scheduler.schedule_eligible_direct.call_args_list[0].kwargs,
                          {"run_id":"direct-run","project_key":None})
-        self.assertEqual(scheduler.schedule_eligible_direct.call_args_list[1].kwargs,
-                         {"project_key":None})
+        self.assertEqual(scheduler.schedule_eligible_direct.call_count,1)
+        adaptive.work_matrix.assert_called_once_with(1,required={"direct":[
+            {"run_id":"direct-run","agent_key":"ui","role":"development"},
+        ],"codex":[]})
         scheduler.schedule_run.assert_not_called()
         scheduler.schedule_next.assert_not_called()
 
@@ -941,7 +944,8 @@ class RuntimeCliTests(unittest.TestCase):
         dispatch=MagicMock();dispatch.dispatch_next.return_value=None
         scheduler=MagicMock()
         scheduler.schedule_eligible_direct.side_effect=[
-            SimpleNamespace(run_id="approved-run",assignment_id="agent-slot"),None]
+            SimpleNamespace(run_id="approved-run",assignment_id="agent-slot",
+                            agent_key="development",role="development"),None]
         adaptive=MagicMock();adaptive.work_matrix.return_value={"direct":[],"codex":[]}
         with patch("ai_product_factory.runtime_cli.allowed_dispatch_routes",return_value=("direct",)), \
              patch("ai_product_factory.runtime_cli.SupabaseBacklogDispatch",return_value=dispatch), \
