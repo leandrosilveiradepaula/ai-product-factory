@@ -1,3 +1,11 @@
+## 23/10/2026 — Product Stage: corrigir checkpoint JSON vazio e replay pago idêntico (candidato)
+
+A auditoria read-only encontrou 130 runs sem metadata.stage_evidence, apesar de eventos \`run.stage.recorded\`. A causa reproduzida é \`jsonb_set\` sobre caminho de dois níveis quando falta o pai: a operação antiga retorna \`{}\` sem persistir o estágio. A migration privada \`20261023145000_preserve_runtime_stage_evidence.sql\` cria o pai sob row lock, conserva irmãos e demais metadados, recusa pai malformado, mantém função SECURITY INVOKER/service_role somente, sem RLS permissiva e **sem backfill histórico**.
+
+O runtime agora carimba SHA confirmado no recibo tipado \`planning_non_actionable\`. Antes de uma retomada paga \`stages=['planning']\`, consulta limitada a 40 runs do mesmo task, só bloqueia quando existe recibo terminal completo com origem, snapshot, request original, epoch, mesma instrução e SHA iguais. Guarda fixa: \`planning_resume_no_current_eligible_work_same_sha\`. Uma alteração real de código, pedido, snapshot ou geração continua possível. Recibo legado ausente nunca vira prova inventada de no-work; indisponibilidade de leitura bloqueia modelo por preflight.
+
+Testes Python offline e PostgreSQL 16 descartável validam a nova RPC, concorrência de etapas, ACL e histórico malformado. A \`main\` da Factory não mudou até merge humano; aplicar migration em produção **é gate separado**. Nenhum uso pago, login não oficial, deploy, alteração no CRM, auto-merge ou Preview Console.
+
 ## 23/10/2026 — QA operacional isolada: reparo CI até awaiting_release (candidato)
 
 - Reconciliada `main=c613668b9683877cc95e1f922f1c16c4bb5e2ea4`, PR #1065 mergeada; CI pós-merge verde. O Control Plane real está com **zero** registros em `factory_ci_repair_requests`; não inventar um incidente de CI de produção. Os dois runs `failed` dos últimos três dias pertencem a Product Stage histórico, não a reparo de CI.
