@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from .candidate_source_evidence import collect_candidate_source_evidence
+
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\Z")
 
@@ -47,6 +49,15 @@ def live_greenfield_source_context(*, project: dict, context: dict, github: obje
             or len(value.encode("utf-8")) > 65536):
             raise PermissionError("greenfield source document missing or oversized")
         governance[name] = value
+    # A read-only main/README baseline is not enough to spend Product Stage
+    # tokens or claim a code defect. Read only the explicit, OWNER-requested
+    # source paths; the bounded collector never turns those reads into a
+    # write grant and rejects potential secrets and unknown paths.
+    source_evidence = collect_candidate_source_evidence(
+        "", github, sha=sha, continuation_request=continuation["summary"],
+    )
+    if source_evidence.get("status") != "bounded_source_inspected":
+        raise PermissionError("greenfield reconciliation requires explicit current source paths")
     if github.get_branch_sha("main") != sha:
         raise PermissionError("greenfield main changed during reconciliation")
 
@@ -66,8 +77,10 @@ def live_greenfield_source_context(*, project: dict, context: dict, github: obje
         "observed_from": "live_greenfield_main_exact_sha",
         "verified_open_pr": None,
         "governance": governance,
+        "source_evidence": source_evidence,
         "limitation": (
-            "main is read-only evidence for planning. No write paths, PR "
+            "main and selected source are read-only evidence for planning. "
+            "Requested source paths are not write authority. No PR "
             "authorization, tests or Preview verification are inferred; "
             "the independent scoped delivery gate remains mandatory."
         ),
