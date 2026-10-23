@@ -296,6 +296,26 @@ class OwnerStartWorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(clause,gated)
 
+
+    def test_owner_greenfield_migration_requires_exact_original_console_origin(self):
+        sql=(ROOT/"supabase/migrations/20261023214000_factory_greenfield_owner_continuation.sql").read_text()
+        for required in (
+            "factory_enqueue_github_owner_continuation_v1",
+            "verified greenfield intake provenance required",
+            "greenfield bootstrap not uniquely completed",
+            "greenfield atomic Console intake receipts incomplete",
+            "greenfield attachment ownership mismatch",
+            "another active project cycle exists",
+            "FOR UPDATE",
+            "FOR SHARE",
+            "SECURITY INVOKER",
+            "FROM PUBLIC,anon,authenticated",
+            "TO service_role",
+        ):
+            self.assertIn(required,sql)
+        self.assertNotIn("SECURITY DEFINER",sql)
+        self.assertNotIn("'human','factory-console',",sql)
+
     def test_sql_rpc_is_new_service_only_not_console_alias(self):
         sql=(ROOT/"supabase/migrations/20261022211500_factory_github_owner_continuation.sql").read_text()
         for clause in (

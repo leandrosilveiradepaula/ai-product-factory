@@ -14,6 +14,7 @@ from psycopg.types.json import Jsonb
 ROOT=Path(__file__).resolve().parents[1]
 MIG=ROOT/"supabase/migrations/20261014160500_atomic_project_continuation.sql"
 OWNER_MIG=ROOT/"supabase/migrations/20261022211500_factory_github_owner_continuation.sql"
+GREENFIELD_OWNER_MIG=ROOT/"supabase/migrations/20261023214000_factory_greenfield_owner_continuation.sql"
 RESUME_MIG=ROOT/"supabase/migrations/20261023023000_resume_product_planning_checkpoint.sql"
 DSN=os.environ.get("FACTORY_CONTINUATION_PG_TEST_DSN","")
 
@@ -34,7 +35,7 @@ CREATE TABLE public.factory_projects (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_key text NOT NULL UNIQUE,
  project_kind text NOT NULL DEFAULT 'existing',
  manifest jsonb NOT NULL DEFAULT '{}'::jsonb, is_active boolean NOT NULL DEFAULT true,
- updated_at timestamptz NOT NULL DEFAULT now()
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.factory_project_execution_controls (
  project_id uuid PRIMARY KEY REFERENCES public.factory_projects(id),
@@ -76,6 +77,11 @@ CREATE TABLE public.factory_audit_events (
  actor_type text NOT NULL,actor_ref text,event_type text NOT NULL,
  payload jsonb NOT NULL DEFAULT '{}'::jsonb,created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE public.factory_project_attachments (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid REFERENCES public.factory_projects(id),
+ draft_id uuid NOT NULL, operator_user_id uuid NOT NULL,
+ finalized_at timestamptz, created_at timestamptz DEFAULT now()
+);
 """
 
 def make_project():
@@ -115,6 +121,61 @@ def make_owner_project(*, project_kind="existing", state="running", generation=6
         )
     return key,pid
 
+
+
+def make_verified_console_greenfield(*, attachment_count=0):
+    """Emulate only the exact, atomic Console origin, not a fake OWNER Start."""
+    key,pid=make_owner_project(project_kind="greenfield")
+    draft,operator=uuid.uuid4(),uuid.uuid4()
+    with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+        cur.execute("select created_at from public.factory_projects where id=%s",(pid,))
+        born=cur.fetchone()[0]
+        manifest={
+            "source":"factory-console","onboarding_mode":"greenfield",
+            "bootstrap_request_id":str(draft),
+            "bootstrap_operator_id":str(operator),
+            "bootstrap_attachment_count":attachment_count,
+        }
+        cur.execute("update public.factory_projects set manifest=%s where id=%s",
+                    (Jsonb(manifest),pid))
+        cur.execute(
+            "insert into public.factory_tasks(project_id,parent_task_id,external_key,"
+            "title,status,created_at) values(%s,null,'product-bootstrap-v1',"
+            "'Original greenfield bootstrap','completed',%s) returning id",
+            (pid,born),
+        )
+        task=cur.fetchone()[0]
+        cur.execute(
+            "insert into public.factory_runs(task_id,status,execution_route,metadata,created_at) "
+            "values(%s,'completed','direct',%s,%s) returning id",
+            (task,Jsonb({"source":"factory-console",
+                        "stages":["discovery","specification","planning"]}),born),
+        )
+        run=cur.fetchone()[0]
+        events=[
+            ("human","project.intake.created",None,
+             {"project_key":key,"project_kind":"greenfield"}),
+            ("human","project.attachments.finalized",None,
+             {"draft_id":str(draft),"count":attachment_count}),
+            ("system","project.bootstrap.enqueued",run,
+             {"task_id":str(task)}),
+        ]
+        for role,name,run_id,payload in events:
+            cur.execute(
+                "insert into public.factory_audit_events(project_id,task_id,run_id,"
+                "actor_type,actor_ref,event_type,payload,created_at) "
+                "values(%s,null,%s,%s,'factory-console',%s,%s,%s)",
+                (pid,run_id,role,name,Jsonb(payload),born),
+            )
+        for index in range(attachment_count):
+            cur.execute(
+                "insert into public.factory_project_attachments("
+                "project_id,draft_id,operator_user_id,finalized_at,created_at) "
+                "values(%s,%s,%s,%s,%s)",
+                (pid,draft,operator,born,born),
+            )
+    return dict(key=key,project_id=pid,task_id=task,run_id=run,
+                draft=draft,operator=operator,born=born)
 
 def make_paid_checkpoint(*, state="running", generation=6, fail_reason=None):
     """Create a real persisted stage lineage without making paid model calls."""
@@ -206,6 +267,7 @@ class ContinuationTests(unittest.TestCase):
             conn.execute(SETUP)
             conn.execute(MIG.read_text())
             conn.execute(OWNER_MIG.read_text())
+            conn.execute(GREENFIELD_OWNER_MIG.read_text())
             conn.execute(RESUME_MIG.read_text())
 
     def test_same_request_concurrent_retries_share_one_run(self):
@@ -290,6 +352,91 @@ class ContinuationTests(unittest.TestCase):
             cur.execute("select has_function_privilege('anon','public.factory_enqueue_project_continuation(text,text,uuid,integer)','EXECUTE'),has_function_privilege('authenticated','public.factory_enqueue_project_continuation(text,text,uuid,integer)','EXECUTE'),has_function_privilege('service_role','public.factory_enqueue_project_continuation(text,text,uuid,integer)','EXECUTE')")
             self.assertEqual(cur.fetchone(),(False,False,True))
 
+
+
+    def test_completed_console_greenfield_can_start_new_owner_continuation(self):
+        p=make_verified_console_greenfield(attachment_count=2)
+        result=owner_submit(p["key"],"Prova 2: continuar autonomamente o greenfield",880198)
+        self.assertTrue(result["created"])
+        self.assertEqual(result["source"],"github-owner")
+        self.assertEqual(result["generation"],6)
+        self.assertNotEqual(result["run_id"],str(p["run_id"]))
+        self.assertEqual(counts(p["project_id"]),(2,5))
+        self.assertEqual(owner_submit(p["key"],
+            "Prova 2: continuar autonomamente o greenfield",880198)["created"],False)
+        with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+            cur.execute("select status from public.factory_runs where id=%s",(p["run_id"],))
+            self.assertEqual(cur.fetchone()[0],"completed")
+            cur.execute("select metadata from public.factory_runs where id=%s",
+                        (result["run_id"],))
+            metadata=cur.fetchone()[0]
+            self.assertEqual(metadata["source"],"github-owner")
+            self.assertEqual(metadata["stages"],["reconciliation","gap_analysis","planning"])
+            self.assertTrue(metadata["reconcile_first"])
+            cur.execute("select manifest from public.factory_projects where id=%s",
+                        (p["project_id"],))
+            manifest=cur.fetchone()[0]
+            self.assertEqual(manifest["bootstrap_request_id"],str(p["draft"]))
+            self.assertEqual(manifest["continuation_request"]["source"],"github-owner")
+
+    def test_greenfield_rejects_forged_or_incomplete_console_intake(self):
+        for mutation in (
+            "no_bootstrap","broken_request","broken_actor","wrong_attachment_count",
+            "missing_audit","forged_system_audit","wrong_root_status",
+            "wrong_root_created_at","duplicate_receipt",
+        ):
+            with self.subTest(mutation=mutation):
+                p=make_verified_console_greenfield(attachment_count=1)
+                with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+                    if mutation=="no_bootstrap":
+                        cur.execute("delete from public.factory_audit_events where project_id=%s",
+                                    (p["project_id"],))
+                        cur.execute("delete from public.factory_runs where id=%s",(p["run_id"],))
+                        cur.execute("delete from public.factory_tasks where id=%s",(p["task_id"],))
+                    elif mutation=="broken_request":
+                        cur.execute("update public.factory_projects set manifest="
+                                    "jsonb_set(manifest,'{bootstrap_request_id}',to_jsonb(%s::text)) "
+                                    "where id=%s",(str(uuid.uuid4()),p["project_id"]))
+                    elif mutation=="broken_actor":
+                        cur.execute("update public.factory_projects set manifest="
+                                    "jsonb_set(manifest,'{bootstrap_operator_id}',to_jsonb(%s::text)) "
+                                    "where id=%s",(str(uuid.uuid4()),p["project_id"]))
+                    elif mutation=="wrong_attachment_count":
+                        cur.execute("update public.factory_projects set manifest="
+                                    "jsonb_set(manifest,'{bootstrap_attachment_count}','0'::jsonb)"
+                                    " where id=%s",(p["project_id"],))
+                    elif mutation=="missing_audit":
+                        cur.execute("delete from public.factory_audit_events "
+                                    "where project_id=%s and event_type='project.intake.created'",
+                                    (p["project_id"],))
+                    elif mutation=="forged_system_audit":
+                        cur.execute("update public.factory_audit_events "
+                                    "set actor_ref='attacker' where project_id=%s "
+                                    "and event_type='project.bootstrap.enqueued'",(p["project_id"],))
+                    elif mutation=="wrong_root_status":
+                        cur.execute("update public.factory_runs set status='failed' where id=%s",
+                                    (p["run_id"],))
+                    elif mutation=="wrong_root_created_at":
+                        cur.execute("update public.factory_runs set created_at=created_at "
+                                    "+ interval '1 second' where id=%s",(p["run_id"],))
+                    elif mutation=="duplicate_receipt":
+                        cur.execute("insert into public.factory_audit_events("
+                                    "project_id,actor_type,actor_ref,event_type,payload,created_at) "
+                                    "select project_id,actor_type,actor_ref,event_type,payload,created_at "
+                                    "from public.factory_audit_events where project_id=%s "
+                                    "and event_type='project.intake.created'",(p["project_id"],))
+                with self.assertRaises(psycopg.Error):
+                    owner_submit(p["key"],"Prova 2 sem falsa evidência",887009)
+                self.assertEqual(counts(p["project_id"])[0],0 if mutation=="no_bootstrap" else 1)
+
+    def test_greenfield_rejects_active_concurrent_cycle_without_side_effects(self):
+        p=make_verified_console_greenfield()
+        with psycopg.connect(DSN) as conn,conn.cursor() as cur:
+            cur.execute("insert into public.factory_tasks(project_id,parent_task_id,title,status)"
+                        " values(%s,null,'work already active','running')",(p["project_id"],))
+        with self.assertRaisesRegex(psycopg.Error,"another active project cycle"):
+            owner_submit(p["key"],"duplicate simultaneous cycle",990044)
+        self.assertEqual(counts(p["project_id"])[0],2)
 
     def test_github_owner_start_writes_atomic_true_provenance_not_console(self):
         import hashlib
