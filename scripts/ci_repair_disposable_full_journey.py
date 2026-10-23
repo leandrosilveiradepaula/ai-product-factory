@@ -16,6 +16,8 @@ from ai_product_factory.autonomous_github import AutonomousGitHubLoop, GitHubWor
 from ai_product_factory.change_set_integrator import ChangeSetIntegrator
 from ai_product_factory.change_set_store import ChangeSetIntegrationItem
 from ai_product_factory.ci_followup_queue import CIFollowupItem
+from ai_product_factory.ci_job_failure_evidence import parse_failed_native_job_steps
+from ai_product_factory.ci_repair_queue import DurableCIFailure
 from ai_product_factory.ci_repair_queue import SupabaseCIRepairQueue
 from ai_product_factory.github_loop import CIState
 from ai_product_factory.github_rest import GitHubCheckFailure, GitHubIssue, GitHubPullRequest
@@ -95,11 +97,24 @@ def prove_full_journey(conn, setup, *, repository: str, branch: str):
 
         def get_failed_checks(self, number, *, expected_head_sha):
             assert number == 73 and expected_head_sha == SOURCE
-            return (GitHubCheckFailure(
-                "native-ci/tests", "failure",
-                details_url="https://example.invalid/ci/123",
-                summary="Verified exact-attempt test failure", failure_class="code",
-            ),)
+            # Use the real exact-run/attempt native GitHub metadata parser.
+            # It must classify the failure before the real SQL enqueue.
+            failures = parse_failed_native_job_steps(
+                {"total_count": 1, "jobs": [{
+                    "id": 1003, "run_id": 1002, "run_attempt": 2,
+                    "head_sha": SOURCE, "status": "completed", "conclusion": "failure",
+                    "steps": [{"name": "Tests", "status": "completed",
+                               "conclusion": "failure"}],
+                }]},
+                repository=repository, run_id=1002, run_attempt=2,
+                candidate_sha=SOURCE,
+            )
+            assert failures is not None and len(failures) == 1
+            return tuple(
+                GitHubCheckFailure(x.name, "failure", details_url=x.details_url,
+                                   summary=x.summary, failure_class=x.failure_class)
+                for x in failures
+            )
 
         def find_open_issue_containing(self, marker):
             assert str(change_set) in marker
@@ -299,11 +314,9 @@ def prove_full_journey(conn, setup, *, repository: str, branch: str):
     # GitHub timeout/replay cannot allocate a second work unit.
     replay = repairs.enqueue_failure(
         item=item(source_run, SOURCE),
-        failures=(__import__(
-            "ai_product_factory.ci_repair_queue", fromlist=["DurableCIFailure"]
-        ).DurableCIFailure.from_github(github.get_failed_checks(
-            73, expected_head_sha=SOURCE,
-        )[0]),),
+        failures=(DurableCIFailure.from_github(
+            github.get_failed_checks(73, expected_head_sha=SOURCE)[0]
+        ),),
         max_attempts=3,
     )
     assert replay["created"] is False and replay["repair_request_id"] == repair["repair_request_id"]
@@ -421,3 +434,59 @@ def prove_full_journey(conn, setup, *, repository: str, branch: str):
     assert not github.merged
     assert events.index("sql_ci_passed") < events.index("run_awaiting_release")
     print("CI_REPAIR_CROSS_LAYER_ISOLATED_PASS")
+
+
+def prove_two_worker_replay(conn, setup, *, dsn: str, repository: str, branch: str):
+    """Two true PG connections competing for one source run/Change Set.
+
+    Both workers cross a barrier before calling the deployed RPC. Only one
+    creates a Work Unit; the other receives the same durable receipt.
+    """
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    import psycopg
+    from psycopg.conninfo import conninfo_to_dict
+
+    cfg = conninfo_to_dict(dsn)
+    if (os.getenv("FACTORY_CI_REPAIR_E2E_ISOLATED") != "true"
+        or cfg.get("host") not in {"127.0.0.1", "localhost"}
+        or cfg.get("dbname") != "factory_ci_repair_e2e_test"
+        or cfg.get("user") != "factory_ci"):
+        raise RuntimeError("REFUSING_NON_ISOLATED_CI_REPAIR_DATABASE")
+    sha = "0" * 40
+    project, _task, source_run, change_set = setup(conn, sha=sha)
+    barrier = Barrier(2)
+    failure_json = json.dumps([{
+        "name": "native-ci/tests", "conclusion": "failure",
+        "failure_class": "code",
+    }])
+
+    def worker():
+        with psycopg.connect(dsn, autocommit=True) as other:
+            barrier.wait(timeout=20)
+            return other.execute(
+                "select public.factory_enqueue_ci_repair("
+                "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)",
+                (source_run, project, change_set, repository, 73, branch,
+                 sha, 3, "code", failure_json, 3),
+            ).fetchone()[0]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = [pool.submit(worker) for _ in range(2)]
+        receipts = [task.result(timeout=40) for task in pending]
+    assert sorted(row["created"] for row in receipts) == [False, True], receipts
+    assert receipts[0]["repair_request_id"] == receipts[1]["repair_request_id"]
+    assert conn.execute(
+        "select count(*) from public.factory_ci_repair_requests where change_set_id=%s",
+        (change_set,),
+    ).fetchone()[0] == 1
+    assert conn.execute(
+        "select count(*) from public.factory_change_set_work_units "
+        "where change_set_id=%s and status='pending'", (change_set,),
+    ).fetchone()[0] == 1
+    assert conn.execute(
+        "select count(*) from public.factory_audit_events "
+        "where run_id=%s and event_type='ci.repair_requested'", (source_run,),
+    ).fetchone()[0] <= 1
+    print("CI_REPAIR_TWO_WORKERS_SINGLE_RECEIPT_PASS")
