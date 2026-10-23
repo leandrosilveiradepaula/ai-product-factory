@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ class FakeGitHubTransport:
     def __init__(self):
         self.calls = []
         self.check_runs = [{"name":"test","status":"completed","conclusion":"success","details_url":"https://example/check","head_sha":"commit1","app":{"slug":"github-actions"},"output":{}}]
+        self.job_attempts = {}
         self.check_runs_forbidden = False
         self.actions_forbidden = False
         self.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"success","head_sha":"commit1","head_branch":"codex/refactor","event":"pull_request","html_url":"https://example/actions/1"}]
@@ -50,6 +52,12 @@ class FakeGitHubTransport:
             return 200, [{"filename":"apps/console/app/page.tsx"},{"filename":"src/core.py"}]
         if "/pulls/9" in url and method == "GET":
             return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "codex/refactor", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main", "sha": "base123"}}
+        if "/actions/runs/" in url and "/attempts/" in url and "/jobs?" in url and method == "GET":
+            match = re.search(r"/actions/runs/([0-9]+)/attempts/([0-9]+)/jobs[?]", url)
+            if not match:
+                return 400, {"message": "invalid job request"}
+            key = (int(match.group(1)), int(match.group(2)))
+            return 200, self.job_attempts.get(key, {"total_count": 0, "jobs": []})
         if "/check-runs" in url and method == "GET":
             if self.check_runs_forbidden:
                 return 403, {"message": "forbidden"}
@@ -490,6 +498,111 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertEqual(failures[0].name, "unit-tests")
         self.assertEqual(failures[0].failure_class, "code")
+
+
+    @staticmethod
+    def _native_job(*, run_id=10, attempt=1, candidate="commit1",
+                    job_id=300, step_name="Tests", conclusion="failure"):
+        return {
+            "id": job_id, "run_id": run_id, "run_attempt": attempt,
+            "head_sha": candidate, "status": "completed",
+            "name": "validate", "conclusion": conclusion,
+            "steps": ([{"name": step_name, "status": "completed", "conclusion": "failure"}]
+                      if conclusion == "failure" else []),
+        }
+
+    def test_exact_native_failed_test_step_enters_bounded_code_repair(self):
+        run = self._workflow_attempt(run_id=10, suite=100, conclusion="failure", name="CRM validation")
+        self.transport.workflow_runs = [run]
+        check = self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
+        check["output"] = {}
+        self.transport.check_runs = [check]
+        self.transport.job_attempts[(10, 1)] = {
+            "total_count": 2, "jobs": [
+                self._native_job(run_id=10, step_name="Tests"),
+                self._native_job(run_id=10, job_id=301, conclusion="success"),
+            ],
+        }
+        self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
+        failure, = self.github.get_failed_checks(9, expected_head_sha="commit1")
+        self.assertEqual(failure.name, "native-ci/tests")
+        self.assertEqual(failure.failure_class, "code")
+        self.assertIn("/runs/10/job/300", failure.details_url)
+        self.assertNotIn("unknown", repr(failure))
+        self.assertTrue(any("/attempts/1/jobs?" in row[1] for row in self.transport.calls))
+        self.assertFalse(any("/actions/runs/10/jobs?" in row[1] for row in self.transport.calls))
+
+    def test_native_job_without_failed_step_never_invents_a_code_patch(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="failure", name="validate")
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
+        ]
+        self.transport.check_runs[0]["output"] = {}
+        for steps in ([], [{"name": "Initialize containers", "status": "completed",
+                            "conclusion": "failure"}]):
+            with self.subTest(steps=steps):
+                self.transport.job_attempts[(10, 1)] = {
+                    "total_count": 1,
+                    "jobs": [{**self._native_job(run_id=10), "steps": steps}],
+                }
+                failures = self.github.get_failed_checks(9)
+                self.assertTrue(failures)
+                self.assertTrue(all(f.failure_class == "unknown" for f in failures))
+
+    def test_mixed_code_and_unclassified_failures_are_not_repairable(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
+        ]
+        self.transport.job_attempts[(10, 1)] = {
+            "total_count": 2, "jobs": [
+                self._native_job(run_id=10, job_id=300, step_name="Tests"),
+                self._native_job(run_id=10, job_id=301, step_name="Initialize containers"),
+            ],
+        }
+        failures = self.github.get_failed_checks(9)
+        self.assertEqual({f.failure_class for f in failures}, {"code", "unknown"})
+
+    def test_latest_rerun_attempt_only_never_uses_old_job_evidence(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="failure", attempt=2)
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
+        ]
+        self.transport.job_attempts[(10, 1)] = {
+            "total_count": 1, "jobs": [self._native_job(run_id=10, attempt=1, step_name="Tests")],
+        }
+        self.transport.job_attempts[(10, 2)] = {
+            "total_count": 1,
+            "jobs": [self._native_job(run_id=10, attempt=2,
+                                      step_name="Prepare pinned Playwright")],
+        }
+        failures = self.github.get_failed_checks(9)
+        self.assertEqual([f.failure_class for f in failures], ["unknown"])
+        self.assertTrue(any("/attempts/2/jobs?" in row[1] for row in self.transport.calls))
+        self.assertFalse(any("/attempts/1/jobs?" in row[1] for row in self.transport.calls))
+
+    def test_spoofed_native_job_sha_and_unbounded_inventory_fail_closed(self):
+        self.transport.workflow_runs = [
+            self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
+        ]
+        self.transport.check_runs = [
+            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
+        ]
+        self.transport.job_attempts[(10, 1)] = {
+            "total_count": 1,
+            "jobs": [self._native_job(run_id=10, candidate="other-candidate")],
+        }
+        with self.assertRaisesRegex(RuntimeError, "mismatch"):
+            self.github.get_failed_checks(9)
+        self.transport.job_attempts[(10, 1)] = {"total_count": 101, "jobs": []}
+        with self.assertRaisesRegex(RuntimeError, "truncated or unbounded"):
+            self.github.get_failed_checks(9)
 
     def test_adapter_exposes_no_merge_operation(self):
         self.assertFalse(hasattr(self.github, "merge_pull_request"))

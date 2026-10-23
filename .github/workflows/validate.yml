@@ -39,6 +39,8 @@ jobs:
         run: node --test scripts/tests/browser_run_correlation.test.cjs
       - name: Read-only lifecycle browser contract tests
         run: node --test scripts/tests/project_control_readonly_contract.test.mjs
+      - name: Preview visible text normalization tests
+        run: node --test scripts/tests/preview_text_match.test.cjs
       - name: Console migration provenance and idempotency contract tests
         run: node --test apps/console/tests/migration-history-integrity.test.mjs
       - name: Compile
