@@ -10,6 +10,7 @@ from urllib import error, parse, request
 from .github_loop import CIState
 from .github_auth import resolve_github_token
 from .ci_job_failure_evidence import parse_failed_native_job_steps
+from .ci_native_lint_diagnostics import download_native_job_log, summarize_native_lint_errors
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
@@ -76,6 +77,7 @@ class GitHubRestAdapter:
         token: str | None = None,
         api_url: str = "https://api.github.com",
         transport: Transport | None = None,
+        native_log_reader: Callable[[int], str] | None = None,
     ) -> None:
         if "/" not in repository:
             raise ValueError("repository must be in owner/name form")
@@ -83,6 +85,15 @@ class GitHubRestAdapter:
         self.token = resolve_github_token(repository, explicit_token=token)
         self.api_url = api_url.rstrip("/")
         self.transport = transport or _default_transport
+        # Keep unit-test/custom transports offline unless a bounded reader is
+        # explicitly injected. Production fetches only exact-attested lint jobs.
+        self.native_log_reader = (
+            native_log_reader if native_log_reader is not None else
+            (lambda job_id: download_native_job_log(
+                api_url=self.api_url, repository=self.repository,
+                job_id=job_id, token=self.token,
+            )) if transport is None else None
+        )
         self.last_ci_evidence_source: str | None = None
         self.last_ci_evidence_present: bool | None = None
         self.last_ci_workflow_runs: list[dict] = []
@@ -740,13 +751,30 @@ class GitHubRestAdapter:
         )
         if evidence is None:
             return None
-        return tuple(
-            GitHubCheckFailure(
+        results: list[GitHubCheckFailure] = []
+        for row in evidence:
+            summary = row.summary
+            if row.name == "native-ci/lint" and self.native_log_reader is not None:
+                # URL is generated from the previously SHA/attempt-verified job
+                # inventory, never supplied by a model or an issue comment.
+                match = re.fullmatch(
+                    rf"https://github[.]com/{re.escape(self.repository)}/actions/runs/{run_id}/job/([0-9]+)",
+                    row.details_url,
+                )
+                if match:
+                    try:
+                        details = summarize_native_lint_errors(
+                            self.native_log_reader(int(match.group(1)))
+                        )
+                    except (RuntimeError, ValueError, OSError):
+                        details = None
+                    if details:
+                        summary += "; " + details
+            results.append(GitHubCheckFailure(
                 name=row.name, conclusion="failure", details_url=row.details_url,
-                summary=row.summary, failure_class=row.failure_class,
-            )
-            for row in evidence
-        )
+                summary=summary[:2000], failure_class=row.failure_class,
+            ))
+        return tuple(results)
 
     def get_failed_checks(self, pr_number: int, *, expected_head_sha: str | None = None) -> tuple[GitHubCheckFailure, ...]:
         pr = self.get_pull_request(pr_number)

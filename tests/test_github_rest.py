@@ -544,6 +544,62 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertTrue(any("/attempts/1/jobs?" in row[1] for row in self.transport.calls))
         self.assertFalse(any("/actions/runs/10/jobs?" in row[1] for row in self.transport.calls))
 
+    def test_verified_native_lint_repair_receives_sanitized_exact_diagnostics(self):
+        sha = self._use_exact_native_candidate()
+        self.transport.job_attempts[(10, 1)] = {
+            "total_count": 1, "jobs": [
+                self._native_job(
+                    run_id=10, candidate=sha, step_name="New lint errors",
+                )
+            ],
+        }
+        text = (
+            "2026-10-23T18:33:18Z LINT_CHANGED_ERROR "
+            "src/app/(dashboard)/reports/client-page.tsx:121:45 "
+            "@typescript-eslint/no-explicit-any Unexpected any and SECRET=never-return-me"
+        )
+        called = []
+        def bounded_reader(job_id):
+            called.append(job_id)
+            return text
+        gh = GitHubRestAdapter(
+            repository="owner/repo", token="local", transport=self.transport,
+            native_log_reader=bounded_reader,
+        )
+        failure, = gh.get_failed_checks(9, expected_head_sha=sha)
+        self.assertEqual(failure.name, "native-ci/lint")
+        self.assertEqual(failure.failure_class, "code")
+        self.assertIn(
+            "src/app/(dashboard)/reports/client-page.tsx:121:45 "
+            "@typescript-eslint/no-explicit-any", failure.summary,
+        )
+        self.assertNotIn("Unexpected any", failure.summary)
+        self.assertNotIn("SECRET", failure.summary)
+        self.assertNotIn("never-return-me", failure.summary)
+        self.assertEqual(called, [300])
+        self.assertIn("attempt", failure.summary)
+
+    def test_native_lint_falls_back_to_generic_without_safe_log_evidence(self):
+        sha = self._use_exact_native_candidate()
+        self.transport.job_attempts[(10, 1)] = {
+            "total_count": 1,
+            "jobs": [self._native_job(run_id=10, candidate=sha, step_name="New lint errors")],
+        }
+        for reader in (
+            lambda job_id: "Some other error with no allowlisted marker",
+            lambda job_id: (_ for _ in ()).throw(RuntimeError("no logs")),
+        ):
+            with self.subTest(reader=reader):
+                gh = GitHubRestAdapter(
+                    repository="owner/repo", token="local", transport=self.transport,
+                    native_log_reader=reader,
+                )
+                failure, = gh.get_failed_checks(9, expected_head_sha=sha)
+                self.assertEqual(failure.name, "native-ci/lint")
+                self.assertEqual(
+                    failure.summary, "Verified failed GitHub Actions step (run and attempt bound)",
+                )
+
     def test_native_job_without_failed_step_never_invents_a_code_patch(self):
         sha = self._use_exact_native_candidate()
         for steps in ([], [{"name": "Initialize containers", "status": "completed",
