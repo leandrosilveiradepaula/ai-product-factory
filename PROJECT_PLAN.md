@@ -1,3 +1,10 @@
+## 23/10/2026 — QA operacional isolada: reparo CI até awaiting_release (candidato)
+
+- Reconciliada `main=c613668b9683877cc95e1f922f1c16c4bb5e2ea4`, PR #1065 mergeada; CI pós-merge verde. O Control Plane real está com **zero** registros em `factory_ci_repair_requests`; não inventar um incidente de CI de produção. Os dois runs `failed` dos últimos três dias pertencem a Product Stage histórico, não a reparo de CI.
+- Lacuna de evidência: `verify_ci_repair_e2e_postgres.py` exercia a RPC de enfileiramento, tentativas, replay e escopos, mas **não** validava num mesmo cenário a execução `run_ci_once`, commit/resume, recibo verde, especialistas e Preview N/A até `awaiting_release`.
+- Novo `ci_repair_disposable_full_journey.py` é importado exclusivamente no runner PG16 descartável existente. Usa `run_ci_once` e `ChangeSetIntegrator` reais da Factory com `factory_enqueue_ci_repair` e `factory_record_ci_repair_result` reais no PostgreSQL isolado; GitHub e persistência de especialistas são dublês sem rede. Simula queda após commit antes de persistir SQL, reconcilia mesma árvore/parent/trailer e bloqueia duplicação de commit e RPC de reparo; comprova recibo `passed` gravado antes dos especialistas e Preview explicitamente N/A com recibo `awaiting_release` sem merge. Projeto pausado bloqueia processamento mesmo com CI verde.
+- Não houve migration, alteração do banco real, chamada de modelo paga, edição de piloto, novo preview/deployment ou merge de produção. **Não confundir** prova isolada com um incidente real de CI em operação: issue #1036 permanece pendente até evidência de evento legítimo em produção.
+
 ## 23/10/2026 — Retomada do Product Stage sem repetir chamadas pagas (candidato)
 
 - [x] Confirmada execução real Start Github OWNER CRM root `090cd768-b6e5-44ce-9d77-92f9ffe9620d`, falha em `planning` por ledger/reserva (US$ 9,5020792 de US$ 10, reserva US$ 0,50). Duas chamadas reais de modelo geraram reconciliação e gap analysis já duráveis; 7 gaps e 6 trabalhos recomendados.
