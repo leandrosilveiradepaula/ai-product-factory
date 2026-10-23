@@ -116,8 +116,61 @@ class SupabaseAdaptiveConcurrencyController:
             "known_cost":str(health.known_cost),
         }
 
-    def work_matrix(self,limit:int=12)->dict:
-        raw=self.scheduler.work_matrix(limit)
+    @staticmethod
+    def _required_item(item:object)->dict:
+        """Validate an assignment just committed by the route-safe scheduler.
+
+        ``required`` is not an alternate queue or caller-controlled work list.
+        It is a bounded receipt returned by ``factory_schedule_eligible_*`` in
+        the same runner invocation.  Keeping its shape strict prevents a
+        workflow matrix from being populated with an unclaimed run while still
+        allowing a newly assigned run to survive an older global SQL window.
+        """
+        if not isinstance(item,dict):
+            raise RuntimeError("required scheduler assignment must be an object")
+        run_id=item.get("run_id")
+        agent_key=item.get("agent_key")
+        role=item.get("role")
+        if any(not isinstance(value,str) or not value.strip()
+               for value in (run_id,agent_key,role)):
+            raise RuntimeError("required scheduler assignment is incomplete")
+        return {"run_id":run_id,"agent_key":agent_key,"role":role}
+
+    def work_matrix(self,limit:int=12,*,required:dict[str,list[dict]]|None=None)->dict:
+        if isinstance(limit,bool) or not isinstance(limit,int) or not 1<=limit<=32:
+            raise ValueError("matrix limit must be between 1 and 32")
+        required=required or {}
+        if not isinstance(required,dict) or set(required)-{"direct","codex"}:
+            raise ValueError("required matrix routes are invalid")
+        required_rows={
+            route:[self._required_item(item)
+                   for item in list(required.get(route) or [])]
+            for route in ("direct","codex")
+        }
+        if sum(len(rows) for rows in required_rows.values())>limit:
+            raise ValueError("required matrix exceeds the bounded runner batch")
+
+        # The ordinary read remains bounded to the requested batch.  When the
+        # route-safe scheduler has just assigned work, read the maximum
+        # supported window so the concurrency policy can consider older work
+        # too, but place only the exact fresh receipts ahead of that window.
+        raw=self.scheduler.work_matrix(32 if any(required_rows.values()) else limit)
+        merged={}
+        for route in ("direct","codex"):
+            seen=set()
+            rows=[]
+            for item in required_rows[route]+list(raw.get(route) or []):
+                if not isinstance(item,dict):
+                    raise RuntimeError("scheduler matrix item must be an object")
+                run_id=item.get("run_id")
+                if not isinstance(run_id,str) or not run_id.strip():
+                    raise RuntimeError("scheduler matrix item lacks run ID")
+                if run_id in seen:
+                    continue
+                seen.add(run_id)
+                rows.append(item)
+            merged[route]=rows
+        raw=merged
         all_items=list(raw.get("direct") or [])+list(raw.get("codex") or [])
         by_agent:dict[str,list[dict]]=defaultdict(list)
         for item in all_items:
@@ -176,6 +229,8 @@ class SupabaseAdaptiveConcurrencyController:
         filtered={"direct":[],"codex":[]}
         for route in ("direct","codex"):
             for item in raw.get(route) or []:
+                if sum(len(rows) for rows in filtered.values())>=limit:
+                    break
                 key=str(item.get("agent_key") or "")
                 if used[key]>=allowed.get(key,0):
                     continue

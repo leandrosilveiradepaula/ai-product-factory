@@ -219,7 +219,19 @@ def enqueue_owner_start(
     try:
         wake_status, _ = post(
             _WORKFLOW_DISPATCH,
-            {"ref": "main", "inputs": {"project_key": command.project_key}},
+            # The owner command has already passed the immutable GitHub
+            # identity checks and the Control Plane admission transaction.
+            # The autonomous runner deliberately requires this existing flag
+            # before it will claim a paid Direct work unit on a
+            # workflow_dispatch event.  Without it the Start could persist
+            # and route a Work Unit, but leave the assigned Direct run until a
+            # second, manual workflow dispatch.  This is only a wake hint
+            # after commit: Direct still rechecks the durable generation,
+            # route, write scopes, cross-repository capability and ledger.
+            {"ref": "main", "inputs": {
+                "project_key": command.project_key,
+                "run_direct": "true",
+            }},
             {
                 "Authorization": "Bearer " + token,
                 "Accept": "application/vnd.github+json",

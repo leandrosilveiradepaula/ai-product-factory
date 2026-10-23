@@ -7,6 +7,7 @@ on:
       - "supabase/migrations/*preserve_runtime_stage_evidence.sql"
       - "scripts/verify_greenfield_planning_decision_postgres.py"
       - "scripts/verify_runtime_stage_evidence_postgres.py"
+      - "scripts/verify_greenfield_direct_matrix_postgres.py"
       - ".github/workflows/greenfield-planning-postgres.yml"
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - "supabase/migrations/*preserve_runtime_stage_evidence.sql"
       - "scripts/verify_greenfield_planning_decision_postgres.py"
       - "scripts/verify_runtime_stage_evidence_postgres.py"
+      - "scripts/verify_greenfield_direct_matrix_postgres.py"
       - ".github/workflows/greenfield-planning-postgres.yml"
 permissions:
   contents: read
@@ -55,3 +57,8 @@ jobs:
           FACTORY_GREENFIELD_PG_TEST_ISOLATED: "true"
           FACTORY_GREENFIELD_PG_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_greenfield_test"
         run: python scripts/verify_runtime_stage_evidence_postgres.py
+      - name: Verify greenfield Direct matrix boundary in disposable PostgreSQL
+        env:
+          FACTORY_GREENFIELD_PG_TEST_ISOLATED: "true"
+          FACTORY_GREENFIELD_PG_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_greenfield_test"
+        run: python scripts/verify_greenfield_direct_matrix_postgres.py
