@@ -4,6 +4,14 @@ A migration versionada `20261023151218_preserve_runtime_stage_evidence.sql` corr
 
 O servidor Supabase gera a versão no momento da aplicação; o arquivo originalmente versionado `20261023145000_preserve_runtime_stage_evidence.sql` foi renomeado sem mudança no SQL para alinhar o histórico remoto e impedir reaplicação acidental por ferramentas de migration. A prova de nova execução produtiva da função permanece pendente de run legítimo (não disparar API paga para testar). O Codex J3 em execução é independente.
 
+## 23/10/2026 — J3: Start greenfield até Direct sem segundo comando manual (candidato)
+
+- Lacuna reproduzida no contrato atual: o Start OWNER já commitava a admissão e despertava `autonomous-runner`, mas enviava somente `project_key`. No evento `workflow_dispatch`, o job Direct exige o input já existente `run_direct=true`; uma Work Unit autorizada poderia ser despachada e atribuída, porém não ser executada até outro comando manual.
+- O wake pós-commit passa a enviar `run_direct=true`. Isso não cria outra fila nem autoriza gasto: a RPC continua sendo a única admissão, e Direct conserva revalidação de geração, assignment, escopos, capacidade cross-repo, auth e ledger antes de qualquer provider ou escrita GitHub.
+- A matriz adaptativa agora recebe apenas receipts de assignments recém-confirmados no mesmo wake e os prioriza sobre a janela global mais antiga, mantendo o limite total, profile ceiling, quota e custo desconhecido fail-closed. Identidade incompleta do worker interrompe o runner em vez de montar uma matriz arbitrária.
+- Há testes offline para Start idempotente, wake, matriz, quota/custo e continuidade Direct. O workflow de PostgreSQL16 descartável executa a função SQL real `factory_agent_work_matrix` do migration versionado para reproduzir a omissão de uma assignment recente pela janela global e confirmar ACL/linhas não executáveis. Nenhuma migration, dado de produção, piloto, chamada paga, Preview ou merge foi executado.
+- Falta a evidência externa autorizada de uma jornada nova (Start legítimo, branch/PR/CI nativos) num sandbox GitHub. Sem alvo e credencial explicitamente autorizados, este candidato não declara J3/#713 concluída nem `product_ready`.
+
 ## 23/10/2026 — Product Stage: corrigir checkpoint JSON vazio e replay pago idêntico (candidato)
 
 A auditoria read-only encontrou 130 runs sem metadata.stage_evidence, apesar de eventos \`run.stage.recorded\`. A causa reproduzida é \`jsonb_set\` sobre caminho de dois níveis quando falta o pai: a operação antiga retorna \`{}\` sem persistir o estágio. A migration privada \`20261023151218_preserve_runtime_stage_evidence.sql\` cria o pai sob row lock, conserva irmãos e demais metadados, recusa pai malformado, mantém função SECURITY INVOKER/service_role somente, sem RLS permissiva e **sem backfill histórico**.

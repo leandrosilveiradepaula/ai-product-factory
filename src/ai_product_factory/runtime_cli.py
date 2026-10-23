@@ -1002,6 +1002,15 @@ def allowed_dispatch_routes()->tuple[str,...]:
   enabled.append("codex")
  return tuple(enabled)
 
+def _matrix_assignment(assignment,*,run_id:str)->dict:
+ """Convert only an exact atomic scheduling receipt into a workflow input."""
+ if getattr(assignment,"run_id",None)!=run_id:
+  raise RuntimeError("scheduler assignment changed the routed run")
+ agent_key=getattr(assignment,"agent_key",None);role=getattr(assignment,"role",None)
+ if any(not isinstance(value,str) or not value.strip() for value in (agent_key,role)):
+  raise RuntimeError("scheduler assignment lacks worker identity")
+ return {"run_id":run_id,"agent_key":agent_key,"role":role}
+
 def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
  allowed_routes=allowed_dispatch_routes()
  if not allowed_routes:
@@ -1009,6 +1018,7 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    "routed":[],"scheduling":{"attempted":0,"assigned":0,"no_eligible_slot":False},
    "matrix":{"direct":[],"codex":[]}}
  dispatch=SupabaseBacklogDispatch();scheduler=SupabaseAgentScheduler();routed=[]
+ matrix_required={"direct":[],"codex":[]}
  codex_mode="automatic" if os.getenv("FACTORY_CODEX_ENABLED")=="true" else ("manual" if "codex" in allowed_routes else None)
  scheduling={"attempted":0,"assigned":0,"no_eligible_slot":False}
  for _ in range(max(1,min(max_items,32))):
@@ -1030,6 +1040,8 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
     scheduling["no_eligible_slot"]=True
     break
    scheduling["assigned"]+=1
+   matrix_required["codex"].append(_matrix_assignment(
+    assignment,run_id=decision.run_id))
    continue
   if decision.execution.route.value!="direct":
    raise RuntimeError("unsupported dispatch execution route")
@@ -1048,17 +1060,23 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    scheduling["no_eligible_slot"]=True
    break
   scheduling["assigned"]+=1
+  matrix_required["direct"].append(_matrix_assignment(
+   assignment,run_id=decision.run_id))
  if codex_mode=="automatic" and "codex" in allowed_routes and not scheduling["no_eligible_slot"]:
   for _ in range(max(1,min(max_items,32))):
+   if sum(len(rows) for rows in matrix_required.values())>=max_items:break
    assignment=scheduler.schedule_eligible_codex(project_key=project_key)
    if assignment is None:break
    scheduling["attempted"]+=1
    scheduling["assigned"]+=1
+   matrix_required["codex"].append(_matrix_assignment(
+    assignment,run_id=assignment.run_id))
  # Resume Direct runs that became eligible after human approval or freed slots.
  # Never do this for Codex or without approved Primary/real budget readiness.
  resumed_direct=0
  if "direct" in allowed_routes and not scheduling["no_eligible_slot"]:
   for _ in range(max(1,min(max_items,32))):
+   if sum(len(rows) for rows in matrix_required.values())>=max_items:break
    try:
     assignment=scheduler.schedule_eligible_direct(project_key=project_key)
    except RuntimeError as exc:
@@ -1069,7 +1087,11 @@ def run_dispatch_once(project_key:str|None=None,max_items:int=6)->dict:
    scheduling["attempted"]+=1
    scheduling["assigned"]+=1
    resumed_direct+=1
- matrix=SupabaseAdaptiveConcurrencyController().work_matrix(max_items)
+   matrix_required["direct"].append(_matrix_assignment(
+    assignment,run_id=assignment.run_id))
+ controller=SupabaseAdaptiveConcurrencyController()
+ matrix=(controller.work_matrix(max_items,required=matrix_required)
+         if any(matrix_required.values()) else controller.work_matrix(max_items))
  out={"claimed":bool(routed),"status":"routed" if routed else ("scheduled_existing" if resumed_direct else "empty"),"routed":routed,"scheduling":scheduling,"resumed_direct":resumed_direct,"matrix":matrix}
  if routed:
   out.update(routed[0])
