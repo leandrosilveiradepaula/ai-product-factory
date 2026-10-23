@@ -55,6 +55,92 @@ class SupabaseRuntimeQueueTests(unittest.TestCase):
                 operation()
         self.assertEqual(calls,["factory_assert_claimed_run_epoch"]*4)
 
+
+    def test_greenfield_real_claim_reconciles_from_explicit_exact_sha_code_without_db_snapshot(self):
+        """Regression for the real Proof 2 source/snapshot failure sequence."""
+        from unittest.mock import MagicMock
+        manifest = {
+            "source": "factory-console", "onboarding_mode": "greenfield",
+            "bootstrap_request_id": "706c6b5d-f41f-4c23-ac78-df9d9a1e4c7d",
+            "continuation_request": {
+                "source": "github-owner",
+                "summary": "Find a safe fix in src/domain/ticket.ts.",
+                "github": {
+                    "repository": "leandrosilveiradepaula/ai-product-factory",
+                    "issue_number": 1055,
+                    "actor_id": 256917842,
+                },
+            },
+        }
+        project_id = "70515123-ecbb-4f4b-a38f-75c54250af56"
+        repository = "leandrosilveiradepaula/infodive-service-desk"
+        sha = "c" * 40
+        queue = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="example")
+        queue._rpc = lambda name, payload: (
+            {"run_id": "run", "task_id": "task", "project_id": project_id,
+             "project_key": "infodive-service-desk", "execution_generation": 1,
+             "stages": ["reconciliation", "gap_analysis", "planning"],
+             "context": {"manifest": manifest}}
+            if name == "factory_claim_next_run" else
+            (_ for _ in ()).throw(AssertionError("unexpected write RPC: " + name))
+        )
+        reads = []
+        def read(path):
+            reads.append(path)
+            if "factory_project_state_snapshots?" in path:
+                return [{"observed_stage": "verification", "summary": "Browser not ready",
+                         "evidence": [{"source": "preview"}],
+                         "source_status": {"preview": "blocked"}}]
+            if "factory_tasks?" in path:
+                return [{"external_key": "root", "title": "Original bootstrap",
+                         "status": "completed", "updated_at": "2026-10-16T00:00:00Z"}]
+            if "factory_project_github_access?" in path:
+                return [{"status": "ready", "repository": repository,
+                         "observed_capabilities": {"contents_read": "verified"},
+                         "last_verified_at": "2026-10-23T21:00:00Z"}]
+            if "factory_projects?" in path:
+                return [{"id": project_id, "project_kind": "greenfield",
+                         "repository": repository, "manifest": manifest}]
+            raise AssertionError("unexpected query: " + path)
+        queue._get = read
+        github = MagicMock()
+        github.repository = repository
+        github.get_branch_sha.return_value = sha
+        github.list_file_paths.return_value = ("README.md", "package.json", "src/domain/ticket.ts")
+        github.get_file_text.side_effect = lambda path, ref: {
+            "README.md": "# Service Desk",
+            "package.json": '{"name":"infodive-service-desk"}',
+            "src/domain/ticket.ts": "export const ticketCanReopen = true;",
+        }[path]
+
+        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter", return_value=github):
+            claimed = queue.claim_next("worker-1")
+        self.assertIsNotNone(claimed)
+        self.assertNotIn("state_snapshot", claimed.context)
+        live = claimed.context["current_state_facts"]["live_candidate"]
+        self.assertEqual(live["source_evidence"]["status"], "bounded_source_inspected")
+        self.assertIsNone(live["verified_open_pr"])
+        self.assertEqual(live["sha"], sha)
+        self.assertTrue(all("project_id=eq." + project_id in q for q in reads[:3]))
+        github.get_file_text.assert_any_call("src/domain/ticket.ts", ref=sha)
+        self.assertEqual(github.get_branch_sha.call_count, 2)
+
+        class FakeProvider:
+            def __init__(self): self.calls=[]
+            def execute(self, request):
+                self.calls.append(request)
+                return ModelResult(
+                    ModelRole.PRIMARY,
+                    '{"observed_stage":"implementation","summary":"live source verified",'
+                    '"evidence":[],"gaps":[],"constraints":[],"source_status":{}}',
+                    provider_ref="offline-fixture",
+                )
+        provider=FakeProvider()
+        result=ProductStageExecutor(ModelExecutor(primary=provider)).execute(claimed, "reconciliation")
+        self.assertEqual(result["summary"], "live source verified")
+        self.assertEqual(len(provider.calls), 1)
+        self.assertIn("Console greenfield", provider.calls[0].objective)
+
     def test_empty_paid_planning_records_only_fixed_failure_receipt(self):
         from ai_product_factory.product_stage_output_contract import NON_ACTIONABLE_PLANNING_EVIDENCE
         q = SupabaseRuntimeQueue(url="https://example.supabase.co", service_role_key="secret")
