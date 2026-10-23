@@ -254,6 +254,20 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 raise PermissionError("platform reconciliation has no repository identity")
             github = GitHubRestAdapter(repository=repo)
             return live_platform_source_context(project=project, context=context, github=github)
+        if project.get("project_kind") == "greenfield":
+            from .greenfield_source_context import live_greenfield_source_context
+            if not isinstance(repo, str) or "/" not in repo:
+                raise PermissionError("greenfield reconciliation has no repository identity")
+            if (not isinstance(manifest, dict)
+                or manifest.get("source") != "factory-console"
+                or manifest.get("onboarding_mode") != "greenfield"
+                or not isinstance(manifest.get("continuation_request"), dict)
+                or manifest["continuation_request"].get("source") != "github-owner"):
+                raise PermissionError("greenfield source provenance unavailable")
+            github = GitHubRestAdapter(repository=repo)
+            return live_greenfield_source_context(
+                project=project, context=context, github=github,
+            )
         if project.get("project_kind") != "existing":
             raise PermissionError("live candidate reconciliation requires an existing or platform project")
         target = PinnedNonproductionTarget.parse(
