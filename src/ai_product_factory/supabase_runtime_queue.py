@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from urllib.parse import quote
@@ -16,6 +17,7 @@ from .supabase_server import resolve_supabase_server_config
 from .github_rest import GitHubRestAdapter
 from .pinned_nonproduction_target import PinnedNonproductionTarget
 from .source_scope_admission import SourceScopeBlocked
+from .planning_replay_guard import PlanningReplayBlocked, find_same_source_empty_planning
 from .candidate_source_evidence import (
     collect_candidate_source_evidence,
     latest_authorization_excerpt,
@@ -446,6 +448,33 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         }
         return context
 
+    def _reject_repeat_empty_planning(self, *, run_id: str, task_id: str, context: dict) -> None:
+        """Read-only proof of an identical prior failed paid plan, before model."""
+        origin=context.get("_verified_resume_origin")
+        if not isinstance(origin,dict):
+            return
+        facts=context.get("current_state_facts")
+        live=facts.get("live_candidate") if isinstance(facts,dict) else None
+        sha=live.get("sha") if isinstance(live,dict) else None
+        manifest=context.get("manifest")
+        current=manifest.get("continuation_request") if isinstance(manifest,dict) else None
+        if not isinstance(sha,str) or not re.fullmatch(r"[0-9a-f]{40}",sha):
+            return  # Original source admission owns source SHA, no guess.
+        if not isinstance(current,dict):
+            return
+        if not isinstance(task_id,str) or not re.fullmatch(r"[0-9a-f-]{36}",task_id):
+            raise PermissionError("planning replay task identity invalid")
+        rows=self._get(
+            "factory_runs?select=id,task_id,status,metadata"
+            "&task_id=eq."+quote(task_id,safe="")
+            +"&status=eq.failed&order=created_at.desc&limit=40"
+        )
+        if find_same_source_empty_planning(
+            rows,current_run_id=run_id,task_id=task_id,
+            origin=origin,current_commit=sha,current_request=current,
+        ):
+            raise PlanningReplayBlocked()
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -507,6 +536,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     # Recheck the pinned nonproduction candidate using GETs;
                     # a moved branch must not enter a new paid planning call.
                     context=self._live_candidate_context(data["project_id"],context)
+                    self._reject_repeat_empty_planning(
+                        run_id=data["run_id"],task_id=data["task_id"],context=context,
+                    )
             except Exception as exc:
                 claimed=WorkItem(
                     run_id=data["run_id"],task_id=data["task_id"],
@@ -516,7 +548,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     worker_id=worker_id,
                 )
                 reason = (
-                    "planning_resume_" + exc.code
+                    exc.code if isinstance(exc, PlanningReplayBlocked)
+                    else "planning_resume_" + exc.code
                     if isinstance(exc, SourceScopeBlocked)
                     else "planning_resume_provenance_preflight_failed"
                 )
@@ -545,11 +578,17 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if "planning" not in item.stages:
             raise ValueError("only a claimed planning stage may record this diagnostic")
         self.assert_execution_epoch(item)
+        output=dict(NON_ACTIONABLE_PLANNING_EVIDENCE)
+        facts=item.context.get("current_state_facts")
+        live=facts.get("live_candidate") if isinstance(facts,dict) else None
+        sha=live.get("sha") if isinstance(live,dict) else None
+        if isinstance(sha,str) and re.fullmatch(r"[0-9a-f]{40}",sha):
+            output["assessed_commit"]=sha
         self._rpc("factory_record_runtime_stage",{
             "p_run_id":item.run_id,
             "p_stage":"planning",
             "p_status":"failed",
-            "p_output":dict(NON_ACTIONABLE_PLANNING_EVIDENCE),
+            "p_output":output,
         })
 
     def record_stage(self,item:WorkItem,evidence:StageEvidence)->None:
