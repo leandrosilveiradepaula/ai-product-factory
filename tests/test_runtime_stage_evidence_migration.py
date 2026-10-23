@@ -1,6 +1,6 @@
 import unittest
 from pathlib import Path
-SQL=(Path(__file__).resolve().parents[1]/"supabase/migrations/20261023145000_preserve_runtime_stage_evidence.sql").read_text()
+SQL=(Path(__file__).resolve().parents[1]/"supabase/migrations/20261023151218_preserve_runtime_stage_evidence.sql").read_text()
 class StageEvidenceSQLContractTests(unittest.TestCase):
     def test_parent_initialized_and_siblings_preserved(self):
         self.assertIn("coalesce(r.metadata->'stage_evidence','{}'::jsonb)",SQL)
