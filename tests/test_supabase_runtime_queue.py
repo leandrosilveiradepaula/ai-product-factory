@@ -526,5 +526,124 @@ class ProductStagePersistenceMigrationTests(unittest.TestCase):
         self.assertIn("security invoker",sql.lower())
 
 
+    def test_checkpointed_planning_claim_reuses_exact_source_without_paid_pre_stages(self):
+        import copy
+        project_id="2d30e00a-ff72-4044-b838-011c263ed672"
+        root_id="e174ef34-e9a4-4088-af0e-785efba663cc"
+        source_id="090cd768-b6e5-44ce-9d77-92f9ffe9620d"
+        new_id="6cbdb11b-8263-4cb6-bb86-09f33ae470de"
+        snapshot_id="c702b7e7-58b4-49ad-8be9-ee87b4f3c15d"
+        request_id="2a0161b6-1c8d-a921-1a7a-293322e0bb0c"
+        recon={"summary":"verified source","observed_stage":"repository",
+               "evidence":[{"sha":"a"*40}],"gaps":[],
+               "constraints":[],"source_status":{"github":"verified"}}
+        gap={"gaps":[{"type":"ux"}],"recommended_next_work":[{"work":"fix"}],
+             "_evidence":{"provider_ref":"paid-real-stage"}}
+        request={"id":request_id,"source":"github-owner"}
+        manifest={"continuation_request":request,"gap_analysis":gap}
+        proof={"schema":"checkpointed_product_planning_v1",
+               "source_run_id":source_id,"source_generation":6,
+               "snapshot_id":snapshot_id,"request_id":request_id,
+               "project_id":project_id,"reconciliation":recon,"gap_analysis":gap}
+        claimed={"id":new_id,"task_id":root_id,"status":"running",
+                 "metadata":{"stages":["planning"],"execution_generation":6,
+                             "continuation_request_id":request_id,
+                             "resume_checkpoint":proof}}
+        source={"id":source_id,"task_id":root_id,"status":"failed",
+                "execution_route":"direct","metadata":{
+                    "stages":["reconciliation","gap_analysis","planning"],
+                    "execution_generation":6,"continuation_request_id":request_id,
+                    "error":"reserved provider cost exceeds remaining budget"}}
+        snap={"id":snapshot_id,"run_id":source_id,"project_id":project_id,**recon}
+        proj={"id":project_id,"manifest":manifest}
+        rows={"runs_new":[claimed],"runs_source":[source],
+              "snapshots":[snap],"project":[proj]}
+
+        def exercise(rows):
+            q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+            q._rpc=lambda *_:{
+                "run_id":new_id,"task_id":root_id,"project_id":project_id,
+                "project_key":"crm-infodive","execution_generation":6,
+                "stages":["planning"],"context":{"manifest":manifest}}
+            calls=[]
+            def get(path):
+                calls.append(path)
+                if path.startswith("factory_runs?"):
+                    return rows["runs_new"] if "id=eq."+new_id in path else rows["runs_source"]
+                if path.startswith("factory_project_state_snapshots?"):
+                    return rows["snapshots"]
+                if path.startswith("factory_projects?"):
+                    return rows["project"]
+                raise AssertionError("unexpected query")
+            q._get=get
+            q._live_candidate_context=lambda pid,ctx:ctx
+            failures=[]
+            q.fail=lambda item,reason:failures.append(reason)
+            return q,calls,failures
+
+        q,reads,failures=exercise(rows)
+        item=q.claim_next("worker")
+        self.assertEqual(item.stages,("planning",))
+        self.assertEqual(item.context["_verified_resume_prior_stages"],
+                         {"reconciliation":recon,"gap_analysis":gap})
+        self.assertEqual(item.context["_verified_resume_origin"]["source_run_id"],source_id)
+        self.assertEqual(len(reads),4)
+        self.assertEqual(failures,[])
+        self.assertFalse(any("rpc/" in path for path in reads))
+
+        class PlanningProvider:
+            def __init__(self):self.calls=[]
+            def execute(self,request):
+                self.calls.append(request)
+                return ModelResult(ModelRole.PRIMARY,json.dumps({
+                    "tasks":[{"task_key":"fix-ux","scope_keys":["src/app/ux.tsx"],
+                              "required_capabilities":["implementation"],"depends_on":[]}],
+                    "decisions_needed":[]}))
+        provider=PlanningProvider()
+        handler=ProductStageExecutor(ModelExecutor(primary=provider))
+        output=handler.execute(item,"planning")
+        self.assertEqual(len(provider.calls),1)
+        payload=json.loads(provider.calls[0].context)
+        self.assertEqual(payload["prior_stages"]["reconciliation"],recon)
+        self.assertEqual(payload["prior_stages"]["gap_analysis"],gap)
+        self.assertNotIn("gap_analysis",payload["intake"]["manifest"])
+        self.assertEqual(output["tasks"][0]["task_key"],"fix-ux")
+
+        # No individual source/output, project or epoch drift may pay for
+        # planning: the claim fails and its durable failure is recorded.
+        mutants=(
+            lambda r:r["runs_new"][0]["metadata"]["resume_checkpoint"].update(
+                source_generation=5),
+            lambda r:r["runs_new"][0]["metadata"]["resume_checkpoint"].update(
+                request_id="bad"),
+            lambda r:r["runs_source"][0].update(status="completed"),
+            lambda r:r["runs_source"][0]["metadata"].update(error="different failure"),
+            lambda r:r["runs_source"][0]["metadata"].update(execution_generation=5),
+            lambda r:r["snapshots"][0].update(summary="injected"),
+            lambda r:r["snapshots"][0].update(run_id="foreign"),
+            lambda r:r["project"][0]["manifest"]["gap_analysis"].update(
+                recommended_next_work=[]),
+        )
+        for mutate in mutants:
+            with self.subTest(mutate=str(mutate)):
+                altered=copy.deepcopy(rows)
+                mutate(altered)
+                q,_,failures=exercise(altered)
+                with self.assertRaisesRegex(PermissionError,"planning resume provenance invalid"):
+                    q.claim_next("worker")
+                self.assertEqual(failures,["planning_resume_provenance_preflight_failed"])
+
+    def test_regular_single_stage_planning_does_not_require_resume(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        q._rpc=lambda *_:{
+            "run_id":"r","task_id":"t","project_id":"p",
+            "project_key":"greenfield","execution_generation":2,
+            "stages":["planning"],"context":{"manifest":{"goal":"ship"}}}
+        q._get=lambda path:[{"id":"r","task_id":"t","status":"running","metadata":{}}]
+        item=q.claim_next("worker")
+        self.assertEqual(item.stages,("planning",))
+        self.assertNotIn("_verified_resume_prior_stages",item.context)
+
+
 if __name__=="__main__":
     unittest.main()

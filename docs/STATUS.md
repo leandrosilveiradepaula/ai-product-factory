@@ -1,3 +1,9 @@
+## 23/10/2026 — Candidato de recuperação por checkpoint do CRM #24
+
+- Fonte verificada em produção: start OWNER issue #1055, run `090cd768-b6e5-44ce-9d77-92f9ffe9620d`, geração 6, `failed`; `run.stage.recorded` e `product.stage.persisted` atestam `reconciliation` e `gap_analysis`. Snapshot `c702b7e7-58b4-49ad-8be9-ee87b4f3c15d` e `manifest.gap_analysis` guardam outputs; os metadados do run histórico **não contêm** `stage_evidence`, logo jamais inferir que há saída completa ali. A terceira etapa falhou com `reserved provider cost exceeds remaining budget`, não gerou PR CRM novo.
+- Livro de custos na consulta read-only: US$ 9,5020792 usados de orçamento total US$ 10 e reserva US$ 0,50. Usuário informou reposição de US$ 10 de crédito **real da OpenAI**, que não altera o teto interno da Factory. Nenhum custo novo apenas para testar esta correção.
+- Proposta segura: SQL serviço exclusivo faz retomada idempotente por source run + mesma geração, snapshot e último writer de gap; grava novo run apenas `planning` e par de auditoria GitHub OWNER/system, com zero chamadas de modelo no enqueue. Python revalida fonte e estado atual antes de qualquer modelo e injeta `prior_stages` no prompt com remoção da duplicidade de gap no manifesto. CLI/job GitHub com checks OWNER/issue/OIDC independentes. Nenhuma migração ou deploy desse patch executado; aguarda CI e gates humanos.
+
 ## 22/10/2026 — Candidato: eliminar dependência do Console para novos ciclos de projetos existentes
 
 - Alvo: `ai-product-factory/main=003e10f821b0f8307a349dc05aea50b69ae4709e`, CRM `running` geração 6, sem raízes ativas; piloto PR #56 permanece sob gate humano. Evidência prévia da auditoria de candidato [#39849302770](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/39849302770) confirma CI nativa e Preview browser no SHA exato, porém não substitui novo Start E2E.

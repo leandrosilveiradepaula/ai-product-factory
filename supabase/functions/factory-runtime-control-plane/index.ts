@@ -311,6 +311,17 @@ Deno.serve(async(req:Request)=>{
         return json(403,{error:"github_owner_start_oidc_required"});
       }
     }
+    // Checkpointed planning resume has its own OWNER-only mutation fence.
+    // A generic scheduled worker or a different workflow may never enqueue it.
+    if(suffix==="/rest/v1/rpc/factory_resume_failed_product_planning_v1") {
+      if(req.method!=="POST" || requestUrl.search
+         || String(identity.event_name||"")!=="issue_comment"
+         || String(identity.workflow_ref||"")!==TRUSTED_BACKUP_WORKFLOW_REF
+         || String(identity.actor_id||"")!==EXPECTED.repository_owner_id
+         || String(identity.actor||"")!=="leandrosilveiradepaula") {
+        return json(403,{error:"github_owner_resume_oidc_required"});
+      }
+    }
     const headers=supabaseHeaders(key,req.headers.get("content-type"));
     const prefer=req.headers.get("prefer");
     if(prefer) headers.set("prefer",prefer);

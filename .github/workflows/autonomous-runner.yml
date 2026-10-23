@@ -1472,3 +1472,62 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Exact, already-failed Product Stage planning checkpoint: no repeated paid
+  # reconciliation/gap calls; only the verified Github OWNER may enqueue.
+  owner-resume-planning:
+    needs: schedule-probe
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'issue_comment' &&
+        github.event.action == 'created' &&
+        github.event.issue.number == 1055 &&
+        !github.event.issue.pull_request &&
+        github.event.comment.author_association == 'OWNER' &&
+        github.actor == github.event.comment.user.login &&
+        github.event.comment.user.id == 256917842 &&
+        github.event.repository.id == 1387883686 &&
+        github.event.repository.full_name == github.repository &&
+        startsWith(github.event.comment.body, '/factory-resume-planning ')
+      }}
+    environment: openai-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      id-token: write
+      actions: write
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Validate exact GitHub OWNER resume identity before OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_product_factory.github_owner_resume \
+            --event-path "$GITHUB_EVENT_PATH" --mode validate
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Queue one checkpointed planning stage and wake runner
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m ai_product_factory.github_owner_resume \
+            --event-path "$GITHUB_EVENT_PATH" --mode enqueue \
+            --output "$RUNNER_TEMP/factory-planning-resume.json"
+      - name: Preserve bounded resume receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-planning-resume-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-planning-resume.json
+          if-no-files-found: warn
+          retention-days: 14
+

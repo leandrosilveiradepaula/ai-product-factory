@@ -109,6 +109,11 @@ class ClaimedReconciliationPreflightTests(unittest.TestCase):
             if name == "factory_claim_next_run" else self.fail("unexpected RPC")
         )
         queue._live_candidate_context = Mock()
+        # A planning-only claim now reads its own metadata to distinguish
+        # checkpointed recovery from a normal one-stage product run.
+        queue._get = lambda path: [{
+            "id":"run-crm","task_id":"task-crm","status":"running","metadata":{}
+        }]
         item = queue.claim_next("worker")
         self.assertEqual(item.stages, ("planning",))
         queue._live_candidate_context.assert_not_called()

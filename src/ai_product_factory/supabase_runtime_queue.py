@@ -295,6 +295,130 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         enriched["current_state_facts"] = facts
         return enriched
 
+
+    def _planning_resume_context(
+        self, run_id: str, task_id: str, project_id: str,
+        epoch: int, original: dict,
+    ) -> dict:
+        """Hydrate verified same-run paid stages without calling the provider.
+
+        A durable retry receipt by itself is insufficient: compare the immutable
+        source and snapshot with live project state on the claimed epoch.
+        """
+        import uuid
+        def valid_uuid(value):
+            if not isinstance(value, str):
+                return False
+            try:
+                return str(uuid.UUID(value)) == value
+            except ValueError:
+                return False
+
+        claimed = self._get(
+            "factory_runs?select=id,task_id,status,metadata"
+            "&id=eq." + quote(run_id,safe="") + "&limit=2"
+        )
+        if (not isinstance(claimed,list) or len(claimed)!=1
+                or claimed[0].get("id")!=run_id
+                or claimed[0].get("task_id")!=task_id
+                or claimed[0].get("status")!="running"):
+            raise PermissionError("planning resume claim cannot be verified")
+        md=claimed[0].get("metadata")
+        if not isinstance(md,dict):
+            raise PermissionError("planning resume metadata invalid")
+        proof=md.get("resume_checkpoint")
+        if proof is None:
+            return original  # Ordinary planning-only runs are unchanged.
+        source_id=proof.get("source_run_id") if isinstance(proof,dict) else None
+        snapshot_id=proof.get("snapshot_id") if isinstance(proof,dict) else None
+        if (not isinstance(proof,dict)
+                or proof.get("schema")!="checkpointed_product_planning_v1"
+                or not valid_uuid(source_id) or not valid_uuid(snapshot_id)
+                or proof.get("project_id")!=project_id
+                or type(proof.get("source_generation")) is not int
+                or proof["source_generation"]!=epoch
+                or md.get("execution_generation")!=epoch
+                or md.get("stages")!=["planning"]
+                or not isinstance(proof.get("request_id"),str)
+                or md.get("continuation_request_id")!=proof["request_id"]
+                or not isinstance(proof.get("reconciliation"),dict)
+                or not isinstance(proof.get("gap_analysis"),dict)):
+            raise PermissionError("planning resume checkpoint identity invalid")
+        source = self._get(
+            "factory_runs?select=id,task_id,status,execution_route,metadata"
+            "&id=eq." + quote(source_id,safe="") + "&limit=2"
+        )
+        if (not isinstance(source,list) or len(source)!=1
+                or source[0].get("id")!=source_id
+                or source[0].get("task_id")!=task_id
+                or source[0].get("status")!="failed"
+                or source[0].get("execution_route")!="direct"):
+            raise PermissionError("planning resume source identity invalid")
+        source_md=source[0].get("metadata")
+        if (not isinstance(source_md,dict)
+                or source_md.get("error")!="reserved provider cost exceeds remaining budget"
+                or source_md.get("stages")!=["reconciliation","gap_analysis","planning"]
+                or str(source_md.get("execution_generation"))!=str(epoch)
+                or source_md.get("continuation_request_id")!=proof["request_id"]):
+            raise PermissionError("planning resume source stages invalid")
+        snaps=self._get(
+            "factory_project_state_snapshots?select="
+            "id,run_id,project_id,observed_stage,summary,evidence,gaps,"
+            "constraints,source_status"
+            "&id=eq." + quote(snapshot_id,safe="")
+            + "&project_id=eq." + quote(project_id,safe="")
+            + "&run_id=eq." + quote(source_id,safe="")
+            + "&limit=2"
+        )
+        if (not isinstance(snaps,list) or len(snaps)!=1
+                or snaps[0].get("id")!=snapshot_id
+                or snaps[0].get("run_id")!=source_id
+                or snaps[0].get("project_id")!=project_id
+                or snaps[0].get("observed_stage")=="verification"):
+            raise PermissionError("planning resume snapshot identity invalid")
+        snap=snaps[0]
+        expected={key:snap.get(key) for key in (
+            "summary","observed_stage","evidence","gaps","constraints","source_status"
+        )}
+        if (expected!=proof["reconciliation"]
+                or not isinstance(expected["summary"],str)
+                or not expected["summary"].strip()
+                or not (
+                    isinstance(expected["evidence"],(dict,list)) and bool(expected["evidence"])
+                    or isinstance(expected["source_status"],dict) and bool(expected["source_status"])
+                )):
+            raise PermissionError("planning resume reconciliation checkpoint drift")
+        project=self._get(
+            "factory_projects?select=id,manifest"
+            "&id=eq." + quote(project_id,safe="") + "&limit=2"
+        )
+        if (not isinstance(project,list) or len(project)!=1
+                or project[0].get("id")!=project_id
+                or not isinstance(project[0].get("manifest"),dict)):
+            raise PermissionError("planning resume project identity invalid")
+        manifest=project[0]["manifest"]
+        if (manifest.get("gap_analysis")!=proof["gap_analysis"]
+                or original.get("manifest")!=manifest
+                or not isinstance(manifest.get("continuation_request"),dict)
+                or manifest["continuation_request"].get("id")!=proof["request_id"]
+                or manifest["continuation_request"].get("source") not in (
+                    "factory-console","github-owner"
+                )
+                or len(str(proof["gap_analysis"]))>262144
+                or not isinstance(proof["gap_analysis"].get("recommended_next_work"),list)
+                or len(proof["gap_analysis"]["recommended_next_work"])<1):
+            raise PermissionError("planning resume gap analysis changed or missing")
+        context=dict(original)
+        context["_verified_resume_prior_stages"]={
+            "reconciliation":proof["reconciliation"],
+            "gap_analysis":proof["gap_analysis"],
+        }
+        context["_verified_resume_origin"]={
+            "source_run_id":source_id,"snapshot_id":snapshot_id,
+            "request_id":proof["request_id"],"generation":epoch,
+        }
+        return context
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -346,6 +470,32 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                         "failure settlement was not confirmed"
                     ) from settlement_error
                 raise
+        if stages==["planning"]:
+            try:
+                context=self._planning_resume_context(
+                    data["run_id"],data["task_id"],data["project_id"],
+                    data["execution_generation"],context,
+                )
+                if "_verified_resume_prior_stages" in context:
+                    # Recheck the pinned nonproduction candidate using GETs;
+                    # a moved branch must not enter a new paid planning call.
+                    context=self._live_candidate_context(data["project_id"],context)
+            except Exception:
+                claimed=WorkItem(
+                    run_id=data["run_id"],task_id=data["task_id"],
+                    project_id=data["project_id"],project_key=data["project_key"],
+                    stages=tuple(stages),context={},
+                    execution_generation=data["execution_generation"],
+                    worker_id=worker_id,
+                )
+                try:
+                    self.fail(claimed,"planning_resume_provenance_preflight_failed")
+                except Exception as settlement_error:
+                    raise RuntimeError(
+                        "claimed planning resume preflight failed and durable "
+                        "failure settlement was not confirmed"
+                    ) from settlement_error
+                raise PermissionError("planning resume provenance invalid") from None
         return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
