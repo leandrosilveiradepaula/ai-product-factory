@@ -69,7 +69,9 @@ def parse_failed_native_job_steps(
         if not isinstance(job, dict):
             raise RuntimeError("native CI job entry is malformed")
         job_id = job.get("id")
-        if (type(job_id) is not int or job_id <= 0 or job_id in seen
+        if job_id in seen:
+            raise RuntimeError("native CI job inventory contains duplicate ID")
+        if (type(job_id) is not int or job_id <= 0
             or job.get("run_id") != run_id
             or job.get("run_attempt") != run_attempt
             or job.get("head_sha") != candidate_sha

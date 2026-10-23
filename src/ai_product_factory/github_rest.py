@@ -618,6 +618,10 @@ class GitHubRestAdapter:
         user-controlled error messages enter the Control Plane.
         """
         run_id = run.get("id")
+        if not isinstance(candidate_sha, str) or not __import__("re").fullmatch(r"[0-9a-f]{40}", candidate_sha):
+            # Synthetic/legacy adapters that cannot prove a full SHA never
+            # unlock an exact-attempt repair from partial job metadata.
+            return None
         if type(run_id) is not int or run_id < 1:
             # Old GitHub adapters exposed no run ID; keep the existing
             # conservative metadata classification for that legacy case.

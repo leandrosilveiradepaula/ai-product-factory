@@ -12,6 +12,7 @@ class FakeGitHubTransport:
         self.calls = []
         self.check_runs = [{"name":"test","status":"completed","conclusion":"success","details_url":"https://example/check","head_sha":"commit1","app":{"slug":"github-actions"},"output":{}}]
         self.job_attempts = {}
+        self.ci_sha = "commit1"
         self.check_runs_forbidden = False
         self.actions_forbidden = False
         self.workflow_runs = [{"name":"CRM validation","status":"completed","conclusion":"success","head_sha":"commit1","head_branch":"codex/refactor","event":"pull_request","html_url":"https://example/actions/1"}]
@@ -51,7 +52,7 @@ class FakeGitHubTransport:
         if "/pulls/9/files" in url and method == "GET":
             return 200, [{"filename":"apps/console/app/page.tsx"},{"filename":"src/core.py"}]
         if "/pulls/9" in url and method == "GET":
-            return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": "commit1", "ref": "codex/refactor", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main", "sha": "base123"}}
+            return 200, {"number": 9, "html_url": "https://example/pr/9", "head": {"sha": self.ci_sha, "ref": "codex/refactor", "repo": {"full_name": "owner/repo"}}, "base": {"ref": "main", "sha": "base123"}}
         if "/actions/runs/" in url and "/attempts/" in url and "/jobs?" in url and method == "GET":
             match = re.search(r"/actions/runs/([0-9]+)/attempts/([0-9]+)/jobs[?]", url)
             if not match:
@@ -66,7 +67,7 @@ class FakeGitHubTransport:
             if self.actions_forbidden:
                 return 403, {"message": "forbidden"}
             return 200, {"total_count": len(self.workflow_runs), "workflow_runs": self.workflow_runs}
-        if "/commits/commit1/status" in url and method == "GET":
+        if "/commits/" + self.ci_sha + "/status" in url and method == "GET":
             return 200, {"statuses": self.commit_statuses}
         if "/actions/workflows/validate.yml/dispatches" in url and method == "POST":
             return 204, None
@@ -500,6 +501,21 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertEqual(failures[0].failure_class, "code")
 
 
+    def _use_exact_native_candidate(self):
+        sha = "a" * 40
+        self.transport.ci_sha = sha
+        self.transport.workflow_runs = [{
+            **self._workflow_attempt(
+                run_id=10, suite=100, conclusion="failure", name="CRM validation"
+            ),
+            "head_sha": sha,
+        }]
+        check = {**self._check_attempt(
+            check_id=20, suite=100, conclusion="failure", name="validate"
+        ), "head_sha": sha, "output": {}}
+        self.transport.check_runs = [check]
+        return sha
+
     @staticmethod
     def _native_job(*, run_id=10, attempt=1, candidate="commit1",
                     job_id=300, step_name="Tests", conclusion="failure"):
@@ -512,19 +528,15 @@ class GitHubRestAdapterTests(unittest.TestCase):
         }
 
     def test_exact_native_failed_test_step_enters_bounded_code_repair(self):
-        run = self._workflow_attempt(run_id=10, suite=100, conclusion="failure", name="CRM validation")
-        self.transport.workflow_runs = [run]
-        check = self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
-        check["output"] = {}
-        self.transport.check_runs = [check]
+        sha = self._use_exact_native_candidate()
         self.transport.job_attempts[(10, 1)] = {
             "total_count": 2, "jobs": [
-                self._native_job(run_id=10, step_name="Tests"),
-                self._native_job(run_id=10, job_id=301, conclusion="success"),
+                self._native_job(run_id=10, candidate=sha, step_name="Tests"),
+                self._native_job(run_id=10, candidate=sha, job_id=301, conclusion="success"),
             ],
         }
         self.assertEqual(self.github.get_ci_state(9), CIState.FAILURE)
-        failure, = self.github.get_failed_checks(9, expected_head_sha="commit1")
+        failure, = self.github.get_failed_checks(9, expected_head_sha=sha)
         self.assertEqual(failure.name, "native-ci/tests")
         self.assertEqual(failure.failure_class, "code")
         self.assertIn("/runs/10/job/300", failure.details_url)
@@ -533,53 +545,38 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertFalse(any("/actions/runs/10/jobs?" in row[1] for row in self.transport.calls))
 
     def test_native_job_without_failed_step_never_invents_a_code_patch(self):
-        self.transport.workflow_runs = [
-            self._workflow_attempt(run_id=10, suite=100, conclusion="failure", name="validate")
-        ]
-        self.transport.check_runs = [
-            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
-        ]
-        self.transport.check_runs[0]["output"] = {}
+        sha = self._use_exact_native_candidate()
         for steps in ([], [{"name": "Initialize containers", "status": "completed",
                             "conclusion": "failure"}]):
             with self.subTest(steps=steps):
                 self.transport.job_attempts[(10, 1)] = {
                     "total_count": 1,
-                    "jobs": [{**self._native_job(run_id=10), "steps": steps}],
+                    "jobs": [{**self._native_job(run_id=10, candidate=sha), "steps": steps}],
                 }
                 failures = self.github.get_failed_checks(9)
                 self.assertTrue(failures)
                 self.assertTrue(all(f.failure_class == "unknown" for f in failures))
 
     def test_mixed_code_and_unclassified_failures_are_not_repairable(self):
-        self.transport.workflow_runs = [
-            self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
-        ]
-        self.transport.check_runs = [
-            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
-        ]
+        sha = self._use_exact_native_candidate()
         self.transport.job_attempts[(10, 1)] = {
             "total_count": 2, "jobs": [
-                self._native_job(run_id=10, job_id=300, step_name="Tests"),
-                self._native_job(run_id=10, job_id=301, step_name="Initialize containers"),
+                self._native_job(run_id=10, candidate=sha, job_id=300, step_name="Tests"),
+                self._native_job(run_id=10, candidate=sha, job_id=301, step_name="Initialize containers"),
             ],
         }
         failures = self.github.get_failed_checks(9)
         self.assertEqual({f.failure_class for f in failures}, {"code", "unknown"})
 
     def test_latest_rerun_attempt_only_never_uses_old_job_evidence(self):
-        self.transport.workflow_runs = [
-            self._workflow_attempt(run_id=10, suite=100, conclusion="failure", attempt=2)
-        ]
-        self.transport.check_runs = [
-            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
-        ]
+        sha = self._use_exact_native_candidate()
+        self.transport.workflow_runs[0]["run_attempt"] = 2
         self.transport.job_attempts[(10, 1)] = {
-            "total_count": 1, "jobs": [self._native_job(run_id=10, attempt=1, step_name="Tests")],
+            "total_count": 1, "jobs": [self._native_job(run_id=10, attempt=1, candidate=sha, step_name="Tests")],
         }
         self.transport.job_attempts[(10, 2)] = {
             "total_count": 1,
-            "jobs": [self._native_job(run_id=10, attempt=2,
+            "jobs": [self._native_job(run_id=10, attempt=2, candidate=sha,
                                       step_name="Prepare pinned Playwright")],
         }
         failures = self.github.get_failed_checks(9)
@@ -588,12 +585,7 @@ class GitHubRestAdapterTests(unittest.TestCase):
         self.assertFalse(any("/attempts/1/jobs?" in row[1] for row in self.transport.calls))
 
     def test_spoofed_native_job_sha_and_unbounded_inventory_fail_closed(self):
-        self.transport.workflow_runs = [
-            self._workflow_attempt(run_id=10, suite=100, conclusion="failure")
-        ]
-        self.transport.check_runs = [
-            self._check_attempt(check_id=20, suite=100, conclusion="failure", name="validate")
-        ]
+        self._use_exact_native_candidate()
         self.transport.job_attempts[(10, 1)] = {
             "total_count": 1,
             "jobs": [self._native_job(run_id=10, candidate="other-candidate")],
