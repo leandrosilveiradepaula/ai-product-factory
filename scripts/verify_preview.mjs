@@ -1,4 +1,6 @@
 import { chromium } from "playwright";
+import matcher from "./preview_text_match.cjs";
+const { normalizeVisibleText, containsExpectedText } = matcher;
 
 const previewUrl = process.env.FACTORY_PREVIEW_URL;
 const expectedText = (process.env.FACTORY_PREVIEW_EXPECTED_TEXT || "").trim();
@@ -71,12 +73,12 @@ try {
 
   await page.waitForTimeout(750);
   const bodyText = (await page.locator("body").innerText()).trim();
-  observed.bodySample = bodyText.replace(/\s+/g, " ").slice(0, 300);
+  observed.bodySample = normalizeVisibleText(bodyText).slice(0, 300);
   if (!bodyText) throw new Error("preview rendered an empty body");
   checks.push("body_visible");
 
   if (expectedText) {
-    if (!bodyText.includes(expectedText)) {
+    if (!containsExpectedText(bodyText, expectedText)) {
       throw new Error(`preview did not contain expected text: ${expectedText}`);
     }
     checks.push("expected_text");

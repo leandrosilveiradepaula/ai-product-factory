@@ -9,6 +9,8 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         text=(ROOT/"scripts/verify_preview.mjs").read_text()
         self.assertIn("process.env.FACTORY_PREVIEW_URL",text)
         self.assertIn("page.goto(previewUrl",text)
+        self.assertIn("containsExpectedText(bodyText, expectedText)",text)
+        self.assertIn("normalizeVisibleText(bodyText)",text)
         self.assertIn('emit("success"',text)
         self.assertIn('emit("failure"',text)
 

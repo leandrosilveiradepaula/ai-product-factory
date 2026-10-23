@@ -8,6 +8,7 @@ from urllib import error, parse, request
 
 from .github_loop import CIState
 from .github_auth import resolve_github_token
+from .ci_job_failure_evidence import parse_failed_native_job_steps
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, Any]]
@@ -607,6 +608,52 @@ class GitHubRestAdapter:
             failure_class=cls._failure_class(name=safe_name, conclusion=safe_conclusion, summary=safe_summary),
         )
 
+    def _verified_failed_workflow_steps(
+        self, run: dict, *, candidate_sha: str,
+    ) -> tuple[GitHubCheckFailure, ...] | None:
+        """Fetch only the selected workflow's exact retry attempt.
+
+        The source repository's token must have Actions read access. A missing
+        capability never authorizes a guessed patch, and no raw job logs or
+        user-controlled error messages enter the Control Plane.
+        """
+        run_id = run.get("id")
+        if not isinstance(candidate_sha, str) or not __import__("re").fullmatch(r"[0-9a-f]{40}", candidate_sha):
+            # Synthetic/legacy adapters that cannot prove a full SHA never
+            # unlock an exact-attempt repair from partial job metadata.
+            return None
+        if type(run_id) is not int or run_id < 1:
+            # Old GitHub adapters exposed no run ID; keep the existing
+            # conservative metadata classification for that legacy case.
+            return None
+        attempt = run.get("run_attempt", 1)
+        if type(attempt) is not int or attempt < 1 or run.get("head_sha") != candidate_sha:
+            raise RuntimeError("native CI workflow attempt or commit drift")
+        try:
+            payload = self._call(
+                "GET",
+                f"/repos/{self.repository}/actions/runs/{run_id}/attempts/{attempt}/jobs",
+                query={"per_page": "100"},
+            )
+        except GitHubRequestError as exc:
+            if exc.status in (403, 404):
+                # A missing Actions-read capability is not code evidence.
+                return None
+            raise
+        evidence = parse_failed_native_job_steps(
+            payload, repository=self.repository, run_id=run_id,
+            run_attempt=attempt, candidate_sha=candidate_sha,
+        )
+        if evidence is None:
+            return None
+        return tuple(
+            GitHubCheckFailure(
+                name=row.name, conclusion="failure", details_url=row.details_url,
+                summary=row.summary, failure_class=row.failure_class,
+            )
+            for row in evidence
+        )
+
     def get_failed_checks(self, pr_number: int, *, expected_head_sha: str | None = None) -> tuple[GitHubCheckFailure, ...]:
         pr = self.get_pull_request(pr_number)
         if expected_head_sha is not None:
@@ -615,35 +662,66 @@ class GitHubRestAdapter:
                 raise ValueError("expected CI failure evidence SHA is invalid")
             if pr.head_sha != expected_head_sha:
                 raise RuntimeError("CI failure evidence PR head diverged from candidate SHA")
-        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha,pr.head_ref)
+        source, primary, statuses = self._check_runs_or_fine_grained_evidence(pr.head_sha, pr.head_ref)
         passing = {"success", "neutral", "skipped"}
-        failures = []
+        failures: list[GitHubCheckFailure] = []
+        # A failure of a generic "validate" job can actually be a failed
+        # "Tests" or "TypeScript" step. The run wrapper often has no summary,
+        # which previously converted *known code failures* to unknown and
+        # permanently blocked the bounded repair lane. Verify GitHub Actions
+        # job/step metadata for the exact attempt instead of guessing.
+        verified_runs: set[int] = set()
+        verified_suites: set[int] = set()
+        for index, run in enumerate(self.last_ci_workflow_runs):
+            conclusion = str(run.get("conclusion") or "")
+            if str(run.get("status") or "") != "completed" or conclusion in passing:
+                continue
+            detailed = self._verified_failed_workflow_steps(
+                run, candidate_sha=pr.head_sha,
+            )
+            if detailed is None:
+                continue
+            verified_runs.add(index)
+            suite_id = run.get("check_suite_id")
+            if type(suite_id) is int and suite_id > 0:
+                verified_suites.add(suite_id)
+            failures.extend(detailed)
+
         if source == "github_actions_statuses":
-            for run in primary:
+            for index, run in enumerate(primary):
                 conclusion = str(run.get("conclusion") or "")
-                if str(run.get("status") or "") != "completed" or conclusion in passing:
+                if (str(run.get("status") or "") != "completed"
+                    or conclusion in passing or index in verified_runs):
                     continue
                 failures.append(self._check_failure(
-                    name=run.get("name") or "github-actions", conclusion=conclusion or "failure",
+                    name=run.get("name") or "github-actions",
+                    conclusion=conclusion or "failure",
                     details_url=run.get("html_url"),
                     summary=f"GitHub Actions workflow concluded {conclusion or 'failure'}",
                 ))
-            # Commit statuses include Vercel/Preview and other deployment
-            # providers.  They are not native CI failures and must never
-            # turn an exact-SHA code repair into an unknown/quota failure.
-            # The candidate CI gate already uses authoritative Actions runs.
+            # Vercel/Preview statuses are distinct from native code CI. They
+            # cannot cause a speculative source mutation.
             return tuple(failures)
         for check in primary:
             if check.get("status") != "completed" or check.get("conclusion") in passing:
+                continue
+            suite = check.get("check_suite")
+            suite_id = suite.get("id") if isinstance(suite, dict) else None
+            if suite_id in verified_suites:
+                # Complete exact-attempt job inventory is stronger than a
+                # generic duplicate check-run without failing step details.
                 continue
             output = check.get("output") or {}
             failures.append(self._check_failure(
                 name=check.get("name") or "unnamed-check",
                 conclusion=check.get("conclusion") or "failure",
-                details_url=check.get("details_url"), summary=output.get("summary") or output.get("title"),
+                details_url=check.get("details_url"),
+                summary=output.get("summary") or output.get("title"),
             ))
         seen = {(failure.name, failure.conclusion) for failure in failures}
-        for run in self.last_ci_workflow_runs:
+        for index, run in enumerate(self.last_ci_workflow_runs):
+            if index in verified_runs:
+                continue
             conclusion = str(run.get("conclusion") or "")
             if run.get("status") == "completed" and conclusion not in passing:
                 name = str(run.get("name") or "github-actions")

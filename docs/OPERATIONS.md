@@ -1,3 +1,9 @@
+## 23/10/2026 — Triagem determinística de CI antes do reparo bounded (candidato)
+
+Quando a Factory observar CI nativa com conclusão `failure` num candidato SHA-exato, o leitor GitHub classifica erros por metadata de workflow/job/step; não lê logs arbitrários nem faz chamada paga. Apenas job inventory completo da tentativa exata `/actions/runs/{id}/attempts/{n}/jobs`, com project/repo, run_id, run_attempt, head_sha e máximo 100 jobs, pode substituir o wrapper genérico. A tabela de nomes de steps que autorizam a classe `code` é fechada, e o reparo continua limitado a paths já auditados do Change Set no Control Plane, epoch atual e até 2 tentativas. Resultado misto ou desconhecido **não** vira reparo especulativo. Missing Actions GET (403/404) retém o comportamento conservador; erro parcial/mismatch é fail-closed. Não declarar E2E de `CI failure -> repair -> new CI` sem execução real.
+
+Verificação de Preview: texto esperado continua sendo requisito explícito e deve aparecer no **body visível**. Normalizar espaços/quebras de linha (não conteúdo, pontuação ou caixa) evita intervenção manual por formatação. Um texto que aparece apenas no título continua reprovado. Não inferir `product_ready` de browser smoke. Nenhum deployment adicionado se o Console não mudou.
+
 ## 23/10/2026 — Preflight de issue autorizada e retenção de planning vazio (candidato)
 
 **Problema:** o pedido OWNER para CRM issue #24 não alterou o escopo de escrita vigente em CURRENT_TASK, que continua CRM issue #33. Assim, a Factory pagou por um planning que não tinha tarefa executável autorizada. Runs históricos `090cd768-...` e `80385a16-...` continuam falhos e não serão reativados por esta mudança.
