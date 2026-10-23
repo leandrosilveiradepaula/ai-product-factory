@@ -108,7 +108,7 @@ class PlatformSourceTests(unittest.TestCase):
         self.assertEqual(actual["current_state_facts"]["live_candidate"]["sha"], SHA)
         adapter.assert_called_once_with(repository=REPO)
         queue._get.return_value = [{"id": "p", **PROJECT, "project_kind": "greenfield"}]
-        with self.assertRaisesRegex(PermissionError, "existing or platform"):
+        with self.assertRaisesRegex(PermissionError, "greenfield source provenance unavailable"):
             queue._live_candidate_context("p", context)
 
 
