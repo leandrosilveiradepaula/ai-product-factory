@@ -498,6 +498,9 @@ class ChangeSetTests(unittest.TestCase):
         result=ChangeSetIntegrator(github=github,store=store).integrate(item)
         self.assertEqual(result.candidate_commit,"c" * 40)
         github.commit_files.assert_not_called()
+        github.verify_integration_commit_tree.assert_called_once_with(
+            parent_sha="b" * 40,candidate_sha="c" * 40,expected_paths=("src/a.py",)
+        )
         store.complete_integration.assert_called_once_with(
             item=item,candidate_commit="c" * 40,changed_files=("src/a.py",)
         )

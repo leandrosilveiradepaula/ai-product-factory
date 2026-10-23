@@ -40,6 +40,12 @@ class ChangeSetIntegrator:
             return None
         if observed_message != message or parents != (item.candidate_commit,):
             return None
+        # A forged commit can preserve the expected parent, trailer and files
+        # while introducing extra unauthorized paths. Prove the whole delta.
+        self.github.verify_integration_commit_tree(
+            parent_sha=item.candidate_commit, candidate_sha=candidate,
+            expected_paths=tuple(files),
+        )
         for path, expected in files.items():
             if self.github.get_file_text(path, ref=candidate) != expected:
                 return None
