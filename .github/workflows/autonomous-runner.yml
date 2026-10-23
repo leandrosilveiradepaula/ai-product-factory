@@ -492,7 +492,7 @@ jobs:
       issues: read
       pull-requests: read
       checks: read
-      actions: read
+      actions: write # Needed only for exact same-repo validate.yml workflow_dispatch
       statuses: read
     env:
       PYTHONPATH: src
