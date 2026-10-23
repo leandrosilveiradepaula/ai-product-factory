@@ -1701,13 +1701,19 @@ Somente falha classificada positivamente como `code` pode materializar a
 Work Unit. Runner, infraestrutura, permissão, quota ou classe desconhecida
 ficam registrados como bloqueio durável, sem patch especulativo, sem nova
 chamada de modelo e sem tentar contornar a CI. Tentativas de código são
-limitadas a duas por padrão (máximo três); ao esgotar, a run fica em
+limitadas a três; ao esgotar, a run fica em
 `failed_gate` e o Change Set é bloqueado.
 
 O worker existente Direct/Codex continua dono do lease, escopo, orçamento e
 fencing de geração. A integração existente produz o novo SHA no mesmo PR;
 triggers do Control Plane registram `integrated`, `awaiting_ci` e `passed`
-atomicamente com as transições de Change Set/run. Pausa, Stop, SHA divergente
+atomicamente com as transições de Change Set/run. O runtime persiste o
+resultado `passed` da CI reparada antes de enfileirar especialistas ou permitir
+Preview; resposta ausente ou indisponível do Control Plane bloqueia a
+continuação. Uma queda após o commit de integração e antes da confirmação no
+Control Plane só pode recuperar a própria head com parent, trailers de
+proveniência e conteúdo de arquivos exatos; qualquer outra head é drift.
+Pausa, Stop, SHA divergente
 ou ausência da migration recusam a continuação. Não existe auto-merge,
 Preview antes de CI verde, migration automática ou chamada paga de smoke.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import json
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -249,6 +250,99 @@ class GitHubRestAdapter:
         self._call("PATCH", f"/repos/{self.repository}/git/refs/heads/{parse.quote(branch, safe='')}",
                    payload={"sha": new_commit["sha"], "force": False})
         return new_commit["sha"]
+
+    def get_commit_provenance(self, sha: str) -> tuple[str, tuple[str, ...]]:
+        """Return the immutable message and parents for one Git commit.
+
+        This narrow read is used only to recover a Factory integration commit
+        after the GitHub ref update succeeded but the subsequent Control Plane
+        completion write did not.  It deliberately exposes neither commit
+        contents nor arbitrary API payloads to the caller.
+        """
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("commit provenance requires an exact lowercase SHA")
+        row = self._call("GET", f"/repos/{self.repository}/git/commits/{sha}")
+        message = row.get("message") if isinstance(row, dict) else None
+        parents = row.get("parents") if isinstance(row, dict) else None
+        if not isinstance(message, str) or not isinstance(parents, list):
+            raise RuntimeError("GitHub commit provenance is malformed")
+        parent_shas: list[str] = []
+        for parent in parents:
+            value = parent.get("sha") if isinstance(parent, dict) else None
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value):
+                raise RuntimeError("GitHub commit provenance has invalid parent")
+            parent_shas.append(value)
+        if len(parent_shas) != 1:
+            raise RuntimeError("GitHub integration recovery requires one parent")
+        return message, tuple(parent_shas)
+
+    def verify_integration_commit_tree(
+        self, *, parent_sha: str, candidate_sha: str, expected_paths: tuple[str, ...],
+    ) -> None:
+        """Prove a recovered commit has *only* authorized, regular-file changes.
+
+        Checking message, parent and target contents alone is insufficient: a
+        parallel actor could append an unrelated file to that same commit.
+        This read-only proof compares complete Git trees, not a possibly
+        paginated or truncated GitHub compare/files response.
+        """
+        if (not isinstance(parent_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", parent_sha)
+            or not isinstance(candidate_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", candidate_sha)
+            or parent_sha == candidate_sha
+            or not isinstance(expected_paths, tuple) or not 1 <= len(expected_paths) <= 500
+            or any(not isinstance(path, str) or not path or path.startswith("/")
+                   or "\\" in path or path in {".", ".."} or ".." in path.split("/")
+                   for path in expected_paths)
+            or len(set(expected_paths)) != len(expected_paths)):
+            raise ValueError("invalid recovered integration tree proof identity")
+
+        def entries_at(commit_sha: str) -> dict[str, tuple[str, str, str]]:
+            row = self._call("GET", f"/repos/{self.repository}/git/commits/{commit_sha}")
+            tree = row.get("tree") if isinstance(row, dict) else None
+            tree_sha = tree.get("sha") if isinstance(tree, dict) else None
+            if not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", tree_sha):
+                raise RuntimeError("integration commit has invalid root tree")
+            listing = self._call(
+                "GET", f"/repos/{self.repository}/git/trees/{tree_sha}",
+                query={"recursive": "1"},
+            )
+            if (not isinstance(listing, dict) or listing.get("truncated") is not False
+                or not isinstance(listing.get("tree"), list)
+                or len(listing["tree"]) > 10000):
+                raise RuntimeError("integration commit tree inventory incomplete or unbounded")
+            entries: dict[str, tuple[str, str, str]] = {}
+            for item in listing["tree"]:
+                if not isinstance(item, dict):
+                    raise RuntimeError("integration tree entry malformed")
+                kind, path, mode, sha = (
+                    item.get("type"), item.get("path"), item.get("mode"), item.get("sha")
+                )
+                if kind not in {"tree", "blob", "commit"}:
+                    raise RuntimeError("integration tree entry type invalid")
+                if (not isinstance(path, str) or not path or path.startswith("/")
+                    or not isinstance(mode, str) or not isinstance(sha, str)
+                    or not re.fullmatch(r"[0-9a-f]{40}", sha)):
+                    raise RuntimeError("integration tree entry identity invalid")
+                if kind == "tree":
+                    continue
+                if path in entries:
+                    raise RuntimeError("integration tree duplicate path")
+                entries[path] = (kind, mode, sha)
+            return entries
+
+        old_files = entries_at(parent_sha)
+        new_files = entries_at(candidate_sha)
+        expected = set(expected_paths)
+        for path in expected:
+            observed = new_files.get(path)
+            if observed is None or observed[:2] != ("blob", "100644"):
+                raise RuntimeError("recovered integration changed a file type or mode")
+        changed = {
+            path for path in old_files.keys() | new_files.keys()
+            if old_files.get(path) != new_files.get(path)
+        }
+        if not changed or not changed <= expected:
+            raise RuntimeError("recovered integration contains extra or no file changes")
 
     def create_pull_request(self, *, title: str, body: str, head: str, base: str = "main") -> GitHubPullRequest:
         row = self._call("POST", f"/repos/{self.repository}/pulls",

@@ -57,7 +57,59 @@ class CIRepairRuntimeTests(unittest.TestCase):
         kwargs = repairs.enqueue_failure.call_args.kwargs
         self.assertEqual(kwargs["item"].candidate_commit, SHA)
         self.assertEqual(kwargs["failures"][0].failure_class, "code")
-        self.assertEqual(kwargs["max_attempts"], 2)
+        self.assertEqual(kwargs["max_attempts"], 3)
+
+    def test_green_repaired_candidate_persists_ci_result_before_specialists(self):
+        followups = MagicMock(); followups.next_pending.return_value = self.item()
+        repairs = MagicMock(); repairs.record_ci_result.return_value = {
+            "updated": True, "status": "passed", "repair_request_id": "repair-1",
+        }
+        github = MagicMock()
+        github.get_pull_request.return_value = MagicMock(head_sha=SHA, merged=False)
+        github.get_issue.return_value = MagicMock(number=7)
+        loop = MagicMock()
+        loop.evaluate.return_value = MagicMock(
+            action=GitHubLoopAction.PREVIEW_READY, ci_state=CIState.SUCCESS,
+        )
+        lanes = MagicMock(); lanes.enqueue.return_value = {"status": "specialist_review_pending"}
+        with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue", return_value=followups), \
+             patch("ai_product_factory.runtime_cli.SupabaseCIRepairQueue", return_value=repairs), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter", return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as delivery, \
+             patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore"), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue", return_value=lanes), \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop", return_value=loop), \
+             patch("ai_product_factory.runtime_cli._assert_project_followup", return_value=4):
+            result = run_ci_once()
+        self.assertEqual(result["status"], "specialist_review_pending")
+        self.assertEqual(result["ci_repair_result"]["status"], "passed")
+        repairs.record_ci_result.assert_called_once_with(
+            run_id=self.item().run_id, candidate_commit=SHA, status="passed",
+        )
+        delivery.return_value.update_run_status.assert_called_with(self.item().run_id, "preview_ready")
+        lanes.enqueue.assert_called_once_with(self.item().run_id)
+
+    def test_green_ci_stops_before_preview_when_repair_receipt_is_unavailable(self):
+        followups = MagicMock(); followups.next_pending.return_value = self.item()
+        repairs = MagicMock(); repairs.record_ci_result.side_effect = RuntimeError("offline")
+        github = MagicMock()
+        github.get_pull_request.return_value = MagicMock(head_sha=SHA, merged=False)
+        github.get_issue.return_value = MagicMock(number=7)
+        loop = MagicMock()
+        loop.evaluate.return_value = MagicMock(
+            action=GitHubLoopAction.PREVIEW_READY, ci_state=CIState.SUCCESS,
+        )
+        with patch("ai_product_factory.runtime_cli.SupabaseCIFollowupQueue", return_value=followups), \
+             patch("ai_product_factory.runtime_cli.SupabaseCIRepairQueue", return_value=repairs), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter", return_value=github), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore") as delivery, \
+             patch("ai_product_factory.runtime_cli.AutonomousGitHubLoop", return_value=loop), \
+             patch("ai_product_factory.runtime_cli._assert_project_followup", return_value=4), \
+             patch("ai_product_factory.runtime_cli.SupabaseSpecialistLaneQueue") as lanes:
+            result = run_ci_once()
+        self.assertEqual(result["status"], "ci_repair_result_persistence_blocked")
+        delivery.return_value.update_run_status.assert_not_called()
+        lanes.return_value.enqueue.assert_not_called()
 
     def test_infrastructure_failure_is_persisted_without_patch_execution(self):
         followups = MagicMock(); followups.next_pending.return_value = self.item()

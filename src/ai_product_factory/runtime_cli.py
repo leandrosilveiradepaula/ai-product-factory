@@ -490,7 +490,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
   except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   try:
    repair=SupabaseCIRepairQueue().enqueue_failure(
-    item=item,failures=tuple(DurableCIFailure.from_github(failure) for failure in failures),max_attempts=2,
+    item=item,failures=tuple(DurableCIFailure.from_github(failure) for failure in failures),max_attempts=3,
    )
   except ValueError as exc:
    store.update_run_status(item.run_id,"failed_gate")
@@ -503,6 +503,20 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
   return {"claimed":True,"status":str(repair.get("status") or "ci_repair_requested"),
    "run_id":item.run_id,"pr_number":item.pr_number,"candidate_commit":item.candidate_commit,
    "repair":repair,"failure_classes":sorted({failure.failure_class for failure in failures})}
+ ci_repair_result=None
+ if (decision.action.value==GitHubLoopAction.PREVIEW_READY.value
+     and getattr(item,"change_set_id",None)):
+  # Persist the green result for a repaired candidate before allowing
+  # specialist or Preview follow-up.  The RPC is a safe no-op for ordinary
+  # candidates; an unavailable or malformed receipt blocks advancement.
+  try:
+   ci_repair_result=SupabaseCIRepairQueue().record_ci_result(
+    run_id=item.run_id,candidate_commit=item.candidate_commit,status="passed",
+   )
+  except (RuntimeError,ValueError):
+   return {"claimed":True,"status":"ci_repair_result_persistence_blocked",
+    "run_id":item.run_id,"pr_number":item.pr_number,
+    "candidate_commit":item.candidate_commit}
  if decision.action.value==GitHubLoopAction.WAIT_CI.value:
   store.update_run_status(item.run_id,"ci_pending")
  elif decision.action.value==GitHubLoopAction.WAIT_HUMAN.value:
@@ -552,7 +566,7 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
   routed=SupabaseSpecialistLaneQueue().enqueue(item.run_id)
   status=str(routed.get("status") or "specialist_review_pending")
  return {"claimed":True,"status":status,"run_id":item.run_id,"pr_number":item.pr_number,"ci_state":decision.ci_state.value,
-  "ci_repair_result":"recorded_by_run_transition" if decision.action.value=="preview_ready" else None}
+  "ci_repair_result":ci_repair_result}
 
 def run_specialist_once(role:str,worker_id:str)->dict:
  queue=SupabaseSpecialistLaneQueue()

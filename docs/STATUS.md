@@ -1,6 +1,26 @@
 ## 23/10/2026 — Candidato: triagem da CI por etapas nativas e texto visível normalizado da Factory
 
 - Fonte de verdade: `main=434d132ad4fe47bc9977306f9e14ba5bed4221de`, nenhuma PR aberta na Factory. A issue #1036 descreve a ligação de CI falha para reparo. O código atual **já** contém `SupabaseCIRepairQueue`, RPC `factory_enqueue_ci_repair` implantada no Control Plane e handoff em `run_ci_once`; não reintroduzir outro orquestrador nem duplicar RPC. Contagem no banco antes desta mudança: zero repair requests, sem alegar jornada real de reparo concluída.
+
+## 23/10/2026 — Candidato: fechamento operacional do reparo durável de CI (#1036)
+
+- A continuidade usa a fila, RPC e Work Units já existentes; não foi criado um
+  segundo orquestrador nem uma nova migration. Uma falha `code` com evidência
+  nativa SHA-exata abre no máximo **três** tentativas; infraestrutura, runner,
+  permissões, quota, prova ausente ou SHA divergente continuam `failed_gate`
+  sem patch especulativo.
+- A primeira CI verde do candidato reparado chama
+  `factory_record_ci_repair_result(..., passed)` antes de gravar
+  `preview_ready`, especialistas ou Preview. Falha/recibo malformado do
+  Control Plane interrompe a continuação sem produzir gate falso.
+- O integrador recupera uma queda entre commit e `complete_integration` apenas
+  se a head da branch for um commit Factory de parent, mensagem de proveniência
+  e conteúdo integral dos arquivos esperados. Drift concorrente continua
+  bloqueado e não cria segundo commit/PR/dispatch.
+- Testes offline cobrem CI verde com recibo, indisponibilidade do recibo,
+  máximo três, falha infra e recuperação/rejeição de commit. PostgreSQL isolado
+  e CI no SHA da PR ainda são evidência requerida; não houve incidente nem
+  mutation de produção nesta mudança. `product_ready` permanece falso.
 - Falha reproduzida com metadados oficiais: workflow `CRM validation`/job genérico `validate` sem informação suficiente nos check-run summaries pode classificar a falha como `unknown`, mesmo que o job nativo no attempt e SHA exatos tenha `Tests` como único step falho. O resultado mistura wrappers de workflow e impede o gate de reparo de código. Não é motivo para consertar manualmente o CRM.
 - Candidato no núcleo Factory lê somente `/actions/runs/<id>/attempts/<attempt>/jobs` para workflow nativo que realmente falhou; valida run id, retry, candidate SHA, limite e completude de até 100 jobs e até 20 failures; classifica apenas steps conhecidos como `code`, sem logs nem texto arbitrário. Falha de runner, quota, steps não enumerados, ausência de permissão, job incompleto, SHA/attempt divergente continuam fail-closed. A evidência de jobs substitui wrapper genérico **apenas quando verificada**; demais workflows e status Vercel independentes permanecem não-reparáveis por dedução.
 - Preview: `scripts/verify_preview.mjs` normaliza apenas whitespace do texto renderizado e expectativa previamente fornecida pelo operador/política. Não aceita texto do `title`, não inventa nova expectativa e não ignora page errors/HTTP 4xx. Isto elimina falsos negativos por quebra de linha, sem criar prova fictícia.
