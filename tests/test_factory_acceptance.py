@@ -404,6 +404,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261021234500_ci_repair_replay_idempotency.sql",
             "20261022125100_ci_repair_cumulative_scopes.sql",
             "20261023214000_factory_greenfield_owner_continuation.sql",
+            "20261024162500_settle_terminal_ci_repair_sources.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
