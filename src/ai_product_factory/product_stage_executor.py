@@ -149,6 +149,68 @@ def _validate_pre_pr_planning_tasks(output: dict, profiles: tuple[AgentProfile,.
         raise ValueError("unsupported specialist review role: "+", ".join(invalid))
 
 
+def _verified_greenfield_source_for_reconciliation(context: object) -> bool:
+    """Accept exact current read-only greenfield code, never a fake snapshot.
+
+    Caller already re-read project manifest and GitHub source after the
+    run was atomically claimed. This guard independently rejects malformed
+    current-state evidence before any paid Product Stage invocation.
+    """
+    import re
+
+    if not isinstance(context, dict):
+        return False
+    manifest = context.get("manifest")
+    facts = context.get("current_state_facts")
+    if not isinstance(manifest, dict) or not isinstance(facts, dict):
+        return False
+    owner = manifest.get("continuation_request")
+    if (manifest.get("source") != "factory-console"
+        or manifest.get("onboarding_mode") != "greenfield"
+        or not isinstance(manifest.get("bootstrap_request_id"), str)
+        or not isinstance(owner, dict)
+        or owner.get("source") != "github-owner"
+        or not isinstance(owner.get("github"), dict)
+        or owner["github"].get("repository") != "leandrosilveiradepaula/ai-product-factory"
+        or owner["github"].get("issue_number") != 1055
+        or owner["github"].get("actor_id") != 256917842):
+        return False
+
+    candidate = facts.get("live_candidate")
+    if not isinstance(candidate, dict):
+        return False
+    sha = candidate.get("sha")
+    if (candidate.get("observed_from") != "live_greenfield_main_exact_sha"
+        or candidate.get("branch") != "main"
+        or not isinstance(sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", sha) is None
+        or candidate.get("main_sha") != sha
+        or candidate.get("verified_open_pr", False) is not None):
+        return False
+    governance = candidate.get("governance")
+    if (not isinstance(governance, dict)
+        or not all(isinstance(governance.get(k), str) and governance[k].strip()
+                   for k in ("README.md", "package.json"))):
+        return False
+
+    source = candidate.get("source_evidence")
+    if (not isinstance(source, dict)
+        or source.get("status") != "bounded_source_inspected"
+        or source.get("assessed_commit") != sha):
+        return False
+    files = source.get("inspected_files")
+    if (not isinstance(files, list) or not 1 <= len(files) <= 4
+        or not all(
+            isinstance(f, dict)
+            and isinstance(f.get("path"), str)
+            and isinstance(f.get("content"), str)
+            and bool(f["content"].strip())
+            and f.get("assessed_commit") == sha
+            for f in files)):
+        return False
+    return True
+
+
 class ProductStageExecutor:
     """Executes product/reconciliation stages through the primary provider only."""
 
@@ -164,18 +226,36 @@ class ProductStageExecutor:
         if stage not in self._supported:
             raise ValueError(f"unsupported product stage: {stage}")
 
+        verified_greenfield = False
         if stage == "reconciliation":
             snapshot=item.context.get("state_snapshot")
             if not isinstance(snapshot,dict) or not snapshot.get("summary"):
-                raise ValueError("existing-project reconciliation requires a durable state snapshot")
-            evidence=snapshot.get("evidence")
-            source_status=snapshot.get("source_status")
-            if not evidence and not source_status:
-                raise ValueError("existing-project reconciliation requires source evidence")
+                # Existing projects retain their durable-snapshot contract.
+                # Only a source-pinned authenticated Console greenfield can
+                # reconcile from live code without inventing a DB snapshot.
+                verified_greenfield = _verified_greenfield_source_for_reconciliation(item.context)
+                if not verified_greenfield:
+                    raise ValueError("existing-project reconciliation requires a durable state snapshot")
+            else:
+                evidence=snapshot.get("evidence")
+                source_status=snapshot.get("source_status")
+                if not evidence and not source_status:
+                    raise ValueError("existing-project reconciliation requires source evidence")
 
         order=("discovery","specification","reconciliation","gap_analysis")
         prior={s:self.outputs[(item.run_id,s)] for s in order if (item.run_id,s) in self.outputs}
         objective=getattr(self.prompts,stage)
+        if verified_greenfield:
+            objective = (
+                "Reconcile this already-created Console greenfield using only "
+                "the exact-SHA live Github source receipt, verified current "
+                "project facts and authorized OWNER continuation. No durable "
+                "historical project snapshot is available, so do not invent "
+                "one or promote any Preview/PR as complete. Return JSON only "
+                "with observed_stage, summary, evidence, gaps, constraints, "
+                "source_status. Only inspected source files can substantiate "
+                "code deficiencies; selected read paths are not write authority."
+            )
         intake_context=item.context
         resume=item.context.get("_verified_resume_prior_stages")
         if resume is not None:

@@ -139,6 +139,83 @@ class ProductStageExecutorTests(unittest.TestCase):
         self.assertIn('"gap_analysis"',p.requests[2].context)
         self.assertIn("Do not claim tests",p.requests[0].constraints[2])
 
+
+    def test_greenfield_can_reconcile_from_exact_live_code_without_invented_db_snapshot(self):
+        from ai_product_factory.greenfield_source_context import live_greenfield_source_context
+        from unittest.mock import MagicMock
+        github=MagicMock()
+        github.repository="owner/desk"
+        github.get_branch_sha.return_value="b"*40
+        github.list_file_paths.return_value=("README.md","package.json","src/domain/ticket.ts")
+        github.get_file_text.side_effect=lambda name,ref: {
+            "README.md":"# Desk",
+            "package.json":'{"name":"desk"}',
+            "src/domain/ticket.ts":"export const allowed = true;",
+        }[name]
+        manifest={
+            "source":"factory-console","onboarding_mode":"greenfield",
+            "bootstrap_request_id":"706c6b5d-f41f-4c23-ac78-df9d9a1e4c7d",
+            "continuation_request":{
+                "source":"github-owner",
+                "summary":"Inspect src/domain/ticket.ts for a real gap.",
+                "github":{"repository":"leandrosilveiradepaula/ai-product-factory",
+                           "issue_number":1055,"actor_id":256917842},
+            },
+        }
+        context=live_greenfield_source_context(
+            project={"project_kind":"greenfield","repository":"owner/desk","manifest":manifest},
+            context={"manifest":manifest,"current_state_facts":{}},
+            github=github,
+        )
+        self.assertNotIn("state_snapshot",context)
+        item=WorkItem("run","task","project","desk",("reconciliation",),context)
+        provider=Provider()
+        handler=ProductStageExecutor(ModelExecutor(primary=provider))
+        result=handler.execute(item,"reconciliation")
+        self.assertEqual(result["stage"],"ok")
+        self.assertEqual(len(provider.requests),1)
+        self.assertIn("Console greenfield",provider.requests[0].objective)
+        payload=json.loads(provider.requests[0].context)
+        self.assertEqual(payload["intake"]["current_state_facts"]["live_candidate"]["sha"],"b"*40)
+        self.assertIsNone(payload["intake"]["current_state_facts"]["live_candidate"]["verified_open_pr"])
+
+    def test_fake_greenfield_receipt_cannot_bypass_durable_snapshot(self):
+        from copy import deepcopy
+        manifest={
+            "source":"factory-console","onboarding_mode":"greenfield",
+            "bootstrap_request_id":"706c6b5d-f41f-4c23-ac78-df9d9a1e4c7d",
+            "continuation_request":{"source":"github-owner","github":{
+                "repository":"leandrosilveiradepaula/ai-product-factory",
+                "issue_number":1055,"actor_id":256917842}},
+        }
+        good={"manifest":manifest,"current_state_facts":{"live_candidate":{
+            "observed_from":"live_greenfield_main_exact_sha",
+            "branch":"main","sha":"b"*40,"main_sha":"b"*40,
+            "verified_open_pr":None,
+            "governance":{"README.md":"# Desk","package.json":"{}"},
+            "source_evidence":{"status":"bounded_source_inspected",
+                "assessed_commit":"b"*40,"inspected_files":[{
+                    "path":"src/domain/ticket.ts","content":"export const x=1;",
+                    "assessed_commit":"b"*40
+                }]},
+        }}}
+        for mutation in (
+            lambda x:x["current_state_facts"]["live_candidate"].update({"sha":"c"*40}),
+            lambda x:x["current_state_facts"]["live_candidate"].update({"verified_open_pr":{"number":5}}),
+            lambda x:x["current_state_facts"]["live_candidate"]["source_evidence"].update({"status":"no_scoped_source_paths"}),
+            lambda x:x["manifest"]["continuation_request"]["github"].update({"actor_id":4}),
+            lambda x:x["current_state_facts"]["live_candidate"].update({"observed_from":"unverified"}),
+            lambda x:x["current_state_facts"]["live_candidate"]["source_evidence"]["inspected_files"][0].update({"assessed_commit":"a"*40}),
+        ):
+            with self.subTest(mutation=mutation):
+                context=deepcopy(good)
+                mutation(context)
+                provider=Provider()
+                handler=ProductStageExecutor(ModelExecutor(primary=provider))
+                with self.assertRaisesRegex(ValueError,"durable state snapshot"):
+                    handler.execute(WorkItem("r","t","p","desk",("reconciliation",),context),"reconciliation")
+                self.assertEqual(provider.requests,[])
+
     def test_reconciliation_fails_closed_without_durable_snapshot(self):
         p=Provider();h=ProductStageExecutor(ModelExecutor(primary=p))
         i=WorkItem("r","t","p","existing",("reconciliation",),{"manifest":{"reconcile_first":True}})
