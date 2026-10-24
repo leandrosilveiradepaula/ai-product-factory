@@ -89,6 +89,7 @@ class ExactNewDirectoryScopesTests(unittest.TestCase):
     def test_one_new_directory_requires_populated_immediate_ancestor(self):
         worker = builder()
         for path in (
+            "src/nonexistent/mystery.ts",
             "src/never-before/nested/file.ts",
             "src/lib/never-before/deeper/file.ts",
             "src/app/(dashboard)/new/child/page.tsx",

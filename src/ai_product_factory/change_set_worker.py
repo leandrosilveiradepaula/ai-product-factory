@@ -233,7 +233,8 @@ class ChangeSetBuilderWorker:
                 # directory, but only when its immediate parent namespace
                 # already contains real files in the pinned commit. This
                 # never expands an exact scope to a prefix or a sibling file.
-                if "/" not in parent:
+                if len(parent.split("/")) < 3:
+                    # Never create a new immediate child of src/ or app/.
                     return None
                 existing_ancestor=parent.rsplit("/",1)[0]+"/"
                 if not any(existing.startswith(existing_ancestor) for existing in all_paths):
@@ -391,6 +392,10 @@ class ChangeSetBuilderWorker:
                 # unrelated existing paths. Block before any model call if
                 # its parent namespace is not verified in this exact tree.
                 raise PermissionError("exact new-file scope lacks a verified populated parent: "+scope)
+            elif "/" in scope and any(char.isspace() for char in scope):
+                # An unverified conditional filename is still descriptive,
+                # never a semantic request for a related existing file.
+                raise RuntimeError("descriptive write scope requires an exact repository path")
             elif continuation:
                 mapped=self._continuation_semantic_scopes(scope,all_paths)
                 if not mapped:
