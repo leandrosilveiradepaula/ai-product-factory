@@ -285,6 +285,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Settle proven terminal CI repair sources (migration gated, no model)
+        shell: bash
+        run: python scripts/settle_terminal_ci_repairs.py --max-items 3
       - name: Reconcile up to three explicitly enabled existing candidates
         shell: bash
         run: |
