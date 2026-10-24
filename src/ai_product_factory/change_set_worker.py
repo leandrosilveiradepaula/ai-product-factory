@@ -227,9 +227,17 @@ class ChangeSetBuilderWorker:
             if (not path.startswith(("src/","app/","apps/","packages/","test/","tests/"))
                     or not path.endswith((".py",".ts",".tsx",".js",".jsx"))):
                 return None
-            parent=path.rsplit("/",1)[0]+"/"
-            if not any(existing.startswith(parent) for existing in all_paths):
-                return None
+            parent=path.rsplit("/",1)[0]
+            if not any(existing.startswith(parent+"/") for existing in all_paths):
+                # Permit an explicitly named file inside exactly ONE new
+                # directory, but only when its immediate parent namespace
+                # already contains real files in the pinned commit. This
+                # never expands an exact scope to a prefix or a sibling file.
+                if "/" not in parent:
+                    return None
+                existing_ancestor=parent.rsplit("/",1)[0]+"/"
+                if not any(existing.startswith(existing_ancestor) for existing in all_paths):
+                    return None
         return path,match.group("condition")
 
     @classmethod
@@ -378,6 +386,11 @@ class ChangeSetBuilderWorker:
                 # The exact new file has a verified existing parent; never
                 # substitute a different path merely because keywords match.
                 resolved_scopes.append(scope)
+            elif "/" in scope and scope.endswith(self._TEXT_EXTENSIONS):
+                # A literal filename must NEVER be semantically remapped to
+                # unrelated existing paths. Block before any model call if
+                # its parent namespace is not verified in this exact tree.
+                raise PermissionError("exact new-file scope lacks a verified populated parent: "+scope)
             elif continuation:
                 mapped=self._continuation_semantic_scopes(scope,all_paths)
                 if not mapped:
