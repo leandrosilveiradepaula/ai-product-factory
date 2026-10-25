@@ -98,12 +98,14 @@ def prove_full_journey(conn, setup, *, repository: str, branch: str):
         def get_failed_checks(self, number, *, expected_head_sha):
             assert number == 73 and expected_head_sha == SOURCE
             # Use the real exact-run/attempt native GitHub metadata parser.
-            # It must classify the failure before the real SQL enqueue.
+            # Use a known TypeScript failure here. Native test failures now
+            # require a separate SHA-backed fixture to avoid unverified scope
+            # expansion; that path is covered by verify_ci_repair_e2e_postgres.
             failures = parse_failed_native_job_steps(
                 {"total_count": 1, "jobs": [{
                     "id": 1003, "run_id": 1002, "run_attempt": 2,
                     "head_sha": SOURCE, "status": "completed", "conclusion": "failure",
-                    "steps": [{"name": "Tests", "status": "completed",
+                    "steps": [{"name": "TypeScript", "status": "completed",
                                "conclusion": "failure"}],
                 }]},
                 repository=repository, run_id=1002, run_attempt=2,
