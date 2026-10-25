@@ -44,6 +44,56 @@ def summarize_native_lint_errors(log: str) -> str | None:
     return value if len(value) <= _MAX_SUMMARY else None
 
 
+_TS_LINE = re.compile(
+    r"(?m)^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[^\s]{1,40}\s+)?"
+    r"(?:##\[error\])?"
+    r"(?P<path>(?:src|app|apps|packages|test|tests|scripts|docs)/"
+    r"[A-Za-z0-9_.()/\[\]-]+)"
+    r"\((?P<line>[1-9][0-9]{0,5}),(?P<column>[1-9][0-9]{0,5})\)"
+    r":\s*error\s+(?P<code>TS[0-9]{4,5}):"
+)
+_TS_IMPORT = re.compile(r"^\\s*Cannot find module '(@/[A-Za-z0-9_./-]{1,150})'")
+
+
+def summarize_native_typescript_errors(log: str) -> str | None:
+    """Only allowlisted file/position/code and safe in-repo import aliases.
+
+    This operates on a GitHub job log whose run, attempt and SHA are already
+    verified by the caller. Never return arbitrary diagnostics, source lines,
+    ANSI escape text, signed URLs, credentials or compiler free text.
+    """
+    if not isinstance(log, str) or len(log.encode("utf-8")) > _MAX_LOG_BYTES:
+        return None
+    entries: list[str] = []
+    for match in _TS_LINE.finditer(log):
+        path = match.group("path")
+        if any(part in ("", ".", "..") or part.startswith(".") for part in path.split("/")):
+            continue
+        code = match.group("code")
+        value = (
+            f"{path}:{match.group('line')}:{match.group('column')} {code}"
+        )
+        if code == "TS2307":
+            tail = log[match.end():].splitlines()[0][:200]
+            module = _TS_IMPORT.match(tail)
+            if module:
+                alias = module.group(1)
+                if not (
+                    "//" in alias or ".." in alias
+                    or any(p.startswith(".") for p in alias[2:].split("/"))
+                    or ".env" in alias.lower()
+                ):
+                    value += f" import={alias}"
+        if value not in entries:
+            entries.append(value)
+        if len(entries) > _MAX_LINES:
+            return None
+    if not entries:
+        return None
+    summary = "Verified native TypeScript identifiers only: " + "; ".join(entries)
+    return summary if len(summary) <= _MAX_SUMMARY else None
+
+
 class _NoRedirect(request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         # Never forward a GitHub bearer token to a signed log-storage URL.
