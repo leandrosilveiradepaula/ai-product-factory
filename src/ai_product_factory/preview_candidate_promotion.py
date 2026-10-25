@@ -57,7 +57,7 @@ class PreviewPromotionPolicy:
             or ".." in prefix or "//" in prefix or prefix.endswith(("/", "-"))
             or source not in ("change_set", "pull_request")
             or not isinstance(base_ref, str) or not base_ref
-            or base_ref.startswith(("refs/", "preview/factory-cs-"))
+            or base_ref.startswith("refs/")
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/_-]{0,100}", base_ref)
             or ".." in base_ref or "//" in base_ref
             or type(bound) is not int or not 1 <= bound <= 32
