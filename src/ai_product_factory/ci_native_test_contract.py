@@ -77,12 +77,11 @@ def verify_native_vitest_static_count(
     cleaned = _ANSI.sub("", log)
     failures = list(_FAIL.finditer(cleaned))
     # No attestation for mixed failures, generic stacktraces or multiple tests.
-    if len(failures) != 2:
-        # GitHub logs normally repeat the same failed assertion in the error
-        # annotation and Vitest summary; require exactly one distinct pair.
-        pairs={(m.group("expected"), m.group("actual")) for m in failures}
-        if len(pairs)!=1 or not 1<=len(failures)<=3:
-            return None
+    # GitHub logs repeat the same assertion in Vitest and Actions output.
+    # A mixed assertion inventory cannot attest a single test-scope change.
+    pairs={(m.group("expected"), m.group("actual")) for m in failures}
+    if len(pairs)!=1 or not 1<=len(failures)<=3:
+        return None
     expected, actual = int(failures[0].group("expected")), int(failures[0].group("actual"))
     if expected == actual or expected > 100 or actual > 100:
         return None
