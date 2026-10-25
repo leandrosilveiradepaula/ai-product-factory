@@ -1,5 +1,13 @@
 ## Prova 2 — continuação OWNER de greenfield já criado (PR #1079, candidato de 23/10/2026)
 
+## 25/10/2026 — Prova 2: promoção de Preview cross-repo opt-in (PR #1097, candidato)
+
+No CRM #197, o commit ae7fbb3143f677b555fc862926f17b033b7df6fb passou CI nativa e Security/QA/Operations, mas a Vercel não publicou Preview: a branch Factory não está na allowlist preview/**. O runner #40199162918 terminou com Preview FAILED; o Control Plane continua preview_ready e o gate de release permanece fechado.
+
+A PR Factory #1097 adiciona política por projeto e CAS GraphQL expectedOid para avanço exclusivamente de referência preview/**, com auditoria e regressão determinística; sem política, o caminho legado é apenas leitura. Novas permissões/configuração e merge da Factory requerem seus gates legítimos. Nenhuma execução de promoção real, Vercel deployment, merge do CRM, migration, modelo pago ou alteração em produção foi efetuada por esta PR. Prova 2 ainda NÃO PASS até Vercel + browser SHA-exatos, gate humano e observação de merge.
+
+Ver docs/PREVIEW_CROSS_REPO_PROMOTION.md e issue #1096.
+
 Objetivo: demonstrar a autonomia da **Factory** usando o Service Desk real, não concluir o produto Service Desk manualmente. O Start original do Console foi autenticado e auditado até Implementação; o Change Set histórico bloqueado pelo merge prematuro de PR #7 deve permanecer bloqueado, sem falso backfill ou aprovação retroativa. A PR #5 do Service Desk, corrigida manualmente, é evidência técnica externa, **não** autoria do executor Factory.
 
 A migration versionada \`20261023214000_factory_greenfield_owner_continuation.sql\`, após **merge humano e aplicação explicitamente autorizada**, estende a RPC OWNER existente apenas para um \`project_kind=greenfield\` com intake Console original comprovado, bootstrap root concluído, par request/operator/anexos/auditorias exatos e projeto \`running\` sem outro ciclo ativo. Idempotência e auditoria \`github-owner\` continuam obrigatórias. Novo pedido legítimo deve ser publicado na issue operacional #1055 como comentário do OWNER, primeira linha exata \`/factory-start infodive-service-desk\`, seguido de escopo real de prova 2. Não simular ator, não chamar SQL ad hoc como Start, não reutilizar a antiga run bloqueada.
