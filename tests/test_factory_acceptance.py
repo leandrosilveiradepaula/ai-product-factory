@@ -406,6 +406,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261023214000_factory_greenfield_owner_continuation.sql",
             "20261024162500_settle_terminal_ci_repair_sources.sql",
             "20261024235800_resume_blocked_literal_scope_misresolution.sql",
+            "20261025010500_resume_blocked_repin_context.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

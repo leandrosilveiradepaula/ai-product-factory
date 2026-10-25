@@ -14,7 +14,11 @@ class ModelImplementationProducer:
              "repository governance with durable human_decisions from the context packet: a newer explicit "
              "human decision may authorize or clarify the current task when an older CURRENT_TASK is stale, "
              "but it never broadens repository.write_scopes or overrides security, sandbox, data-loss, cost, "
-             "or production constraints. If the applicable context still does not authorize the task, return "
+             "or production constraints. If CURRENT_TASK explicitly accepts a successor repinned "
+             "after exact native CI, repository.delivery_repin_evidence supplies the independently "
+             "audited Control Plane proof for that exact SHA and CI run. Use it only when it agrees "
+             "with repository.exact_base_commit and the task permits successors; never infer a "
+             "repin from the SHA alone. If the applicable context still does not authorize the task, return "
              "files=[] and a concise blocked_reason; otherwise blocked_reason must be empty and files non-empty.")
   packet=getattr(item,"context_packet",None)
   if getattr(item,"change_set_id",None) and not isinstance(packet,dict):

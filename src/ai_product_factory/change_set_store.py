@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from .supabase_server import resolve_supabase_server_config
+from .verified_repin import verified_repin
 
 
 @dataclass(frozen=True)
@@ -113,9 +114,10 @@ class SupabaseChangeSetStore:
         decisions=[]
         project_kind=""
         delivery_target=None
+        repin_evidence=None
         if project_key:
             rows=self._get(
-                "factory_projects?select=manifest,project_kind&project_key=eq."+quote(project_key)+"&limit=1"
+                "factory_projects?select=id,manifest,project_kind&project_key=eq."+quote(project_key)+"&limit=1"
             )
             if rows:
                 project_kind=str(rows[0].get("project_kind") or "")
@@ -124,6 +126,30 @@ class SupabaseChangeSetStore:
                     if isinstance(value,list):
                         decisions=value
                     delivery_target=rows[0]["manifest"].get("delivery_target")
+                    if (project_kind=="existing" and isinstance(delivery_target,dict)
+                        and isinstance(delivery_target.get("repin_policy"),dict)
+                        and delivery_target["repin_policy"].get("enabled") is True):
+                        project_id=str(rows[0].get("id") or "")
+                        if project_id:
+                            controls=self._get(
+                                "factory_project_execution_controls?"
+                                "select=project_id,state,generation,version&project_id=eq."
+                                +quote(project_id,safe="")+"&limit=1"
+                            )
+                            if len(controls)!=1:
+                                raise PermissionError("missing current project execution epoch for repin")
+                            events=self._get(
+                                "factory_audit_events?"
+                                "select=id,project_id,event_type,actor_type,actor_ref,payload"
+                                "&project_id=eq."+quote(project_id,safe="")
+                                +"&event_type=eq.project.delivery_target.reconciled"
+                                +"&order=id.desc&limit=40"
+                            )
+                            repin_evidence=verified_repin(
+                                project_id=project_id,project_key=project_key,
+                                repository=str(data.get("repository") or ""),
+                                target=delivery_target,control=controls[0],events=events,
+                            )
 
         assignment=dict(data.get("assignment") if isinstance(data.get("assignment"),dict) else {})
         work_unit_id=str(data.get("work_unit_id") or "").strip()
@@ -153,6 +179,7 @@ class SupabaseChangeSetStore:
         enriched["human_decisions"]=decisions
         enriched["project_kind"]=project_kind
         enriched["delivery_target"]=delivery_target
+        enriched["repin_evidence"]=repin_evidence
         return enriched
 
     def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
