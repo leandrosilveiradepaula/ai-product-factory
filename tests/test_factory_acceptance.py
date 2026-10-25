@@ -631,14 +631,35 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("\n  push:", workflow)
         self.assertIn("branches: [main]", workflow)
-        self.assertIn('".github/authenticated-visual-target.json"', workflow)
+        # Only real Console modifications may allocate production operators
+        # automatically; source-only security changes are deliberately inert.
+        push_scope = workflow.split("\n  push:",1)[1].split("\npermissions:",1)[0]
+        self.assertIn('"apps/console/**"', push_scope)
+        for forbidden_trigger in (
+            '"scripts/capture_authenticated_console.mjs"',
+            '"scripts/resolve_console_visual_target.mjs"',
+            '"scripts/verify_console_deployed_sha.mjs"',
+            '".github/authenticated-visual-target.json"',
+            '".github/workflows/authenticated-visual-evidence.yml"',
+        ):
+            self.assertNotIn(forbidden_trigger,push_scope)
         self.assertIn("Resolve exact visual target", workflow)
         self.assertIn("target_url:", workflow)
         self.assertIn("target_commit:", workflow)
         resolver = (ROOT / "scripts/resolve_console_visual_target.mjs").read_text()
-        self.assertIn('url.hostname.endsWith(".vercel.app")', resolver)
+        origin = (ROOT / "scripts/console_visual_origin.mjs").read_text()
+        self.assertIn("consoleVisualOrigin", resolver)
+        self.assertIn("consoleVisualOrigin", (ROOT / "scripts/verify_console_deployed_sha.mjs").read_text())
+        self.assertIn("CONSOLE_TEAM", origin)
+        self.assertIn('leandros-projects-102e32ab', origin)
+        self.assertNotIn('url.hostname.endsWith(".vercel.app")', origin)
+        self.assertNotIn('url.hostname.endsWith(".vercel.app")', resolver)
+        self.assertIn("ownedPreview", workflow)
+        self.assertIn('parts[0] !== "leandros-projects-102e32ab"', workflow)
+        self.assertIn('parts[1] !== "ai-product-factory-console"', workflow)
+        self.assertIn('.github/authenticated-visual-target.json', resolver)
         self.assertIn("node scripts/resolve_console_visual_target.mjs",workflow)
-        self.assertIn('url.protocol!=="https:"', resolver)
+        self.assertIn('url.protocol!=="https:"', origin)
         self.assertIn("github.rest.repos.getCommit", workflow)
         self.assertIn("FACTORY_VISUAL_TARGET_COMMIT", workflow)
         self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN", workflow)

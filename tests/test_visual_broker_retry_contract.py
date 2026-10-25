@@ -64,7 +64,11 @@ class VisualEvidenceBrokerRetryContract(unittest.TestCase):
         self.assertRegex(TARGET["candidate_sha"],r"^[0-9a-f]{40}$")
         self.assertIn("PR #882",TARGET["purpose"])
         self.assertIn('      - "apps/console/**"',WORKFLOW)
-        self.assertIn('      - ".github/authenticated-visual-target.json"',WORKFLOW)
+        # Source-only changes must not launch production operator provisioning.
+        trigger=WORKFLOW.split("\n  push:",1)[1].split("\npermissions:",1)[0]
+        self.assertNotIn('".github/authenticated-visual-target.json"',trigger)
+        self.assertNotIn('"scripts/capture_authenticated_console.mjs"',trigger)
+        self.assertNotIn('".github/workflows/authenticated-visual-evidence.yml"',trigger)
         self.assertIn("branches: [main]",WORKFLOW)
         self.assertNotIn("pull_request_target:",WORKFLOW)
         self.assertNotIn("issue_comment:",WORKFLOW)

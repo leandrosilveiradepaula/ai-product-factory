@@ -14,12 +14,10 @@ on:
         type: string
   push:
     branches: [main]
+    # Only an actual Console application change may start credential-bearing
+    # capture automatically after human production merge. Workflow/test-only
+    # security updates must never provision an operator by side effect.
     paths:
-      - ".github/authenticated-visual-target.json"
-      - ".github/workflows/authenticated-visual-evidence.yml"
-      - "scripts/capture_authenticated_console.mjs"
-      - "scripts/resolve_console_visual_target.mjs"
-      - "scripts/verify_console_deployed_sha.mjs"
       - "apps/console/**"
 
 permissions:
@@ -62,14 +60,14 @@ jobs:
           script: |
             const target = new URL(process.env.FACTORY_CONSOLE_URL);
             const production = "ai-product-factory-console.vercel.app";
+            const ownedPreview = /^ai-product-factory-console-[a-z0-9]{8,20}-leandros-projects-102e32ab\.vercel\.app$/;
             const allowedHost =
-              target.hostname === production ||
-              target.hostname.endsWith(".vercel.app");
+              target.hostname === production || ownedPreview.test(target.hostname);
             if (target.protocol !== "https:" || !allowedHost) {
-              core.setFailed("Visual target must be HTTPS on the production host or *.vercel.app");
+              core.setFailed("Visual target must be the official Console production host or project-owned Preview");
               return;
             }
-            if (target.username || target.password || target.search || target.hash) {
+            if (target.username || target.password || target.port || target.search || target.hash || target.pathname !== "/") {
               core.setFailed("Visual target must not contain credentials, query, or fragment");
               return;
             }
@@ -102,11 +100,28 @@ jobs:
               const {data} = await github.rest.repos.getCombinedStatusForRef({
                 ...context.repo, ref:sha, per_page:100,
               });
-              const vercel = (data.statuses || []).find(s =>
+              const matches = (data.statuses || []).filter(s =>
                 String(s.context || "").toLowerCase() === "vercel"
               );
+              if (matches.length > 1) {
+                return core.setFailed("Ambiguous Vercel status for exact commit");
+              }
+              const vercel = matches[0];
               if (vercel && vercel.state === "success") {
-                core.notice("Vercel reported success for exact visual target " + sha);
+                // A commit status from another Vercel project is not authority
+                // to send privileged visual credentials to this target.
+                let target;
+                try { target = new URL(String(vercel.target_url || "")); }
+                catch { return core.setFailed("Invalid Vercel deployment status URL"); }
+                const parts = target.pathname.split("/").filter(Boolean);
+                if (target.protocol !== "https:" || target.hostname !== "vercel.com" ||
+                    target.username || target.password || target.port || target.search || target.hash ||
+                    parts.length !== 3 || parts[0] !== "leandros-projects-102e32ab" ||
+                    parts[1] !== "ai-product-factory-console" ||
+                    !/^[A-Za-z0-9]{20,40}$/.test(parts[2])) {
+                  return core.setFailed("Vercel status is not the expected Console project");
+                }
+                core.notice("Vercel reported official Console project success for exact visual commit " + sha);
                 return;
               }
               if (vercel && ["error","failure"].includes(vercel.state)) {

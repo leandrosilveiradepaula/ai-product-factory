@@ -1,3 +1,12 @@
+## 25/10/2026 — Certificação de segurança do Console autenticado (bloco fail-closed)
+
+- [x] P2 certificada por auditor independente `#40211815474` sem produzir release de produção; six-domain global readiness ainda `product_ready=false`.
+- [x] Identificado bypass potencial: workflow de operador temporário aceitava qualquer `*.vercel.app` e um host externo podia imitar `/api/health`.
+- [x] Preparar controle de origem vinculado ao tenant/projeto Vercel oficial antes de enviar OIDC/auth, verificar status de deployment GitHub, impedir disparo credencial por mudanças somente em scripts/YAML e testar spoofing adversarial com mocks.
+- [ ] Validar `node --test scripts/test_console_visual_deployment.mjs` no job `validate` exato, `factory-acceptance` e revisão de PR. Merge da Factory em produção continua humano.
+- [ ] Após aprovação de acesso temporário em produção, executar captura autenticada oficial com SHA servido realmente verificado e cleanup e revisar evidências de mobile, teclado, estados e navegação. Sem credenciais novas nesta PR.
+- [ ] Só concluir `product_ready` após evidências independentes reais de segurança, observabilidade, test_strategy, UX/a11y, documentação e completude/greenfield, sem usar a auditoria P2 como substituto.
+
 ## 25/10/2026 — Bloco final de certificação: auditor externo de Preview multi-wave (candidato)
 
 **Baseline comprovada:** CRM #197 mergeada humanamente apenas em `preview/hardening-release-candidate`, merge SHA `08257c0d545bf98c7f34ae40d8b2e221468764ab`, CI de merge #40205496275 4/4, Vercel READY, Playwright #40205752751 PASS, observer #40205844090 `integrated_nonproduction`, Change Set `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` completed, produção intacta. A Prova 2 passou em homologação; a Prova 3 confirmou cenários de resiliência PG16 descartável e reparos reais sem completar os seis domínios globais.

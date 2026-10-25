@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
+      - name: Authenticated Console visual origin and credential boundary regression
+        run: node --test scripts/test_console_visual_deployment.mjs
       - name: Cross-repo browser correlation unit tests
         run: node --test scripts/tests/browser_run_correlation.test.cjs
       - name: Read-only lifecycle browser contract tests

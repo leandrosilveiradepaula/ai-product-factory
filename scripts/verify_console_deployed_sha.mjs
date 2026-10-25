@@ -2,15 +2,14 @@
 // A successful GitHub/Vercel status alone cannot prove the production alias
 // serves the target revision; /api/health must report that same exact SHA prefix.
 import {pathToFileURL} from "node:url";
+import {consoleVisualOrigin} from "./console_visual_origin.mjs";
 
 export function validVisualIdentity({url,sha}){
  if(!/^[0-9a-f]{40}$/.test(String(sha||"")))throw new Error("expected exact visual target SHA");
- const origin=new URL(String(url||""));
- if(origin.protocol!=="https:"||!(origin.hostname==="ai-product-factory-console.vercel.app"||origin.hostname.endsWith(".vercel.app"))||
-  origin.username||origin.password||origin.search||origin.hash||(origin.pathname!=="/"&&origin.pathname!=="")){
-  throw new Error("invalid visual Console origin");
- }
- return {origin:origin.origin,expectedPrefix:sha.slice(0,12)};
+ // This check runs before adding the Trusted Source OIDC token to a
+ // request. Health JSON alone is spoofable on any third-party Vercel app.
+ const origin=consoleVisualOrigin(String(url||""));
+ return {origin,expectedPrefix:sha.slice(0,12)};
 }
 
 export function isMatchingHealth(payload,expectedPrefix){
