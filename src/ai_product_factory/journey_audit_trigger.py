@@ -16,13 +16,15 @@ _UTC=re.compile(r"20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-
 _COMMENT=re.compile(
     r"/factory-journey-audit ([a-z0-9][a-z0-9-]{1,119}) "
     r"([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) "
-    r"(20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z)\Z",
+    r"(20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z)"
+    r"(?: (nonproduction))?\Z",
     re.ASCII,
 )
 _STAGES=frozenset((
     "none","manual_start","discovery","specification","planning",
     "routing","implementation","review","github_ci","preview",
     "awaiting_release","human_release_observed","operations",
+    "nonproduction_integration",
 ))
 
 
@@ -38,8 +40,8 @@ def resolve_target(env: Mapping[str,str]) -> tuple[str,str,str,str]:
         matched=_COMMENT.fullmatch(body)
         if matched is None:
             raise ValueError("malformed owner journey comment")
-        key,run,since=matched.groups()
-        stage="operations"
+        key,run,since,scope=matched.groups()
+        stage="nonproduction_integration" if scope=="nonproduction" else "operations"
     elif event=="workflow_dispatch":
         if (env.get("FACTORY_DISPATCH_ENABLED")!="true"
             or env.get("FACTORY_OFFLINE_ENABLED")=="true"):
