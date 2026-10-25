@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import {execFileSync} from "node:child_process";
 import {pathToFileURL} from "node:url";
+import {consoleVisualOrigin} from "./console_visual_origin.mjs";
 
 export const PRODUCTION_URL="https://ai-product-factory-console.vercel.app";
 const SHA=/^[0-9a-f]{40}$/;
@@ -11,19 +12,15 @@ const SHA=/^[0-9a-f]{40}$/;
 function safeTarget(input,source){
  const candidate_sha=String(input?.candidate_sha||"");
  if(!SHA.test(candidate_sha))throw new Error("visual target SHA must be an exact 40-character lowercase SHA");
- const url=new URL(String(input?.preview_url||""));
- if(url.protocol!=="https:"||!(url.hostname==="ai-product-factory-console.vercel.app"||url.hostname.endsWith(".vercel.app"))){
-  throw new Error("visual target host must be an allowed HTTPS Vercel host");
- }
- if(url.username||url.password||url.search||url.hash||!(url.pathname==="/"||url.pathname==="")){
-  throw new Error("visual target URL must be an origin without credentials, query, fragment or path");
- }
+ // Validate ownership before putting the target in the Actions environment.
+ // The provisioned operator must never authenticate to a third-party Vercel site.
+ const origin=consoleVisualOrigin(String(input?.preview_url||""));
  for(const value of Object.values(input||{})){
   if(typeof value==="string"&&/(token|secret|password|apikey|authorization)/i.test(value)){
    throw new Error("secret-like visual target metadata forbidden");
   }
  }
- return {preview_url:url.origin,candidate_sha,source};
+ return {preview_url:origin,candidate_sha,source};
 }
 
 export function selectConsoleVisualTarget({eventName,headSha,dispatchUrl="",dispatchCommit="",consoleChanged=false,pinnedTarget=null}){
