@@ -1,3 +1,9 @@
+## 25/10/2026 — Provas 2/3 verificadas, auditor Preview multi-wave (candidato)
+
+CRM #197 foi mergeada humanamente somente na branch `preview/hardening-release-candidate`. O Merge SHA `08257c0d545bf98c7f34ae40d8b2e221468764ab` passou CI pós-merge #40205496275 (4/4), gerou Vercel READY e browser Playwright #40205752751 SUCCESS; snapshot do Control Plane `011d1579-762b-4a1a-80c3-823e53d0aaa1`. Release observer #40205844090 registrou `integrated_nonproduction` para run `eafd1ac1-b57d-47d9-98eb-55a90003e6db`; Change Set `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` passou a `completed`. Produção do CRM **não** foi alterada.
+
+Prova 2 (homologação) PASS; Prova 3 tem resultados comprovados de recuperação, concorrência, epoch e isolamento em PG16 isolado, sem declarar `product_ready` global. O auditor legado #40206537474 permaneceu corretamente fail-closed no comando sem escopo, com `merged_candidate_without_verified_release`: exige produção. O candidato corrige proveniência de múltiplos reparos e oferece escopo explicitamente não produtivo `scope=nonproduction` com recibo pós-merge. **Não é certificado enquanto a PR não tiver CI, merge humano e auditoria externa repetida.** Ver `docs/JOURNEY_NONPRODUCTION_EVIDENCE.md`. Nenhum SQL ou deploy é necessário nessa correção.
+
 ## Prova 2 — continuação OWNER de greenfield já criado (PR #1079, candidato de 23/10/2026)
 
 ## 25/10/2026 — Preview CAS API: corrigir GraphQL updateRef -> updateRefs (PR de follow-up)
