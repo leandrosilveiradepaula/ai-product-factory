@@ -127,9 +127,9 @@ class SupabaseCIRepairQueue:
         seen=set()
         rex=re.compile(
             r"Verified native Vitest count: test="
-            r"(?P<test>(?:src|test|tests|app|apps|packages)/[A-Za-z0-9_./()-]+\\.(?:test|spec)\\.tsx?) "
-            r"source=(?P<source>(?:src|app|apps|packages)/[A-Za-z0-9_./()-]+\\.tsx?) "
-            r"expected=(?P<expected>[0-9]{1,3}) actual=(?P<actual>[0-9]{1,3})\\Z"
+            r"(?P<test>(?:src|test|tests|app|apps|packages)/[A-Za-z0-9_./()-]+\.(?:test|spec)\.tsx?) "
+            r"source=(?P<source>(?:src|app|apps|packages)/[A-Za-z0-9_./()-]+\.tsx?) "
+            r"expected=(?P<expected>[0-9]{1,3}) actual=(?P<actual>[0-9]{1,3})\Z"
         )
         for failure in failures:
             match=rex.search(failure.summary)
