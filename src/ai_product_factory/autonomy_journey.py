@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 
 from .github_loop import CIState
 from .github_owner_start import FACTORY_REPO, OWNER_ID, OWNER_LOGIN, ISSUE_NUMBER, request_uuid
@@ -49,6 +50,8 @@ class JourneyReport:
     candidate_sha: str | None
     pr_number: int | None
     blockers: tuple[str, ...] = ()
+    nonproduction_integrated: bool = False
+    nonproduction_merge_sha: str | None = None
 
     def as_json(self) -> dict:
         # Only IDs, states and tightly controlled reasons are exposed.
@@ -62,6 +65,8 @@ class JourneyReport:
             "candidate_sha": self.candidate_sha,
             "pr_number": self.pr_number,
             "blockers": list(self.blockers),
+            "nonproduction_integrated": self.nonproduction_integrated,
+            "nonproduction_merge_sha": self.nonproduction_merge_sha,
             "product_ready": False,
             "paid_calls": 0,
             "writes": 0,
@@ -497,6 +502,65 @@ def evaluate_journey(
                            payload={"candidate_commit":candidate},audit_project=pid))
     ci = bool(candidate_bound and github_pr.get("ci_state")==CIState.SUCCESS
               and delivery("github_ci"))
+
+    def _verified_provider_preview() -> bool:
+        """Link status refs to one deployment, SHA and browser URL.
+
+        The Vercel evidence_ref is a provider deployment identifier, NOT a
+        commit SHA. Trusting an arbitrary matching ref would be unsafe; bind
+        two distinct delivery receipts to the same candidate-scoped deployment,
+        browser event and exact awaiting-release receipt.
+        """
+        for dep in deployments:
+            meta=dep.get("metadata")
+            if (dep.get("run_id") not in delivery_runs
+                or dep.get("environment")!="preview"
+                or dep.get("status")!="success"
+                or not isinstance(meta,Mapping)
+                or meta.get("candidate_commit")!=candidate
+                or meta.get("provider")!="vercel-github"):
+                continue
+            url=meta.get("preview_url")
+            parsed=urlparse(url) if isinstance(url,str) else None
+            if (parsed is None or parsed.scheme!="https"
+                or not (parsed.hostname or "").endswith(".vercel.app")
+                or parsed.username is not None or parsed.password is not None):
+                continue
+            browser=any(
+                event.get("event_type")=="preview.browser_evidence_recorded"
+                and event.get("project_id")==pid
+                and event.get("run_id") in delivery_runs
+                and isinstance(event.get("payload"),Mapping)
+                and event["payload"].get("status")=="success"
+                and event["payload"].get("preview_url")==url
+                for event in events
+            )
+            if not browser:
+                continue
+            for gate in events:
+                payload=gate.get("payload")
+                if (gate.get("event_type")!="release.awaiting_human_merge"
+                    or gate.get("project_id") not in (pid,None)
+                    or gate.get("run_id") not in delivery_runs
+                    or not isinstance(payload,Mapping)
+                    or payload.get("head_sha")!=candidate
+                    or str(payload.get("pr"))!=str(pr_number)
+                    or payload.get("preview_url")!=url):
+                    continue
+                ref=payload.get("deployment_ref")
+                if not isinstance(ref,str) or not 1<=len(ref)<=200:
+                    continue
+                if (_event(events,"delivery.evidence.recorded",
+                           run_ids=delivery_runs,
+                           payload={"evidence_type":"preview","status":"passed",
+                                    "evidence_ref":ref},audit_project=pid)
+                    and _event(events,"delivery.evidence.recorded",
+                               run_ids=delivery_runs,
+                               payload={"evidence_type":"browser_evidence","status":"passed",
+                                        "evidence_ref":ref},audit_project=pid)):
+                    return True
+        return False
+
     preview_done = False
     if candidate_bound and ci and isinstance(preview_required, bool):
         if not preview_required:
@@ -506,14 +570,7 @@ def evaluate_journey(
             )
         else:
             preview_done = bool(
-                delivery("preview") and delivery("browser_evidence")
-                and any(row.get("environment")=="preview" and row.get("status")=="success"
-                        and row.get("run_id") in delivery_runs for row in deployments)
-                and any(row.get("event_type")=="preview.browser_evidence_recorded"
-                        and row.get("project_id")==pid and row.get("run_id") in delivery_runs
-                        and isinstance(row.get("payload"),dict)
-                        and row["payload"].get("status")=="success"
-                        for row in events)
+                _verified_provider_preview()
             )
     if candidate_bound and preview_required is None:
         blockers.append("preview_applicability_not_verified")
@@ -567,7 +624,41 @@ def evaluate_journey(
         and any(rr.get("candidate_commit")==candidate and rr.get("status")=="released"
                 and rr.get("run_id") == delivery_run_id for rr in release_reports)
     )
-    if candidate_bound and github_pr.get("merged") is True and not released:
+    # Preview/** integration is not a human PRODUCTION release. Certify the
+    # typed nonproduction terminal only with the exact observer receipt,
+    # independently browser-verified MERGE SHA and the entire preceding
+    # delivery chain. Never advance the production operations stage here.
+    nonproduction_events=[
+        event for event in events
+        if event.get("event_type")=="change_set.nonproduction_merge.observed"
+        and event.get("project_id")==pid
+        and event.get("run_id")==delivery_run_id
+    ]
+    nonproduction_integrated=bool(
+        project.get("project_kind")=="existing"
+        and candidate_bound and isinstance(expected_base,str)
+        and expected_base.startswith("preview/")
+        and github_pr.get("merged") is True
+        and isinstance(merge_sha,str) and SHA.fullmatch(merge_sha)
+        and github_pr.get("nonproduction_integration_verified") is True
+        and routed and implemented and reviewed and ci and preview_done
+        and release_gate and not released
+        and any(cs.get("candidate_commit")==candidate
+                and cs.get("status")=="completed" for cs in change_sets)
+        and any(run.get("id")==delivery_run_id and run.get("status")=="integrated"
+                for run in runs)
+        and len(nonproduction_events)==1
+        and nonproduction_events[0].get("actor_ref")=="nonproduction-release-observer"
+        and isinstance(nonproduction_events[0].get("payload"),Mapping)
+        and nonproduction_events[0]["payload"].get("candidate_commit")==candidate
+        and nonproduction_events[0]["payload"].get("merge_sha")==merge_sha
+        and nonproduction_events[0]["payload"].get("base_ref")==expected_base
+        and nonproduction_events[0]["payload"].get("repository")==repo
+        and str(nonproduction_events[0]["payload"].get("pr_number"))==str(pr_number)
+        and nonproduction_events[0]["payload"].get("production_released") is False
+        and nonproduction_events[0]["payload"].get("production_release_completed") is False
+    )
+    if candidate_bound and github_pr.get("merged") is True and not released and not nonproduction_integrated:
         blockers.append("merged_candidate_without_verified_release")
     operations = bool(
         released and delivery("operations")
@@ -594,9 +685,13 @@ def evaluate_journey(
     # any required earlier stage is still missing.
     status = ("blocked" if blockers else
               "observed_complete" if highest == "operations" else
+              "integrated_nonproduction" if nonproduction_integrated
+              and highest == "awaiting_release" else
               "awaiting_human_merge" if highest == "awaiting_release"
               and not released else "in_progress")
     return JourneyReport(
         key,root_run_id,status,highest,tuple(stages),
         candidate,pr_number,tuple(dict.fromkeys(blockers)),
+        nonproduction_integrated=nonproduction_integrated,
+        nonproduction_merge_sha=merge_sha if nonproduction_integrated else None,
     )
