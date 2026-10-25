@@ -14,6 +14,14 @@ O Change Set real `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` possui quatro arquivos 
 4. Testes Python offline cobrem derivação de prova, logs e conteúdo falsificados, projetos de arquivos diferentes, ausência de export, imutabilidade da origem e recusa antes da chamada paga. A matriz PostgreSQL16 descartável usa a nova função SQL real, exercita ACL, falsificações e replay.
 5. O executor reparará o contrato sem remover handlers, modificar requisitos de autenticação ou afrouxar gates. Revisões de QA/Security, CI SHA-exata, Preview verificado e autorização humana de merge permanecem necessários.
 
+## Incidente operacional reproduzido — 25/10/2026, pós-migration
+
+- PR Factory #1092 mergeada; a função `factory_enqueue_ci_repair_verified_test_scope_v1` foi aplicada manualmente no SQL Editor do Control Plane. A leitura posterior verificou `SECURITY INVOKER`, EXECUTE apenas `service_role`, `anon`/`authenticated`/`PUBLIC` sem EXECUTE. **O histórico `supabase_migrations` não registra essa aplicação**: não executar a migration novamente para reconciliar o histórico; exigir prova byte-exata antes de qualquer reconciliação administrativa.
+- Wake OWNER [#6398199318](https://github.com/leandrosilveiradepaula/ai-product-factory/issues/1055#issuecomment-6398199318) iniciou [Factory runner #40197442497](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40197442497), mas o job `ci-followup` falhou sem criar a terceira tentativa: `PermissionError: native CI test-scope proof unavailable; no model call`.
+- Causa reproduzida com o log real do job CRM `121058451137`: o verificador buscava `_LOC` no log inteiro, misturando centenas de caminhos de testes aprovados com os dois stack traces equivalentes da asserção falha. Os dois `AssertionError` referem-se à **mesma** linha `src/lib/sidebar-navigation-contract.test.ts:10:81`; o teste lê o arquivo fonte do mesmo SHA, cujo total verificado é 17.
+- A correção horizontal limita a testemunha de localização a uma única linha `❯ <test>:<line>:<column>` por bloco delimitado de asserção, exige consenso entre anúncio e anotação e mantém toda a validação de source/test no SHA. Evidência insuficiente passa a ser `ci_repair_attestation_blocked`, com motivo sanitizado e candidato preservado; o observador de CI continua limitado e consegue processar outros candidatos sem transformar um teste opaco em autorização.
+- Após CI verde e merge humano desta correção, emitir somente um wake OWNER, atestar a terceira tentativa `3/3` na mesma PR CRM #197 e cumprir CI/QA/Preview/gate de release. Sem ajuste manual de teste no CRM, sem gasto de modelo nesta correção e sem declarar Prova 2 PASS prematuramente.
+
 ## Operação segura
 
 - **Gate 1:** merge humano da PR da Factory após CI integral.
