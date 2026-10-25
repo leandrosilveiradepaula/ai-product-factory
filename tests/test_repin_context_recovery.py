@@ -40,18 +40,18 @@ class RepinContextRecoveryTests(unittest.TestCase):
         self.assertEqual(result["requeued"], 1)
         self.assertEqual(len(calls), 1)
         self.assertTrue(calls[0][0].endswith(
-            "/rpc/factory_resume_blocked_repin_context_misresolution_v1"))
+            "/rpc/factory_resume_blocked_repin_context_v1"))
         self.assertEqual(calls[0][1], {"p_max_items": 2})
 
     def test_empty_replay_is_noop(self):
         self.assertEqual(
             resume_blocked_repin_context(
-                max_items=3, post=lambda *_: (200, self.valid(0, 3))
+                max_items=2, post=lambda *_: (200, self.valid(0, 2))
             )["status"], "idle"
         )
 
     def test_boundaries_and_forged_receipts_rejected(self):
-        for size in (0, 4, -1, True, 2.5, "2"):
+        for size in (0, 3, 4, -1, True, 2.5, "2"):
             with self.subTest(size=size), self.assertRaises(ValueError):
                 resume_blocked_repin_context(max_items=size)
         for receipt in (
@@ -88,7 +88,7 @@ class RepinContextRecoveryTests(unittest.TestCase):
     def test_source_and_migration_deny_paid_replay_production_and_public(self):
         root = Path(__file__).resolve().parents[1]
         migration = (root / "supabase/migrations/"
-                     "20261024235800_resume_blocked_repin_context_misresolution.sql").read_text()
+                     "20261025010500_resume_blocked_repin_context.sql").read_text()
         workflow = (root / ".github/workflows/autonomous-runner.yml").read_text()
         for required in (
             "security invoker", "status='blocked'", "execution_generation",
@@ -104,7 +104,7 @@ class RepinContextRecoveryTests(unittest.TestCase):
             self.assertIn(required, migration)
         self.assertNotIn("security definer", migration)
         self.assertNotIn("update public.factory_projects", migration)
-        self.assertIn("python scripts/resume_blocked_repin_contexts.py --max-items 2", workflow)
+        self.assertIn("python scripts/resume_blocked_repin_context.py --max-items 2", workflow)
 
 
 if __name__ == "__main__":
