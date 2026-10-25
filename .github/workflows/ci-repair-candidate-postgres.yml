@@ -1,0 +1,52 @@
+name: CI repair candidate PostgreSQL QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*resume_blocked_ci_repair_candidate.sql"
+      - "scripts/verify_ci_repair_candidate_postgres.py"
+      - "scripts/resume_blocked_ci_repair_candidate.py"
+      - "src/ai_product_factory/ci_repair_candidate_recovery.py"
+      - "tests/test_ci_repair_candidate_recovery.py"
+      - "tests/test_ci_repair_candidate_evidence.py"
+      - "src/ai_product_factory/ci_repair_candidate_evidence.py"
+      - "src/ai_product_factory/change_set_worker.py"
+      - "src/ai_product_factory/ci_native_lint_diagnostics.py"
+      - "src/ai_product_factory/github_rest.py"
+      - "src/ai_product_factory/work_unit_context.py"
+      - ".github/workflows/ci-repair-candidate-postgres.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ci-repair-candidate-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: disposable-only
+          POSTGRES_DB: factory_ci_candidate_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_ci_candidate_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify exact-CI repair candidate recovery on isolated PostgreSQL
+        env:
+          FACTORY_CI_CANDIDATE_TEST_ISOLATED: "true"
+          FACTORY_CI_CANDIDATE_TEST_DSN: "postgresql://factory_ci:disposable-only@127.0.0.1:5432/factory_ci_candidate_test"
+        run: python scripts/verify_ci_repair_candidate_postgres.py
