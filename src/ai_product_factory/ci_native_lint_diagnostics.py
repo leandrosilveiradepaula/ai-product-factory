@@ -52,7 +52,7 @@ _TS_LINE = re.compile(
     r"\((?P<line>[1-9][0-9]{0,5}),(?P<column>[1-9][0-9]{0,5})\)"
     r":\s*error\s+(?P<code>TS[0-9]{4,5}):"
 )
-_TS_IMPORT = re.compile(r"^\\s*Cannot find module '(@/[A-Za-z0-9_./-]{1,150})'")
+_TS_IMPORT = re.compile(r"^\s*Cannot find module '(@/[A-Za-z0-9_./-]{1,150})'")
 
 
 def summarize_native_typescript_errors(log: str) -> str | None:
