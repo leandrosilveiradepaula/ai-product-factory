@@ -222,43 +222,83 @@ class GitHubAtomicCasTests(unittest.TestCase):
         with patch.dict(os.environ, {"FACTORY_GITHUB_TOKEN": "dummy"}, clear=True):
             return GitHubRestAdapter(repository="sample/other-repo", transport=transport)
 
-    def test_atomic_graphql_update_ref_requires_exact_expected_oid(self):
+    def test_atomic_graphql_update_refs_requires_exact_before_oid(self):
         calls = []
+        ref_reads = 0
         def transport(method, url, headers, body):
+            nonlocal ref_reads
             data = json.loads(body) if body is not None else None
             calls.append((method, url, data))
             if "/compare/" in url:
                 return 200, {"status": "ahead", "behind_by": 0, "ahead_by": 4, "files": []}
             if "/git/ref/" in url:
-                return 200, {"node_id": "REF_safe", "object": {"sha": BASE}}
+                ref_reads += 1
+                sha = BASE if ref_reads == 1 else CANDIDATE
+                return 200, {"object": {"sha": sha}}
+            if url.endswith("/repos/sample/other-repo"):
+                return 200, {"node_id": "REPO_safe"}
             if url.endswith("/graphql"):
-                return 200, {"data": {"updateRef": {"ref": {"target": {"oid": CANDIDATE}}}}}
+                return 200, {"data": {"updateRefs": {"clientMutationId": None}}}
             raise AssertionError(url)
         out = self.adapter(transport).fast_forward_preview_ref_cas(
             branch=BRANCH, expected_sha=BASE, candidate_sha=CANDIDATE,
         )
         self.assertEqual(out, CANDIDATE)
-        mutation = calls[-1][2]
-        self.assertIn("expectedOid:$expected", mutation["query"])
-        self.assertIn("force:false", mutation["query"])
-        self.assertEqual(mutation["variables"]["expected"], BASE)
-        self.assertEqual(mutation["variables"]["target"], CANDIDATE)
+        self.assertEqual(ref_reads, 2)
+        graphql_calls = [c for c in calls if c[1].endswith("/graphql")]
+        self.assertEqual(len(graphql_calls), 1)
+        mutation = graphql_calls[0][2]
+        self.assertIn("updateRefs(input:$input)", mutation["query"])
+        self.assertNotIn("expectedOid", mutation["query"])
+        payload = mutation["variables"]["input"]
+        self.assertEqual(payload["repositoryId"], "REPO_safe")
+        self.assertEqual(payload["refUpdates"], [{
+            "name": f"refs/heads/{BRANCH}",
+            "beforeOid": BASE,
+            "afterOid": CANDIDATE,
+            "force": False,
+        }])
 
     def test_atomic_cas_rejects_server_conflict_and_wrong_lease(self):
-        for kind in ("remote_changed", "graphql_conflict", "wrong_output"):
+        scenarios = (
+            "remote_changed", "repo_missing", "graphql_conflict",
+            "graphql_missing_response", "post_write_ref_mismatch",
+        )
+        for kind in scenarios:
             with self.subTest(kind=kind):
+                observed_mutations = []
+                ref_reads = 0
                 def transport(method, url, headers, body):
+                    nonlocal ref_reads
                     if "/compare/" in url:
                         return 200, {"status": "ahead", "behind_by": 0, "ahead_by": 1}
                     if "/git/ref/" in url:
-                        return 200, {"node_id": "REF_safe", "object": {
-                            "sha": "c" * 40 if kind == "remote_changed" else BASE}}
-                    if kind == "graphql_conflict":
-                        return 200, {"errors": [{"message": "Reference was moved"}]}
-                    return 200, {"data": {"updateRef": {"ref": {"target": {"oid": BASE}}}}}
+                        ref_reads += 1
+                        if kind == "remote_changed":
+                            return 200, {"object": {"sha": "c" * 40}}
+                        if kind == "post_write_ref_mismatch":
+                            return 200, {"object": {"sha": BASE}}
+                        return 200, {"object": {"sha": BASE if ref_reads == 1 else CANDIDATE}}
+                    if url.endswith("/repos/sample/other-repo"):
+                        return 200, {"node_id": "" if kind == "repo_missing" else "REPO_safe"}
+                    if url.endswith("/graphql"):
+                        observed_mutations.append(json.loads(body))
+                        if kind == "graphql_conflict":
+                            return 200, {"errors": [{"message": "Reference was moved"}]}
+                        if kind == "graphql_missing_response":
+                            return 200, {"data": {}}
+                        return 200, {"data": {"updateRefs": {"clientMutationId": None}}}
+                    raise AssertionError(url)
                 with self.assertRaises(RuntimeError):
                     self.adapter(transport).fast_forward_preview_ref_cas(
                         branch=BRANCH, expected_sha=BASE, candidate_sha=CANDIDATE)
+                if kind in ("remote_changed", "repo_missing"):
+                    self.assertFalse(observed_mutations)
+                else:
+                    self.assertEqual(len(observed_mutations), 1)
+                    ref_update = observed_mutations[0]["variables"]["input"]["refUpdates"][0]
+                    self.assertEqual(ref_update["beforeOid"], BASE)
+                    self.assertIs(ref_update["force"], False)
 
     def test_cas_rejects_production_force_and_diverged_sha(self):
         adapter = self.adapter(lambda *_: (200, {}))

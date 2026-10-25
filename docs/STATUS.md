@@ -1,5 +1,9 @@
 ## Prova 2 — continuação OWNER de greenfield já criado (PR #1079, candidato de 23/10/2026)
 
+## 25/10/2026 — Preview CAS API: corrigir GraphQL updateRef -> updateRefs (PR de follow-up)
+
+Após autorização explícita, a política do CRM foi adicionada por transação com CAS/epoch e auditoria ao Control Plane. OWNER /factory-wake executou o runner #40203941766: o probe vinculou run e candidato, criou a referência preview/factory-cs-673a2fc7-5f8c-40da-8bec-18ff6bb7eeed na base 042987..., mas falhou em GitHub rejected atomic Preview CAS. O contrato anterior utilizava o campo inexistente expectedOid de updateRef. A documentação oficial exige updateRefs(refUpdates:[{name,beforeOid,afterOid,force:false}],repositoryId), que implementa precondição atômica. A PR de correção mantém o caráter fail-closed: ref ainda na base, PR CRM #197 sem merge, run preview_ready, nenhum deploy Vercel para ae7fbb..., nenhuma produção alterada.
+
 ## 25/10/2026 — Prova 2: promoção de Preview cross-repo opt-in (PR #1097, candidato)
 
 No CRM #197, o commit ae7fbb3143f677b555fc862926f17b033b7df6fb passou CI nativa e Security/QA/Operations, mas a Vercel não publicou Preview: a branch Factory não está na allowlist preview/**. O runner #40199162918 terminou com Preview FAILED; o Control Plane continua preview_ready e o gate de release permanece fechado.
