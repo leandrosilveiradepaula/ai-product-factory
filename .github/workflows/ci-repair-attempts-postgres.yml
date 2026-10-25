@@ -8,6 +8,10 @@ on:
       - "scripts/verify_ci_repair_e2e_postgres.py"
       - "supabase/migrations/*ci_repair_replay_idempotency.sql"
       - "supabase/migrations/*ci_repair_cumulative_scopes.sql"
+      - "supabase/migrations/*verified_native_ci_test_scope.sql"
+      - "src/ai_product_factory/ci_native_test_contract.py"
+      - "src/ai_product_factory/ci_repair_queue.py"
+      - "tests/test_ci_native_test_contract.py"
       - ".github/workflows/ci-repair-attempts-postgres.yml"
 permissions:
   contents: read

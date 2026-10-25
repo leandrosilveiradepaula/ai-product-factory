@@ -10,6 +10,7 @@ from urllib import error, parse, request
 from .github_loop import CIState
 from .github_auth import resolve_github_token
 from .ci_job_failure_evidence import parse_failed_native_job_steps
+from .ci_native_test_contract import verify_native_vitest_static_count
 from .ci_native_lint_diagnostics import (
     download_native_job_log, summarize_native_lint_errors,
     summarize_native_typescript_errors,
@@ -757,7 +758,7 @@ class GitHubRestAdapter:
         results: list[GitHubCheckFailure] = []
         for row in evidence:
             summary = row.summary
-            if row.name in ("native-ci/lint","native-ci/typescript") and self.native_log_reader is not None:
+            if row.name in ("native-ci/lint","native-ci/typescript","native-ci/tests") and self.native_log_reader is not None:
                 # URL is generated from the previously SHA/attempt-verified job
                 # inventory, never supplied by a model or an issue comment.
                 match = re.fullmatch(
@@ -767,11 +768,17 @@ class GitHubRestAdapter:
                 if match:
                     try:
                         log=self.native_log_reader(int(match.group(1)))
-                        details = (
-                            summarize_native_lint_errors(log)
-                            if row.name=="native-ci/lint"
-                            else summarize_native_typescript_errors(log)
-                        )
+                        if row.name=="native-ci/tests":
+                            witness=verify_native_vitest_static_count(
+                                log,github=self,candidate_sha=candidate_sha,
+                            )
+                            details=witness.as_summary() if witness else None
+                        else:
+                            details = (
+                                summarize_native_lint_errors(log)
+                                if row.name=="native-ci/lint"
+                                else summarize_native_typescript_errors(log)
+                            )
                     except (RuntimeError, ValueError, OSError):
                         details = None
                     if details:
