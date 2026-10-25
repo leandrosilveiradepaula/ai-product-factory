@@ -633,7 +633,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("branches: [main]", workflow)
         # Only real Console modifications may allocate production operators
         # automatically; source-only security changes are deliberately inert.
-        push_scope = workflow.split("\\n  push:",1)[1].split("\\npermissions:",1)[0]
+        push_scope = workflow.split("\n  push:",1)[1].split("\npermissions:",1)[0]
         self.assertIn('"apps/console/**"', push_scope)
         for forbidden_trigger in (
             '"scripts/capture_authenticated_console.mjs"',
