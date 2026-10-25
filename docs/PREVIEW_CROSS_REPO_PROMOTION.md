@@ -39,7 +39,7 @@ Sem política, o caminho legado apenas consulta deployments existentes: nenhuma 
 
 Factory #1095 foi mergeada; CRM #197 head ae7fbb3143f677b555fc862926f17b033b7df6fb teve CI verde e especialistas aprovados na Factory. Preview falhou em #40199162918: Vercel GitHub Preview was not discoverable for the candidate commit. O último deployment READY da Vercel corresponde à base 0429872652e8cb2bc0e9cde618bf5e848190e186, não ao candidato.
 
-O CRM usa vercel.json deploymentEnabled com main=true e preview/**=true, demais branches=false. A referência preview/factory-cs-673a2fc7 continua na base. Houve bloqueio de segurança ao tentar atualizá-la por ferramenta: NÃO contornar com outra API/client. O código desta PR permanece inerte até merge humano e autorização de política/credenciais. A PR do CRM não foi mergeada, nenhuma produção alterada. Não declarar Prova 2 PASS sem deployment e browser do SHA real.
+O CRM usa vercel.json deploymentEnabled com main=true e preview/**=true, demais branches=false. A referência histórica curta preview/factory-cs-673a2fc7 continua na base; a nova política usa o UUID completo para evitar colisões de nome. Houve bloqueio de segurança ao tentar atualizá-la por ferramenta: NÃO contornar com outra API/client. O código desta PR permanece inerte até merge humano e autorização de política/credenciais. A PR do CRM não foi mergeada, nenhuma produção alterada. Não declarar Prova 2 PASS sem deployment e browser do SHA real.
 
 ## Testes
 
