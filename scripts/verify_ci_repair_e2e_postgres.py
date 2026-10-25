@@ -27,12 +27,14 @@ root = Path(__file__).resolve().parents[1]
 original = (root / "supabase/migrations/20261021213414_durable_ci_repair_requests.sql").read_text()
 correction = (root / "supabase/migrations/20261021234500_ci_repair_replay_idempotency.sql").read_text()
 cumulative_scopes = (root / "supabase/migrations/20261022125100_ci_repair_cumulative_scopes.sql").read_text()
+verified_test_scope = (root / "supabase/migrations/20261025031400_verified_native_ci_test_scope.sql").read_text()
 schema = """
 create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin;
 create table public.factory_projects (
- id uuid primary key, project_key text not null, repository text not null
+ id uuid primary key, project_key text not null, repository text not null,
+ project_kind text not null default 'existing', is_active boolean not null default true
 );
 create table public.factory_tasks (
  id uuid primary key default gen_random_uuid(), project_id uuid not null references public.factory_projects(id),
@@ -99,7 +101,7 @@ repository = "test/isolated-factory"
 def setup(conn: psycopg.Connection, *, sha: str, status: str = "ci_pending"):
     project, task, run, change_set, plan = (uuid.uuid4() for _ in range(5))
     conn.execute(
-        "insert into public.factory_projects values (%s,'isolated',%s)", (project, repository)
+        "insert into public.factory_projects (id,project_key,repository) values (%s,'isolated',%s)", (project, repository)
     )
     conn.execute(
         "insert into public.factory_project_execution_controls values (%s,'running',3)",
@@ -181,6 +183,15 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     conn.execute(original)
     conn.execute(correction)
     conn.execute(cumulative_scopes)
+    conn.execute(verified_test_scope)
+    acl = conn.execute("""
+      select prosecdef,
+        has_function_privilege('service_role',oid,'execute'),
+        has_function_privilege('anon',oid,'execute'),
+        has_function_privilege('authenticated',oid,'execute')
+      from pg_proc where proname='factory_enqueue_ci_repair_verified_test_scope_v1'
+    """).fetchone()
+    assert acl == (False, True, False, False), acl
 
     # Confirm migration source and privilege boundaries as installed.
     installed = conn.execute("""
@@ -435,6 +446,87 @@ with psycopg.connect(dsn, autocommit=True) as conn:
            where change_set_id=%s and status='pending'""",
         (large_ids[3],),
     ).fetchone()[0] == 0
+
+    # One legitimate new navigation link invalidates a static old count.
+    # The new RPC takes exactly one SHA-verified Vitest test filename, and
+    # expands only the NEW repair task scopes, not the historical Work Units.
+    safe_sha="8"*40
+    scope_ids=setup(conn,sha=safe_sha)
+    p,_,run,cs=scope_ids
+    tested_source="src/components/layout/Sidebar.tsx"
+    tested_contract="src/lib/sidebar-navigation-contract.test.ts"
+    conn.execute("update public.factory_change_set_work_units set changed_files=%s::jsonb "
+                 "where change_set_id=%s",(json.dumps([tested_source]),cs))
+    evidence_text=(
+        "Verified failed GitHub Actions step (run and attempt bound); "
+        "Verified native Vitest count: test="+tested_contract+
+        " source="+tested_source+" expected=16 actual=17"
+    )
+    details_url="https://github.com/test/isolated-factory/actions/runs/123/job/456"
+    failures_proved=[{"name":"native-ci/tests","conclusion":"failure",
+                      "failure_class":"code","details_url":details_url,
+                      "summary":evidence_text}]
+    def enqueue_verified(evidence):
+        return conn.execute("""
+          select public.factory_enqueue_ci_repair_verified_test_scope_v1(
+            %s,%s,%s,%s,73,%s,%s,3,'code',%s::jsonb,3)
+        """,(run,p,cs,repository,branch,safe_sha,json.dumps(evidence))).fetchone()[0]
+
+    def reject_verified(evidence):
+        try:
+            with conn.transaction():
+                enqueue_verified(evidence)
+        except psycopg.Error as err:
+            assert err.sqlstate in ("PT400","PT409"),err
+        else:
+            raise AssertionError("forged or contradictory native test scope passed")
+        assert count(conn,cs)==0
+        assert conn.execute(
+            "select status from public.factory_runs where id=%s",(run,)
+        ).fetchone()[0]=="ci_pending"
+
+    bad=[
+       [{**failures_proved[0],"details_url":"https://evil.example/job/1"}],
+       [{**failures_proved[0],"summary":evidence_text.replace("actual=17","actual=18")}],
+       [{**failures_proved[0],"summary":evidence_text.replace("expected=16","expected=17")}],
+       [{**failures_proved[0],"summary":evidence_text.replace(tested_source,"src/other.tsx")}],
+       [{**failures_proved[0],"summary":evidence_text.replace(tested_contract,"../outside.test.ts")}],
+       [{**failures_proved[0],"summary":"Verified native Vitest count: test=src/forged.test.ts"}],
+       [{**failures_proved[0],"name":"native-ci/unclassified"}],
+       [{**failures_proved[0],"failure_class":"runner"}],
+       [{**failures_proved[0],"summary":evidence_text},
+        {**failures_proved[0],"summary":evidence_text.replace("actual=17","actual=18")}],
+    ]
+    for item in bad:
+        reject_verified(item)
+
+    receipt=enqueue_verified(failures_proved)
+    assert receipt["status"]=="repair_pending" and receipt["attempt"]==1,receipt
+    amended=conn.execute(
+        "select write_scopes from public.factory_ci_repair_requests where id=%s",
+        (receipt["repair_request_id"],)
+    ).fetchone()[0]
+    assert amended==sorted((tested_source,tested_contract)),amended
+    assert conn.execute(
+        "select scope_keys from public.factory_tasks where id=%s",(receipt["task_id"],)
+    ).fetchone()[0]==amended
+    original_paths=conn.execute(
+        "select changed_files from public.factory_change_set_work_units "
+        "where change_set_id=%s and status='integrated'",(cs,)
+    ).fetchone()[0]
+    assert original_paths==[tested_source],original_paths
+    audit=conn.execute(
+        "select payload from public.factory_audit_events where event_type='ci.repair.verified_test_scope' "
+        "and payload->>'repair_request_id'=%s",(str(receipt["repair_request_id"]),)
+    ).fetchall()
+    assert len(audit)==1 and audit[0][0]["release_authorized"] is False,audit
+    assert audit[0][0]["model_calls"]==0
+    assert enqueue_verified(failures_proved)["created"] is False
+    assert conn.execute(
+        "select count(*) from public.factory_audit_events "
+        "where event_type='ci.repair.verified_test_scope' and project_id=%s",(p,)
+    ).fetchone()[0]==1
+    print("NATIVE_CI_TEST_SCOPE_POSTGRES_PASS")
 
 # Cross-layer fixture: real runtime entrypoint, real transactional SQL RPCs and
 # actual integration crash recovery with a fully simulated GitHub adapter.
