@@ -13,7 +13,7 @@ from ai_product_factory.preview_candidate_promotion import (
 BASE = "a" * 40
 CANDIDATE = "b" * 40
 CHANGE_SET = "673a2fc7-5f8c-40da-8bec-18ff6bb7eeed"
-BRANCH = "preview/factory-cs-673a2fc7"
+BRANCH = "preview/factory-cs-673a2fc7-5f8c-40da-8bec-18ff6bb7eeed"
 
 
 def item(policy=None):
