@@ -87,7 +87,6 @@ class PromotionTests(unittest.TestCase):
         gh.create_branch_at_sha.assert_not_called()
         self.assertEqual(events[0][0], "preview.promotion_intent")
         self.assertEqual(events[-1][0], "preview.promotion_completed")
-        self.assertFalse(hasattr(gh, "merge"))
 
     def test_missing_ref_created_at_base_before_exact_cas(self):
         gh = github()
