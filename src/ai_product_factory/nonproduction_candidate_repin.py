@@ -12,7 +12,7 @@ import json
 import re
 import time
 from typing import Callable
-from urllib import parse, request
+from urllib import error, parse, request
 
 from .github_auth import resolve_github_token
 from .github_rest import GitHubRestAdapter
@@ -204,8 +204,15 @@ def _post_rpc(name: str, body: dict) -> object:
     cfg = resolve_supabase_server_config()
     req = request.Request(cfg.url + "/rest/v1/rpc/" + name, data=json.dumps(body).encode(), method="POST",
                           headers={**cfg.headers, "Content-Type": "application/json"})
-    with request.urlopen(req, timeout=30) as response:
-        return json.loads(response.read() or b"null")
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            return json.loads(response.read() or b"null")
+    except error.HTTPError as exc:
+        # PostgREST's PT409 is a real CAS guard, not a transport outage.
+        # Never echo the upstream SQL detail or request body/attestation.
+        if exc.code == 409:
+            raise PermissionError("candidate repin CAS conflict (HTTP 409)") from None
+        raise RuntimeError("candidate repin RPC HTTP failure") from None
 
 
 def _with_control(project: dict, *, control_fetcher=None) -> dict:
@@ -298,9 +305,12 @@ def repin_existing_projects(*, max_projects: int = 3, github_factory=None, rpc=N
             result = repin_project(_with_control(project, control_fetcher=control_fetcher),
                                    github_factory=github_factory, rpc=rpc)
         except PermissionError as exc:
-            result = {"status": "blocked", "project_key": key, "reason": str(exc)}
-        except Exception as exc:
-            result = {"status": "error", "project_key": key, "reason": type(exc).__name__}
+            reason_code = ("candidate_cas_conflict" if str(exc) == "candidate repin CAS conflict (HTTP 409)"
+                           else "candidate_preflight_blocked")
+            result = {"status": "blocked", "project_key": key, "reason_code": reason_code}
+        except Exception:
+            result = {"status": "error", "project_key": key,
+                      "reason_code": "candidate_transport_error"}
         results.append(result)
     return {"status": "partial_failure" if any(r["status"] in {"error", "blocked"} for r in results) else "completed",
             "scanned": len(projects), "eligible": len(enabled), "policy_disabled": disabled,

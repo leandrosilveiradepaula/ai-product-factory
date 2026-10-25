@@ -111,6 +111,18 @@ class ExistingCandidateWakeTests(unittest.TestCase):
         self.assertEqual([row["status"] for row in out["results"]], ["error", "unchanged"])
         self.assertNotIn("TOKEN_MUST_NOT_LEAK", str(out) + md)
 
+    def test_only_known_reason_code_survives_sanitized_summary(self):
+        case=example(outcome="blocked")
+        case["results"][0]["reason"]="SQL: credential-secret internal"
+        case["results"][0]["reason_code"]="candidate_cas_conflict"
+        output,md=summarize(case)
+        self.assertEqual(output["results"][0]["reason_code"],"candidate_cas_conflict")
+        self.assertIn("candidate_cas_conflict",md)
+        self.assertNotIn("credential-secret",str(output)+md)
+        case["results"][0]["reason_code"]="arbitrary_secret_or_error"
+        with self.assertRaises(ValueError):
+            summarize(case)
+
     def test_second_rotation_group_is_supported(self):
         out, md = summarize(example(projects=24, eligible=24, limit=3, group=7))
         self.assertEqual(out["rotation_group"], 7)

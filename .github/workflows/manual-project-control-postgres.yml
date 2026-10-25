@@ -27,6 +27,7 @@ on:
       - "scripts/verify_scheduler_control_eligibility_postgres.py"
       - "supabase/migrations/*project_control_wake_outbox.sql"
       - "supabase/migrations/*repin_nonproduction_target.sql"
+      - "supabase/migrations/*repin_terminal_repair_history.sql"
       - "supabase/migrations/*guard_stale_change_set_integration.sql"
       - "scripts/verify_stale_change_set_integration_postgres.py"
       - "supabase/migrations/*retry_blocked_platform_kind.sql"

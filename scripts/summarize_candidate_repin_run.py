@@ -14,6 +14,8 @@ import sys
 _KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _SHA = re.compile(r"^[a-f0-9]{40}$")
 _STATUSES = {"unchanged", "updated", "blocked", "error"}
+_REASON_CODES = {"candidate_cas_conflict", "candidate_preflight_blocked",
+                 "candidate_transport_error"}
 
 
 def summarize(payload: object) -> tuple[dict, str]:
@@ -64,8 +66,18 @@ def summarize(payload: object) -> tuple[dict, str]:
             not isinstance(sha, str) or not _SHA.fullmatch(sha)
         ):
             raise ValueError("candidate successful SHA missing")
+        reason_code = result.get("reason_code")
+        if outcome in {"blocked", "error"}:
+            # Accept only a closed, publicly documented vocabulary. Historical
+            # arbitrary 'reason' strings or upstream HTTP bodies never enter
+            # the job summary.
+            if reason_code is not None and reason_code not in _REASON_CODES:
+                raise ValueError("unknown candidate reconciliation reason_code")
+        else:
+            reason_code = None
         safe.append({"project_key": key, "status": outcome, "sha": sha if outcome in
-                     {"unchanged", "updated"} else None})
+                     {"unchanged", "updated"} else None,
+                     **({"reason_code": reason_code} if reason_code is not None else {})})
     failed = any(item["status"] in {"blocked", "error"} for item in safe)
     if status == "partial_failure" and not failed:
         raise ValueError("failure receipt has no failing candidate")
@@ -88,13 +100,13 @@ def summarize(payload: object) -> tuple[dict, str]:
         f"- Rotation group: {group if group is not None else 'N/A'} of {groups} groups; up to {limit} candidates per run",
         "- Scope: exact-SHA GitHub / native CI, non-production repin only; no model, task, merge or release",
         "",
-        "| Project | Result | Candidate SHA |",
-        "|---|---|---|",
+        "| Project | Result | Candidate SHA | Reason code |",
+        "|---|---|---|---|",
     ]
     for result in safe:
-        lines.append(f"| {result['project_key']} | {result['status']} | {result['sha'] or 'N/A'} |")
+        lines.append(f"| {result['project_key']} | {result['status']} | {result['sha'] or 'N/A'} | {result.get('reason_code') or '—'} |")
     if not safe:
-        lines.append("| — | idle (no eligible policies) | — |")
+        lines.append("| — | idle (no eligible policies) | — | — |")
     lines.extend(("", "This receipt proves only the observed candidates and outcomes in this run; not global product readiness.", ""))
     return output, "\n".join(lines)
 
