@@ -21,7 +21,7 @@ _LOC = re.compile(
 # Only stack locations tied to an actual failed assertion count as proof.
 # Passing test names and unrelated diagnostics elsewhere in a Vitest job
 # must never be interpreted as competing failing assertions.
-_TRACE_LOC = re.compile(r"❯[ \\t]*(" + _LOC.pattern + r")")
+_TRACE_LOC = re.compile(r"❯[ \t]*(" + _LOC.pattern + r")")
 _FAIL = re.compile(
     r"AssertionError: expected (?P<actual>[0-9]{1,3}) to be "
     r"(?P<expected>[0-9]{1,3}) // Object[.]is equality"
@@ -96,7 +96,7 @@ def verify_native_vitest_static_count(
     locations: set[str] = set()
     for index, failure in enumerate(failures):
         boundary = failures[index + 1].start() if index + 1 < len(failures) else len(cleaned)
-        window = "\\n".join(cleaned[failure.end():boundary].splitlines()[:18])
+        window = "\n".join(cleaned[failure.end():boundary].splitlines()[:18])
         traced = _TRACE_LOC.findall(window)
         if len(traced) != 1:
             return None
