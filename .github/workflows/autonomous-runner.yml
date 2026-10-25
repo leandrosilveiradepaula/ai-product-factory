@@ -291,6 +291,9 @@ jobs:
       - name: Requeue verified exact-scope misresolutions (migration gated, no model)
         shell: bash
         run: python scripts/resume_blocked_literal_scopes.py --max-items 2
+      - name: Requeue proven missing repin context (migration gated, no model)
+        shell: bash
+        run: python scripts/resume_blocked_repin_context.py --max-items 2
       - name: Reconcile up to three explicitly enabled existing candidates
         shell: bash
         run: |
