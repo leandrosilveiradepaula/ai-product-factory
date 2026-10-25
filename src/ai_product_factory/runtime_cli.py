@@ -492,6 +492,17 @@ def run_ci_once(*,exclude_run_ids:tuple[str,...]=(),offset:int=0)->dict:
    repair=SupabaseCIRepairQueue().enqueue_failure(
     item=item,failures=tuple(DurableCIFailure.from_github(failure) for failure in failures),max_attempts=3,
    )
+  except PermissionError:
+   # Missing or ambiguous native test evidence must never crash the entire
+   # CI lane, consume a model attempt, or revoke the pending candidate.
+   # A later verified GitHub witness may still authorize the exact repair.
+   store.record_audit_event(
+    run_id=item.run_id,event_type="ci.repair_attestation_blocked",
+    payload={"candidate_commit":item.candidate_commit,"pr_number":item.pr_number,
+             "reason_code":"native_test_scope_not_verified"},actor_ref="ci-repair",
+   )
+   return {"claimed":True,"status":"ci_repair_attestation_blocked","run_id":item.run_id,
+    "pr_number":item.pr_number,"candidate_commit":item.candidate_commit}
   except ValueError as exc:
    store.update_run_status(item.run_id,"failed_gate")
    store.record_audit_event(

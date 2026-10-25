@@ -21,6 +21,7 @@ _WAITING = frozenset({
     "nonproduction_candidate_not_released",
     "project_control_waiting", "project_execution_epoch_revoked",
     "wait_dispatched_ci", "candidate_drift_blocked",
+    "ci_repair_attestation_blocked",
 })
 
 

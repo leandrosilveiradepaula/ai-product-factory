@@ -60,6 +60,38 @@ class VerifiedVitestCountTests(unittest.TestCase):
             "Verified native Vitest count: test="+TEST+" source="+SOURCE+
             " expected=16 actual=17")
 
+    def test_full_vitest_job_ignores_unrelated_passing_test_paths(self):
+        # Real native Vitest jobs list many passing files and can print
+        # path:line:column diagnostics unrelated to the *failed* assertion.
+        passing = "".join(
+            f"2026-10-25T02:57:11Z ✓ src/lib/unrelated_{i}.test.ts:4:9\n"
+            for i in range(90)
+        )
+        mirrored = (
+            "2026-10-25T02:57:16Z \x1b[31mAssertionError\x1b[22m: "
+            "expected 17 to be 16 // Object.is equality\n"
+            "2026-10-25T02:57:16Z - Expected\n"
+            "2026-10-25T02:57:16Z + 17\n"
+            "2026-10-25T02:57:16Z \x1b[2m❯\x1b[22m "
+            + TEST + ":\x1b[2m10:81\x1b[22m\n"
+        )
+        got = self.attest(passing + LOG + passing + mirrored + passing)
+        self.assertIsNotNone(got)
+        self.assertEqual((got.expected, got.actual), (16, 17))
+        self.assertEqual(got.test_path, TEST)
+
+    def test_bounded_failure_stacks_must_agree_and_be_present(self):
+        for noisy in (
+            LOG.replace("❯", "->"),
+            LOG + "❯ src/lib/other.test.ts:10:81\n",
+            LOG + "AssertionError: expected 17 to be 16 // Object.is equality\n"
+                  "❯ src/lib/another.test.ts:10:81\n",
+            LOG + "AssertionError: expected 19 to be 16 // Object.is equality\n"
+                  "❯ " + TEST + ":10:81\n",
+        ):
+            with self.subTest(log=noisy[-100:]):
+                self.assertIsNone(self.attest(noisy))
+
     def test_unrelated_log_or_multiple_assertions_never_authors_scope(self):
         for log in (
             "",

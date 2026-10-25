@@ -18,6 +18,10 @@ _LOC = re.compile(
     r"(?:src|test|tests|app|apps|packages)/[A-Za-z0-9_./()-]+"
     r"\.(?:test|spec)\.tsx?:[1-9][0-9]{0,5}:[1-9][0-9]{0,5}"
 )
+# Only stack locations tied to an actual failed assertion count as proof.
+# Passing test names and unrelated diagnostics elsewhere in a Vitest job
+# must never be interpreted as competing failing assertions.
+_TRACE_LOC = re.compile(r"❯[ \t]*(" + _LOC.pattern + r")")
 _FAIL = re.compile(
     r"AssertionError: expected (?P<actual>[0-9]{1,3}) to be "
     r"(?P<expected>[0-9]{1,3}) // Object[.]is equality"
@@ -85,10 +89,19 @@ def verify_native_vitest_static_count(
     expected, actual = int(failures[0].group("expected")), int(failures[0].group("actual"))
     if expected == actual or expected > 100 or actual > 100:
         return None
-    locations = {
-        m.group(0) for m in _LOC.finditer(cleaned)
-    }
-    if not 1<=len(locations)<=2:
+    # A native job contains hundreds of passing test filenames, some even
+    # with path:line:column snippets. Only a Vitest stack marker in the
+    # bounded block *following each matched assertion* is eligible.
+    # The mirrored GitHub annotation must cite the same exact location.
+    locations: set[str] = set()
+    for index, failure in enumerate(failures):
+        boundary = failures[index + 1].start() if index + 1 < len(failures) else len(cleaned)
+        window = "\n".join(cleaned[failure.end():boundary].splitlines()[:18])
+        traced = _TRACE_LOC.findall(window)
+        if len(traced) != 1:
+            return None
+        locations.add(traced[0])
+    if len(locations) != 1:
         return None
     # One test file / statement may appear twice in the GitHub annotation.
     unique_paths={v.rsplit(":", 2)[0] for v in locations}
