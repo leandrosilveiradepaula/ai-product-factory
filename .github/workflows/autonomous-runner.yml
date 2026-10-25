@@ -294,6 +294,9 @@ jobs:
       - name: Requeue proven missing repin context (migration gated, no model)
         shell: bash
         run: python scripts/resume_blocked_repin_context.py --max-items 2
+      - name: Requeue proven CI-repair candidate preflight mismatch (migration gated, model-free)
+        shell: bash
+        run: python scripts/resume_blocked_ci_repair_candidate.py --max-items 2
       - name: Reconcile up to three explicitly enabled existing candidates
         shell: bash
         run: |
