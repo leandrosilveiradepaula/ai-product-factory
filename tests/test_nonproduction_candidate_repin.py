@@ -1,11 +1,13 @@
 import unittest
+from io import BytesIO
+from urllib.error import HTTPError
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
 
 from ai_product_factory.nonproduction_candidate_repin import (
     ExistingCandidatePolicy, NativeCIWorkflowPolicy, repin_existing_projects,
-    repin_project, verify_candidate,
+    repin_project, verify_candidate, _post_rpc,
 )
 from ai_product_factory.pinned_nonproduction_target import PinnedNonproductionTarget
 from ai_product_factory.supabase_server import SupabaseServerConfig
@@ -132,6 +134,33 @@ class CandidateRePinTests(unittest.TestCase):
         self.assertEqual(body["p_expected_version"], 9)
         self.assertEqual(body["p_evidence"]["ci_sha"], NEW)
         self.assertNotIn("merge", str(body).lower())
+
+    def test_postgrest_409_remains_blocked_and_never_leaks_sql_details(self):
+        upstream = HTTPError(
+            "https://example.test/rest/v1/rpc/factory_repin_nonproduction_target_v1",
+            409,"private_sql_detail",{},BytesIO(b'{"message":"secret internal"}'))
+        with self.mock_config(), patch(
+            "ai_product_factory.nonproduction_candidate_repin.request.urlopen",
+            side_effect=upstream,
+        ):
+            with self.assertRaises(PermissionError) as caught:
+                _post_rpc("factory_repin_nonproduction_target_v1", {"p_project_key":"crm-infodive"})
+        self.assertEqual(str(caught.exception),"candidate repin CAS conflict (HTTP 409)")
+        self.assertNotIn("secret internal",str(caught.exception))
+
+    def test_candidate_cas_conflict_is_bounded_blocked_not_transport_error(self):
+        p=project()
+        fetch=project_fetcher([p])
+        with self.mock_config():
+            result=repin_existing_projects(
+                max_projects=1,rotation_slot=0,
+                project_fetcher=fetch,control_fetcher=fetch,
+                github_factory=lambda repo:github(repo),
+                rpc=lambda name,body: (_ for _ in ()).throw(
+                    PermissionError("candidate repin CAS conflict (HTTP 409)")))
+        self.assertEqual(result["status"],"partial_failure")
+        self.assertEqual(result["results"][0]["status"],"blocked")
+        self.assertEqual(result["results"][0]["reason_code"],"candidate_cas_conflict")
 
     def test_unchanged_candidate_does_not_need_ci_or_call_rpc(self):
         item = project(); g = github(item["repository"]); g.get_branch_sha.return_value = OLD; rpc = MagicMock()
