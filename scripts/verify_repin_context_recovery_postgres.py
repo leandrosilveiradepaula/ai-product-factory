@@ -227,6 +227,13 @@ with psycopg.connect(dsn,autocommit=True) as db:
         must_stay_blocked()
         held.rollback()
 
+    # Two valid audit receipts for the same source must not cause a
+    # duplicate row in the bounded recovery select.
+    db.execute("insert into factory_audit_events(project_id,actor_type,"
+               "actor_ref,event_type,payload) values"
+               "(%s,'system','factory-candidate-reconciler',"
+               "'project.delivery_target.reconciled',%s::jsonb)",
+               (project,json.dumps(repin_receipt)))
     result=recover()
     assert result["status"]=="requeued" and result["requeued"]==1,result
     states=(
