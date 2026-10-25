@@ -1,3 +1,9 @@
+## 25/10/2026 — Operação da certificação de Preview multi-wave (candidato)
+
+O CRM real #197 completou Prova 2 em homologação: merge humano no SHA `08257c0d545bf98c7f34ae40d8b2e221468764ab` para `preview/hardening-release-candidate`; CI de merge #40205496275 4/4, Preview Vercel READY, Playwright #40205752751 PASS e observer #40205844090 `integrated_nonproduction`. Banco: run `eafd1ac1-b57d-47d9-98eb-55a90003e6db` `integrated`, Change Set `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` `completed`, `production_released=false`.
+
+O auditor OWNER de jornada usa `operations` para release de **produção**. Só depois de CI/merge humano desta PR da Factory, o OWNER pode escolher explicitamente o modo **Preview**: `/factory-journey-audit crm-infodive 7a4a88ac-2ad2-42bc-bc6b-5135035b0d84 2026-10-24T23:40:00Z scope=nonproduction` em issue #713. Aceitar apenas `classification=integrated_nonproduction`, `requirement_met=true`, SHA de merge e `highest_verified=awaiting_release` com release de produção e operations `not_reached`. Exigir artefato Actions e consulta read-only de snapshots exatos; o comando antigo sem `scope` continua exigindo `operations` e nunca fica verde apenas por Preview. Sem modelo, SQL, alteração RLS, migration, ref forçada ou merge automático. Runbook: `docs/JOURNEY_NONPRODUCTION_EVIDENCE.md`.
+
 ## Prova 2 — continuação OWNER de greenfield já criado (PR #1079, candidato de 23/10/2026)
 
 ## 25/10/2026 — Cross-repo Preview, promoção opt-in via GitHub CAS (candidato #1097)

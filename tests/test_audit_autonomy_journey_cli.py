@@ -161,5 +161,47 @@ class RealJourneyClassificationTests(unittest.TestCase):
         self.assertTrue(payload["requirement_met"])
 
 
+    def test_nonproduction_requires_exact_typed_receipt_not_production(self):
+        from dataclasses import replace
+        n=STAGES.index("awaiting_release")+1
+        good=replace(
+            make_report("integrated_nonproduction",n),
+            nonproduction_integrated=True,nonproduction_merge_sha="b"*40,
+        )
+        self.assertEqual(_classify(good)[0],"integrated_nonproduction")
+        for corrupted in (
+            replace(good,nonproduction_integrated=False),
+            replace(good,nonproduction_merge_sha=None),
+            replace(good,nonproduction_merge_sha="f"),
+            replace(good,highest_verified="operations"),
+            replace(good,status="observed_complete"),
+            replace(good,blockers=("unverified_candidate",)),
+        ):
+            with self.subTest(corrupted=corrupted):
+                self.assertNotEqual(_classify(corrupted)[0],"integrated_nonproduction")
+
+    def test_cli_nonproduction_accepts_only_nonproduction_stage(self):
+        from dataclasses import replace
+        n=STAGES.index("awaiting_release")+1
+        good=replace(make_report("integrated_nonproduction",n),
+                     nonproduction_integrated=True,nonproduction_merge_sha="b"*40)
+        with patch("scripts.audit_autonomy_journey.SupabaseJourneyReader") as reader:
+            reader.return_value.read.return_value=good
+            for required,expected in (("nonproduction_integration",0),
+                                      ("operations",2),("awaiting_release",2)):
+                output=io.StringIO()
+                with redirect_stdout(output):
+                    result=main(["--project-key","ai-product-factory",
+                                 "--since-utc","2026-10-20T00:00:00Z",
+                                 "--require-at-least",required])
+                payload=json.loads(output.getvalue())
+                with self.subTest(required=required):
+                    self.assertEqual(result,expected)
+                    self.assertEqual(payload["requirement_met"],result==0)
+                    self.assertFalse(payload["product_ready"])
+                    self.assertEqual(payload["paid_calls"],0)
+                    self.assertEqual(payload["writes"],0)
+
+
 if __name__ == "__main__":
     unittest.main()
