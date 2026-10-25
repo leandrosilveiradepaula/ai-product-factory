@@ -76,7 +76,7 @@ class ReadonlyTypeScriptImportTests(unittest.TestCase):
 
     def test_worker_adds_full_dependency_as_required_readonly_context(self):
         h=github()
-        worker=ChangeSetBuilderWorker(github=h,store=MagicMock(),producer=MagicMock())
+        worker=ChangeSetBuilderWorker(github=h,store=MagicMock(),producer=MagicMock(),impact_engine=MagicMock(),provenance=MagicMock())
         enriched,_=worker._resolved_repository_context(source=src(),base_commit=SHA)
         self.assertEqual(enriched["assignment"]["scope_keys"],SCOPES)
         self.assertEqual(enriched["ci_verified_readonly_import_paths"],[SOURCE])
