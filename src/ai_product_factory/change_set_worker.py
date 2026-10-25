@@ -15,6 +15,7 @@ from .commit_provenance import provenance_commit_message
 from .pinned_nonproduction_target import PinnedNonproductionTarget
 from .ci_repair_candidate_evidence import verify_existing_ci_repair_candidate
 from .ci_typecheck_repair_diagnostics import verified_typecheck_repair_diagnostics
+from .ci_repair_readonly_imports import resolve_verified_readonly_imports
 
 
 @dataclass(frozen=True)
@@ -453,14 +454,40 @@ class ChangeSetBuilderWorker:
             raise PermissionError("work unit has no safely resolved write scopes")
 
         assignment["scope_keys"]=resolved_scopes
-        assignment["context_paths"]=context_paths
         enriched=dict(source)
         enriched["assignment"]=assignment
-        if conditional_notes:
+        # Exact native TypeScript failures may refer to a module outside the
+        # allowed *write* files. Resolve the imported symbol against exports
+        # in the real candidate tree and make the unique module READ ONLY.
+        # Never widen scopes or fabricate an import path for the model.
+        readonly_imports=resolve_verified_readonly_imports(
+            github=self.github,source=enriched,
+            base_commit=base_commit,all_paths=all_paths,
+        )
+        readonly_paths=list(dict.fromkeys(row.exported_from for row in readonly_imports))
+        if readonly_paths:
+            if len(required_context)+len(readonly_paths)>12:
+                raise PermissionError("required CI repair import context exceeds safe file count")
+            selected=[*required_context,*readonly_paths]
+            selected.extend(p for p in context_paths if p not in selected)
+            context_paths=selected[:12]
+            enriched["ci_verified_readonly_import_paths"]=readonly_paths
+            extra=[
+                "Verified exact-SHA read-only TypeScript export: "
+                +row.symbol+" is exported from "+row.exported_from
+                +"; do not invent a module path or edit that dependency."
+                for row in readonly_imports
+            ]
+        else:
+            enriched["ci_verified_readonly_import_paths"]=[]
+            extra=[]
+        assignment["context_paths"]=context_paths
+        if conditional_notes or extra:
             previous=enriched.get("constraints")
             enriched["constraints"]=[
                 *(previous if isinstance(previous,list) else []),
                 *conditional_notes,
+                *extra,
             ]
         return enriched,tuple(context_paths)
 
@@ -496,7 +523,15 @@ class ChangeSetBuilderWorker:
             for raw in scopes if isinstance(raw, str)
         }
         governance = set(self._governance_paths(tuple(paths)))
-        required = governance | (set(paths) & exact_scopes)
+        readonly = source.get("ci_verified_readonly_import_paths")
+        if readonly is None:
+            readonly=[]
+        if (not isinstance(readonly,list) or len(readonly)>4
+            or any(not isinstance(p,str) or p not in paths or p in exact_scopes
+                   or p.startswith("/") or ".." in p.split("/")
+                   for p in readonly)):
+            raise PermissionError("invalid attested CI import read-only context")
+        required = governance | (set(paths) & exact_scopes) | set(readonly)
         ordered = [path for path in paths if path in required] + [
             path for path in paths if path not in required
         ]
@@ -527,6 +562,8 @@ class ChangeSetBuilderWorker:
             encoded = clean.encode("utf-8")
             if clean != original:
                 unsafe.add(path)
+                if path in readonly:
+                    raise PermissionError("verified read-only CI import contains redacted secret")
                 if path in exact_scopes:
                     raise PermissionError(
                         "editable repository context contains redacted secret: " + path
