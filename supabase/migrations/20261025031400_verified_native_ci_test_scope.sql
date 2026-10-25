@@ -273,7 +273,7 @@ begin
  return jsonb_build_object('created',true,'repair_request_id',v_request_id,'task_id',v_task_id,'work_unit_id',v_unit_id,
   'attempt',v_attempt,'max_attempts',p_max_attempts,'status','repair_pending');
 end;
-$function$
+$function$;
 
 revoke all on function public.factory_enqueue_ci_repair_verified_test_scope_v1(uuid,uuid,uuid,text,integer,text,text,bigint,text,jsonb,integer) from public,anon,authenticated;
 grant execute on function public.factory_enqueue_ci_repair_verified_test_scope_v1(uuid,uuid,uuid,text,integer,text,text,bigint,text,jsonb,integer) to service_role;
