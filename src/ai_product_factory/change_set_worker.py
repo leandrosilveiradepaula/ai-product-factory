@@ -14,6 +14,7 @@ from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
 from .commit_provenance import provenance_commit_message
 from .pinned_nonproduction_target import PinnedNonproductionTarget
 from .ci_repair_candidate_evidence import verify_existing_ci_repair_candidate
+from .ci_typecheck_repair_diagnostics import verified_typecheck_repair_diagnostics
 
 
 @dataclass(frozen=True)
@@ -635,6 +636,21 @@ class ChangeSetBuilderWorker:
                 source=source,base_commit=binding.base_commit,
                 integration_branch=integration_branch,github=self.github,
             )
+            ci_typecheck_diagnostics=()
+            if ci_repair_evidence is not None:
+                repair=source.get("repair")
+                persisted_failures=repair.get("failures") if isinstance(repair,dict) else []
+                if isinstance(persisted_failures,list) and any(
+                    isinstance(f,dict) and f.get("name")=="native-ci/typescript"
+                    for f in persisted_failures
+                ):
+                    ci_typecheck_diagnostics=verified_typecheck_repair_diagnostics(
+                        source=source,
+                        failures=self.github.get_failed_checks(
+                            ci_repair_evidence["pr_number"],
+                            expected_head_sha=ci_repair_evidence["candidate_commit"],
+                        ),
+                    )
             impact=self.impact_engine.analyze_run(
                 project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
             )
@@ -649,6 +665,10 @@ class ChangeSetBuilderWorker:
                     or repair.get("branch")!=ci_repair_evidence["integration_branch"]):
                     raise PermissionError("CI repair context changed after live PR verification")
                 source={**source,"ci_repair_evidence":ci_repair_evidence}
+                if ci_typecheck_diagnostics:
+                    enriched_repair=dict(repair)
+                    enriched_repair["verified_typecheck_diagnostics"]=list(ci_typecheck_diagnostics)
+                    source["repair"]=enriched_repair
             source,_=self._resolved_repository_context(source=source,base_commit=binding.base_commit)
             snapshot,unsafe_context_paths=self._repository_snapshot_with_safety(
                 source=source,base_commit=binding.base_commit,
