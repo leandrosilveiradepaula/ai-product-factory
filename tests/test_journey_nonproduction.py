@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ai_product_factory.autonomy_journey import evaluate_journey
-from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader
+from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader, GLOBAL_RELEASE_EVENTS
 from ai_product_factory.github_loop import CIState
 from ai_product_factory.journey_candidate_provenance import (
     verify_copied_work_unit_waves,
@@ -125,6 +125,36 @@ class PreviewIntegrationEvidenceTests(unittest.TestCase):
         self.assertFalse(report.as_json()["product_ready"])
         self.assertEqual(report.as_json()["writes"],0)
 
+    def test_legacy_null_project_browser_is_valid_only_with_exact_run_url_and_deployment(self):
+        # Control Plane historically writes this browser receipt with
+        # project_id=NULL; its run_id and URL are still exact and immutable.
+        d=fixture()
+        browser=next(row for row in d["events"]
+                     if row["event_type"]=="preview.browser_evidence_recorded")
+        browser["project_id"]=None
+        self.assertEqual(evaluate_journey(**d).status,"integrated_nonproduction")
+        for change in (
+            lambda row:row.update(run_id=ROOT),
+            lambda row:row["payload"].update(preview_url="https://wrong.vercel.app"),
+            lambda row:row["payload"].update(status="failed"),
+        ):
+            bad=copy.deepcopy(d)
+            row=next(e for e in bad["events"]
+                     if e["event_type"]=="preview.browser_evidence_recorded")
+            change(row)
+            with self.subTest(change=repr(change)):
+                r=evaluate_journey(**bad)
+                self.assertNotEqual(r.status,"integrated_nonproduction")
+                self.assertFalse(r.nonproduction_integrated)
+
+    def test_browser_not_scoped_to_run_never_certifies_other_project(self):
+        d=fixture()
+        row=next(e for e in d["events"]
+                 if e["event_type"]=="preview.browser_evidence_recorded")
+        row["project_id"]=None
+        row["run_id"]="00000000-0000-4000-8000-000000000099"
+        self.assertEqual(evaluate_journey(**d).highest_verified,"github_ci")
+
     def test_preview_status_must_bind_provider_receipts_to_exact_candidate(self):
         for mutation in (
             lambda d:d["deployments"][0]["metadata"].update(candidate_commit="f"*40),
@@ -185,6 +215,43 @@ def event_with_wrong_preview(d):
     found=next(e for e in d["events"]
                if e["event_type"]=="preview.browser_evidence_recorded")
     return {**found,"payload":{**found["payload"],"preview_url":"https://wrong.vercel.app"}}
+
+
+class LegacyGlobalBrowserReadTests(unittest.TestCase):
+    def test_only_exact_run_and_allowlisted_null_project_event_is_fetched(self):
+        self.assertIn("preview.browser_evidence_recorded",GLOBAL_RELEASE_EVENTS)
+        self.assertNotIn("delivery.evidence.recorded",GLOBAL_RELEASE_EVENTS)
+        reader=SupabaseJourneyReader(
+            url="https://example.supabase.co",secret_key="sb_secret_test",
+        )
+        event={
+            "id":147,"run_id":DELIVERY,"project_id":None,
+            "event_type":"preview.browser_evidence_recorded",
+            "payload":{"status":"success","preview_url":URL},
+        }
+        with patch.object(reader,"_get",return_value=[event]) as getter:
+            got=reader._many_ids(
+                "factory_audit_events",
+                cols="id,project_id,run_id,event_type,payload",
+                fk="run_id",ids={DELIVERY},
+                extra="project_id=is.null&event_type=in.("
+                + ",".join(GLOBAL_RELEASE_EVENTS) + ")",
+                limit=201,
+            )
+        self.assertEqual(got,[event])
+        query=getter.call_args.args[0]
+        self.assertIn("run_id=in.("+DELIVERY+")",query)
+        self.assertIn("project_id=is.null",query)
+        self.assertIn("preview.browser_evidence_recorded",query)
+        with patch.object(reader,"_get",return_value=[
+            {**event,"run_id":ROOT}
+        ]):
+            with self.assertRaisesRegex(RuntimeError,"cross-lineage"):
+                reader._many_ids(
+                    "factory_audit_events",
+                    cols="id,project_id,run_id,event_type,payload",
+                    fk="run_id",ids={DELIVERY},
+                )
 
 
 class MultiWaveCopyEvidenceTests(unittest.TestCase):

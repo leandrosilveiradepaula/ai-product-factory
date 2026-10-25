@@ -1,5 +1,33 @@
 # Certificação de integração não produtiva — auditor da jornada
 
+## 25/10/2026 — Browser histórico com project_id=NULL (follow-up)
+
+O primeiro audit OWNER não produtivo após #1100,
+[Actions #40209336846](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40209336846),
+confirmou manual_start → github_ci mas bloqueou Preview com
+`merged_candidate_without_verified_release`. A causa foi uma restrição
+incompatível com o recibo persistido: `preview.browser_evidence_recorded`
+de 25/10/2026 15:01:02Z possui `project_id=NULL`, embora `run_id`
+seja `eafd1ac1-b57d-47d9-98eb-55a90003e6db` e URL idêntica à do
+deployment `vercel-status-57205570352`. Os recibos `delivery.evidence.recorded`
+do mesmo run, por sua vez, estão associados ao projeto correto e ao mesmo
+deployment. O worker histórico nunca gravou `project_id` nesse evento.
+Não alterar o banco, não fazer backfill e não simular um segundo browser.
+
+O leitor permite **apenas esse tipo legado** na consulta de eventos globais
+com `project_id IS NULL` e `run_id` descendente do Start verificado.
+O avaliador só aceita esse evento quando `status=success`, URL HTTPS Vercel
+é igual à URL persistida no deployment, o deployment tem `candidate_commit`
+do mesmo PR/SHA, o `release.awaiting_human_merge` vincula PR/SHA/URL e
+ambos os recibos Preview/browser usam exatamente o mesmo `deployment_ref`.
+Eventos de outro run, outra URL, status falho e eventos globais não autorizados
+permanecem bloqueados. A separação entre Preview e produção não muda.
+
+Essa correção só é comprovada após CI no SHA da PR, **merge humano** e nova
+execução do comando OWNER não produtivo documentado abaixo. Não reexecutar o
+mesmo diagnóstico para alegar PASS antes do artefato real.
+
+
 Este contrato é **somente leitura** e não substitui `operations` ou release de
 produção. Ele distingue um merge humano em `preview/**` de um merge humano
 em `main`, usando o Start real, a linhagem exata do Change Set, o GitHub e

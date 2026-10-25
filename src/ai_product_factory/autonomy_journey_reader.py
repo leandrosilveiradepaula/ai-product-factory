@@ -39,6 +39,10 @@ GLOBAL_RELEASE_EVENTS = (
     "release.preview_not_required",
     "release.human_merge_observed",
     "quality_gate.passed",
+    # Historical browser receipts were persisted without project_id; their
+    # exact run identity + URL + Vercel deployment/PR/SHA binding is verified
+    # separately by evaluate_journey. No other NULL-project events are read.
+    "preview.browser_evidence_recorded",
 )
 
 
