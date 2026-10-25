@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 
-_SHA = re.compile(r"[0-9a-f]{40}\\Z")
+_SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
 def _positive(value: Any) -> bool:
