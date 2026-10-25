@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ai_product_factory.autonomy_journey import evaluate_journey
-from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader
+from ai_product_factory.autonomy_journey_reader import SupabaseJourneyReader, GLOBAL_RELEASE_EVENTS
 from ai_product_factory.github_loop import CIState
 from ai_product_factory.journey_candidate_provenance import (
     verify_copied_work_unit_waves,
@@ -215,6 +215,43 @@ def event_with_wrong_preview(d):
     found=next(e for e in d["events"]
                if e["event_type"]=="preview.browser_evidence_recorded")
     return {**found,"payload":{**found["payload"],"preview_url":"https://wrong.vercel.app"}}
+
+
+class LegacyGlobalBrowserReadTests(unittest.TestCase):
+    def test_only_exact_run_and_allowlisted_null_project_event_is_fetched(self):
+        self.assertIn("preview.browser_evidence_recorded",GLOBAL_RELEASE_EVENTS)
+        self.assertNotIn("delivery.evidence.recorded",GLOBAL_RELEASE_EVENTS)
+        reader=SupabaseJourneyReader(
+            url="https://example.supabase.co",secret_key="sb_secret_test",
+        )
+        event={
+            "id":147,"run_id":DELIVERY,"project_id":None,
+            "event_type":"preview.browser_evidence_recorded",
+            "payload":{"status":"success","preview_url":URL},
+        }
+        with patch.object(reader,"_get",return_value=[event]) as getter:
+            got=reader._many_ids(
+                "factory_audit_events",
+                cols="id,project_id,run_id,event_type,payload",
+                fk="run_id",ids={DELIVERY},
+                extra="project_id=is.null&event_type=in.("
+                + ",".join(GLOBAL_RELEASE_EVENTS) + ")",
+                limit=201,
+            )
+        self.assertEqual(got,[event])
+        query=getter.call_args.args[0]
+        self.assertIn("run_id=in.("+DELIVERY+")",query)
+        self.assertIn("project_id=is.null",query)
+        self.assertIn("preview.browser_evidence_recorded",query)
+        with patch.object(reader,"_get",return_value=[
+            {**event,"run_id":ROOT}
+        ]):
+            with self.assertRaisesRegex(RuntimeError,"cross-lineage"):
+                reader._many_ids(
+                    "factory_audit_events",
+                    cols="id,project_id,run_id,event_type,payload",
+                    fk="run_id",ids={DELIVERY},
+                )
 
 
 class MultiWaveCopyEvidenceTests(unittest.TestCase):
