@@ -28,3 +28,52 @@ A CI nativa CRM [#40150697885](https://github.com/leandrosilveiradepaula/crm-inf
 6. Recuperar via OWNER `/factory-candidate-repin`, confirmar mesma run `19767c5c...`, única auditoria e status `queued`; emitir `/factory-wake` para o Direct corrigir o import da PR CRM #197. Exigir novo commit SHA, CI CRM nativa verde, Security/QA/Ops, Preview Vercel e browser real, gate de merge humano para CRM produção.
 
 **Não declarar Prova 2 PASS até completar os recibos exigidos.** Não criar outro CRM/Vercel/Supabase para o Service Desk. Não executar benchmark de 63 perguntas nem chamar modelo pago para preflight.
+
+
+## Continuação — segunda falha real, diagnóstico do contexto de reparo
+
+Em 25/10/2026, a Factory aplicou a migration aprovada e recuperou a *mesma*
+tentativa de repair `d1ba00fc-827d-4930-a04d-bcae57ef42f0`.
+O Direct `19767c5c-8a0d-4ada-8e9f-ad5df55181b1` produziu
+`6ca2de86313ae9d3e43cd76e92263d65366f397a`, integrado ao candidato
+`609be20a21d76427de14f0e7066599a7822de53a` na PR CRM #197.
+O CI nativo [#40154445384](https://github.com/leandrosilveiradepaula/crm-infodive/actions/runs/40154445384)
+continuou vermelho: o modelo substituiu `@/lib/auth` por
+`@/lib/auth/session`, **também inexistente**. A inspeção do pacote
+`a386413999e9eb1f96c6bd53ce1c9e94d65a2c4c8fa6d042ddbbd8419ad16385`
+confirmou que continha o diagnóstico `TS2307` e o arquivo com import
+quebrado, mas **não** a dependência real
+`src/lib/session.ts` (que exporta `getSession`).
+
+### Correção genérica da Factory (não patch manual no CRM)
+
+O módulo `ci_repair_readonly_imports.py` opera sem modelo e sem acesso
+a novos diretórios graváveis. Para um `TS2307` já certificado por CI
+nativa, no SHA candidato exato ele:
+- lê a linha importadora **dentro de um arquivo já autorizado para escrita**
+  e exige coincidência exata do alias e posição com o diagnóstico;
+- extrai o identificador importado e busca um conjunto **limitado** de
+  módulos candidatos por nome entre caminhos reais da árvore GitHub
+  versionada; só aceita uma declaração explícita de exportação do
+  mesmo símbolo em **exatamente um** arquivo;
+- inclui esse módulo **somente como contexto obrigatório de leitura**,
+  sujeito ao mesmo budget, sanitização e limites de paths existentes;
+  anota um recibo interno que informa o path e proíbe inventar imports;
+- não adiciona o módulo aos `write_scopes`, não atualiza CI, workflow,
+  auth, banco ou credenciais; nenhum patch é executado pelo ChatGPT;
+- falha fechado **antes da chamada paga** se a exportação for ausente,
+  ambígua, adulterada, truncada, sensível ou fora de limite.
+
+A solução não contém nenhum caminho fixo do CRM no runtime: a prova
+`getSession → src/lib/session.ts` vem da árvore e do conteúdo
+**verificados em cada repositório e SHA**. Testes incluem projeto
+sintético não CRM com outro símbolo e módulo, negativos de ambiguidade,
+drift, import não autorizado, segredo, excesso de tamanho e escopo.
+
+**Gates:** esta mudança da Factory só deve entrar em `main` por merge
+humano, com CI verde. Não há migration adicional. Depois do merge,
+um OWNER `/factory-wake` pode processar o próximo CI repair que
+o Control Plane criar para a PR CRM #197 a partir do novo workflow
+TypeScript falho. Conferir tentativa limitada, novo commit, CI
+nativa exata, reviews, Preview browser e merge humano do candidato.
+Não declarar a Prova 2 PASS enquanto houver falha.
