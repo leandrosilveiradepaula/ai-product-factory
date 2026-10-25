@@ -128,6 +128,23 @@ class ReadonlyOwnerJourneyTriggerTests(TestCase):
         self.assertNotIn("'/factory-journey-audit '",schedule)
 
 
+    def test_exact_nonproduction_scope_is_explicit_and_owner_only(self):
+        body=CMD+" scope=nonproduction"
+        self.assertEqual(resolve_target({
+            **OWNER,"FACTORY_COMMENT_BODY":body,
+        }),("ai-product-factory",RUN,SINCE,"nonproduction_integration"))
+        for invalid in (
+            CMD+" nonproduction", CMD+" scope=production",
+            CMD+" scope=nonproduction extra", CMD+" scope=nonproduction\n",
+            CMD+" scope=nonproduction;rm",
+        ):
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                resolve_target({**OWNER,"FACTORY_COMMENT_BODY":invalid})
+        with self.assertRaises(ValueError):
+            resolve_target({**OWNER,"FACTORY_COMMENT_BODY":body,
+                            "FACTORY_AUTHOR_ASSOCIATION":"COLLABORATOR"})
+
+
 if __name__=="__main__":
     import unittest
     unittest.main()
