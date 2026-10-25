@@ -81,8 +81,10 @@ class PreviewPromotionPolicy:
                 raise PreviewPromotionBlocked("invalid_change_set_identity") from exc
             if canonical != value:
                 raise PreviewPromotionBlocked("invalid_change_set_identity")
-            suffix = value[:8]
+            suffix = value
         name = f"{self.branch_prefix}-{suffix}"
+        if name == self.base_ref:
+            raise PreviewPromotionBlocked("preview_branch_equals_base")
         if not _PREFIX.fullmatch(name) or name.startswith("preview/../"):
             raise PreviewPromotionBlocked("invalid_preview_branch")
         return name
@@ -204,6 +206,10 @@ def promote_preview_candidate(
     )
     if github.get_branch_sha(branch) != candidate:
         raise PreviewPromotionBlocked("preview_ref_postwrite_mismatch")
+    check_epoch()
+    observed = _verify_candidate(github, item, policy)
+    if observed.base_sha != pr.base_sha:
+        raise PreviewPromotionBlocked("candidate_base_drift")
     audit("preview.promotion_completed", {
         "candidate_commit": candidate, "pr_number": item.pr_number,
         "branch": branch, "previous_sha": pr.base_sha,
