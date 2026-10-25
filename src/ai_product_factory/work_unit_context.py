@@ -96,7 +96,33 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
         "write_scopes":scopes,
     }
     proof=source.get("repin_evidence")
-    if proof is not None:
+    candidate_proof=source.get("ci_repair_evidence")
+    is_existing_ci_repair=(source.get("project_kind")=="existing"
+        and repair.get("repair_kind")=="ci")
+    if is_existing_ci_repair:
+        # A newer CI repair candidate is NOT the imported Preview source.
+        # Its authority is the already-verified PR and bounded failure
+        # lineage, not a fabricated second project repin.
+        target=source.get("delivery_target")
+        if (not isinstance(candidate_proof,dict) or not isinstance(target,dict)
+            or candidate_proof.get("kind")!="verified_native_ci_repair_candidate"
+            or candidate_proof.get("candidate_commit")!=base_commit
+            or candidate_proof.get("repository")!=repository["repository"]
+            or candidate_proof.get("project_key")!=repository["project_key"]
+            or candidate_proof.get("base_preview_sha")!=target.get("sha")
+            or candidate_proof.get("base_preview_branch")!=target.get("branch")
+            or candidate_proof.get("integration_branch")!=repair.get("branch")
+            or candidate_proof.get("pr_number")!=repair.get("pr_number")
+            or candidate_proof.get("repair_request_id")!=repair.get("repair_request_id")
+            or candidate_proof.get("attempt")!=repair.get("attempt")
+            or candidate_proof.get("max_attempts")!=repair.get("max_attempts")
+            or candidate_proof.get("write_scopes")!=scopes
+            or repair.get("write_scopes")!=scopes):
+            raise PermissionError("verified CI repair candidate evidence missing or drifted")
+        repository["ci_repair_candidate_evidence"]=dict(candidate_proof)
+    elif candidate_proof is not None:
+        raise PermissionError("CI repair candidate evidence cannot authorize a non-repair run")
+    elif proof is not None:
         target=source.get("delivery_target")
         if (not isinstance(target,dict) or not isinstance(proof,dict)
             or proof.get("kind")!="control_plane_native_ci_repin"

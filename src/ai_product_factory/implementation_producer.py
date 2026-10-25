@@ -18,7 +18,11 @@ class ModelImplementationProducer:
              "after exact native CI, repository.delivery_repin_evidence supplies the independently "
              "audited Control Plane proof for that exact SHA and CI run. Use it only when it agrees "
              "with repository.exact_base_commit and the task permits successors; never infer a "
-             "repin from the SHA alone. If the applicable context still does not authorize the task, return "
+             "repin from the SHA alone. For a native CI repair, repository.ci_repair_candidate_evidence "
+             "proves the live PR candidate head distinct from the original imported Preview SHA. "
+             "It authorizes ONLY the recorded CI repair inside the same Change Set and exact write_scopes, "
+             "not a project repin, new product requirement, or merge/release. "
+             "If the applicable context still does not authorize the task, return "
              "files=[] and a concise blocked_reason; otherwise blocked_reason must be empty and files non-empty.")
   packet=getattr(item,"context_packet",None)
   if getattr(item,"change_set_id",None) and not isinstance(packet,dict):
