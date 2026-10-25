@@ -1,3 +1,11 @@
+## 25/10/2026 — Incidente real: scheduler candidate-repin bloqueado por histórico terminal
+
+A PR Factory #1104 foi mergeada na `main` `4585ef50ccee5dcb6740cda7221af0f58990b0f4`, CI pós-merge `test` + `factory-acceptance` verdes. O workflow de capture autenticada do Console só permite host Vercel do projeto/equipe oficiais e não aloca operador por alterações só em scripts. Console não mudou, portanto Preview N/A. Nenhuma credencial temporária criada.
+
+Inspeção do workflow `candidate-repin` [#40234666427](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40234666427) e Supabase Edge Logs demonstrou 1 RPC `factory_repin_nonproduction_target_v1` com HTTP 409; três execuções agendadas recentes falharam. Control Plane do CRM `running`, geração 12/versão 11, quiescente `true`; dois runs `repair_pending`, sem lease, vinculados ao Change Set `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` e task `401d0fda-7932-435d-ae0d-955801ad2b83`, ambos `completed`. Nenhum Change Set ativo. Causa: a RPC original contava qualquer `repair_pending` como ativo sem reconhecer histórico terminal.
+
+Correção candidata tem SQL aditivo `CREATE OR REPLACE FUNCTION` que preserva todos os contratos atuais e exclui somente linhagem histórica terminal (run e CS sem lease, task e CS completed, mesmo projeto/root/metadata). Regressões PG16 negativas e resumo de conflitos com códigos sanitizados. **Não aplicada em produção**, nenhum backfill, nenhum merge, nenhuma chamada paga. A CI e os testes isolados devem passar e o merge humano precede qualquer autorização de migration. `product_ready=false`, seis domínios ainda pendentes.
+
 ## 25/10/2026 — Bloqueio de segurança para browser autenticado do Console (candidato)
 
 A Prova 2 foi certificada por auditoria OWNER `#40211815474`: `integrated_nonproduction`, `requirement_met=true`, `product_ready=false`. A auditoria global contemporânea `#40211772093` permaneceu `product_ready=false`, `unverified_domains=6`; não reexecutar Prova 2 para compensar lacunas dos seis domínios.
