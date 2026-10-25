@@ -17,7 +17,7 @@ _COMMENT=re.compile(
     r"/factory-journey-audit ([a-z0-9][a-z0-9-]{1,119}) "
     r"([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) "
     r"(20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z)"
-    r"(?: (nonproduction))?\Z",
+    r"(?: scope=(nonproduction))?\Z",
     re.ASCII,
 )
 _STAGES=frozenset((
