@@ -25,7 +25,7 @@ def _post(url: str, payload: dict, headers: dict[str, str]) -> tuple[int, object
 
 def resume_blocked_repin_context(*, max_items: int = 2, post: Post = _post) -> dict:
     if type(max_items) is not int or not 1 <= max_items <= 2:
-        raise ValueError("max_items must be between 1 and 3")
+        raise ValueError("max_items must be between 1 and 2")
     cfg = resolve_supabase_server_config()
     try:
         status, payload = post(
