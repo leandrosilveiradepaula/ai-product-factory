@@ -58,8 +58,9 @@ class GitHub:
         assert branch==BRANCH
         return self.branch_sha
     def get_pull_request(self,pr):
-        assert pr==197
         self.calls+=1
+        # The live PR provider returns its own immutable PR number; the
+        # implementation must refuse a forged request for a different PR.
         return self.pr
 
 
