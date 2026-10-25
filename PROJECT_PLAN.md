@@ -1,3 +1,14 @@
+## 25/10/2026 — Corrigir repin do CRM sem reativar histórico (candidato)
+
+- [x] PR #1104 mergeada humanamente em `4585ef50ccee5dcb6740cda7221af0f58990b0f4`; CI `validate` pós-merge SUCCESS, Preview Console N/A.
+- [x] Causa do scheduler #40234666427: a RPC CAS retorna HTTP 409 quando dois runs `repair_pending` históricos pertencem a tarefa e Change Set já `completed`, ambos sem lease, embora `factory_control_quiescent=true`. Sem Change Set ativo e sem trabalho atual. O worker registra `error` em vez de mostrar código seguro de conflito.
+- [x] Preparar migration somente arquivo SQL `20261025214000_repin_terminal_repair_history.sql`, sem aplicação; excluir da proteção apenas histórico terminal vinculado exatamente ao mesmo CS/projeto/root concluídos, jamais estado ativo.
+- [x] Estender PG16 descartável `verify_nonproduction_candidate_repin_postgres.py`: 2 runs históricos, vinculação CS errada, tarefa em andamento, CS aberto, lease ativo, run `ci_pending`, Change Set `review_pending`, CAS concorrente/epoch/SHA forjados. Migrar e testar somente no PG16 isolado.
+- [x] Expor apenas `reason_code` fechado de HTTP 409 no job summary; nunca erro SQL bruto/token, não converter bloco em sucesso.
+- [ ] Aprovar CI de PR `test`, `factory-acceptance` e `candidate-repin-postgres` no HEAD exato; corrigir regressões. Console Preview N/A.
+- [ ] Merge da PR da Factory é humano. Após merge, aplicar migration no Supabase de produção **somente com autorização explícita e preflight de ACL**; registrar versão e verificar exatamente um CAS do projeto autorizado e job scheduled, sem reiniciar qualquer Change Set histórico.
+- [ ] Certificação global de seis domínios permanece independente. A prova CRM Preview já passou em auditoria OWNER `#40211815474`; não reexecutá-la.
+
 ## 25/10/2026 — Certificação de segurança do Console autenticado (bloco fail-closed)
 
 - [x] P2 certificada por auditor independente `#40211815474` sem produzir release de produção; six-domain global readiness ainda `product_ready=false`.
