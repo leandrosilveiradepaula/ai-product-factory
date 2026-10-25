@@ -1,4 +1,4 @@
-"""Fail-closed receipts for bounded repin-context recovery, no external effects."""
+"""Fail-closed CI repair candidate recovery receipts, no external effects."""
 from __future__ import annotations
 
 import io
@@ -88,7 +88,7 @@ class CIRepairCandidateRecoveryTests(unittest.TestCase):
     def test_source_and_migration_deny_paid_replay_production_and_public(self):
         root = Path(__file__).resolve().parents[1]
         migration = (root / "supabase/migrations/"
-                     "20261025010500_resume_blocked_ci_repair_candidate.sql").read_text()
+                     "20261025013500_resume_blocked_ci_repair_candidate.sql").read_text()
         workflow = (root / ".github/workflows/autonomous-runner.yml").read_text()
         for required in (
             "security invoker", "status='blocked'", "execution_generation",
