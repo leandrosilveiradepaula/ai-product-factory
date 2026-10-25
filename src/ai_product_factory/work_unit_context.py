@@ -88,6 +88,32 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
     repair=source.get("repair") if isinstance(source.get("repair"),dict) else {}
     scopes=assignment.get("scope_keys") if isinstance(assignment.get("scope_keys"),list) else repair.get("write_scopes")
     scopes=list(_normalize_scopes(scopes or ()))
+    repository={
+        "project_key":str(source.get("project_key") or ""),
+        "repository":str(source.get("repository") or ""),
+        "exact_base_commit":base_commit,
+        "work_branch":branch,
+        "write_scopes":scopes,
+    }
+    proof=source.get("repin_evidence")
+    if proof is not None:
+        target=source.get("delivery_target")
+        if (not isinstance(target,dict) or not isinstance(proof,dict)
+            or proof.get("kind")!="control_plane_native_ci_repin"
+            or proof.get("sha")!=base_commit
+            or proof.get("ci_sha")!=base_commit
+            or proof.get("sha")!=target.get("sha")
+            or proof.get("project_key")!=repository["project_key"]
+            or proof.get("repository")!=repository["repository"]
+            or proof.get("repository")!=target.get("repository")
+            or proof.get("branch")!=target.get("branch")
+            or proof.get("candidate_pr_number")!=target.get("candidate_pr_number")
+            or type(proof.get("audit_event_id")) is not int
+            or proof["audit_event_id"]<=0
+            or type(proof.get("ci_run_id")) is not int or proof["ci_run_id"]<=0
+            or type(proof.get("generation")) is not int or proof["generation"]<=0):
+            raise PermissionError("repin evidence does not match exact pinned source")
+        repository["delivery_repin_evidence"]=dict(proof)
     packet={
         "objective":{
             "title":str(task.get("title") or ""),
@@ -101,13 +127,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
             "required_capabilities":assignment.get("required_capabilities") if isinstance(assignment.get("required_capabilities"),list) else [],
             "depends_on":assignment.get("depends_on") if isinstance(assignment.get("depends_on"),list) else [],
         },
-        "repository":{
-            "project_key":str(source.get("project_key") or ""),
-            "repository":str(source.get("repository") or ""),
-            "exact_base_commit":base_commit,
-            "work_branch":branch,
-            "write_scopes":scopes,
-        },
+        "repository":repository,
         "sandbox":{
             "isolation":"work_unit_branch",
             "exact_base_required":True,
