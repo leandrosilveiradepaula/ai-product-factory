@@ -13,6 +13,7 @@ from .work_unit_context import build_context_packet,enforce_write_scopes,redact_
 from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
 from .commit_provenance import provenance_commit_message
 from .pinned_nonproduction_target import PinnedNonproductionTarget
+from .ci_repair_candidate_evidence import verify_existing_ci_repair_candidate
 
 
 @dataclass(frozen=True)
@@ -627,10 +628,27 @@ class ChangeSetBuilderWorker:
                 integration_branch=integration_branch,work_branch=item.branch,
             )
             self.github.ensure_branch_at_sha(item.branch,binding.base_commit)
+            # The imported-project repin proves the original Preview source;
+            # a CI repair is on a newer Factory candidate in the same Change
+            # Set. Verify that candidate against its LIVE GitHub PR/branch.
+            ci_repair_evidence=verify_existing_ci_repair_candidate(
+                source=source,base_commit=binding.base_commit,
+                integration_branch=integration_branch,github=self.github,
+            )
             impact=self.impact_engine.analyze_run(
                 project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
             )
             source=self.store.context_source(item.run_id)
+            if ci_repair_evidence is not None:
+                repair=source.get("repair")
+                if (not isinstance(repair,dict)
+                    or repair.get("repair_kind")!="ci"
+                    or repair.get("candidate_commit")!=ci_repair_evidence["candidate_commit"]
+                    or repair.get("repair_request_id")!=ci_repair_evidence["repair_request_id"]
+                    or repair.get("pr_number")!=ci_repair_evidence["pr_number"]
+                    or repair.get("branch")!=ci_repair_evidence["integration_branch"]):
+                    raise PermissionError("CI repair context changed after live PR verification")
+                source={**source,"ci_repair_evidence":ci_repair_evidence}
             source,_=self._resolved_repository_context(source=source,base_commit=binding.base_commit)
             snapshot,unsafe_context_paths=self._repository_snapshot_with_safety(
                 source=source,base_commit=binding.base_commit,
