@@ -1,3 +1,9 @@
+## 25/10/2026 — Bloqueio de segurança para browser autenticado do Console (candidato)
+
+A Prova 2 foi certificada por auditoria OWNER `#40211815474`: `integrated_nonproduction`, `requirement_met=true`, `product_ready=false`. A auditoria global contemporânea `#40211772093` permaneceu `product_ready=false`, `unverified_domains=6`; não reexecutar Prova 2 para compensar lacunas dos seis domínios.
+
+Revisão de segurança identificou aceitação ampla de `*.vercel.app` no teste autenticado do Console. Um domínio de outro projeto pode devolver health JSON equivalente e atrair Trusted Source OIDC ou credenciais de um operador efêmero. Candidato corrige o limite de confiança para o **projeto/tenant Vercel exatos** em resolver e verifier, exige status GitHub do deployment do mesmo projeto, testa hosts falsos/response forjada e impede que mudanças de script/YAML isoladas iniciem alocação de operador em produção. Workflow de navegador com credenciais permanece inerte nesta branch até merge humano e aprovação específica de acesso. Não altera `apps/console/**`, não gera deployment, migration, saldo ou API paga. Ver `docs/OPERATIONS.md` para operação e regressões.
+
 ## 25/10/2026 — Provas 2/3 verificadas, auditor Preview multi-wave (candidato)
 
 CRM #197 foi mergeada humanamente somente na branch `preview/hardening-release-candidate`. O Merge SHA `08257c0d545bf98c7f34ae40d8b2e221468764ab` passou CI pós-merge #40205496275 (4/4), gerou Vercel READY e browser Playwright #40205752751 SUCCESS; snapshot do Control Plane `011d1579-762b-4a1a-80c3-823e53d0aaa1`. Release observer #40205844090 registrou `integrated_nonproduction` para run `eafd1ac1-b57d-47d9-98eb-55a90003e6db`; Change Set `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` passou a `completed`. Produção do CRM **não** foi alterada.
