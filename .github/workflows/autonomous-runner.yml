@@ -288,6 +288,9 @@ jobs:
       - name: Settle proven terminal CI repair sources (migration gated, no model)
         shell: bash
         run: python scripts/settle_terminal_ci_repairs.py --max-items 3
+      - name: Requeue verified exact-scope misresolutions (migration gated, no model)
+        shell: bash
+        run: python scripts/resume_blocked_literal_scopes.py --max-items 2
       - name: Reconcile up to three explicitly enabled existing candidates
         shell: bash
         run: |
