@@ -569,8 +569,27 @@ def evaluate_journey(
                 sha=candidate,pr_number=pr_number,run_ids=delivery_runs,
             )
         else:
+            # Preserve historical same-repo main release receipts that
+            # already used candidate-SHA as both evidence refs and did not
+            # persist provider metadata. Never extend that legacy fallback
+            # to preview/** integration or modern deployment-linked proofs.
+            legacy_main_preview=bool(
+                expected_base=="main"
+                and delivery("preview") and delivery("browser_evidence")
+                and any(row.get("environment")=="preview"
+                        and row.get("status")=="success"
+                        and row.get("run_id") in delivery_runs
+                        and not row.get("metadata")
+                        for row in deployments)
+                and any(row.get("event_type")=="preview.browser_evidence_recorded"
+                        and row.get("project_id")==pid
+                        and row.get("run_id") in delivery_runs
+                        and isinstance(row.get("payload"),dict)
+                        and row["payload"].get("status")=="success"
+                        for row in events)
+            )
             preview_done = bool(
-                _verified_provider_preview()
+                _verified_provider_preview() or legacy_main_preview
             )
     if candidate_bound and preview_required is None:
         blockers.append("preview_applicability_not_verified")
