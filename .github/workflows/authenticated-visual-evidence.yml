@@ -60,7 +60,7 @@ jobs:
           script: |
             const target = new URL(process.env.FACTORY_CONSOLE_URL);
             const production = "ai-product-factory-console.vercel.app";
-            const ownedPreview = /^ai-product-factory-console-[a-z0-9]{8,20}-leandros-projects-102e32ab\\.vercel\\.app$/;
+            const ownedPreview = /^ai-product-factory-console-[a-z0-9]{8,20}-leandros-projects-102e32ab\.vercel\.app$/;
             const allowedHost =
               target.hostname === production || ownedPreview.test(target.hostname);
             if (target.protocol !== "https:" || !allowedHost) {
