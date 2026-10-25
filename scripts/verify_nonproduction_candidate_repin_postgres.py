@@ -25,13 +25,13 @@ create table public.factory_projects(
 create table public.factory_project_execution_controls(
  project_id uuid primary key,state text,generation bigint,version bigint,
  updated_at timestamptz default now());
-create table public.factory_tasks(id uuid primary key,project_id uuid);
+create table public.factory_tasks(id uuid primary key,project_id uuid,status text);
 create table public.factory_runs(
  id uuid primary key,task_id uuid,status text,lease_owner text,
- lease_expires_at timestamptz);
+ lease_expires_at timestamptz,metadata jsonb not null default '{}'::jsonb);
 create table public.factory_change_sets(
  id uuid primary key,project_id uuid,status text,lease_owner text,
- lease_expires_at timestamptz);
+ lease_expires_at timestamptz,root_task_id uuid);
 create table public.factory_audit_events(
  id bigint generated always as identity primary key,project_id uuid,
  actor_type text,actor_ref text,event_type text,payload jsonb);
@@ -66,10 +66,13 @@ evidence={
 }
 migration=(Path(__file__).resolve().parents[1]/
  "supabase/migrations/20261019031000_repin_nonproduction_target.sql").read_text()
+terminal_migration=(Path(__file__).resolve().parents[1]/
+ "supabase/migrations/20261025214000_repin_terminal_repair_history.sql").read_text()
 
 with psycopg.connect(dsn,autocommit=True) as db:
  db.execute(setup)
  db.execute(migration)
+ db.execute(terminal_migration)
  permissions=db.execute("""
  select prosecdef,
  has_function_privilege('service_role',oid,'execute'),
@@ -123,16 +126,75 @@ with psycopg.connect(dsn,autocommit=True) as db:
   rejected(attestation=forged)
   unchanged()
  run_id,task_id=uuid.uuid4(),uuid.uuid4()
- db.execute("insert into public.factory_tasks values(%s,%s)",(task_id,project_id))
- db.execute("""insert into public.factory_runs values (
+ db.execute("insert into public.factory_tasks(id,project_id,status) values(%s,%s,'completed')",(task_id,project_id))
+ db.execute("""insert into public.factory_runs(id,task_id,status,lease_owner,lease_expires_at) values (
  %s,%s,'running','worker',now()+interval '5 minutes')""",(run_id,task_id))
  rejected();unchanged()
  db.execute("delete from public.factory_runs where id=%s",(run_id,))
  cs_id=uuid.uuid4()
- db.execute("""insert into public.factory_change_sets values (
+ db.execute("""insert into public.factory_change_sets(id,project_id,status,lease_owner,lease_expires_at) values (
  %s,%s,'running','worker',now()+interval '5 minutes')""",(cs_id,project_id))
  rejected();unchanged()
  db.execute("delete from public.factory_change_sets where id=%s",(cs_id,))
+
+ # Reproduce the real completed CRM lineage. Historical repair_pending runs
+ # stay immutable, but are no longer runnable when the root task and its
+ # exact Change Set are completed and all leases are released.
+ terminal_cs=uuid.uuid4()
+ db.execute("""insert into public.factory_change_sets
+ (id,project_id,status,lease_owner,lease_expires_at,root_task_id)
+ values (%s,%s,'completed',null,null,%s)""",(terminal_cs,project_id,task_id))
+ history_1=uuid.uuid4()
+ history_2=uuid.uuid4()
+ for history in (history_1,history_2):
+  db.execute("""insert into public.factory_runs
+  (id,task_id,status,lease_owner,lease_expires_at,metadata)
+  values (%s,%s,'repair_pending',null,null,%s::jsonb)""",
+  (history,task_id,json.dumps({"change_set_id":str(terminal_cs)})))
+
+ # Every missing/mismatched provenance edge must still veto CAS.
+ db.execute("""update public.factory_runs set metadata='{}'::jsonb
+ where id=%s""",(history_1,))
+ rejected();unchanged()
+ db.execute("""update public.factory_runs set metadata=%s::jsonb
+ where id=%s""",(json.dumps({"change_set_id":str(terminal_cs)}),history_1))
+ db.execute("update public.factory_tasks set status='running' where id=%s",(task_id,))
+ rejected();unchanged()
+ db.execute("update public.factory_tasks set status='completed' where id=%s",(task_id,))
+ db.execute("update public.factory_change_sets set status='running' where id=%s",(terminal_cs,))
+ rejected();unchanged()
+ db.execute("update public.factory_change_sets set status='completed' where id=%s",(terminal_cs,))
+ db.execute("update public.factory_change_sets set root_task_id=%s where id=%s",
+            (uuid.uuid4(),terminal_cs))
+ rejected();unchanged()
+ db.execute("update public.factory_change_sets set root_task_id=%s where id=%s",
+            (task_id,terminal_cs))
+ db.execute("""update public.factory_runs set lease_owner='worker',
+  lease_expires_at=now()+interval '5 minutes' where id=%s""",(history_1,))
+ rejected();unchanged()
+ db.execute("""update public.factory_runs set lease_owner=null,
+  lease_expires_at=null where id=%s""",(history_1,))
+ db.execute("""update public.factory_change_sets set lease_owner='worker',
+  lease_expires_at=now()+interval '5 minutes' where id=%s""",(terminal_cs,))
+ rejected();unchanged()
+ db.execute("""update public.factory_change_sets set lease_owner=null,
+  lease_expires_at=null where id=%s""",(terminal_cs,))
+
+ # No unrelated live runnable work is ever exempted, leased or not.
+ competing=uuid.uuid4()
+ db.execute("""insert into public.factory_runs
+ (id,task_id,status,lease_owner,lease_expires_at)
+ values (%s,%s,'ci_pending',null,null)""",(competing,task_id))
+ rejected();unchanged()
+ db.execute("delete from public.factory_runs where id=%s",(competing,))
+ competing_cs=uuid.uuid4()
+ db.execute("""insert into public.factory_change_sets
+ (id,project_id,status,lease_owner,lease_expires_at,root_task_id)
+ values (%s,%s,'review_pending',null,null,%s)""",(competing_cs,project_id,task_id))
+ rejected();unchanged()
+ db.execute("delete from public.factory_change_sets where id=%s",(competing_cs,))
+
+ # Exact terminal provenance permits the one CAS, without touching history.
  receipt=rpc()
  assert receipt["status"]=="updated" and receipt["new_sha"]==new,receipt
  persisted=db.execute("""select p.manifest->'delivery_target'->>'sha',c.generation,c.version
@@ -144,4 +206,8 @@ with psycopg.connect(dsn,autocommit=True) as db:
  assert audit==[("project.delivery_target.reconciled",old,new,new)],audit
  rejected()
  assert db.execute("select count(*) from public.factory_audit_events").fetchone()[0]==1
+ persisted_history=db.execute("""select status,lease_owner,lease_expires_at
+  from public.factory_runs where id in (%s,%s) order by id""",(history_1,history_2)).fetchall()
+ assert len(persisted_history)==2 and all(row==("repair_pending",None,None) for row in persisted_history),persisted_history
+ print("REPIN_TERMINAL_REPAIR_HISTORY_POSTGRES_PASS")
 print("NONPRODUCTION_CANDIDATE_REPIN_POSTGRES_PASS")
