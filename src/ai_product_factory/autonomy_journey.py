@@ -613,7 +613,9 @@ def evaluate_journey(
         )
     )
     released = bool(
-        release_gate and github_pr.get("merged") is True
+        # Only a main-target PR can ever provide production release proof.
+        expected_base == "main"
+        and release_gate and github_pr.get("merged") is True
         and isinstance(merge_sha,str) and SHA.fullmatch(merge_sha)
         and (
             _release_event(events,"release.human_merge_observed",project_id=pid,
@@ -658,6 +660,13 @@ def evaluate_journey(
         and nonproduction_events[0]["payload"].get("production_released") is False
         and nonproduction_events[0]["payload"].get("production_release_completed") is False
     )
+    if (candidate_bound and isinstance(expected_base,str)
+        and expected_base.startswith("preview/")
+        and any(rr.get("run_id")==delivery_run_id
+                and rr.get("candidate_commit")==candidate
+                and rr.get("status")=="released" for rr in release_reports)):
+        blockers.append("preview_integration_conflicts_with_production_release_report")
+        nonproduction_integrated=False
     if candidate_bound and github_pr.get("merged") is True and not released and not nonproduction_integrated:
         blockers.append("merged_candidate_without_verified_release")
     operations = bool(
