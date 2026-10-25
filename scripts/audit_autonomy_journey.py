@@ -33,7 +33,7 @@ def _classify(report: Any) -> tuple[str, list[dict[str, str]]]:
 
     Journey stages have verified/not_reached status, in a verified prefix.
     The report status may be in_progress, awaiting_human_merge,
-    observed_complete, blocked or not_started. No later-stage assertion is
+    observed_complete, integrated_nonproduction, blocked or not_started. No later-stage assertion is
     a substitute for a missing earlier stage.
     """
     report_status = _status(getattr(report, "status", None))
@@ -99,6 +99,19 @@ def _classify(report: Any) -> tuple[str, list[dict[str, str]]]:
             ]
         return "eligible", [_reason("all_required_stages_verified")]
 
+    if report_status == "integrated_nonproduction":
+        sha=getattr(report,"nonproduction_merge_sha",None)
+        if (verified_prefix != STAGES.index("awaiting_release") + 1
+            or getattr(report,"nonproduction_integrated",None) is not True
+            or not isinstance(sha,str) or len(sha)!=40
+            or not all(c in "0123456789abcdef" for c in sha)):
+            return "insufficient_evidence", [
+                _reason("contradictory_nonproduction_evidence")
+            ]
+        return "integrated_nonproduction", [
+            _reason("verified_nonproduction_merge")
+        ]
+
     if report_status == "awaiting_human_merge":
         if verified_prefix != STAGES.index("awaiting_release") + 1:
             return "insufficient_evidence", [
@@ -143,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Reject every Start before this UTC instant",
     )
     parser.add_argument("--run-id", help="Optional specific UUID from the explicit human Start")
-    parser.add_argument("--require-at-least", choices=("none",) + STAGES, default="none")
+    parser.add_argument("--require-at-least", choices=("none","nonproduction_integration") + STAGES, default="none")
     args = parser.parse_args(argv)
     try:
         since = datetime.fromisoformat(args.since_utc.replace("Z", "+00:00"))
@@ -164,8 +177,13 @@ def main(argv: list[str] | None = None) -> int:
             for item in report.stages
         )
         result["requirement_met"] = (
-            classification in {"in_progress", "awaiting", "eligible"}
-            and required_stage_verified
+            (classification == "integrated_nonproduction"
+             and getattr(report, "nonproduction_integrated", None) is True)
+            if args.require_at_least == "nonproduction_integration"
+            else (
+                classification in {"in_progress", "awaiting", "eligible"}
+                and required_stage_verified
+            )
         )
         # This command has no mutation or model path regardless of reader data.
         result["paid_calls"] = 0
