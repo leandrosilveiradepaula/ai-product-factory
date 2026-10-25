@@ -7,11 +7,12 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from .autonomy_journey import evaluate_journey, no_start_report, SHA
 from .journey_candidate_provenance import (
     validate_reconciliation_receipt, verify_copied_work_units,
+    verify_copied_work_unit_waves,
 )
 from .journey_github_witness import observe_candidate, require_unchanged_candidate
 from .github_rest import GitHubRestAdapter
@@ -184,6 +185,114 @@ class SupabaseJourneyReader:
         if len({str(item.get("id",i)) for i,item in enumerate(result)}) != len(result):
             raise RuntimeError("duplicate evidence row across pages")
         return result
+
+    def _verified_nonproduction_integration(
+        self, *, github, repository: str, project_id: str, events: list[dict],
+        release_run_id: str, candidate_sha: str, pr_number: int,
+        head_ref: str, base_ref: str, merge_sha: str,
+    ) -> bool:
+        """Attest exact preview merge plus the independent post-merge browser.
+
+        The release observer has already written a service-only, atomic audit.
+        Re-read its identity, the persisted browser snapshot and the current
+        GitHub ref. This is NOT production release authority and writes nothing.
+        """
+        if (not base_ref.startswith("preview/") or base_ref == "preview/"
+            or not isinstance(merge_sha, str) or not SHA.fullmatch(merge_sha)
+            or candidate_sha == merge_sha):
+            return False
+        matches = [
+            row for row in events
+            if row.get("event_type") == "change_set.nonproduction_merge.observed"
+            and row.get("project_id") == project_id
+            and row.get("run_id") == release_run_id
+        ]
+        if len(matches) != 1:
+            return False
+        row = matches[0]
+        p = row.get("payload")
+        if (row.get("actor_ref") != "nonproduction-release-observer"
+            or not isinstance(p, dict)
+            or p.get("repository") != repository
+            or str(p.get("pr_number")) != str(pr_number)
+            or p.get("candidate_commit") != candidate_sha
+            or p.get("head_sha") != candidate_sha
+            or p.get("head_ref") != head_ref
+            or p.get("base_ref") != base_ref
+            or p.get("merge_sha") != merge_sha
+            or p.get("observed_base_tip") != merge_sha
+            or p.get("production_main_sha") == merge_sha
+            or not isinstance(p.get("production_main_sha"), str)
+            or not SHA.fullmatch(p["production_main_sha"])
+            or p.get("merged") is not True
+            or p.get("vercel_state") != "success"
+            or p.get("merge_is_ancestor") is not True
+            or p.get("production_released") is not False
+            or p.get("production_release_completed") is not False
+            or p.get("environment") != "preview"):
+            return False
+        try:
+            snapshot_id = _uuid(p.get("postmerge_browser_snapshot_id"))
+        except ValueError:
+            return False
+        snapshot = self._one(
+            "factory_project_state_snapshots",
+            "select=id,project_id,observed_stage,evidence,gaps,constraints,source_status"
+            "&project_id=eq." + project_id + "&id=eq." + snapshot_id,
+        )
+        if snapshot is None or snapshot.get("id") != snapshot_id:
+            return False
+        evidence = snapshot.get("evidence")
+        preview = evidence.get("preview") if isinstance(evidence, dict) else None
+        constraints = snapshot.get("constraints")
+        source = snapshot.get("source_status")
+        url = p.get("postmerge_preview_url")
+        parsed = urlparse(url) if isinstance(url, str) else None
+        if (snapshot.get("project_id") != project_id
+            or snapshot.get("observed_stage") != "verification"
+            or snapshot.get("gaps") != []
+            or not isinstance(evidence, dict)
+            or evidence.get("candidate_commit") != merge_sha
+            or evidence.get("target_repository") != repository
+            or not isinstance(preview, dict)
+            or preview.get("provider") != "vercel"
+            or preview.get("status") != "browser_verified"
+            or preview.get("url") != url
+            or str(preview.get("browser_verifier_run_id")) != str(p.get("verifier_run_id"))
+            or not isinstance(preview.get("browser_verifier_run_id"), int)
+            or isinstance(preview.get("browser_verifier_run_id"), bool)
+            or preview["browser_verifier_run_id"] <= 0
+            or not isinstance(constraints, dict)
+            or constraints.get("production_merge_authorized") is not False
+            or not isinstance(source, dict)
+            or source.get("browser_visual_validation") != "success"
+            or source.get("vercel_preview") != "resolved"
+            or parsed is None or parsed.scheme != "https"
+            or not (parsed.hostname or "").endswith(".vercel.app")
+            or parsed.username is not None or parsed.password is not None):
+            return False
+        base_tip = github.get_branch_sha(base_ref)
+        main_tip = github.get_branch_sha("main")
+        if (not isinstance(base_tip, str) or not SHA.fullmatch(base_tip)
+            or not isinstance(main_tip, str) or not SHA.fullmatch(main_tip)
+            or main_tip == merge_sha):
+            return False
+        if base_tip != merge_sha:
+            compare = github.compare_commits(merge_sha, base_tip)
+            if (not isinstance(compare, dict) or compare.get("status") != "ahead"
+                or compare.get("behind_by") != 0
+                or type(compare.get("ahead_by")) is not int
+                or not 1 <= compare["ahead_by"] <= 20):
+                return False
+        # A preview merge already promoted to main must not be reported as a
+        # preview-only integration. An unrelated/diverged production main is OK.
+        production_compare = github.compare_commits(merge_sha, main_tip)
+        if (not isinstance(production_compare, dict)
+            or (production_compare.get("status") in ("ahead", "identical")
+                and production_compare.get("behind_by") == 0)):
+            return False
+        return github.get_branch_sha(base_ref) == base_tip
+
 
     def _console_greenfield_intake_start(
         self, project: dict, requested_run: str | None, since: datetime,
@@ -500,7 +609,7 @@ class SupabaseJourneyReader:
         if len(events)>MAX_PROJECT_EVENTS or len({row.get("id") for row in events})!=len(events):
             raise RuntimeError("release audit inventory exceeded verified bound")
         create_pr=self._many_ids(
-            "factory_tool_usage",cols="id,run_id,operation,metadata",fk="run_id",
+            "factory_tool_usage",cols="id,run_id,operation,metadata,created_at",fk="run_id",
             ids=run_ids,extra="operation=eq.create_pr",
         )
         reconcile_pr=self._many_ids(
@@ -607,10 +716,27 @@ class SupabaseJourneyReader:
                     commits_ok=False
                 elif all(isinstance(row.get("changed_files"),list)
                          and row.get("changed_files") for row in selected_units):
-                    commits_ok=verify_copied_work_units(
-                        github,original_candidate=original,
-                        final_candidate=target,units=selected_units,
-                    )
+                    # A CI repair creates another exact PR candidate. Verify
+                    # each Work Unit's source bytes at the FIRST subsequent
+                    # candidate, not against files a later repair legitimately
+                    # replaced. Every wave still requires immutable provenance.
+                    wave_receipts=[
+                        entry for entry in create_pr
+                        if isinstance(entry.get("metadata"),dict)
+                        and entry["metadata"].get("change_set_id")==cs["id"]
+                        and entry["metadata"].get("pr")==pr_number
+                    ]
+                    if len(wave_receipts)>1:
+                        commits_ok=verify_copied_work_unit_waves(
+                            github,final_candidate=target,units=selected_units,
+                            receipts=wave_receipts,change_set_id=cs["id"],
+                            pr_number=pr_number,
+                        )
+                    else:
+                        commits_ok=verify_copied_work_units(
+                            github,original_candidate=original,
+                            final_candidate=target,units=selected_units,
+                        )
                 else:
                     # Legacy direct-commit path: require exact ancestry, not
                     # merely an existing object in the GitHub repository.
@@ -629,6 +755,18 @@ class SupabaseJourneyReader:
                     "candidate_reconciliation_verified":reconciliation_verified,
                     "ci_state":ci_state,
                 }
+                if witness.merged and witness.base_ref.startswith("preview/"):
+                    github_evidence["nonproduction_integration_verified"] = (
+                        self._verified_nonproduction_integration(
+                            github=github,repository=project["repository"],
+                            project_id=pid,events=events,
+                            release_run_id=create["run_id"],candidate_sha=target,
+                            pr_number=pr_number,head_ref=witness.head_ref,
+                            base_ref=witness.base_ref,merge_sha=witness.merge_sha,
+                        )
+                    )
+                    # Snapshot and branch reads may race another PR update.
+                    require_unchanged_candidate(github,witness)
         return evaluate_journey(
             project=project,root_run_id=root_run_id,start_command=start,
             runs=runs,events=events,change_sets=sets,work_units=units,
