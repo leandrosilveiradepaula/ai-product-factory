@@ -125,6 +125,36 @@ class PreviewIntegrationEvidenceTests(unittest.TestCase):
         self.assertFalse(report.as_json()["product_ready"])
         self.assertEqual(report.as_json()["writes"],0)
 
+    def test_legacy_null_project_browser_is_valid_only_with_exact_run_url_and_deployment(self):
+        # Control Plane historically writes this browser receipt with
+        # project_id=NULL; its run_id and URL are still exact and immutable.
+        d=fixture()
+        browser=next(row for row in d["events"]
+                     if row["event_type"]=="preview.browser_evidence_recorded")
+        browser["project_id"]=None
+        self.assertEqual(evaluate_journey(**d).status,"integrated_nonproduction")
+        for change in (
+            lambda row:row.update(run_id=ROOT),
+            lambda row:row["payload"].update(preview_url="https://wrong.vercel.app"),
+            lambda row:row["payload"].update(status="failed"),
+        ):
+            bad=copy.deepcopy(d)
+            row=next(e for e in bad["events"]
+                     if e["event_type"]=="preview.browser_evidence_recorded")
+            change(row)
+            with self.subTest(change=repr(change)):
+                r=evaluate_journey(**bad)
+                self.assertNotEqual(r.status,"integrated_nonproduction")
+                self.assertFalse(r.nonproduction_integrated)
+
+    def test_browser_not_scoped_to_run_never_certifies_other_project(self):
+        d=fixture()
+        row=next(e for e in d["events"]
+                 if e["event_type"]=="preview.browser_evidence_recorded")
+        row["project_id"]=None
+        row["run_id"]="00000000-0000-4000-8000-000000000099"
+        self.assertEqual(evaluate_journey(**d).highest_verified,"github_ci")
+
     def test_preview_status_must_bind_provider_receipts_to_exact_candidate(self):
         for mutation in (
             lambda d:d["deployments"][0]["metadata"].update(candidate_commit="f"*40),
