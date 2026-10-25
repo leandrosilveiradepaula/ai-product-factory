@@ -212,6 +212,56 @@ class GitHubRestAdapter:
             raise RuntimeError(f"branch {branch} does not match expected candidate SHA")
         return current
 
+    def fast_forward_preview_ref_cas(
+        self, *, branch: str, expected_sha: str, candidate_sha: str,
+    ) -> str:
+        """Update only a preview/** ref with GitHub GraphQL expectedOid CAS.
+
+        REST PATCH /git/refs does not provide an atomic expected-current-SHA
+        precondition. Never use a forced ref update or a non-Preview branch.
+        """
+        if (
+            not isinstance(branch, str) or not re.fullmatch(r"preview/[a-z0-9][a-z0-9/_-]{0,90}", branch)
+            or ".." in branch or "//" in branch
+            or not re.fullmatch(r"[0-9a-f]{40}", expected_sha)
+            or not re.fullmatch(r"[0-9a-f]{40}", candidate_sha)
+            or expected_sha == candidate_sha
+        ):
+            raise ValueError("invalid Preview CAS reference or commit identity")
+        comparison = self.compare_commits(expected_sha, candidate_sha)
+        if (comparison.get("status") != "ahead"
+            or comparison.get("behind_by") != 0
+            or type(comparison.get("ahead_by")) is not int
+            or comparison["ahead_by"] < 1):
+            raise RuntimeError("Preview CAS must be a verified fast-forward")
+        encoded = parse.quote(branch, safe="")
+        ref = self._call("GET", f"/repos/{self.repository}/git/ref/heads/{encoded}")
+        if (not isinstance(ref, dict) or
+            not isinstance(ref.get("node_id"), str) or
+            not ref["node_id"] or
+            not isinstance(ref.get("object"), dict) or
+            ref["object"].get("sha") != expected_sha):
+            raise RuntimeError("Preview CAS lease does not match remote ref")
+        query = (
+            "mutation($ref:ID!, $target:GitObjectID!, $expected:GitObjectID!) { "
+            "updateRef(input:{refId:$ref,oid:$target,expectedOid:$expected,force:false}) "
+            "{ ref { target { oid } } } }"
+        )
+        result = self._call("POST", "/graphql", payload={
+            "query": query,
+            "variables": {
+                "ref": ref["node_id"], "target": candidate_sha, "expected": expected_sha,
+            },
+        })
+        if (not isinstance(result, dict) or result.get("errors")
+            or not isinstance(result.get("data"), dict)):
+            raise RuntimeError("GitHub rejected atomic Preview CAS")
+        updated = (result["data"].get("updateRef") or {}).get("ref") or {}
+        observed = (updated.get("target") or {}).get("oid")
+        if observed != candidate_sha:
+            raise RuntimeError("GitHub Preview CAS result did not match candidate SHA")
+        return candidate_sha
+
     def get_file_text(self, path: str, *, ref: str) -> str:
         row=self._call("GET",f"/repos/{self.repository}/contents/{parse.quote(path,safe='/')}",query={"ref":ref})
         if row.get("type")!="file" or row.get("encoding")!="base64":
