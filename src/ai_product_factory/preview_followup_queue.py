@@ -30,6 +30,7 @@ class PreviewFollowupItem:
     risk: dict
     execution_generation: int | None = None
     require_execution_generation: bool = False
+    change_set_id: str | None = None
 
 
 class SupabasePreviewFollowupQueue:
@@ -137,4 +138,5 @@ class SupabasePreviewFollowupQueue:
             risk=tasks[0].get("risk") or {},
             execution_generation=execution_generation,
             require_execution_generation=require_execution_generation,
+            change_set_id=str((run.get("metadata") or {}).get("change_set_id") or "") or None,
         )

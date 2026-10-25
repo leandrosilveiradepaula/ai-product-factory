@@ -43,6 +43,7 @@ from .preview_base_guard import verify_preview_base_compatibility
 from .nonproduction_preview_merge import verify_nonproduction_preview_merge
 from .vercel_preview import VercelPreviewAdapter,VercelPreviewConfig
 from .github_vercel_preview import GitHubVercelPreviewAdapter,config_from_env as github_vercel_config_from_env
+from .preview_candidate_promotion import PreviewPromotionBlocked, promote_preview_candidate
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
 from .supabase_deployment import DurablePreviewAdapter,SupabaseDeploymentEvidenceStore
 from .browser_evidence_store import BrowserEvidenceRecorder
@@ -767,6 +768,27 @@ def run_preview_once(*,expected_run_id:str|None=None,expected_candidate_sha:str|
  readiness=verified_preview_readiness(project_cfg.mode)
  if not readiness.ready:return {"claimed":False,"status":"blocked","run_id":item.run_id,"missing":list(readiness.missing),"preview_mode":project_cfg.mode}
  if project_cfg.mode=="github":
+  # Opt-in, server-side promotion only. A missing policy retains the existing
+  # read-only discovery path, never implicitly authorizing a Git ref write.
+  try:
+   promotion=promote_preview_candidate(
+    item=item,github=github,
+    check_epoch=lambda: _assert_project_followup(item),
+    audit=lambda event,payload: store.record_audit_event(
+     run_id=item.run_id,event_type=event,payload=payload,actor_ref="preview-followup",
+    ),
+   )
+  except ProjectFollowupPaused as exc:
+   return _project_followup_waiting(item,exc)
+  except PreviewPromotionBlocked as exc:
+   store.record_audit_event(
+    run_id=item.run_id,event_type="preview.promotion_blocked",
+    payload={"candidate_commit":item.candidate_commit,"reason":exc.reason,
+             "pr_number":item.pr_number},actor_ref="preview-followup",
+   )
+   return {"claimed":True,"status":"preview_promotion_blocked",
+    "run_id":item.run_id,"pr_number":item.pr_number,"preview_required":True,
+    "reason":exc.reason}
   provider=GitHubVercelPreviewAdapter(github_vercel_config_from_env(item.repository,pull_request_number=item.pr_number))
  else:
   vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id or "",project_name=project_cfg.project_name or "",github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
@@ -778,6 +800,19 @@ def run_preview_once(*,expected_run_id:str|None=None,expected_candidate_sha:str|
   try:_assert_project_followup(item)
   except ProjectFollowupPaused as exc:return _project_followup_waiting(item,exc)
   verified=VerifiedPreviewCoordinator().execute(run_id=item.run_id,request=request,deployment_adapter=deployment,browser_adapter=browser,evidence_recorder=BrowserEvidenceRecorder(store))
+ except TimeoutError as exc:
+  if project_cfg.mode!="github" or "not discoverable for the candidate commit" not in str(exc):
+   raise
+  # A Vercel Git integration can take longer than one bounded polling window.
+  # Keep preview_ready, record the exact SHA, and avoid an unverified release.
+  store.record_audit_event(
+   run_id=item.run_id,event_type="preview.deployment_pending",
+   payload={"candidate_commit":item.candidate_commit,"pr_number":item.pr_number,
+            "preview_required":True},
+   actor_ref="preview-followup",
+  )
+  return {"claimed":True,"status":"preview_deployment_pending","run_id":item.run_id,
+   "pr_number":item.pr_number,"preview_required":True}
  except PreviewDeferred as exc:
   store.record_resource_limit_signal(
    provider="vercel",resource_key="team",metric_key="deployments_daily",
