@@ -109,6 +109,43 @@ class SupabaseCIRepairQueue:
                 raise ValueError("invalid sanitized CI failure")
         return values
 
+    @staticmethod
+    def _verified_test_scope_receipt(failures: tuple[DurableCIFailure, ...]) -> bool:
+        """Only trusted, deterministic job proofs may request a test-only scope.
+
+        The new Control Plane RPC repeats these checks against integrated
+        change-set files and serializes the resulting exact scopes.
+        """
+        if not any(f.name=="native-ci/tests" for f in failures):
+            return False
+        if len(failures)>4 or any(
+            f.name!="native-ci/tests" or f.conclusion!="failure"
+            or f.failure_class!="code" or not isinstance(f.summary,str)
+            for f in failures
+        ):
+            raise PermissionError("mixed or non-code native test repairs cannot extend scope")
+        seen=set()
+        rex=re.compile(
+            r"Verified native Vitest count: test="
+            r"(?P<test>(?:src|test|tests|app|apps|packages)/[A-Za-z0-9_./()-]+\\.(?:test|spec)\\.tsx?) "
+            r"source=(?P<source>(?:src|app|apps|packages)/[A-Za-z0-9_./()-]+\\.tsx?) "
+            r"expected=(?P<expected>[0-9]{1,3}) actual=(?P<actual>[0-9]{1,3})\\Z"
+        )
+        for failure in failures:
+            match=rex.search(failure.summary)
+            if not match:
+                raise PermissionError("native CI test-scope proof unavailable; no model call")
+            test,source=match.group("test"),match.group("source")
+            expected,actual=int(match.group("expected")),int(match.group("actual"))
+            if (test==source or expected>100 or actual!=expected+1
+                or any(part in ("", ".", "..") or part.startswith(".") for part in test.split("/"))
+                or any(part in ("", ".", "..") or part.startswith(".") for part in source.split("/"))):
+                raise PermissionError("unverified native test scope or count mismatch")
+            seen.add((test,source,expected,actual))
+        if len(seen)!=1:
+            raise PermissionError("multiple test contracts cannot extend a work unit")
+        return True
+
     def enqueue_failure(self, *, item: CIFollowupItem, failures: Iterable[DurableCIFailure], max_attempts: int = 3) -> dict:
         values = self._validate(item, failures)
         if type(max_attempts) is not int or not 1 <= max_attempts <= 3:
@@ -116,7 +153,12 @@ class SupabaseCIRepairQueue:
         failure_class = values[0].failure_class
         if any(value.failure_class != failure_class for value in values):
             failure_class = "unknown"
-        return self._rpc("factory_enqueue_ci_repair", {
+        scoped_test=self._verified_test_scope_receipt(values)
+        rpc_name=(
+            "factory_enqueue_ci_repair_verified_test_scope_v1"
+            if scoped_test else "factory_enqueue_ci_repair"
+        )
+        return self._rpc(rpc_name, {
             "p_source_run_id": item.run_id,
             "p_project_id": item.project_id,
             "p_change_set_id": item.change_set_id,
