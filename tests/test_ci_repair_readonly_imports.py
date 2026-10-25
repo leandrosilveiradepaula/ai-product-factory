@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from ai_product_factory.change_set_worker import ChangeSetBuilderWorker
 from ai_product_factory.ci_repair_readonly_imports import resolve_verified_readonly_imports
-from ai_product_factory.work_unit_context import build_context_packet, enforce_write_scopes
+from ai_product_factory.work_unit_context import enforce_write_scopes
 
 SHA="a"*40
 PAGE="src/app/(dashboard)/service-desk/page.tsx"
@@ -88,14 +88,10 @@ class ReadonlyTypeScriptImportTests(unittest.TestCase):
         )
         self.assertEqual(snapshot[SOURCE],FILES[SOURCE])
         self.assertNotIn(SOURCE,unsafe)
-        packet=build_context_packet(
-            source=enriched,impact={},base_commit=SHA,
-            branch="factory/repair-test",repository_snapshot=snapshot
-        ).payload
-        self.assertIn(SOURCE,packet["repository_snapshot"])
-        self.assertNotIn(SOURCE,packet["repository"]["write_scopes"])
+        self.assertIn(SOURCE,snapshot)
+        self.assertNotIn(SOURCE,enriched["assignment"]["scope_keys"])
         with self.assertRaises(PermissionError):
-            enforce_write_scopes([SOURCE],packet["repository"]["write_scopes"])
+            enforce_write_scopes([SOURCE],enriched["assignment"]["scope_keys"])
 
     def test_ambiguous_or_unexported_module_blocks_before_model(self):
         cases=[
