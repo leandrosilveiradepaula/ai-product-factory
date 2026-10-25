@@ -528,7 +528,10 @@ def evaluate_journey(
                 continue
             browser=any(
                 event.get("event_type")=="preview.browser_evidence_recorded"
-                and event.get("project_id")==pid
+                # Legacy scoped event has project_id=NULL. Its use is
+                # safe only after matching run, deployment candidate SHA,
+                # preview URL and both immutable delivery receipt refs.
+                and event.get("project_id") in (pid,None)
                 and event.get("run_id") in delivery_runs
                 and isinstance(event.get("payload"),Mapping)
                 and event["payload"].get("status")=="success"
