@@ -1,3 +1,15 @@
+## 25/10/2026 — Bloco final de certificação: auditor externo de Preview multi-wave (candidato)
+
+**Baseline comprovada:** CRM #197 mergeada humanamente apenas em `preview/hardening-release-candidate`, merge SHA `08257c0d545bf98c7f34ae40d8b2e221468764ab`, CI de merge #40205496275 4/4, Vercel READY, Playwright #40205752751 PASS, observer #40205844090 `integrated_nonproduction`, Change Set `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed` completed, produção intacta. A Prova 2 passou em homologação; a Prova 3 confirmou cenários de resiliência PG16 descartável e reparos reais sem completar os seis domínios globais.
+
+- [x] Localizar bloqueio real no auditor OWNER #40206537474: `merged_candidate_without_verified_release` ao exigir release de produção num PR legítimo `preview/**`, e comparação incorreta de Work Units intermediárias com último SHA após reparos.
+- [x] Preparar alteração fail-closed para ligar cada Work Unit ao primeiro SHA de integração subsequente, com recibos e comparação byte-a-byte, corrigir deployment-ref Vercel/Preview, observar snapshot pós-merge e adicionar escopo `scope=nonproduction` distinto de `operations`.
+- [ ] Testes negativos unitários/CI `validate` no SHA final, revisão da PR e merge **humano** em produção da Factory. Sem migrations, mudança no CRM, APIs pagas ou Console deploy.
+- [ ] Após merge, emitir um único OWNER `/factory-journey-audit crm-infodive 7a4a88ac-2ad2-42bc-bc6b-5135035b0d84 2026-10-24T23:40:00Z scope=nonproduction`; exigir `integrated_nonproduction` e artefato real. O comando legado sem sufixo permanece exigindo produção, não pode produzir falso PASS.
+- [ ] Certificação global separada em #713/#266: seis domínios, greenfield externo autorizado, papel Codex/capacidade real e UX/segurança/observabilidade de HEAD atual. `product_ready` permanece false sem evidência completa.
+
+Ver `docs/JOURNEY_NONPRODUCTION_EVIDENCE.md`.
+
 ## 23/10/2026 — J7: GitHub candidate witness em dois snapshots (candidato)
 
 A auditoria `SupabaseJourneyReader` consultava uma PR antes de inspecionar arquivos, código dos Work Units e CI; `GitHubRestAdapter.get_ci_state` faz outro GET da PR. Se head/base/branch mudassem entre leituras, o relatório poderia combinar evidências de SHAs diferentes. O candidato adota testemunho read-only com identidade completa da PR, SHA exato da branch quando aberta e segunda confirmação após CI. Para PR já mergeada, não exige branch deletada: verifica `state=closed`, `merged=true`, merge SHA e recibos de release. Diff vazio/fork/draft/ref drift falham fechados. Testes offline e runbook: `docs/JOURNEY_GITHUB_EVIDENCE_FENCE.md`. Nenhum Start, SQL, modelo pago, Preview novo ou merge de produção. A prova externa J3/J7 permanece pendente de sandbox autorizado; CI no SHA final é condição de revisão, não de `product_ready`.
