@@ -47,7 +47,8 @@ from .preview_candidate_promotion import PreviewPromotionBlocked, promote_previe
 from .command_browser_evidence import CommandBrowserEvidenceAdapter,CommandBrowserEvidenceConfig
 from .supabase_deployment import DurablePreviewAdapter,SupabaseDeploymentEvidenceStore
 from .browser_evidence_store import BrowserEvidenceRecorder
-from .preview_flow import PreviewDeferred,VerifiedPreviewCoordinator
+from .preview_flow import PreviewDeferred,PreviewExternalBackendUnavailable,VerifiedPreviewCoordinator
+from .preview_backend_wait import SupabasePreviewBackendWaitReader
 from .deployment import DeploymentRequest
 from .release_policy import ReleaseEnvironment
 from .agent_scheduler import SupabaseAgentScheduler
@@ -653,6 +654,21 @@ def _require_current_preview_base(github:GitHubRestAdapter,pr)->dict:
  # present and tested at the exact candidate HEAD, with bounded Git evidence.
  return verify_preview_base_compatibility(github,pr)
 
+def _external_backend_preview_wait(item)->dict|None:
+ # The next scheduled window checks a prior exact-SHA HTTP 503 with a cheap,
+ # unauthenticated GET, not with a fresh deployment or a paid model.
+ # A successful probe is only permission to RE-RUN browser E2E, never release.
+ state=SupabasePreviewBackendWaitReader().check(
+  run_id=item.run_id,candidate_commit=item.candidate_commit)
+ if state is None or not state.waiting:
+  return None
+ return {"claimed":False,"status":"waiting_external_backend",
+  "run_id":item.run_id,"candidate_commit":item.candidate_commit,
+  "pr_number":item.pr_number,"preview_required":True,
+  "browser_verified":False,"release_authorized":False,
+  "reason":state.reason}
+
+
 def run_preview_probe_once()->dict:
  # Prepare browser dependencies for this EXACT run+SHA, not just any Preview.
  # The advisory cursor advances here only, never twice within the workflow.
@@ -683,6 +699,8 @@ def run_preview_probe_once()->dict:
  except ValueError as exc:
   return {"claimed":True,"status":"blocked","preview_required":True,
    "error":str(exc),**receipt}
+ wait=_external_backend_preview_wait(item)
+ if wait:return wait
  return {"claimed":True,"status":"ready","preview_required":True,
   "preview_mode":project_cfg.mode,**receipt}
 
@@ -767,6 +785,8 @@ def run_preview_once(*,expected_run_id:str|None=None,expected_candidate_sha:str|
   return {"claimed":False,"status":"blocked","run_id":item.run_id,"error":str(exc)}
  readiness=verified_preview_readiness(project_cfg.mode)
  if not readiness.ready:return {"claimed":False,"status":"blocked","run_id":item.run_id,"missing":list(readiness.missing),"preview_mode":project_cfg.mode}
+ wait=_external_backend_preview_wait(item)
+ if wait:return wait
  if project_cfg.mode=="github":
   # Opt-in, server-side promotion only. A missing policy retains the existing
   # read-only discovery path, never implicitly authorizing a Git ref write.
@@ -826,6 +846,22 @@ def run_preview_once(*,expected_run_id:str|None=None,expected_candidate_sha:str|
   )
   return {"claimed":True,"status":exc.deployment.status,"run_id":item.run_id,"pr_number":item.pr_number,
    "preview_required":True,"deployment_ref":exc.deployment.deployment_ref,"retry_after_hours":24}
+ except PreviewExternalBackendUnavailable as exc:
+  # Browser failure and exact URL are already durably recorded. The run
+  # remains preview_ready for an environment-only retry; code and CI are not
+  # repeated, no human release is granted and no Product Stage is replayed.
+  store.record_audit_event(
+   run_id=item.run_id,event_type="preview.backend_unavailable.waiting_configuration",
+   payload={"candidate_commit":item.candidate_commit,"pr_number":item.pr_number,
+            "preview_url":exc.preview_url,"browser_verified":False,
+            "release_authorized":False},
+   actor_ref="preview-followup",
+  )
+  return {"claimed":True,"status":"waiting_external_backend",
+   "run_id":item.run_id,"pr_number":item.pr_number,
+   "candidate_commit":item.candidate_commit,"preview_required":True,
+   "browser_verified":False,"release_authorized":False,
+   "reason":"http_503_session_backend"}
  except ValueError as exc:
   if str(exc)=="preview requires successful browser/e2e evidence":
    store.fail_preview(item.run_id,candidate_commit=item.candidate_commit,reason=str(exc))
