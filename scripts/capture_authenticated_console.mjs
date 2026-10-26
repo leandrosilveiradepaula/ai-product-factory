@@ -146,11 +146,11 @@ try {
   const skipFocused=await page.evaluate(() =>
     document.activeElement?.matches('a.skipToMain[href="#main-content"]')===true);
   if(!skipFocused)throw new Error("accessibility:overview:keyboard_skip_not_first");
-  const skipVisible=await page.locator('a.skipToMain[href="#main-content"]').evaluate(el=>{
+  const keyboardSkipVisible=await page.locator('a.skipToMain[href="#main-content"]').evaluate(el=>{
     const rect=el.getBoundingClientRect();
     return rect.bottom>0 && rect.height>=44 && getComputedStyle(el).visibility!=="hidden";
   });
-  if(!skipVisible)throw new Error("accessibility:overview:keyboard_skip_not_visible");
+  if(!keyboardSkipVisible)throw new Error("accessibility:overview:keyboard_skip_not_visible");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.activeElement?.id==="main-content",
                              null,{timeout:5000});
