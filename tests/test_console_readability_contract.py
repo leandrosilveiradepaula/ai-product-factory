@@ -29,7 +29,11 @@ class ConsoleReadabilityContract(unittest.TestCase):
   self.assertIn(".mobileNav>summary{min-height:44px;font-size:15px}",RULES)
   self.assertIn(".main .tableRow,.main .cardMeta,.main .timelineMeta,.main .compactRow{font-size:14px}",RULES)
   self.assertIn("overflow-wrap:anywhere",RULES)
-  self.assertNotIn("display:none",RULES)
+  # Hiding collapsed disclosure contents is deliberate; hiding readable
+  # navigation, controls or form elements elsewhere would not be.
+  disclosure_hide=".intakeOptional:not([open])>.intakeOptionalBody{display:none}"
+  self.assertIn(disclosure_hide,RULES)
+  self.assertNotIn("display:none",RULES.replace(disclosure_hide,""))
   self.assertNotIn("visibility:hidden",RULES)
 
  def test_remaining_gate_labels_and_actions_not_microtext(self):

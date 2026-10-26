@@ -124,3 +124,11 @@ tests and workflows run unprivileged, and code-only changes have Preview
 N/A. An independently authorized new protected browser capture after
 human merge remains required to claim the newly added checks executed.
 Global product_ready remains false.
+
+## 26/10/2026 — Falha real de acessibilidade na captura pós-#1113
+
+A captura autenticada oficial [#40345257405](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40345257405) executou a versão mais recente da auditoria no código `main=1eef327674ea01cc2648b9fb00f83e46914632b8`, com target Vercel de produção no SHA `e2a963be239cf0b072d3dc5b8df0bf1a6bf3d0fb`. A imagem fixada Ubuntu 24.04, o Chromium e a autenticação provisória passaram, mas a auditoria interrompeu o run com `accessibility:new-project:interactive_names`. **Essa é uma reprovação real, não uma falha da infraestrutura nem uma validação aprovada.** A limpeza automática terminou PASS; registry Supabase registrou `expired` e há somente um administrador ativo, sem operador temporário. Nenhum artefato visual foi promovido como sucesso.
+
+A revisão do TSX encontrou `input[type=file][name=attachments]` sem `label` programaticamente associado em `apps/console/app/projects/new/intake-form.tsx`. O candidato adiciona `label[for=intake-attachments]` visível e ID equivalente sem mudar o upload, e protege a seção `details.intakeOptional` fechada contra exibição do seu corpo via CSS específico. A suíte nova de CI renderiza o componente TSX real em ambos os modos e verifica associação do nome, preservação de multipart/form-data, seleção de anexos e disclosure sem escrita de projeto. O gate de CSS continua proibindo outras ocultações de conteúdo. **Hipótese de causa apoiada pelo código:** só uma nova captura autenticada pós-deploy poderá confirmar se todos os controles agora passam; não reduzir `unnamedCount` nem afirmar acessibilidade sem prova.
+
+Preview oficial e navegador SHA-exato serão necessários no PR; merge para produção será humano. O gate global `product_ready=false` permanece até certificações independentes, sem migration ou chamada paga.

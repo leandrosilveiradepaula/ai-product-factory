@@ -74,6 +74,8 @@ jobs:
         run: node --check ../../scripts/capture_authenticated_console.mjs
       - name: Test read-only Console accessibility receipt contracts
         run: node ../../scripts/test_console_accessibility_contract.mjs
+      - name: Test real new-project upload accessible name and disclosure
+        run: node ../../scripts/test_console_intake_upload_accessibility.cjs
       - name: Capture production dependency audit
         shell: bash
         run: |

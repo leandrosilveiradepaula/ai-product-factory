@@ -1037,6 +1037,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .intakeOptional>summary .muted{font-size:12px}
 .intakeOptional[open]>summary{border-bottom:1px solid #343e4f}
 .intakeOptionalBody{display:grid;gap:16px;padding:18px}
+/* A closed disclosure must not expose its upload/optional controls to
+   pointer, keyboard or assistive technology, even if author styles override
+   the browser's default display behaviour for details children. */
+.intakeOptional:not([open])>.intakeOptionalBody{display:none}
 .intakeSubmit{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px;flex-wrap:wrap}
 .intakeSubmit p{margin:0;flex:1;min-width:200px;font-size:13px}
 .intakeSubmit button{flex:0 0 auto;min-height:46px}
