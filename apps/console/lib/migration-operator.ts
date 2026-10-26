@@ -232,6 +232,7 @@ export async function applyPendingMigrationFromConsole(gateId:string,expectedCan
  const actorRef=operator.email||operator.userId;
  const sqlSha256=createHash("sha256").update(sql,"utf8").digest("hex");
  const auditBase={
+  gate_id:gateId,
   repository,pr_number:prNumber,candidate_commit:candidate,
   pr_state:prState,pr_merged:prMerged,merge_commit_sha:prMerged?String(pr.merge_commit_sha||""):null,
   migration_name:migrationName,migration_file:migrationFile,migration_sql_sha256:sqlSha256,

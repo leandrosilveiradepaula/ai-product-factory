@@ -7,6 +7,8 @@ PENDING=(ROOT/"apps/console/app/gates/gate-decision-form.tsx").read_text()
 OUTCOME=(ROOT/"apps/console/lib/migration-feedback.ts").read_text()
 BANNER=(ROOT/"apps/console/app/gates/gate-action-success-banner.tsx").read_text()
 CSS=(ROOT/"apps/console/app/globals.css").read_text()
+OPERATOR=(ROOT/"apps/console/lib/migration-operator.ts").read_text()
+CONSOLE_CI=(ROOT/".github/workflows/console.yml").read_text()
 
 class VerifiedMigrationFeedbackTests(unittest.TestCase):
  def test_confirmation_is_not_derived_from_user_supplied_query(self):
@@ -43,5 +45,14 @@ class VerifiedMigrationFeedbackTests(unittest.TestCase):
   self.assertIn('aria-label="Fechar confirmação"',BANNER)
   self.assertIn('role="status"',BANNER)
   self.assertIn("alreadyApplied?",BANNER)
+
+ def test_receipt_is_bound_to_exact_gate_run_and_sql_integrity(self):
+  self.assertIn("gate_id:gateId",OPERATOR)
+  self.assertIn("gate.id!==gateId",OUTCOME)
+  self.assertIn("run.id!==gate.run_id",OUTCOME)
+  self.assertIn("event?.payload?.gate_id===gateId",OUTCOME)
+  self.assertIn('event?.payload?.source_integrity==="exact_sql_verified"',OUTCOME)
+  self.assertIn("catch{",OUTCOME)
+  self.assertIn("node ../../scripts/test_console_migration_interaction.cjs",CONSOLE_CI)
 
 if __name__=="__main__":unittest.main()

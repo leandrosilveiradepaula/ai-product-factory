@@ -61,3 +61,7 @@ A candidate pins the browser runner's OS, verifies its distribution, and
 smoke-launches pinned Chromium offline **before** temporary operator creation.
 This does **not** count as product-experience PASS. A new explicitly authorized
 authenticated workflow run is needed after the human merge of the fix.
+
+## 26/10/2026 — UX controlled migration feedback and audit integrity
+
+Protected browser #40330808460 independently passed the exercised navigation/mobile/operator RBAC of the live Console; it did not perform the gate migration interaction. The Console candidate now correlates new migration-success audit records to the exact gate_id and independently verifies run, commit, name and exact SQL source integrity before success banners. Offline tests exercise the real compiled TSX and server reader with delayed completion, invalid audit, network failure and URL tampering. This narrows #692, but no production migration E2E or six-domain global product_ready assertion is claimed.
