@@ -1,4 +1,6 @@
 # AI Product Factory — six-domain certification evidence matrix
+> **Ordem de execução após o merge #1117:** seguir o [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md). Esta matriz **não** autoriza uma nova rodada de PRs para cada célula; primeiro reutilizar provas atuais por SHA, fechar o Preview real do greenfield e testar somente lacunas bloqueantes. No observador de 26/10/2026 [#40382212270](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40382212270), `product_ready=false` e seis domínios permanecem sem atestado independente no SHA `50c9814cf03aa00799b87619665eaa6df20c3d8f`.
+
 
 As of 26 October 2026, the Factory is **not globally product-ready**.
 This inventory distinguishes a verified fact from an outstanding criterion;
