@@ -19,6 +19,12 @@ REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z", re.ASCII)
 MAX_FILES = 100000
 MAX_CHECKS = 100
 MAX_EVALUATIONS = 2
+# Same Vercel status identity required by scripts/console_visual_origin.mjs.
+# A successful GitHub status for an unrelated tenant is not Factory evidence.
+OWNED_VERCEL_STATUS = re.compile(
+    r"https://vercel\.com/leandros-projects-102e32ab/ai-product-factory-console/[A-Za-z0-9]{20,40}\Z",
+    re.ASCII,
+)
 # These *domain questions* are generic. No client/schema names or mock passes.
 NEXT_ACTION = {
     "security": "verify_auth_authorization_tenant_rls_and_secrets",
@@ -316,9 +322,17 @@ def _same_sha_provider_status(prefix: str,sha: str,github_get) -> dict:
     status = matches[0].get("state")
     if status not in ("success","pending","error","failure"):
         raise GlobalReadinessEvidenceError("unexpected provider commit status")
+    # A generic "Vercel" context is attacker-controllable across other
+    # deployments. Health JSON alone and provider context name are NOT tenant
+    # identity; never promote an unrelated project to operational evidence.
+    target = matches[0].get("target_url")
+    if (not isinstance(target,str) or len(target) > 250
+            or OWNED_VERCEL_STATUS.fullmatch(target) is None):
+        raise GlobalReadinessEvidenceError("Vercel status outside owned Console project")
     return {"status":{"success":"provider_reported_ready","pending":"pending",
                       "error":"failed","failure":"failed"}[status],
-            "provider":"Vercel","scope":"github_commit_status_not_live_health"}
+            "provider":"Vercel","project_identity":"pinned_team_and_project",
+            "scope":"github_commit_status_not_live_health"}
 
 
 def observe_current_product(*, repository: str, sha: str, validation_run_id: int,
@@ -386,7 +400,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
     # A recorded pass cannot defeat a contradictory, newer same-SHA visual
     # or deployment failure. A non-passing visual run is not a certification.
     if passed and (visual["status"] in ("failed","pending")
-                   or production["status"] == "failed"):
+                   or production["status"] in ("failed","pending")):
         passed = False
         summary = {**summary,"ready":False,"status":"not_ready",
                    "reason":"current SHA has contradictory or unfinished operational evidence"}

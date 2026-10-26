@@ -1,3 +1,11 @@
+## 26/10/2026 — Evidências atuais e limite de certificação global (candidato)
+
+- A PR #1105 foi mergeada humanamente em `main=112ec58d2043b07426c4c498cd278bb6c888da05`. A migration versionada `20261025214000_repin_terminal_repair_history.sql` foi aplicada com autorização explícita no Supabase Factory; versão registrada `20261025235649`. A função segue `SECURITY INVOKER`: `service_role` pode executar, `anon` e `authenticated` não podem.
+- Reconciliação real `project.delivery_target.reconciled` em `2026-10-26T00:26:07Z`: `updated`, `github_actions_exact_sha`, SHA `0429872652e8cb2bc0e9cde618bf5e848190e186` → `08257c0d545bf98c7f34ae40d8b2e221468764ab`, geração `12→13` e versão `11→12`. Não reabrir o Change Set concluído `673a2fc7-5f8c-40da-8bec-18ff6bb7eeed`.
+- A auditoria global antiga `#40211772093` era `product_ready=false`, seis domínios não verificados. CI, homologação real CRM e um scheduler verde **não** criam uma avaliação independente atual do produto inteiro.
+- Neste candidato, o observer global rejeita status `Vercel` de projeto/tenant não pertencentes à Factory e impede `product_ready=true` enquanto o status do deployment exato está `pending`. Esse é um controle de integridade da evidência, **não** uma certificação de UX, segurança ou operações. CI exata é necessária antes de qualquer merge humano.
+- As seções anteriores documentam *candidatos históricos*; não devem ser interpretadas como estado atual de migration, merge ou prova. Nenhuma alteração de Console, RLS, API paga, CRM ou produção é feita nesta branch.
+
 ## 25/10/2026 — Re-pin não produtivo vs histórico terminal de CI repair
 
 A Factory corrigiu a captura autenticada do Console na PR #1104 (merge humano `4585ef50ccee5dcb6740cda7221af0f58990b0f4`), CI pós-merge 2/2 verde, sem novo deployment do Console. **A certificação global permanece `product_ready=false`.**
