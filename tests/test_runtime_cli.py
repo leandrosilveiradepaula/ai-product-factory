@@ -5,7 +5,7 @@ from unittest.mock import MagicMock,patch
 
 from ai_product_factory.product_stage_executor import ProductStageExecutor
 from ai_product_factory.deployment import DeploymentResult
-from ai_product_factory.preview_flow import PreviewDeferred
+from ai_product_factory.preview_flow import PreviewDeferred,PreviewExternalBackendUnavailable
 from ai_product_factory.release_policy import ReleaseEnvironment
 from ai_product_factory.runtime_auth import AuthKind
 from ai_product_factory.runtime_cli import build_handler, require_codex_runtime_enabled, require_paid_runtime_budget, require_primary_runtime_enabled, run_alerts_once, run_ci_once, run_codex_once, run_direct_once, run_health_once, run_product_once, run_release_once, run_preview_once, run_preview_probe_once, run_dispatch_once, run_specialist_once, run_replay_once, run_replan_once, run_retry_once, run_recovery_once, run_change_set_integration_once
@@ -1069,6 +1069,40 @@ class RuntimeCliTests(unittest.TestCase):
         self.assertEqual(out["preview_url"],"https://preview.example")
         loop.finalize_verified_preview.assert_called_once()
 
+
+    def test_503_backend_wait_preserves_failed_browser_evidence_without_failing_delivery(self):
+        item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc",risk={})
+        queue=MagicMock();queue.next_pending.return_value=item
+        github=MagicMock();github.get_issue.return_value=SimpleNamespace(number=7);github.get_pull_request.return_value=SimpleNamespace(number=9,head_sha="abc");github.get_pull_request_files.return_value=("web/page.tsx",)
+        store=MagicMock()
+        coordinator=MagicMock();coordinator.execute.side_effect=PreviewExternalBackendUnavailable("https://preview.example")
+        env={"FACTORY_VERCEL_PREVIEW_ENABLED":"true","GITHUB_TOKEN":"gh","FACTORY_BROWSER_EVIDENCE_ENABLED":"true","FACTORY_BROWSER_EVIDENCE_COMMAND_JSON":'["verify"]'}
+        with patch.dict("os.environ",env,clear=True), \
+             patch("ai_product_factory.runtime_cli.SupabasePreviewFollowupQueue",return_value=queue), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter",return_value=github), \
+             patch("ai_product_factory.runtime_cli.GitHubVercelPreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.DurablePreviewAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeploymentEvidenceStore"), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceConfig.from_env",return_value=MagicMock()), \
+             patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
+             patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli._external_backend_preview_wait",return_value=None), \
+             patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator):
+            out=run_preview_once()
+        self.assertEqual(out["status"],"waiting_external_backend")
+        self.assertTrue(out["claimed"])
+        self.assertTrue(out["preview_required"])
+        self.assertIs(out["browser_verified"],False)
+        self.assertIs(out["release_authorized"],False)
+        store.fail_preview.assert_not_called()
+        store.record_resource_limit_signal.assert_not_called()
+        store.record_audit_event.assert_called_once()
+        receipt=store.record_audit_event.call_args.kwargs
+        self.assertEqual(receipt["event_type"],"preview.backend_unavailable.waiting_configuration")
+        self.assertEqual(receipt["payload"]["candidate_commit"],"abc")
+        self.assertIs(receipt["payload"]["browser_verified"],False)
+        self.assertIs(receipt["payload"]["release_authorized"],False)
 
     def test_browser_failure_marks_preview_run_failed(self):
         item=SimpleNamespace(run_id="r",project_key="demo",repository="owner/repo",manifest={"preview":{"provider":"vercel","mode":"github"}},issue_number=7,branch="factory/t",pr_number=9,candidate_commit="abc",risk={})
