@@ -48,3 +48,16 @@ StatusPill previously used substring matching, incorrectly reporting green succe
 ## 26/10/2026 — Console dependency critical security update (candidate)
 
 During the first Console CI of the status-semantics candidate, production npm audit blocked `next@15.5.27` with a critical advisory. The Next.js maintainers' [October 14, 2026 security update](https://nextjs.org/blog/nextjs-security-update-october-14-2026) identifies patched Maintenance LTS `next@15.5.28` for two critical RCE issues and a high-severity Server Action DoS. The candidate updates the exact Next dependency and npm-generated lock graph (including @next compilers), retains the live `npm audit` gate without exceptions, and adds an offline version-floor regression. Version metadata came from an unprivileged GitHub Actions `npm install --package-lock-only --ignore-scripts`, not estimated hashes. The temporary metadata-extraction CI step is removed. Only a fully green final CI, typecheck, build and exact-SHA Preview/browser may authorize a future human merge; no production release is automatic.
+
+## 26/10/2026 — Post-merge Console authenticated evidence incident
+
+Factory #1109 post-merge main `d463a602...` passed native CI and deployed
+Vercel production READY. Authenticated screenshot workflow #40327176953
+was canceled by the GitHub 12-minute limit before provisioning any user:
+`ubuntu-latest` used Ubuntu 26.04 and apt package mirror downloads for
+Playwright `--with-deps` stalled. An earlier passing actual authenticated
+run #39467414056 used Ubuntu 24.04 and the same pinned Playwright version.
+A candidate pins the browser runner's OS, verifies its distribution, and
+smoke-launches pinned Chromium offline **before** temporary operator creation.
+This does **not** count as product-experience PASS. A new explicitly authorized
+authenticated workflow run is needed after the human merge of the fix.

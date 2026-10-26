@@ -27,7 +27,10 @@ permissions:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
+    # Pin the OS used by the last independently successful authenticated
+    # visual run (#39467414056). ubuntu-latest shifted to Ubuntu 26.04 and
+    # Playwright --with-deps stalled in APT for the full 12-minute budget.
+    runs-on: ubuntu-24.04
     environment: openai-api
     timeout-minutes: 12
     env:
@@ -37,6 +40,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 2 # compare the exact Console main push to its first parent
+      - name: Require pinned Ubuntu 24.04 runner before any visual credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          . /etc/os-release
+          if [ "${ID:-}" != "ubuntu" ] || [ "${VERSION_ID:-}" != "24.04" ]; then
+            echo "::error title=Authenticated visual runner::Expected Ubuntu 24.04"
+            exit 1
+          fi
       - name: Reject reused GitHub run ID before allocating credentials
         shell: bash
         run: |
@@ -140,6 +152,9 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
           npx playwright install --with-deps chromium
+      - name: Verify pinned Chromium launches offline before provisioning an operator
+        shell: bash
+        run: node scripts/verify_auth_visual_browser_runtime.mjs
       - name: Mint provisioning GitHub OIDC token
         id: oidc_provision
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
