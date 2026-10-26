@@ -136,8 +136,62 @@ begin
  if p_environment_probe->>'kind' is distinct from 'unauthenticated_json_session_probe'
     or p_environment_probe->>'candidate_commit' is distinct from p_candidate_commit
     or p_environment_probe->>'url' is distinct from v_url || '/api/session'
-    or p_environment_probe->>'http_status' not in ('200','401')
-    or p_environment_probe->>'content_type' !~ '^application/json(;.*)?$'
+    or coalesce(p_environment_probe->>'http_status','') not in ('200','401')
+    or coalesce(p_environment_probe->>'content_type','') !~ '^application/json(;.*)?
+    or coalesce(p_environment_probe->>'checked_at','') !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'
+ then
+  raise exception 'fresh non-mutating JSON session preflight required' using errcode='PT400';
+ end if;
+ begin
+  v_checked_at:=(p_environment_probe->>'checked_at')::timestamptz;
+ exception when invalid_datetime_format or datetime_field_overflow then
+  raise exception 'invalid environment probe timestamp' using errcode='PT400';
+ end;
+ if v_checked_at > now()+interval '5 seconds'
+    or v_checked_at < now()-interval '10 minutes'
+ then
+  raise exception 'environment probe expired or in the future' using errcode='PT400';
+ end if;
+
+ select count(*) into v_prior_resumes
+ from public.factory_audit_events a
+ where a.run_id=p_run_id and a.project_id=v_set.project_id
+   and a.event_type='preview.backend_unavailable.resumed';
+ if v_prior_resumes >= 2 then
+  raise exception 'bounded Preview environment retry budget exhausted' using errcode='PT409';
+ end if;
+
+ update public.factory_runs set status='preview_ready',
+   finished_at=null,last_error=null where id=p_run_id;
+ update public.factory_tasks set status='integrated',
+   updated_at=now() where id=v_task.id;
+ insert into public.factory_audit_events(
+    project_id,task_id,run_id,actor_type,actor_ref,event_type,payload
+ ) values (
+    v_set.project_id,v_task.id,p_run_id,'system','preview-environment-recovery',
+    'preview.backend_unavailable.resumed',
+    jsonb_build_object(
+      'candidate_commit',p_candidate_commit,'pr_number',p_pr_number,
+      'browser_failure_eval_id',v_eval.id,
+      'probe_http_status',p_environment_probe->>'http_status',
+      'probe_checked_at',p_environment_probe->>'checked_at',
+      'preview_url',v_url,'original_failure_preserved',true,
+      'browser_verified',false,'release_authorized',false)
+ );
+ return jsonb_build_object(
+   'run_id',p_run_id,'status','preview_ready',
+   'candidate_commit',p_candidate_commit,'original_failure_preserved',true,
+   'browser_verified',false,'release_authorized',false,
+   'attempt',v_prior_resumes+1);
+end;
+$fn$;
+
+revoke all on function public.factory_resume_preview_backend_unavailable_v1(uuid,text,integer,jsonb,jsonb)
+ from public,anon,authenticated;
+grant execute on function public.factory_resume_preview_backend_unavailable_v1(uuid,text,integer,jsonb,jsonb)
+ to service_role;
+commit;
+
     or p_environment_probe->>'checked_at' !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'
  then
   raise exception 'fresh non-mutating JSON session preflight required' using errcode='PT400';
