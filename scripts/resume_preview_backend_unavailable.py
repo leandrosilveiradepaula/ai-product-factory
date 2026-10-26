@@ -19,73 +19,15 @@ import uuid
 
 from ai_product_factory.github_auth import resolve_github_token
 from ai_product_factory.supabase_server import resolve_supabase_server_config
+from ai_product_factory.preview_session_probe import (
+    PreviewEnvironmentNotReady, preview_origin, probe_session,
+)
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 VERCEL_TARGET = re.compile(
     r"^https://vercel[.]com/[a-zA-Z0-9-]+/[a-zA-Z0-9-]+/[a-zA-Z0-9]{20,40}$"
 )
-
-
-class PreviewEnvironmentNotReady(RuntimeError):
-    pass
-
-
-def preview_origin(value: object) -> str:
-    if not isinstance(value, str) or not value:
-        raise PreviewEnvironmentNotReady("invalid_preview_origin")
-    try:
-        parsed = urllib.parse.urlsplit(value)
-    except ValueError as exc:
-        raise PreviewEnvironmentNotReady("invalid_preview_origin") from exc
-    hostname = parsed.hostname or ""
-    if (parsed.scheme != "https" or not re.fullmatch(
-        r"[a-z0-9][a-z0-9-]*[.]vercel[.]app", hostname)
-        or parsed.netloc != hostname or parsed.path not in ("", "/")
-        or parsed.query or parsed.fragment or parsed.username or parsed.password):
-        raise PreviewEnvironmentNotReady("untrusted_preview_origin")
-    return "https://" + hostname
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Reject redirects *before* urllib contacts an untrusted Location target."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-def probe_session(url: str) -> dict:
-    """Credentialless JSON readiness check; never follow an HTTP redirect."""
-    origin = preview_origin(url)
-    request = urllib.request.Request(
-        origin + "/api/session",
-        headers={"Accept": "application/json", "User-Agent": "Factory-Preview-Readiness/1"},
-        method="GET",
-    )
-    try:
-        try:
-            with urllib.request.build_opener(_NoRedirect).open(request, timeout=12) as response:
-                status = response.status
-                content_type = response.headers.get("Content-Type", "").lower().strip()
-                returned_url = response.geturl()
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-            content_type = exc.headers.get("Content-Type", "").lower().strip()
-            returned_url = exc.geturl()
-            exc.close()
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
-        raise PreviewEnvironmentNotReady("preview_session_unreachable") from exc
-    if returned_url != origin + "/api/session" or 300 <= status < 400:
-        raise PreviewEnvironmentNotReady("preview_session_redirected")
-    if status not in (200, 401) or not re.fullmatch(r"application/json(?:;.*)?", content_type):
-        raise PreviewEnvironmentNotReady("preview_backend_still_unverified")
-    return {
-        "kind": "unauthenticated_json_session_probe",
-        "url": origin + "/api/session",
-        "http_status": str(status),
-        "content_type": content_type,
-        "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
 
 
 def require_github_pr(*, pull: dict, statuses: dict, repository: str,
