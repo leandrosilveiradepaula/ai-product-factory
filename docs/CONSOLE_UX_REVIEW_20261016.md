@@ -92,3 +92,9 @@ and verify actual browser boot before allowing temporary operator provisioning.
 Do not fabricate a passing browser E2E, trigger visual workflow through
 workflow-only changes, or dismiss the unresolved #692 gated migration UI
 transition without a safe test.
+
+## 26/10/2026 — Migration gate-bound UX receipt (candidate)
+
+Independent production browser run [#40330808460](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40330808460) passed 14 authenticated pages, mobile, RBAC and encrypted evidence with ephemeral operator cleanup. It did not authorize or apply a migration. The existing UI displays a busy message and a success banner, but audit events lacked the exact gate_id and historical records lack SQL integrity metadata. A URL lookup hint, a matching migration name, or another approved gate must not produce a success message.
+
+This change writes gate_id on new migration audit events and requires exact approved gate/run/candidate/migration name plus source_integrity=exact_sql_verified before displaying success. Transient REST failure returns no success without breaking the gates page. Console CI tests the actual transpiled TSX components and the actual TypeScript reader with offline delayed/failing/audited responses, including pending fieldset, idempotent result, URL cleanup and dismissal. Hook-controlled behavior is not a full authenticated browser Server Action test or real migration; human production gate, required Preview and product_ready=false remain unchanged.
