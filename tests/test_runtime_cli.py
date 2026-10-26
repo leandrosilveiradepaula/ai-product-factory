@@ -1058,6 +1058,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli._external_backend_preview_wait",return_value=None), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
@@ -1089,6 +1090,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli._external_backend_preview_wait",return_value=None), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator):
             with self.assertRaisesRegex(ValueError,"browser/e2e"):
                 run_preview_once()
@@ -1112,6 +1114,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli._external_backend_preview_wait",return_value=None), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator):
             out=run_preview_once()
         self.assertEqual(out["status"],"blocked_quota")
@@ -1146,6 +1149,7 @@ class RuntimeCliTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.CommandBrowserEvidenceAdapter"), \
              patch("ai_product_factory.runtime_cli.SupabaseDeliveryStore",return_value=store), \
              patch("ai_product_factory.runtime_cli.BrowserEvidenceRecorder"), \
+             patch("ai_product_factory.runtime_cli._external_backend_preview_wait",return_value=None), \
              patch("ai_product_factory.runtime_cli.VerifiedPreviewCoordinator",return_value=coordinator), \
              patch("ai_product_factory.runtime_cli.SupabaseTraceabilityStore",return_value=MagicMock()), \
              patch("ai_product_factory.runtime_cli._assess_release_policy",return_value=(SimpleNamespace(decision=SimpleNamespace(blocked=False,reasons=())),{"report_id":"report"})), \
