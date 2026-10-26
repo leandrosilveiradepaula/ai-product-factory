@@ -4,7 +4,8 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+import urllib.request
 from urllib.error import HTTPError
 from email.message import Message
 
@@ -162,8 +163,63 @@ class PreviewEnvironmentRecoveryPreflightTests(unittest.TestCase):
         headers = Message()
         headers["Content-Type"] = "application/json"
         exc = HTTPError(URL + "/api/session", 503, "Service Unavailable", headers, None)
-        with patch("urllib.request.urlopen", side_effect=exc):
+        with patch("urllib.request.build_opener") as builder:
+            builder.return_value.open.side_effect = exc
             with self.assertRaisesRegex(PreviewEnvironmentNotReady, "still_unverified"):
+                probe_session(URL)
+            builder.return_value.open.assert_called_once()
+
+    def test_redirect_is_blocked_before_untrusted_location_can_be_fetched(self):
+        # Mock the first response, never contact the metadata endpoint.
+        headers = Message()
+        headers["Location"] = "http://169.254.169.254/latest/meta-data"
+        headers["Content-Type"] = "application/json"
+        exc = HTTPError(URL + "/api/session", 302, "Found", headers, None)
+        with patch("urllib.request.build_opener") as builder:
+            builder.return_value.open.side_effect = exc
+            with self.assertRaisesRegex(PreviewEnvironmentNotReady, "redirected"):
+                probe_session(URL)
+            handler_class = builder.call_args.args[0]
+            self.assertTrue(issubclass(handler_class, urllib.request.HTTPRedirectHandler))
+            self.assertIsNone(handler_class().redirect_request(
+                None, None, 302, "Found", headers, headers["Location"]))
+            builder.return_value.open.assert_called_once()
+            request = builder.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url, URL + "/api/session")
+            self.assertEqual(request.get_method(), "GET")
+            self.assertFalse(any(key.lower() in ("authorization", "cookie", "proxy-authorization")
+                                 for key in request.headers))
+
+    def test_credentialless_session_status_200_or_401_is_readiness_not_browser_pass(self):
+        for status in (200, 401):
+            with self.subTest(status=status):
+                headers = Message()
+                headers["Content-Type"] = "application/json; charset=utf-8"
+                response = MagicMock()
+                response.__enter__.return_value = response
+                response.status = status
+                response.headers = headers
+                response.geturl.return_value = URL + "/api/session"
+                with patch("urllib.request.build_opener") as builder:
+                    builder.return_value.open.return_value = response
+                    result = probe_session(URL)
+                    self.assertEqual(result["http_status"], str(status))
+                    self.assertEqual(result["content_type"], "application/json; charset=utf-8")
+                    self.assertEqual(result["kind"], "unauthenticated_json_session_probe")
+                    self.assertNotIn("browser_verified", result)
+                    builder.return_value.open.assert_called_once()
+
+    def test_redirected_final_url_is_rejected_even_if_response_reports_json_200(self):
+        headers = Message()
+        headers["Content-Type"] = "application/json"
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.headers = headers
+        response.geturl.return_value = "https://other-project.vercel.app/api/session"
+        with patch("urllib.request.build_opener") as builder:
+            builder.return_value.open.return_value = response
+            with self.assertRaisesRegex(PreviewEnvironmentNotReady, "redirected"):
                 probe_session(URL)
 
 
