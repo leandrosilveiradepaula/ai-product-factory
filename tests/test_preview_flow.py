@@ -3,7 +3,7 @@ from ai_product_factory.browser_evidence import BrowserEvidence
 from ai_product_factory.browser_evidence_store import BrowserEvidenceRecorder
 from ai_product_factory.deployment import DeploymentRequest,DeploymentResult
 from ai_product_factory.evidence import EvidenceBundle
-from ai_product_factory.preview_flow import PreviewDeferred,VerifiedPreviewCoordinator
+from ai_product_factory.preview_flow import PreviewDeferred,PreviewExternalBackendUnavailable,VerifiedPreviewCoordinator
 from ai_product_factory.release_policy import ReleaseEnvironment
 
 class Deploy:
@@ -38,6 +38,35 @@ class Tests(unittest.TestCase):
   s=Store()
   with self.assertRaises(ValueError):VerifiedPreviewCoordinator().execute(run_id="r1",request=request(),deployment_adapter=Deploy(),browser_adapter=Browser("failure"),evidence_recorder=BrowserEvidenceRecorder(s))
   self.assertEqual(s.evals[0]["status"],"failure")
+ def test_backend_503_is_durable_but_waits_for_environment_instead_of_terminal_failure(self):
+  class MissingBackend:
+   name="browser"
+   def verify(self,url):
+    return BrowserEvidence("failure",url,("page_load","http_status","body_visible"),
+                           "console: Failed to load resource: 503 | http_503: fetch /api/session")
+  s=Store()
+  with self.assertRaises(PreviewExternalBackendUnavailable) as ctx:
+   VerifiedPreviewCoordinator().execute(
+    run_id="r1",request=request(),deployment_adapter=Deploy(),
+    browser_adapter=MissingBackend(),evidence_recorder=BrowserEvidenceRecorder(s))
+  self.assertEqual(ctx.exception.preview_url,"https://preview.example")
+  self.assertEqual(s.evals[0]["eval_type"],"browser_e2e")
+  self.assertEqual(s.evals[0]["status"],"failure")
+  self.assertIn("http_503: fetch /api/session",s.evals[0]["result"]["detail"])
+  self.assertEqual(s.audit[0]["payload"]["status"],"failure")
+
+ def test_generic_503_never_becomes_external_backend_blocker(self):
+  class FailingBrowser:
+   name="browser"
+   def verify(self,url):
+    return BrowserEvidence("failure",url,(),"HTTP 503 from unrelated API endpoint")
+  s=Store()
+  with self.assertRaises(ValueError):
+   VerifiedPreviewCoordinator().execute(
+    run_id="r1",request=request(),deployment_adapter=Deploy(),
+    browser_adapter=FailingBrowser(),evidence_recorder=BrowserEvidenceRecorder(s))
+  self.assertEqual(s.evals[0]["status"],"failure")
+
  def test_mismatched_url_is_rejected(self):
   with self.assertRaises(ValueError):VerifiedPreviewCoordinator().execute(run_id="r1",request=request(),deployment_adapter=Deploy(),browser_adapter=Browser(url="https://other.example"),evidence_recorder=BrowserEvidenceRecorder(Store()))
 if __name__=="__main__":unittest.main()
