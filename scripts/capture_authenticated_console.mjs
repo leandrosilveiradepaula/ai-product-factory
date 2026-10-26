@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {validateProjectLifecycleReadOnly} from "./project_control_readonly_contract.mjs";
+import {collectAccessibilitySnapshot,verifyAccessibilitySnapshot} from "./console_accessibility_contract.mjs";
 
 const required = [
   "FACTORY_CONSOLE_URL",
@@ -108,6 +109,7 @@ try {
   ];
 
   const captured = [];
+  const accessibilityRoutes = [];
   for (const route of routes) {
     await page.setViewportSize({width:route.width,height:900});
     const response = await page.goto(`${consoleUrl}${route.path}`, {waitUntil:"networkidle", timeout:60000});
@@ -119,6 +121,12 @@ try {
       height:document.documentElement.scrollHeight,
     }));
     captured.push({...route,status:response.status(),finalUrl:page.url(),documentSize:size});
+    // Browser-executed DOM checks. Persist safe numeric counts only:
+    // never capture accessible names, field contents or operator identity.
+    const metrics=await page.evaluate(collectAccessibilitySnapshot);
+    accessibilityRoutes.push({route:route.name,
+      ...verifyAccessibilitySnapshot(metrics,route.name)});
+
   }
 
   const interactionEvidence = {
@@ -127,10 +135,28 @@ try {
     intakeEdit: null,
     projectDetail: null,
     mobile: [],
+    accessibility:{routes:accessibilityRoutes,keyboardSkip:null},
   };
 
   await page.setViewportSize({width:1296,height:900});
   await page.goto(`${consoleUrl}/`, {waitUntil:"networkidle", timeout:60000});
+  // Real Tab + Enter verification. A forced focus() can hide a broken
+  // keyboard skip link and must not count as accessible navigation.
+  await page.keyboard.press("Tab");
+  const skipFocused=await page.evaluate(() =>
+    document.activeElement?.matches('a.skipToMain[href="#main-content"]')===true);
+  if(!skipFocused)throw new Error("accessibility:overview:keyboard_skip_not_first");
+  const skipVisible=await page.locator('a.skipToMain[href="#main-content"]').evaluate(el=>{
+    const rect=el.getBoundingClientRect();
+    return rect.bottom>0 && rect.height>=44 && getComputedStyle(el).visibility!=="hidden";
+  });
+  if(!skipVisible)throw new Error("accessibility:overview:keyboard_skip_not_visible");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.activeElement?.id==="main-content",
+                             null,{timeout:5000});
+  interactionEvidence.accessibility.keyboardSkip={
+    reachedWithTab:true,visibleOnFocus:true,landedOnMain:true,
+  };
   // Daily navigation must be limited to the three operator destinations.
   // Advanced tools are still real links, accessible after opening disclosure.
   const primaryNavHrefs = await page.locator(".desktopSidebarContent .sidebarNav > .navGroup a").evaluateAll(links =>

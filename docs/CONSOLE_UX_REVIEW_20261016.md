@@ -98,3 +98,29 @@ transition without a safe test.
 Independent production browser run [#40330808460](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40330808460) passed 14 authenticated pages, mobile, RBAC and encrypted evidence with ephemeral operator cleanup. It did not authorize or apply a migration. The existing UI displays a busy message and a success banner, but audit events lacked the exact gate_id and historical records lack SQL integrity metadata. A URL lookup hint, a matching migration name, or another approved gate must not produce a success message.
 
 This change writes gate_id on new migration audit events and requires exact approved gate/run/candidate/migration name plus source_integrity=exact_sql_verified before displaying success. Transient REST failure returns no success without breaking the gates page. Console CI tests the actual transpiled TSX components and the actual TypeScript reader with offline delayed/failing/audited responses, including pending fieldset, idempotent result, URL cleanup and dismissal. Hook-controlled behavior is not a full authenticated browser Server Action test or real migration; human production gate, required Preview and product_ready=false remain unchanged.
+
+## 26/10/2026 — Targeted keyboard/DOM accessibility audit (candidate)
+
+The real authenticated Console run #40336494210 succeeded on the exact
+published #1112 SHA e2a963be239cf0b072d3dc5b8df0bf1a6bf3d0fb with 14
+screens, an encrypted artifact and verified ephemeral-operator cleanup. The
+existing capture checks mobile layout, menu touch targets and programmatic
+skip-link focus, but it does not establish that keyboard Tab reaches that
+link or whether controls on all critical routes have accessible names.
+
+This candidate adds a real, fail-closed DOM snapshot check to the same
+already-authorized capture path on all 14 screens: pt-BR document language,
+non-empty document title, a single main landmark, visible skip link,
+heading presence, names on visible interactive controls, image alt
+attributes, duplicate IDs and positive tab-order exceptions. It also
+requires actual Tab and Enter to reach the main landmark on overview.
+Only counts/booleans and safe route keys are recorded, never DOM text,
+field values, URLs, identities or cookies. The screenshot archive remains
+encrypted under the existing broker and OIDC rules.
+
+No new account creation or project mutation is added. This is a targeted
+accessibility audit, not comprehensive WCAG certification. Console-only
+tests and workflows run unprivileged, and code-only changes have Preview
+N/A. An independently authorized new protected browser capture after
+human merge remains required to claim the newly added checks executed.
+Global product_ready remains false.

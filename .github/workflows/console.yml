@@ -70,6 +70,8 @@ jobs:
         run: node ../../scripts/test_console_status_semantics.cjs
       - name: Verify actual migration feedback modules with offline delayed audit
         run: node ../../scripts/test_console_migration_interaction.cjs
+      - name: Test read-only Console accessibility receipt contracts
+        run: node ../../scripts/test_console_accessibility_contract.mjs
       - name: Capture production dependency audit
         shell: bash
         run: |
