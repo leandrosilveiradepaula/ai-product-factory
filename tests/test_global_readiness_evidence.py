@@ -77,7 +77,11 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
             ],
         },
         "/repos/"+REPO+"/commits/"+S+"/status":{"sha":S,"statuses":[]},
-        "/repos/"+REPO+"/git/commits/"+S:{"sha":S,"tree":{"sha":TREE}},
+        "/repos/"+REPO+"/git/commits/"+S:{"sha":S,"tree":{"sha":TREE},"parents":[{"sha":"c"*40}]},
+        "/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1":{
+            "sha":S,"parents":[{"sha":"c"*40}],
+            "files":[{"filename":"src/core.py","status":"modified"}],
+        },
         "/repos/"+REPO+"/git/trees/"+TREE+"?recursive=1":{
             "sha":TREE,"truncated":False,"tree":paths},
         "/repos/"+REPO+"/actions/runs/"+str(RUN)+"/jobs?per_page=100":{
@@ -136,7 +140,8 @@ class GlobalReadinessTests(unittest.TestCase):
         self.assertEqual(report["ci_evidence"]["validation_jobs"]["verification_state"],"executed_same_SHA")
         self.assertEqual(report["source_inventory"]["tracked_files"],7)
         self.assertEqual(report["current_sha_operational_evidence"]["authenticated_console"]["status"],"not_observed")
-        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],"not_reported")
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],"not_applicable")
+        self.assertFalse(report["current_sha_operational_evidence"]["console_change_scope"]["console_changed"])
         self.assertTrue(report["source_inventory"]["documents_present"]["operations"])
         self.assertEqual((report["writes"],report["paid_calls"]),(0,0))
 
@@ -355,6 +360,10 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         uri="/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"
         gh[uri]["workflow_runs"].append(row)
         gh[uri]["total_count"] += 1
+        # This scenario represents an actual Console code change; the default
+        # fixture intentionally represents a code-only commit (Preview N/A).
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"]["files"]=[
+            {"filename":"apps/console/src/app/page.tsx","status":"modified"}]
         gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/jobs?per_page=100"]={
             "total_count":1,"jobs":[{"id":33,"run_id":visual,"head_sha":S,
                                    "name":"capture","status":"completed","conclusion":"success"}],
@@ -379,7 +388,9 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         self.assertEqual(evidence["authenticated_console"]["status"],"verified")
         self.assertEqual(evidence["authenticated_console"]["workflow_run_id"],visual)
         self.assertEqual(evidence["authenticated_console"]["artifact_id"],1212)
-        self.assertEqual(evidence["production_deployment"]["status"],"provider_reported_ready")
+        self.assertEqual(evidence["production_deployment"]["status"],"provider_status_success_unverified")
+        self.assertFalse(evidence["production_deployment"]["deployment_verified"])
+        self.assertTrue(evidence["console_change_scope"]["console_changed"])
         self.assertEqual(evidence["production_deployment"]["project_identity"],"pinned_team_and_project")
         self.assertFalse(report["global_readiness"]["product_ready"])
         self.assertEqual(report["global_readiness"]["missing_or_unverified_domains"],list(REQUIRED_DOMAINS))
@@ -408,6 +419,133 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         self.assertEqual(report["current_sha_operational_evidence"]["authenticated_console"]["status"],"failed")
         self.assertFalse(report["global_readiness"]["product_ready"])
         self.assertEqual(len(report["work_proposals"]),6)
+
+    def test_git_commit_change_scope_makes_cancelled_vercel_success_na(self):
+        gh,cp,gg,cg=fixture()
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
+            {"context":"Vercel","state":"success","target_url":VERCEL_URL}]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        operational=report["current_sha_operational_evidence"]
+        self.assertFalse(operational["console_change_scope"]["console_changed"])
+        self.assertEqual(operational["production_deployment"]["status"],"not_applicable")
+        self.assertEqual(operational["production_deployment"]["provider_reported_state"],"success")
+        self.assertFalse(operational["production_deployment"]["deployment_verified"])
+        self.assertFalse(report["global_readiness"]["product_ready"])
+        self.assertEqual(len(report["work_proposals"]),6)
+
+    def test_vague_vercel_status_failure_cannot_force_console_requirement_for_code_only(self):
+        gh,cp,gg,cg=fixture(evaluations=[complete_eval()])
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
+            {"context":"Vercel","state":"failure","target_url":VERCEL_URL}]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],"not_applicable")
+        # A trusted independent complete evaluation is still required; a
+        # provider failure on an unchanged Console is unrelated noise.
+        self.assertTrue(report["global_readiness"]["product_ready"])
+
+    def test_renaming_out_of_console_still_requires_deployment_verification(self):
+        gh,cp,gg,cg=fixture()
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"]["files"]=[
+            {"filename":"src/core.py","previous_filename":"apps/console/src/app/page.tsx","status":"renamed"}]
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
+            {"context":"Vercel","state":"success","target_url":VERCEL_URL}]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        self.assertTrue(report["current_sha_operational_evidence"]["console_change_scope"]["console_changed"])
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],
+                         "provider_status_success_unverified")
+
+    def test_pagination_finds_console_change_on_second_page(self):
+        gh,cp,gg,cg=fixture()
+        key="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"
+        gh[key]["files"]=[
+            {"filename":"docs/file-"+str(i)+".md","status":"modified"}
+            for i in range(100)]
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=2"]={
+            "sha":S,"parents":[{"sha":"c"*40}],
+            "files":[{"filename":"apps/console/src/app/page.tsx","status":"modified"}],
+        }
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
+            {"context":"Vercel","state":"success","target_url":VERCEL_URL}]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        scope=report["current_sha_operational_evidence"]["console_change_scope"]
+        self.assertEqual((scope["changed_files"],scope["pages_verified"]),(101,2))
+        self.assertTrue(scope["console_changed"])
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],
+                         "provider_status_success_unverified")
+
+    def test_exact_one_hundred_commit_files_require_empty_second_page(self):
+        gh,cp,gg,cg=fixture()
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"]["files"]=[
+            {"filename":"docs/file-"+str(i)+".md","status":"modified"}
+            for i in range(100)]
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=2"]={
+            "sha":S,"parents":[{"sha":"c"*40}],"files":[]}
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        scope=report["current_sha_operational_evidence"]["console_change_scope"]
+        self.assertEqual((scope["changed_files"],scope["pages_verified"]),(100,2))
+        self.assertFalse(scope["console_changed"])
+
+    def test_repeated_or_missing_page_cannot_prove_preview_na(self):
+        for scenario in ("missing page","duplicate across pages","wrong page SHA","wrong page parent"):
+            with self.subTest(scenario=scenario):
+                gh,cp,gg,cg=fixture()
+                first="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"
+                second="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=2"
+                gh[first]["files"]=[
+                    {"filename":"docs/f"+str(i)+".md","status":"modified"}
+                    for i in range(100)]
+                if scenario!="missing page":
+                    gh[second]={"sha":S,"parents":[{"sha":"c"*40}],
+                                "files":[{"filename":"docs/other.md","status":"modified"}]}
+                if scenario=="duplicate across pages":
+                    gh[second]["files"][0]["filename"]="docs/f99.md"
+                if scenario=="wrong page SHA":
+                    gh[second]["sha"]="d"*40
+                if scenario=="wrong page parent":
+                    gh[second]["parents"]=[{"sha":"d"*40}]
+                with self.assertRaises((AssertionError,GlobalReadinessEvidenceError)):
+                    observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                            github_get=gg,cp_get=cg)
+
+    def test_full_thirty_pages_do_not_prove_commit_diff_exhaustion(self):
+        gh,cp,gg,cg=fixture()
+        for page in range(1,31):
+            gh["/repos/"+REPO+"/commits/"+S+f"?per_page=100&page={page}"]={
+                "sha":S,"parents":[{"sha":"c"*40}],
+                "files":[{"filename":f"docs/page-{page}/file-{i}.md","status":"modified"}
+                         for i in range(100)]}
+        with self.assertRaisesRegex(GlobalReadinessEvidenceError,"pagination bound"):
+            observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                    github_get=gg,cp_get=cg)
+
+    def test_incomplete_or_mismatched_commit_diff_fails_closed(self):
+        key="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"
+        mutations=(
+            ("wrong SHA",lambda gh:gh[key].update(sha="d"*40)),
+            ("parent mismatch",lambda gh:gh[key].update(parents=[{"sha":"e"*40}])),
+            ("missing files",lambda gh:gh[key].pop("files")),
+            ("empty files",lambda gh:gh[key].update(files=[])),
+            ("oversized first page",lambda gh:gh[key].update(
+                files=[{"filename":"docs/f"+str(i),"status":"modified"} for i in range(101)])),
+            ("traversal",lambda gh:gh[key]["files"][0].update(filename="../outside")),
+            ("duplicate paths",lambda gh:gh[key].update(
+                files=[{"filename":"src/core.py","status":"modified"}]*2)),
+            ("missing rename origin",lambda gh:gh[key]["files"][0].update(status="renamed")),
+            ("unexpected previous name",lambda gh:gh[key]["files"][0].update(previous_filename="apps/console/app/page.tsx")),
+            ("unknown change type",lambda gh:gh[key]["files"][0].update(status="mystery")),
+        )
+        for label,mutate in mutations:
+            with self.subTest(label=label):
+                gh,cp,gg,cg=fixture()
+                mutate(gh)
+                with self.assertRaises(GlobalReadinessEvidenceError):
+                    observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                            github_get=gg,cp_get=cg)
 
     def test_pending_deployment_downgrades_durable_readiness(self):
         gh,cp,gg,cg,visual=self.visual()

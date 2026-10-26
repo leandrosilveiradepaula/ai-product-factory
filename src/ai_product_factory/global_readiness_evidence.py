@@ -19,6 +19,8 @@ REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z", re.ASCII)
 MAX_FILES = 100000
 MAX_CHECKS = 100
 MAX_EVALUATIONS = 2
+COMMIT_PAGE_SIZE = 100  # GitHub REST hard max for commit files per page.
+MAX_COMMIT_PAGES = 30  # 3000-file upper bound; full last page is ambiguous.
 # Same Vercel status identity required by scripts/console_visual_origin.mjs.
 # A successful GitHub status for an unrelated tenant is not Factory evidence.
 OWNED_VERCEL_STATUS = re.compile(
@@ -308,7 +310,64 @@ def _authenticated_visual_receipt(runs: list[dict],*,repo: str,sha: str,
             "source":"github_exact_sha_workflow_and_encrypted_artifact"}
 
 
-def _same_sha_provider_status(prefix: str,sha: str,github_get) -> dict:
+def _verified_console_change_scope(prefix: str, sha: str, git_commit: dict,
+                                   github_get) -> dict:
+    """Prove Console file impact using the entire paged first-parent commit diff.
+
+    GitHub silently caps per_page at 100 even when asked for 300. Each page
+    repeats the immutable commit SHA and parents; verify every page. Never
+    infer Preview N/A from an incomplete page or an exhausted 3000-file cap.
+    """
+    git_parents = git_commit.get("parents")
+    if (not isinstance(git_parents,list) or not 1 <= len(git_parents) <= 8
+            or any(not isinstance(x,dict) or not isinstance(x.get("sha"),str)
+                   or SHA.fullmatch(x["sha"]) is None for x in git_parents)):
+        raise GlobalReadinessEvidenceError("exact commit has invalid parent provenance")
+    expected_parents = [x["sha"] for x in git_parents]
+    seen: set[str] = set()
+    console_changed = False
+    allowed = {"added","modified","removed","renamed","copied","changed"}
+
+    def safe_path(value: object) -> bool:
+        return (isinstance(value,str) and 0 < len(value) <= 1024
+                and not value.startswith("/") and ".." not in value.split("/")
+                and "\x00" not in value and "\n" not in value)
+
+    for page in range(1,MAX_COMMIT_PAGES+1):
+        info = github_get(prefix+"/commits/"+sha+f"?per_page={COMMIT_PAGE_SIZE}&page={page}")
+        if (not isinstance(info,dict) or info.get("sha") != sha
+                or not isinstance(info.get("parents"),list)
+                or len(info["parents"]) != len(expected_parents)
+                or [x.get("sha") for x in info["parents"] if isinstance(x,dict)]
+                != expected_parents):
+            raise GlobalReadinessEvidenceError("GitHub commit changed-file identity mismatch")
+        rows = info.get("files")
+        if (not isinstance(rows,list) or len(rows)>COMMIT_PAGE_SIZE
+                or (page == 1 and not rows)):
+            raise GlobalReadinessEvidenceError("commit file inventory missing or malformed")
+        for row in rows:
+            if not isinstance(row,dict) or row.get("status") not in allowed:
+                raise GlobalReadinessEvidenceError("commit file has unverifiable change status")
+            name, previous = row.get("filename"), row.get("previous_filename")
+            if not safe_path(name) or name in seen:
+                raise GlobalReadinessEvidenceError("commit file inventory has invalid or duplicate path")
+            seen.add(name)
+            if row["status"] in {"renamed","copied"}:
+                if not safe_path(previous):
+                    raise GlobalReadinessEvidenceError("rename missing trusted previous path")
+            elif previous is not None:
+                raise GlobalReadinessEvidenceError("unexpected previous path on commit file")
+            if name.startswith("apps/console/") or (
+                    isinstance(previous,str) and previous.startswith("apps/console/")):
+                console_changed = True
+        if len(rows) < COMMIT_PAGE_SIZE:
+            return {"console_changed": console_changed, "changed_files":len(seen),
+                    "pages_verified":page, "source":"github_exact_sha_first_parent_diff",
+                    "scope":"preview_applicability_only_not_deployment_state"}
+    raise GlobalReadinessEvidenceError("commit file inventory exceeds verified pagination bound")
+
+
+def _same_sha_provider_status(prefix: str,sha: str,github_get,*,console_changed: bool) -> dict:
     payload = github_get(prefix+"/commits/"+sha+"/status")
     if (not isinstance(payload,dict) or payload.get("sha") != sha
             or not isinstance(payload.get("statuses"),list)):
@@ -318,7 +377,9 @@ def _same_sha_provider_status(prefix: str,sha: str,github_get) -> dict:
     if len(matches) > 1:
         raise GlobalReadinessEvidenceError("ambiguous same-SHA Vercel commit status")
     if not matches:
-        return {"status":"not_reported","scope":"provider_status_only"}
+        return {"status":"not_applicable" if not console_changed else "not_reported",
+                "reason_code":"no_console_change_exact_commit" if not console_changed else "provider_status_absent",
+                "deployment_verified":False,"scope":"provider_status_only"}
     status = matches[0].get("state")
     if status not in ("success","pending","error","failure"):
         raise GlobalReadinessEvidenceError("unexpected provider commit status")
@@ -329,10 +390,17 @@ def _same_sha_provider_status(prefix: str,sha: str,github_get) -> dict:
     if (not isinstance(target,str) or len(target) > 250
             or OWNED_VERCEL_STATUS.fullmatch(target) is None):
         raise GlobalReadinessEvidenceError("Vercel status outside owned Console project")
-    return {"status":{"success":"provider_reported_ready","pending":"pending",
-                      "error":"failed","failure":"failed"}[status],
+    # Vercel can emit GitHub status=success even for a CANCELED deployment
+    # whose build was intentionally ignored (verified live for #1107).
+    # Do not translate that provider-only signal into deployed/READY.
+    # For exact commits with no apps/console changes, Preview is N/A.
+    return {"status": ("not_applicable" if not console_changed else {
+                "success":"provider_status_success_unverified",
+                "pending":"pending","error":"failed","failure":"failed"}[status]),
+            "reason_code":"no_console_change_exact_commit" if not console_changed else "provider_status_only",
+            "provider_reported_state":status,"deployment_verified":False,
             "provider":"Vercel","project_identity":"pinned_team_and_project",
-            "scope":"github_commit_status_not_live_health"}
+            "scope":"github_commit_status_not_live_deployment"}
 
 
 def observe_current_product(*, repository: str, sha: str, validation_run_id: int,
@@ -374,6 +442,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
     if not isinstance(commit,dict) or commit.get("sha") != sha or not isinstance(tree_sha,str) or SHA.fullmatch(tree_sha) is None:
         raise GlobalReadinessEvidenceError("immutable Git commit/tree proof missing")
     inventory = _inventory(_paths(github_get(prefix+"/git/trees/"+tree_sha+"?recursive=1"),tree_sha))
+    console_scope = _verified_console_change_scope(prefix,sha,commit,github_get)
     checks = _check_runs(github_get(prefix+"/commits/"+sha+"/check-runs?per_page=100"),sha)
     validated_jobs = _validated_workflow_jobs(
         github_get(prefix+"/actions/runs/"+str(validation_run_id)+"/jobs?per_page=100"),
@@ -384,7 +453,8 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
         live_runs,repo=repository,sha=sha,branch=branch,prefix=prefix,
         github_get=github_get,expected_run_id=visual_trigger_run_id,
     )
-    production = _same_sha_provider_status(prefix,sha,github_get)
+    production = _same_sha_provider_status(prefix,sha,github_get,
+                                           console_changed=console_scope["console_changed"])
     evaluation = _valid_linked_evaluation(project_id=pid,sha=sha,
                                          kind="product_readiness",cp_get=cp_get)
     baseline = (_valid_linked_evaluation(project_id=pid,sha=sha,
@@ -412,8 +482,8 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
     if visual["status"] == "verified":
         next_actions["product_experience"] = "review_full_product_surface_inventory_and_accessibility_gaps"
         next_actions["test_strategy"] = "verify_other_critical_journeys_and_cross_project_regressions"
-    if production["status"] == "provider_reported_ready":
-        next_actions["observability_operations"] = "verify_incidents_recovery_alerting_and_rollback"
+    if production["status"] == "provider_status_success_unverified":
+        next_actions["observability_operations"] = "verify_live_deployment_incidents_recovery_and_rollback"
     work_plan = [{
         "domain": d, "required_coverage": list(REQUIRED_COVERAGE_BY_DOMAIN[d]),
         "next_step": next_actions[d], "work_type":"independent_verification",
@@ -421,7 +491,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
             (["exact_sha_ci"] if d == "test_strategy" else []) +
             (["authenticated_console_browser"] if visual["status"] == "verified"
              and d in ("test_strategy","product_experience") else []) +
-            (["vercel_provider_status"] if production["status"] == "provider_reported_ready"
+            (["vercel_provider_status_unverified"] if production["status"] == "provider_status_success_unverified"
              and d == "observability_operations" else [])
         ),
         "start_authorized": False, "paid_calls_authorized": False,
@@ -450,6 +520,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
         },
         "source_inventory":inventory, "ci_evidence":{**checks,"validation_jobs":validated_jobs},
         "current_sha_operational_evidence":{
+            "console_change_scope":console_scope,
             "ci":{"status":"verified","validated_run_id":validation_run_id,
                   "source":"completed_validate_jobs"},
             "authenticated_console":visual,
