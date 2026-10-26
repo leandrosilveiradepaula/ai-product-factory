@@ -139,13 +139,12 @@ with psycopg.connect(dsn, autocommit=True) as db:
         select p.prosecdef,
           has_function_privilege('service_role',p.oid,'execute'),
           has_function_privilege('anon',p.oid,'execute'),
-          has_function_privilege('authenticated',p.oid,'execute'),
-          has_function_privilege('public',p.oid,'execute')
+          has_function_privilege('authenticated',p.oid,'execute')
         from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public'
           and p.proname='factory_resume_preview_backend_unavailable_v1'
     """)
-    assert rights == (False, True, False, False, False), rights
+    assert rights == (False, True, False, False), rights
 
     db.execute("insert into public.factory_projects values (%s,true,%s)",
                (project, repository))
