@@ -53,7 +53,9 @@ class ConsoleReadabilityContract(unittest.TestCase):
    with self.subTest(selector=selector):
     self.assertRegex(overrides,re.escape(selector)+r"(?=[,{])")
   self.assertIn("min-height:44px",overrides)
-  self.assertNotIn("display:none",overrides)
+  disclosure_hide=".intakeOptional:not([open])>.intakeOptionalBody{display:none}"
+  self.assertIn(disclosure_hide,overrides)
+  self.assertNotIn("display:none",overrides.replace(disclosure_hide,""))
 
 
 class AuthenticatedAccessibilityGateTests(unittest.TestCase):
