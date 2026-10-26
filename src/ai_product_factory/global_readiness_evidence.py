@@ -19,7 +19,8 @@ REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z", re.ASCII)
 MAX_FILES = 100000
 MAX_CHECKS = 100
 MAX_EVALUATIONS = 2
-MAX_COMMIT_FILES = 300  # 300 is ambiguous: GitHub's commit file list may be truncated.
+COMMIT_PAGE_SIZE = 100  # GitHub REST hard max for commit files per page.
+MAX_COMMIT_PAGES = 30  # 3000-file upper bound; full last page is ambiguous.
 # Same Vercel status identity required by scripts/console_visual_origin.mjs.
 # A successful GitHub status for an unrelated tenant is not Factory evidence.
 OWNED_VERCEL_STATUS = re.compile(
@@ -311,52 +312,59 @@ def _authenticated_visual_receipt(runs: list[dict],*,repo: str,sha: str,
 
 def _verified_console_change_scope(prefix: str, sha: str, git_commit: dict,
                                    github_get) -> dict:
-    """Pin Preview applicability to exact main commit's first-parent file diff.
+    """Prove Console file impact using the entire paged first-parent commit diff.
 
-    GitHub's paged commit file inventory may silently stop at 300 entries.
-    Reject that ambiguity rather than inventing a Console N/A receipt. Renames
-    check both old and new paths; merge commits compare with the first parent.
+    GitHub silently caps per_page at 100 even when asked for 300. Each page
+    repeats the immutable commit SHA and parents; verify every page. Never
+    infer Preview N/A from an incomplete page or an exhausted 3000-file cap.
     """
     git_parents = git_commit.get("parents")
     if (not isinstance(git_parents,list) or not 1 <= len(git_parents) <= 8
             or any(not isinstance(x,dict) or not isinstance(x.get("sha"),str)
                    or SHA.fullmatch(x["sha"]) is None for x in git_parents)):
         raise GlobalReadinessEvidenceError("exact commit has invalid parent provenance")
-    info = github_get(prefix+"/commits/"+sha+"?per_page=300")
-    if (not isinstance(info,dict) or info.get("sha") != sha
-            or not isinstance(info.get("parents"),list)
-            or [x.get("sha") for x in info["parents"] if isinstance(x,dict)]
-            != [x["sha"] for x in git_parents]
-            or len(info["parents"]) != len(git_parents)):
-        raise GlobalReadinessEvidenceError("GitHub commit changed-file identity mismatch")
-    files = info.get("files")
-    if not isinstance(files,list) or not 1 <= len(files) < MAX_COMMIT_FILES:
-        raise GlobalReadinessEvidenceError("commit file inventory missing or potentially truncated")
+    expected_parents = [x["sha"] for x in git_parents]
     seen: set[str] = set()
     console_changed = False
     allowed = {"added","modified","removed","renamed","copied","changed"}
+
     def safe_path(value: object) -> bool:
         return (isinstance(value,str) and 0 < len(value) <= 1024
                 and not value.startswith("/") and ".." not in value.split("/")
                 and "\x00" not in value and "\n" not in value)
-    for row in files:
-        if not isinstance(row,dict) or row.get("status") not in allowed:
-            raise GlobalReadinessEvidenceError("commit file has unverifiable change status")
-        name, previous = row.get("filename"), row.get("previous_filename")
-        if not safe_path(name) or name in seen:
-            raise GlobalReadinessEvidenceError("commit file inventory has invalid or duplicate path")
-        seen.add(name)
-        if row["status"] in {"renamed","copied"}:
-            if not safe_path(previous):
-                raise GlobalReadinessEvidenceError("rename missing trusted previous path")
-        elif previous is not None:
-            raise GlobalReadinessEvidenceError("unexpected previous path on commit file")
-        if name.startswith("apps/console/") or (
-                isinstance(previous,str) and previous.startswith("apps/console/")):
-            console_changed = True
-    return {"console_changed": console_changed, "changed_files":len(files),
-            "source":"github_exact_sha_first_parent_diff",
-            "scope":"preview_applicability_only_not_deployment_state"}
+
+    for page in range(1,MAX_COMMIT_PAGES+1):
+        info = github_get(prefix+"/commits/"+sha+f"?per_page={COMMIT_PAGE_SIZE}&page={page}")
+        if (not isinstance(info,dict) or info.get("sha") != sha
+                or not isinstance(info.get("parents"),list)
+                or len(info["parents"]) != len(expected_parents)
+                or [x.get("sha") for x in info["parents"] if isinstance(x,dict)]
+                != expected_parents):
+            raise GlobalReadinessEvidenceError("GitHub commit changed-file identity mismatch")
+        rows = info.get("files")
+        if (not isinstance(rows,list) or len(rows)>COMMIT_PAGE_SIZE
+                or (page == 1 and not rows)):
+            raise GlobalReadinessEvidenceError("commit file inventory missing or malformed")
+        for row in rows:
+            if not isinstance(row,dict) or row.get("status") not in allowed:
+                raise GlobalReadinessEvidenceError("commit file has unverifiable change status")
+            name, previous = row.get("filename"), row.get("previous_filename")
+            if not safe_path(name) or name in seen:
+                raise GlobalReadinessEvidenceError("commit file inventory has invalid or duplicate path")
+            seen.add(name)
+            if row["status"] in {"renamed","copied"}:
+                if not safe_path(previous):
+                    raise GlobalReadinessEvidenceError("rename missing trusted previous path")
+            elif previous is not None:
+                raise GlobalReadinessEvidenceError("unexpected previous path on commit file")
+            if name.startswith("apps/console/") or (
+                    isinstance(previous,str) and previous.startswith("apps/console/")):
+                console_changed = True
+        if len(rows) < COMMIT_PAGE_SIZE:
+            return {"console_changed": console_changed, "changed_files":len(seen),
+                    "pages_verified":page, "source":"github_exact_sha_first_parent_diff",
+                    "scope":"preview_applicability_only_not_deployment_state"}
+    raise GlobalReadinessEvidenceError("commit file inventory exceeds verified pagination bound")
 
 
 def _same_sha_provider_status(prefix: str,sha: str,github_get,*,console_changed: bool) -> dict:

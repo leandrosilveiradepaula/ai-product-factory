@@ -197,7 +197,7 @@ READY deployment.
 
 The observer now reads GitHub's exact commit file delta bound to the same
 SHA and first-parent identity, rejects missing/duplicate/unsafe paths and
-potentially truncated 300-file responses, and checks both sides of renames.
+paginates GitHub's 100-file REST pages through a 30-page fail-closed boundary, and checks both sides of renames.
 On non-Console commits provider status is `not_applicable` (Preview N/A).
 On Console commits GitHub status `success` remains only
 `provider_status_success_unverified`. A relevant `pending` or `failed`

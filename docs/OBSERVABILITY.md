@@ -49,7 +49,7 @@ deployment state. Never use GitHub success as proof that the Console changed,
 was deployed, is available at the SHA, or passed authenticated visual QA.
 
 After the fix, `global-readiness-post-ci` reads the immutable commit's
-first-parent file list (including rename old/new paths), failing closed on
+first-parent file list (including rename old/new paths), checking at most 30 complete 100-file REST pages and failing closed on
 ambiguous inventories. A non-Console commit produces `not_applicable` even
 when the provider reports success or failure. For Console changes, success
 is only `provider_status_success_unverified` and must be corroborated by

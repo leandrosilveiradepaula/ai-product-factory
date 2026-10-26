@@ -78,7 +78,7 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
         },
         "/repos/"+REPO+"/commits/"+S+"/status":{"sha":S,"statuses":[]},
         "/repos/"+REPO+"/git/commits/"+S:{"sha":S,"tree":{"sha":TREE},"parents":[{"sha":"c"*40}]},
-        "/repos/"+REPO+"/commits/"+S+"?per_page=300":{
+        "/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1":{
             "sha":S,"parents":[{"sha":"c"*40}],
             "files":[{"filename":"src/core.py","status":"modified"}],
         },
@@ -362,7 +362,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         gh[uri]["total_count"] += 1
         # This scenario represents an actual Console code change; the default
         # fixture intentionally represents a code-only commit (Preview N/A).
-        gh["/repos/"+REPO+"/commits/"+S+"?per_page=300"]["files"]=[
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"]["files"]=[
             {"filename":"apps/console/src/app/page.tsx","status":"modified"}]
         gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/jobs?per_page=100"]={
             "total_count":1,"jobs":[{"id":33,"run_id":visual,"head_sha":S,
@@ -447,7 +447,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
 
     def test_renaming_out_of_console_still_requires_deployment_verification(self):
         gh,cp,gg,cg=fixture()
-        gh["/repos/"+REPO+"/commits/"+S+"?per_page=300"]["files"]=[
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"]["files"]=[
             {"filename":"src/core.py","previous_filename":"apps/console/src/app/page.tsx","status":"renamed"}]
         gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
             {"context":"Vercel","state":"success","target_url":VERCEL_URL}]
@@ -457,15 +457,81 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],
                          "provider_status_success_unverified")
 
+    def test_pagination_finds_console_change_on_second_page(self):
+        gh,cp,gg,cg=fixture()
+        key="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"
+        gh[key]["files"]=[
+            {"filename":"docs/file-"+str(i)+".md","status":"modified"}
+            for i in range(100)]
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=2"]={
+            "sha":S,"parents":[{"sha":"c"*40}],
+            "files":[{"filename":"apps/console/src/app/page.tsx","status":"modified"}],
+        }
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
+            {"context":"Vercel","state":"success","target_url":VERCEL_URL}]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        scope=report["current_sha_operational_evidence"]["console_change_scope"]
+        self.assertEqual((scope["changed_files"],scope["pages_verified"]),(101,2))
+        self.assertTrue(scope["console_changed"])
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],
+                         "provider_status_success_unverified")
+
+    def test_exact_one_hundred_commit_files_require_empty_second_page(self):
+        gh,cp,gg,cg=fixture()
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"]["files"]=[
+            {"filename":"docs/file-"+str(i)+".md","status":"modified"}
+            for i in range(100)]
+        gh["/repos/"+REPO+"/commits/"+S+"?per_page=100&page=2"]={
+            "sha":S,"parents":[{"sha":"c"*40}],"files":[]}
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        scope=report["current_sha_operational_evidence"]["console_change_scope"]
+        self.assertEqual((scope["changed_files"],scope["pages_verified"]),(100,2))
+        self.assertFalse(scope["console_changed"])
+
+    def test_repeated_or_missing_page_cannot_prove_preview_na(self):
+        for scenario in ("missing page","duplicate across pages","wrong page SHA","wrong page parent"):
+            with self.subTest(scenario=scenario):
+                gh,cp,gg,cg=fixture()
+                first="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"
+                second="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=2"
+                gh[first]["files"]=[
+                    {"filename":"docs/f"+str(i)+".md","status":"modified"}
+                    for i in range(100)]
+                if scenario!="missing page":
+                    gh[second]={"sha":S,"parents":[{"sha":"c"*40}],
+                                "files":[{"filename":"docs/other.md","status":"modified"}]}
+                if scenario=="duplicate across pages":
+                    gh[second]["files"][0]["filename"]="docs/f99.md"
+                if scenario=="wrong page SHA":
+                    gh[second]["sha"]="d"*40
+                if scenario=="wrong page parent":
+                    gh[second]["parents"]=[{"sha":"d"*40}]
+                with self.assertRaises((AssertionError,GlobalReadinessEvidenceError)):
+                    observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                            github_get=gg,cp_get=cg)
+
+    def test_full_thirty_pages_do_not_prove_commit_diff_exhaustion(self):
+        gh,cp,gg,cg=fixture()
+        for page in range(1,31):
+            gh["/repos/"+REPO+"/commits/"+S+f"?per_page=100&page={page}"]={
+                "sha":S,"parents":[{"sha":"c"*40}],
+                "files":[{"filename":f"docs/page-{page}/file-{i}.md","status":"modified"}
+                         for i in range(100)]}
+        with self.assertRaisesRegex(GlobalReadinessEvidenceError,"pagination bound"):
+            observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                    github_get=gg,cp_get=cg)
+
     def test_incomplete_or_mismatched_commit_diff_fails_closed(self):
-        key="/repos/"+REPO+"/commits/"+S+"?per_page=300"
+        key="/repos/"+REPO+"/commits/"+S+"?per_page=100&page=1"
         mutations=(
             ("wrong SHA",lambda gh:gh[key].update(sha="d"*40)),
             ("parent mismatch",lambda gh:gh[key].update(parents=[{"sha":"e"*40}])),
             ("missing files",lambda gh:gh[key].pop("files")),
             ("empty files",lambda gh:gh[key].update(files=[])),
-            ("300 ambiguous files",lambda gh:gh[key].update(
-                files=[{"filename":"docs/f"+str(i),"status":"modified"} for i in range(300)])),
+            ("oversized first page",lambda gh:gh[key].update(
+                files=[{"filename":"docs/f"+str(i),"status":"modified"} for i in range(101)])),
             ("traversal",lambda gh:gh[key]["files"][0].update(filename="../outside")),
             ("duplicate paths",lambda gh:gh[key].update(
                 files=[{"filename":"src/core.py","status":"modified"}]*2)),
