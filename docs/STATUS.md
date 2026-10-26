@@ -1,3 +1,12 @@
+## 26/10/2026 — Decisão de execução: FINALIZAR, NÃO EXPANDIR
+
+**Fonte operacional de encerramento:** [`docs/FINALIZATION_EXECUTION_CONTRACT.md`](FINALIZATION_EXECUTION_CONTRACT.md) — ler antes de qualquer nova issue/PR. Foto confirmada após PR #1117: `main=50c9814cf03aa00799b87619665eaa6df20c3d8f`, [CI pós-merge #40382141869](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40382141869) SUCCESS, [observador #40382212270](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40382212270) SUCCESS somente de auditoria, `product_ready=false`, seis domínios **não atestados**, nenhuma escrita e nenhuma chamada paga do observador. 0 PRs abertas no checkpoint.
+
+**O que aproveitar:** Prova 1 fechada conforme histórico; Prova 2 CRM #197 aprovada em integração não produtiva; cenários da Prova 3 de resiliência exercitados. **Não repetir.** F6 greenfield é o bloqueio de ponta a ponta: Service Desk PR #10 aberta com CI/deployment READY, navegador `503 /api/session`, Vercel sem configuração backend/Auth; run histórico continua sem reativação. RPC de recuperação autorizada instalada; #1117 impede que *novos* 503 ambientais encerrem o run, mas não configura o Preview nem certifica a jornada.
+
+**Escolha de prioridade:** (1) resolver legitimamente Preview do módulo Service Desk/CRM, sem infraestrutura/segredos improvisados; (2) retomar apenas browser E2E e conclusão do F6 no SHA real até gate humano/release/ops; (3) fechar lacunas concretas dos seis domínios, incluindo experiência #692; (4) reconciliar #713/#266 para conclusão formal. Sem novas funcionalidades, projetos sintéticos, PRs repetitivas ou benchmark pago sem justificativa. Dependência externa real bloqueia só sua trilha; trabalho de certificação independente continua. A Factory permanece **em certificação**, não `product_ready`.
+
+---
 ## 26/10/2026 — Preview externo indisponível: continuidade sem replay (candidato)
 
 Após aplicar a migration autorizada `resume_preview_backend_unavailable`

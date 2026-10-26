@@ -1,3 +1,11 @@
+# PRIORIDADE ATUAL — FINALIZAR A FACTORY (decisão do proprietário em 26/10/2026)
+
+**LER ANTES DE QUALQUER NOVA ISSUE, PR OU RUN:** [Contrato de finalização](docs/FINALIZATION_EXECUTION_CONTRACT.md). Esta é a orientação atual de trabalho; notas datadas abaixo representam histórico e NÃO instruem repetir entregas.
+
+Objetivo: concluir a prova greenfield F6 e a certificação independente de seis domínios, reaproveitando Provas 1/2 e cenários da Prova 3 já comprovados. Não ampliar escopo nem criar PR de diagnóstico/abstração/periferia para preencher backlog. Próxima ação deve fechar um critério de aceite real; correção só com defeito comprovado, teste e resultado. Service Desk é módulo do CRM e seu Preview `503 /api/session` é dependência de ambiente, não autorização para copiar segredos, criar infraestrutura paralela ou reviver runs sem preflight. Produção sempre com gate humano, sem auto-merge. O estado atual é `product_ready=false` até evidência durável de SHA exato.
+
+---
+
 ## 26/10/2026 — Evidências atuais e limite de certificação global (candidato)
 
 - A PR #1105 foi mergeada humanamente em `main=112ec58d2043b07426c4c498cd278bb6c888da05`. A migration versionada `20261025214000_repin_terminal_repair_history.sql` foi aplicada com autorização explícita no Supabase Factory; versão registrada `20261025235649`. A função segue `SECURITY INVOKER`: `service_role` pode executar, `anon` e `authenticated` não podem.
