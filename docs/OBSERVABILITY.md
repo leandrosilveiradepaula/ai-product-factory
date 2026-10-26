@@ -36,3 +36,23 @@ Stage timing is forward-looking: the runtime records a `started` event before ea
 For an end-to-end delivery, the reader groups the planning source run with work-unit runs and the release run linked through the durable execution team plan/change set. This lets planned-vs-actual metrics describe one delivery instead of one isolated worker invocation.
 
 Secret values, raw credentials and authorization headers are never metrics.
+
+## Vercel status is not deployed state (26/10/2026)
+
+The exact Github commit `c44f060...` (PR #1107) returned a Vercel GitHub
+commit `success` status, but the owned Vercel deployment
+`dpl_9sXYWPdP5Lbxobt7uiGh8rCqJA8k` was `CANCELED` by the configured
+ignored-build step. The commit had no `apps/console/**` file changes. This
+is a verified Preview-not-applicable case, **not** a READY deployment.
+The global auditor must distinguish GitHub provider status from actual
+deployment state. Never use GitHub success as proof that the Console changed,
+was deployed, is available at the SHA, or passed authenticated visual QA.
+
+After the fix, `global-readiness-post-ci` reads the immutable commit's
+first-parent file list (including rename old/new paths), failing closed on
+ambiguous inventories. A non-Console commit produces `not_applicable` even
+when the provider reports success or failure. For Console changes, success
+is only `provider_status_success_unverified` and must be corroborated by
+independent exact-SHA Preview/deployment and browser evidence. No Vercel token
+is required in the trusted GitHub-only observer. This is evidence reporting
+only; it does not generate a product-readiness assessment or invoke models.

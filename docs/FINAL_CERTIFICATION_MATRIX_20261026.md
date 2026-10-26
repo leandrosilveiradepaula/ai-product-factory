@@ -28,3 +28,15 @@ evaluation or a new workflow/paid test. Source of truth:
   the completed CRM Change Set.
 - Preview for this code-only Factory change is **N/A** by existing
   `apps/console/**` policy; no deployment should be manufactured.
+
+## 26/10/2026 — Audited provider signal versus effective deployment
+
+The official Vercel API returned `CANCELED` (ignored-build-step) for
+`dpl_9sXYWPdP5Lbxobt7uiGh8rCqJA8k` at the #1107 merge SHA,
+while GitHub commit status said `Vercel: success`. The commit contained
+no Console files. This is a proven signal mismatch, not a Console
+deployment failure or a domain PASS. The global observer now requires
+exact first-parent changed paths to label `not_applicable`, and for actual
+Console changes it reports GitHub success only as **unverified provider
+signal**, never verified READY. Independent UX, deployment and operations
+evidence remain pending. Global `product_ready=false`.

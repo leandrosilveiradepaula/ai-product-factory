@@ -184,3 +184,26 @@ The candidate changes no `apps/console/**` file and requests no Vercel
 deployment, credentials, migration, model calls or extra scheduler wake.
 Production merge remains human-gated. Six-domain global `product_ready`
 remains false without a fresh, linked, independently executed assessment.
+
+## 26/10/2026 — Exact commit diff proves Console Preview applicability
+
+After human merge #1107 at `c44f060939e21eb56e410cf137248f652202e02d`,
+the read-only observer passed on Actions #40261727445 with six domains still
+unverified. The Vercel GitHub commit status said `success` but the project-owned
+deployment `dpl_9sXYWPdP5Lbxobt7uiGh8rCqJA8k` was `CANCELED`
+(`ignored-build-step`) because no `apps/console/**` file changed.
+Consequently even a project-owned GitHub `success` status cannot certify a
+READY deployment.
+
+The observer now reads GitHub's exact commit file delta bound to the same
+SHA and first-parent identity, rejects missing/duplicate/unsafe paths and
+potentially truncated 300-file responses, and checks both sides of renames.
+On non-Console commits provider status is `not_applicable` (Preview N/A).
+On Console commits GitHub status `success` remains only
+`provider_status_success_unverified`. A relevant `pending` or `failed`
+status still blocks conflicting old same-SHA readiness; neither `success`
+nor N/A can manufacture the six-domain durable evaluation.
+
+The added check runs strictly in the existing trusted observer with the
+already configured GitHub read identity. No Vercel token/privileged browser,
+new broker identity, paid model or production writes are introduced.
