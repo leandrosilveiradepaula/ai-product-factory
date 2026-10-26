@@ -66,6 +66,8 @@ jobs:
         run: node ../../scripts/test_console_visual_deployment.mjs
       - name: Test complete operational health reader
         run: node ../../scripts/test_console_operational_health.cjs
+      - name: Test real Console status and accessibility semantics
+        run: node ../../scripts/test_console_status_semantics.cjs
       - name: Capture production dependency audit
         shell: bash
         run: |

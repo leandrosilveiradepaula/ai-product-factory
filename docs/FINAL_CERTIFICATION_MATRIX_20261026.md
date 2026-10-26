@@ -40,3 +40,11 @@ exact first-parent changed paths to label `not_applicable`, and for actual
 Console changes it reports GitHub success only as **unverified provider
 signal**, never verified READY. Independent UX, deployment and operations
 evidence remain pending. Global `product_ready=false`.
+
+## 26/10/2026 — Product Experience: false-positive success badge fix (candidate)
+
+StatusPill previously used substring matching, incorrectly reporting green success for inactive, unhealthy and not_ready states. The proposed Console change explicitly enumerates success and failure/uncertain states, prevents caller tone override from masking failures, adds accessible labels for custom captions, and exercises actual transpiled TSX in unprivileged CI. This closes one reproducible UX defect only. It does **not** certify all mobile/a11y/keyboard/loading/error surfaces or establish full-product readiness. An exact-SHA Vercel Preview and browser receipt remain required before human production merge.
+
+## 26/10/2026 — Console dependency critical security update (candidate)
+
+During the first Console CI of the status-semantics candidate, production npm audit blocked `next@15.5.27` with a critical advisory. The Next.js maintainers' [October 14, 2026 security update](https://nextjs.org/blog/nextjs-security-update-october-14-2026) identifies patched Maintenance LTS `next@15.5.28` for two critical RCE issues and a high-severity Server Action DoS. The candidate updates the exact Next dependency and npm-generated lock graph (including @next compilers), retains the live `npm audit` gate without exceptions, and adds an offline version-floor regression. Version metadata came from an unprivileged GitHub Actions `npm install --package-lock-only --ignore-scripts`, not estimated hashes. The temporary metadata-extraction CI step is removed. Only a fully green final CI, typecheck, build and exact-SHA Preview/browser may authorize a future human merge; no production release is automatic.
