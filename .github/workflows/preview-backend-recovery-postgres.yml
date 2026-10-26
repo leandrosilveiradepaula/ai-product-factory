@@ -1,0 +1,50 @@
+name: Preview backend recovery PostgreSQL QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*resume_preview_backend_unavailable.sql"
+      - "scripts/verify_preview_backend_recovery_postgres.py"
+      - "scripts/resume_preview_backend_unavailable.py"
+      - "tests/test_preview_backend_unavailable.py"
+      - ".github/workflows/preview-backend-recovery-postgres.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  preview-backend-recovery-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: factory_ci
+          POSTGRES_DB: factory_preview_backend_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_preview_backend_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Install fixed PG client
+        run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify bounded and secure Preview recovery in isolated PostgreSQL 16
+        env:
+          FACTORY_PREVIEW_BACKEND_TEST_ISOLATED: "true"
+          FACTORY_PREVIEW_BACKEND_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_preview_backend_test"
+        run: python scripts/verify_preview_backend_recovery_postgres.py
+      - name: Verify credentialless preflight and negative contracts
+        env:
+          PYTHONPATH: src
+        run: python -m unittest tests.test_preview_backend_unavailable -v
