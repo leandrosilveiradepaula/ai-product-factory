@@ -75,3 +75,7 @@ e não devem desativar controles de aprovação existentes.
 
 **Estado:** documento de mudança proposta; implementação, CI e Preview precisam
 ser verificados na respectiva PR. Não publicado até merge humano.
+
+## 26/10/2026 — Status operacionais sem falso verde
+
+O componente compartilhado StatusPill passa a usar uma lista explícita de estados de sucesso: um status desconhecido ou contraditório não pode ficar verde por conter as palavras ready, healthy ou active. Casos de regressão incluem inactive, unhealthy, not_ready, not_verified, unverified, provider_status_success_unverified, erro de CI, ausência de avaliação e Preview N/A. Estados de Preview prontos para revisão são distinguidos da aprovação final. Um estilo forçado como tone=success não pode sobrepor falhas e incerteza, e uma legenda customizada preserva o nome semântico do estado para tecnologia assistiva. Testes executam o TSX verdadeiro, sem mock da lógica, em Console validation. **Isso melhora a apresentação; não comprova, por si só, auditoria UX/a11y completa ou produto pronto.** Preview e browser vinculados ao SHA continuam gates de publicação.

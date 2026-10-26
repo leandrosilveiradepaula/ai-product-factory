@@ -40,3 +40,7 @@ exact first-parent changed paths to label `not_applicable`, and for actual
 Console changes it reports GitHub success only as **unverified provider
 signal**, never verified READY. Independent UX, deployment and operations
 evidence remain pending. Global `product_ready=false`.
+
+## 26/10/2026 — Product Experience: false-positive success badge fix (candidate)
+
+StatusPill previously used substring matching, incorrectly reporting green success for inactive, unhealthy and not_ready states. The proposed Console change explicitly enumerates success and failure/uncertain states, prevents caller tone override from masking failures, adds accessible labels for custom captions, and exercises actual transpiled TSX in unprivileged CI. This closes one reproducible UX defect only. It does **not** certify all mobile/a11y/keyboard/loading/error surfaces or establish full-product readiness. An exact-SHA Vercel Preview and browser receipt remain required before human production merge.
