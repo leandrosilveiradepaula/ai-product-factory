@@ -1,3 +1,31 @@
+## 26/10/2026 — Preview externo indisponível: continuidade sem replay (candidato)
+
+Após aplicar a migration autorizada `resume_preview_backend_unavailable`
+(versão Supabase `20261026175603`, `SECURITY INVOKER`,
+`service_role=true`, `anon/authenticated=false`) e confirmar o merge
+humano da PR #1116 (`main=ae7636f9b8e8751d242046b9f66ad7b9a693f0e8`,
+CI pós-merge SUCCESS), a Factory continua com a **Prova greenfield
+bloqueada**: Service Desk PR #10 ainda está aberta no SHA
+`17edf217dceb0b75bf944e8e1737a0ba92bfb2fc` e o projeto Vercel
+Service Desk tem **zero variáveis de backend/Auth**. Vercel READY não
+equivale a um `browser_e2e` que passou.
+
+**Novo candidato:** a primeira falha real de `HTTP 503 /api/session` durante
+browser E2E é registrada como falha de navegador e dependência externa, sem
+marcar a implementação permanentemente `failed`. Antes da próxima tentativa,
+a Factory valida a última evidência, o SHA/URL do deployment e faz um GET JSON
+sem credenciais nem redirects. Se continuar indisponível, o scheduler não
+prepara navegador nem reexecuta Product Stage; caso a sessão fique
+disponível, repete **somente** o navegador e mantém merge de produção humano.
+Erros comuns de código/E2E continuam falhando fechados. O run histórico
+já terminal não é reativado por este código; só a RPC aprovada, depois da
+configuração real do Preview, pode recuperá-lo.
+
+Sem mudanças em `apps/console/**`, migrations, chaves, custos, modelos,
+deployments ou Service Desk. Console Preview N/A por política.
+CI exata e merge humano da nova PR ainda necessários. A matriz global
+permanece com `product_ready=false`, seis domínios sem certificação final.
+
 
 ## 26/10/2026 — Falha real de acessibilidade na captura pós-#1113
 
