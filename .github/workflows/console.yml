@@ -62,6 +62,32 @@ jobs:
         with:
           python-version: "3.12"
       - run: npm ci
+      - name: Resolve Next.js 15.5.28 patch lock metadata (one-time, intentionally red)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --save-exact next@15.5.28
+          node - <<'NODE'
+          const fs=require("node:fs");
+          const cp=require("node:child_process");
+          const prev=JSON.parse(cp.execFileSync("git",["show","HEAD:apps/console/package-lock.json"],{encoding:"utf8"}));
+          const next=JSON.parse(fs.readFileSync("package-lock.json","utf8"));
+          const changes={};
+          const keys=new Set([...Object.keys(prev.packages),...Object.keys(next.packages)]);
+          for(const key of keys){
+            if(JSON.stringify(prev.packages[key])!==JSON.stringify(next.packages[key])){
+              changes[key]=next.packages[key]??null;
+            }
+          }
+          const result={
+            packageNext:JSON.parse(fs.readFileSync("package.json","utf8")).dependencies.next,
+            rootNext:next.packages[""].dependencies.next,
+            entries:changes
+          };
+          console.log("LOCKFILE_CHANGESET="+JSON.stringify(result));
+          NODE
+          echo "::error::One-time metadata extraction is not approval; commit the real lockfile and re-run CI."
+          exit 1
       - name: Test exact Console visual target and deployment identity guards
         run: node ../../scripts/test_console_visual_deployment.mjs
       - name: Test complete operational health reader
