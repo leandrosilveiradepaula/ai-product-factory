@@ -47,8 +47,15 @@ def preview_origin(value: object) -> str:
     return "https://" + hostname
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Reject redirects *before* urllib contacts an untrusted Location target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def probe_session(url: str) -> dict:
-    """No auth/cookies, no body captured. Reject redirects and non-JSON responses."""
+    """Credentialless JSON readiness check; never follow an HTTP redirect."""
     origin = preview_origin(url)
     request = urllib.request.Request(
         origin + "/api/session",
@@ -57,7 +64,7 @@ def probe_session(url: str) -> dict:
     )
     try:
         try:
-            with urllib.request.urlopen(request, timeout=12) as response:
+            with urllib.request.build_opener(_NoRedirect).open(request, timeout=12) as response:
                 status = response.status
                 content_type = response.headers.get("Content-Type", "").lower().strip()
                 returned_url = response.geturl()
@@ -68,7 +75,7 @@ def probe_session(url: str) -> dict:
             exc.close()
     except (OSError, urllib.error.URLError, TimeoutError) as exc:
         raise PreviewEnvironmentNotReady("preview_session_unreachable") from exc
-    if returned_url != origin + "/api/session":
+    if returned_url != origin + "/api/session" or 300 <= status < 400:
         raise PreviewEnvironmentNotReady("preview_session_redirected")
     if status not in (200, 401) or not re.fullmatch(r"application/json(?:;.*)?", content_type):
         raise PreviewEnvironmentNotReady("preview_backend_still_unverified")
