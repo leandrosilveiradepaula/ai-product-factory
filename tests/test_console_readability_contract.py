@@ -51,4 +51,21 @@ class ConsoleReadabilityContract(unittest.TestCase):
   self.assertIn("min-height:44px",overrides)
   self.assertNotIn("display:none",overrides)
 
+
+class AuthenticatedAccessibilityGateTests(unittest.TestCase):
+ def test_protected_live_capture_checks_all_routes_and_real_keyboard(self):
+  capture=(ROOT/"scripts/capture_authenticated_console.mjs").read_text()
+  self.assertIn("collectAccessibilitySnapshot",capture)
+  self.assertIn("verifyAccessibilitySnapshot(metrics,route.name)",capture)
+  self.assertIn('await page.keyboard.press("Tab")',capture)
+  self.assertIn('await page.keyboard.press("Enter")',capture)
+  self.assertIn("keyboard_skip_not_first",capture)
+  self.assertIn("landedOnMain:true",capture)
+  self.assertIn("accessibilityRoutes",capture)
+
+ def test_console_ci_runs_accessibility_regressions(self):
+  workflow=(ROOT/".github/workflows/console.yml").read_text()
+  self.assertIn("node --check ../../scripts/capture_authenticated_console.mjs",workflow)
+  self.assertIn("node ../../scripts/test_console_accessibility_contract.mjs",workflow)
+
 if __name__=="__main__":unittest.main()

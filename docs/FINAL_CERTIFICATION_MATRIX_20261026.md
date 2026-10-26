@@ -65,3 +65,16 @@ authenticated workflow run is needed after the human merge of the fix.
 ## 26/10/2026 — UX controlled migration feedback and audit integrity
 
 Protected browser #40330808460 independently passed the exercised navigation/mobile/operator RBAC of the live Console; it did not perform the gate migration interaction. The Console candidate now correlates new migration-success audit records to the exact gate_id and independently verifies run, commit, name and exact SQL source integrity before success banners. Offline tests exercise the real compiled TSX and server reader with delayed completion, invalid audit, network failure and URL tampering. This narrows #692, but no production migration E2E or six-domain global product_ready assertion is claimed.
+
+## 26/10/2026 — Authenticated accessibility evidence extension (candidate)
+
+Protected production run #40336494210 verified Console navigation,
+mobile/RBAC, artifact encryption and temporary-operator cleanup on the
+published #1112 SHA. It did not verify every page's control naming and
+keyboard focus sequence. A candidate extends the existing 14-page visual
+capture to fail closed on unlabelled visible controls, missing image alt,
+invalid landmarks/headings, duplicate IDs, positive tab-order overrides and
+skip-link inaccessibility with real Tab/Enter. Numeric-only evidence is
+unit-validated in unprivileged CI. This is actual browser-executable
+verification after a separately authorized protected workflow dispatch;
+it is not a new domain PASS or a whole-product readiness attestation.
