@@ -61,7 +61,8 @@ export function IntakeForm({initial}:{initial?:IntakeFormInitial}){
     <div className="intakeAttachments">
      <strong>Anexos</strong>
      {initial?.attachmentCount?<span className="muted">{initial.attachmentCount} arquivo(s) já preservado(s) neste rascunho.</span>:null}
-     <input name="attachments" type="file" multiple accept=".pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp"/>
+     <label htmlFor="intake-attachments">Selecionar arquivos para anexar</label>
+     <input id="intake-attachments" name="attachments" type="file" multiple accept=".pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp"/>
      <span className="muted">Até 10 arquivos, 10 MB cada. PDF, Office, texto, CSV/JSON e imagens. Upload privado pelo servidor.</span>
      {state.errors.attachments?<small role="alert">{state.errors.attachments}</small>:null}
     </div>
