@@ -79,3 +79,16 @@ ser verificados na respectiva PR. Não publicado até merge humano.
 ## 26/10/2026 — Status operacionais sem falso verde
 
 O componente compartilhado StatusPill passa a usar uma lista explícita de estados de sucesso: um status desconhecido ou contraditório não pode ficar verde por conter as palavras ready, healthy ou active. Casos de regressão incluem inactive, unhealthy, not_ready, not_verified, unverified, provider_status_success_unverified, erro de CI, ausência de avaliação e Preview N/A. Estados de Preview prontos para revisão são distinguidos da aprovação final. Um estilo forçado como tone=success não pode sobrepor falhas e incerteza, e uma legenda customizada preserva o nome semântico do estado para tecnologia assistiva. Testes executam o TSX verdadeiro, sem mock da lógica, em Console validation. **Isso melhora a apresentação; não comprova, por si só, auditoria UX/a11y completa ou produto pronto.** Preview e browser vinculados ao SHA continuam gates de publicação.
+
+## 26/10/2026 — Authentic browser gate after #1109
+
+The reviewed Console code was published in production from merge #1109,
+with green Console CI and exact-sha Vercel READY. The automatic protected
+browser audit run #40327176953 timed out while installing browser OS
+packages on an updated Ubuntu 26.04 hosted runner. No screenshot or account
+was produced, so authenticated mobile/a11y/gates remain unverified on this
+SHA. Fix runner determinism on Ubuntu 24.04 (previous run #39467414056 passed)
+and verify actual browser boot before allowing temporary operator provisioning.
+Do not fabricate a passing browser E2E, trigger visual workflow through
+workflow-only changes, or dismiss the unresolved #692 gated migration UI
+transition without a safe test.
