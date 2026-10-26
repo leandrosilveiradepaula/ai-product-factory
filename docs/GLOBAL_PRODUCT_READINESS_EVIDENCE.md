@@ -156,3 +156,31 @@ O runner global pode observar muitos `issue_comment`, `schedule`, `workflow_run`
 A selecao agora usa `head_sha=<sha>&event=push&per_page=100` e rejeita entradas que nao sejam push, nao tenham SHA exato/repo/ID, estejam incompletas ou excedam 100 verdadeiros push runs. O `validate.yml` e verificado pelo path do workflow e o run individual, e nao so pelo nome. O fluxo visual independente continua exigindo seus proprios checks, browser evidence, SHA e proveniencia. Nao altera jobs, gatilhos, billing, RLS nem grants. Testes cobrem 302 `issue_comment`, spoof, dados parciais e overflow real.
 
 A correcao nao certifica automaticamente os seis dominios do produto. O observer no merge #1020 (SHA `de754d14063a38e11060ffbc6ca5dee80c140069`) continuava reportando `product_ready=false`. As migrations `20261021014000` e `20261021021000` permanecem pendentes de autorizacao especifica de producao.
+
+## 26/10/2026 — Trust boundary of Vercel provider evidence
+
+The global observer can read GitHub commit statuses from the same Factory SHA.
+But a status with context `Vercel` is not proof of the owned deployment: an
+unrelated Vercel project can report a successful status or a matching health
+payload. A successful provider status is now accepted as an **observed,
+provider-only** operational signal only when its HTTPS `target_url` matches
+the exact tenant/project path
+`vercel.com/leandros-projects-102e32ab/ai-product-factory-console/<deployment-id>`
+with an ASCII 20–40 character alphanumeric deployment ID. Other teams,
+projects, origins, ports, credentials, fragments, queries and malformed paths
+fail closed. The policy is the Python counterpart to
+`scripts/console_visual_origin.mjs`; the offline regression checks their
+shared constants and negative spoofed statuses.
+
+An independently recorded product readiness pass is also downgraded to
+`not_ready` while that same-SHA owned Vercel status is `pending` or failed.
+Missing Vercel status remains explicitly `not_reported` (Preview can be N/A
+for non-Console changes); this never creates a passing domain assessment.
+Neither a provider status nor an encrypted browser artifact verifies all UX,
+security, functional or operational requirements.
+
+Regression: `python -m unittest tests.test_global_readiness_evidence -v`.
+The candidate changes no `apps/console/**` file and requests no Vercel
+deployment, credentials, migration, model calls or extra scheduler wake.
+Production merge remains human-gated. Six-domain global `product_ready`
+remains false without a fresh, linked, independently executed assessment.

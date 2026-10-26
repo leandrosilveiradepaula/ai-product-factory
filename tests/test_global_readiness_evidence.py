@@ -25,6 +25,7 @@ S="a"*40
 TREE="b"*40
 REPO="example/factory"
 RUN=141
+VERCEL_URL = "https://vercel.com/leandros-projects-102e32ab/ai-product-factory-console/AbC1234567890defGHJkL"
 
 
 def complete_eval():
@@ -365,7 +366,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
                           "workflow_run":{"id":visual,"head_sha":S,"head_branch":"main"}}] if with_artifact else [],
         }
         gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"]=[
-            {"context":"Vercel","state":"success"}]
+            {"context":"Vercel","state":"success","target_url":VERCEL_URL}]
         return gh,cp,gg,cg,visual
 
     def test_completed_visual_and_deployment_are_executed_signals_not_full_readiness(self):
@@ -379,6 +380,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         self.assertEqual(evidence["authenticated_console"]["workflow_run_id"],visual)
         self.assertEqual(evidence["authenticated_console"]["artifact_id"],1212)
         self.assertEqual(evidence["production_deployment"]["status"],"provider_reported_ready")
+        self.assertEqual(evidence["production_deployment"]["project_identity"],"pinned_team_and_project")
         self.assertFalse(report["global_readiness"]["product_ready"])
         self.assertEqual(report["global_readiness"]["missing_or_unverified_domains"],list(REQUIRED_DOMAINS))
         experience=next(x for x in report["work_proposals"] if x["domain"]=="product_experience")
@@ -406,6 +408,50 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         self.assertEqual(report["current_sha_operational_evidence"]["authenticated_console"]["status"],"failed")
         self.assertFalse(report["global_readiness"]["product_ready"])
         self.assertEqual(len(report["work_proposals"]),6)
+
+    def test_pending_deployment_downgrades_durable_readiness(self):
+        gh,cp,gg,cg,visual=self.visual()
+        gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"][0]["state"]="pending"
+        cp["factory_evaluations.product_readiness"]=[complete_eval()]
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=cg)
+        self.assertEqual(report["current_sha_operational_evidence"]["production_deployment"]["status"],"pending")
+        self.assertFalse(report["global_readiness"]["product_ready"])
+        self.assertEqual(report["global_readiness"]["status"],"not_ready")
+
+    def test_unowned_vercel_context_never_becomes_operational_evidence(self):
+        cases=(
+            ("other team",VERCEL_URL.replace("leandros-projects-102e32ab","attacker-team")),
+            ("other project",VERCEL_URL.replace("ai-product-factory-console","other-app")),
+            ("lookalike hostname",VERCEL_URL.replace("vercel.com","vercel.com.evil.test")),
+            ("untrusted endpoint","https://other-app.vercel.app/api/health"),
+            ("http",VERCEL_URL.replace("https:","http:")),
+            ("port",VERCEL_URL.replace("vercel.com","vercel.com:443")),
+            ("username",VERCEL_URL.replace("https://","https://user@")),
+            ("query",VERCEL_URL+"?secret=fake"),
+            ("fragment",VERCEL_URL+"#browser"),
+            ("trailing slash",VERCEL_URL+"/"),
+            ("wrong deployment id","https://vercel.com/leandros-projects-102e32ab/ai-product-factory-console/short"),
+        )
+        for label,url in cases:
+            with self.subTest(label=label):
+                gh,cp,gg,cg,visual=self.visual()
+                gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"][0]["target_url"]=url
+                cp["factory_evaluations.product_readiness"]=[complete_eval()]
+                with self.assertRaisesRegex(GlobalReadinessEvidenceError,"outside owned Console project"):
+                    observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                            github_get=gg,cp_get=cg)
+        gh,cp,gg,cg,visual=self.visual()
+        del gh["/repos/"+REPO+"/commits/"+S+"/status"]["statuses"][0]["target_url"]
+        with self.assertRaises(GlobalReadinessEvidenceError):
+            observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                    github_get=gg,cp_get=cg)
+
+    def test_vercel_project_identity_matches_authenticated_browser_guard(self):
+        guard=(Path(__file__).resolve().parents[1]/"scripts/console_visual_origin.mjs").read_text()
+        self.assertIn('CONSOLE_PROJECT="ai-product-factory-console"',guard)
+        self.assertIn('CONSOLE_TEAM="leandros-projects-102e32ab"',guard)
+        self.assertIn("const DEPLOYMENT_ID=/^[A-Za-z0-9]{20,40}$/",guard)
 
     def test_provider_failure_overrides_old_global_pass_on_same_sha(self):
         gh,cp,gg,cg,visual=self.visual()
