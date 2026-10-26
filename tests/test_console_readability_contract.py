@@ -65,6 +65,7 @@ class AuthenticatedAccessibilityGateTests(unittest.TestCase):
 
  def test_console_ci_runs_accessibility_regressions(self):
   workflow=(ROOT/".github/workflows/console.yml").read_text()
+  self.assertIn("node --check ../../scripts/capture_authenticated_console.mjs",workflow)
   self.assertIn("node ../../scripts/test_console_accessibility_contract.mjs",workflow)
 
 if __name__=="__main__":unittest.main()
