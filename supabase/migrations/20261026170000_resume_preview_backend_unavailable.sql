@@ -137,7 +137,7 @@ begin
     or p_environment_probe->>'candidate_commit' is distinct from p_candidate_commit
     or p_environment_probe->>'url' is distinct from v_url || '/api/session'
     or coalesce(p_environment_probe->>'http_status','') not in ('200','401')
-    or coalesce(p_environment_probe->>'content_type','') !~ '^application/json(;.*)?
+     or coalesce(p_environment_probe->>'content_type','') !~ '^application/json(;.*)?$'
     or coalesce(p_environment_probe->>'checked_at','') !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'
  then
   raise exception 'fresh non-mutating JSON session preflight required' using errcode='PT400';
