@@ -91,7 +91,7 @@ const statusLabels:Record<string,string>={
   provider_reported_ready:"informação do provedor sem verificação",
   provider_status_success_unverified:"sucesso do provedor não verificado",
   budget_exhausted:"orçamento esgotado",credit_balance_exhausted:"créditos esgotados",
-  ci_failed:"CI reprovada",stalled_ci:"CI sem progresso",unknown_cost:"custo desconhecido",
+  stalled_ci:"CI sem progresso",unknown_cost:"custo desconhecido",
   expired_lease:"lease vencida",degraded:"degradado",unavailable:"indisponível",
   paused:"pausado",stopped:"parado",disabled:"desabilitado",skipped:"ignorado",
   integrated:"integrado",review_ready:"revisão pendente"
