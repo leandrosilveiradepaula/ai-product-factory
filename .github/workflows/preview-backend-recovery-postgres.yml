@@ -8,6 +8,12 @@ on:
       - "scripts/verify_preview_backend_recovery_postgres.py"
       - "scripts/resume_preview_backend_unavailable.py"
       - "tests/test_preview_backend_unavailable.py"
+      - "tests/test_preview_backend_wait.py"
+      - "tests/test_preview_flow.py"
+      - "src/ai_product_factory/preview_session_probe.py"
+      - "src/ai_product_factory/preview_backend_wait.py"
+      - "src/ai_product_factory/preview_flow.py"
+      - "src/ai_product_factory/runtime_cli.py"
       - ".github/workflows/preview-backend-recovery-postgres.yml"
 
 permissions:
@@ -47,4 +53,4 @@ jobs:
       - name: Verify credentialless preflight and negative contracts
         env:
           PYTHONPATH: src
-        run: python -m unittest tests.test_preview_backend_unavailable -v
+        run: python -m unittest tests.test_preview_backend_unavailable tests.test_preview_backend_wait tests.test_preview_flow -v

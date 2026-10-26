@@ -16,6 +16,43 @@ The new PostgreSQL `factory_resume_preview_backend_unavailable_v1` RPC (service-
 
 The existing Preview lane must then run a **new** authenticated/sandboxed browser check. If the backend is still broken, it must fail closed again. Production release always requires a new verified Preview, exact quality gates and **human merge**. There is no new model call, Product Stage replay, new branch, PR, deploy, user, or auto-merge in this recovery.
 
+## Autonomous waiting for new backend-503 incidents (candidate hardening)
+
+The Factory's existing Preview lane previously turned every Playwright failure,
+including a real `http_503: fetch /api/session`, into terminal
+`factory_runs.status=failed` and `factory_tasks.status=failed`. That is
+appropriate for genuine code/E2E failures, but made a missing *external*
+Preview backend configuration require privileged manual recovery every time.
+
+The new fail-closed path applies **only** when the actual browser returned
+`status=failure` with the specific session 503 marker on the exact successful
+Preview URL. It records the original `browser_e2e=failure` and an audit event,
+but leaves the delivery `preview_ready` rather than reporting a successful
+browser. The next scheduler probe verifies the *latest* failed browser
+evaluation is bound to an existing successful deployment for the **same
+run, candidate SHA and URL**. If the backend still refuses a credentialless
+JSON session GET, it returns `waiting_external_backend`, with
+`claimed=false`, so Actions does not install Playwright or rerun Product
+Stage. On HTTP 200/401 JSON the normal **new** E2E executes, with full
+SHA/epoch/base/PR and human-release gates still required.
+
+- No redirect, cookie, bearer credential or body is transmitted/recorded by
+  the environmental probe. It never sets a PASS status or authorizes release.
+- Other browser errors (including generic HTTP 503 from other routes) retain
+  the existing terminal-failure policy and do not become infinite retries.
+- A forged, stale, cross-SHA or unbound prior browser evaluation **blocks** the
+  preflight before it makes the external network request.
+- Existing **historical failed runs remain failed**. In particular the
+  original Service Desk run `52998a8f-b478-46b3-9529-08bea72034f3`
+  still requires the independently authorized, already installed recovery
+  RPC after legitimate environment remediation. No Product Stage replay.
+- This capability itself cannot resolve the missing Service Desk Preview
+  configuration; do not copy CRM credentials or assume its separate Vercel
+  deployment represents the future Service Desk module within CRM.
+
+Global certification remains `product_ready=false` until independent E2E
+evidence completes the six domains.
+
 ## Activation (human gates, not part of this PR)
 
 1. Merge the Factory PR **humanly** only after `validate`, `factory-acceptance` and `preview-backend-recovery-postgres` are green on the exact final SHA. No change under `apps/console/**`: Factory Console Preview is **N/A** by path policy.
