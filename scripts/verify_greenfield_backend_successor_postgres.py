@@ -29,9 +29,21 @@ url_new="https://new-service-desk-preview.vercel.app"
 pr=10
 
 schema="""
-create role service_role nologin;
-create role anon nologin;
-create role authenticated nologin;
+-- Roles are cluster-scoped; the earlier isolated QA script may have created
+-- them in a separate disposable database on this same temporary PG service.
+do $roles$
+begin
+  if not exists (select 1 from pg_roles where rolname='service_role') then
+    create role service_role nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname='anon') then
+    create role anon nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated') then
+    create role authenticated nologin;
+  end if;
+end;
+$roles$;
 create table public.factory_projects (
  id uuid primary key, project_kind text, is_active boolean,repository text,manifest jsonb);
 create table public.factory_tasks (id uuid primary key, project_id uuid,status text,updated_at timestamptz);
