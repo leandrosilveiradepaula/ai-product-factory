@@ -77,3 +77,35 @@ evidence completes the six domains.
 - No credentials, production migration, real deploy, paid API or Service Desk mutation are used by those tests.
 
 This is a **recovery capability**, not completion of greenfield certification. Six independent global domains remain subject to separate current-SHA evidence.
+
+
+## 27/10/2026 — F6: candidato sucessor após hardening auditado (gate independente)
+
+Esta seção cobre um caso comprovado que o recuperador original **não pode** aceitar: a PR Service Desk #11 foi mergeada **somente** na branch de desenvolvimento `factory/change-set-60dd6b73` da PR #10, gerando SHA `2970729b838173c3244104b8c49968ca4212370b`. A run histórica `52998a8f-b478-46b3-9529-08bea72034f3` e Change Set `60dd6b73-3e98-4da0-bc36-4be6d7562f45` continuam vinculados a `17edf217dceb0b75bf944e8e1737a0ba92bfb2fc`. A CI native `Service Desk verification` #40420003503 e o deployment Vercel `dpl_CuYdAFK73HVwJKMzRJe9Uc1HXVQi` passaram para o SHA novo, mas `GET /api/session` ainda devolveu `503 backend_unavailable`. **Não usar** `factory_resume_preview_backend_unavailable_v1` com uma PR cujo HEAD não corresponde à run, e não usar repin de projeto `existing` para F6 `greenfield`.
+
+### Mecanismo preparado, inerte
+
+- `factory_recover_greenfield_backend_successor_v1` é nova RPC `SECURITY INVOKER`, `service_role`-only. A migration é **arquivo candidato**, não foi aplicada. Ela exige uma run e task `failed` por 503 ambiental real, Change Set `ci_pending`, ausência de leases, projeto greenfield ativo com Preview obrigatório, geração inalterada, PR `open`/non-draft, SHA descendente exato com CI nativa verde e status Vercel correspondente, origem de create_pr e reconciliação anterior auditadas.
+- **Antes de qualquer mudança no Control Plane**, a nova URL da Vercel precisa responder `200` ou `401` em `/api/session` com `application/json`, sem redirecionamentos nem cookies, carimbada com menos de dez minutos. `503` **bloqueia sem escrita**. O preflight consulta Github e Control Plane em modo read-only, usando credencial cross-repo legítima.
+- A transação revisa a identidade e promove apenas `failed → ci_pending` da run e `failed → integrated` da task, repinando o Change Set e anexando um **novo recibo de reconciliação**, em vez de reescrever o original. Insere `browser_e2e=pending` com `browser_verified=false`; preserva a falha e os recibos da run anterior. Exige **novas** evidências CI, quality gate, especialistas e browser no SHA atual. Nenhuma evidência do SHA anterior pode satisfazer um gate novo.
+- `candidate_pr_receipt.py`, `ci_followup_queue.py` e Preview validam uma cadeia **limitada a oito hops** `original create_pr → reconciliações contíguas → candidato atual`, recusando ciclos, lacunas e drift de projeto/PR. Nenhum caminho autoriza auto-merge.
+- O arquivo é exercitado no PostgreSQL 16 **descartável** pelo workflow `preview-backend-recovery-postgres`, além de testes Python adversariais. Não executar esses testes no Supabase gerenciado.
+
+### Gates reais para ativação
+
+1. Configurar exclusivamente em Vercel Preview da branch exata `factory/change-set-60dd6b73` a `SERVICE_DESK_SUPABASE_SECRET_KEY` **do projeto QA** `jbswryivihaxcrhnzkpl`, sem enviar ou copiar a chave para ChatGPT, GitHub, Actions ou produção. As três outras variáveis já foram verificadas. Usar duas contas de teste criadas legitimamente no Supabase Auth e vinculadas aos tenants QA `f6-qa-tenant-a/b` (não injetar em `auth.users`).
+2. Garantir Vercel Preview READY na HEAD PR #10 e obter a URL exata desse deployment. Revalidar `/api/session` com resposta JSON 200/401; **isso ainda não é browser PASS**.
+3. Fazer o **merge humano da PR da Factory** que introduz o recuperador (porque Factory `main` publica produção). **Gate humano separado** para aplicar a migration do Control Plane, sem criar RLS pública. Não assumir que merge aprova automaticamente migration.
+4. Em ambiente operador confiável com `FACTORY_GITHUB_TOKEN` autorizado para Service Desk e `SUPABASE_SECRET_KEY` do Control Plane (não a chave QA do Service Desk), executar apenas preflight, informando a URL Vercel do candidato atual:
+
+   ```bash
+   PYTHONPATH=src python scripts/resume_greenfield_backend_successor.py \
+     --project-key infodive-service-desk \
+     --run-id 52998a8f-b478-46b3-9529-08bea72034f3 \
+     --preview-url https://SEU-DEPLOYMENT-EXATO.vercel.app
+   ```
+
+5. **Somente** se preflight e ambiente autorizado estiverem íntegros, executar o mesmo comando com `--execute --ack-environment-authorized`. Confirmar recibo `ci_pending`, as avaliações antigas intactas e a pendência de CI/quality/especialistas/browser no novo SHA. A Factory retoma a pipeline determinística a partir daí, sem Product Stage nem chamadas pagas.
+6. Exigir browser E2E real com GoTrue, refresh/logout, tenant A/B e RLS, gates e commit exatos até `awaiting_release`. Merge na `main` do Service Desk/CRM só por humano, e release observer apenas registra release realizado.
+
+**Sem confusão de credenciais:** Supabase QA `jbswryivihaxcrhnzkpl` é uma instância separada. O Control Plane da Factory `fjplmxfcshhbmzgvyqlm` usa sua própria conexão server-side. Não transferir chaves entre eles. Nenhum status `product_ready` deve ser alterado como parte dessa recuperação.
