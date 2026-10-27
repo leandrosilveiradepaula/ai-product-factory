@@ -17,11 +17,15 @@ def validate_create_pr_candidate(*, read, run_id: str, pr_number: int,
                                  original_head: str, candidate_commit: str,
                                  run_metadata: dict) -> None:
     if (type(pr_number) is not int or pr_number < 1
-        or not isinstance(original_head, str) or not _SHA.fullmatch(original_head)
-        or not isinstance(candidate_commit, str) or not _SHA.fullmatch(candidate_commit)):
+        or not isinstance(original_head, str) or not original_head
+        or not isinstance(candidate_commit, str) or not candidate_commit):
         raise RuntimeError("durable PR evidence missing identity")
+    # Legacy same-SHA queues already verify their SHA before any effectful
+    # worker call; no reconciliation lookup or mutation is needed here.
     if original_head == candidate_commit:
         return
+    if not _SHA.fullmatch(original_head) or not _SHA.fullmatch(candidate_commit):
+        raise RuntimeError("audited candidate reconciliation receipt requires canonical SHA")
     change_set_id = run_metadata.get("change_set_id") if isinstance(run_metadata, dict) else None
     if (not isinstance(run_metadata, dict) or run_metadata.get("source") != "change-set"
         or not isinstance(change_set_id, str) or not change_set_id.strip()):
