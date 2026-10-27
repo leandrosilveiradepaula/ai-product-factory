@@ -215,6 +215,24 @@ with psycopg.connect(dsn,autocommit=True) as db:
     flip_then_block("update public.factory_deployments set status='failed'",
                     "update public.factory_deployments set status='success'")
 
+    # Historical receipts are immutable provenance: latest-hop validity alone
+    # must not accept a broken original-to-candidate chain.
+    db.execute("""update public.factory_tool_usage set metadata =
+      jsonb_set(metadata,'{old_sha}',to_jsonb(%s::text),true)
+      where operation='reconcile_pr_candidate'""",("d"*40,))
+    blocked(db)
+    db.execute("""update public.factory_tool_usage set metadata =
+      jsonb_set(metadata,'{old_sha}',to_jsonb(%s::text),true)
+      where operation='reconcile_pr_candidate'""",(origin,))
+    db.execute("""update public.factory_tool_usage set metadata =
+      jsonb_set(metadata,'{head_sha}',to_jsonb(%s::text),true)
+      where operation='create_pr'""",("e"*40,))
+    blocked(db)
+    db.execute("""update public.factory_tool_usage set metadata =
+      jsonb_set(metadata,'{head_sha}',to_jsonb(%s::text),true)
+      where operation='create_pr'""",(origin,))
+    assert_old(db)
+
     result=invoke(db)
     assert result["status"]=="ci_pending" and result["release_authorized"] is False
     assert result["ci_quality_specialists_browser_must_rerun"] is True
