@@ -41,5 +41,36 @@ class RetiredGreenfieldRunbookTests(unittest.TestCase):
         self.assertIn("63 perguntas", readme)
 
 
+class CurrentBootstrapContractTests(unittest.TestCase):
+    def test_readme_documents_both_shells_and_src_layout(self):
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("export PYTHONPATH=src", text)
+        self.assertIn('$env:PYTHONPATH = "src"', text)
+        self.assertIn("Python 3.11+", text)
+        self.assertIn("python scripts/check_test_collection.py", text)
+        self.assertIn("não acessam Supabase", text)
+
+    def test_documented_offline_cli_commands_work_from_checkout(self):
+        import json
+        import os
+        import subprocess
+        import sys
+        env = {"PATH": os.environ.get("PATH", ""),
+               "PYTHONPATH": str(ROOT / "src"),
+               "PYTHONDONTWRITEBYTECODE": "1"}
+        samples = [
+            (["validate", "config/factory.example.json"], "valid", True),
+            (["codex-decision", "--complexity", "high", "--files", "20", "--deep-debug"], "should_use", True),
+        ]
+        for args, field, expected in samples:
+            with self.subTest(command=args[0]):
+                output = subprocess.run(
+                    [sys.executable, "-m", "ai_product_factory.cli", *args],
+                    cwd=ROOT, env=env, capture_output=True, text=True, timeout=12,
+                )
+                self.assertEqual(output.returncode, 0, output.stderr[:300])
+                self.assertEqual(json.loads(output.stdout)[field], expected)
+
+
 if __name__ == "__main__":
     unittest.main()
