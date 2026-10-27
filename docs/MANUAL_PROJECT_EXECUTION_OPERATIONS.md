@@ -1,5 +1,16 @@
 # Manual project execution — Console and scheduler contract (17 Oct 2026)
 
+## Escopo vigente (27/10/2026)
+
+Este documento conserva os testes e o histórico dos controles de Start/Stop.
+Para certificação, usar o **CRM Infodive real** como piloto existente;
+Service Desk é módulo do CRM e o projeto standalone permanece parado.
+Não criar projetos descartáveis apenas para produzir uma prova, nem iniciar
+um projeto que o operador tenha parado. Um futuro teste greenfield exige
+alvo legítimo e autorização específica. Fonte de verdade:
+[Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md).
+
+
 This operational note follows the already human-applied and independently
 verified Supabase migrations
 `20261017111500_factory_manual_project_execution_controls.sql` and
@@ -59,7 +70,9 @@ rewrite history, merge PRs, or override the human production release gate.
   browser evidence** before human merge to production. Unit CI success
   alone is not sufficient.
 
-Operationally, verify a real user journey in a separate isolated project
-before claiming authenticated UI end-to-end completeness. Do not mutate the
-four preexisting production projects for this test without a specific
-operator action. This release does not create, start or stop any live project.
+Operationally, verify an authenticated journey on an existing legitimate,
+explicitly started and authorized target, prioritizing CRM Infodive for
+the existing-project proof. An independent greenfield proof needs its own
+real product target and operator authorization. Never create disposable
+projects to manufacture a PASS or restart the retired standalone Service
+Desk. This historical release did not start or stop live projects.
