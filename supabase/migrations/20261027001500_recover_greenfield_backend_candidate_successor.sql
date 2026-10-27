@@ -100,7 +100,127 @@ BEGIN
   WHERE u.run_id=p_run_id AND u.operation='create_pr' ORDER BY u.id DESC LIMIT 1;
   IF NOT FOUND OR v_original.metadata->>'pr' IS DISTINCT FROM p_pr_number::text
     OR v_original.metadata->>'change_set_id' IS DISTINCT FROM v_set.id::text
-    OR v_original.metadata->>'head_sha' !~ '^[0-9a-f]{40}$'
+    OR coalesce(v_original.metadata->>'head_sha','') !~ '^[0-9a-f]{40}
+  THEN RAISE EXCEPTION 'original PR creation receipt missing' USING errcode='PT409'; END IF;
+
+  SELECT u.metadata INTO v_last FROM public.factory_tool_usage u
+  WHERE u.run_id=p_run_id AND u.operation='reconcile_pr_candidate'
+  ORDER BY u.id DESC LIMIT 1;
+  IF NOT FOUND OR v_last.metadata->>'candidate_commit' IS DISTINCT FROM p_previous_commit
+    OR v_last.metadata->>'new_sha' IS DISTINCT FROM p_previous_commit
+    OR v_last.metadata->>'pr_number' IS DISTINCT FROM p_pr_number::text
+    OR v_last.metadata->>'change_set_id' IS DISTINCT FROM v_set.id::text
+  THEN RAISE EXCEPTION 'prior audited SHA reconciliation missing' USING errcode='PT409'; END IF;
+
+  SELECT count(*) INTO v_count FROM public.factory_tool_usage
+  WHERE run_id=p_run_id AND operation='reconcile_pr_candidate';
+  IF v_count < 1 OR v_count >= 8 THEN
+    RAISE EXCEPTION 'bounded candidate lineage budget exhausted' USING errcode='PT409';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.factory_evaluations e
+    WHERE e.run_id=p_run_id AND e.eval_type='github_ci' AND e.status='success'
+      AND e.baseline_ref=p_previous_commit AND e.result->>'head_sha'=p_previous_commit)
+    OR NOT EXISTS (SELECT 1 FROM public.factory_evaluations e
+    WHERE e.run_id=p_run_id AND e.eval_type='quality_gate' AND e.status='success'
+      AND e.baseline_ref=p_previous_commit AND e.result->>'passed'='true')
+    OR NOT EXISTS (SELECT 1 FROM public.factory_specialist_lane_jobs j
+    WHERE j.run_id=p_run_id AND j.required AND j.candidate_commit=p_previous_commit)
+    OR EXISTS (SELECT 1 FROM public.factory_specialist_lane_jobs j
+    WHERE j.run_id=p_run_id AND j.required
+      AND (j.candidate_commit IS DISTINCT FROM p_previous_commit OR j.status <> 'passed'))
+  THEN RAISE EXCEPTION 'prior exact-SHA CI/quality/specialists are not valid' USING errcode='PT409'; END IF;
+
+  SELECT id,status,baseline_ref,result INTO v_browser
+    FROM public.factory_evaluations
+    WHERE run_id=p_run_id AND eval_type='browser_e2e'
+    ORDER BY created_at DESC,id DESC LIMIT 1;
+  IF NOT FOUND OR v_browser.status IS DISTINCT FROM 'failure'
+    OR position('http_503: fetch /api/session' IN coalesce(v_browser.result->>'detail',''))=0
+    OR v_browser.result->>'preview_url' IS DISTINCT FROM v_browser.baseline_ref
+    OR EXISTS (SELECT 1 FROM public.factory_evaluations
+      WHERE run_id=p_run_id AND eval_type='browser_e2e' AND status='success')
+    OR NOT EXISTS (SELECT 1 FROM public.factory_deployments d
+      WHERE d.run_id=p_run_id AND d.environment='preview' AND d.status='success'
+        AND d.metadata->>'candidate_commit'=p_previous_commit
+        AND d.metadata->>'preview_url'=v_browser.baseline_ref)
+  THEN RAISE EXCEPTION 'historical environmental failure is not exact' USING errcode='PT409'; END IF;
+
+  v_new_url:=p_verified_github->>'preview_url';
+  IF v_new_url IS NULL OR
+     v_new_url !~ '^https://[a-z0-9][a-z0-9-]*[.]vercel[.]app$'
+     OR p_environment_probe->>'kind' IS DISTINCT FROM 'unauthenticated_json_session_probe'
+     OR p_environment_probe->>'candidate_commit' IS DISTINCT FROM p_new_commit
+     OR p_environment_probe->>'url' IS DISTINCT FROM v_new_url||'/api/session'
+     OR coalesce(p_environment_probe->>'http_status','') NOT IN ('200','401')
+     OR coalesce(p_environment_probe->>'content_type','') !~ '^application/json(;.*)?$'
+     OR coalesce(p_environment_probe->>'checked_at','') !~
+       '^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'
+  THEN RAISE EXCEPTION 'new SHA Preview backend is not ready' USING errcode='PT400'; END IF;
+  BEGIN
+    v_checked:=(p_environment_probe->>'checked_at')::timestamptz;
+  EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN
+    RAISE EXCEPTION 'invalid backend probe timestamp' USING errcode='PT400';
+  END;
+  IF v_checked > now()+interval '5 seconds'
+     OR v_checked < now()-interval '10 minutes'
+  THEN RAISE EXCEPTION 'backend readiness proof is stale' USING errcode='PT400'; END IF;
+
+  -- Original rows and evaluations stay intact. New SHA must re-pass native
+  -- CI, quality, all specialists and a FRESH browser E2E before release.
+  UPDATE public.factory_runs SET candidate_commit=p_new_commit,status='ci_pending',
+    finished_at=NULL,last_error=NULL,
+    metadata=metadata||jsonb_build_object('greenfield_successor_recovery',
+      jsonb_build_object('previous_commit',p_previous_commit,
+        'historical_browser_failure_id',v_browser.id,
+        'backend_probe_at',p_environment_probe->>'checked_at'))
+  WHERE id=p_run_id;
+
+  UPDATE public.factory_tasks SET status='integrated',updated_at=now()
+    WHERE id=v_task.id;
+  UPDATE public.factory_change_sets SET candidate_commit=p_new_commit,
+    metadata=jsonb_set(
+      jsonb_set(v_set.metadata,'{integration_release_request,candidate_commit}',
+        to_jsonb(p_new_commit),false),
+      '{integration_epoch_receipt,candidate_commit}',to_jsonb(p_new_commit),false),
+    updated_at=now() WHERE id=v_set.id;
+
+  INSERT INTO public.factory_tool_usage(
+    run_id,tool_family,operation,usage_units,estimated_cost,metadata)
+  VALUES (p_run_id,'github','reconcile_pr_candidate',1,0,
+    p_verified_github||jsonb_build_object(
+      'change_set_id',v_set.id,'previous_commit',p_previous_commit,
+      'candidate_commit',p_new_commit,'old_sha',p_previous_commit,
+      'new_sha',p_new_commit,'pr_number',p_pr_number::text));
+
+  -- This is a *pending* E2E, never an invented PASS or proof of deployment.
+  INSERT INTO public.factory_evaluations(
+    run_id,eval_type,status,baseline_ref,result)
+  VALUES (p_run_id,'browser_e2e','pending',v_new_url,
+    jsonb_build_object('candidate_commit',p_new_commit,
+      'reason','fresh_browser_required_after_greenfield_successor',
+      'historical_browser_failure_id',v_browser.id,'browser_verified',false));
+
+  INSERT INTO public.factory_audit_events(
+    project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
+  VALUES (v_project.id,v_task.id,p_run_id,'system',
+    'greenfield-preview-environment-successor',
+    'preview.backend_successor.requeued',
+    jsonb_build_object('old_sha',p_previous_commit,'new_sha',p_new_commit,
+      'pr_number',p_pr_number,'previous_browser_eval_id',v_browser.id,
+      'new_browser_verified',false,'ci_verified_for_new_sha',false,
+      'release_authorized',false,'ci_run_id',p_verified_github->>'ci_run_id'));
+  RETURN jsonb_build_object('status','ci_pending','run_id',p_run_id,
+    'candidate_commit',p_new_commit,'old_failure_preserved',true,
+    'ci_quality_specialists_browser_must_rerun',true,'release_authorized',false);
+END;
+$recover$;
+REVOKE ALL ON FUNCTION public.factory_recover_greenfield_backend_successor_v1(
+ uuid,text,text,integer,jsonb,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.factory_recover_greenfield_backend_successor_v1(
+ uuid,text,text,integer,jsonb,jsonb) TO service_role;
+COMMIT;
+
   THEN RAISE EXCEPTION 'original PR creation receipt missing' USING errcode='PT409'; END IF;
 
   SELECT u.metadata INTO v_last FROM public.factory_tool_usage u
