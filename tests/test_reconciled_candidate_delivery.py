@@ -14,11 +14,14 @@ class Response:
     def read(self):return json.dumps(self.data).encode()
 
 
-def receipt(pr="180",new="new",old="old",change_set="cs"):
+OLD = "a" * 40
+NEW = "b" * 40
+
+def receipt(pr="180",new=NEW,old=OLD,change_set="cs"):
     return [{"metadata":{
         "pr_number":pr,"previous_commit":old,"candidate_commit":new,
         "change_set_id":change_set,"old_sha":old,"new_sha":new,
-        "compare_status":"ahead",
+        "compare_status":"ahead","ahead_by":"1","behind_by":"0",
     }}]
 
 
@@ -38,7 +41,7 @@ class CandidateReceiptTests(unittest.TestCase):
             calls.append(path)
             return receipt()
         validate_create_pr_candidate(read=read,run_id="r",pr_number=180,
-            original_head="old",candidate_commit="new",run_metadata=runmeta())
+            original_head=OLD,candidate_commit=NEW,run_metadata=runmeta())
         self.assertEqual(len(calls),1)
         self.assertIn("operation=eq.reconcile_pr_candidate",calls[0])
 
@@ -49,21 +52,21 @@ class CandidateReceiptTests(unittest.TestCase):
             with self.subTest(data=data):
                 with self.assertRaises(RuntimeError):
                     validate_create_pr_candidate(read=lambda path:data,run_id="r",
-                        pr_number=180,original_head="old",candidate_commit="new",
+                        pr_number=180,original_head=OLD,candidate_commit=NEW,
                         run_metadata=runmeta())
         with self.assertRaises(RuntimeError):
             validate_create_pr_candidate(read=lambda path:receipt(),run_id="r",
-                pr_number=180,original_head="old",candidate_commit="new",
+                pr_number=180,original_head=OLD,candidate_commit=NEW,
                 run_metadata={"source":"operator_reconciled_dogfood"})
 
     def test_specialist_claim_accepts_reconciliation_at_exact_new_sha(self):
         claimed={"run_id":"r","job_id":"j","project_key":"crm",
                  "repository":"owner/crm","role":"security",
-                 "candidate_commit":"new","manifest":{},
+                 "candidate_commit":NEW,"manifest":{},
                  "claim_token":"123e4567-e89b-42d3-a456-426614174099",
                  "execution_generation":4}
         rows=[Response(claimed),
-              Response([{"metadata":{"pr":180,"head_sha":"old"}}]),
+              Response([{"metadata":{"pr":180,"head_sha":OLD}}]),
               Response([{"task_id":"t","execution_route":"direct","branch_name":"factory/reconciled-candidate",
                          "metadata":{**runmeta(),"execution_generation":4}}]),
               Response(receipt()),
@@ -72,17 +75,17 @@ class CandidateReceiptTests(unittest.TestCase):
             obj=SupabaseSpecialistLaneQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
             item=obj.claim("security","worker")
         self.assertEqual(item.pr_number,180)
-        self.assertEqual(item.candidate_commit,"new")
+        self.assertEqual(item.candidate_commit,NEW)
         self.assertEqual(item.branch,"factory/reconciled-candidate")
 
     def test_specialist_claim_rejects_mismatched_reconciliation(self):
         claimed={"run_id":"r","job_id":"j","project_key":"crm",
                  "repository":"owner/crm","role":"security",
-                 "candidate_commit":"new","manifest":{},
+                 "candidate_commit":NEW,"manifest":{},
                  "claim_token":"123e4567-e89b-42d3-a456-426614174099",
                  "execution_generation":4}
         rows=[Response(claimed),
-              Response([{"metadata":{"pr":180,"head_sha":"old"}}]),
+              Response([{"metadata":{"pr":180,"head_sha":OLD}}]),
               Response([{"task_id":"t","execution_route":"direct","branch_name":"factory/reconciled-candidate",
                          "metadata":{**runmeta(),"execution_generation":4}}]),
               Response(receipt(pr="181"))]
@@ -93,19 +96,19 @@ class CandidateReceiptTests(unittest.TestCase):
 
     def test_preview_queue_accepts_reconciled_sha_with_exact_quality_gate(self):
         run={"id":"r","task_id":"t","branch_name":"factory/branch",
-             "candidate_commit":"new","metadata":runmeta()}
+             "candidate_commit":NEW,"metadata":runmeta()}
         rows=[
             Response([run]),Response([]),
             Response([{"project_id":"p","risk":{}}]),
             Response([{"project_key":"crm","repository":"owner/crm","manifest":{}}]),
-            Response([{"metadata":{"pr":180,"head_sha":"old"}}]),
+            Response([{"metadata":{"pr":180,"head_sha":OLD}}]),
             Response(receipt()),
-            Response([{"status":"success","baseline_ref":"new","result":{"passed":True}}]),
+            Response([{"status":"success","baseline_ref":NEW,"result":{"passed":True}}]),
         ]
         with patch("urllib.request.urlopen",side_effect=rows):
             obj=SupabasePreviewFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
             item=obj.next_pending()
-        self.assertEqual(item.candidate_commit,"new")
+        self.assertEqual(item.candidate_commit,NEW)
         self.assertEqual(item.pr_number,180)
 
 
