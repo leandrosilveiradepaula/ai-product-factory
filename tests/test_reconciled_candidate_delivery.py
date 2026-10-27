@@ -91,7 +91,7 @@ class CandidateReceiptTests(unittest.TestCase):
               Response(receipt(pr="181"))]
         with patch("urllib.request.urlopen",side_effect=rows):
             obj=SupabaseSpecialistLaneQueue(url="https://x.supabase.co",secret_key="sb_secret_x")
-            with self.assertRaisesRegex(RuntimeError,"receipt"):
+            with self.assertRaisesRegex(RuntimeError,"reconciliation chain"):
                 obj.claim("security","worker")
 
     def test_preview_queue_accepts_reconciled_sha_with_exact_quality_gate(self):
