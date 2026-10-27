@@ -20,7 +20,7 @@ class RetiredGreenfieldRunbookTests(unittest.TestCase):
         self.assertNotIn("--project-key infodive-service-desk", runbook)
         self.assertNotIn("--run-id 52998a8f-b478-46b3-9529-08bea72034f3", runbook)
         self.assertNotIn("--execute --ack-environment-authorized", runbook)
-        for block in re.findall(r"(?ms)^\\x60\\x60\\x60(?:bash|sh|shell)?\\s*\\n(.*?)^\\x60\\x60\\x60", runbook):
+        for block in re.findall(r"(?ms)^```(?:bash|sh|shell)?\s*\n(.*?)^```", runbook):
             self.assertNotIn("infodive-service-desk", block)
             self.assertNotIn("52998a8f-b478-46b3-9529-08bea72034f3", block)
 
