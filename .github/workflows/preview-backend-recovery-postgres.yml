@@ -6,6 +6,14 @@ on:
     paths:
       - "supabase/migrations/*resume_preview_backend_unavailable.sql"
       - "scripts/verify_preview_backend_recovery_postgres.py"
+      - "supabase/migrations/*recover_greenfield_backend_candidate_successor.sql"
+      - "scripts/verify_greenfield_backend_successor_postgres.py"
+      - "scripts/resume_greenfield_backend_successor.py"
+      - "tests/test_greenfield_backend_successor.py"
+      - "tests/test_candidate_pr_receipt_chain.py"
+      - "src/ai_product_factory/candidate_pr_receipt.py"
+      - "src/ai_product_factory/ci_followup_queue.py"
+      - "tests/test_ci_followup_queue.py"
       - "scripts/resume_preview_backend_unavailable.py"
       - "tests/test_preview_backend_unavailable.py"
       - "tests/test_preview_backend_wait.py"
@@ -50,7 +58,16 @@ jobs:
           FACTORY_PREVIEW_BACKEND_TEST_ISOLATED: "true"
           FACTORY_PREVIEW_BACKEND_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_preview_backend_test"
         run: python scripts/verify_preview_backend_recovery_postgres.py
+      - name: Create disposable F6 successor test database
+        env:
+          PGPASSWORD: factory_ci
+        run: createdb -h 127.0.0.1 -p 5432 -U factory_ci factory_greenfield_successor_test
+      - name: Verify exact-SHA F6 successor recovery in disposable PostgreSQL 16
+        env:
+          FACTORY_GREENFIELD_SUCCESSOR_TEST_ISOLATED: "true"
+          FACTORY_GREENFIELD_SUCCESSOR_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_greenfield_successor_test"
+        run: python scripts/verify_greenfield_backend_successor_postgres.py
       - name: Verify credentialless preflight and negative contracts
         env:
           PYTHONPATH: src
-        run: python -m unittest tests.test_preview_backend_unavailable tests.test_preview_backend_wait tests.test_preview_flow -v
+        run: python -m unittest tests.test_preview_backend_unavailable tests.test_preview_backend_wait tests.test_preview_flow tests.test_candidate_pr_receipt_chain tests.test_ci_followup_queue tests.test_greenfield_backend_successor -v
