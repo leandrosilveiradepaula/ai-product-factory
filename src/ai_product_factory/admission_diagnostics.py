@@ -54,7 +54,8 @@ def classify(*, project: dict, control: dict, commands: list[dict],
              tasks: list[dict], runs: list[dict], run_id: str | None,
              cost: dict, planned: list[dict], portfolio: list[dict],
              readiness: dict | None = None,
-             terminal_lineage: dict | None = None) -> dict:
+             terminal_lineage: dict | None = None,
+             historical_repairs: set[str] | None = None) -> dict:
     """Pure classification; absence of a claim is not proof of scheduler health."""
     pid = _id(project.get("id"))
     if not isinstance(project.get("project_key"), str) or not project["project_key"]:
@@ -105,6 +106,11 @@ def classify(*, project: dict, control: dict, commands: list[dict],
         or terminal_lineage["evidence"].get("delivery_verified") is not False
     ):
         raise RuntimeError("invalid exact terminal lineage evidence")
+    historical_repairs = historical_repairs or set()
+    if not historical_repairs.issubset(seen) or any(
+        r["status"] != "repair_pending" for r in runs if r["id"] in historical_repairs
+    ):
+        raise RuntimeError("invalid historical repair evidence")
     # A run receipt is an exact run/task identity, not a workflow heartbeat.
     receipt = next((r for r in runs if run_id and r["id"].lower() == run_id.lower()),None)
     if terminal_lineage is not None:
@@ -132,6 +138,8 @@ def classify(*, project: dict, control: dict, commands: list[dict],
                 status,reason,next_step = "blocked","running_without_claim_receipt","inspect_run_claim"
         elif s == "preview_ready" and not is_delivery_preview_run(selected):
             status,reason,next_step = "waiting","historical_preview_audit_only","no_new_action"
+        elif s == "repair_pending" and selected["id"] in historical_repairs:
+            status,reason,next_step = "waiting","historical_terminal_repair","no_new_action"
         elif s in WAITING:
             status,reason,next_step = "waiting","run_"+s,WAITING[s]
         elif s in TERMINAL:
@@ -157,8 +165,8 @@ def classify(*, project: dict, control: dict, commands: list[dict],
             status,reason,next_step = "in_progress","running_work_observed","worker_or_recovery"
         else:
             status,reason,next_step = "blocked","running_without_claim_receipt","inspect_run_claim"
-    elif any(delivery_wait(r) for r in runs):
-        receipt = next(r for r in runs if delivery_wait(r))
+    elif any(delivery_wait(r) and r["id"] not in historical_repairs for r in runs):
+        receipt = next(r for r in runs if delivery_wait(r) and r["id"] not in historical_repairs)
         status,reason,next_step = "waiting","run_"+receipt["status"],WAITING[receipt["status"]]
     elif any(r.get("status") in PRODUCT and any(t["id"] == r["task_id"] and t.get("status") == "queued" for t in tasks) for r in runs):
         receipt = next(r for r in runs if r.get("status") in PRODUCT and any(t["id"] == r["task_id"] and t.get("status") == "queued" for t in tasks))
@@ -262,9 +270,38 @@ class SupabaseAdmissionReader:
         tasks=_many(self._get("factory_tasks?select=id,project_id,parent_task_id,status&project_id=eq."+pid+"&order=created_at.desc&limit=101"),"tasks")
         if tasks:
             tids=",".join(_id(t.get("id")) for t in tasks)
-            runs=_many(self._get("factory_runs?select=id,task_id,status,metadata,execution_route,started_at&task_id=in.("+tids+")&order=created_at.desc&limit=101"),"runs")
+            runs=_many(self._get("factory_runs?select=id,task_id,status,metadata,execution_route,started_at,lease_owner,lease_expires_at&task_id=in.("+tids+")&order=created_at.desc&limit=101"),"runs")
         else:
             runs=[]
+        # A completed root/Change Set with no leases is historical evidence,
+        # not a runnable repair. Verify the exact lineage before excluding it.
+        historical_repairs=set()
+        pending=[r for r in runs if r["status"]=="repair_pending"]
+        if pending:
+            candidate_ids=set()
+            for r in pending:
+                metadata=r.get("metadata") or {}
+                cs_id=metadata.get("change_set_id")
+                if isinstance(cs_id,str) and UUID.fullmatch(cs_id):
+                    candidate_ids.add(cs_id.lower())
+            if candidate_ids:
+                rows=_many(self._get("factory_change_sets?select=id,project_id,root_task_id,status,lease_owner,lease_expires_at&id=in.("+",".join(sorted(candidate_ids))+")&limit=101"),"repair Change Sets")
+                by_id={_id(cs["id"]):cs for cs in rows}
+                if len(by_id)!=len(rows):
+                    raise RuntimeError("duplicate repair Change Set")
+                task_by_id={t["id"]:t for t in tasks}
+                for r in pending:
+                    cs_id=(r.get("metadata") or {}).get("change_set_id")
+                    cs=by_id.get(cs_id.lower()) if isinstance(cs_id,str) else None
+                    task=task_by_id.get(r["task_id"])
+                    if (cs and task and cs.get("project_id")==pid
+                        and cs.get("root_task_id")==task["id"]
+                        and cs.get("status")=="completed"
+                        and task.get("status")=="completed"
+                        and task.get("parent_task_id") is None
+                        and not cs.get("lease_owner") and cs.get("lease_expires_at") is None
+                        and not r.get("lease_owner") and r.get("lease_expires_at") is None):
+                        historical_repairs.add(r["id"])
         # Exact-root Change Set inventory: only for a terminal run whose task
         # has no parent. Stale Change Sets may not be assigned to another root.
         terminal_lineage=None
@@ -312,4 +349,5 @@ class SupabaseAdmissionReader:
             runs=runs,run_id=run_id,cost=self._cost(),
             planned=_many(planned,"planned candidates"),
             portfolio=[p for p in portfolio if isinstance(p,dict) and p.get("project_id")==pid],
-            readiness=readiness,terminal_lineage=terminal_lineage)
+            readiness=readiness,terminal_lineage=terminal_lineage,
+            historical_repairs=historical_repairs)
