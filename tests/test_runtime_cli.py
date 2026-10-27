@@ -1349,7 +1349,38 @@ class RuntimeCliTests(unittest.TestCase):
             out=run_alerts_once()
         self.assertEqual(out["status"],"blocked")
         self.assertEqual(out["published"],0)
+        self.assertEqual(out["updated"],0)
         self.assertIn("GITHUB_TOKEN",out["missing"])
+
+    def test_alert_mode_reports_updated_issue_without_creating_duplicate(self):
+        from ai_product_factory.operational_alerts import OperationalAlert
+        readiness=SimpleNamespace(ready=True,missing=())
+        alert=OperationalAlert("failed_runs","warning","7 run(s) are failed")
+        adapter=MagicMock()
+        adapter.publish_many.return_value=(
+            SimpleNamespace(code="failed_runs",created=False,updated=True,issue_number=1048),
+        )
+        adapter.resolve_inactive.return_value=()
+        with patch.dict("os.environ", {"FACTORY_ALERTS_GITHUB_REPOSITORY":"owner/repo"}, clear=True), \
+             patch("ai_product_factory.runtime_cli.github_alerts_readiness",return_value=readiness), \
+             patch("ai_product_factory.runtime_cli.SupabasePrimaryCostPolicyReader"), \
+             patch("ai_product_factory.runtime_cli.SupabaseOperationalHealthReader"), \
+             patch("ai_product_factory.runtime_cli.SupabaseSchedulerLivenessReader"), \
+             patch("ai_product_factory.runtime_cli.evaluate_operational_alerts",return_value=(alert,)), \
+             patch("ai_product_factory.runtime_cli.evaluate_scheduler_liveness",return_value=()), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter"), \
+             patch("ai_product_factory.runtime_cli.GithubNativeScheduledRunReader"), \
+             patch("ai_product_factory.runtime_cli.evaluate_native_scheduler_health",return_value=()), \
+             patch("ai_product_factory.runtime_cli.GitHubIssueAlertAdapter",return_value=adapter):
+            result=run_alerts_once()
+        self.assertEqual(result["status"],"ok")
+        self.assertEqual(result["published"],0)
+        self.assertEqual(result["updated"],1)
+        self.assertEqual(result["resolved"],0)
+        self.assertEqual(result["alerts"],[
+            {"code":"failed_runs","created":False,"updated":True,"issue_number":1048},
+        ])
+        adapter.publish_many.assert_called_once_with((alert,))
 
     def test_alert_mode_reconciles_resolved_issues_when_health_is_clean(self):
         readiness=SimpleNamespace(ready=True,missing=())
