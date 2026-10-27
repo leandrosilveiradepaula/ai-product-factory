@@ -10,6 +10,7 @@ from urllib.parse import quote
 from .supabase_server import resolve_supabase_server_config
 from .followup_execution_epoch import run_followup_epoch
 from .followup_active_project_query import active_project_followup_query
+from .candidate_pr_receipt import validate_create_pr_candidate
 
 
 @dataclass(frozen=True)
@@ -130,18 +131,14 @@ class SupabaseCIFollowupQueue:
             if pr_number < 1:
                 raise RuntimeError("durable PR evidence is missing PR number")
             if head_sha != candidate and not allow_unreconciled_receipt:
-                # An immutable create_pr receipt may legitimately predate a
-                # separately audited, atomic candidate reconciliation.
-                reconciliations=self._get(
-                    f"factory_tool_usage?select=metadata&run_id=eq.{quote(run_id)}"
-                    "&operation=eq.reconcile_pr_candidate&order=created_at.desc&limit=1"
+                # Prior create_pr receipts remain immutable. Multiple audited
+                # candidate changes (e.g. initial CI repair then F6 preview
+                # hardening) must form one contiguous, exact PR/SHA chain.
+                validate_create_pr_candidate(
+                    read=self._get, run_id=run_id, pr_number=pr_number,
+                    original_head=head_sha, candidate_commit=candidate,
+                    run_metadata=metadata,
                 )
-                receipt=(reconciliations[0].get("metadata") or {}) if reconciliations else {}
-                if (receipt.get("previous_commit") != head_sha
-                    or receipt.get("candidate_commit") != candidate
-                    or receipt.get("pr_number") != str(pr_number)
-                    or receipt.get("change_set_id") != metadata.get("change_set_id")):
-                    raise RuntimeError("durable PR evidence does not match run candidate commit")
         elif str(metadata.get("source") or "")=="operator_reconciled_dogfood":
             pr_number=int(metadata.get("pr_number") or 0)
             if pr_number < 1:
