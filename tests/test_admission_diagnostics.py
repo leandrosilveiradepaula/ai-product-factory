@@ -148,6 +148,51 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(result["evidence"]["run"]["task_id"],T)
         self.assertEqual(result["evidence"]["control"]["state"],"running")
 
+    def test_terminal_repair_requires_verified_lineage(self):
+        x=snapshot(status="repair_pending")
+        x["tasks"][0].update(status="completed",parent_task_id=None)
+        self.assertEqual(classify(**x)["next_step"],"repair")
+        self.assertEqual(classify(**x,historical_repairs={R})["reason_code"],"historical_terminal_repair")
+        self.assertEqual(classify(**x,historical_repairs={R})["next_step"],"no_new_action")
+        x["run_id"]=None
+        self.assertEqual(classify(**x,historical_repairs={R})["reason_code"],"no_current_eligible_work")
+        with self.assertRaises(RuntimeError):
+            classify(**x,historical_repairs={OTHER})
+
+    def test_reader_checks_exact_terminal_repair_without_writes(self):
+        cs="55555555-5555-4555-8555-555555555555"
+        paths=[]
+        def get(path):
+            paths.append(path)
+            if path.startswith("factory_projects?"):
+                return [{"id":P,"project_key":"demo","is_active":True}]
+            if path.startswith("factory_project_execution_controls?"):
+                return [{"project_id":P,"state":"running"}]
+            if path.startswith("factory_project_execution_commands?"):return []
+            if path.startswith("factory_tasks?"):
+                return [{"id":T,"project_id":P,"parent_task_id":None,"status":"completed"}]
+            if path.startswith("factory_runs?"):
+                return [{"id":R,"task_id":T,"status":"repair_pending",
+                         "metadata":{"change_set_id":cs},"lease_owner":None,
+                         "lease_expires_at":None}]
+            if path.startswith("factory_change_sets?"):
+                return [{"id":cs,"project_id":P,"root_task_id":T,
+                         "status":"completed","lease_owner":None,"lease_expires_at":None}]
+            if path.startswith("rpc/factory_peek_planned_work"):return []
+            if path.startswith("rpc/factory_portfolio_candidates"):return []
+            raise AssertionError(path)
+        policy=SimpleNamespace(read=lambda:SimpleNamespace(budget_usd=Decimal("10"),reserve_usd=Decimal("0.5")))
+        health=SimpleNamespace(read=lambda **kw:SimpleNamespace(known_cost=Decimal("0"),unknown_cost_events=0))
+        reader=SupabaseAdmissionReader(get=get,policy_reader=policy,health_reader=health)
+        # Existing readiness observer needs a manifest; mock it in this unit.
+        from unittest.mock import patch
+        with patch("ai_product_factory.admission_diagnostics.observe_manifest_release",return_value=None):
+            result=reader.read(project_key="demo",run_id=R)
+        self.assertEqual(result["reason_code"],"historical_terminal_repair")
+        self.assertEqual(result["next_step"],"no_new_action")
+        self.assertFalse(any("claim" in path for path in paths))
+        self.assertTrue(any("factory_change_sets?" in path for path in paths))
+
 
 if __name__=="__main__":
     unittest.main()
