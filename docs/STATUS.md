@@ -1,3 +1,13 @@
+## 27/10/2026 — Service Desk modular integrado; F6 legado aposentado (correção de fonte operacional)
+
+**Decisão definitiva:** Service Desk é módulo do CRM Infodive, não produto independente. CRM PR [#201](https://github.com/leandrosilveiradepaula/crm-infodive/pull/201) mergeada humanamente em `5072e0ea311e27ce4b5e2382e32399deece5adf8`; migrations aditivas aplicadas no banco do CRM. Projeto Factory `infodive-service-desk` parado via Console e confirmado no Control Plane: `state=stopped`, `version=1`, `updated_at=2026-10-27T17:59:48Z`, 0 tarefas ativas. `crm-infodive` e `ai-product-factory` seguem `running`.
+
+**Sobrescreve instruções antigas de retomada F6** neste histórico: não recuperar o run `52998a8f-b478-46b3-9529-08bea72034f3`, não reabrir PR #10 independente, não reativar Supabase staging antigo. CRM Preview browser-verified em SHA `c9aaacd28140c9f132a5d8ae2ff250afc823c75c` (runs [40551449688](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551449688) e [40551487676](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551487676)) cobre login público apenas. Não é F6, nem E2E autenticado de Service Desk.
+
+**Critério de saída:** seis domínios independentes por SHA e uma jornada greenfield legítima ainda pendentes. Nenhum PASS ou `product_ready=true` foi produzido por este registro. Próximo trabalho: evidências offline sem custo e identificação de alvo greenfield legítimo, sem criar projeto descartável. Contrato atualizado: [FINALIZATION_EXECUTION_CONTRACT.md](FINALIZATION_EXECUTION_CONTRACT.md).
+
+---
+
 ## 26/10/2026 — Decisão de execução: FINALIZAR, NÃO EXPANDIR
 
 **Fonte operacional de encerramento:** [`docs/FINALIZATION_EXECUTION_CONTRACT.md`](FINALIZATION_EXECUTION_CONTRACT.md) — ler antes de qualquer nova issue/PR. Foto confirmada após PR #1117: `main=50c9814cf03aa00799b87619665eaa6df20c3d8f`, [CI pós-merge #40382141869](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40382141869) SUCCESS, [observador #40382212270](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40382212270) SUCCESS somente de auditoria, `product_ready=false`, seis domínios **não atestados**, nenhuma escrita e nenhuma chamada paga do observador. 0 PRs abertas no checkpoint.

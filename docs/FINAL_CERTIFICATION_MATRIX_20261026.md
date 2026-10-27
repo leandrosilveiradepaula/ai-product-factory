@@ -1,4 +1,13 @@
 # AI Product Factory — six-domain certification evidence matrix
+
+## Reconciliação 27/10/2026 — decisão de arquitetura e escopo das evidências
+
+O Service Desk **não** é mais alvo greenfield: foi integrado como módulo do CRM por PR #201, com migrations no Supabase do CRM. O projeto Factory `infodive-service-desk` está `stopped` desde `2026-10-27T17:59:48Z`, sem tarefas ativas. O F6 antigo e a PR independente #10 são históricos **não certificados** e não devem ser retomados. O browser E2E do CRM em `c9aaacd28140c9f132a5d8ae2ff250afc823c75c` verificou somente login público (runs [40551449688](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551449688) e [40551487676](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551487676)), sem autenticação ou CRUD do módulo. O alvo greenfield legítimo ainda precisa ser identificado e autorizado; **nenhum domínio recebe PASS por esta reconciliação**.
+
+O Control Plane tem avaliações históricas `product_readiness=failed` (3), `browser_e2e` 6 success/5 failure, e avaliações de especialistas aprovadas em outros runs. São inventário de evidência, não atestados atuais. Manter seis domínios pendentes até avaliações independentes, duráveis e ligadas ao SHA corrente. Priorizar verificações offline/sem custo de Security, Operations, Test Strategy, UX e Documentation, sem repetir Provas 1/2 e sem fingir release. Ver [contrato atualizado](FINALIZATION_EXECUTION_CONTRACT.md).
+
+---
+
 > **Ordem de execução após o merge #1117:** seguir o [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md). Esta matriz **não** autoriza uma nova rodada de PRs para cada célula; primeiro reutilizar provas atuais por SHA, fechar o Preview real do greenfield e testar somente lacunas bloqueantes. No observador de 26/10/2026 [#40382212270](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40382212270), `product_ready=false` e seis domínios permanecem sem atestado independente no SHA `50c9814cf03aa00799b87619665eaa6df20c3d8f`.
 
 
