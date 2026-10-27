@@ -34,13 +34,22 @@ O ChatGPT atua como orquestrador principal e usa diretamente as ferramentas disp
 - GitHub Autonomous Loop para issue, branch, commit, PR, CI e repair; apos Preview verificado, o fluxo para em `awaiting_release` e o merge de producao e humano.
 - Contratos de adapters para integracoes externas.
 
-## Primeiro piloto
+## Piloto prioritário de certificação
 
-O primeiro projeto existente integrado e:
+A prova operacional de autonomia da Factory usa o projeto existente real
+`leandrosilveiradepaula/crm-infodive`. O Service Desk é módulo desse CRM,
+não um greenfield independente: não reativar o antigo projeto ou a sua PR
+para fabricar a prova F6. Uma prova greenfield futura precisa de um produto
+legítimo, distinto e especificamente autorizado.
 
-`leandrosilveiradepaula/agente-sql-langgraph`
+O `leandrosilveiradepaula/agente-sql-langgraph` também foi integrado
+historicamente à Factory, mas não é o piloto prioritário desta certificação.
+Seu benchmark de 63 perguntas continua adiado e nunca é executado
+implicitamente.
 
-O piloto ja esta onboardado na Factory. O benchmark de 63 perguntas permanece deliberadamente adiado; a Factory nao deve executa-lo ate que essa validacao seja reaberta como tarefa especifica.
+A [matriz de certificação](docs/FINAL_CERTIFICATION_MATRIX_20261026.md)
+e o [contrato de finalização](docs/FINALIZATION_EXECUTION_CONTRACT.md)
+registram o escopo e os gates atuais.
 
 ## Uso local
 

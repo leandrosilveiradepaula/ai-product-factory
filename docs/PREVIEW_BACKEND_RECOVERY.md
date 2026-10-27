@@ -1,5 +1,23 @@
 # Preview backend unavailable — bounded delivery recovery
 
+## Decisão vigente — 27/10/2026: recuperação histórica aposentada
+
+**NÃO EXECUTAR o procedimento F6 legado para `infodive-service-desk`.**
+A decisão vigente integra Service Desk como módulo do CRM Infodive; o projeto
+independente está `stopped` e sua PR #10, run
+`52998a8f-b478-46b3-9529-08bea72034f3` e Change Set
+`60dd6b73-3e98-4da0-bc36-4be6d7562f45` são somente evidências
+históricas **não certificadas**. Nenhum script de recovery, `--execute`,
+configuração de backend ou restart deve ser usado para reviver essa linhagem.
+A fonte atual é [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md)
+e a [matriz de certificação](FINAL_CERTIFICATION_MATRIX_20261026.md).
+
+O código genérico de recovery continua disponível somente para um incidente
+**novo e legítimo**, com projeto ativo, identidade/epoch/PR/SHA reais,
+preflight fresco e autorização humana para ações privilegiadas. A existência
+desta capacidade não aprova nenhum incidente nem fornece um novo Start.
+
+
 ## Why this exists (observed, not simulated)
 
 In the greenfield pilot, the Factory produced the real [Service Desk PR #10](https://github.com/leandrosilveiradepaula/infodive-service-desk/pull/10), candidate `17edf217dceb0b75bf944e8e1737a0ba92bfb2fc`, and native CI/quality/security/QA/operations PASS. The Vercel Preview deployment was READY, but browser `browser_e2e` actually failed with `HTTP 503 /api/session` (`backend_unavailable`). The delivery run `52998a8f-b478-46b3-9529-08bea72034f3` and task became failed; the Change Set `60dd6b73-3e98-4da0-bc36-4be6d7562f45` remains `ci_pending`.
@@ -42,10 +60,11 @@ SHA/epoch/base/PR and human-release gates still required.
   the existing terminal-failure policy and do not become infinite retries.
 - A forged, stale, cross-SHA or unbound prior browser evaluation **blocks** the
   preflight before it makes the external network request.
-- Existing **historical failed runs remain failed**. In particular the
-  original Service Desk run `52998a8f-b478-46b3-9529-08bea72034f3`
-  still requires the independently authorized, already installed recovery
-  RPC after legitimate environment remediation. No Product Stage replay.
+- Existing **historical failed runs remain failed**. The retired
+  standalone Service Desk run is **not eligible for recovery** even if the
+  former backend responds. Preserve its failure and evidence for audit.
+  Only a different, genuinely authorized incident on an active project may
+  use the bounded recovery path, without Product Stage replay.
 - This capability itself cannot resolve the missing Service Desk Preview
   configuration; do not copy CRM credentials or assume its separate Vercel
   deployment represents the future Service Desk module within CRM.
@@ -53,21 +72,32 @@ SHA/epoch/base/PR and human-release gates still required.
 Global certification remains `product_ready=false` until independent E2E
 evidence completes the six domains.
 
-## Activation (human gates, not part of this PR)
+## Ativação — procedimento histórico encerrado
 
-1. Merge the Factory PR **humanly** only after `validate`, `factory-acceptance` and `preview-backend-recovery-postgres` are green on the exact final SHA. No change under `apps/console/**`: Factory Console Preview is **N/A** by path policy.
-2. Review and **separately authorize** applying `20261026170000_resume_preview_backend_unavailable.sql` to Factory Control Plane; confirm migration history and service-role-only grants. No schema application happens in this PR.
-3. Reconcile the product decision Service Desk-as-CRM-module, authorize the required Preview authentication/backend environment and configure secrets *server-side*, never in GitHub comments, the browser or chat. Do not create paid infrastructure or copy CRM credentials automatically.
-4. In a trusted operator environment that has the configured Factory Control Plane key and legitimate GitHub App/`FACTORY_GITHUB_TOKEN` permissions, execute the **read-only** preflight (fails on 503, redirect, missing JSON or changed SHA):
+A antiga sequência de ativação para o Service Desk independente está
+**cancelada** pela decisão de 27/10/2026. Não executar a CLI com o project
+key ou run ID históricos, não configurar secrets da Vercel standalone e
+não reabrir a PR #10. A migration já instalada permanece como capacidade
+do Control Plane, não como autorização para recuperar o caso aposentado.
 
-   ```bash
-   PYTHONPATH=src python scripts/resume_preview_backend_unavailable.py \
-     --project-key infodive-service-desk \
-     --run-id 52998a8f-b478-46b3-9529-08bea72034f3
-   ```
+Para um **incidente futuro autorizado** em projeto diferente, seguir esta
+ordem, sem transpor evidências do caso antigo:
 
-5. Only after the environment's authorization and preflight PASS, invoke the same command with `--execute --ack-environment-authorized`. This is the privileged **nonproduction status-recovery** action; no SQL is executed by the initial preflight.
-6. Allow the existing scheduled Preview follower to rerun on the exact preserved candidate. Observe fresh `browser_e2e` and whether the Factory correctly advances to `awaiting_release` or fails again. The eventual release/operations proof still requires authorized human merge and post-release observation.
+1. Confirmar projeto realmente ativo/running, Start legítimo, finalidade,
+   run/task/Change Set, epoch, PR e deployment pertencentes ao mesmo alvo.
+2. Confirmar política de Preview aplicável e o defeito específico de backend
+   503; uma resposta de readiness nunca equivale a browser E2E aprovado.
+3. Validar CI, especialistas, limites de tentativa, lease, orçamento e
+   fronteira de acesso. Preflight é read-only; não usar permissões externas
+   ou credenciais de outro projeto.
+4. Somente um operador autorizado pode decidir eventual recuperação
+   privilegiada, com prova nova e gatilho específico, nunca por cron
+   especulativo ou comando de um projeto aposentado.
+5. Exigir nova captura browser vinculada a SHA/URL/epoch e, se houver
+   release de produção, gate humano de merge e observação posterior.
+
+**Atenção:** nenhum passo acima constitui autorização para criar um alvo
+greenfield sintético ou reativar o Service Desk standalone.
 
 ## Verification
 

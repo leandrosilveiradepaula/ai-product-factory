@@ -1,3 +1,21 @@
+## Estado operacional vigente — 27/10/2026
+
+Esta página contém registros históricos e instruções escritas para candidatos
+que já foram mergeados ou aposentados. Antes de executar qualquer comando,
+usar o [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md),
+a [matriz de seis domínios](FINAL_CERTIFICATION_MATRIX_20261026.md) e
+o estado ao vivo de GitHub/Control Plane/Vercel.
+
+**Service Desk standalone foi aposentado e está `stopped`.**
+Não executar recuperação F6 do run `52998a8f-b478-46b3-9529-08bea72034f3`
+nem sua PR independente #10. O Service Desk é módulo do CRM Infodive.
+Runbook legado detalhado: [Preview backend recovery](PREVIEW_BACKEND_RECOVERY.md)
+(agora marcado como histórico, sem passos executáveis para esse alvo).
+Produção, migrations, credenciais sensíveis e custos permanecem sob gates
+humanos; não retomar projeto parado automaticamente.
+
+---
+
 ## 26/10/2026 — Captura visual autenticada pós-#1109: fixar imagem do runner (candidato)
 
 Evidência de produção: PR #1109 mergeada humanamente em `main=d463a602d7f2ee712f071cfa249035014b30390c`, CI `validate` [#40327176914](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40327176914) SUCCESS, `Console validation` [#40327176920](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40327176920) SUCCESS, Vercel produção `dpl_69x3K2Shy9udQpxJU44Rq7iY86PA` READY e aliased à URL oficial no SHA exato. Auditor global [#40327234064](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40327234064) `product_ready=false`, seis domínios não verificados, captura `pending`.
