@@ -1053,7 +1053,7 @@ def run_replay_once(source_run_id:str,mode:str="offline")->dict:
 
 def run_alerts_once()->dict:
  readiness=github_alerts_readiness()
- if not readiness.ready:return {"status":"blocked","published":0,"resolved":0,"missing":list(readiness.missing)}
+ if not readiness.ready:return {"status":"blocked","published":0,"updated":0,"resolved":0,"missing":list(readiness.missing)}
  policy=SupabasePrimaryCostPolicyReader().read()
  health=SupabaseOperationalHealthReader().read(budget=policy.budget_usd)
  liveness=SupabaseSchedulerLivenessReader().read()
@@ -1078,8 +1078,9 @@ def run_alerts_once()->dict:
  return {
   "status":"ok",
   "published":sum(1 for result in results if result.created),
+  "updated":sum(1 for result in results if result.updated),
   "resolved":len(resolved),
-  "alerts":[{"code":result.code,"created":result.created,"issue_number":result.issue_number} for result in results],
+  "alerts":[{"code":result.code,"created":result.created,"updated":result.updated,"issue_number":result.issue_number} for result in results],
   "resolutions":[{"code":result.code,"issue_number":result.issue_number} for result in resolved],
  }
 

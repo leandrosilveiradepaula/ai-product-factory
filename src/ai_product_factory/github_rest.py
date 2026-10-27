@@ -125,6 +125,17 @@ class GitHubRestAdapter:
         row = self._call("POST", f"/repos/{self.repository}/issues", payload={"title": title, "body": body})
         return GitHubIssue(row["number"], row["title"], row.get("body") or "", row["html_url"])
 
+    def update_issue(self, issue_number: int, *, title: str, body: str) -> None:
+        """Edit only a GitHub issue's title and body; never merge or close."""
+        if type(issue_number) is not int or issue_number <= 0:
+            raise ValueError("issue_number must be a positive integer")
+        if not isinstance(title, str) or not title.strip() or len(title) > 256:
+            raise ValueError("issue title is invalid")
+        if not isinstance(body, str) or not body.strip() or len(body) > 16384:
+            raise ValueError("issue body is invalid")
+        self._call("PATCH", f"/repos/{self.repository}/issues/{issue_number}",
+                   payload={"title": title, "body": body})
+
     def find_open_issue_containing(self, marker: str) -> GitHubIssue | None:
         if not marker.strip():
             raise ValueError("marker cannot be empty")
