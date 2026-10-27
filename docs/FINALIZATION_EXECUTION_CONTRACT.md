@@ -1,5 +1,16 @@
 # Contrato de finalização da AI Product Factory — Infodive
 
+## Atualização vinculante — 27/10/2026: Service Desk independente aposentado
+
+**Esta decisão substitui a sequência F6 histórica nas seções 2 e 3 quando houver conflito.** O proprietário definiu que Service Desk é módulo do CRM Infodive, não produto greenfield autônomo. A PR CRM [#201](https://github.com/leandrosilveiradepaula/crm-infodive/pull/201) foi mergeada humanamente (merge SHA `5072e0ea311e27ce4b5e2382e32399deece5adf8`); o schema `service_desk` e as migrations aditivas foram aplicados **no Supabase existente do CRM**, sem substituir Auth, contas ou perfis. O projeto independente `infodive-service-desk` foi parado via controle autenticado da Factory, confirmado no Control Plane em `2026-10-27T17:59:48Z`, `state=stopped`, `version=1`, 0 tarefas ativas. CRM e Factory continuam `running`.
+
+**Não executar a recuperação F6 antiga** do run `52998a8f-b478-46b3-9529-08bea72034f3` / Change Set `60dd6b73-3e98-4da0-bc36-4be6d7562f45`, não reativar o projeto independente, não reutilizar suas credenciais/Preview nem interpretar sua PR #10 como candidata de produção. O registro antigo permanece apenas como evidência histórica de tentativa **não certificada**. A prova de CRM existente continua limitada ao seu escopo real; o Preview de login CRM `c9aaacd28140c9f132a5d8ae2ff250afc823c75c` foi browser-verified nos runs [#40551449688](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551449688) e [#40551487676](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551487676), **não** é prova autenticada de Service Desk ou de greenfield completo.
+
+**Novo próximo critério:** concluir primeiro as verificações independentes dos seis domínios no SHA corrente; para greenfield, exigir um **alvo legítimo novo, autorizado e diferente do Service Desk modular** antes de qualquer Start. Sem alvo legítimo, registrar F6 como pendente por requisito de prova, não simular PASS nem criar projeto descartável. Não executar modelo pago, migration, deploy ou merge para forçar o encerramento. `product_ready=false` até avaliação independente durável por SHA e cobertura.
+
+---
+
+
 **Decisão do proprietário: 26/10/2026. Fase atual: ENCERRAMENTO POR EVIDÊNCIAS, não expansão do produto.**
 
 Este documento é a referência operacional para as próximas sessões e agentes que trabalhem na Factory. **Objetivo único:** concluir a plataforma autônoma de ponta a ponta, em vez de acumular correções e PRs sem fechar as provas. Antes de propor qualquer nova implementação, ler este contrato, `AGENTS.md`, `PROJECT_PLAN.md`, `docs/STATUS.md`, `docs/OPERATIONS.md`, `docs/AUTH_ACTIVATION_READINESS.md`, a [matriz de seis domínios](FINAL_CERTIFICATION_MATRIX_20261026.md) e o estado **ao vivo** de GitHub, Supabase e Vercel. Código, dados e evidências atuais prevalecem sobre snapshots ou memórias de conversa.
