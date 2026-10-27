@@ -20,6 +20,9 @@ DECLARE
   v_new_url text;
   v_checked timestamptz;
   v_count integer;
+  v_hop record;
+  v_sha text;
+  v_seen text[];
 BEGIN
   IF p_run_id IS NULL OR p_previous_commit !~ '^[0-9a-f]{40}$'
      OR p_new_commit !~ '^[0-9a-f]{40}$' OR p_new_commit = p_previous_commit
@@ -116,6 +119,32 @@ BEGIN
   WHERE run_id=p_run_id AND operation='reconcile_pr_candidate';
   IF v_count < 1 OR v_count >= 8 THEN
     RAISE EXCEPTION 'bounded candidate lineage budget exhausted' USING errcode='PT409';
+  END IF;
+
+  -- Verify every audited transition, not merely the latest receipt.
+  v_sha := p_previous_commit;
+  v_seen := ARRAY[v_sha];
+  FOR v_hop IN SELECT metadata AS proof FROM public.factory_tool_usage
+    WHERE run_id=p_run_id AND operation='reconcile_pr_candidate'
+    ORDER BY id DESC
+  LOOP
+    IF v_hop.proof->>'candidate_commit' IS DISTINCT FROM v_sha
+      OR v_hop.proof->>'new_sha' IS DISTINCT FROM v_sha
+      OR v_hop.proof->>'old_sha' IS DISTINCT FROM v_hop.proof->>'previous_commit'
+      OR v_hop.proof->>'pr_number' IS DISTINCT FROM p_pr_number::text
+      OR v_hop.proof->>'change_set_id' IS DISTINCT FROM v_set.id::text
+      OR v_hop.proof->>'compare_status' IS DISTINCT FROM 'ahead'
+      OR v_hop.proof->>'behind_by' IS DISTINCT FROM '0'
+      OR coalesce((v_hop.proof->>'ahead_by') ~ '^[1-9][0-9]{0,5}$',false) IS NOT TRUE
+    THEN RAISE EXCEPTION 'disconnected audited SHA chain' USING errcode='PT409'; END IF;
+    v_sha := v_hop.proof->>'previous_commit';
+    IF coalesce(v_sha,'') !~ '^[0-9a-f]{40}$' OR v_sha=ANY(v_seen) THEN
+      RAISE EXCEPTION 'invalid audited SHA chain' USING errcode='PT409';
+    END IF;
+    v_seen := array_append(v_seen,v_sha);
+  END LOOP;
+  IF v_sha IS DISTINCT FROM v_original.metadata->>'head_sha' THEN
+    RAISE EXCEPTION 'audited SHA chain does not reach original PR' USING errcode='PT409';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM public.factory_evaluations e
