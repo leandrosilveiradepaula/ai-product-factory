@@ -24,6 +24,8 @@ before(async()=>{
  await esbuild.build({
   entryPoints:[fixture],outfile:bundle,absWorkingDir:root,
   bundle:true,platform:"browser",format:"iife",target:["chrome120"],
+  // Production TSX uses the React 19 automatic JSX runtime, not React.createElement.
+  jsx:"automatic",jsxImportSource:"react",
   nodePaths:[modules],logLevel:"warning",
   define:{"process.env.NODE_ENV":'"production"'},
  });
@@ -66,6 +68,8 @@ async function pageAt(options={}){
   await route.continue();
  });
  const page=await context.newPage();
+ // Broken JSX bundles should fail within seconds rather than consume minutes.
+ page.setDefaultTimeout(8500);
  page.on("pageerror",e=>errors.push(String(e)));
  page.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
  const response=await page.goto(origin+(options.path||"/gates"),{waitUntil:"networkidle"});
@@ -114,6 +118,7 @@ test("real React form remains busy during delay and prevents repeat clicks",asyn
  await page.locator(".gateSuccessNotice[role='status']").waitFor();
  assert.match(await page.locator(".gateSuccessNotice").innerText(),/Migration aplicada e confirmada no Supabase/);
  assert.equal(await page.locator(".gateBusyStatus").count(),0);
+ await page.waitForFunction(()=>!new URL(location.href).searchParams.has("migration_result"));
  const url=new URL(page.url());
  assert.equal(url.searchParams.has("migration_result"),false);
  assert.equal(url.searchParams.get("tab"),"controlled");
