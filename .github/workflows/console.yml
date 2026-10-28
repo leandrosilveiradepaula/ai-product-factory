@@ -70,6 +70,16 @@ jobs:
         run: node ../../scripts/test_console_status_semantics.cjs
       - name: Verify actual migration feedback modules with offline delayed audit
         run: node ../../scripts/test_console_migration_interaction.cjs
+      # Actual React 19 formStatus and ConfirmSubmit in headless Chromium.
+      # Local-only HTTP fixture; no Supabase, credentials or production gate.
+      - name: Verify migration pending success and failure in isolated Chromium
+        shell: bash
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund esbuild@0.25.12 playwright@1.63.0
+          node --test ../../scripts/test_console_migration_browser.cjs
       - name: Prove GitHub App access verification is POST-only and same-origin
         run: node ../../scripts/test_console_github_app_verify.cjs
       - name: Syntax-check protected browser capture offline, without credentials
