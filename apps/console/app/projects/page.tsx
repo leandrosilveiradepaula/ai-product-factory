@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {cookies} from "next/headers";
-import {redirect} from "next/navigation";
 import {getDashboard} from "../../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,PageHeader,StatusPill} from "../ui";
 
@@ -21,17 +20,23 @@ const notices:Record<string,string>={
 
 export default async function Projects({searchParams}:{searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string}>}){
  const query=await searchParams;
- if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
-  const jar=await cookies();
-  const project=jar.get("factory_github_app_install_project")?.value||"";
-  if(/^[a-z0-9][a-z0-9-]{0,63}$/.test(project)){
-   redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project)+"&return_to=gates");
-  }
- }
+ const installReturned=query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update";
+ const jar=installReturned?await cookies():null;
+ const rawInstallProject=jar?.get("factory_github_app_install_project")?.value||"";
+ const installProject=/^[a-z0-9][a-z0-9-]{0,63}$/.test(rawInstallProject)?rawInstallProject:null;
  const d=await getDashboard();const notice=query.supabase?notices[query.supabase]:undefined;
+ const installPending=installReturned&&installProject&&d.projects.some(p=>p.key===installProject);
  return <>
   <PageHeader eyebrow="Área de trabalho" title="Seus projetos" subtitle="Acesse cada produto para ver a etapa registrada, a próxima ação e as evidências. Estar em uma etapa não significa que seus testes foram aprovados." actions={<ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink>}/>
   {notice?<div className="card noticeCard danger" role="status"><StatusPill status="failed"/><span>{notice}</span></div>:null}
+  {installPending?<div className="card noticeCard" role="status">
+   <span>Instalação da GitHub App iniciada para {installProject}. Confira as permissões concedidas no GitHub e confirme a verificação; retornar a esta tela não comprova acesso.</span>
+   <form method="POST" action="/api/integrations/github-app/verify">
+    <input type="hidden" name="project" value={installProject}/>
+    <input type="hidden" name="return_to" value="gates"/>
+    <button type="submit" className="primary">Verificar acesso da GitHub App</button>
+   </form>
+  </div>:null}
   <div className="projectCards">
    {d.projects.length===0?<div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Inicie um produto ou importe um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Criar primeiro projeto</ActionLink></div>
    :d.projects.map(p=>{

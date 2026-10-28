@@ -157,11 +157,10 @@ function productWorkerBlockerMessage(reason:string){
 
 export default async function Project({params,searchParams}:{params:Promise<{key:string}>;searchParams:Promise<{supabase?:string;github_app?:string;setup_action?:string;reconciliation?:string;wake_recovery?:string;repo_link?:string;control?:string;continuation?:string}>}){
  const [{key},query,operator]=await Promise.all([params,searchParams,requireConsoleOperator()]);
- if(query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update"){
-  const jar=await cookies();
-  const project=jar.get("factory_github_app_install_project")?.value||"";
-  if(project===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(project))redirect("/api/integrations/github-app/verify?project="+encodeURIComponent(project));
- }
+ const installReturned=query.github_app==="installed"||query.setup_action==="install"||query.setup_action==="update";
+ const jar=installReturned?await cookies():null;
+ const installProject=jar?.get("factory_github_app_install_project")?.value||"";
+ const installPending=operator.role==="admin"&&installReturned&&installProject===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(key);
  const p=await getProjectDetail(key);if(!p)notFound();
  const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
@@ -192,6 +191,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    ||observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||["human_gate","release"].includes(p.stage));
  const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
  return <>
+  {installPending?<div className="card noticeCard" role="status">
+   <span>O GitHub retornou da instalação de {p.key}. Confirme a verificação das capacidades antes de considerar o acesso pronto.</span>
+   <form method="POST" action="/api/integrations/github-app/verify">
+    <input type="hidden" name="project" value={p.key}/>
+    <button className="primary" type="submit">Verificar acesso da GitHub App</button>
+   </form>
+  </div>:null}
   <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<>{executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink>:null}<details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
   <section className="section" id="project-control" aria-label="Controle de execução do projeto">
    <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
@@ -324,7 +330,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <div className="actions">
      {operator.role==="admin"&&!githubAppStatus.configured?<a className="primary linkButton" href="/api/integrations/github-app/register">Registrar GitHub App da Factory</a>:null}
      {operator.role==="admin"&&githubAppStatus.configured&&githubAccess.authMode!=="github_app"?<a className="primary linkButton" href={"/api/integrations/github-app/install?project="+encodeURIComponent(p.key)}>Instalar GitHub App neste projeto</a>:null}
-     {operator.role==="admin"&&githubAppStatus.configured&&githubAccess.authMode==="github_app"&&githubAccess.status!=="ready"?<a className="primary linkButton" href={"/api/integrations/github-app/verify?project="+encodeURIComponent(p.key)}>Verificar GitHub App neste projeto</a>:null}
+     {operator.role==="admin"&&githubAppStatus.configured&&githubAccess.authMode==="github_app"&&githubAccess.status!=="ready"?<form method="POST" action="/api/integrations/github-app/verify"><input type="hidden" name="project" value={p.key}/><button type="submit" className="primary linkButton">Verificar GitHub App neste projeto</button></form>:null}
      {githubAccess.authMode!=="github_app"?<a className="linkButton" href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noreferrer">Fallback: token fine-grained</a>:null}
      {operator.role==="admin"&&githubAccess.status!=="ready"?<form action={requestGitHubRecheck}><input type="hidden" name="project_id" value={p.id}/><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reexecutar preflight</button></form>:null}
     </div>
