@@ -1,3 +1,11 @@
+## 27/10/2026 — Certificação após merge #1128
+
+- Factory #1128 mergeada humanamente em `main=75b3d34ace6b62a27a45972a59952f918cfdf09e`; CI PR [#40603160661](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40603160661) SUCCESS. Arquivos README/testes apenas, Console Preview N/A.
+- A avaliação global vigente permanece `product_ready=false`. [Observador #40601918247](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40601918247) relatou seis domínios não verificados, 0 writes e 0 paid calls no SHA anterior; não equiparar esse recibo a avaliação do novo SHA.
+- Product Experience: [captura real #40349605858](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40349605858) validou 14 telas, navegação, mobile, acessibilidade e RBAC no código do Console publicado; **não** exercitou uma migration real ou transição autenticada pending→success. Issue #692 segue aberta, não duplicar implementação existente.
+- CRM é piloto existing sem novo Start de certificação; F6 greenfield depende de alvo legítimo novo. Service Desk standalone está `stopped`, sem recovery histórico. Runbook vigente: [Release/rollback](RELEASE_AUTONOMY.md).
+
+---
 ## 27/10/2026 — Service Desk modular integrado; F6 legado aposentado (correção de fonte operacional)
 
 **Decisão definitiva:** Service Desk é módulo do CRM Infodive, não produto independente. CRM PR [#201](https://github.com/leandrosilveiradepaula/crm-infodive/pull/201) mergeada humanamente em `5072e0ea311e27ce4b5e2382e32399deece5adf8`; migrations aditivas aplicadas no banco do CRM. Projeto Factory `infodive-service-desk` parado via Console e confirmado no Control Plane: `state=stopped`, `version=1`, `updated_at=2026-10-27T17:59:48Z`, 0 tarefas ativas. `crm-infodive` e `ai-product-factory` seguem `running`.

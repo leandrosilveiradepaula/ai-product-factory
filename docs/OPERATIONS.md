@@ -3,7 +3,8 @@
 Esta página contém registros históricos e instruções escritas para candidatos
 que já foram mergeados ou aposentados. Antes de executar qualquer comando,
 usar o [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md),
-a [matriz de seis domínios](FINAL_CERTIFICATION_MATRIX_20261026.md) e
+a [matriz de seis domínios](FINAL_CERTIFICATION_MATRIX_20261026.md),
+o [runbook vigente de release/rollback](RELEASE_AUTONOMY.md) e
 o estado ao vivo de GitHub/Control Plane/Vercel.
 
 **Service Desk standalone foi aposentado e está `stopped`.**
