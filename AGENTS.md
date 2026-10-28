@@ -1,8 +1,10 @@
-# PRIORIDADE ATUAL — FINALIZAR A FACTORY (decisão do proprietário em 26/10/2026)
+# PRIORIDADE VIGENTE — CERTIFICAÇÃO DA FACTORY (27/10/2026)
 
-**LER ANTES DE QUALQUER NOVA ISSUE, PR OU RUN:** [Contrato de finalização](docs/FINALIZATION_EXECUTION_CONTRACT.md). Esta é a orientação atual de trabalho; notas datadas abaixo representam histórico e NÃO instruem repetir entregas.
+**Antes de qualquer nova issue, PR ou run:** ler o [contrato de finalização](docs/FINALIZATION_EXECUTION_CONTRACT.md) e conferir SHA/CI/Control Plane reais. As notas abaixo são histórico e não anulam esta prioridade.
 
-Objetivo: concluir a prova greenfield F6 e a certificação independente de seis domínios, reaproveitando Provas 1/2 e cenários da Prova 3 já comprovados. Não ampliar escopo nem criar PR de diagnóstico/abstração/periferia para preencher backlog. Próxima ação deve fechar um critério de aceite real; correção só com defeito comprovado, teste e resultado. Service Desk é módulo do CRM e seu Preview `503 /api/session` é dependência de ambiente, não autorização para copiar segredos, criar infraestrutura paralela ou reviver runs sem preflight. Produção sempre com gate humano, sem auto-merge. O estado atual é `product_ready=false` até evidência durável de SHA exato.
+Ordem: verificar independentemente os seis domínios no SHA corrente; reutilizar as Provas 1/2 e cenários já comprovados da Prova 3; usar o **CRM Infodive como piloto existing** somente com Start/trabalho legítimos, sem reabrir Change Sets terminais. A F6 greenfield exige **produto novo, real e explicitamente autorizado**. O Service Desk independente foi aposentado, está `stopped` e integra o CRM como módulo: sua PR #10, o run 503 e o antigo procedimento de recovery não devem ser reativados.
+
+Sem projeto descartável, test-only Start, benchmark SQL 63, chamadas pagas apenas para sondar, credenciais copiadas, migrations não autorizadas, relaxamento de RLS ou auto-merge. Orquestração determinística em Python; Codex executor seletivo. Produção só por merge humano. **`product_ready=false` até avaliação independente, durável, atual e íntegra dos seis domínios.**
 
 ---
 
