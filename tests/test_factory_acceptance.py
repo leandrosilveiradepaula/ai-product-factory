@@ -411,6 +411,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261025031400_verified_native_ci_test_scope.sql",
             "20261025214000_repin_terminal_repair_history.sql",
             "20261026170000_resume_preview_backend_unavailable.sql",
+            "20261029115000_replace_existing_nonproduction_candidate.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
