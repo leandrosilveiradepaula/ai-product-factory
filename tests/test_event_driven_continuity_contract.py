@@ -24,7 +24,7 @@ def job(name: str) -> str:
 
 class EventDrivenContinuityContract(unittest.TestCase):
     def test_console_produces_existing_real_events_not_start_or_paid_bypass(self):
-        self.assertIn('workflow_dispatch', CONSOLE)
+        self.assertIn('/actions/workflows/autonomous-runner.yml/dispatches', CONSOLE)
         self.assertIn('requestFactoryIntakeWakeViaGitHubApp', CONSOLE)
         self.assertIn('event_type:"factory-intake-wake"',
                       (ROOT / 'apps/console/lib/github-app.ts').read_text())
