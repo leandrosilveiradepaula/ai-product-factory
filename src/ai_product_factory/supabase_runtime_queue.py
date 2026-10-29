@@ -289,7 +289,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             else None
         )
         alignment = source_issue_scope_alignment(
-            governance["docs/codex/CURRENT_TASK.md"], request
+            governance["docs/codex/CURRENT_TASK.md"], request, repository=repo,
         )
         if alignment["status"] == "conflict":
             # An OWNER Start does not override a different repository write
