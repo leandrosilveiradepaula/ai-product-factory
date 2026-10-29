@@ -1,0 +1,50 @@
+name: Existing candidate replacement PostgreSQL QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*replace_existing_nonproduction_candidate.sql"
+      - "scripts/verify_candidate_switch_postgres.py"
+      - "src/ai_product_factory/nonproduction_candidate_switch.py"
+      - "tests/test_nonproduction_candidate_switch.py"
+      - "scripts/switch_existing_nonproduction_candidate.py"
+      - ".github/workflows/candidate-switch-postgres.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-switch-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: disposable-only
+          POSTGRES_DB: factory_candidate_switch_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_candidate_switch_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Unit checks for source/issue/CI admission
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -p 'test_nonproduction_candidate_switch.py'
+      - name: CAS adversarial PostgreSQL test (isolated)
+        env:
+          FACTORY_CANDIDATE_SWITCH_ISOLATED: "true"
+          FACTORY_CANDIDATE_SWITCH_TEST_DSN: "postgresql://factory_ci:disposable-only@127.0.0.1:5432/factory_candidate_switch_test"
+        run: python scripts/verify_candidate_switch_postgres.py
