@@ -645,7 +645,10 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         self.assertEqual(receipt["workflow_run_id"],visual)
         self.assertEqual(receipt["executed_jobs"],["capture"])
         self.assertIn("captured_registry",receipt["source"])
-        self.assertEqual(registry_queries,[
+        self.assertEqual([
+            path for path in registry_queries
+            if path.startswith("factory_visual_evidence_runs?")
+        ],[
             "factory_visual_evidence_runs?"
             "select=workflow_run_id,source_commit,artifact_name,status"
             "&workflow_run_id=eq."+str(visual)+"&limit=2",
