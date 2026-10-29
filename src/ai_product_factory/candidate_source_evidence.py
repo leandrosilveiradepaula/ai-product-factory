@@ -20,6 +20,15 @@ _ISSUE_REF = re.compile(
     r"[Ii]ssue[ \t]+(?:(?P<after>[A-Z][A-Z0-9_-]{1,31})[ \t]+)?"
     r"#(?P<number>[1-9][0-9]{0,6})\b"
 )
+# GitHub issue URLs in task governance are binding references too. The current
+# task may use /issues/194 instead of the words "CRM issue #194". Ignore
+# PR URLs and arbitrary external sites; never treat linked issue text as
+# a write authorization.
+_ISSUE_URL_REF = re.compile(
+    r"https://github[.]com/(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/"
+    r"issues/(?P<number>[1-9][0-9]{0,6})\b",
+    re.IGNORECASE,
+)
 _BACKTICK = re.compile(r"\x60([^\x60\r\n]{1,240})\x60")
 _CODE_PATH = re.compile(
     r"^(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
@@ -51,21 +60,45 @@ def latest_authorization_excerpt(task_record: str) -> str | None:
     return None if heading is None else heading + "\n" + section.strip() + "\n"
 
 
-def _unique_issue_reference(value: str | None) -> tuple[str, int] | None:
+def _unique_issue_reference(
+    value: str | None, *, repository: str | None = None,
+) -> tuple[str, int] | None:
     if not isinstance(value, str):
         return None
-    refs = {
-        ((match.group("after") or match.group("before") or ""), int(match.group("number")))
-        for match in _ISSUE_REF.finditer(value)
-    }
+    # The verified Control Plane repository disambiguates an OWNER request's
+    # bare "issue #22"; labels from another repository remain distinct.
+    project_repo = (
+        repository.lower()
+        if isinstance(repository, str)
+        and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+        else None
+    )
+    aliases: set[str] = set()
+    if project_repo:
+        short_name = project_repo.rsplit("/", 1)[-1].upper()
+        aliases = {
+            short_name, short_name.replace("-", ""), short_name.split("-", 1)[0],
+        }
+    refs = set()
+    for match in _ISSUE_REF.finditer(value):
+        namespace = (match.group("after") or match.group("before") or "").upper()
+        if project_repo and (not namespace or namespace in aliases):
+            namespace = project_repo
+        refs.add((namespace, int(match.group("number"))))
+    for match in _ISSUE_URL_REF.finditer(value):
+        refs.add((match.group("repository").lower(), int(match.group("number"))))
+    # Mixed or multiple references cannot be promoted to a single authority.
     return next(iter(refs)) if len(refs) == 1 else None
 
 
-def source_issue_scope_alignment(task_record: str, continuation_request: str | None) -> dict:
+def source_issue_scope_alignment(
+    task_record: str, continuation_request: str | None,
+    *, repository: str | None = None,
+) -> dict:
     """Mismatch avoids paid work; issue labels never grant a write capability."""
     _, section = _latest_authorized_section(task_record)
-    authorized = _unique_issue_reference(section)
-    requested = _unique_issue_reference(continuation_request)
+    authorized = _unique_issue_reference(section, repository=repository)
+    requested = _unique_issue_reference(continuation_request, repository=repository)
     status = "unverified"
     if authorized is not None and requested is not None and authorized[0] == requested[0]:
         status = "matched" if authorized[1] == requested[1] else "conflict"

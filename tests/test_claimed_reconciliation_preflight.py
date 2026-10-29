@@ -1,6 +1,6 @@
 """Regression: a claimed reconciliation fails durably before stage execution."""
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from ai_product_factory.supabase_runtime_queue import SupabaseRuntimeQueue
 
@@ -144,6 +144,47 @@ class ClaimedReconciliationPreflightTests(unittest.TestCase):
         self.assertTrue(item.context["verified"])
         self.assertEqual([name for name, _ in calls], ["factory_claim_next_run"])
 
+
+    def test_github_issue_url_mismatch_blocks_real_live_candidate_preflight(self):
+        queue = SupabaseRuntimeQueue(
+            url="https://example.supabase.co", service_role_key="example"
+        )
+        repository = "leandrosilveiradepaula/crm-infodive"
+        queue._get = Mock(return_value=[{
+            "id": "project-crm", "repository": repository,
+            "project_kind": "existing",
+            "manifest": {
+                "delivery_target": {"untrusted": "fake-target"},
+                "continuation_request": {
+                    "summary": "Concluir as pendências reais da issue #22 do CRM Infodive."
+                },
+            },
+        }])
+        github = Mock()
+        github.get_branch_sha.return_value = "b" * 40
+        github.get_file_text.side_effect = lambda path, ref: (
+            "# AGENTS.md\nAuthoritative tasks remain in CURRENT_TASK."
+            if path == "AGENTS.md" else
+            "## Tarefa autorizada (24/10/2026) — Service Desk\n"
+            "Issue funcional: https://github.com/leandrosilveiradepaula/"
+            "crm-infodive/issues/194\n"
+        )
+        target = Mock()
+        target.sha = "a" * 40
+        target.branch = "preview/hardening-release-candidate"
+        target.candidate_pr_number = 56
+        with patch(
+            "ai_product_factory.supabase_runtime_queue.PinnedNonproductionTarget.parse",
+            return_value=target,
+        ), patch(
+            "ai_product_factory.supabase_runtime_queue.GitHubRestAdapter",
+            return_value=github,
+        ):
+            with self.assertRaises(SourceScopeBlocked) as denied:
+                queue._live_candidate_context("project-crm", {})
+        self.assertEqual(denied.exception.code, "source_authorization_issue_mismatch")
+        github.list_file_paths.assert_not_called()
+        github.get_file_text.assert_any_call("docs/codex/CURRENT_TASK.md", ref="a" * 40)
 
 if __name__ == "__main__":
     unittest.main()

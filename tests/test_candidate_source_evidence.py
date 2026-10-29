@@ -251,5 +251,46 @@ class CandidateSourceEvidenceTests(unittest.TestCase):
         self.assertEqual(receipt["governance_scope_paths"], ["src/lib/current.ts"])
         self.assertEqual(receipt["assessed_commit"], SHA)
 
+    def test_issue_urls_in_active_governance_block_new_owner_scope_pre_model(self):
+        from ai_product_factory.candidate_source_evidence import source_issue_scope_alignment
+        doc = (
+            "## Tarefa autorizada (24/10/2026) — Service Desk\n"
+            "Issue funcional: https://github.com/leandrosilveiradepaula/crm-infodive/issues/194\n"
+            "Escopo técnico: https://github.com/leandrosilveiradepaula/crm-infodive/issues/194#issuecomment-6390960882\n"
+            "### Escopo máximo de escrita\n"
+            "`src/components/layout/Sidebar.tsx`\n"
+        )
+        repo = "leandrosilveiradepaula/crm-infodive"
+        observed = source_issue_scope_alignment(
+            doc, "Concluir as pendências reais da issue #22 do CRM Infodive.",
+            repository=repo,
+        )
+        self.assertEqual(observed, {
+            "status": "conflict", "requested_issue": 22, "authorized_issue": 194,
+        })
+        self.assertEqual(source_issue_scope_alignment(
+            doc, "Concluir a issue CRM #194", repository=repo,
+        )["status"], "matched")
+        self.assertEqual(source_issue_scope_alignment(
+            doc, "Concluir https://github.com/leandrosilveiradepaula/crm-infodive/issues/194",
+            repository=repo,
+        )["status"], "matched")
+        # An issue of another repo is never treated as permission for this CRM.
+        self.assertEqual(source_issue_scope_alignment(
+            doc, "Auditar https://github.com/other/repo/issues/194",
+            repository=repo,
+        )["status"], "unverified")
+
+    def test_mixed_urls_cannot_become_one_authorization(self):
+        from ai_product_factory.candidate_source_evidence import source_issue_scope_alignment
+        doc = (
+            "## Tarefa autorizada (2026-10-29)\n"
+            "https://github.com/leandrosilveiradepaula/crm-infodive/issues/194\n"
+            "https://github.com/leandrosilveiradepaula/crm-infodive/issues/195\n"
+        )
+        self.assertEqual(source_issue_scope_alignment(
+            doc, "Concluir issue #22", repository="leandrosilveiradepaula/crm-infodive",
+        )["status"], "unverified")
+
 if __name__ == "__main__":
     unittest.main()
