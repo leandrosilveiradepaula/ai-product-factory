@@ -1385,7 +1385,58 @@ jobs:
           retention-days: 7
 
   global-readiness-post-ci:
-    # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
+
+  # Human-merged PR -> new source-only Preview bootstrap with immutable release
+  # evidence. No model, Change Set replay or merge permissions on this job.
+  rotate-released-existing-source:
+    needs: schedule-probe
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'issue_comment' &&
+        github.event.action == 'created' &&
+        github.event.issue.number == 713 &&
+        !github.event.issue.pull_request &&
+        github.event.comment.author_association == 'OWNER' &&
+        github.actor == 'leandrosilveiradepaula' &&
+        github.event.comment.user.id == 256917842 &&
+        startsWith(github.event.comment.body, '/factory-rotate-released-candidate ')
+      }}
+    environment: openai-api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Verify exact OWNER issue event before protected OIDC
+        run: python scripts/rotate_released_existing_candidate.py --event-path "$GITHUB_EVENT_PATH" --check-event
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Verify human merge, new scoped PR and native CI; execute CAS once
+        env:
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: >-
+          python scripts/rotate_released_existing_candidate.py
+          --event-path "$GITHUB_EVENT_PATH"
+          --output "$RUNNER_TEMP/factory-released-source-rotation.json"
+      - name: Preserve sanitized epoch-fenced rotation receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-released-source-rotation-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-released-source-rotation.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
     # Validate and visual completion are observer signals, NEVER scheduler wakes.
     # schedule-probe accepts workflow_run only when upstream event=schedule;
     # visual failure is observed as a blocker, never treated as verified.
@@ -1542,51 +1593,3 @@ jobs:
           path: ${{ runner.temp }}/factory-planning-resume.json
           if-no-files-found: warn
           retention-days: 14
-
-  # Human-merged PR -> new source-only Preview bootstrap with immutable release
-  # evidence. No model, Change Set replay or merge permissions on this job.
-  rotate-released-existing-source:
-    if: >-
-      ${{
-        github.event_name == 'issue_comment' &&
-        github.event.action == 'created' &&
-        github.event.issue.number == 713 &&
-        !github.event.issue.pull_request &&
-        github.event.comment.author_association == 'OWNER' &&
-        github.actor == 'leandrosilveiradepaula' &&
-        github.event.comment.user.id == 256917842 &&
-        startsWith(github.event.comment.body, '/factory-rotate-released-candidate ')
-      }}
-    environment: openai-api
-    runs-on: ubuntu-24.04
-    timeout-minutes: 8
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      PYTHONPATH: src
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.12"
-      - name: Verify exact OWNER issue event before protected OIDC
-        run: python scripts/rotate_released_existing_candidate.py --event-path "$GITHUB_EVENT_PATH" --check-event
-      - uses: ./.github/actions/control-plane-oidc
-      - name: Verify human merge, new scoped PR and native CI; execute CAS once
-        env:
-          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
-        run: >-
-          python scripts/rotate_released_existing_candidate.py
-          --event-path "$GITHUB_EVENT_PATH"
-          --output "$RUNNER_TEMP/factory-released-source-rotation.json"
-      - name: Preserve sanitized epoch-fenced rotation receipt
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: factory-released-source-rotation-${{ github.run_id }}
-          path: ${{ runner.temp }}/factory-released-source-rotation.json
-          if-no-files-found: warn
-          retention-days: 7
