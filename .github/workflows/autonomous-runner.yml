@@ -1384,8 +1384,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  global-readiness-post-ci:
-
   # Human-merged PR -> new source-only Preview bootstrap with immutable release
   # evidence. No model, Change Set replay or merge permissions on this job.
   rotate-released-existing-source:
@@ -1436,7 +1434,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
+
+  global-readiness-post-ci:
+    # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
     # Validate and visual completion are observer signals, NEVER scheduler wakes.
     # schedule-probe accepts workflow_run only when upstream event=schedule;
     # visual failure is observed as a blocker, never treated as verified.
@@ -1593,3 +1593,4 @@ jobs:
           path: ${{ runner.temp }}/factory-planning-resume.json
           if-no-files-found: warn
           retention-days: 14
+
