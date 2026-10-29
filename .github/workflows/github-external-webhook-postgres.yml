@@ -1,0 +1,40 @@
+name: GitHub App external event isolated QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*github_external_event_wake_outbox.sql"
+      - "scripts/verify_external_github_webhook_postgres.py"
+      - ".github/workflows/github-external-webhook-postgres.yml"
+permissions:
+  contents: read
+jobs:
+  github-webhook-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: factory_ci
+          POSTGRES_DB: factory_external_webhook_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_external_webhook_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Execute exact candidate SQL with forged identities, dedupe, pause and epochs
+        env:
+          FACTORY_WEBHOOK_TEST_ISOLATED: "true"
+          FACTORY_WEBHOOK_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_external_webhook_test"
+        run: python scripts/verify_external_github_webhook_postgres.py
