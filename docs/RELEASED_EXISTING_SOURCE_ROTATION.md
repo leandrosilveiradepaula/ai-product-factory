@@ -23,7 +23,7 @@ o candidato antigo já foi integrado humanamente.
    autorizada. Verifica por GET que a PR antiga é exatamente a pinned,
    closed + merged, e que seu merge_commit_sha é ancestral da main atual.
    Não exige que a branch antiga ainda exista.
-2. Exige nova PR aberta, não draft, mesma repository, base main atual,
+2. Exige nova PR aberta em DRAFT (fonte apenas), mesma repository, base main atual,
    head preview/** verificado, comparação ahead (1–8 commits) sem behind,
    única mudança docs/codex/CURRENT_TASK.md.
 3. A nova seção de autorização deve referir-se à mesma issue do OWNER.

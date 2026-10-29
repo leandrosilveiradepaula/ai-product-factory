@@ -53,7 +53,7 @@ def _old_human_release(github: Any, *, old: Any, main_sha: str) -> str:
     if (getattr(pr, "number", None) != old.candidate_pr_number
         or getattr(pr, "state", None) != "closed"
         or getattr(pr, "merged", None) is not True
-        or getattr(pr, "draft", None) is not False
+        or getattr(pr, "draft", None) is not True
         or getattr(pr, "head_sha", None) != old.sha
         or getattr(pr, "head_ref", None) != old.branch
         or getattr(pr, "head_repository", None) != old.repository
@@ -158,7 +158,7 @@ def attest_merged_source_rotation(
     second = github.get_pull_request(candidate_pr_number)
     if (getattr(second, "state", None) != "open"
         or getattr(second, "merged", None) is not False
-        or getattr(second, "draft", None) is not False
+        or getattr(second, "draft", None) is not True
         or getattr(second, "head_sha", None) != candidate
         or getattr(second, "head_ref", None) != branch
         or getattr(second, "base_sha", None) != main_sha

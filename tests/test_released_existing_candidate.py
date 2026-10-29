@@ -47,7 +47,7 @@ class Github:
     def __init__(self):
         self.old = PR(202, OLD, "preview/crm22-rbac-security-evidence", "e"*40,
                       state="closed", merged=True, merge_commit_sha=MERGE)
-        self.new = PR(204, NEW, BRANCH, MAIN)
+        self.new = PR(204, NEW, BRANCH, MAIN, draft=True)
         self.main = MAIN
         self.branch = NEW
         self.doc = TASK
@@ -179,7 +179,7 @@ class RotationTests(unittest.TestCase):
         with self.assertRaises(PermissionError): self.attest(gh)
 
     def test_new_branch_behind_or_draft_or_fork_refused(self):
-        for change in ({"draft":True},{"state":"closed"},{"merged":True},
+        for change in ({"draft":False},{"state":"closed"},{"merged":True},
                        {"head_repository":"fork/repo"},
                        {"head_sha":OLD},{"head_ref":"main"},
                        {"base_sha":"f"*40}):
