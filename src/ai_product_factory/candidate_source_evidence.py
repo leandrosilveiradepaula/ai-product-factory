@@ -20,6 +20,12 @@ _ISSUE_REF = re.compile(
     r"[Ii]ssue[ \t]+(?:(?P<after>[A-Z][A-Z0-9_-]{1,31})[ \t]+)?"
     r"#(?P<number>[1-9][0-9]{0,6})\b"
 )
+_ISSUE_URL = re.compile(
+    r"https://github[.]com/(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/issues/"
+    r"(?P<number>[1-9][0-9]{0,6})(?![0-9])", re.IGNORECASE
+)
+_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+
 _BACKTICK = re.compile(r"\x60([^\x60\r\n]{1,240})\x60")
 _CODE_PATH = re.compile(
     r"^(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
@@ -61,11 +67,66 @@ def _unique_issue_reference(value: str | None) -> tuple[str, int] | None:
     return next(iter(refs)) if len(refs) == 1 else None
 
 
-def source_issue_scope_alignment(task_record: str, continuation_request: str | None) -> dict:
-    """Mismatch avoids paid work; issue labels never grant a write capability."""
+def _repository_url_issues(value: str | None, repository: str) -> set[int]:
+    """Read canonical issue URL references only from the exact registered repo."""
+    if not isinstance(value, str) or not _REPOSITORY.fullmatch(repository):
+        return set()
+    return {
+        int(match.group("number"))
+        for match in _ISSUE_URL.finditer(value)
+        if match.group("repository").casefold() == repository.casefold()
+    }
+
+
+def _request_names_repository(value: str | None, repository: str, namespace: str) -> bool:
+    """Do not compare unqualified issue IDs with a registered repo's task."""
+    if not isinstance(value, str) or not _REPOSITORY.fullmatch(repository):
+        return False
+    slug = repository.split("/", 1)[1]
+    if re.search(r"(?<![A-Za-z0-9])" + re.escape(slug) + r"(?![A-Za-z0-9])",
+                 value, re.IGNORECASE):
+        return True
+    parts = [part for part in re.split(r"[-_.]", slug) if part]
+    if len(parts) >= 2 and re.search(
+        r"\b" + r"[\s_-]+".join(map(re.escape, parts)) + r"\b",
+        value, re.IGNORECASE
+    ):
+        return True
+    return bool(namespace and len(parts[0]) >= 3
+                and namespace.casefold() == parts[0].casefold())
+
+
+def source_issue_scope_alignment(
+    task_record: str, continuation_request: str | None, *,
+    repository: str | None = None,
+) -> dict:
+    """Compare the active task against an explicit issue, without granting writes.
+
+    A canonical GitHub issue URL is also an issue identity. An OWNER's newer
+    approval is a product constraint, not permission to override the pinned
+    CURRENT_TASK from another issue. Missing/ambiguous refs remain unverified.
+    """
     _, section = _latest_authorized_section(task_record)
     authorized = _unique_issue_reference(section)
     requested = _unique_issue_reference(continuation_request)
+    if isinstance(repository, str) and _REPOSITORY.fullmatch(repository):
+        authorized_urls = _repository_url_issues(section, repository)
+        requested_urls = _repository_url_issues(continuation_request, repository)
+        if len(authorized_urls) > 1 or len(requested_urls) > 1:
+            return {
+                "status": "unverified", "requested_issue": None,
+                "authorized_issue": None,
+            }
+        if authorized_urls:
+            authorized = ("repository", next(iter(authorized_urls)))
+            if requested_urls:
+                requested = ("repository", next(iter(requested_urls)))
+            elif requested is not None and _request_names_repository(
+                continuation_request, repository, requested[0]
+            ):
+                requested = ("repository", requested[1])
+            else:
+                requested = None
     status = "unverified"
     if authorized is not None and requested is not None and authorized[0] == requested[0]:
         status = "matched" if authorized[1] == requested[1] else "conflict"
@@ -128,7 +189,10 @@ def collect_candidate_source_evidence(
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise PermissionError("candidate source evidence requires exact SHA")
     heading, governed = _latest_scope(task_record)
-    issue_alignment = source_issue_scope_alignment(task_record, continuation_request)
+    issue_alignment = source_issue_scope_alignment(
+        task_record, continuation_request,
+        repository=getattr(github, "repository", None),
+    )
     request_paths = _request_paths(continuation_request)
     requested = list(dict.fromkeys([*request_paths, *governed]))
     if not requested:
