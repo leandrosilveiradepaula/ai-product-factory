@@ -260,7 +260,7 @@ def _workflow_jobs(github_get, prefix: str, run_id: int, sha: str, expected: set
 
 
 def _authenticated_visual_receipt(runs: list[dict],*,repo: str,sha: str,
-                                  branch: str,prefix: str,github_get,
+                                  branch: str,prefix: str,github_get,cp_get,
                                   expected_run_id: int | None = None) -> dict:
     relevant = [x for x in runs if x.get("name") == VISUAL_WORKFLOW and x.get("event") == "push"
                 and x.get("head_branch") == branch]
@@ -286,10 +286,33 @@ def _authenticated_visual_receipt(runs: list[dict],*,repo: str,sha: str,
     jobs = _workflow_jobs(github_get,prefix,rid,sha,{"capture"})
     artifacts = github_get(prefix+"/actions/runs/"+str(rid)+"/artifacts?per_page=100")
     if (not isinstance(artifacts,dict) or type(artifacts.get("total_count")) is not int
-            or not 1 <= artifacts["total_count"] <= MAX_VISUAL_ARTIFACTS
+            or not 0 <= artifacts["total_count"] <= MAX_VISUAL_ARTIFACTS
             or not isinstance(artifacts.get("artifacts"),list)
             or len(artifacts["artifacts"]) != artifacts["total_count"]):
         raise GlobalReadinessEvidenceError("missing or incomplete encrypted browser receipt")
+    if artifacts["total_count"] == 0:
+        # The encrypted screenshot intentionally expires after one day, but the
+        # privileged broker persists status=captured only after a successful
+        # capture/encryption/upload. Exact GitHub workflow/job success also
+        # establishes mandatory ephemeral operator cleanup. Never read keys.
+        rows = cp_get(
+            "factory_visual_evidence_runs?"
+            "select=workflow_run_id,source_commit,artifact_name,status"
+            "&workflow_run_id=eq."+str(rid)+"&limit=2"
+        )
+        receipt = _one(rows,"trusted visual capture registry")
+        if (type(receipt.get("workflow_run_id")) is not int
+                or receipt["workflow_run_id"] != rid
+                or receipt.get("source_commit") != sha
+                or receipt.get("artifact_name") != "authenticated-console-"+str(rid)
+                or receipt.get("status") != "captured"):
+            raise GlobalReadinessEvidenceError("historical visual capture provenance mismatch")
+        # Historical execution is not a replayable screenshot, a fresh browser
+        # run, or independent whole-product UX certification.
+        return {"status":"verified_historical","workflow_run_id":rid,
+                "artifact_available":False,"executed_jobs":jobs,
+                "scope":"past_browser_execution_without_replayable_artifact",
+                "source":"github_exact_sha_workflow_and_control_plane_captured_registry"}
     matches = [a for a in artifacts["artifacts"] if isinstance(a,dict)
                and a.get("name") == "authenticated-console-"+str(rid)]
     if len(matches) != 1:
@@ -306,7 +329,8 @@ def _authenticated_visual_receipt(runs: list[dict],*,repo: str,sha: str,
     # trusted workflow + successful capture job + same-SHA artifact is
     # operational evidence, not an independent full UI accessibility audit.
     return {"status":"verified","workflow_run_id":rid,"artifact_id":a["id"],
-            "executed_jobs":jobs,"scope":"trusted_authenticated_browser_suite",
+            "artifact_available":True,"executed_jobs":jobs,
+            "scope":"trusted_authenticated_browser_suite",
             "source":"github_exact_sha_workflow_and_encrypted_artifact"}
 
 
@@ -451,7 +475,8 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
     live_runs = _same_sha_runs(repository,sha,github_get)
     visual = _authenticated_visual_receipt(
         live_runs,repo=repository,sha=sha,branch=branch,prefix=prefix,
-        github_get=github_get,expected_run_id=visual_trigger_run_id,
+        github_get=github_get,cp_get=cp_get,
+        expected_run_id=visual_trigger_run_id,
     )
     production = _same_sha_provider_status(prefix,sha,github_get,
                                            console_changed=console_scope["console_changed"])
@@ -479,7 +504,7 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
         if not passed or summary.get("domains",{}).get(d,{}).get("status") not in ("passed","not_applicable")
     ]
     next_actions = dict(NEXT_ACTION)
-    if visual["status"] == "verified":
+    if visual["status"] in ("verified", "verified_historical"):
         next_actions["product_experience"] = "review_full_product_surface_inventory_and_accessibility_gaps"
         next_actions["test_strategy"] = "verify_other_critical_journeys_and_cross_project_regressions"
     if production["status"] == "provider_status_success_unverified":
@@ -490,6 +515,9 @@ def observe_current_product(*, repository: str, sha: str, validation_run_id: int
         "observed_evidence": (
             (["exact_sha_ci"] if d == "test_strategy" else []) +
             (["authenticated_console_browser"] if visual["status"] == "verified"
+             and d in ("test_strategy","product_experience") else []) +
+            (["authenticated_console_historical_receipt"]
+             if visual["status"] == "verified_historical"
              and d in ("test_strategy","product_experience") else []) +
             (["vercel_provider_status_unverified"] if production["status"] == "provider_status_success_unverified"
              and d == "observability_operations" else [])
