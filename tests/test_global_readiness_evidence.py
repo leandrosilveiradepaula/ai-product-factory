@@ -105,6 +105,7 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
         "factory_evaluations.existing_project_baseline": baseline or [],
         "factory_runs":[{"id":R,"task_id":T}],
         "factory_tasks":[{"id":T,"project_id":P}],
+        "factory_visual_evidence_runs":[],
     }
     def github_get(path):
         if path not in gh:
@@ -118,6 +119,8 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
             return cp["factory_evaluations.product_readiness"]
         if path.startswith("factory_runs?"): return cp["factory_runs"]
         if path.startswith("factory_tasks?"): return cp["factory_tasks"]
+        if path.startswith("factory_visual_evidence_runs?"):
+            return cp["factory_visual_evidence_runs"]
         raise AssertionError("Unexpected Control Plane read "+path)
     return gh,cp,github_get,cp_get
 
@@ -620,6 +623,141 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
                     observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
                                             github_get=gg,cp_get=cg,
                                             visual_trigger_run_id=visual)
+
+    def test_expired_sensitive_artifact_recovers_only_a_historical_receipt(self):
+        gh,cp,gg,cg,visual=self.visual(with_artifact=False)
+        cp["factory_visual_evidence_runs"]=[{
+            "workflow_run_id":visual,"source_commit":S,
+            "artifact_name":"authenticated-console-"+str(visual),
+            "status":"captured",
+        }]
+        registry_queries=[]
+        def read_registry(path):
+            registry_queries.append(path)
+            return cg(path)
+        report=observe_current_product(repository=REPO,sha=S,validation_run_id=RUN,
+                                       github_get=gg,cp_get=read_registry,
+                                       visual_trigger_run_id=visual)
+        receipt=report["current_sha_operational_evidence"]["authenticated_console"]
+        self.assertEqual(receipt["status"],"verified_historical")
+        self.assertFalse(receipt["artifact_available"])
+        self.assertNotIn("artifact_id",receipt)
+        self.assertEqual(receipt["workflow_run_id"],visual)
+        self.assertEqual(receipt["executed_jobs"],["capture"])
+        self.assertIn("captured_registry",receipt["source"])
+        self.assertEqual([
+            path for path in registry_queries
+            if path.startswith("factory_visual_evidence_runs?")
+        ],[
+            "factory_visual_evidence_runs?"
+            "select=workflow_run_id,source_commit,artifact_name,status"
+            "&workflow_run_id=eq."+str(visual)+"&limit=2",
+        ])
+        self.assertNotIn("encryption_key"," ".join(registry_queries))
+        self.assertFalse(report["global_readiness"]["product_ready"])
+        self.assertEqual(report["global_readiness"]["missing_or_unverified_domains"],
+                         list(REQUIRED_DOMAINS))
+        for domain in ("test_strategy","product_experience"):
+            row=next(x for x in report["work_proposals"] if x["domain"]==domain)
+            self.assertIn("authenticated_console_historical_receipt",
+                          row["observed_evidence"])
+            self.assertEqual(
+                "exact_sha_ci" in row["observed_evidence"],
+                domain == "test_strategy",
+            )
+            self.assertFalse(row["start_authorized"])
+            self.assertFalse(row["paid_calls_authorized"])
+
+    def test_historical_registry_is_not_self_attesting(self):
+        valid={"workflow_run_id":142,"source_commit":S,
+               "artifact_name":"authenticated-console-142",
+               "status":"captured"}
+        cases=[
+            ("wrong sha",{"source_commit":"f"*40}),
+            ("wrong run",{"workflow_run_id":141}),
+            ("bool run",{"workflow_run_id":True}),
+            ("wrong artifact",{"artifact_name":"authenticated-console-141"}),
+            ("expired registry",{"status":"expired"}),
+            ("only provisioned",{"status":"provisioned"}),
+            ("failed cleanup",{"status":"cleanup_failed"}),
+        ]
+        for label,update in cases:
+            with self.subTest(label=label):
+                gh,cp,gg,cg,visual=self.visual(with_artifact=False)
+                cp["factory_visual_evidence_runs"]=[{**valid,**update}]
+                with self.assertRaises(GlobalReadinessEvidenceError):
+                    observe_current_product(repository=REPO,sha=S,
+                        validation_run_id=RUN,github_get=gg,cp_get=cg,
+                        visual_trigger_run_id=visual)
+
+    def test_missing_or_duplicate_registry_refuses_expired_artifact(self):
+        valid={"workflow_run_id":142,"source_commit":S,
+               "artifact_name":"authenticated-console-142",
+               "status":"captured"}
+        for rows in ([],[valid,dict(valid)]):
+            with self.subTest(rows=len(rows)):
+                gh,cp,gg,cg,visual=self.visual(with_artifact=False)
+                cp["factory_visual_evidence_runs"]=rows
+                with self.assertRaises(GlobalReadinessEvidenceError):
+                    observe_current_product(repository=REPO,sha=S,
+                        validation_run_id=RUN,github_get=gg,cp_get=cg,
+                        visual_trigger_run_id=visual)
+
+    def test_broken_artifacts_or_untrusted_workflow_cannot_use_registry(self):
+        for corruption in ("expired_artifact","wrong_artifact_sha","incomplete_list",
+                           "failed_capture_job","rerun"):
+            with self.subTest(corruption=corruption):
+                gh,cp,gg,cg,visual=self.visual()
+                cp["factory_visual_evidence_runs"]=[{
+                    "workflow_run_id":visual,"source_commit":S,
+                    "artifact_name":"authenticated-console-"+str(visual),
+                    "status":"captured"}]
+                art=gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/artifacts?per_page=100"]
+                row=gh["/repos/"+REPO+"/actions/runs?head_sha="+S+"&event=push&per_page=100"]["workflow_runs"][-1]
+                if corruption=="expired_artifact":
+                    art["artifacts"][0]["expired"]=True
+                elif corruption=="wrong_artifact_sha":
+                    art["artifacts"][0]["workflow_run"]["head_sha"]="f"*40
+                elif corruption=="incomplete_list":
+                    art["total_count"]=0
+                elif corruption=="failed_capture_job":
+                    gh["/repos/"+REPO+"/actions/runs/"+str(visual)+"/jobs?per_page=100"]["jobs"][0]["conclusion"]="failure"
+                else:
+                    row["run_attempt"]=2
+                with self.assertRaises(GlobalReadinessEvidenceError):
+                    observe_current_product(repository=REPO,sha=S,
+                        validation_run_id=RUN,github_get=gg,cp_get=cg,
+                        visual_trigger_run_id=visual)
+
+    def test_failed_visual_is_not_rescued_by_a_captured_row(self):
+        gh,cp,gg,cg,visual=self.visual(conclusion="failure",with_artifact=False)
+        cp["factory_visual_evidence_runs"]=[{
+            "workflow_run_id":visual,"source_commit":S,
+            "artifact_name":"authenticated-console-"+str(visual),
+            "status":"captured"}]
+        report=observe_current_product(repository=REPO,sha=S,
+            validation_run_id=RUN,github_get=gg,cp_get=cg,
+            visual_trigger_run_id=visual)
+        self.assertEqual(report["current_sha_operational_evidence"]
+                         ["authenticated_console"]["status"],"failed")
+        self.assertFalse(report["global_readiness"]["product_ready"])
+
+    def test_existing_valid_artifact_does_not_query_registry(self):
+        gh,cp,gg,cg,visual=self.visual()
+        cp["factory_visual_evidence_runs"]=[{
+            "workflow_run_id":visual,"source_commit":"f"*40,
+            "artifact_name":"wrong","status":"expired"}]
+        paths=[]
+        def spy(path):
+            paths.append(path)
+            return cg(path)
+        report=observe_current_product(repository=REPO,sha=S,
+            validation_run_id=RUN,github_get=gg,cp_get=spy,
+            visual_trigger_run_id=visual)
+        receipt=report["current_sha_operational_evidence"]["authenticated_console"]
+        self.assertEqual(receipt["status"],"verified")
+        self.assertTrue(receipt["artifact_available"])
+        self.assertFalse(any("factory_visual_evidence_runs?" in path for path in paths))
 
     def test_exact_validation_selection_for_visual_cannot_use_visual_run_as_ci(self):
         from ai_product_factory.global_readiness_evidence import find_current_validation_run

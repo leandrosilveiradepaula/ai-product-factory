@@ -89,3 +89,39 @@ skip-link inaccessibility with real Tab/Enter. Numeric-only evidence is
 unit-validated in unprivileged CI. This is actual browser-executable
 verification after a separately authorized protected workflow dispatch;
 it is not a new domain PASS or a whole-product readiness attestation.
+
+## 29/10/2026 — Retenção do recibo autenticado sem prolongar capturas sensíveis
+
+**Problema reproduzido:** o run confiável de navegador do Console
+[#40612548468](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40612548468)
+executou 14 vistas e verificações de navegação, mobilidade e acessibilidade
+no commit `5061e1ef54b49ce4867c9612c825ffea5d8d8373`. O upload criptografado
+`authenticated-console-40612548468` teve sucesso. O artefato desapareceu
+da listagem GitHub após sua retenção de **um dia** (intencional); o Control Plane
+mantém a linha `factory_visual_evidence_runs` com esse run/SHA, artefato e
+`status=captured`, embora o prazo do segredo temporário já tenha passado.
+O auditor global anterior rejeitava o run histórico apenas porque a listagem
+atual de artefatos estava vazia, incentivando repetição de prova autenticada.
+
+**Critério implementado sem novas permissões:** após verificar o workflow exato
+`push main`, tentativa 1, conclusão `success` e job `capture` concluído no SHA,
+o auditor usa **somente quando o inventário GitHub é exatamente vazio** a linha
+única `captured` do broker, comparando run, SHA e nome do artefato.
+Consulta exclusivamente `workflow_run_id,source_commit,artifact_name,status`;
+**nunca busca `encryption_key`**, imagens, contas ou credenciais. O resultado
+é `verified_historical`, `artifact_available=false`, fonte durável
+`github_exact_sha_workflow_and_control_plane_captured_registry`: comprova
+execução passada, **não** permite reabrir screenshots, não é browser novo,
+revisão completa de acessibilidade ou avaliação de prontidão UX. Registro
+inválido, ausente/duplicado, artefato presente mas contraditório, reexecução
+ou falha de job continuam **bloqueados**.
+
+A prova autentica a integridade de um recibo histórico no SHA original.
+A identidade do código do Console pode ser reutilizada ao comparar subtrees
+Git entre o SHA servido e o HEAD, mas isso não transfere automaticamente
+um `product_readiness=passed`. A avaliação de seis domínios independente e
+atual, incluindo os controles não comprovados de UX e Operations, permanece
+obrigatória. `product_ready=false` sem esse atestado. Esta alteração afeta
+apenas Python, testes e documentação; Preview da Factory é N/A porque
+`apps/console/**` não muda. Não modifica política de expiração, RLS, Auth,
+modelo/custo ou release/merge de produção.
