@@ -119,3 +119,62 @@ def verify_candidate_switch(
         "ci_workflow_name": ci_policy.workflow_name,
         "ci_workflow_path": ci_policy.workflow_path,
     }
+
+
+def switch_one(
+    project_key: str, *, candidate_pr_number: int, issue_number: int,
+    github_factory=None, rpc=None, project_fetcher=None,
+    control_fetcher=None,
+) -> dict:
+    """Operator opt-in: verify live source then CAS a quiescent project.
+
+    This operation never merges a PR, changes production deployment, or
+    creates a Factory run. It requires the separately approved migration.
+    """
+    from .github_auth import resolve_github_token
+    from .github_rest import GitHubRestAdapter
+    from .nonproduction_candidate_repin import _load_projects, _with_control, _post_rpc
+
+    rows = _load_projects(project_key=project_key, fetcher=project_fetcher)
+    if len(rows) != 1:
+        raise PermissionError("existing project is not uniquely registered")
+    project = _with_control(rows[0], control_fetcher=control_fetcher)
+    control = project["execution_control"]
+    if (project.get("project_kind") != "existing" or project.get("is_active") is not True
+        or control.get("state") != "running"
+        or type(control.get("generation")) is not int
+        or type(control.get("version")) is not int):
+        raise PermissionError("existing project control is not ready")
+    repository = project["repository"]
+    github = (github_factory(repository) if github_factory
+              else GitHubRestAdapter(
+                  repository=repository, token=resolve_github_token(repository)
+              ))
+    evidence = verify_candidate_switch(
+        github, project=project, candidate_pr_number=candidate_pr_number,
+        issue_number=issue_number,
+    )
+    p = {
+        "p_project_key": project_key,
+        "p_expected_old_branch": evidence["old_branch"],
+        "p_expected_old_sha": evidence["old_sha"],
+        "p_expected_old_pr": evidence["old_pr_number"],
+        "p_new_branch": evidence["new_branch"],
+        "p_new_sha": evidence["new_sha"],
+        "p_new_pr": evidence["new_pr_number"],
+        "p_issue_number": issue_number,
+        "p_expected_generation": control["generation"],
+        "p_expected_version": control["version"],
+        "p_evidence": evidence,
+        "p_actor_ref": "factory-candidate-switch",
+    }
+    receipt = (rpc or _post_rpc)("factory_replace_nonproduction_candidate_v1", p)
+    if (not isinstance(receipt, dict) or receipt.get("status") != "replaced"
+        or receipt.get("project_key") != project_key
+        or receipt.get("old_sha") != evidence["old_sha"]
+        or receipt.get("new_sha") != evidence["new_sha"]
+        or receipt.get("new_pr_number") != candidate_pr_number
+        or receipt.get("generation") != control["generation"] + 1
+        or receipt.get("version") != control["version"] + 1):
+        raise RuntimeError("candidate switch CAS receipt mismatch")
+    return receipt
