@@ -188,7 +188,9 @@ class SupabaseScheduleProbe:
                 resolved[str(t["id"])]=str(t["status"])
         return resolved,len(bounded),max(0,len(missing)-len(bounded))
 
-    def probe(self) -> dict:
+    def probe(self, *, record_telemetry: bool = True) -> dict:
+        if type(record_telemetry) is not bool:
+            raise ValueError("record_telemetry must be boolean")
         runs, capped_run_statuses = self._status_partitioned_rows(
             "factory_runs",
             "id,task_id,status,execution_route,created_at,branch_name,candidate_commit,metadata",
@@ -337,7 +339,7 @@ class SupabaseScheduleProbe:
             work_detected=out["work_detected"],
             work_classes=work_classes,
             queue_diagnostics=out["queue_diagnostics"],
-        )
-        if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not out["telemetry_recorded"]:
+        ) if record_telemetry else False
+        if record_telemetry and os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not out["telemetry_recorded"]:
             raise RuntimeError("native scheduler heartbeat could not be persisted")
         return out

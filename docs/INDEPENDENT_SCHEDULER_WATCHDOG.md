@@ -1,135 +1,97 @@
-# Independent scheduler watchdog — candidate, OFF by default
+# Recuperação condicional da Factory — watchdog externo (desativado)
 
-## Why this exists
+**Estado: código candidato, sem instalação na VPS e SEM autorização de ativação.**
 
-The Factory's native GitHub Actions `schedule` is best-effort. On 29 October
-2026, the two Factory schedules last started at 10:04/10:26 UTC and then no
-further `schedule` event was delivered through at least 15:22 UTC. GitHub
-confirms that scheduled workflows can be delayed or dropped. The existing
-six-hour OIDC-preflight fallback successfully woke the runner at 12:52 UTC;
-**it is still scheduled by GitHub** and cannot make this a truly independent
-timer. Issue #1143 remains valid until the native recovery conditions pass.
+Em 29/10/2026, o `schedule` nativo do workflow Factory parou de iniciar
+novos runs após 10:26 UTC. O fallback OIDC programado também depende do
+scheduler do GitHub e, portanto, não é independente. A issue #1143 permanece
+aberta até duas evidências **nativas** válidas de recuperação.
 
-This watchdog is an opt-in, Python-stdlib-only trigger to be run from a
-**separate already-managed host/timer**, not from the Factory's own GitHub
-Actions. It is **not installed, enabled or holding credentials** by this PR.
-It never reads Supabase, starts a model, selects a work item, merges, applies
-migrations, deploys, or changes approval gates. It only inspects official
-GitHub Actions evidence and can request an existing `workflow_dispatch` on the
-immutable `leandrosilveiradepaula/ai-product-factory` / `main` target.
-The Factory's existing workflow then performs its native queue admission,
-lease recovery, cost controls and human production release gate.
+## Mudança arquitetural após revisão da #1145
 
-## Fail-closed algorithm
+A implementação anterior podia pedir um wake apenas porque o cron estava
+irregular, mesmo sem tarefas. Isso não é autonomia produtiva. O watchdog agora
+só pode emitir um `workflow_dispatch` se **todas** as condições passarem:
 
-1. Resolve the exact GitHub repository numerical ID and active workflow path
-   using official REST API; reject drift, arbitrary repositories or branches.
-2. Read the newest 20 `schedule` runs of that workflow, validate provenance,
-   ordering and UTC timestamps. Two recent, consecutive, successful runs
-   separated by less than two hours must each have the **actual
-   `schedule-probe` job** completed successfully. This is the evidence needed
-   to suppress a redundant external wake. A single returned native event
-   after a gap does not count as recovery.
-3. If the newest native run is still starting and is under 30 minutes old,
-   do not request a concurrent duplicate yet.
-4. If native liveness remains unproven, check the exact workflow's recent
-   `workflow_dispatch` runs. Suppress an additional dispatch when one was
-   created within 30 minutes. No caller-provided URL, repository or ref is
-   accepted; `--execute` is a distinct operator-approved switch.
-5. Only with both `--execute` and
-   `FACTORY_EXTERNAL_SCHEDULER_ENABLED=true`, and a scoped credential,
-   POST `{"ref":"main"}` to the **one exact Actions dispatch endpoint**.
-   HTTP 204 is recorded only as `dispatch_accepted`, not executed/PASS.
-6. API failures, ambiguity, missing job evidence, clock drift and missing
-   credentials fail closed with redacted reason codes. A timer/log monitor
-   should alert on repeated `blocked` results, rather than silently masking
-   unavailability. This watchdog does not impersonate GitHub native
-   `schedule_probe.native_observed`, and must never close #1143 itself.
+1. GitHub REST confirma ID exato do repositório `1387883686`, nome
+   `leandrosilveiradepaula/ai-product-factory`, branch `main`, workflow
+   `.github/workflows/autonomous-runner.yml` ativo e runs ordenados com
+   proveniência. Dois probes nativos recentes, efetivamente concluídos,
+   descartam recuperação por via alternativa.
+2. Nenhum `workflow_dispatch` **nem** `repository_dispatch` do mesmo workflow
+   foi criado nos últimos 30 minutos. Um cron ainda em andamento e recente
+   também suspende nova tentativa.
+3. Uma leitura nova do **Control Plane correto**, usando o `SupabaseScheduleProbe`
+   já existente e com `record_telemetry=False`, confirma fila autorizada.
+   A classificação consulta os sinais SQL `factory_scheduler_queue_signals`,
+   as condições de portfolio, especialistas, CI e Preview, além dos bloqueios
+   por quota. O watchdog NÃO cria `schedule_probe.native_observed`.
+4. Snapshot incompleto/truncado, fila ociosa, apenas access preflight, erro de
+   autenticação, segredo ausente, mismatch de projeto, resposta contraditória,
+   relógio incoerente ou corrida de API nunca autorizam dispatch.
+5. Somente `--execute` **mais** `FACTORY_EXTERNAL_SCHEDULER_ENABLED=true`
+   solicitam a execução. O HTTP 204 significa apenas aceite do GitHub; o
+   resultado do workflow deve ser observado por separado.
 
-This is at-least-once wakeup, not exactly-once dispatch. Concurrent watchdog
-hosts are unsupported; use **one** timer instance. Even if external dispatch
-is duplicated because of an API race or crash, the runner's existing
-concurrency, Control Plane leases, epoch fences and budget checks must
-remain the only work-effect authority. Do not loosen these controls.
+A decisão é apenas sobre **acordar** o runner existente; a Factory continua a
+validar estado `running`, epoch, budget/ledger, origem do trabalho, leases,
+quality gate, Preview e gate humano de produção antes de qualquer efeito.
+Mesmo um evento duplicado não pode recriar Start ou aplicar merge. Não há
+SLA garantido, nem prova de que a task está envelhecida por um intervalo
+exato; as medições de `enqueued_at → worker_started_at` são critério de rollout.
 
-## Offline validation (no provider credits)
+## Verificação offline
 
-From repository root:
+A partir da raiz do repositório:
 
 ```bash
 PYTHONPATH=src python -m unittest tests/test_independent_scheduler_watchdog.py -v
+PYTHONPATH=src python -m unittest tests/test_schedule_probe_readonly_contract.py -v
 ```
 
-For an approved trusted host with a read-capable scoped token already set as
-`FACTORY_EXTERNAL_GITHUB_TOKEN`, run the following read-only preflight:
+O primeiro comando usa apenas fixtures locais, sem GitHub real, chamadas pagas,
+modelos ou dados de produção. O segundo prova que o leitor usado externamente
+não escreve telemetria nem simula o cron nativo. O modo padrão do runner
+continua gerando seus recibos de probe normalmente.
 
-```bash
-PYTHONPATH=src python scripts/independent_scheduler_watchdog.py
-```
+## Pré-ativação (somente operador autorizado)
 
-The preflight prints `would_dispatch` or `skipped` and **never** posts by
-default. Without a token it correctly returns `blocked` (exit status 2).
-Never paste tokens in chat, shell command arguments, PRs or logs.
+**Não execute o antigo instalador da VPS gerado antes deste redesenho.**
+Ele foi concebido para o watchdog v1 e não prova elegibilidade de trabalho.
 
-## Activation gate — NOT granted by merge
+O host autorizado deve usar **um único** timer externo à infraestrutura de
+GitHub Actions e checkout fixado a um SHA aprovado. A ativação precisa de
+aprovação independente para adicionar duas credenciais server-side:
 
-A future operator-approved activation requires all of the following:
+- `FACTORY_EXTERNAL_GITHUB_TOKEN`: fine-grained, acesso **somente** à Factory,
+  permissão mínima de Actions leitura/escrita para consultar histórico e
+  despachar o próprio workflow.
+- `FACTORY_EXTERNAL_CONTROL_PLANE_URL`:
+  exatamente `https://fjplmxfcshhbmzgvyqlm.supabase.co`.
+- `FACTORY_EXTERNAL_CONTROL_PLANE_KEY`: chave com acesso apenas server-side
+  às leituras do Control Plane. **A RPC existente é service-role-only; hoje
+  não há papel read-only independente já demonstrado para este uso.** Não
+  instale um `sb_secret_*` (privilegiado) na VPS sem decidir explicitamente
+  se esse aumento de superfície de ataque é aceitável. Nunca inclua essa
+  chave em Git, chat, browser, cron command line, imagem Docker ou logs.
 
-- A trusted timer host **outside GitHub Actions** (for example an already
-  managed server). Do not create/purchase a new VPS automatically.
-- A GitHub fine-grained credential scoped **only** to the Factory repository
-  with the minimum **Actions read/write** capability needed to inspect runs
-  and call workflow dispatch. Never use `GITHUB_TOKEN` from Actions on an
-  external host, browser tokens, or a cross-repo credential.
-- Secret `FACTORY_EXTERNAL_GITHUB_TOKEN` held in a root-owned service
-  environment file (`0600`), never in Git, browser, container logs or the
-  cron command line. A dedicated unprivileged service identity should run
-  the script. Only on the trusted host, set
-  `FACTORY_EXTERNAL_SCHEDULER_ENABLED=true`.
-- An explicit cost/quota decision for added GitHub Actions runs; the
-  watchdog itself calls no paid model and does not create a service, but
-  real dispatches may execute already-authorized Factory work under its
-  existing ledger/budget. Do not silently increase budget or call models
-  to test the watchdog.
-- Human review and merge of the PR that ships the script. Human activation
-  of the timer and sensitive GitHub access is **separate**. Review one exact
-  no-work dispatch in the real environment, then verify the resulting run,
-  queue/lease behavior, nonnative telemetry and alert state. A POST 204 alone
-  is not an end-to-end success.
+As credenciais devem estar em arquivo de ambiente protegido (`0600`), fora
+ do diretório da aplicação, lido apenas por usuário de serviço segregado.
+Se faltar qualquer informação, o resultado será `blocked` e exit status 2.
+Com a autorização concedida, primeiro executar sem `--execute` para imprimir
+`would_dispatch` ou `skipped`, sem efeitos. Somente depois aprovar timer
+`systemd` com `--execute`, fazer um disparo limitado de fila legítima, validar
+jobs e Control Plane e manter alerta se houver bloqueio repetido.
 
-A possible *operator-reviewed* systemd unit (illustration, **do not install
-implicitly**) uses:
+Não comprar VPS/serviço, não criar secrets, não habilitar Supabase RPC pública,
+não usar chamadas pagas só para smoke, não aumentar budget e nunca permitir
+merge automático. Até completar eventos de CI/Preview entre repositórios, o
+cron atual da Factory permanece fallback best-effort. O plano de saída está em
+[`EVENT_DRIVEN_AUTONOMY.md`](EVENT_DRIVEN_AUTONOMY.md).
 
-```ini
-[Unit]
-Description=AI Product Factory independent schedule watchdog
+## Release e Preview
 
-[Service]
-Type=oneshot
-User=factory-watchdog
-Group=factory-watchdog
-WorkingDirectory=/opt/ai-product-factory
-Environment=PYTHONPATH=src
-EnvironmentFile=/etc/infodive/factory-watchdog.env
-ExecStart=/usr/bin/python3 scripts/independent_scheduler_watchdog.py --execute
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
-ProtectSystem=strict
-```
-
-A separate timer may run it at off-minute intervals, e.g. at minutes
-7, 22, 37 and 52. Verify service user, Python version, checkout, log
-redaction, permissions, clock accuracy, restart behavior and timer runs
-before enabling. No Supabase `pg_cron`, `pg_net`, new Edge Function,
-production migration or new recurring paid service is required by this
-option. The GitHub `schedule` and six-hour fallback remain in place as
-additional (not independent) opportunities.
-
-## Preview and release policy
-
-This candidate touches Python/tests/docs only, not `apps/console/**`:
-Factory Console Preview is **not applicable** by its explicit path policy.
-No migration, production deploy, human release, OAuth/WIF or Supabase RLS
-change is implied. `product_ready=false` until the six-domain audit is
-independently completed; this component only addresses missed wakeup risk.
+Os arquivos deste bloco são Python, workflow, testes e documentação. O Console
+Vercel não foi modificado; a política de paths da Factory determina Preview
+N/A. CI completa e merge de produção da Factory exigem revisão humana.
+`product_ready=false` até auditoria global independente dos seis domínios.

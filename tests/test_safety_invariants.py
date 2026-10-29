@@ -15,7 +15,9 @@ class SafetyInvariantTests(unittest.TestCase):
  def test_scheduled_direct_requires_explicit_primary_and_budget_gates(self):
   text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
   direct=text.split("\n  direct:",1)[1].split("\n\n  preview:",1)[0]
-  self.assertIn("inputs.run_direct == true",direct)
+  self.assertIn("needs.dispatch.result == 'success'",direct)
+  self.assertIn("needs.dispatch.outputs.direct_count != '0'",direct)
+  self.assertIn("github.event_name == 'workflow_dispatch'",direct)
   self.assertIn("github.event_name == 'schedule'",direct)
   self.assertIn("FACTORY_PRIMARY_MODEL_ENABLED: ${{ vars.FACTORY_PRIMARY_MODEL_ENABLED == 'true' && 'true' || 'false' }}",direct)
   self.assertNotIn('FACTORY_PRIMARY_MODEL_ENABLED: "true"',direct)

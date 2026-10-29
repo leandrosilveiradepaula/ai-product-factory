@@ -1,8 +1,8 @@
-"""Independent, opt-in GitHub Actions scheduler watchdog.
+"""Independent, opt-in event-continuity watchdog.
 
-Run only on a trusted host whose clock and timer are independent of GitHub
-Actions. This module never performs work itself, reads the Control Plane,
-uses models or merges. It may request one bounded workflow_dispatch.
+A native schedule outage alone is NOT permission to dispatch. GitHub identity,
+recent wake deduplication and a fresh, read-only Control Plane queue snapshot
+are all mandatory before one bounded, operator-enabled workflow_dispatch.
 """
 from __future__ import annotations
 
@@ -22,6 +22,16 @@ MAX_RESPONSE = 256 * 1024
 MAX_ROWS = 20
 MAX_JOBS = 100
 MAX_GAP = timedelta(hours=2)
+CONTROL_PLANE_URL = "https://fjplmxfcshhbmzgvyqlm.supabase.co"
+# Exact keys of the existing schedule probe; every class must be verified.
+ACTIONABLE_QUEUE_KEYS = (
+    "github_access_work", "product_work", "dispatch_work",
+    "integration_work", "ci_work", "specialist_work",
+    "preview_work", "release_work", "codex_manual_work",
+)
+# GitHub capability checks alone (possibly for stopped projects) are not
+# evidence that a development/release task is waiting for recovery.
+WAKE_QUEUE_KEYS = tuple(k for k in ACTIONABLE_QUEUE_KEYS if k != "github_access_work")
 RECENT_WAKE = timedelta(minutes=30)
 CLOCK_SKEW = timedelta(minutes=2)
 
@@ -108,7 +118,7 @@ class GitHubWatchdogClient:
             raise WatchdogError("github_target_identity_mismatch")
 
     def runs(self, *, event: str) -> list[dict]:
-        if event not in {"schedule", "workflow_dispatch"}:
+        if event not in {"schedule", "workflow_dispatch", "repository_dispatch"}:
             raise WatchdogError("unsupported_event")
         result = self._request(
             "/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW
@@ -156,16 +166,69 @@ class GitHubWatchdogClient:
         )
 
 
-def decide(client: GitHubWatchdogClient, *, now: datetime) -> str:
+def _verified_queue_work(queue_probe) -> bool:
+    """Consume an authoritative, complete, side-effect-free scheduler snapshot.
+
+    A queue flag is never operator authorization. The server-side selectors,
+    leases, execution generation and paid gates still own all work claims.
+    """
+    if queue_probe is None:
+        raise WatchdogError("control_plane_evidence_unavailable")
+    try:
+        snapshot = queue_probe()
+    except Exception as exc:
+        # Exception content (URLs, auth headers, SQL, customer data) is secret.
+        raise WatchdogError("control_plane_evidence_unavailable") from exc
+    if not isinstance(snapshot, dict) or any(
+        type(snapshot.get(key)) is not bool for key in ACTIONABLE_QUEUE_KEYS
+    ) or type(snapshot.get("work_detected")) is not bool:
+        raise WatchdogError("invalid_control_plane_queue_evidence")
+    diagnostics = snapshot.get("queue_diagnostics")
+    if (not isinstance(diagnostics, dict)
+            or diagnostics.get("queue_signal_source") != "authoritative_rpc"
+            or diagnostics.get("run_status_partitions_at_limit") != []
+            or diagnostics.get("task_status_partitions_at_limit") != []
+            or type(diagnostics.get("linked_task_lookup_truncated")) is not int
+            or diagnostics["linked_task_lookup_truncated"] != 0):
+        # Do not interpret partial pagination as an empty queue.
+        raise WatchdogError("incomplete_control_plane_queue_evidence")
+    observed = any(snapshot[key] for key in ACTIONABLE_QUEUE_KEYS)
+    if snapshot["work_detected"] is not observed:
+        raise WatchdogError("contradictory_control_plane_queue_evidence")
+    return any(snapshot[key] for key in WAKE_QUEUE_KEYS)
+
+
+def _trusted_control_plane_probe():
+    """Create an optional external read-only probe without auth fallback.
+
+    Never silently reuse unrelated SUPABASE_* environment credentials. The
+    privileged credential must be provisioned explicitly at activation.
+    """
+    url = os.environ.get("FACTORY_EXTERNAL_CONTROL_PLANE_URL", "")
+    key = os.environ.get("FACTORY_EXTERNAL_CONTROL_PLANE_KEY", "")
+    if not url or not key:
+        return None
+    if url != CONTROL_PLANE_URL or not key.strip() or key != key.strip():
+        raise WatchdogError("control_plane_identity_mismatch")
+
+    def snapshot():
+        # Lazy import: this component stays safely inert without Supabase.
+        from .schedule_probe import SupabaseScheduleProbe
+        reader = SupabaseScheduleProbe(url=url, secret_key=key)
+        # NOT the runner's heartbeat; never pretend to be a native probe.
+        return reader.probe(record_telemetry=False)
+
+    return snapshot
+
+
+def decide(client: GitHubWatchdogClient, *, now: datetime, queue_probe=None) -> str:
     if now.tzinfo is None or now.utcoffset() is None:
         raise WatchdogError("invalid_clock")
     now = now.astimezone(timezone.utc)
     client.verify_target()
     native = client.runs(event="schedule")
-    if any(_utc(run["created_at"]) > now + CLOCK_SKEW for run in native):
+    if any(_utc(item["created_at"]) > now + CLOCK_SKEW for item in native):
         raise WatchdogError("future_scheduler_run")
-    # A currently starting native workflow can settle itself without a
-    # duplicate external dispatch. A hanging run is not a permanent veto.
     if (native and native[0].get("status") in {"queued", "in_progress", "waiting"}
             and now - _utc(native[0]["created_at"]) < RECENT_WAKE):
         return "native_in_progress"
@@ -177,28 +240,31 @@ def decide(client: GitHubWatchdogClient, *, now: datetime) -> str:
         and client.probe_succeeded(native[0]) and client.probe_succeeded(native[1]))
     if healthy:
         return "native_healthy"
-    manual = client.runs(event="workflow_dispatch")
-    if any(_utc(run["created_at"]) > now + CLOCK_SKEW for run in manual):
-        raise WatchdogError("future_dispatch_run")
-    if manual and now - _utc(manual[0]["created_at"]) < RECENT_WAKE:
-        return "recent_dispatch"
+    # Both operator workflow_dispatch AND Console GitHub App repository_dispatch
+    # are real wakes. The old watchdog ignored the App event and could duplicate.
+    for event in ("workflow_dispatch", "repository_dispatch"):
+        previous = client.runs(event=event)
+        if any(_utc(item["created_at"]) > now + CLOCK_SKEW for item in previous):
+            raise WatchdogError("future_dispatch_run")
+        if previous and now - _utc(previous[0]["created_at"]) < RECENT_WAKE:
+            return "recent_dispatch"
+    if not _verified_queue_work(queue_probe):
+        return "no_actionable_work"
     return "wake_due"
 
 
 def run(*, token: str, execute: bool, enabled: bool,
-        now: datetime | None = None, opener=None) -> dict:
-    # This is a *separate* activation boundary from GitHub's schedule.
-    # The default is read-only, including if --execute was supplied.
+        now: datetime | None = None, opener=None, queue_probe=None) -> dict:
     if execute and not enabled:
         return {"status": "blocked", "reason_code": "explicit_activation_required"}
     if not token:
         return {"status": "blocked", "reason_code": "github_credential_unavailable"}
     client = GitHubWatchdogClient(token, opener=opener)
-    decision = decide(client, now=now or datetime.now(timezone.utc))
+    decision = decide(client, now=now or datetime.now(timezone.utc), queue_probe=queue_probe)
     if decision != "wake_due":
         return {"status": "skipped", "reason_code": decision}
     if not execute:
-        return {"status": "would_dispatch", "reason_code": "native_scheduler_gap"}
+        return {"status": "would_dispatch", "reason_code": "stalled_actionable_queue"}
     client.dispatch()
     return {"status": "dispatch_accepted", "reason_code": "github_http_204_not_execution_proof"}
 
@@ -213,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
             token=os.environ.get("FACTORY_EXTERNAL_GITHUB_TOKEN", ""),
             execute=args.execute,
             enabled=os.environ.get("FACTORY_EXTERNAL_SCHEDULER_ENABLED") == "true",
+            queue_probe=_trusted_control_plane_probe(),
         )
     except Exception as exc:
         # Never include untrusted HTTP/OS exception messages in output.
