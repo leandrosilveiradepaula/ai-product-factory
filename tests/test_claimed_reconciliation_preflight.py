@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ai_product_factory.supabase_runtime_queue import SupabaseRuntimeQueue
+from ai_product_factory.source_scope_admission import SourceScopeBlocked
 
 
 CLAIM = {
