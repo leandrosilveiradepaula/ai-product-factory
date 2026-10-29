@@ -659,8 +659,12 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
                          list(REQUIRED_DOMAINS))
         for domain in ("test_strategy","product_experience"):
             row=next(x for x in report["work_proposals"] if x["domain"]==domain)
-            self.assertEqual(row["observed_evidence"],
-                             ["authenticated_console_historical_receipt"])
+            self.assertIn("authenticated_console_historical_receipt",
+                          row["observed_evidence"])
+            self.assertEqual(
+                "exact_sha_ci" in row["observed_evidence"],
+                domain == "test_strategy",
+            )
             self.assertFalse(row["start_authorized"])
             self.assertFalse(row["paid_calls_authorized"])
 
