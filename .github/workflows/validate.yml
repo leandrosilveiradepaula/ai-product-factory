@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
+      - name: Signed GitHub App event authentication unit tests
+        run: node --no-warnings --experimental-strip-types --test apps/console/tests/github-webhook-security.test.mjs
       - name: Authenticated Console visual origin and credential boundary regression
         run: node --test scripts/test_console_visual_deployment.mjs
       - name: Cross-repo browser correlation unit tests
