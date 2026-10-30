@@ -37,6 +37,7 @@ with psycopg.connect(DSN,autocommit=True) as db:
         cur.execute("insert into factory_project_execution_controls values(%s,'running',17,1)",(PROJECT,))
         intake=call(cur,"factory_enqueue_journey_intake_v2",("crm-infodive","CRM #171",REQUEST,"github-owner","github-owner","123",__import__('hashlib').sha256(b"CRM #171").hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055))
         assert intake["state"]=="awaiting_source"
+        cur.execute("select request_snapshot->>'text' from factory_journeys where id=%s",(intake["journey_id"],)); assert cur.fetchone()[0]=="CRM #171"
         # Replay is idempotent, but changed provenance is rejected.
         assert call(cur,"factory_enqueue_journey_intake_v2",("crm-infodive","CRM #171",REQUEST,"github-owner","github-owner","123",__import__('hashlib').sha256(b"CRM #171").hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055))["created"] is False
         journey=intake["journey_id"]
@@ -51,4 +52,18 @@ with psycopg.connect(DSN,autocommit=True) as db:
         except psycopg.Error: pass
         else: raise AssertionError("authenticated role reached service-only RPC")
         finally: cur.execute("reset role")
+        # Adversarial replay and invalid binding leave no partial descendants.
+        try:
+            call(cur,"factory_enqueue_journey_intake_v2",("crm-infodive","tampered",REQUEST,"github-owner","github-owner","123",__import__('hashlib').sha256(b"tampered").hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055))
+        except psycopg.Error: pass
+        else: raise AssertionError("tampered replay accepted")
+        request2="d49060c4-69a0-c58d-4254-54a40003f608"
+        intake2=call(cur,"factory_enqueue_journey_intake_v2",("crm-infodive","CRM #171 followup",request2,"github-owner","github-owner","124",__import__('hashlib').sha256(b"CRM #171 followup").hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055))
+        call(cur,"factory_record_journey_source_evidence_v2",(intake2["journey_id"],"leandrosilveiradepaula/crm-infodive","main",SHA,POLICY,PROOF,17))
+        bad={**binding,"journey_id":intake2["journey_id"],"request_id":request2,"preview_branch_prefix":None}
+        try: call(cur,"factory_bind_journey_source_v2",("crm-infodive",request2,17,2,Jsonb(bad)))
+        except psycopg.Error: pass
+        else: raise AssertionError("incomplete binding accepted")
+        cur.execute("select count(*) from factory_tasks"); assert cur.fetchone()[0]==1
+        cur.execute("select count(*) from factory_runs"); assert cur.fetchone()[0]==1
 print("journey_delivery_binding_postgres_qa=passed")

@@ -565,12 +565,15 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         before reconciliation or a model invocation, never by consulting the
         mutable project manifest.
         """
-        # This is capability detection only. Once a V2 run is identified, all
-        # authority comes from its immutable journey row, never the manifest.
+        # A project without a V2 policy is genuinely legacy. For a project
+        # that has ever enabled V2, query the immutable run marker before
+        # consulting the current enabled bit: disabling admission must not
+        # downgrade already-persisted V2 runs.
         manifest = context.get("manifest")
-        if not (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)
-                and manifest["journey_delivery_binding_v2"].get("enabled") is True):
+        if not (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)):
             return None, context
+        # Disabling V2 rejects *new* intake only; it cannot downgrade a V2
+        # run into the mutable V1 delivery-target lane.
         runs = self._get("factory_runs?select=journey_id&id=eq." + quote(run_id, safe="") + "&limit=1")
         if not isinstance(runs, list) or len(runs) != 1:
             raise JourneyBindingBlocked("journey_claim_unverifiable")
@@ -584,7 +587,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise JourneyBindingBlocked("journey_project_unverifiable")
         repository = projects[0].get("repository")
         rows = self._get(
-            "factory_journeys?select=id,project_id,request_id,state,binding,execution_generation"
+            "factory_journeys?select=id,project_id,request_id,request_digest,state,binding,request_snapshot,execution_generation"
             "&id=eq." + quote(journey_id, safe="") + "&limit=1"
         )
         if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
@@ -599,7 +602,15 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                                        repository=str(repository or ""))
         if row.get("execution_generation") != binding.execution_generation:
             raise JourneyBindingBlocked("journey_binding_generation_invalid")
-        return journey_id, {**context, "journey_binding_v2": binding.as_context()}
+        request_snapshot = row.get("request_snapshot")
+        if (not isinstance(request_snapshot, dict) or request_snapshot.get("digest") != row.get("request_digest")
+                or not isinstance(request_snapshot.get("text"), str) or not request_snapshot["text"].strip()):
+            # Digest is checked against the durable request row by the bind
+            # RPC; the context needs only a nonempty immutable snapshot.
+            raise JourneyBindingBlocked("journey_request_snapshot_invalid")
+        return journey_id, {**context, "journey_binding_v2": binding.as_context(),
+                            "journey_request": request_snapshot,
+                            "task": request_snapshot["text"]}
 
     def _live_journey_context(self, context: dict) -> dict:
         """V2 source preflight: immutable binding only, never delivery_target."""

@@ -10,6 +10,7 @@ create table if not exists public.factory_journeys (
   auth_actor_ref text not null,
   auth_event_id text not null,
   request_digest text not null check (request_digest ~ '^[0-9a-f]{64}$'),
+  request_snapshot jsonb not null default '{}'::jsonb,
   issue_repository text,
   issue_number integer check (issue_number is null or issue_number > 0),
   state text not null check (state in ('intake_accepted','awaiting_source','source_bound','executing','preview_verified','awaiting_release','released_observed','closed')),
@@ -26,6 +27,7 @@ create table if not exists public.factory_journeys (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(project_id,request_id),
+  check (request_snapshot ? 'text' and request_snapshot->>'digest'=request_digest),
   check ((state in ('intake_accepted','awaiting_source')) or (
     execution_generation is not null and project_policy_version is not null
     and policy_digest ~ '^[0-9a-f]{64}$' and source_commit ~ '^[0-9a-f]{40}$'
@@ -118,8 +120,11 @@ begin
    then raise exception 'journey request replay mismatch' using errcode='PT409'; end if;
    return jsonb_build_object('project_id',p.id,'journey_id',j.id,'request_id',p_request_id,'created',false,'state',j.state,'source',p_request_source);
  end if;
- insert into public.factory_journeys(project_id,request_id,request_source,auth_actor_ref,auth_event_id,request_digest,issue_repository,issue_number,state)
- values(p.id,p_request_id,p_request_source,p_auth_actor_ref,p_auth_event_id,p_request_digest,p_issue_repository,p_issue_number,'awaiting_source') returning * into j;
+ insert into public.factory_journeys(project_id,request_id,request_source,auth_actor_ref,auth_event_id,request_digest,request_snapshot,issue_repository,issue_number,state)
+ values(p.id,p_request_id,p_request_source,p_auth_actor_ref,p_auth_event_id,p_request_digest,
+   jsonb_build_object('text',request_text,'digest',p_request_digest,'source',p_request_source,
+     'control_issue_repository',p_issue_repository,'control_issue_number',p_issue_number,
+     'authorization_event_id',p_auth_event_id),p_issue_repository,p_issue_number,'awaiting_source') returning * into j;
  insert into public.factory_audit_events(project_id,actor_type,actor_ref,event_type,payload)
  values(p.id,'human',p_auth_actor_ref,'journey.intake_accepted',jsonb_build_object('journey_id',j.id,'request_id',p_request_id,'source',p_request_source,'state',j.state));
  return jsonb_build_object('project_id',p.id,'journey_id',j.id,'request_id',p_request_id,'created',true,'state',j.state,'source',p_request_source);
@@ -141,12 +146,21 @@ begin
     or coalesce((policy->>'enabled')::boolean,false) is not true or (policy->>'version')::integer is distinct from p_expected_policy_version
  then raise exception 'journey source binding epoch or policy changed' using errcode='PT409'; end if;
  v_policy_digest:=policy->>'digest'; binding_digest:=encode(extensions.digest(p_binding::text,'sha256'),'hex');
- if v_policy_digest !~ '^[0-9a-f]{64}$' or p_binding is null or p_binding->>'journey_id' is distinct from j.id::text
+ if v_policy_digest !~ '^[0-9a-f]{64}$' or p_binding is null or p_binding->>'journey_id' is null
+    or p_binding->>'execution_generation' is null or p_binding->>'execution_generation' !~ '^[1-9][0-9]*$'
+    or (p_binding->>'execution_generation')::bigint is distinct from c.generation
+    or p_binding->>'policy_version' is null or p_binding->>'policy_version' !~ '^[1-9][0-9]*$'
+    or (p_binding->>'policy_version')::integer is distinct from p_expected_policy_version
+    or p_binding->>'source_ref' is null
+    or p_binding->>'integration_branch' is null or p_binding->>'preview_branch_prefix' is null
+    or p_binding->>'preview_base_ref' is null or p_binding->>'release_base_ref' is null
+    or p_binding->>'journey_id' is distinct from j.id::text
     or p_binding->>'project_id' is distinct from p.id::text or p_binding->>'request_id' is distinct from p_request_id::text
     or p_binding->>'repository' is distinct from p.repository or p_binding->>'source_repository' is distinct from p.repository
     or p_binding->>'source_commit' !~ '^[0-9a-f]{40}$' or p_binding->>'source_proof_digest' !~ '^[0-9a-f]{64}$'
     or p_binding->>'source_mode' not in ('main_snapshot','authorized_preview','greenfield_bootstrap')
     or p_binding->>'source_mode' is distinct from policy->>'source_mode'
+    or (p_binding->>'source_mode'='main_snapshot' and p_binding->>'source_ref' is distinct from 'main')
     or p_binding->>'integration_branch' !~ ('^factory/journey-'||j.id::text||'([/-].*)?$')
     or p_binding->>'preview_branch_prefix' !~ '^preview/journey-[a-z0-9_-]+$'
     or p_binding->>'preview_base_ref' is distinct from policy->>'preview_base_ref'
@@ -168,9 +182,11 @@ begin
  stages:=case when p.project_kind='greenfield' then jsonb_build_array('discovery','specification','planning') else jsonb_build_array('reconciliation','gap_analysis','planning') end;
  update public.factory_journeys set state='source_bound',execution_generation=c.generation,project_policy_version=p_expected_policy_version,policy_digest=v_policy_digest,binding=p_binding,source_commit=p_binding->>'source_commit',updated_at=now() where id=j.id;
  insert into public.factory_tasks(project_id,journey_id,external_key,title,description,status,complexity,risk,acceptance_criteria,depends_on)
- values(p.id,j.id,'journey-v2-'||j.id::text,'Execute a source-bound journey','Only the immutable Journey Delivery Binding v2 may authorize this work.','queued','medium','{}','["bound source","bound destinations","historical journey preserved"]','[]') returning id into task_id;
+ values(p.id,j.id,'journey-v2-'||j.id::text,'Execute authorized journey request',
+   'Immutable authorized request: '||(j.request_snapshot->>'text'),'queued','medium','{}',
+   jsonb_build_array('bound source','bound destinations','request_id='||p_request_id::text,'request_digest='||j.request_digest),'[]') returning id into task_id;
  insert into public.factory_runs(task_id,journey_id,status,execution_route,source_commit,branch_name,metadata)
- values(task_id,j.id,'created','direct',p_binding->>'source_commit',p_binding->>'integration_branch',jsonb_build_object('stages',stages,'journey_binding_v2',p_binding,'execution_generation',c.generation,'continuation_request_id',p_request_id::text)) returning id into run_id;
+ values(task_id,j.id,'created','direct',p_binding->>'source_commit',p_binding->>'integration_branch',jsonb_build_object('stages',stages,'journey_binding_v2',p_binding,'journey_request',j.request_snapshot,'execution_generation',c.generation,'continuation_request_id',p_request_id::text)) returning id into run_id;
  insert into public.factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload)
  values(p.id,task_id,run_id,'system','journey-binder','journey.source_bound',jsonb_build_object('journey_id',j.id,'request_id',p_request_id,'binding_digest',binding_digest,'source_commit',p_binding->>'source_commit','preview_base_ref',p_binding->>'preview_base_ref'));
  return jsonb_build_object('journey_id',j.id,'task_id',task_id,'run_id',run_id,'state','source_bound','created',true);

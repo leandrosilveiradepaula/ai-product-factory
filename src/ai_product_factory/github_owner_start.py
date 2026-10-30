@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Factory OWNER Start verified before OIDC: " + command.project_key)
             return 0
         receipt = enqueue_owner_start(command, os.environ)
-        exit_code = 0 if receipt["status"] in ("enqueued", "replayed") else 3
+        exit_code = 0 if receipt["status"] in ("enqueued", "replayed", "intake_accepted") else 3
     except OwnerStartBlocked as exc:
         receipt = _safe_error(exc.code)
     except (ValueError, OSError, RuntimeError):

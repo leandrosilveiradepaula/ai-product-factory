@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from ai_product_factory.journey_delivery_binding import JourneyBinding, JourneyBindingBlocked, assert_preview_belongs_to_journey, build_main_snapshot_binding, resolve_pending_main_snapshot
+from ai_product_factory.supabase_runtime_queue import SupabaseRuntimeQueue
 
 JOURNEY = "61bc7a1f-dcab-4616-9ce7-1ff28a0aa915"
 PROJECT = "e2ea3201-e9a3-489f-bf14-916aecc7de09"
@@ -74,3 +75,19 @@ class JourneyBindingTests(unittest.TestCase):
             control={"state":"running","generation":17},github=GitHub())
         self.assertEqual(result["source_commit"],"c"*40)
         self.assertEqual(calls,["main","main"])
+
+    def test_persisted_v2_run_stays_v2_when_new_intake_flag_is_disabled(self):
+        queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        raw=binding()
+        raw["source_proof_digest"]="d"*64
+        snapshot={"text":"CRM #171 authorized request","digest":"e"*64}
+        def get(path):
+            if path.startswith("factory_runs?"): return [{"journey_id":JOURNEY}]
+            if path.startswith("factory_projects?"): return [{"repository":REPO}]
+            if path.startswith("factory_journeys?"): return [{"id":JOURNEY,"project_id":PROJECT,"request_id":REQUEST,"request_digest":"e"*64,"state":"source_bound","binding":raw,"request_snapshot":snapshot,"execution_generation":17}]
+            raise AssertionError(path)
+        queue._get=get
+        journey,context=queue._v2_journey_context(run_id="run",project_id=PROJECT,
+            context={"manifest":{"journey_delivery_binding_v2":{"enabled":False}}})
+        self.assertEqual(journey,JOURNEY)
+        self.assertEqual(context["journey_request"],snapshot)
