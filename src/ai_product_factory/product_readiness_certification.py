@@ -100,7 +100,61 @@ def _exact_ci_attestation(*, snapshot: dict) -> dict:
     }
 
 
-def _criterion(raw: object, *, domain: str, key: str, snapshot: dict) -> dict:
+@dataclass(frozen=True)
+class VerifiedCriterionEvidence:
+    """A fact returned by trusted verifier code, NEVER deserialized from manifest.
+
+    Independent verifiers authenticate their own sources (GitHub, Control
+    Plane, Vercel/browser, or audited review). The certifier checks identity,
+    allowed verification vocabulary and exact SHA again before a positive
+    result. A user's evidence URL cannot instantiate this trust boundary.
+    """
+    domain: str
+    criterion: str
+    repository: str
+    assessed_commit: str
+    verification_state: str
+    source: str
+    evidence: tuple[str, ...]
+
+
+TrustedCriterionVerifier = Callable[[str, str, dict], VerifiedCriterionEvidence | None]
+
+
+def _externally_verified_claim(*, proof: object, domain: str, key: str,
+                               snapshot: dict, verification: str) -> dict | None:
+    if type(proof) is not VerifiedCriterionEvidence:
+        return None
+    if (proof.domain != domain or proof.criterion != key
+            or proof.repository != snapshot["repository"]
+            or proof.assessed_commit != snapshot["assessed_commit"]
+            or proof.verification_state != verification
+            or not isinstance(proof.source, str) or not proof.source.strip()
+            or not isinstance(proof.evidence, tuple) or not proof.evidence
+            or any(not isinstance(ref, str) or not ref.strip()
+                   or snapshot["assessed_commit"] not in ref
+                   for ref in proof.evidence)):
+        return None
+    return {
+        "status": "passed",
+        "evidence": list(proof.evidence),
+        "reason": "source-verified independent criterion attestation",
+        "verification_state": proof.verification_state,
+        "domain": domain,
+        "criterion": key,
+        "attestation": {
+            "kind": "trusted_runtime_criterion_verifier",
+            "source": proof.source,
+            "repository": proof.repository,
+            "assessed_commit": proof.assessed_commit,
+            "domain": domain,
+            "criterion": key,
+        },
+    }
+
+
+def _criterion(raw: object, *, domain: str, key: str, snapshot: dict,
+               trusted_verifier: TrustedCriterionVerifier | None = None) -> dict:
     if not isinstance(raw, dict):
         return {"status": "missing", "evidence": [], "reason": "criterion record is required"}
     status = raw.get("status")
@@ -126,6 +180,16 @@ def _criterion(raw: object, *, domain: str, key: str, snapshot: dict) -> dict:
         if ((domain, key) != ("test_strategy", "unit_integration")
                 or not isinstance(attestation, dict)
                 or attestation != expected):
+            # The verifier is a trusted callable supplied by runtime code, NOT
+            # a callback or claim defined by user-supplied JSON. This supports
+            # additional independent criteria without weakening this core.
+            proof = trusted_verifier(domain, key, snapshot) if trusted_verifier else None
+            externally_verified = _externally_verified_claim(
+                proof=proof, domain=domain, key=key, snapshot=snapshot,
+                verification=verification.strip(),
+            )
+            if externally_verified is not None:
+                return externally_verified
             return {
                 "status": "failed",
                 "evidence": [],
@@ -220,7 +284,8 @@ class CertificationReport:
 
 
 def certify_product_readiness(*, repository: str, assessed_commit: str, manifest: object,
-                              github_get: Callable[[str], object]) -> CertificationReport:
+                              github_get: Callable[[str], object],
+                              trusted_verifier: TrustedCriterionVerifier | None = None) -> CertificationReport:
     """Collect a source snapshot and deterministically evaluate all 19 criteria.
 
     The manifest is evidence supplied by independently executed checks/reviews;
@@ -241,7 +306,8 @@ def certify_product_readiness(*, repository: str, assessed_commit: str, manifest
         passed = True
         evidence, verification = [], []
         for key in required:
-            item = _criterion(rows.get(key), domain=domain, key=key, snapshot=snapshot)
+            item = _criterion(rows.get(key), domain=domain, key=key, snapshot=snapshot,
+                              trusted_verifier=trusted_verifier)
             per_domain[key] = item
             evidence.extend(item["evidence"])
             verification.append(item.get("verification_state", ""))
