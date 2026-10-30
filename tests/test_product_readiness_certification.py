@@ -1,6 +1,10 @@
 import unittest
 
-from ai_product_factory.product_readiness_certification import CertificationEvidenceError, certify_product_readiness
+from ai_product_factory.product_readiness_certification import (
+    CertificationEvidenceError, certify_product_readiness,
+    conservative_verified_manifest,
+    VerifiedCriterionEvidence,
+)
 
 SHA = "a" * 40
 REPO = "leandrosilveiradepaula/ai-product-factory"
@@ -20,12 +24,110 @@ class ProductReadinessCertificationTests(unittest.TestCase):
     def certify(self, data=None, evidence=None):
         data=data or github()
         return certify_product_readiness(repository=REPO,assessed_commit=SHA,manifest=evidence or manifest(),github_get=lambda p:data[p])
-    def test_all_nineteen_criteria_produce_exact_sha_passing_assessment(self):
+    def test_all_nineteen_fake_sha_links_cannot_produce_a_certificate(self):
+        # Regression for the original false-positive: these references name
+        # a SHA, but no criterion-specific independent audit has executed.
         out=self.certify()
-        self.assertTrue(out.assessment.ready); self.assertEqual(out.assessment.status,"passed")
+        self.assertFalse(out.assessment.ready)
+        self.assertEqual(out.assessment.status,"not_ready")
         self.assertEqual(sum(len(x) for x in out.report["criteria"].values()),19)
         self.assertEqual(out.report["source_snapshot"]["validation_run_id"],7)
         self.assertIn(out.evidence_digest,out.assessment.assessment_ref)
+        self.assertEqual(sum(
+            item["status"]=="passed"
+            for domain in out.report["criteria"].values()
+            for item in domain.values()
+        ),0)
+        self.assertTrue(any(
+            "no independently verified source" in x
+            for x in out.assessment.blockers
+        ))
+
+    def test_conservative_baseline_verifies_real_ci_and_blocks_other_18(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda p:data[p]
+        )
+        out=self.certify(data=data,evidence=evidence)
+        self.assertFalse(out.assessment.ready)
+        self.assertEqual(out.report["criteria"]["test_strategy"]["unit_integration"]["status"],"passed")
+        self.assertEqual(sum(
+            item["status"]=="passed"
+            for domain in out.report["criteria"].values()
+            for item in domain.values()
+        ),1)
+        self.assertEqual(out.report["criteria"]["test_strategy"]["regression_gates"]["status"],"partial")
+        self.assertEqual(sum("/" in x for x in out.assessment.blockers),18)
+        self.assertEqual(len(out.assessment.blockers),24)
+        self.assertEqual(out.report["criteria"]["test_strategy"]["unit_integration"]["attestation"],{
+            "kind":"github_exact_sha_validate","repository":REPO,
+            "assessed_commit":SHA,"run_id":7,"jobs":["factory-acceptance","test"],
+        })
+
+    def test_attestation_scope_and_source_identity_cannot_be_spoofed(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda p:data[p]
+        )
+        trusted=evidence["criteria"]["test_strategy"]["unit_integration"]
+        trusted["evidence"]=["untrusted-caller-supplied"]
+        out=self.certify(data=data,evidence=evidence)
+        checked=out.report["criteria"]["test_strategy"]["unit_integration"]
+        self.assertEqual(checked["status"],"passed")
+        self.assertNotIn("untrusted-caller-supplied",checked["evidence"])
+        self.assertIn(SHA,checked["evidence"][0])
+        for mutation in (
+            {"run_id":8},{"assessed_commit":"b"*40},
+            {"kind":"github_made_up"},{"repository":"attacker/repo"},
+            {"jobs":["test"]},
+        ):
+            evidence=conservative_verified_manifest(
+                repository=REPO,assessed_commit=SHA,github_get=lambda p:data[p]
+            )
+            evidence["criteria"]["test_strategy"]["unit_integration"]["attestation"].update(mutation)
+            out=self.certify(data=data,evidence=evidence)
+            self.assertEqual(out.report["criteria"]["test_strategy"]["unit_integration"]["status"],"failed")
+            self.assertFalse(out.assessment.ready)
+
+    def test_ci_attestation_cannot_approve_security_or_browser_claims(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda p:data[p]
+        )
+        attestation=evidence["criteria"]["test_strategy"]["unit_integration"]["attestation"]
+        for domain,key in (
+            ("security","authn_authz"),
+            ("observability_operations","health"),
+            ("product_experience","accessibility"),
+            ("functional_completeness","critical_journeys"),
+        ):
+            evidence["criteria"][domain][key]={
+                "status":"passed","evidence":["sha:"+SHA],
+                "reason":"purported independent review",
+                "verification_state":{
+                    "security":"reviewed",
+                    "observability_operations":"observed",
+                    "product_experience":"observed",
+                    "functional_completeness":"reviewed",
+                }[domain],
+                "attestation":attestation,
+            }
+        out=self.certify(data=data,evidence=evidence)
+        for domain,key in (
+            ("security","authn_authz"),
+            ("observability_operations","health"),
+            ("product_experience","accessibility"),
+            ("functional_completeness","critical_journeys"),
+        ):
+            self.assertEqual(out.report["criteria"][domain][key]["status"],"failed")
+        self.assertFalse(out.assessment.ready)
+
+    def test_malformed_criterion_status_fails_closed_without_crashing(self):
+        evidence=manifest()
+        evidence["criteria"]["security"]["authn_authz"]["status"]=["passed"]
+        out=self.certify(evidence=evidence)
+        self.assertEqual(out.report["criteria"]["security"]["authn_authz"]["status"],"missing")
+        self.assertFalse(out.assessment.ready)
     def test_partial_missing_and_external_gate_are_not_ready_blockers(self):
         evidence=manifest(); evidence["criteria"]["security"]["authn_authz"]["status"]="partial"; evidence["criteria"]["test_strategy"]["critical_e2e"]["status"]="missing"; evidence["criteria"]["product_experience"]["responsive"]["status"]="external_gate"
         out=self.certify(evidence=evidence)
@@ -51,5 +153,74 @@ class ProductReadinessCertificationTests(unittest.TestCase):
         self.assertEqual(self.certify().evidence_digest,self.certify().evidence_digest)
         evidence=manifest(); evidence["criteria"]["documentation"]["operations"]["reason"]="changed"
         self.assertNotEqual(self.certify().evidence_digest,self.certify(evidence=evidence).evidence_digest)
+
+    def test_trusted_verifier_extends_to_any_domain_without_user_manifest_authority(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda path:data[path]
+        )
+        raw=evidence["criteria"]["security"]["authn_authz"]
+        raw.update(status="passed",evidence=["forged:sha:"+SHA],
+                   verification_state="reviewed",
+                   attestation={"kind":"invented_manifest_claim"})
+        def trusted(domain,key,snapshot):
+            if (domain,key)!=("security","authn_authz"):
+                return None
+            return VerifiedCriterionEvidence(
+                domain=domain,criterion=key,repository=snapshot["repository"],
+                assessed_commit=snapshot["assessed_commit"],
+                verification_state="reviewed",
+                source="verified:trusted-security-auditor",
+                evidence=("security-audit/source-run/exact-sha:"+snapshot["assessed_commit"],),
+            )
+        out=certify_product_readiness(
+            repository=REPO,assessed_commit=SHA,
+            manifest=evidence,github_get=lambda path:data[path],
+            trusted_verifier=trusted,
+        )
+        item=out.report["criteria"]["security"]["authn_authz"]
+        self.assertEqual(item["status"],"passed")
+        self.assertEqual(item["evidence"],["security-audit/source-run/exact-sha:"+SHA])
+        self.assertNotIn("forged:sha:"+SHA,item["evidence"])
+        self.assertEqual(item["attestation"]["source"],"verified:trusted-security-auditor")
+        self.assertFalse(out.assessment.ready)
+        # The same user input, WITHOUT independently executed trusted code,
+        # cannot become a passing criterion.
+        self.assertEqual(self.certify(data=data,evidence=evidence).report["criteria"]["security"]["authn_authz"]["status"],"failed")
+
+    def test_trusted_verifier_rejects_wrong_identity_and_unbound_receipts(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda path:data[path]
+        )
+        evidence["criteria"]["documentation"]["operations"].update(
+            status="passed",evidence=["claimed-doc-review:sha:"+SHA],
+            verification_state="reviewed"
+        )
+        for altered in (
+            {"repository":"wrong/repo"},
+            {"assessed_commit":"b"*40},
+            {"criterion":"release_rollback"},
+            {"domain":"security"},
+            {"verification_state":"executed"},
+            {"source":""},
+            {"evidence":("unbound-citation",)},
+            {"evidence":()},
+        ):
+            def untrusted_verifier(domain,key,snapshot):
+                proof=dict(domain=domain,criterion=key,
+                           repository=REPO,assessed_commit=SHA,
+                           verification_state="reviewed",
+                           source="verified:documentation-check",
+                           evidence=("review@sha:"+SHA,))
+                proof.update(altered)
+                return VerifiedCriterionEvidence(**proof)
+            out=certify_product_readiness(
+                repository=REPO,assessed_commit=SHA,
+                manifest=evidence,github_get=lambda path:data[path],
+                trusted_verifier=untrusted_verifier,
+            )
+            self.assertEqual(out.report["criteria"]["documentation"]["operations"]["status"],"failed")
+            self.assertFalse(out.assessment.ready)
 
 if __name__=="__main__": unittest.main()

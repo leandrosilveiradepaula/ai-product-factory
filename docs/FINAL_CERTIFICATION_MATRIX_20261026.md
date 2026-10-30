@@ -125,3 +125,44 @@ obrigatória. `product_ready=false` sem esse atestado. Esta alteração afeta
 apenas Python, testes e documentação; Preview da Factory é N/A porque
 `apps/console/**` não muda. Não modifica política de expiração, RLS, Auth,
 modelo/custo ou release/merge de produção.
+
+
+## 30/10/2026 — Plano executável de 19 critérios, com evidência e condição de saída
+
+Fonte live: `main=7a9f74876aa5a35a91cb35602c576ffe53a7b3dd`;
+`validate` #41042113608 e PostgreSQL QA #41042113773 `success`;
+primeira certificação real `c53eaefa-c856-4a05-ae0e-fcaa3f38dba2`,
+avaliação `6a98a598-5921-4540-8fe1-23496687353f`:
+19 critérios não certificados, `status=not_ready`. Observador
+[#41042177251, tentativa 2](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/41042177251)
+reconheceu `independent_evaluation_recorded=true`. A tabela abaixo detalha
+o **próximo teste efetivo** de cada critério, sem alterar fatos históricos.
+
+| Domínio / critério | Evidência aproveitável (escopo) | Prova ainda exigida / condição de fechamento |
+| --- | --- | --- |
+| security/authn_authz | Auth+RBAC do Console em testes de CI e browser anteriores | Login autenticado, roles, tentativas negadas e integração do fluxo corrente com recibos atuais |
+| security/data_access_boundaries | 55/55 tabelas `factory_*` com RLS, 0 escritas públicas; leitura excepcional de `factory_console_operators` limitada por `auth.uid()=user_id AND is_active` | Revisão independente dos limites entre backend, GitHub, Console e tenant CRM; teste adversarial e prova de resultado |
+| security/secrets_dependencies | Workflows com ações pinadas e testes de isolamento de segredos | Inventário atual de credenciais, caminhos de exposição, dependências e scanners executados; nunca ler/expor valores secretos |
+| observability_operations/health | Console `/api/health` 200 `status=ok`; Factory e CRM `running` | Correlacionar código efetivamente publicado, API, banco e indicadores de incidentes; registrar escopo e horário |
+| observability_operations/traceability | Certificação → run → task → projeto → evento auditável e Change Set CRM histórico | Auditoria independente de uma jornada completa atual, incluindo owner, geração, CI, Preview e recibos por SHA |
+| observability_operations/recovery_alerting | Recuperações específicas anteriormente comprovadas | Testar falha/retry/recovery/alerta/rollback representativos sem mutação destrutiva nem modelo pago |
+| test_strategy/unit_integration | CI push SHA exato: `test` e `factory-acceptance` SUCCESS; PostgreSQL QA SUCCESS | Certificar positivamente **apenas esta célula** com verificador GitHub autenticado; não extrapolar |
+| test_strategy/critical_e2e | Runs CRM e browser históricos; escopos limitados documentados | E2E autenticado crítico real no CRM existing e greenfield legítimo; Production gate humano |
+| test_strategy/regression_gates | Ruleset `Protect main - human release` ativo, exige `test` e `factory-acceptance` | QA PostgreSQL de migrations não é check requerido no ruleset; completar política verificável e cobrir CI/Preview aplicáveis |
+| product_experience/surface_inventory | 34 rotas identificadas, cobertura histórica de 14 telas | Classificar todas as superfícies e testar telas essenciais sem confundir inventário com inspeção |
+| product_experience/responsive | Navegador autenticado histórico em mobile | Comparar subárvore Console publicada com HEAD e cobrir rotas ainda não testadas |
+| product_experience/accessibility | Captura autenticada anterior e testes de teclado/landmarks | Auditoria independente de controles, foco, contraste, a11y em fluxos críticos e regressão |
+| product_experience/states | Issue #692 descreve pending→sucesso de migration | Executar jornada real autorizada verificando loading, empty, error, pending→success e bloqueio de duplo clique |
+| documentation/setup_configuration | `AGENTS.md`, README e runbooks existentes | Seguir instalação/configuração em ambiente isolado sem credenciais inventadas |
+| documentation/operations | `docs/OPERATIONS.md` e `docs/STATUS.md` atuais e históricos | Revisar comandos executáveis, discrepâncias de versão e procedimento incidente/recovery |
+| documentation/release_rollback | `docs/RELEASE_AUTONOMY.md` e gates | Provar procedimento e rollback em ambiente isolado; merge/rollback produtivo segue humano |
+| functional_completeness/requirements_inventory | `PROJECT_PLAN.md` e contratos de finalização | Mapear requisitos a jornadas e evidências duráveis por versão, identificar produto ainda não entregue |
+| functional_completeness/mock_noop_demo_inventory | Guards de Direct/Codex, mocks e flags existentes | Inventariar no-ops e modos de demonstração que ainda possam alcançar produto, com testes negativos |
+| functional_completeness/critical_journeys | Integração CRM não produtiva comprovada; Factory faz roteamento/CI/Preview parciais | Caminho legítimo Start→implementação→gate→operação no CRM + greenfield real autorizado; não usar Service Desk standalone |
+
+**Política anti-loop:** coletar evidências independentemente **antes** de promover
+qualquer célula `passed`; cada prova deve ter SHA, ID do run, ambiente,
+execução do teste, resultado e escopo. Onde existir apenas declaração textual,
+reportar `partial` ou `missing`. A avaliação nova deve substituir a anterior
+somente depois do fechamento de novas células. Cron, PR verde, status `running`
+e 19 campos preenchidos não substituem certificação.
