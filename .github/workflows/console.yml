@@ -82,6 +82,8 @@ jobs:
           node --test ../../scripts/test_console_migration_browser.cjs
       - name: Prove GitHub App access verification is POST-only and same-origin
         run: node ../../scripts/test_console_github_app_verify.cjs
+      - name: Prove exact signed webhook transport and fail-closed middleware boundary
+        run: node --no-warnings --experimental-strip-types --test tests/github-webhook-middleware.test.mjs tests/github-webhook-security.test.mjs
       - name: Syntax-check protected browser capture offline, without credentials
         run: node --check ../../scripts/capture_authenticated_console.mjs
       - name: Test read-only Console accessibility receipt contracts

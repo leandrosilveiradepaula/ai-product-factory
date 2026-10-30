@@ -37,3 +37,14 @@ Tipos admitidos por etapa: `workflow_run.completed` e `check_run.completed` para
 ## Rollback e limitações
 
 Emergência: desabilitar flag, desinscrever webhook na App, preservar outbox/auditoria e cron legado. Reversão de schema segue plano SQL separado após avaliação humana (nunca `DROP` automático). Se ACK falhar após POST aceito, uma redelivery posterior pode emitir wake adicional, mas **nunca reproduz claims/mutações** graças às leases e gates do runner; sinalizar como limite operacional. A migration não tem consumidor de retry autônomo periódico: a entrega é repetida manualmente pelo GitHub ou o scheduler existente reconcilia trabalho legítimo. Não afirmar exatamente-once de HTTP nem autonomia E2E antes da prova real.
+## 30/10/2026 UTC — production activation uncovered Console session middleware boundary
+
+The operator explicitly approved and deployed production commit `437adf3b1f3d4fec75d64b97a75d613b0cb0fb99`, with `FACTORY_GITHUB_WEBHOOK_ENABLED=true` in Vercel Production only. The health endpoint returned HTTP 200 and the Supabase webhook outbox had zero receipts during the initial check. This is NOT evidence of signed delivery.
+
+A review of `apps/console/middleware.ts` found that unauthenticated GitHub POSTs are redirected to `/login` before reaching the signed webhook handler. A GET check via the Vercel connector followed the login redirect, corroborating this route boundary defect.
+
+The remediation permits **only** an exact `POST /api/integrations/github-app/webhook` to skip the operator cookie middleware. All other GitHub App and Console API routes remain session-protected. The handler still requires the production opt-in, server-side Vault HMAC SHA-256, bounded body, installation/repository/SHA identity, generation lock and service-role-only durable claim/ACK. An unsigned POST must be rejected by the handler, not redirected to login. This exception does not grant anonymous data access.
+
+Verification: CI must execute the dynamic path/method boundary tests plus existing HMAC tests; Console typecheck/build, acceptance and the path-required protected Preview remain release gates. After **human merge to production** and new deployment, verify the HTTP boundary and one legitimate signed CRM CI/Preview delivery with a current candidate, exact SHA/generation, outbox receipt and runner wake. Old `preview_ready` manual audit runs are not valid event proof. No synthetic Start, model call, auto-merge, cron replacement or production migration is authorized by this remediation.
+
+Emergency rollback: production `FACTORY_GITHUB_WEBHOOK_ENABLED=false` followed by an explicitly authorized production deployment; retain the outbox and audits.
