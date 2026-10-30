@@ -149,6 +149,51 @@ def verify_candidate(github, *, target: PinnedNonproductionTarget,
     }
 
 
+def _verified_draft_hold(github, *, target: PinnedNonproductionTarget, observed_sha: str) -> bool:
+    """Observe an intentionally unapproved source PR without repinning it.
+
+    The only non-failure deferral is a stable, open, exact-identity DRAFT
+    strictly descended from the already-authorized pinned SHA. A missing,
+    changed, closed, foreign or non-ancestor PR still fails closed.
+    """
+    if github.repository != target.repository or not _SHA.fullmatch(observed_sha or ""):
+        raise PermissionError("draft candidate repository or SHA mismatch")
+    pr = github.get_pull_request(target.candidate_pr_number)
+    if getattr(pr, "draft", None) is not True:
+        return False  # Ready PRs must pass ordinary native CI + CAS preflight.
+
+    def matches(row: object) -> bool:
+        return (
+            getattr(row, "number", None) == target.candidate_pr_number
+            and getattr(row, "state", None) == "open"
+            and getattr(row, "merged", None) is False
+            and getattr(row, "draft", None) is True
+            and getattr(row, "head_sha", None) == observed_sha
+            and getattr(row, "head_ref", None) == target.branch
+            and getattr(row, "head_repository", None) == target.repository
+            and getattr(row, "base_ref", None) == "main"
+        )
+
+    if not matches(pr):
+        raise PermissionError("draft candidate identity is not verified")
+    ancestry = github.compare_commits(target.sha, observed_sha)
+    if (
+        not isinstance(ancestry, dict)
+        or ancestry.get("status") != "ahead"
+        or type(ancestry.get("ahead_by")) is not int
+        or not 1 <= ancestry["ahead_by"] <= 10000
+        or ancestry.get("behind_by") != 0
+    ):
+        raise PermissionError("draft candidate is not a strict descendant")
+    if (
+        github.get_branch_sha(target.branch) != observed_sha
+        or not matches(github.get_pull_request(target.candidate_pr_number))
+    ):
+        raise PermissionError("draft candidate moved during read-only verification")
+    return True
+
+
+
 def _http_get(url: str, headers: dict[str, str]) -> list[dict]:
     req = request.Request(url, headers=headers)
     with request.urlopen(req, timeout=30) as response:
@@ -242,6 +287,11 @@ def repin_project(project: dict, *, github_factory=None, rpc=None) -> dict:
     new_sha = github.get_branch_sha(policy.target.branch)
     if new_sha == policy.target.sha:
         return {"status": "unchanged", "project_key": key, "sha": new_sha}
+    if _verified_draft_hold(github, target=policy.target, observed_sha=new_sha):
+        # Do not mint an accepted candidate, call CI/SQL or mutate a project.
+        # The SOURCE PR is explicitly awaiting human approval, not broken.
+        return {"status": "deferred", "project_key": key,
+                "reason_code": "candidate_draft_hold", "observed_sha": new_sha}
     evidence = verify_candidate(github, target=policy.target, ci_policy=policy.ci, new_sha=new_sha)
     result = (rpc or _post_rpc)("factory_repin_nonproduction_target_v1", {
         "p_project_key": key, "p_expected_sha": policy.target.sha, "p_new_sha": new_sha,
@@ -312,7 +362,12 @@ def repin_existing_projects(*, max_projects: int = 3, github_factory=None, rpc=N
             result = {"status": "error", "project_key": key,
                       "reason_code": "candidate_transport_error"}
         results.append(result)
-    return {"status": "partial_failure" if any(r["status"] in {"error", "blocked"} for r in results) else "completed",
+    failed = any(r["status"] in {"error", "blocked"} for r in results)
+    deferred = sum(r["status"] == "deferred" for r in results)
+    status = ("partial_failure" if failed else
+              "deferred" if deferred == len(results) else
+              "completed_with_deferrals" if deferred else "completed")
+    return {"status": status,
             "scanned": len(projects), "eligible": len(enabled), "policy_disabled": disabled,
             "limit": max_projects, "rotation_group": group, "total_groups": total_groups,
             "results": results, "next_page": total_groups > 1}

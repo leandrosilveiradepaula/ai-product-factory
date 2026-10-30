@@ -123,6 +123,36 @@ class ExistingCandidateWakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             summarize(case)
 
+    def test_verified_draft_hold_has_exact_sha_and_no_fake_success(self):
+        case = example(outcome="unchanged")
+        case["status"] = "deferred"
+        case["results"][0] = {"project_key": "existing-00",
+                              "status": "deferred",
+                              "reason_code": "candidate_draft_hold",
+                              "observed_sha": SHA}
+        out, md = summarize(case)
+        self.assertEqual(out["status"], "deferred")
+        self.assertEqual(out["results"][0]["status"], "deferred")
+        self.assertEqual(out["results"][0]["reason_code"], "candidate_draft_hold")
+        self.assertIn("deferred", md)
+        bad = dict(case)
+        bad["results"] = [{**case["results"][0], "reason_code": "candidate_cas_conflict"}]
+        with self.assertRaises(ValueError):
+            summarize(bad)
+        bad["results"] = [{**case["results"][0], "observed_sha": "bad"}]
+        with self.assertRaises(ValueError):
+            summarize(bad)
+
+    def test_partial_failure_cannot_be_hidden_by_another_draft_hold(self):
+        case = example(projects=2, eligible=2, outcome="error")
+        case["results"][0] = {"project_key":"existing-00","status":"deferred",
+                              "reason_code":"candidate_draft_hold","observed_sha":SHA}
+        out, _ = summarize(case)
+        self.assertEqual(out["status"], "partial_failure")
+        case["status"] = "completed_with_deferrals"
+        with self.assertRaises(ValueError):
+            summarize(case)
+
     def test_second_rotation_group_is_supported(self):
         out, md = summarize(example(projects=24, eligible=24, limit=3, group=7))
         self.assertEqual(out["rotation_group"], 7)
