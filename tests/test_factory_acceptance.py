@@ -288,6 +288,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
         }
         expected_history = {
+            "20261030024500_reconcile_external_webhook_wake_retries.sql",
             "20261029165500_github_external_event_wake_outbox.sql",
             "20261023151218_preserve_runtime_stage_evidence.sql",
             "20261023023000_resume_product_planning_checkpoint.sql",

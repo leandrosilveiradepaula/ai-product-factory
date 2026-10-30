@@ -116,4 +116,47 @@ with psycopg.connect(os.environ["FACTORY_WEBHOOK_TEST_DSN"],autocommit=True) as 
     assert ack(db,pr,1,"requested")=={"status":"requested"}
     assert db.execute("select count(*) from public.factory_audit_events where event_type='github.webhook.wake_acknowledged'").fetchone()[0]==6
 
+    # Candidate recovery SQL runs only in this disposable PostgreSQL fixture.
+    recovery_sql=(root/"supabase/migrations/20261030024500_reconcile_external_webhook_wake_retries.sql").read_text()
+    db.execute(recovery_sql)
+    acl=db.execute("""select p.prosecdef,
+      has_function_privilege('service_role',p.oid,'EXECUTE'),
+      has_function_privilege('anon',p.oid,'EXECUTE'),
+      has_function_privilege('authenticated',p.oid,'EXECUTE')
+      from pg_proc p where p.proname='factory_reconcile_external_webhook_wakes_v1'""").fetchone()
+    assert acl==(False,True,False,False),acl
+    def reconcile(ci=False,preview=False,release=False):
+        return db.execute("""select public.factory_reconcile_external_webhook_wakes_v1(
+          %s,%s,%s,%s,%s)""",(40989033146,ci,preview,release,8)).fetchone()[0]
+    # No valid lane -> no fabricated dispatch or task claim.
+    assert reconcile()=={"status":"ok","inspected":0,"runner_observed":0,
+                            "suppressed":0,"exhausted":0,"deferred":0}
+    db.execute("update public.factory_runs set status='ci_pending' where id=%s",(run_id,))
+    stale=uuid.uuid4()
+    assert claim(db,stale)["status"]=="claimed"
+    assert ack(db,stale,1,"failed")=={"status":"retryable"}
+    db.execute("update public.factory_external_webhook_wakes set next_attempt_at=now()-interval '1 second' where delivery_id=%s",(stale,))
+    deferred=reconcile(ci=False)
+    assert deferred["deferred"]==1,deferred
+    observed=reconcile(ci=True)
+    assert observed["runner_observed"]==1,observed
+    receipt=db.execute("select status,last_result,attempts from public.factory_external_webhook_wakes where delivery_id=%s",(stale,)).fetchone()
+    assert receipt==("requested","runner_probe_observed_no_http_dispatch",1),receipt
+    assert reconcile(ci=True)["inspected"]==0,"must not observe twice"
+    # Pause suppresses pending wake even with a true lane from another project.
+    paused=uuid.uuid4();assert claim(db,paused)["status"]=="claimed"
+    assert ack(db,paused,1,"failed")=={"status":"retryable"}
+    db.execute("update public.factory_external_webhook_wakes set next_attempt_at=now()-interval '1 second' where delivery_id=%s",(paused,))
+    db.execute("update public.factory_project_execution_controls set state='paused' where project_id=%s",(project_id,))
+    assert reconcile(ci=True)["suppressed"]==1
+    db.execute("update public.factory_project_execution_controls set state='running' where project_id=%s",(project_id,))
+    # Generation change revokes the immutable delivery even if the lane is true.
+    epoch=uuid.uuid4();assert claim(db,epoch)["status"]=="claimed"
+    assert ack(db,epoch,1,"failed")=={"status":"retryable"}
+    db.execute("update public.factory_external_webhook_wakes set next_attempt_at=now()-interval '1 second' where delivery_id=%s",(epoch,))
+    db.execute("update public.factory_project_execution_controls set generation=7 where project_id=%s",(project_id,))
+    assert reconcile(ci=True)["suppressed"]==1
+    assert db.execute("""select count(*) from public.factory_audit_events
+      where event_type='github.webhook.wake_reconciled'""").fetchone()[0]==3
+
 print("GITHUB_EXTERNAL_WEBHOOK_POSTGRES_PASS=1")
