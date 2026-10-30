@@ -248,3 +248,43 @@ Anything other than `passed` remains a named durable `not_ready` blocker. The
 producer has no model, scheduler, merge, deployment or release authority. A
 new HEAD always needs a new assessment because the observer requires exact
 `baseline_ref` plus project/run/task lineage.
+
+
+## 30/10/2026 — Positive criterion attestation must be externally verified
+
+**Reproduced false-positive defect:** the former producer accepted 19 purported
+`passed` criteria when each contained only the right SHA in fabricated text
+(e.g. `github:owner/repo@<sha>:security/authn_authz`). That is format validation,
+not proof that authorization, E2E, recovery or accessibility actually ran.
+
+The certifier now treats a user-supplied `status=passed` as an **untrusted
+assertion** until a criterion-specific verifier independently authenticates
+the source and scope. The first implemented provider,
+`github_exact_sha_validate`, can attest **only**
+`test_strategy/unit_integration`: it is derived from the successful exact-HEAD
+`validate` push workflow and its executed `test` and `factory-acceptance`
+jobs, verified directly against GitHub. That provider is invalid for security,
+UX, operations, documentation, regression completeness or critical journeys.
+A SHA inside an evidence string alone **never** grants a PASS.
+
+The read-only collector `scripts/build_readiness_evidence_manifest.py` runs
+inside the existing trusted `global-readiness-post-ci` identity. Its second
+artifact, `factory-verified-readiness-baseline.json`, lists all 19 criteria
+with one independently verified unit/integration result, the partial CI
+regression signal and explicit missing external verification elsewhere.
+It produces a reusable input manifesto but **does not write evaluations,
+release, create Starts, call paid models or require a new broker allowlist**.
+
+The previous durable assessment on merge SHA
+`7a9f74876aa5a35a91cb35602c576ffe53a7b3dd` remains a valid,
+conservative historical `not_ready` result. The global read-only observer
+recognized it in run #41042177251 attempt 2
+(`independent_evaluation_recorded=true`, `product_ready=false`).
+Do not re-label it `passed` after changing source code; a new human merge
+requires new HEAD-bound evidence.
+
+**Extension rule:** any future positive provider must have a pinned,
+independent source of execution (workflow/run/artifact, verified service-side
+read, or other authenticated review), verify repository/project/SHA and
+criterion scope, and include adversarial tests. A reusable provider must
+not turn a green CI check into a blanket six-domain certificate.
