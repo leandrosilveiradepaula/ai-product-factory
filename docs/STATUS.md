@@ -1,3 +1,16 @@
+## 30/10/2026 — Baseline vivo pós-#1156; certificação independente ainda em execução
+
+- Factory `main=7a9f74876aa5a35a91cb35602c576ffe53a7b3dd`: `validate` push #41042113608 SUCCESS e `Product readiness certification PostgreSQL QA` #41042113773 SUCCESS. Migration `product_readiness_certification` aplicada em Supabase versão `20261030104153` com autorização humana, RLS ativo e ACL service-role-only.
+- Primeira avaliação real da própria Factory: cert `c53eaefa-c856-4a05-ae0e-fcaa3f38dba2`, eval `6a98a598-5921-4540-8fe1-23496687353f`, `failed/not_ready`, 19 critérios em escopo, 19 bloqueios (3 parciais, 16 ausentes), SHA acima. Não declarar seis domínios certificados.
+- Observador GitHub Actions [#41042177251 (attempt 2)](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/41042177251) realmente leu após a gravação: `independent_evaluation_recorded=true`, `product_ready=false`, zero writes/modelos. O recibo foi baixado e inspecionado.
+- Console de produção responde `/api/health` HTTP 200; código publicado `cbed42fb9107...`. Comparação GitHub `cbed42fb... → 7a9f748...`: quatro commits, 30 arquivos, **nenhuma** alteração em `apps/console/**`. Browser autenticado [#40982712244](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40982712244) SUCCESS, reutilizável apenas em seu escopo; não prova estados críticos #692 nem release greenfield.
+- Factory e CRM permanecem `running`. A Factory não possui work items de desenvolvimento elegíveis no momento da observação; isso é `idle`, não `stopped`. CRM possui histórico de reparos, não reabrir trabalho terminal.
+- **Novo defeito real (candidato #1158):** o produtor de certificação aceitava 19 falsas referências com SHA como `ready=true`. Proposta de hardening: somente atestações verificadas na fonte autorizam PASS, com coleta automática conservadora e read-only de 19 critérios. Enquanto não mergeado e validado em pós-CI, não tratar como ativo em produção.
+- Prioridade seguinte: testes independentes completos para segurança, recuperação/alertas, E2E existente/greenfield real, UX/a11y/estados e docs; testes de QA PostgreSQL NÃO são check obrigatório no ruleset GitHub, embora workflow execute quando aplicável. Alterar regras da branch é gate de acesso sensível.
+- Service Desk standalone continua aposentado; Codex WIF externo; merge de produção sempre humano, nada de modelos pagos para sondar.
+
+---
+
 ## 27/10/2026 — Certificação após merge #1128
 
 - Factory #1128 mergeada humanamente em `main=75b3d34ace6b62a27a45972a59952f918cfdf09e`; CI PR [#40603160661](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40603160661) SUCCESS. Arquivos README/testes apenas, Console Preview N/A.
