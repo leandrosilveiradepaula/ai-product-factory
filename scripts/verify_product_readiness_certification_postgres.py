@@ -34,7 +34,7 @@ create table public.factory_audit_events(id bigint generated always as identity 
 sha="a"*40; digest="b"*64
 domains={d:{"status":"failed","reason":"blocked","evidence":["sha:"+sha],"coverage":[],"verification_state":""} for d in ("security","observability_operations","test_strategy","product_experience","documentation","functional_completeness")}
 result={"assessed_commit":sha,"assessment_ref":"product-readiness-certifier:"+digest,"ready":False,"status":"not_ready","domains":domains,"blockers":["evidence absent"]}
-report={"criteria":{d:{} for d in domains}}
+report={"criteria":{d:{} for d in domains},"assessment":result}
 
 with psycopg.connect(dsn,autocommit=True) as conn:
     conn.execute("drop schema public cascade; create schema public; grant all on schema public to public")
@@ -45,10 +45,17 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     one=begin(conn); two=begin(conn)
     assert one["run_id"]==two["run_id"] and two["idempotent"] is True
     run=one["run_id"]
+    # A crash after reservation must not leave a root task/run that blocks
+    # human-authorized continuation of the same Factory/CRM project.
+    assert one["state"]=="collecting"
+    assert conn.execute("select count(*) from public.factory_tasks").fetchone()[0]==0
+    assert conn.execute("select count(*) from public.factory_runs").fetchone()[0]==0
     saved=conn.execute("select public.factory_persist_product_readiness_certification_v1(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",(one["certification_id"],run,sha,digest,json.dumps(result),json.dumps(report))).fetchone()[0]
     replay=conn.execute("select public.factory_persist_product_readiness_certification_v1(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",(one["certification_id"],run,sha,digest,json.dumps(result),json.dumps(report))).fetchone()[0]
     assert saved["evaluation_status"]=="failed" and replay["idempotent"] is True
     assert conn.execute("select count(*) from public.factory_evaluations where run_id=%s",(run,)).fetchone()[0]==1
+    assert conn.execute("select count(*) from public.factory_tasks where status<>'completed'").fetchone()[0]==0
+    assert conn.execute("select count(*) from public.factory_runs where status<>'completed'").fetchone()[0]==0
     # Wrong SHA, run and cross-project persistence are all rejected.
     for args in ((one["certification_id"],run,"c"*40,digest), (one["certification_id"],"00000000-0000-0000-0000-000000000000",sha,digest)):
         try: conn.execute("select public.factory_persist_product_readiness_certification_v1(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",(*args,json.dumps(result),json.dumps(report)))
@@ -64,4 +71,31 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     threads=[threading.Thread(target=concurrent_begin) for _ in range(2)]
     [t.start() for t in threads]; [t.join() for t in threads]
     assert outcomes==[a["run_id"],a["run_id"]]
+    # A newer independent assessment on the SAME SHA may supersede a prior
+    # failed report. History remains immutable and the current pointer unique.
+    newer=dict(result)
+    newer["assessment_ref"]="product-readiness-certifier:"+second
+    newer["blockers"]=["new independent evidence remains incomplete"]
+    newer_report={"criteria":{d:{} for d in domains},"assessment":newer}
+    persisted=conn.execute(
+        "select public.factory_persist_product_readiness_certification_v1(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",
+        (a["certification_id"],a["run_id"],sha,second,json.dumps(newer),json.dumps(newer_report))
+    ).fetchone()[0]
+    assert persisted["evaluation_status"]=="failed"
+    pointers=conn.execute(
+        "select evidence_digest,is_current from public.factory_product_readiness_certifications "
+        "where project_id=%s and assessed_commit=%s order by evidence_digest",(project,sha)
+    ).fetchall()
+    assert pointers==[(digest,False),(second,True)],pointers
+    assert conn.execute("select count(*) from public.factory_evaluations where baseline_ref=%s",(sha,)).fetchone()[0]==2
+    assert conn.execute("select count(*) from public.factory_tasks where status<>'completed'").fetchone()[0]==0
+    assert conn.execute("select count(*) from public.factory_runs where status<>'completed'").fetchone()[0]==0
+    # Reject contradictory replay without destroying the authoritative row.
+    try:
+        conn.execute("select public.factory_persist_product_readiness_certification_v1(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",
+           (a["certification_id"],a["run_id"],sha,second,json.dumps(newer),json.dumps(report)))
+    except psycopg.Error:
+        pass
+    else:
+        raise AssertionError("contradictory persisted report replay was accepted")
     print("PRODUCT_READINESS_CERTIFICATION_POSTGRES_OK")
