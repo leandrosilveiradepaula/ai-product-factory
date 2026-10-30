@@ -322,9 +322,10 @@ def repin_project(project: dict, *, github_factory=None, rpc=None) -> dict:
     # Preview branch. Such a merge is NOT a newly approved source commit,
     # even when the source PR later becomes ready. Require the exact durable
     # Change Set + project epoch + live GitHub PR/files/ancestry proof.
-    consumption = attest_consumed_preview_source(
+    completed_receipts = _fetch_consumed_source_rows(project)
+    consumption = (attest_consumed_preview_source(
         github, project=project, target=policy.target, observed_sha=new_sha,
-        records=_fetch_consumed_source_rows(project))
+        records=completed_receipts) if completed_receipts else None)
     if consumption is not None:
         return {"status": "deferred", "project_key": key,
                 "reason_code": "candidate_source_consumed", "observed_sha": new_sha}
