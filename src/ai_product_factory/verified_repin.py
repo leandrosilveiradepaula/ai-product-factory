@@ -56,40 +56,66 @@ def verified_repin(
     for event in events:
         if not isinstance(event, dict):
             continue
+        kind = event.get("event_type")
+        actor = event.get("actor_ref")
         if not (
             event.get("project_id") == project_id
-            and event.get("event_type") == "project.delivery_target.reconciled"
             and event.get("actor_type") == "system"
-            and event.get("actor_ref") == "factory-candidate-reconciler"
             and _positive(event.get("id"))
+            and (
+                (kind == "project.delivery_target.reconciled"
+                 and actor == "factory-candidate-reconciler")
+                or (kind == "project.delivery_target.replaced"
+                    and actor in {"factory-candidate-switch",
+                                  "factory-released-source-rotation"})
+            )
         ):
             continue
         receipt = event.get("payload")
         if not isinstance(receipt, dict):
             continue
         old_sha = receipt.get("old_sha")
-        if not (
-            receipt.get("status") == "updated"
-            and receipt.get("source") == "github_actions_exact_sha"
-            and receipt.get("project_key") == project_key
+        common = (
+            receipt.get("project_key") == project_key
             and receipt.get("repository") == repository
-            and receipt.get("branch") == branch
-            and receipt.get("pr_number") == pr
             and receipt.get("new_sha") == sha
             and receipt.get("ci_sha") == sha
             and receipt.get("generation") == control["generation"]
             and receipt.get("version") == control["version"]
-            and receipt.get("compare_status") == "ahead"
-            and _positive(receipt.get("ahead_by"))
-            and receipt.get("behind_by") == 0
             and _positive(receipt.get("ci_run_id"))
             and isinstance(old_sha, str)
             and _SHA.fullmatch(old_sha)
             and old_sha != sha
-        ):
+        )
+        if not common:
+            continue
+        if kind == "project.delivery_target.reconciled":
+            valid = (
+                receipt.get("status") == "updated"
+                and receipt.get("source") == "github_actions_exact_sha"
+                and receipt.get("branch") == branch
+                and receipt.get("pr_number") == pr
+                and receipt.get("compare_status") == "ahead"
+                and _positive(receipt.get("ahead_by"))
+                and receipt.get("behind_by") == 0
+            )
+        else:
+            valid = (
+                receipt.get("status") == "replaced"
+                and receipt.get("new_branch") == branch
+                and receipt.get("new_pr_number") == pr
+                and receipt.get("old_branch") != branch
+                and _positive(receipt.get("old_pr_number"))
+                and receipt.get("old_pr_number") != pr
+                and _positive(receipt.get("issue_number"))
+                and isinstance(receipt.get("request_id"), str)
+                and bool(receipt.get("request_id").strip())
+            )
+        if not valid:
             continue
         return {
             "kind": "control_plane_native_ci_repin",
+            "source_transition": kind,
             "audit_event_id": event["id"],
             "project_key": project_key,
             "repository": repository,

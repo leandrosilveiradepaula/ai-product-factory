@@ -142,7 +142,7 @@ class SupabaseChangeSetStore:
                                 "factory_audit_events?"
                                 "select=id,project_id,event_type,actor_type,actor_ref,payload"
                                 "&project_id=eq."+quote(project_id,safe="")
-                                +"&event_type=eq.project.delivery_target.reconciled"
+                                +"&event_type=in.(project.delivery_target.reconciled,project.delivery_target.replaced)"
                                 +"&order=id.desc&limit=40"
                             )
                             repin_evidence=verified_repin(

@@ -80,6 +80,15 @@ def project_fetcher(projects):
 
 
 class CandidateRePinTests(unittest.TestCase):
+    def setUp(self):
+        # Isolated unit tests do not access Supabase; dedicated consumed-source
+        # tests below inject real shaped Change Set receipts explicitly.
+        self._consume_patch = patch(
+            "ai_product_factory.nonproduction_candidate_repin._fetch_consumed_source_rows",
+            return_value=[])
+        self._consume_patch.start()
+        self.addCleanup(self._consume_patch.stop)
+
     @staticmethod
     def mock_config():
         return patch("ai_product_factory.nonproduction_candidate_repin.resolve_supabase_server_config",

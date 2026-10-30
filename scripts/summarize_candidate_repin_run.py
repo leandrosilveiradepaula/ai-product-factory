@@ -14,7 +14,7 @@ import sys
 _KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _SHA = re.compile(r"^[a-f0-9]{40}$")
 _STATUSES = {"unchanged", "updated", "deferred", "blocked", "error"}
-_REASON_CODES = {"candidate_draft_hold", "candidate_cas_conflict", "candidate_preflight_blocked",
+_REASON_CODES = {"candidate_draft_hold", "candidate_source_consumed", "candidate_cas_conflict", "candidate_preflight_blocked",
                  "candidate_transport_error"}
 
 
@@ -76,9 +76,9 @@ def summarize(payload: object) -> tuple[dict, str]:
                 raise ValueError("unknown candidate reconciliation reason_code")
         else:
             reason_code = None
-        if outcome == "deferred" and reason_code != "candidate_draft_hold":
+        if outcome == "deferred" and reason_code not in {"candidate_draft_hold", "candidate_source_consumed"}:
             raise ValueError("unrecognized candidate deferral")
-        if outcome in {"blocked", "error"} and reason_code == "candidate_draft_hold":
+        if outcome in {"blocked", "error"} and reason_code in {"candidate_draft_hold", "candidate_source_consumed"}:
             raise ValueError("draft hold cannot mask candidate failure")
         safe.append({"project_key": key, "status": outcome, "sha": sha if outcome in
                      {"unchanged", "updated", "deferred"} else None,

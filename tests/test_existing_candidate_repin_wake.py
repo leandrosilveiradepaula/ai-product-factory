@@ -143,6 +143,17 @@ class ExistingCandidateWakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             summarize(bad)
 
+    def test_consumed_source_is_deferred_but_not_declared_updated(self):
+        case = example()
+        case["status"] = "deferred"
+        case["results"] = [{"project_key": "existing-00", "status": "deferred",
+                            "reason_code": "candidate_source_consumed",
+                            "observed_sha": SHA}]
+        out, md = summarize(case)
+        self.assertEqual(out["results"][0]["reason_code"], "candidate_source_consumed")
+        self.assertNotIn("updated", str(out))
+        self.assertIn("candidate_source_consumed", md)
+
     def test_partial_failure_cannot_be_hidden_by_another_draft_hold(self):
         case = example(projects=2, eligible=2, outcome="error")
         case["results"][0] = {"project_key":"existing-00","status":"deferred",

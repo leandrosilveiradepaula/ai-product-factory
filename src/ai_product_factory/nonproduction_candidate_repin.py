@@ -17,6 +17,7 @@ from urllib import error, parse, request
 from .github_auth import resolve_github_token
 from .github_rest import GitHubRestAdapter
 from .pinned_nonproduction_target import PinnedNonproductionTarget
+from .consumed_source_lineage import attest_consumed_preview_source
 from .supabase_server import resolve_supabase_server_config
 
 
@@ -272,6 +273,36 @@ def _with_control(project: dict, *, control_fetcher=None) -> dict:
     return {**project, "execution_control": rows[0]}
 
 
+
+def _fetch_consumed_source_rows(project: dict) -> list[dict]:
+    """Read-only, bounded receipts already written by the Factory integrator.
+
+    A pinned SHA is a source *snapshot*, not the live head after a completed
+    Factory merge. We do not infer this fact from a draft or an ancestor test.
+    """
+    project_id = project.get("id")
+    target = project.get("manifest", {}).get("delivery_target")
+    if (not isinstance(project_id, str)
+            or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", project_id)
+            or not isinstance(target, dict)
+            or not isinstance(target.get("sha"), str)
+            or not _SHA.fullmatch(target["sha"])):
+        raise PermissionError("consumed source requires an exact project and SHA")
+    cfg = resolve_supabase_server_config()
+    query = {
+        "select": "id,project_id,root_task_id,status,source_commit,candidate_commit,metadata",
+        "project_id": "eq." + project_id,
+        "source_commit": "eq." + target["sha"],
+        "status": "eq.completed",
+        "order": "created_at.desc",
+        "limit": "21",
+    }
+    rows = _http_get(cfg.url + "/rest/v1/factory_change_sets?" + parse.urlencode(query), cfg.headers)
+    if len(rows) > 20:
+        raise PermissionError("consumed source history exceeds the bounded proof limit")
+    return rows
+
+
 def repin_project(project: dict, *, github_factory=None, rpc=None) -> dict:
     key, repository = project.get("project_key"), project.get("repository")
     if not isinstance(key, str) or project.get("project_kind") != "existing" or project.get("is_active") is not True:
@@ -287,6 +318,16 @@ def repin_project(project: dict, *, github_factory=None, rpc=None) -> dict:
     new_sha = github.get_branch_sha(policy.target.branch)
     if new_sha == policy.target.sha:
         return {"status": "unchanged", "project_key": key, "sha": new_sha}
+    # The Factory may itself have merged a completed Change Set into this
+    # Preview branch. Such a merge is NOT a newly approved source commit,
+    # even when the source PR later becomes ready. Require the exact durable
+    # Change Set + project epoch + live GitHub PR/files/ancestry proof.
+    consumption = attest_consumed_preview_source(
+        github, project=project, target=policy.target, observed_sha=new_sha,
+        records=_fetch_consumed_source_rows(project))
+    if consumption is not None:
+        return {"status": "deferred", "project_key": key,
+                "reason_code": "candidate_source_consumed", "observed_sha": new_sha}
     if _verified_draft_hold(github, target=policy.target, observed_sha=new_sha):
         # Do not mint an accepted candidate, call CI/SQL or mutate a project.
         # The SOURCE PR is explicitly awaiting human approval, not broken.
