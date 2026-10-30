@@ -209,6 +209,34 @@ jobs:
               for key in keys:
                   out.write(f"{key}={'true' if data.get(key) else 'false'}\n")
           PY
+      - name: Reconcile externally authenticated wake intents after authoritative probe
+        if: ${{ steps.probe.outcome == 'success' && (github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') }}
+        shell: bash
+        env:
+          FACTORY_TRUSTED_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.error
+          from ai_product_factory.external_webhook_recovery import reconcile_external_wakes
+          with open("/tmp/factory-schedule-probe.json",encoding="utf-8") as fh:
+              signal=json.load(fh)
+          keys=("ci_work","preview_work","release_work")
+          if any(type(signal.get(key)) is not bool for key in keys):
+              raise SystemExit("missing authoritative queue probe")
+          try:
+              receipt=reconcile_external_wakes(
+                  workflow_run_id=int(os.environ["FACTORY_TRUSTED_RUN_ID"]),
+                  ci_work=signal["ci_work"],preview_work=signal["preview_work"],
+                  release_work=signal["release_work"])
+          except urllib.error.HTTPError as error:
+              if error.code in (404,428):
+                  print("EXTERNAL_WAKE_RECOVERY=BLOCKED_MIGRATION_NOT_APPLIED")
+              else:
+                  raise
+          else:
+              print("EXTERNAL_WAKE_RECOVERY="+json.dumps(receipt,sort_keys=True))
+          PY
       - name: Diagnose historical queued backlog without dispatch
         if: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_run' && steps.backup_wake.outputs.wake == 'true')) && steps.probe.outputs.work_detected == 'false' }}
         continue-on-error: true
