@@ -1,3 +1,36 @@
+## Operação vigente verificada — 30/10/2026 (sobrescreve snapshots históricos abaixo)
+
+Factory/CRM `running`; `main=7a9f74876aa5a35a91cb35602c576ffe53a7b3dd`.
+A migration do certificador #1156 **já foi aplicada** no Control Plane
+Factory como `product_readiness_certification`, versão `20261030104153`;
+não executá-la novamente. RLS ativa/sem políticas públicas na nova tabela;
+RPCs `SECURITY INVOKER`, `service_role` somente. Execução durável inicial
+`c53eaefa-c856-4a05-ae0e-fcaa3f38dba2` permanece `not_ready`, sem
+interferência em Start/CI/Preview. O observador #41042177251 attempt 2
+reconheceu o registro corretamente.
+
+**Ponto de falha de integridade reproduzido:** texto SHA-bound não prova que
+uma verificação ocorreu; não usar o teste legado que promovia 19 links de
+exemplo a PASS. A correção candidata #1158 recusa essas alegações e passa a
+produzir o segundo recibo `factory-verified-readiness-baseline.json` a
+partir do mesmo workflow OIDC **read-only** e CI GitHub SHA exata. Esse
+recibo não é um registro `factory_evaluations` e não autoriza release.
+Sem provider confiável de escopo particular, a célula permanece pendente.
+
+**Operador/QA após merge humano da correção:** verificar CI principal e
+reexecução real de `global-readiness-post-ci`; baixar artefato da execução
+corrente, checar 19 critérios e apenas
+`test_strategy/unit_integration=passed` no inventário conservador, mantendo
+`product_ready=false`. Não chamar API paga, não gerar projeto sintético,
+não criar novos Starts, não solicitar Vercel quando Console não mudou.
+A matriz de 19 critérios é `docs/FINAL_CERTIFICATION_MATRIX_20261026.md`.
+A política de branch exige `test` e `factory-acceptance`; caso haja
+migration em PR, **não aprovar merge antes do QA PostgreSQL isolado real**
+e verificar sua conclusão explícita, mesmo que GitHub não exija esse
+check adicional. Ampliação da ruleset é gate administrativo separado.
+
+---
+
 ## Estado operacional vigente — 27/10/2026
 
 Esta página contém registros históricos e instruções escritas para candidatos
