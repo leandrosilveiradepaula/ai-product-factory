@@ -108,7 +108,8 @@ begin
   end if;
  end loop;
  v_ready := (p_result->'ready') = 'true'::jsonb;
- if p_result->>'status'<>case when v_ready then 'passed' else 'not_ready' end then
+ if (p_result->>'status') is distinct from
+    (case when v_ready then 'passed' else 'not_ready' end) then
   raise exception 'assessment status contradicts readiness' using errcode='PT400';
  end if;
  if v_cert.state='persisted' then
