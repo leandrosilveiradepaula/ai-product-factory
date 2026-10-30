@@ -179,7 +179,35 @@ def _valid_linked_evaluation(*, project_id: str, sha: str,
         + "&eval_type=eq." + quote(kind, safe="")
         + "&baseline_ref=eq." + sha + "&order=created_at.desc&limit=2"
     )
-    row = _one(rows, kind, optional=True)
+    # The certifier preserves immutable historical attempts at the same SHA.
+    # Only a unique, service-role-persisted current pointer can disambiguate
+    # successive evidence snapshots; unrelated duplicated rows remain blocked.
+    if kind == "product_readiness" and isinstance(rows, list) and len(rows) > 1:
+        certifications = cp_get(
+            "factory_product_readiness_certifications?"
+            "select=project_id,run_id,evaluation_id,assessed_commit,state,is_current"
+            "&project_id=eq." + _uuid(project_id)
+            + "&assessed_commit=eq." + sha
+            + "&is_current=eq.true&state=eq.persisted&limit=2"
+        )
+        cert = _one(certifications, "current product certification")
+        evaluation_id = _uuid(cert.get("evaluation_id"))
+        if (cert.get("project_id") != project_id
+                or cert.get("assessed_commit") != sha
+                or cert.get("state") != "persisted"
+                or cert.get("is_current") is not True
+                or evaluation_id not in [r.get("id") for r in rows
+                                         if isinstance(r, dict)]):
+            raise GlobalReadinessEvidenceError("current product certification provenance mismatch")
+        selected = cp_get(
+            "factory_evaluations?select=id,run_id,status,baseline_ref,result"
+            "&eval_type=eq.product_readiness&id=eq." + evaluation_id + "&limit=2"
+        )
+        row = _one(selected, "current product certification evaluation")
+        if row.get("id") != evaluation_id or row.get("run_id") != cert.get("run_id"):
+            raise GlobalReadinessEvidenceError("certification and evaluation identities differ")
+    else:
+        row = _one(rows, kind, optional=True)
     if row is None:
         return None
     rid = _uuid(row.get("run_id"))
