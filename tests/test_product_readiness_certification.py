@@ -3,6 +3,7 @@ import unittest
 from ai_product_factory.product_readiness_certification import (
     CertificationEvidenceError, certify_product_readiness,
     conservative_verified_manifest,
+    VerifiedCriterionEvidence,
 )
 
 SHA = "a" * 40
@@ -152,5 +153,74 @@ class ProductReadinessCertificationTests(unittest.TestCase):
         self.assertEqual(self.certify().evidence_digest,self.certify().evidence_digest)
         evidence=manifest(); evidence["criteria"]["documentation"]["operations"]["reason"]="changed"
         self.assertNotEqual(self.certify().evidence_digest,self.certify(evidence=evidence).evidence_digest)
+
+    def test_trusted_verifier_extends_to_any_domain_without_user_manifest_authority(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda path:data[path]
+        )
+        raw=evidence["criteria"]["security"]["authn_authz"]
+        raw.update(status="passed",evidence=["forged:sha:"+SHA],
+                   verification_state="reviewed",
+                   attestation={"kind":"invented_manifest_claim"})
+        def trusted(domain,key,snapshot):
+            if (domain,key)!=("security","authn_authz"):
+                return None
+            return VerifiedCriterionEvidence(
+                domain=domain,criterion=key,repository=snapshot["repository"],
+                assessed_commit=snapshot["assessed_commit"],
+                verification_state="reviewed",
+                source="verified:trusted-security-auditor",
+                evidence=("security-audit/source-run/exact-sha:"+snapshot["assessed_commit"],),
+            )
+        out=certify_product_readiness(
+            repository=REPO,assessed_commit=SHA,
+            manifest=evidence,github_get=lambda path:data[path],
+            trusted_verifier=trusted,
+        )
+        item=out.report["criteria"]["security"]["authn_authz"]
+        self.assertEqual(item["status"],"passed")
+        self.assertEqual(item["evidence"],["security-audit/source-run/exact-sha:"+SHA])
+        self.assertNotIn("forged:sha:"+SHA,item["evidence"])
+        self.assertEqual(item["attestation"]["source"],"verified:trusted-security-auditor")
+        self.assertFalse(out.assessment.ready)
+        # The same user input, WITHOUT independently executed trusted code,
+        # cannot become a passing criterion.
+        self.assertEqual(self.certify(data=data,evidence=evidence).report["criteria"]["security"]["authn_authz"]["status"],"failed")
+
+    def test_trusted_verifier_rejects_wrong_identity_and_unbound_receipts(self):
+        data=github()
+        evidence=conservative_verified_manifest(
+            repository=REPO,assessed_commit=SHA,github_get=lambda path:data[path]
+        )
+        evidence["criteria"]["documentation"]["operations"].update(
+            status="passed",evidence=["claimed-doc-review:sha:"+SHA],
+            verification_state="reviewed"
+        )
+        for altered in (
+            {"repository":"wrong/repo"},
+            {"assessed_commit":"b"*40},
+            {"criterion":"release_rollback"},
+            {"domain":"security"},
+            {"verification_state":"executed"},
+            {"source":""},
+            {"evidence":("unbound-citation",)},
+            {"evidence":()},
+        ):
+            def untrusted_verifier(domain,key,snapshot):
+                proof=dict(domain=domain,criterion=key,
+                           repository=REPO,assessed_commit=SHA,
+                           verification_state="reviewed",
+                           source="verified:documentation-check",
+                           evidence=("review@sha:"+SHA,))
+                proof.update(altered)
+                return VerifiedCriterionEvidence(**proof)
+            out=certify_product_readiness(
+                repository=REPO,assessed_commit=SHA,
+                manifest=evidence,github_get=lambda path:data[path],
+                trusted_verifier=untrusted_verifier,
+            )
+            self.assertEqual(out.report["criteria"]["documentation"]["operations"]["status"],"failed")
+            self.assertFalse(out.assessment.ready)
 
 if __name__=="__main__": unittest.main()
