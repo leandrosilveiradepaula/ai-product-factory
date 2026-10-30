@@ -1,5 +1,7 @@
 ## Operação vigente verificada — 30/10/2026 (sobrescreve snapshots históricos abaixo)
 
+Referências operacionais obrigatórias: [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md) e [Release/rollback](RELEASE_AUTONOMY.md). A decisão de **27/10/2026** permanece vigente: **Service Desk standalone foi aposentado** e não deve ser reiniciado; é módulo do CRM Infodive.
+
 Factory/CRM `running`; `main=7a9f74876aa5a35a91cb35602c576ffe53a7b3dd`.
 A migration do certificador #1156 **já foi aplicada** no Control Plane
 Factory como `product_readiness_certification`, versão `20261030104153`;
