@@ -288,3 +288,15 @@ independent source of execution (workflow/run/artifact, verified service-side
 read, or other authenticated review), verify repository/project/SHA and
 criterion scope, and include adversarial tests. A reusable provider must
 not turn a green CI check into a blanket six-domain certificate.
+
+The core also supports future **trusted runtime verifier** implementations
+through an injected callable that returns a
+`VerifiedCriterionEvidence` object for a particular domain/criterion,
+repository, SHA, verification state and source receipts. Only executable
+server-side verifier code can provide this object; no manifest JSON field,
+text URL or caller-provided callback is passed through the CLI. The core
+re-checks all scopes and replaces untrusted citation text with references
+returned by the verified source. This allows any of the 19 dimensions to
+become verifiable without changing the core again, once its actual,
+independent provider has been implemented and tested. Until then the
+criterion remains `missing` or `failed`, never implicitly passed.
