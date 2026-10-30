@@ -28,7 +28,8 @@ class VerifiedBaselineTests(unittest.TestCase):
         passed = [x for x in report["criteria"] if x["status"] == "passed"]
         self.assertEqual([(x["domain"], x["criterion"]) for x in passed],
                          [("test_strategy", "unit_integration")])
-        self.assertEqual(len(report["assessment"]["blockers"]), 18)
+        self.assertEqual(sum("/" in x for x in report["assessment"]["blockers"]),18)
+        self.assertEqual(len(report["assessment"]["blockers"]),24)
         self.assertEqual(report["writes"], 0)
         self.assertEqual(report["paid_calls"], 0)
         self.assertFalse(report["start_authorized"])
