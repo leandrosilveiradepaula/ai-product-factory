@@ -84,26 +84,132 @@ def _source_snapshot(*, repository: str, assessed_commit: str, github_get: Calla
             "verification_state": "executed_same_SHA"}
 
 
-def _criterion(raw: object, *, domain: str, key: str, sha: str) -> dict:
+def _exact_ci_attestation(*, snapshot: dict) -> dict:
+    """The only current automatic PASS provider: executed exact-SHA CI jobs.
+
+    A manifest can request this provider, but cannot supply its contents.
+    The verified source is built from separately fetched GitHub workflow/jobs.
+    Other domains REQUIRE their own future independent source verifiers.
+    """
+    return {
+        "kind": "github_exact_sha_validate",
+        "repository": snapshot["repository"],
+        "assessed_commit": snapshot["assessed_commit"],
+        "run_id": snapshot["validation_run_id"],
+        "jobs": snapshot["validation_jobs"],
+    }
+
+
+def _criterion(raw: object, *, domain: str, key: str, snapshot: dict) -> dict:
     if not isinstance(raw, dict):
         return {"status": "missing", "evidence": [], "reason": "criterion record is required"}
     status = raw.get("status")
     reason = raw.get("reason")
     evidence = raw.get("evidence")
     verification = raw.get("verification_state")
-    if status not in CRITERION_STATES:
+    if not isinstance(status, str) or status not in CRITERION_STATES:
         return {"status": "missing", "evidence": [], "reason": "invalid criterion status"}
     if not isinstance(reason, str):
         reason = ""
-    if not isinstance(evidence, list) or any(not isinstance(x, str) or not x.strip() for x in evidence):
+    if (not isinstance(evidence, list)
+            or any(not isinstance(x, str) or not x.strip() for x in evidence)):
         return {"status": "missing", "evidence": [], "reason": "malformed evidence"}
-    # A passed claim must bind at least one reference to the immutable code SHA.
-    if status == "passed" and not any(sha in x for x in evidence):
-        return {"status": "failed", "evidence": evidence, "reason": "passed evidence is not SHA-bound"}
     if not isinstance(verification, str) or not verification.strip():
         return {"status": "missing", "evidence": evidence, "reason": "verification state is required"}
-    return {"status": status, "evidence": evidence, "reason": reason.strip(),
-            "verification_state": verification.strip(), "domain": domain, "criterion": key}
+
+    if status == "passed":
+        # SHA-bearing URLs, prose, an assertion of "reviewed", or an arbitrary
+        # GitHub run number are NOT independently authenticated evidence.
+        # The only currently executable scope verifier is exact-SHA test CI.
+        attestation = raw.get("attestation")
+        expected = _exact_ci_attestation(snapshot=snapshot)
+        if ((domain, key) != ("test_strategy", "unit_integration")
+                or not isinstance(attestation, dict)
+                or attestation != expected):
+            return {
+                "status": "failed",
+                "evidence": [],
+                "reason": "no independently verified source for passing criterion",
+                "verification_state": verification.strip(),
+                "domain": domain,
+                "criterion": key,
+            }
+        sha = snapshot["assessed_commit"]
+        # Do not copy caller-provided evidence into a positive certificate.
+        # Derive the citation from the GitHub HEAD+run+jobs checked above.
+        evidence = [
+            "https://github.com/" + snapshot["repository"]
+            + "/actions/runs/" + str(snapshot["validation_run_id"]) + "#sha=" + sha
+        ]
+        return {
+            "status": "passed",
+            "evidence": evidence,
+            "reason": "successful exact-SHA validate/test/factory-acceptance verified by GitHub",
+            "verification_state": verification.strip(),
+            "domain": domain,
+            "criterion": key,
+            "attestation": expected,
+        }
+    return {
+        "status": status,
+        "evidence": evidence,
+        "reason": reason.strip(),
+        "verification_state": verification.strip(),
+        "domain": domain,
+        "criterion": key,
+    }
+
+
+def conservative_verified_manifest(*, repository: str, assessed_commit: str,
+                                   github_get: Callable[[str], object]) -> dict:
+    """Build a repeatable 19-criterion baseline WITHOUT invented PASS results.
+
+    Only exact-SHA CI test/acceptance is independently verified here.
+    All other criteria stay missing until an applicable trusted source verifier
+    is implemented and actually executed; a healthy endpoint or document
+    inventory may be described separately, but cannot become a domain PASS.
+    """
+    snapshot = _source_snapshot(repository=repository, assessed_commit=assessed_commit,
+                                github_get=github_get)
+    domain_verification = {
+        "security": "reviewed",
+        "observability_operations": "observed",
+        "test_strategy": "executed",
+        "product_experience": "observed",
+        "documentation": "reviewed",
+        "functional_completeness": "reviewed",
+    }
+    criteria = {}
+    for domain, keys in REQUIRED_COVERAGE_BY_DOMAIN.items():
+        criteria[domain] = {
+            key: {
+                "status": "missing",
+                "reason": "no independent executable proof for " + domain + "/" + key,
+                "evidence": [],
+                "verification_state": domain_verification[domain],
+            }
+            for key in keys
+        }
+    criteria["test_strategy"]["unit_integration"] = {
+        "status": "passed",
+        "reason": "executed exact-SHA unit/integration and acceptance CI",
+        "evidence": [],
+        "verification_state": "executed",
+        "attestation": _exact_ci_attestation(snapshot=snapshot),
+    }
+    # The exact CI run proves these checks executed, not that the main ruleset
+    # protects PostgreSQL QA, E2E, browser, or all multi-project regressions.
+    criteria["test_strategy"]["regression_gates"] = {
+        "status": "partial",
+        "reason": "CI executed, but complete enforced release and migration QA gates need independent review",
+        "evidence": [
+            "https://github.com/" + repository
+            + "/actions/runs/" + str(snapshot["validation_run_id"])
+            + "#sha=" + snapshot["assessed_commit"]
+        ],
+        "verification_state": "executed",
+    }
+    return {"schema_version": 1, "criteria": criteria}
 
 
 @dataclass(frozen=True)
@@ -135,7 +241,7 @@ def certify_product_readiness(*, repository: str, assessed_commit: str, manifest
         passed = True
         evidence, verification = [], []
         for key in required:
-            item = _criterion(rows.get(key), domain=domain, key=key, sha=snapshot["assessed_commit"])
+            item = _criterion(rows.get(key), domain=domain, key=key, snapshot=snapshot)
             per_domain[key] = item
             evidence.extend(item["evidence"])
             verification.append(item.get("verification_state", ""))
