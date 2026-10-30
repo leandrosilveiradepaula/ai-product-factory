@@ -37,3 +37,34 @@ The flag is off by default. Activation requires, in order:
 Rollback disables new V2 intake at the flag. It does not delete journeys or
 fall back to V1 for an already recorded V2 request; inspect/drain it under the
 same controls. V2 never merges production and does not apply a migration.
+
+
+## Durable state settlement (candidate, unapplied)
+
+The same versioned migration installs an event-driven, service-role-only
+\`factory_reconcile_journey_v2\` function. Existing run, evaluation, deployment,
+tool-usage, release-report and audit receipts wake it inside their own
+transactions; no new cron, worker, model, or external write is introduced.
+Only records joined to the immutable journey/project/request/generation are
+eligible. The source-bound run becomes \`executing\` on actual execution;
+an exact-SHA native CI + quality gate + journey-specific Preview promotion +
+successful deployment and browser evaluation record \`preview_verified\`.
+A documented not-applicable Preview requires its own exact-SHA receipts.
+Only an unblocked release report, matching PR/usage/audit receipts and a
+main-target candidate can advance to \`awaiting_release\`. A human merge
+observed by the existing guarded release flow, with a released report and
+matching merge SHA, becomes \`released_observed\`. The observer never merges.
+
+Each transition emits one durable \`journey.*\` audit event. The Preview merge
+SHA is recorded only from the existing verified nonproduction merge observer;
+the candidate and production merge SHAs are separate. A changed candidate
+after verified Preview, wrong generation, replay or conflicting receipt fails
+closed. Historical V1 rows with NULL \`journey_id\` are ignored. Paused/stopped
+or rotated epochs freeze forward execution; observation of an already
+human-merged release remains possible. PostgreSQL QA exercises the actual
+triggers, adversarial receipts and idempotency, not only static SQL assertions.
+
+**Scope of proof:** isolated PostgreSQL QA certifies the state-machine
+implementation, not a live CRM #171 Start, Vercel browser session or
+production release. The PR stays unmerged; the migration stays unapplied;
+\`product_ready=false\` until independently verified operational evidence.

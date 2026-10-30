@@ -18,8 +18,12 @@ create schema extensions; create extension pgcrypto with schema extensions;
 create table public.factory_projects(id uuid primary key,project_key text unique,repository text,manifest jsonb,is_active boolean,project_kind text);
 create table public.factory_project_execution_controls(project_id uuid primary key,state text,generation bigint,version bigint);
 create table public.factory_tasks(id uuid primary key default extensions.gen_random_uuid(),project_id uuid,parent_task_id uuid,journey_id uuid,external_key text,title text,description text,status text,complexity text,risk jsonb,acceptance_criteria jsonb,depends_on jsonb,scope_keys jsonb,required_capabilities jsonb,agent_role text);
-create table public.factory_runs(id uuid primary key default extensions.gen_random_uuid(),task_id uuid,journey_id uuid,status text,execution_route text,source_commit text,branch_name text,metadata jsonb,created_at timestamptz default now());
-create table public.factory_change_sets(id uuid primary key default extensions.gen_random_uuid(),root_task_id uuid,journey_id uuid,source_commit text);
+create table public.factory_runs(id uuid primary key default extensions.gen_random_uuid(),task_id uuid,journey_id uuid,status text,execution_route text,source_commit text,candidate_commit text,branch_name text,metadata jsonb,created_at timestamptz default now());
+create table public.factory_change_sets(id uuid primary key default extensions.gen_random_uuid(),project_id uuid,root_task_id uuid,journey_id uuid,source_commit text,integration_branch text,candidate_commit text,release_run_id uuid,status text,metadata jsonb,updated_at timestamptz default now());
+create table public.factory_evaluations(id uuid primary key default extensions.gen_random_uuid(),run_id uuid,eval_type text,status text,baseline_ref text,result jsonb);
+create table public.factory_deployments(id uuid primary key default extensions.gen_random_uuid(),run_id uuid,environment text,status text,metadata jsonb,created_at timestamptz default now());
+create table public.factory_tool_usage(id bigint generated always as identity primary key,run_id uuid,operation text,metadata jsonb);
+create table public.factory_release_reports(id uuid primary key default extensions.gen_random_uuid(),project_id uuid,run_id uuid,status text,candidate_commit text,report jsonb,updated_at timestamptz default now());
 create table public.factory_audit_events(id bigint generated always as identity primary key,project_id uuid,task_id uuid,run_id uuid,actor_type text,actor_ref text,event_type text,payload jsonb);
 create role service_role; create role authenticated; create role anon;
 """
@@ -66,4 +70,82 @@ with psycopg.connect(DSN,autocommit=True) as db:
         else: raise AssertionError("incomplete binding accepted")
         cur.execute("select count(*) from factory_tasks"); assert cur.fetchone()[0]==1
         cur.execute("select count(*) from factory_runs"); assert cur.fetchone()[0]==1
+
+        # Real PostgreSQL state machine: no fabricated CI/Preview/browser PASS.
+        root=bound["run_id"]
+        cur.execute("update factory_runs set status='completed' where id=%s",(root,))
+        cur.execute("select state from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()[0]=="executing"
+        candidate="d"*40
+        preview_url="https://crm171-preview.vercel.app"
+        pr=217
+        cur.execute("update factory_runs set status='preview_ready',candidate_commit=%s where id=%s",(candidate,root))
+        release_request={"branch":binding["integration_branch"],"candidate_commit":candidate,"pr_number":pr}
+        cur.execute("""insert into factory_change_sets(project_id,root_task_id,source_commit,integration_branch,
+          candidate_commit,release_run_id,status,metadata)
+          values(%s,%s,%s,%s,%s,%s,'ci_pending',%s)""",
+          (PROJECT,bound["task_id"],SHA,binding["integration_branch"],candidate,root,
+           Jsonb({"integration_release_request":release_request})))
+        cur.execute("select journey_id from factory_change_sets where release_run_id=%s",(root,))
+        assert str(cur.fetchone()[0])==journey
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'github_ci','success',%s,'{}'),(%s,'quality_gate','success',%s,'{"passed":true}')""",
+          (root,candidate,root,candidate))
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','preview.promotion_completed',%s)""",
+          (PROJECT,root,Jsonb({"branch":binding["preview_branch_prefix"]+"-"+journey[:8],
+                               "candidate_commit":candidate,"pr_number":pr})))
+        cur.execute("""insert into factory_deployments(run_id,environment,status,metadata)
+          values(%s,'preview','success',%s)""",
+          (root,Jsonb({"candidate_commit":candidate,"preview_url":preview_url})))
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'browser_e2e','success',%s,'{}')""",(root,preview_url))
+        cur.execute("select state,candidate_commit from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()==("preview_verified",candidate)
+        # Green browser alone never opens a production gate.
+        cur.execute("""insert into factory_release_reports(project_id,run_id,status,candidate_commit,report)
+          values(%s,%s,'blocked',%s,'{"blockers":["production policy blocked"]}')""",
+          (PROJECT,root,candidate))
+        cur.execute("update factory_runs set status='awaiting_release' where id=%s",(root,))
+        cur.execute("select state from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()[0]=="preview_verified"
+        cur.execute("""insert into factory_tool_usage(run_id,operation,metadata)
+          values(%s,'verified_preview_awaiting_human_merge',%s)""",
+          (root,Jsonb({"head_sha":"e"*40,"pr":pr,"preview_url":preview_url})))
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','release.awaiting_human_merge',%s)""",
+          (PROJECT,root,Jsonb({"head_sha":candidate,"pr":pr})))
+        cur.execute("update factory_release_reports set status='ready_for_human_release',report='{\"blockers\":[]}' where run_id=%s",(root,))
+        cur.execute("select state from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()[0]=="preview_verified", "adulterated tool receipt opened release gate"
+        cur.execute("""insert into factory_tool_usage(run_id,operation,metadata)
+          values(%s,'verified_preview_awaiting_human_merge',%s)""",
+          (root,Jsonb({"head_sha":candidate,"pr":pr,"preview_url":preview_url})))
+        cur.execute("select state,candidate_commit from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()==("awaiting_release",candidate)
+        # A claimed merge is not enough: run/report and observed SHA must agree.
+        merge="f"*40
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','release-followup','release.human_merge_observed',%s)""",
+          (PROJECT,root,Jsonb({"candidate_commit":candidate,"merge_sha":merge})))
+        cur.execute("select state from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()[0]=="awaiting_release"
+        cur.execute("update factory_runs set status='merged',candidate_commit=%s where id=%s",(merge,root))
+        cur.execute("select state from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()[0]=="awaiting_release"
+        cur.execute("update factory_release_reports set status='released',report=%s where run_id=%s",
+                    (Jsonb({"blockers":[],"merge_sha":merge}),root))
+        cur.execute("select state,candidate_commit,production_release_sha from factory_journeys where id=%s",(journey,))
+        assert cur.fetchone()==("released_observed",candidate,merge)
+        cur.execute("select count(*) from factory_audit_events where event_type='journey.released_observed'")
+        assert cur.fetchone()[0]==1
+        assert call(cur,"factory_reconcile_journey_v2",(root,))["state"]=="released_observed"
+        cur.execute("select count(*) from factory_audit_events where event_type='journey.released_observed'")
+        assert cur.fetchone()[0]==1
+        cur.execute("set role authenticated")
+        try: call(cur,"factory_reconcile_journey_v2",(root,))
+        except psycopg.Error: pass
+        else: raise AssertionError("authenticated role reached journey settlement RPC")
+        finally: cur.execute("reset role")
+
 print("journey_delivery_binding_postgres_qa=passed")
