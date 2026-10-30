@@ -22,15 +22,16 @@ def reconcile_external_wakes(*, workflow_run_id:int, ci_work:bool, preview_work:
     if type(max_items) is not int or not 1<=max_items<=8:
         raise ValueError("invalid bounded recovery batch")
     cfg=resolve_supabase_server_config()
-    # GitHub OIDC supplies the trusted Edge broker URL, while PostgreSQL RPCs
-    # live at the project origin. Accept only these two exact configured URLs.
+    # GitHub OIDC credentials must pass through the trusted Edge broker.
+    # It verifies workflow identity, then proxies the /rest/v1/rpc/... suffix
+    # using server-side privileged credentials. Never bypass it with OIDC.
     broker_url=EXPECTED_URL+"/functions/v1/factory-runtime-control-plane"
     if cfg.url not in (EXPECTED_URL,broker_url):
         raise RuntimeError("unexpected Control Plane origin")
     body=json.dumps({"p_runner_run_id":workflow_run_id,"p_ci_work":ci_work,
         "p_preview_work":preview_work,"p_release_work":release_work,
         "p_max_items":max_items}).encode()
-    req=urllib.request.Request(EXPECTED_URL+
+    req=urllib.request.Request(cfg.url+
        "/rest/v1/rpc/factory_reconcile_external_webhook_wakes_v1",
        data=body,headers={**cfg.headers,"Content-Type":"application/json"},
        method="POST")

@@ -32,8 +32,8 @@ class ExternalWakeRecoveryContract(unittest.TestCase):
   self.assertIn("steps.probe.outcome == 'success'",WORKFLOW)
   self.assertIn('type(signal.get(key)) is not bool',WORKFLOW)
   self.assertIn("BLOCKED_MIGRATION_NOT_APPLIED",WORKFLOW)
- def test_oidc_edge_broker_url_maps_to_exact_project_rest_origin(self):
-  from unittest.mock import Mock
+ def test_oidc_broker_must_proxy_rpc_without_direct_postgrest_bypass(self):
+  import json
   from ai_product_factory.supabase_server import SupabaseServerConfig
   from ai_product_factory import external_webhook_recovery as recovery
   class Reply:
@@ -41,13 +41,30 @@ class ExternalWakeRecoveryContract(unittest.TestCase):
    def __exit__(self,*args): return None
    def read(self,*args): return b'{"status":"ok","inspected":0,"runner_observed":0,"suppressed":0,"exhausted":0,"deferred":0}'
   base="https://fjplmxfcshhbmzgvyqlm.supabase.co"
-  for url in (base,base+"/functions/v1/factory-runtime-control-plane"):
-   with patch.object(recovery,"resolve_supabase_server_config",return_value=SupabaseServerConfig(url=url,key="sb_secret_placeholder",headers={"apikey":"sb_secret_placeholder"})),patch.object(recovery.urllib.request,"urlopen",return_value=Reply()) as send:
-    receipt=reconcile_external_wakes(workflow_run_id=41064664725,ci_work=True,preview_work=False,release_work=False)
-    self.assertEqual(receipt["status"],"ok")
-    request=send.call_args.args[0]
-    self.assertEqual(request.full_url,base+"/rest/v1/rpc/factory_reconcile_external_webhook_wakes_v1")
-    self.assertNotIn("Authorization",request.headers)
+  broker=base+"/functions/v1/factory-runtime-control-plane"
+  # The workflow has short-lived GitHub OIDC, not a database service key.
+  # Sending that credential directly to PostgREST would bypass verification
+  # and fail; it MUST use the already-deployed broker proxy path.
+  scenarios=(
+   (broker,"oidc-test-token",{"apikey":"oidc-test-token","Authorization":"Bearer oidc-test-token"}),
+   (base,"sb_secret_test_fixture",{"apikey":"sb_secret_test_fixture"}),
+  )
+  for url,key,headers in scenarios:
+   with self.subTest(url=url):
+    cfg=SupabaseServerConfig(url=url,key=key,headers=headers)
+    with patch.object(recovery,"resolve_supabase_server_config",return_value=cfg),patch.object(recovery.urllib.request,"urlopen",return_value=Reply()) as send:
+     receipt=reconcile_external_wakes(workflow_run_id=41064664725,ci_work=True,preview_work=False,release_work=False)
+     self.assertEqual(receipt["status"],"ok")
+     request=send.call_args.args[0]
+     self.assertEqual(request.full_url,url+"/rest/v1/rpc/factory_reconcile_external_webhook_wakes_v1")
+     self.assertEqual(request.get_method(),"POST")
+     self.assertEqual(json.loads(request.data),{"p_runner_run_id":41064664725,"p_ci_work":True,"p_preview_work":False,"p_release_work":False,"p_max_items":4})
+     self.assertEqual(request.headers.get("Apikey"),key)
+     if url==broker:
+      self.assertEqual(request.headers.get("Authorization"),"Bearer oidc-test-token")
+      self.assertNotEqual(request.full_url,base+"/rest/v1/rpc/factory_reconcile_external_webhook_wakes_v1")
+     else:
+      self.assertNotIn("Authorization",request.headers)
   for url in (base+".evil.com",base+"/rest/v1",base+"/functions/v1/foreign-broker","http://fjplmxfcshhbmzgvyqlm.supabase.co"):
    with patch.object(recovery,"resolve_supabase_server_config",return_value=SupabaseServerConfig(url=url,key="x",headers={"apikey":"x"})),patch.object(recovery.urllib.request,"urlopen") as send:
     with self.assertRaisesRegex(RuntimeError,"unexpected Control Plane origin"):
