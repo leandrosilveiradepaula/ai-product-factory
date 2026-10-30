@@ -415,6 +415,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261026170000_resume_preview_backend_unavailable.sql",
             "20261029115000_replace_existing_nonproduction_candidate.sql",
             "20261030110000_product_readiness_certification.sql",
+            "20261030150000_journey_delivery_binding_v2.sql",
         }
         self.assertEqual(migration_names, expected_history)
 

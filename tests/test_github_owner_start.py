@@ -167,6 +167,25 @@ class OwnerStartRpcTests(unittest.TestCase):
         self.assertEqual(result["wake"],"not_needed")
         self.assertEqual(len(calls),1)
 
+    def test_v2_intake_persists_only_intent_and_never_wakes_an_unbound_source(self):
+        calls=[]
+        env={**ENVS,"FACTORY_JOURNEY_DELIVERY_BINDING_V2":"true"}
+        def fake(url, body, headers):
+            calls.append((url,body))
+            return 200,{
+                "project_id":"e2ea3201-e9a3-489f-bf14-916aecc7de09",
+                "journey_id":"61bc7a1f-dcab-4616-9ce7-1ff28a0aa915",
+                "request_id":request_uuid(ISSUE_NUMBER,COMMENT_ID),"created":True,
+                "source":"github-owner","state":"awaiting_source",
+            }
+        result=enqueue_owner_start(self.command(),env,post=fake)
+        self.assertEqual(result["status"],"intake_accepted")
+        self.assertEqual(result["wake"],"not_needed")
+        self.assertEqual(result["paid_calls"],0)
+        self.assertEqual(len(calls),1)
+        self.assertTrue(calls[0][0].endswith("/rest/v1/rpc/factory_enqueue_journey_intake_v2"))
+        self.assertEqual(calls[0][1]["p_request_id"],request_uuid(ISSUE_NUMBER,COMMENT_ID))
+
     def test_wake_failure_keeps_durable_run_not_misreports_complete(self):
         def fake(url, body, headers):
             if url.endswith("dispatches"):return 403,None

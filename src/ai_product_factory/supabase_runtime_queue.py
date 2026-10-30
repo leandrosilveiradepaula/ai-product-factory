@@ -26,6 +26,7 @@ from .candidate_source_evidence import (
 from .product_stage_output_contract import (
     assert_executed_product_stage_output, NON_ACTIONABLE_PLANNING_EVIDENCE,
 )
+from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -96,6 +97,30 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if not isinstance(data,dict):
             raise RuntimeError("retry RPC returned an invalid response")
         return data
+
+    def bind_journey_source_v2(self, *, project_key: str, request_id: str,
+                               expected_generation: int, expected_policy_version: int,
+                               binding: dict) -> dict:
+        """Commit an already GitHub-verified V2 binding; never creates it from text."""
+        from uuid import UUID
+        if not isinstance(project_key, str) or not project_key.strip():
+            raise ValueError("project key is required")
+        try:
+            UUID(request_id)
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("request id is invalid") from exc
+        if type(expected_generation) is not int or expected_generation < 1 or type(expected_policy_version) is not int or expected_policy_version < 1:
+            raise ValueError("journey binding epoch is invalid")
+        if not isinstance(binding, dict):
+            raise ValueError("journey binding is required")
+        result = self._rpc("factory_bind_journey_source_v2", {
+            "p_project_key": project_key, "p_request_id": request_id,
+            "p_expected_generation": expected_generation,
+            "p_expected_policy_version": expected_policy_version, "p_binding": binding,
+        })
+        if not isinstance(result, dict) or result.get("state") != "source_bound":
+            raise RuntimeError("journey source binding receipt is invalid")
+        return result
 
     def recover_expired(self,max_attempts:int=3)->dict:
         data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
@@ -489,6 +514,49 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         ):
             raise PlanningReplayBlocked()
 
+    def _v2_journey_context(self, *, run_id: str, project_id: str, context: dict) -> tuple[str | None, dict]:
+        """Load the immutable binding for a claimed V2 run before any stage.
+
+        The claim RPC is intentionally generic for legacy compatibility. This
+        second server-side read makes a missing/cross-project V2 binding fail
+        before reconciliation or a model invocation, never by consulting the
+        mutable project manifest.
+        """
+        manifest = context.get("manifest")
+        enabled = (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)
+                   and manifest["journey_delivery_binding_v2"].get("enabled") is True)
+        if not enabled:
+            return None, context
+        runs = self._get("factory_runs?select=journey_id&id=eq." + quote(run_id, safe="") + "&limit=1")
+        if not isinstance(runs, list) or len(runs) != 1:
+            raise JourneyBindingBlocked("journey_claim_unverifiable")
+        journey_id = runs[0].get("journey_id")
+        if journey_id is None:
+            return None, context
+        if not isinstance(journey_id, str):
+            raise JourneyBindingBlocked("journey_claim_identity_invalid")
+        projects = self._get("factory_projects?select=repository&id=eq." + quote(project_id, safe="") + "&limit=1")
+        if not isinstance(projects, list) or len(projects) != 1 or not isinstance(projects[0], dict):
+            raise JourneyBindingBlocked("journey_project_unverifiable")
+        repository = projects[0].get("repository")
+        rows = self._get(
+            "factory_journeys?select=id,project_id,request_id,state,binding,execution_generation"
+            "&id=eq." + quote(journey_id, safe="") + "&limit=1"
+        )
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise JourneyBindingBlocked("journey_claim_unverifiable")
+        row = rows[0]
+        if row.get("id") != journey_id or row.get("project_id") != project_id:
+            raise JourneyBindingBlocked("journey_binding_cross_project")
+        if row.get("state") not in ("source_bound", "executing"):
+            raise JourneyBindingBlocked("journey_not_executable")
+        binding = JourneyBinding.parse(row.get("binding"), project_id=project_id,
+                                       request_id=str(row.get("request_id") or ""),
+                                       repository=str(repository or ""))
+        if row.get("execution_generation") != binding.execution_generation:
+            raise JourneyBindingBlocked("journey_binding_generation_invalid")
+        return journey_id, {**context, "journey_binding_v2": binding.as_context()}
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -508,6 +576,19 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if type(data.get("execution_generation")) is not int or data["execution_generation"] < 1:
             raise RuntimeError("claim RPC returned invalid execution generation")
         context = data.get("context", {})
+        try:
+            journey_id, context = self._v2_journey_context(
+                run_id=data["run_id"], project_id=data["project_id"], context=context,
+            )
+        except JourneyBindingBlocked as exc:
+            claimed=WorkItem(run_id=data["run_id"],task_id=data["task_id"],
+                project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),
+                context={},execution_generation=data["execution_generation"],worker_id=worker_id)
+            try:
+                self.fail(claimed, "journey_" + str(exc))
+            except Exception as settlement_error:
+                raise RuntimeError("claimed journey binding failure was not settled") from settlement_error
+            raise
         if "reconciliation" in stages:
             try:
                 context = self._reconciliation_context(data["project_id"], context)
@@ -575,7 +656,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                         "failure settlement was not confirmed"
                     ) from settlement_error
                 raise PermissionError("planning resume provenance invalid") from None
-        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id)
+        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id,journey_id=journey_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
         if status not in {"started","failed"}:

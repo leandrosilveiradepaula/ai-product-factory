@@ -13,6 +13,7 @@ from typing import Callable
 
 from .github_loop import CIState
 from .github_rest import GitHubRequestError, GitHubRestAdapter
+from .journey_delivery_binding import assert_preview_belongs_to_journey, JourneyBindingBlocked
 
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -143,6 +144,10 @@ def promote_preview_candidate(
     policy = PreviewPromotionPolicy.from_manifest(item.manifest)
     if policy is None:
         return {"status": "not_configured"}
+    try:
+        assert_preview_belongs_to_journey(item, policy)
+    except JourneyBindingBlocked as exc:
+        raise PreviewPromotionBlocked(str(exc)) from exc
     branch = policy.branch_for(item)
     candidate = item.candidate_commit
     pr = _verify_candidate(github, item, policy)
