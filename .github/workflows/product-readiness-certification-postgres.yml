@@ -1,0 +1,52 @@
+name: Product readiness certification PostgreSQL QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*product_readiness_certification.sql"
+      - "scripts/verify_product_readiness_certification_postgres.py"
+      - "src/ai_product_factory/product_readiness_certification.py"
+      - "src/ai_product_factory/supabase_delivery_store.py"
+      - ".github/workflows/product-readiness-certification-postgres.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*product_readiness_certification.sql"
+      - "scripts/verify_product_readiness_certification_postgres.py"
+      - ".github/workflows/product-readiness-certification-postgres.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  product-readiness-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: disposable-only
+          POSTGRES_DB: factory_product_readiness_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_product_readiness_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Install pinned PostgreSQL client
+        run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify certification SQL, replay and concurrency in isolated PostgreSQL
+        env:
+          FACTORY_PRODUCT_READINESS_TEST_ISOLATED: "true"
+          FACTORY_PRODUCT_READINESS_TEST_DSN: "postgresql://factory_ci:disposable-only@127.0.0.1:5432/factory_product_readiness_test"
+        run: python scripts/verify_product_readiness_certification_postgres.py

@@ -185,5 +185,31 @@ class SupabaseDeliveryStore:
    actor_ref="product-readiness",
   )
   return saved
+ def begin_product_readiness_certification(self,*,project_key:str,repository:str,assessed_commit:str,evidence_digest:str)->dict:
+  """Allocate one isolated assessment run; normal development queues are untouched."""
+  import re
+  if (not project_key.strip() or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",repository)
+      or not re.fullmatch(r"[0-9a-f]{40}",assessed_commit) or not re.fullmatch(r"[0-9a-f]{64}",evidence_digest)):
+   raise ValueError("invalid product-readiness certification identity")
+  data=self._rpc("factory_begin_product_readiness_certification_v1",{
+   "p_project_key":project_key,"p_repository":repository,"p_assessed_commit":assessed_commit,
+   "p_evidence_digest":evidence_digest})
+  if (not isinstance(data,dict) or not data.get("certification_id") or not data.get("run_id")
+      or data.get("assessed_commit")!=assessed_commit):
+   raise RuntimeError("inconsistent certification allocation receipt")
+  return data
+ def persist_product_readiness_certification(self,*,certification_id:str,run_id:str,assessment,report:dict,evidence_digest:str)->dict:
+  """Commit assessment, evaluation, task/run state and audit receipt atomically."""
+  if not certification_id or not run_id or not isinstance(report,dict):
+   raise ValueError("missing certification persistence identity")
+  data=self._rpc("factory_persist_product_readiness_certification_v1",{
+   "p_certification_id":certification_id,"p_run_id":run_id,
+   "p_assessed_commit":assessment.assessed_commit,"p_evidence_digest":evidence_digest,
+   "p_result":assessment.as_result(),"p_report":report})
+  if (not isinstance(data,dict) or data.get("run_id")!=run_id
+      or data.get("assessed_commit")!=assessment.assessed_commit
+      or data.get("evaluation_status") not in {"passed","failed"}):
+   raise RuntimeError("inconsistent product-readiness persistence receipt")
+  return data
  def record_audit_event(self,*,run_id:str,event_type:str,payload:dict|None=None,actor_type:str="factory",actor_ref:str|None=None):
   return self._insert("factory_audit_events",{"run_id":run_id,"actor_type":actor_type,"actor_ref":actor_ref,"event_type":event_type,"payload":payload or {}})

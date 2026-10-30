@@ -78,6 +78,20 @@ class Tests(unittest.TestCase):
   audit_payload=json.loads(call.call_args_list[1].args[0].data.decode())
   self.assertEqual(audit_payload["event_type"],"product_readiness.assessed")
 
+ def test_certification_uses_atomic_service_only_rpcs(self):
+  store=SupabaseDeliveryStore.__new__(SupabaseDeliveryStore)
+  store._rpc=MagicMock(side_effect=[
+   {"certification_id":"c","run_id":"r","assessed_commit":"a"*40},
+   {"run_id":"r","assessed_commit":"a"*40,"evaluation_status":"failed"},
+  ])
+  begun=store.begin_product_readiness_certification(project_key="factory",repository="owner/repo",assessed_commit="a"*40,evidence_digest="b"*64)
+  domains={key:{"status":"failed","reason":"blocked","evidence":["e"],"coverage":[],"verification_state":""} for key in REQUIRED_DOMAINS}
+  assessment=assess_product_readiness(assessed_commit="a"*40,assessment_ref="x",domains=domains)
+  saved=store.persist_product_readiness_certification(certification_id="c",run_id="r",assessment=assessment,report={"criteria":{}},evidence_digest="b"*64)
+  self.assertEqual((begun["run_id"],saved["evaluation_status"]),("r","failed"))
+  self.assertEqual(store._rpc.call_args_list[0].args[0],"factory_begin_product_readiness_certification_v1")
+  self.assertEqual(store._rpc.call_args_list[1].args[0],"factory_persist_product_readiness_certification_v1")
+
  def test_closed_pr_reconciliation_uses_narrow_rpc_and_validates_output(self):
      store=SupabaseDeliveryStore.__new__(SupabaseDeliveryStore)
      store._rpc=MagicMock(return_value={

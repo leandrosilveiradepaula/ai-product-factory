@@ -225,3 +225,26 @@ documentation review. `factory_evaluations.product_readiness` and
 `ready`; if same-SHA provider or browser subsequently fails, block
 promotion despite an older evaluation. No paid call or new Factory run
 is permitted for observational collection.
+
+## Independent durable certification producer (30/10/2026 — candidate)
+
+`global-readiness-post-ci` remains a read-only observer. The separate,
+model-free producer is `scripts/certify_product_readiness.py`: it verifies the
+repository default branch, exact 40-character HEAD, one successful `validate`
+push run, and its executed `test` plus `factory-acceptance` jobs before it
+evaluates all 19 criteria. CI is source evidence only; it never fills an
+omitted domain criterion.
+
+Run it with an independently gathered evidence manifest:
+
+```powershell
+$env:GITHUB_TOKEN = '<read-only GitHub token>'
+python scripts/certify_product_readiness.py --project-key <key> --repository owner/repo --assessed-commit <40-char-sha> --evidence-file evidence.json
+```
+
+Every criterion records `passed`, `partial`, `missing`, `failed`, or
+`external_gate`, SHA-bound evidence and a domain-allowed verification state.
+Anything other than `passed` remains a named durable `not_ready` blocker. The
+producer has no model, scheduler, merge, deployment or release authority. A
+new HEAD always needs a new assessment because the observer requires exact
+`baseline_ref` plus project/run/task lineage.

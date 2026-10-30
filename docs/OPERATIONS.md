@@ -1868,3 +1868,56 @@ do histórico, sem executar o SQL duas vezes. Não usar `db push` no ambiente
 com migrations históricas divergentes. Esse teste não usa OpenAI/Codex e
 não demonstra um incidente de CI real. As migrations v1/v2 já estão
 registradas e nunca devem ser repetidas.
+
+## Operação de certificação de prontidão do produto (30/10/2026 — candidato)
+
+Use `scripts/certify_product_readiness.py` somente depois de executar as
+verificações independentes no SHA atual. Ele recusa branch movida, CI de outro
+commit, jobs incompletos, critérios ausentes e evidência sem SHA. A migration
+`20261030110000_product_readiness_certification.sql` cria a solicitação
+durável e duas RPCs `SECURITY INVOKER`, exclusivamente `service_role`, sem
+ampliar RLS. Aplicação de produção permanece um gate humano específico após
+CI/QA e merge humano.
+
+O mesmo snapshot/manifest retorna a mesma certificação sem duplicar task, run
+ou avaliação; uma interrupção antes da persistência pode ser retomada com o
+mesmo manifesto. Conteúdo contraditório, troca de run/projeto/SHA e replay
+com digest distinto falham fechados. Evidência nova no mesmo SHA usa manifesto
+novo; um merge novo sempre usa SHA novo.
+
+Uma avaliação `not_ready` não bloqueia projetos `running`, Start legítimo, CI
+ou Preview autorizado e não reabre Change Sets terminais. Ela tampouco libera
+merge ou publicação: uma avaliação `passed` continua sendo somente evidência
+de produto, sujeita aos gates de release humanos existentes.
+
+
+### Segurança operacional da certificação — isolamento e recuperação
+
+Uma chamada a `factory_begin_product_readiness_certification_v1` reserva uma
+identidade idempotente **sem criar task/run ativa**. Portanto, indisponibilidade
+do verificador, perda da sessão ou interrupção antes da persistência não
+bloqueiam novos Starts autorizados nem consomem uma execução de desenvolvimento.
+`factory_persist_product_readiness_certification_v1` cria a task/run já
+`completed`, avaliação, evento de auditoria e ponteiro canônico em uma
+transação única. Nova evidência no mesmo SHA mantém avaliações anteriores
+intactas e substitui somente `is_current`. O observador read-only não
+seleciona arbitrariamente uma das avaliações duplicadas: exige o ponteiro
+único persistido e vincula avaliação → run → task → projeto. Na ausência
+de ponteiro válido, falha fechado.
+
+A QA obrigatória de migration é o job `Product readiness certification
+PostgreSQL QA` em PR/HEAD com mudança do SQL. Executa PostgreSQL 16.4
+isolado, checa reservas sem tasks em andamento, replay, concorrência,
+histórico do mesmo SHA, ACL `service_role`, RLS sem políticas públicas
+e rejeições de proveniência. A CI Python isolada, sozinha, não prova que
+uma migration PL/pgSQL compila.
+
+**Limite da certificação:** um manifesto com texto que menciona o SHA não é
+prova externa automaticamente confiável. Antes de qualquer avaliação
+`passed`, o operador precisa confrontar as referências de cada critério com
+recibos reais das verificações independentes; o produtor valida formato,
+SHA/CI e o contrato de domínio, mas não executa, nem autentica,
+universalmente cada origem de evidência em texto livre. Assim,
+`product_ready` continua **não certificado** até esse processo ser
+executado e comprovado. A migration em produção permanece bloqueada sem
+autorização específica e merge humano da PR.

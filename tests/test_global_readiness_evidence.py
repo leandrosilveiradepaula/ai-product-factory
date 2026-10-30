@@ -113,6 +113,8 @@ def fixture(*,kind="platform",evaluations=None,baseline=None):
         return gh[path]
     def cp_get(path):
         if path.startswith("factory_projects?"): return cp["factory_projects"]
+        if path.startswith("factory_product_readiness_certifications?"):
+            return cp.get("factory_product_readiness_certifications", [])
         if path.startswith("factory_evaluations?"):
             if "eval_type=eq.existing_project_baseline" in path:
                 return cp["factory_evaluations.existing_project_baseline"]
@@ -264,6 +266,29 @@ class GlobalReadinessTests(unittest.TestCase):
         gh,cp,gg,cg=fixture(evaluations=[complete_eval(),complete_eval()])
         with self.assertRaises(GlobalReadinessEvidenceError):
             self.audit(github_get=gg,cp_get=cg)
+
+    def test_superseded_same_sha_attempts_use_only_unique_durable_current_pointer(self):
+        previous=complete_eval()
+        previous["status"]="failed"
+        previous["result"]={**previous["result"],"ready":False,"status":"not_ready",
+                            "blockers":["prior independent evidence incomplete"]}
+        latest=complete_eval()
+        latest["id"]="66666666-6666-4666-8666-666666666666"
+        gh,cp,gg,cg=fixture(evaluations=[latest,previous])
+        cp["factory_product_readiness_certifications"]=[{
+            "project_id":P,"run_id":R,"evaluation_id":latest["id"],
+            "assessed_commit":S,"state":"persisted","is_current":True,
+        }]
+        def current_cp(path):
+            if path.startswith("factory_evaluations?") and "&id=eq."+latest["id"] in path:
+                return [latest]
+            return cg(path)
+        report=self.audit(github_get=gg,cp_get=current_cp)
+        self.assertTrue(report["global_readiness"]["product_ready"])
+        # Without a unique service-only current pointer, duplicates still fail closed.
+        cp["factory_product_readiness_certifications"]=[]
+        with self.assertRaises(GlobalReadinessEvidenceError):
+            self.audit(github_get=gg,cp_get=current_cp)
 
     def test_validation_params_and_repo_traversal_are_rejected(self):
         _,_,gg,cg=fixture()
