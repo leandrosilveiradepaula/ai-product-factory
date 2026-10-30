@@ -25,6 +25,9 @@ class WorkItem:
     context: dict = field(default_factory=dict)
     execution_generation: int | None = None
     worker_id: str | None = None
+    # Legacy runs deliberately have no journey identity. V2 runs must carry
+    # this capability from the Control Plane before a handler can execute.
+    journey_id: str | None = None
 
 
 @dataclass(frozen=True)
