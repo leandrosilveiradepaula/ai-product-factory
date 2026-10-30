@@ -56,7 +56,8 @@ class ProductReadinessCertificationTests(unittest.TestCase):
             for item in domain.values()
         ),1)
         self.assertEqual(out.report["criteria"]["test_strategy"]["regression_gates"]["status"],"partial")
-        self.assertEqual(len(out.assessment.blockers),18)
+        self.assertEqual(sum("/" in x for x in out.assessment.blockers),18)
+        self.assertEqual(len(out.assessment.blockers),24)
         self.assertEqual(out.report["criteria"]["test_strategy"]["unit_integration"]["attestation"],{
             "kind":"github_exact_sha_validate","repository":REPO,
             "assessed_commit":SHA,"run_id":7,"jobs":["factory-acceptance","test"],
