@@ -51,7 +51,9 @@ def receipt():
                 "repository":REPO,"base_ref":BRANCH,
                 "head_ref":"factory/change-set-61bc7a1f",
                 "head_sha":IMPLEMENTATION,"candidate_commit":IMPLEMENTATION,
-                "pr_number":205,"merge_sha":PREVIEW,
+                # Exact JSONB shape observed in Supabase Control Plane.
+                # This field is text, unlike integration_release_request.pr_number.
+                "pr_number":"205","merge_sha":PREVIEW,
                 "production_released":False},
         }
     }
@@ -86,6 +88,38 @@ class ConsumedSourceLineageTests(unittest.TestCase):
         self.assertEqual(proof.preview_merge_sha,PREVIEW)
         self.assertEqual(proof.implementation_sha,IMPLEMENTATION)
         self.assertEqual(proof.execution_generation,16)
+
+    def test_exact_persisted_decimal_pr_number_is_normalized_to_github_id(self):
+        # JSON serialization preserves the mixed types from the actual
+        # Change Set receipt: nonproduction_integration.pr_number is a string,
+        # while the integration request and GitHub REST PR number are numeric.
+        import json
+        persisted=json.loads(json.dumps(receipt()))
+        observed=persisted["metadata"]["nonproduction_integration"]["pr_number"]
+        requested=persisted["metadata"]["integration_release_request"]["pr_number"]
+        self.assertEqual(observed,"205")
+        self.assertEqual(requested,205)
+        proof=self.attest(rows=[persisted])
+        self.assertEqual(proof.implementation_pr,205)
+        self.assertIs(type(proof.implementation_pr),int)
+        # Older receipts with a numeric JSON field stay compatible.
+        persisted["metadata"]["nonproduction_integration"]["pr_number"]=205
+        self.assertEqual(self.attest(rows=[persisted]).implementation_pr,205)
+
+    def test_only_canonical_decimal_pr_identity_is_accepted(self):
+        invalid=(None,True,False,0,-1,205.0, "0","0205","+205",
+                 "2e2","205.0","205 "," 205","205\\n","205x", [], {},
+                 2147483648, "2147483648")
+        for bad in invalid:
+            row=receipt()
+            row["metadata"]["nonproduction_integration"]["pr_number"]=bad
+            with self.subTest(invalid=repr(bad)),self.assertRaises(PermissionError):
+                self.attest(rows=[row])
+        for bad in (None,True,205.0,"0205","205x",2147483648):
+            row=receipt()
+            row["metadata"]["integration_release_request"]["pr_number"]=bad
+            with self.subTest(request_invalid=repr(bad)),self.assertRaises(PermissionError):
+                self.attest(rows=[row])
 
     def test_repin_defers_consumed_source_without_cas_or_actions(self):
         g=fake_github()
