@@ -13,8 +13,8 @@ import sys
 
 _KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _SHA = re.compile(r"^[a-f0-9]{40}$")
-_STATUSES = {"unchanged", "updated", "blocked", "error"}
-_REASON_CODES = {"candidate_cas_conflict", "candidate_preflight_blocked",
+_STATUSES = {"unchanged", "updated", "deferred", "blocked", "error"}
+_REASON_CODES = {"candidate_draft_hold", "candidate_source_consumed", "candidate_cas_conflict", "candidate_preflight_blocked",
                  "candidate_transport_error"}
 
 
@@ -25,7 +25,7 @@ def summarize(payload: object) -> tuple[dict, str]:
     scanned, eligible, disabled, limit = (
         payload.get(k) for k in ("scanned", "eligible", "policy_disabled", "limit")
     )
-    if status not in {"idle", "completed", "partial_failure"}:
+    if status not in {"idle", "completed", "deferred", "completed_with_deferrals", "partial_failure"}:
         raise ValueError("candidate receipt status invalid")
     if any(type(x) is not int for x in (scanned, eligible, disabled, limit)):
         raise ValueError("candidate counts missing")
@@ -61,13 +61,14 @@ def summarize(payload: object) -> tuple[dict, str]:
         seen.add(key)
         if outcome not in _STATUSES:
             raise ValueError("candidate outcome invalid")
-        sha = result.get("sha") if outcome == "unchanged" else result.get("new_sha")
-        if outcome in {"unchanged", "updated"} and (
+        sha = (result.get("sha") if outcome == "unchanged" else
+               result.get("observed_sha") if outcome == "deferred" else result.get("new_sha"))
+        if outcome in {"unchanged", "updated", "deferred"} and (
             not isinstance(sha, str) or not _SHA.fullmatch(sha)
         ):
             raise ValueError("candidate successful SHA missing")
         reason_code = result.get("reason_code")
-        if outcome in {"blocked", "error"}:
+        if outcome in {"blocked", "error", "deferred"}:
             # Accept only a closed, publicly documented vocabulary. Historical
             # arbitrary 'reason' strings or upstream HTTP bodies never enter
             # the job summary.
@@ -75,14 +76,22 @@ def summarize(payload: object) -> tuple[dict, str]:
                 raise ValueError("unknown candidate reconciliation reason_code")
         else:
             reason_code = None
+        if outcome == "deferred" and reason_code not in {"candidate_draft_hold", "candidate_source_consumed"}:
+            raise ValueError("unrecognized candidate deferral")
+        if outcome in {"blocked", "error"} and reason_code in {"candidate_draft_hold", "candidate_source_consumed"}:
+            raise ValueError("draft hold cannot mask candidate failure")
         safe.append({"project_key": key, "status": outcome, "sha": sha if outcome in
-                     {"unchanged", "updated"} else None,
+                     {"unchanged", "updated", "deferred"} else None,
                      **({"reason_code": reason_code} if reason_code is not None else {})})
     failed = any(item["status"] in {"blocked", "error"} for item in safe)
     if status == "partial_failure" and not failed:
         raise ValueError("failure receipt has no failing candidate")
-    if status == "completed" and failed:
-        raise ValueError("completed receipt contains failing candidate")
+    deferred = sum(item["status"] == "deferred" for item in safe)
+    if status != ("partial_failure" if failed else
+                  "deferred" if deferred == len(safe) and deferred else
+                  "completed_with_deferrals" if deferred else
+                  "completed" if safe else "idle"):
+        raise ValueError("candidate batch status does not match outcomes")
     output = {
         "status": status,
         "scanned": scanned,

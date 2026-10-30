@@ -80,6 +80,15 @@ def project_fetcher(projects):
 
 
 class CandidateRePinTests(unittest.TestCase):
+    def setUp(self):
+        # Isolated unit tests do not access Supabase; dedicated consumed-source
+        # tests below inject real shaped Change Set receipts explicitly.
+        self._consume_patch = patch(
+            "ai_product_factory.nonproduction_candidate_repin._fetch_consumed_source_rows",
+            return_value=[])
+        self._consume_patch.start()
+        self.addCleanup(self._consume_patch.stop)
+
     @staticmethod
     def mock_config():
         return patch("ai_product_factory.nonproduction_candidate_repin.resolve_supabase_server_config",
@@ -184,6 +193,71 @@ class CandidateRePinTests(unittest.TestCase):
         self.assertEqual(result["results"][1]["project_key"], "beta")
 
 
+    def test_verified_draft_new_sha_is_deferred_without_any_write_or_ci(self):
+        p = project()
+        g = github(p["repository"])
+        g.get_pull_request.return_value.draft = True
+        rpc = MagicMock()
+        result = repin_project(p, github_factory=lambda _: g, rpc=rpc)
+        self.assertEqual(result, {
+            "status": "deferred", "project_key": p["project_key"],
+            "reason_code": "candidate_draft_hold", "observed_sha": NEW})
+        rpc.assert_not_called()
+        g._call.assert_not_called()
+        self.assertGreaterEqual(g.get_pull_request.call_count, 2)
+
+    def test_draft_hold_never_suppresses_real_drift_or_missing_evidence(self):
+        for mode in ("wrong-pr", "wrong-repo", "not-descendant", "branch-drift",
+                     "pr-moved", "missing-draft"):
+            p = project()
+            g = github(p["repository"])
+            pr = g.get_pull_request.return_value
+            pr.draft = True
+            if mode == "wrong-pr":
+                pr.number = 77
+            if mode == "wrong-repo":
+                pr.head_repository = "other/foreign"
+            if mode == "not-descendant":
+                g.compare_commits.return_value = {"status": "diverged", "ahead_by": 1, "behind_by": 1}
+            if mode == "branch-drift":
+                g.get_branch_sha.side_effect = [NEW, OLD]
+            if mode == "pr-moved":
+                valid = SimpleNamespace(**vars(pr))
+                changed = SimpleNamespace(**{**vars(pr), "head_sha": OLD})
+                g.get_pull_request.side_effect = [valid, changed]
+            if mode == "missing-draft":
+                pr.draft = None
+            rpc = MagicMock()
+            with self.subTest(mode=mode), self.assertRaises(PermissionError):
+                repin_project(p, github_factory=lambda _: g, rpc=rpc)
+            rpc.assert_not_called()
+
+    def test_draft_hold_is_nonfailing_batch_but_failure_still_blocks(self):
+        first = project("alpha", "owner/alpha")
+        second = project("beta", "owner/beta")
+        fetch = project_fetcher([first, second])
+        def factory(repo):
+            g = github(repo)
+            if repo == "owner/alpha":
+                g.get_pull_request.return_value.draft = True
+            else:
+                g.get_pull_request.return_value.draft = False
+            return g
+        with self.mock_config():
+            result = repin_existing_projects(
+                max_projects=2, rotation_slot=0,
+                project_fetcher=fetch, control_fetcher=fetch,
+                github_factory=factory, rpc=lambda _, body: receipt(body))
+        self.assertEqual(result["status"], "completed_with_deferrals")
+        self.assertEqual([r["status"] for r in result["results"]], ["deferred", "updated"])
+        with self.mock_config():
+            result = repin_existing_projects(
+                max_projects=1, rotation_slot=0,
+                project_fetcher=project_fetcher([first]),
+                control_fetcher=project_fetcher([first]),
+                github_factory=factory, rpc=lambda _, body: receipt(body))
+        self.assertEqual(result["status"], "deferred")
+
     def test_draft_and_missing_pr_draft_metadata_fail_closed(self):
         policy = self.policy()
         for draft in (True, None):
@@ -201,7 +275,7 @@ class CandidateRePinTests(unittest.TestCase):
             else:
                 valid = g.get_pull_request.return_value
                 g.get_pull_request.side_effect = [
-                    valid, SimpleNamespace(**{**vars(valid), "head_sha": OLD})]
+                    valid, valid, SimpleNamespace(**{**vars(valid), "head_sha": OLD})]
             rpc = MagicMock()
             with self.subTest(actor=actor), self.assertRaisesRegex(PermissionError, "after exact-SHA"):
                 repin_project(item, github_factory=lambda _: g, rpc=rpc)
