@@ -1868,3 +1868,24 @@ do histórico, sem executar o SQL duas vezes. Não usar `db push` no ambiente
 com migrations históricas divergentes. Esse teste não usa OpenAI/Codex e
 não demonstra um incidente de CI real. As migrations v1/v2 já estão
 registradas e nunca devem ser repetidas.
+
+## Operação de certificação de prontidão do produto (30/10/2026 — candidato)
+
+Use `scripts/certify_product_readiness.py` somente depois de executar as
+verificações independentes no SHA atual. Ele recusa branch movida, CI de outro
+commit, jobs incompletos, critérios ausentes e evidência sem SHA. A migration
+`20261030110000_product_readiness_certification.sql` cria a solicitação
+durável e duas RPCs `SECURITY INVOKER`, exclusivamente `service_role`, sem
+ampliar RLS. Aplicação de produção permanece um gate humano específico após
+CI/QA e merge humano.
+
+O mesmo snapshot/manifest retorna a mesma certificação sem duplicar task, run
+ou avaliação; uma interrupção antes da persistência pode ser retomada com o
+mesmo manifesto. Conteúdo contraditório, troca de run/projeto/SHA e replay
+com digest distinto falham fechados. Evidência nova no mesmo SHA usa manifesto
+novo; um merge novo sempre usa SHA novo.
+
+Uma avaliação `not_ready` não bloqueia projetos `running`, Start legítimo, CI
+ou Preview autorizado e não reabre Change Sets terminais. Ela tampouco libera
+merge ou publicação: uma avaliação `passed` continua sendo somente evidência
+de produto, sujeita aos gates de release humanos existentes.
