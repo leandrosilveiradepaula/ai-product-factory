@@ -36,7 +36,7 @@ with psycopg.connect(DSN,autocommit=True) as db:
     with db.cursor() as cur:
         cur.execute(BASE)
         cur.execute(MIGRATION)
-        policy={"enabled":True,"version":2,"digest":POLICY,"source_mode":"main_snapshot","preview_base_ref":"preview/crm171-contracts","release_base_ref":"main"}
+        policy={"enabled":True,"version":2,"digest":POLICY,"source_mode":"main_snapshot","preview_base_ref":"main","release_base_ref":"main"}
         cur.execute("insert into factory_projects values(%s,'crm-infodive','leandrosilveiradepaula/crm-infodive',%s,true,'existing')",(PROJECT,Jsonb({"journey_delivery_binding_v2":policy})))
         cur.execute("insert into factory_project_execution_controls values(%s,'running',17,1)",(PROJECT,))
         intake=call(cur,"factory_enqueue_journey_intake_v2",("crm-infodive","CRM #171",REQUEST,"github-owner","github-owner","123",__import__('hashlib').sha256(b"CRM #171").hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055))
@@ -46,7 +46,7 @@ with psycopg.connect(DSN,autocommit=True) as db:
         assert call(cur,"factory_enqueue_journey_intake_v2",("crm-infodive","CRM #171",REQUEST,"github-owner","github-owner","123",__import__('hashlib').sha256(b"CRM #171").hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055))["created"] is False
         journey=intake["journey_id"]
         call(cur,"factory_record_journey_source_evidence_v2",(journey,"leandrosilveiradepaula/crm-infodive","main",SHA,POLICY,PROOF,17))
-        binding={"journey_id":journey,"project_id":PROJECT,"request_id":REQUEST,"execution_generation":17,"policy_version":2,"policy_digest":POLICY,"repository":"leandrosilveiradepaula/crm-infodive","source_repository":"leandrosilveiradepaula/crm-infodive","source_commit":SHA,"source_ref":"main","source_mode":"main_snapshot","integration_branch":"factory/journey-"+journey,"preview_branch_prefix":"preview/journey-"+journey[:8],"preview_base_ref":"preview/crm171-contracts","release_base_ref":"main","binding_version":2,"source_proof_digest":PROOF}
+        binding={"journey_id":journey,"project_id":PROJECT,"request_id":REQUEST,"execution_generation":17,"policy_version":2,"policy_digest":POLICY,"repository":"leandrosilveiradepaula/crm-infodive","source_repository":"leandrosilveiradepaula/crm-infodive","source_commit":SHA,"source_ref":"main","source_mode":"main_snapshot","integration_branch":"factory/journey-"+journey,"preview_branch_prefix":"preview/journey-"+journey[:8],"preview_base_ref":"main","release_base_ref":"main","binding_version":2,"source_proof_digest":PROOF}
         bound=call(cur,"factory_bind_journey_source_v2",("crm-infodive",REQUEST,17,2,Jsonb(binding)))
         assert bound["state"]=="source_bound"
         cur.execute("select journey_id from factory_runs where id=%s",(bound["run_id"],)); assert str(cur.fetchone()[0])==journey
@@ -86,14 +86,15 @@ with psycopg.connect(DSN,autocommit=True) as db:
           values(%s,%s,%s,%s,%s,%s,'ci_pending',%s)""",
           (PROJECT,bound["task_id"],SHA,binding["integration_branch"],candidate,root,
            Jsonb({"integration_release_request":release_request})))
-        cur.execute("select journey_id from factory_change_sets where release_run_id=%s",(root,))
-        assert str(cur.fetchone()[0])==journey
+        cur.execute("select id,journey_id from factory_change_sets where release_run_id=%s",(root,))
+        change_set_id,change_set_journey=cur.fetchone()
+        assert str(change_set_journey)==journey
         cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
           values(%s,'github_ci','success',%s,'{}'),(%s,'quality_gate','success',%s,'{"passed":true}')""",
           (root,candidate,root,candidate))
         cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
           values(%s,%s,'system','preview-followup','preview.promotion_completed',%s)""",
-          (PROJECT,root,Jsonb({"branch":binding["preview_branch_prefix"]+"-"+journey[:8],
+          (PROJECT,root,Jsonb({"branch":binding["preview_branch_prefix"]+"-"+str(change_set_id),
                                "candidate_commit":candidate,"pr_number":pr})))
         cur.execute("""insert into factory_deployments(run_id,environment,status,metadata)
           values(%s,'preview','success',%s)""",
@@ -142,6 +143,79 @@ with psycopg.connect(DSN,autocommit=True) as db:
         assert call(cur,"factory_reconcile_journey_v2",(root,))["state"]=="released_observed"
         cur.execute("select count(*) from factory_audit_events where event_type='journey.released_observed'")
         assert cur.fetchone()[0]==1
+        # Preview-only is a distinct human gate; no production release is inferred.
+        request3="d49060c4-69a0-c58d-4254-54a40003f609"
+        policy3={**policy,"preview_base_ref":"preview/crm171-contracts"}
+        cur.execute("update factory_projects set manifest=%s where id=%s",
+                    (Jsonb({"journey_delivery_binding_v2":policy3}),PROJECT))
+        intake3=call(cur,"factory_enqueue_journey_intake_v2",
+            ("crm-infodive","CRM #171 Preview",request3,"github-owner","github-owner","125",
+             __import__('hashlib').sha256(b"CRM #171 Preview").hexdigest(),
+             "leandrosilveiradepaula/ai-product-factory",1055))
+        j3=intake3["journey_id"]
+        call(cur,"factory_record_journey_source_evidence_v2",
+             (j3,"leandrosilveiradepaula/crm-infodive","main",SHA,POLICY,PROOF,17))
+        b3={**binding,"journey_id":j3,"request_id":request3,
+            "integration_branch":"factory/journey-"+j3,
+            "preview_branch_prefix":"preview/journey-"+j3[:8],
+            "preview_base_ref":"preview/crm171-contracts"}
+        bound3=call(cur,"factory_bind_journey_source_v2",
+                    ("crm-infodive",request3,17,2,Jsonb(b3)))
+        r3=bound3["run_id"]; candidate3="1"*40; pr3=218; merge3="2"*40
+        cur.execute("update factory_runs set status='preview_ready',candidate_commit=%s where id=%s",
+                    (candidate3,r3))
+        cur.execute("""insert into factory_change_sets(project_id,root_task_id,source_commit,integration_branch,
+          candidate_commit,release_run_id,status,metadata)
+          values(%s,%s,%s,%s,%s,%s,'ci_pending',%s) returning id""",
+          (PROJECT,bound3["task_id"],SHA,b3["integration_branch"],candidate3,r3,
+           Jsonb({"integration_release_request":{"branch":b3["integration_branch"],
+                   "candidate_commit":candidate3,"pr_number":pr3}})))
+        cs3=cur.fetchone()[0]
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'github_ci','success',%s,'{}'),(%s,'quality_gate','success',%s,'{"passed":true}')""",
+          (r3,candidate3,r3,candidate3))
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','preview.promotion_completed',%s)""",
+          (PROJECT,r3,Jsonb({"branch":b3["preview_branch_prefix"]+"-"+str(cs3),
+                             "candidate_commit":candidate3,"pr_number":pr3})))
+        cur.execute("""insert into factory_deployments(run_id,environment,status,metadata)
+          values(%s,'preview','success',%s)""",
+          (r3,Jsonb({"candidate_commit":candidate3,"preview_url":preview_url})))
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'browser_e2e','success',%s,'{}')""",(r3,preview_url))
+        cur.execute("select state from factory_journeys where id=%s",(j3,))
+        assert cur.fetchone()[0]=="preview_verified"
+        cur.execute("""insert into factory_release_reports(project_id,run_id,status,candidate_commit,report)
+          values(%s,%s,'blocked',%s,%s)""",
+          (PROJECT,r3,candidate3,Jsonb({"blockers":[
+              "production requires a separate verified main-target release candidate"]})))
+        cur.execute("update factory_runs set status='awaiting_release' where id=%s",(r3,))
+        cur.execute("""insert into factory_tool_usage(run_id,operation,metadata)
+          values(%s,'verified_preview_awaiting_human_merge',%s)""",
+          (r3,Jsonb({"head_sha":candidate3,"pr":pr3,"preview_url":preview_url})))
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','release.awaiting_human_merge',%s)""",
+          (PROJECT,r3,Jsonb({"head_sha":candidate3,"pr":pr3})))
+        cur.execute("select state from factory_journeys where id=%s",(j3,))
+        assert cur.fetchone()[0]=="awaiting_release"
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','nonproduction-observer','change_set.nonproduction_merge.observed',%s)""",
+          (PROJECT,r3,Jsonb({"merge_sha":merge3,"candidate_commit":candidate3,
+            "base_ref":b3["preview_base_ref"],"head_ref":b3["integration_branch"],
+            "repository":b3["repository"],"pr_number":str(pr3),"environment":"preview",
+            "merged":True,"merge_is_ancestor":True,"vercel_state":"success",
+            "production_released":False,
+            "evidence_source":"github_exact_pr_and_merge_commit_status"})))
+        cur.execute("select state,preview_merge_sha,production_release_sha from factory_journeys where id=%s",(j3,))
+        assert cur.fetchone()==("closed",merge3,None)
+        assert call(cur,"factory_reconcile_journey_v2",(r3,))["state"]=="closed"
+        cur.execute("select count(*) from factory_audit_events where event_type='journey.released_observed' and run_id=%s",(r3,))
+        assert cur.fetchone()[0]==0
+        try:
+            cur.execute("update factory_projects set manifest='{}'::jsonb where id=%s",(PROJECT,))
+        except psycopg.Error: pass
+        else: raise AssertionError("V2 policy deletion accepted with persisted journeys")
+
         cur.execute("set role authenticated")
         try: call(cur,"factory_reconcile_journey_v2",(root,))
         except psycopg.Error: pass
