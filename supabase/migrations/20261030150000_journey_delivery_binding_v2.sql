@@ -77,7 +77,7 @@ begin
  end if;
  if new.journey_id is not null and not exists(
    select 1 from public.factory_journeys j where j.id=new.journey_id
-    and j.state in ('source_bound','executing','preview_verified','awaiting_release','released_observed','closed')
+    and j.state in ('source_bound','executing','preview_verified','awaiting_release')
  ) then raise exception 'journey binding is not executable' using errcode='PT409'; end if;
  return new;
 end $fn$;
@@ -250,7 +250,11 @@ begin
      or j.binding->>'source_commit' is distinct from j.source_commit
      or j.binding->>'policy_digest' is distinct from j.policy_digest
   then raise exception 'journey reconciliation identity mismatch' using errcode='PT409'; end if;
-  if j.state in ('intake_accepted','awaiting_source','closed') then
+  if j.state='closed' then
+    return jsonb_build_object('journey_id',j.id,'state',j.state,
+      'preview_merge_sha',j.preview_merge_sha,'production_release_sha',j.production_release_sha);
+  end if;
+  if j.state in ('intake_accepted','awaiting_source') then
     raise exception 'journey reconciliation state is not executable' using errcode='PT409';
   end if;
   select state,generation into v_control_state,v_control_generation
@@ -310,8 +314,8 @@ begin
           and exists(select 1 from public.factory_audit_events a
             where a.run_id=rr.id and a.event_type='preview.promotion_completed'
               and a.payload->>'candidate_commit'=v_candidate
-              and left(a.payload->>'branch',length(j.binding->>'preview_branch_prefix'))
-                  =j.binding->>'preview_branch_prefix')
+              and a.payload->>'branch'=(j.binding->>'preview_branch_prefix'||'-'||c.id::text)
+              and a.payload->>'pr_number'=v_pr)
         order by d.created_at desc limit 1;
         v_not_required:=exists(
           select 1 from public.factory_tool_usage u
@@ -340,11 +344,27 @@ begin
           end if;
           v_release_ready:=rr.status='awaiting_release'
             and j.binding->>'release_base_ref'='main'
-            and exists(select 1 from public.factory_release_reports report
-              where report.run_id=rr.id and report.project_id=j.project_id
-                and report.status='ready_for_human_release'
-                and report.candidate_commit=v_candidate
-                and report.report->'blockers'='[]'::jsonb)
+            and (
+              (j.binding->>'preview_base_ref'='main' and exists(
+                select 1 from public.factory_release_reports report
+                where report.run_id=rr.id and report.project_id=j.project_id
+                  and report.status='ready_for_human_release'
+                  and report.candidate_commit=v_candidate
+                  and report.report->'blockers'='[]'::jsonb
+              ))
+              or
+              -- A Preview-only candidate has a production-blocked report.
+              -- This *exact* production-specific blocker permits only the
+              -- human nonproduction merge gate; it never releases main.
+              (j.binding->>'preview_base_ref' like 'preview/%' and exists(
+                select 1 from public.factory_release_reports report
+                where report.run_id=rr.id and report.project_id=j.project_id
+                  and report.status='blocked'
+                  and report.candidate_commit=v_candidate
+                  and report.report->'blockers'=jsonb_build_array(
+                    'production requires a separate verified main-target release candidate')
+              ))
+            )
             and (v_not_required or exists(
               select 1 from public.factory_tool_usage u
               where u.run_id=rr.id and u.operation='verified_preview_awaiting_human_merge'
@@ -358,34 +378,63 @@ begin
             insert into public.factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
             values(j.project_id,rr.id,'system','journey-v2-reconciler','journey.awaiting_release',
               jsonb_build_object('journey_id',j.id,'candidate_commit',v_candidate,
-                'pr_number',v_pr::bigint,'automatic_merge',false));
+                'pr_number',v_pr::bigint,'automatic_merge',false,
+                'gate_kind',case when j.binding->>'preview_base_ref'='main'
+                  then 'production_main' else 'nonproduction_preview' end,
+                'target_ref',j.binding->>'preview_base_ref',
+                'production_release_eligible',(j.binding->>'preview_base_ref'='main')));
             j.state:='awaiting_release';
           end if;
         end if;
       end if;
-      -- The separate nonproduction observer is the only source of a Preview
-      -- merge receipt; a deployment alone never fabricates a merge SHA.
-      select a.payload->>'merge_sha' into v_preview_merge
-      from public.factory_audit_events a
-      where a.run_id=rr.id and a.event_type='change_set.nonproduction_merge.observed'
-        and a.payload->>'candidate_commit'=c.candidate_commit
-        and a.payload->>'base_ref'=j.binding->>'preview_base_ref'
-        and a.payload->>'merge_sha' ~ '^[0-9a-f]{40}$'
-      order by a.id desc limit 1;
-      if v_preview_merge is not null then
-        if j.preview_merge_sha is not null and j.preview_merge_sha is distinct from v_preview_merge then
-          raise exception 'journey Preview merge receipt conflict' using errcode='PT409';
-        end if;
-        if j.preview_merge_sha is null then
-          update public.factory_journeys set preview_merge_sha=v_preview_merge,updated_at=now() where id=j.id;
-        end if;
-      end if;
+
     end if;
   end if;
 
-  -- Release observer is read-only with respect to GitHub. This branch only
-  -- reflects the existing independently gated release report + human merge.
-  if j.state='awaiting_release' then
+
+  -- The separate nonproduction observer verifies a HUMAN Preview merge.
+  -- This can settle while the project is paused; it never authorizes main.
+  if j.state='awaiting_release'
+     and j.binding->>'preview_base_ref' like 'preview/%' then
+    select a.payload->>'merge_sha' into v_preview_merge
+    from public.factory_audit_events a
+    join public.factory_change_sets cs on cs.release_run_id=a.run_id
+    where a.run_id is not null and cs.journey_id=j.id
+      and cs.project_id=j.project_id and cs.candidate_commit=j.candidate_commit
+      and cs.source_commit=j.source_commit
+      and cs.integration_branch=j.binding->>'integration_branch'
+      and a.event_type='change_set.nonproduction_merge.observed'
+      and a.payload->>'candidate_commit'=cs.candidate_commit
+      and a.payload->>'base_ref'=j.binding->>'preview_base_ref'
+      and a.payload->>'head_ref'=j.binding->>'integration_branch'
+      and a.payload->>'repository'=j.binding->>'repository'
+      and a.payload->>'pr_number'=cs.metadata->'integration_release_request'->>'pr_number'
+      and a.payload->>'merge_sha' ~ '^[0-9a-f]{40}$'
+      and a.payload->>'environment'='preview'
+      and a.payload->>'merged'='true'
+      and a.payload->>'merge_is_ancestor'='true'
+      and a.payload->>'vercel_state'='success'
+      and a.payload->>'production_released'='false'
+      and a.payload->>'evidence_source'='github_exact_pr_and_merge_commit_status'
+    order by a.id desc limit 1;
+    if v_preview_merge is not null then
+      if j.preview_merge_sha is not null and j.preview_merge_sha is distinct from v_preview_merge then
+        raise exception 'journey Preview merge receipt conflict' using errcode='PT409';
+      end if;
+      update public.factory_journeys set state='closed',
+        preview_merge_sha=v_preview_merge,updated_at=now() where id=j.id;
+      insert into public.factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+      values(j.project_id,p_run_id,'system','journey-v2-reconciler','journey.closed',
+        jsonb_build_object('journey_id',j.id,'candidate_commit',j.candidate_commit,
+          'preview_merge_sha',v_preview_merge,'closure_reason','observed_nonproduction_merge',
+          'production_released',false,'automatic_merge',false));
+      j.state:='closed'; j.preview_merge_sha:=v_preview_merge;
+    end if;
+  end if;
+
+  -- Production remains a distinct main-target candidate and human gate.
+  -- A Preview-only candidate never becomes released_observed.
+  if j.state='awaiting_release' and j.binding->>'preview_base_ref'='main' then
     select report.status,report.candidate_commit,report.report->>'merge_sha'
       into v_release_status,v_release_candidate,v_merge
     from public.factory_release_reports report
@@ -427,6 +476,7 @@ returns trigger language plpgsql security invoker set search_path='' as $fn$
 declare v_run_id uuid;
 begin
   if tg_table_name='factory_runs' then v_run_id:=new.id;
+  elsif tg_table_name='factory_change_sets' then v_run_id:=new.release_run_id;
   elsif tg_table_name='factory_audit_events' then
     if new.event_type not in ('preview.promotion_completed','preview.browser_evidence_recorded',
       'release.awaiting_human_merge','release.preview_not_required',
@@ -442,6 +492,8 @@ end $fn$;
 
 create trigger factory_journey_run_settlement_v2 after update of status,candidate_commit
 on public.factory_runs for each row execute function public.factory_reconcile_journey_trigger_v2();
+create trigger factory_journey_change_set_settlement_v2 after insert or update of candidate_commit,release_run_id,metadata,status
+on public.factory_change_sets for each row execute function public.factory_reconcile_journey_trigger_v2();
 create trigger factory_journey_evaluation_settlement_v2 after insert
 on public.factory_evaluations for each row execute function public.factory_reconcile_journey_trigger_v2();
 create trigger factory_journey_deployment_settlement_v2 after insert or update of status
@@ -452,6 +504,23 @@ create trigger factory_journey_release_report_settlement_v2 after insert or upda
 on public.factory_release_reports for each row execute function public.factory_reconcile_journey_trigger_v2();
 create trigger factory_journey_audit_settlement_v2 after insert
 on public.factory_audit_events for each row execute function public.factory_reconcile_journey_trigger_v2();
+
+
+-- A persisted V2 run cannot be reinterpreted as V1 by removing policy.
+-- Rollback disables new admission with enabled=false, retaining the object.
+create or replace function public.factory_preserve_journey_policy_v2()
+returns trigger language plpgsql security invoker set search_path='' as $fn$
+begin
+  if exists(select 1 from public.factory_journeys j where j.project_id=new.id)
+     and jsonb_typeof(new.manifest->'journey_delivery_binding_v2') is distinct from 'object'
+  then raise exception 'cannot remove V2 policy with persisted journeys' using errcode='PT409';
+  end if;
+  return new;
+end $fn$;
+create trigger factory_preserve_journey_policy_v2 before update of manifest
+on public.factory_projects for each row execute function public.factory_preserve_journey_policy_v2();
+revoke all on function public.factory_preserve_journey_policy_v2() from public,anon,authenticated;
+grant execute on function public.factory_preserve_journey_policy_v2() to service_role;
 
 revoke all on function public.factory_reconcile_journey_v2(uuid) from public,anon,authenticated;
 grant execute on function public.factory_reconcile_journey_v2(uuid) to service_role;
