@@ -280,14 +280,7 @@ begin
       and cs.integration_branch=j.binding->>'integration_branch'
       and release_run.branch_name=cs.integration_branch
       and cs.candidate_commit=release_run.candidate_commit
-      and cs.candidate_commit ~ '^[0-9a-f]{40}(text,text,uuid,text,text,text,text,text,integer) from public,anon,authenticated;
-grant execute on function public.factory_enqueue_journey_intake_v2(text,text,uuid,text,text,text,text,text,integer) to service_role;
-revoke all on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) from public,anon,authenticated;
-grant execute on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) to service_role;
-revoke all on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) from public,anon,authenticated;
-grant execute on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) to service_role;
-commit;
-
+      and cs.candidate_commit ~ '^[0-9a-f]{40}$'
       and cs.metadata->'integration_release_request'->>'candidate_commit'=cs.candidate_commit
       and cs.metadata->'integration_release_request'->>'branch'=cs.integration_branch
     order by cs.updated_at desc,cs.id desc limit 1;
@@ -295,14 +288,7 @@ commit;
       select * into rr from public.factory_runs where id=c.release_run_id;
       v_candidate:=c.candidate_commit;
       v_pr:=c.metadata->'integration_release_request'->>'pr_number';
-      if v_pr ~ '^[1-9][0-9]*(text,text,uuid,text,text,text,text,text,integer) from public,anon,authenticated;
-grant execute on function public.factory_enqueue_journey_intake_v2(text,text,uuid,text,text,text,text,text,integer) to service_role;
-revoke all on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) from public,anon,authenticated;
-grant execute on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) to service_role;
-revoke all on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) from public,anon,authenticated;
-grant execute on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) to service_role;
-commit;
-
+      if v_pr ~ '^[1-9][0-9]*$'
          and exists(select 1 from public.factory_evaluations e
            where e.run_id=rr.id and e.eval_type='github_ci'
              and e.status='success' and e.baseline_ref=v_candidate)
@@ -384,14 +370,7 @@ commit;
       where a.run_id=rr.id and a.event_type='change_set.nonproduction_merge.observed'
         and a.payload->>'candidate_commit'=c.candidate_commit
         and a.payload->>'base_ref'=j.binding->>'preview_base_ref'
-        and a.payload->>'merge_sha' ~ '^[0-9a-f]{40}(text,text,uuid,text,text,text,text,text,integer) from public,anon,authenticated;
-grant execute on function public.factory_enqueue_journey_intake_v2(text,text,uuid,text,text,text,text,text,integer) to service_role;
-revoke all on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) from public,anon,authenticated;
-grant execute on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) to service_role;
-revoke all on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) from public,anon,authenticated;
-grant execute on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) to service_role;
-commit;
-
+        and a.payload->>'merge_sha' ~ '^[0-9a-f]{40}$'
       order by a.id desc limit 1;
       if v_preview_merge is not null then
         if j.preview_merge_sha is not null and j.preview_merge_sha is distinct from v_preview_merge then
@@ -417,14 +396,7 @@ commit;
       and release_run.candidate_commit=report.report->>'merge_sha'
       and release_run.metadata->>'execution_generation'=j.execution_generation::text
     order by report.updated_at desc limit 1;
-    if v_release_status='released' and v_merge ~ '^[0-9a-f]{40}(text,text,uuid,text,text,text,text,text,integer) from public,anon,authenticated;
-grant execute on function public.factory_enqueue_journey_intake_v2(text,text,uuid,text,text,text,text,text,integer) to service_role;
-revoke all on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) from public,anon,authenticated;
-grant execute on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) to service_role;
-revoke all on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) from public,anon,authenticated;
-grant execute on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) to service_role;
-commit;
-
+    if v_release_status='released' and v_merge ~ '^[0-9a-f]{40}$'
        and exists(select 1 from public.factory_audit_events a
          join public.factory_runs release_run on release_run.id=a.run_id
          where release_run.journey_id=j.id
