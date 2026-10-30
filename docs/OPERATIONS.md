@@ -1,3 +1,11 @@
+## 30/10/2026 — Correção candidata do Start real #171: URL OIDC broker vs RPC Supabase
+
+Start GitHub OWNER confirmado: comentário #6524138131 na issue #1055, run CRM `e2097705-5046-4825-a2c9-69088dbccdf5` com task enfileirada. O primeiro wake disparou Actions #41064664725, cujo `schedule-probe` encontrou `eligible_product_tasks=1`, mas falhou ANTES do Product Stage em `external_webhook_recovery.reconcile_external_wakes` com `unexpected Control Plane origin`: o runner recebe `SUPABASE_URL=https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-runtime-control-plane` (Edge OIDC broker), enquanto a função aceitava somente a origem raiz. Além disso, construía `/rest/v1/rpc/` em cima da URL do broker, mesmo quando a checagem fosse removida.
+
+Correção limitada: permitir exclusivamente a origem oficial ou a URL EXATA do broker e sempre chamar RPC pela origem fixa oficial; manter headers `apikey` de `sb_secret_*` sem Bearer, RLS e `SECURITY INVOKER`, nenhum segredo nos logs. Testes mockados comprovam URL OIDC válida e rejeitam origem falsa, URL HTTP e paths não previstos. Não criar novo Start, não repetir Change Set terminal nem liberar execução paga, migration ou produção. Após merge humano: verificar `validate` do SHA e retomar somente run/task nova pelos wakes normais, com budget/probe/gates existentes. `product_ready=false`.
+
+---
+
 ## Operação vigente verificada — 30/10/2026 (sobrescreve snapshots históricos abaixo)
 
 Referências operacionais obrigatórias: [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md) e [Release/rollback](RELEASE_AUTONOMY.md). A decisão de **27/10/2026** permanece vigente: **Service Desk standalone foi aposentado** e não deve ser reiniciado; é módulo do CRM Infodive.

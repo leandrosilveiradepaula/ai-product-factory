@@ -32,6 +32,28 @@ class ExternalWakeRecoveryContract(unittest.TestCase):
   self.assertIn("steps.probe.outcome == 'success'",WORKFLOW)
   self.assertIn('type(signal.get(key)) is not bool',WORKFLOW)
   self.assertIn("BLOCKED_MIGRATION_NOT_APPLIED",WORKFLOW)
+ def test_oidc_edge_broker_url_maps_to_exact_project_rest_origin(self):
+  from unittest.mock import Mock
+  from ai_product_factory.supabase_server import SupabaseServerConfig
+  from ai_product_factory import external_webhook_recovery as recovery
+  class Reply:
+   def __enter__(self): return self
+   def __exit__(self,*args): return None
+   def read(self,*args): return b'{"status":"ok","inspected":0,"runner_observed":0,"suppressed":0,"exhausted":0,"deferred":0}'
+  base="https://fjplmxfcshhbmzgvyqlm.supabase.co"
+  for url in (base,base+"/functions/v1/factory-runtime-control-plane"):
+   with patch.object(recovery,"resolve_supabase_server_config",return_value=SupabaseServerConfig(url=url,key="sb_secret_placeholder",headers={"apikey":"sb_secret_placeholder"})),patch.object(recovery.urllib.request,"urlopen",return_value=Reply()) as send:
+    receipt=reconcile_external_wakes(workflow_run_id=41064664725,ci_work=True,preview_work=False,release_work=False)
+    self.assertEqual(receipt["status"],"ok")
+    request=send.call_args.args[0]
+    self.assertEqual(request.full_url,base+"/rest/v1/rpc/factory_reconcile_external_webhook_wakes_v1")
+    self.assertNotIn("Authorization",request.headers)
+  for url in (base+".evil.com",base+"/rest/v1",base+"/functions/v1/foreign-broker","http://fjplmxfcshhbmzgvyqlm.supabase.co"):
+   with patch.object(recovery,"resolve_supabase_server_config",return_value=SupabaseServerConfig(url=url,key="x",headers={"apikey":"x"})),patch.object(recovery.urllib.request,"urlopen") as send:
+    with self.assertRaisesRegex(RuntimeError,"unexpected Control Plane origin"):
+     reconcile_external_wakes(workflow_run_id=1,ci_work=False,preview_work=False,release_work=False)
+    send.assert_not_called()
+
  def test_invalid_args_fail_before_network(self):
   with self.assertRaises(ValueError):
    reconcile_external_wakes(workflow_run_id=0,ci_work=False,preview_work=False,release_work=False)
