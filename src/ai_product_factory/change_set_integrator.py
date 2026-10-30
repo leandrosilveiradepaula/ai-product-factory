@@ -6,6 +6,7 @@ from .change_set_store import ChangeSetIntegrationItem,SupabaseChangeSetStore
 from .github_rest import GitHubPullRequest,GitHubRestAdapter
 from .commit_provenance import provenance_commit_message
 from .pinned_nonproduction_target import PinnedNonproductionTarget
+from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,18 @@ class ChangeSetIntegrator:
             raise ValueError("integration candidate identity is missing")
         if len(item.work_units)>100:
             raise ValueError("integration exceeds work unit limit")
-        if item.project_kind == "existing":
+        if item.journey_binding is not None:
+            try:
+                binding=JourneyBinding.parse(item.journey_binding,project_id=str(item.project_id or ""),
+                    request_id=str(item.request_id or ""),repository=item.repository)
+            except JourneyBindingBlocked as exc:
+                raise PermissionError(str(exc)) from exc
+            if item.source_commit != binding.source_commit or item.integration_branch != binding.integration_branch:
+                raise PermissionError("integration V2 binding differs from claimed Change Set")
+            if self.github.get_branch_sha(binding.source_ref) != binding.source_commit:
+                raise PermissionError("integration V2 source reference changed")
+            destination=binding.release_base_ref
+        elif item.project_kind == "existing":
             target=PinnedNonproductionTarget.parse(item.delivery_target,repository=item.repository)
             if item.source_commit != target.sha:
                 raise PermissionError("integration source differs from pinned candidate")

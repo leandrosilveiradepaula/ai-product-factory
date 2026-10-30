@@ -125,7 +125,12 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
   if(!response.ok)throw new Error("Não foi possível registrar a intenção de jornada V2 de forma atômica.");
   const result=await response.json();
   if(!result||result.request_id!==requestId||!result.project_id||!result.journey_id||typeof result.created!=="boolean"||!["intake_accepted","awaiting_source"].includes(result.state))throw new Error("Resposta de intake V2 inválida. Nenhum trabalho foi presumido.");
-  return {...result,requestId,requestedAt:"",wakeStatus:"not_needed" as const};
+  let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
+  if(result.created){
+   try{wakeStatus=await requestIntakeWorkerWake();}
+   catch{wakeStatus="failed";console.warn("journey_v2_intake_wake_failed");}
+  }
+  return {...result,requestId,requestedAt:"",wakeStatus};
  }
  // A single Postgres RPC locks the project and commits request, task, run and audit atomically.
  // Never split the manifest update, audit and enqueue into separate calls: they admit concurrent cycles.

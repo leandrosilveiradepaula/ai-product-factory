@@ -31,6 +31,8 @@ class PreviewFollowupItem:
     execution_generation: int | None = None
     require_execution_generation: bool = False
     change_set_id: str | None = None
+    journey_binding: dict | None = None
+    request_id: str | None = None
 
 
 class SupabasePreviewFollowupQueue:
@@ -132,6 +134,19 @@ class SupabasePreviewFollowupQueue:
             raise RuntimeError("quality gate evidence does not match preview candidate")
 
         project=projects[0]
+        journey_binding=None; request_id=None
+        journey_id=(run.get("journey_id") or (run.get("metadata") or {}).get("journey_id"))
+        if journey_id is not None:
+            journeys=self._get("factory_journeys?select=id,project_id,request_id,binding,execution_generation,state"
+                "&id=eq."+quote(str(journey_id),safe="")+"&limit=1")
+            if len(journeys)!=1 or journeys[0].get("project_id")!=project_id:
+                raise RuntimeError("Preview journey identity is cross-project or unavailable")
+            journey=journeys[0]
+            if journey.get("execution_generation")!=execution_generation or journey.get("state") not in ("executing","preview_verified","awaiting_release"):
+                raise RuntimeError("Preview journey epoch or state is invalid")
+            journey_binding=journey.get("binding"); request_id=journey.get("request_id")
+            if not isinstance(journey_binding,dict) or not isinstance(request_id,str):
+                raise RuntimeError("Preview journey binding unavailable")
         return PreviewFollowupItem(
             run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
             manifest=project.get("manifest") or {},issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
@@ -139,4 +154,5 @@ class SupabasePreviewFollowupQueue:
             execution_generation=execution_generation,
             require_execution_generation=require_execution_generation,
             change_set_id=str((run.get("metadata") or {}).get("change_set_id") or "") or None,
+            journey_binding=journey_binding,request_id=request_id,
         )
