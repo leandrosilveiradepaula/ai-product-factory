@@ -13,6 +13,7 @@ from typing import Callable
 
 from .github_loop import CIState
 from .github_rest import GitHubRequestError, GitHubRestAdapter
+from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
 
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -64,6 +65,14 @@ class PreviewPromotionPolicy:
         ):
             raise PreviewPromotionBlocked("invalid_promotion_policy")
         return cls(prefix, source, base_ref, bound)
+
+    @classmethod
+    def from_journey_binding(cls, item: object) -> "PreviewPromotionPolicy":
+        """V2 never reads a mutable project manifest for Preview authority."""
+        binding = JourneyBinding.parse(getattr(item, "journey_binding", None),
+            project_id=getattr(item, "project_id", ""), request_id=getattr(item, "request_id", ""),
+            repository=getattr(item, "repository", ""))
+        return cls(binding.preview_branch_prefix, "change_set", binding.preview_base_ref, 16)
 
     def branch_for(self, item: object) -> str:
         if self.source == "pull_request":
@@ -140,7 +149,14 @@ def promote_preview_candidate(
     required before *every* GitHub write. GraphQL updateRef(expectedOid) is the
     atomic compare-and-swap; REST PATCH without a lease is deliberately forbidden.
     """
-    policy = PreviewPromotionPolicy.from_manifest(item.manifest)
+    is_v2 = getattr(item, "journey_binding", None) is not None
+    if is_v2:
+        try:
+            policy = PreviewPromotionPolicy.from_journey_binding(item)
+        except JourneyBindingBlocked as exc:
+            raise PreviewPromotionBlocked(str(exc)) from exc
+    else:
+        policy = PreviewPromotionPolicy.from_manifest(item.manifest)
     if policy is None:
         return {"status": "not_configured"}
     branch = policy.branch_for(item)
@@ -151,7 +167,7 @@ def promote_preview_candidate(
     statuses = github.get_commit_statuses(candidate)
     if _vercel_quota_blocked(statuses):
         raise PreviewPromotionBlocked("vercel_quota_blocked")
-    if any(
+    if not is_v2 and any(
         "vercel" in str(row.get("context") or "").lower()
         and row.get("state") == "success" for row in statuses
     ):
@@ -187,9 +203,19 @@ def promote_preview_candidate(
             raise PreviewPromotionBlocked("preview_ref_create_conflict") from create_exc
         current = github.get_branch_sha(branch)
     if current == candidate:
+        check_epoch()
         audit("preview.promotion_ref_reused", {
             "candidate_commit": candidate, "pr_number": item.pr_number, "branch": branch,
         })
+        if is_v2:
+            # A Vercel status from some *other* ref is not a V2 Preview proof.
+            # The journey-scoped ref must itself be verified and audited.
+            if github.get_branch_sha(branch) != candidate:
+                raise PreviewPromotionBlocked("preview_ref_postwrite_mismatch")
+            audit("preview.promotion_completed", {
+                "candidate_commit": candidate, "pr_number": item.pr_number,
+                "branch": branch, "previous_sha": pr.base_sha, "reused": True,
+            })
         return {"status": "ref_already_candidate", "branch": branch}
     if current != pr.base_sha:
         raise PreviewPromotionBlocked("preview_ref_drift")

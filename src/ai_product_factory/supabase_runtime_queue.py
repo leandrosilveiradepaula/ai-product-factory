@@ -26,6 +26,7 @@ from .candidate_source_evidence import (
 from .product_stage_output_contract import (
     assert_executed_product_stage_output, NON_ACTIONABLE_PLANNING_EVIDENCE,
 )
+from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
 
 
 class SupabaseRuntimeQueue(RuntimeQueue):
@@ -96,6 +97,73 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if not isinstance(data,dict):
             raise RuntimeError("retry RPC returned an invalid response")
         return data
+
+    def bind_journey_source_v2(self, *, project_key: str, request_id: str,
+                               expected_generation: int, expected_policy_version: int,
+                               binding: dict) -> dict:
+        """Commit an already GitHub-verified V2 binding; never creates it from text."""
+        from uuid import UUID
+        if not isinstance(project_key, str) or not project_key.strip():
+            raise ValueError("project key is required")
+        try:
+            UUID(request_id)
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("request id is invalid") from exc
+        if type(expected_generation) is not int or expected_generation < 1 or type(expected_policy_version) is not int or expected_policy_version < 1:
+            raise ValueError("journey binding epoch is invalid")
+        if not isinstance(binding, dict):
+            raise ValueError("journey binding is required")
+        result = self._rpc("factory_bind_journey_source_v2", {
+            "p_project_key": project_key, "p_request_id": request_id,
+            "p_expected_generation": expected_generation,
+            "p_expected_policy_version": expected_policy_version, "p_binding": binding,
+        })
+        if not isinstance(result, dict) or result.get("state") != "source_bound":
+            raise RuntimeError("journey source binding receipt is invalid")
+        return result
+
+    def record_journey_source_evidence_v2(self, *, journey_id: str, binding: dict) -> dict:
+        result = self._rpc("factory_record_journey_source_evidence_v2", {
+            "p_journey_id": journey_id, "p_repository": binding["repository"],
+            "p_source_ref": binding["source_ref"], "p_source_commit": binding["source_commit"],
+            "p_policy_digest": binding["policy_digest"], "p_proof_digest": binding["source_proof_digest"],
+            "p_generation": binding["execution_generation"],
+        })
+        if not isinstance(result, dict) or result.get("journey_id") != journey_id:
+            raise RuntimeError("journey source evidence receipt is invalid")
+        return result
+
+    def pending_journeys_v2(self, limit: int = 4) -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= 8:
+            raise ValueError("journey resolver limit is invalid")
+        rows = self._get("factory_journeys?select=id,project_id,request_id,state,request_source,issue_repository,issue_number"
+                         "&state=in.(intake_accepted,awaiting_source)&order=created_at.asc&limit=" + str(limit))
+        return rows if isinstance(rows, list) else []
+
+    def resolve_pending_journeys_v2(self, *, github_factory, limit: int = 4) -> dict:
+        """Existing runner lane: bind vetted source, then leave wake recovery durable."""
+        from .journey_delivery_binding import resolve_pending_main_snapshot, JourneyBindingBlocked
+        outcomes=[]
+        for journey in self.pending_journeys_v2(limit):
+            project_id=journey.get("project_id")
+            if not isinstance(project_id,str):
+                continue
+            projects=self._get("factory_projects?select=id,project_key,repository,manifest,is_active&id=eq."+quote(project_id,safe="")+"&limit=1")
+            controls=self._get("factory_project_execution_controls?select=project_id,state,generation,version&project_id=eq."+quote(project_id,safe="")+"&limit=1")
+            if len(projects)!=1 or len(controls)!=1:
+                outcomes.append({"journey_id":journey.get("id"),"status":"awaiting_source","reason":"control_plane_identity_unavailable"});continue
+            project,control=projects[0],controls[0]
+            try:
+                binding=resolve_pending_main_snapshot(journey=journey,project=project,control=control,
+                    github=github_factory(project["repository"]))
+                self.record_journey_source_evidence_v2(journey_id=journey["id"], binding=binding)
+                receipt=self.bind_journey_source_v2(project_key=project["project_key"],request_id=journey["request_id"],
+                    expected_generation=control["generation"],expected_policy_version=binding["policy_version"],binding=binding)
+                outcomes.append({"journey_id":journey["id"],"status":"source_bound","run_id":receipt.get("run_id")})
+            except (JourneyBindingBlocked, PermissionError, RuntimeError) as exc:
+                # A resolver failure is recoverable and retains the same journey/request.
+                outcomes.append({"journey_id":journey.get("id"),"status":"awaiting_source","reason":str(exc)[:120]})
+        return {"resolved":sum(x["status"]=="source_bound" for x in outcomes),"outcomes":outcomes}
 
     def recover_expired(self,max_attempts:int=3)->dict:
         data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
@@ -489,6 +557,79 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         ):
             raise PlanningReplayBlocked()
 
+    def _v2_journey_context(self, *, run_id: str, project_id: str, context: dict) -> tuple[str | None, dict]:
+        """Load the immutable binding for a claimed V2 run before any stage.
+
+        The claim RPC is intentionally generic for legacy compatibility. This
+        second server-side read makes a missing/cross-project V2 binding fail
+        before reconciliation or a model invocation, never by consulting the
+        mutable project manifest.
+        """
+        # A project without a V2 policy is genuinely legacy. For a project
+        # that has ever enabled V2, query the immutable run marker before
+        # consulting the current enabled bit: disabling admission must not
+        # downgrade already-persisted V2 runs.
+        manifest = context.get("manifest")
+        if not (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)):
+            return None, context
+        # Disabling V2 rejects *new* intake only; it cannot downgrade a V2
+        # run into the mutable V1 delivery-target lane.
+        runs = self._get("factory_runs?select=journey_id&id=eq." + quote(run_id, safe="") + "&limit=1")
+        if not isinstance(runs, list) or len(runs) != 1:
+            raise JourneyBindingBlocked("journey_claim_unverifiable")
+        journey_id = runs[0].get("journey_id")
+        if journey_id is None:
+            return None, context
+        if not isinstance(journey_id, str):
+            raise JourneyBindingBlocked("journey_claim_identity_invalid")
+        projects = self._get("factory_projects?select=repository&id=eq." + quote(project_id, safe="") + "&limit=1")
+        if not isinstance(projects, list) or len(projects) != 1 or not isinstance(projects[0], dict):
+            raise JourneyBindingBlocked("journey_project_unverifiable")
+        repository = projects[0].get("repository")
+        rows = self._get(
+            "factory_journeys?select=id,project_id,request_id,request_digest,state,binding,request_snapshot,execution_generation"
+            "&id=eq." + quote(journey_id, safe="") + "&limit=1"
+        )
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise JourneyBindingBlocked("journey_claim_unverifiable")
+        row = rows[0]
+        if row.get("id") != journey_id or row.get("project_id") != project_id:
+            raise JourneyBindingBlocked("journey_binding_cross_project")
+        if row.get("state") not in ("source_bound", "executing"):
+            raise JourneyBindingBlocked("journey_not_executable")
+        binding = JourneyBinding.parse(row.get("binding"), project_id=project_id,
+                                       request_id=str(row.get("request_id") or ""),
+                                       repository=str(repository or ""))
+        if row.get("execution_generation") != binding.execution_generation:
+            raise JourneyBindingBlocked("journey_binding_generation_invalid")
+        request_snapshot = row.get("request_snapshot")
+        if (not isinstance(request_snapshot, dict) or request_snapshot.get("digest") != row.get("request_digest")
+                or not isinstance(request_snapshot.get("text"), str) or not request_snapshot["text"].strip()):
+            # Digest is checked against the durable request row by the bind
+            # RPC; the context needs only a nonempty immutable snapshot.
+            raise JourneyBindingBlocked("journey_request_snapshot_invalid")
+        return journey_id, {**context, "journey_binding_v2": binding.as_context(),
+                            "journey_request": request_snapshot,
+                            "task": request_snapshot["text"]}
+
+    def _live_journey_context(self, context: dict) -> dict:
+        """V2 source preflight: immutable binding only, never delivery_target."""
+        raw = context.get("journey_binding_v2")
+        if not isinstance(raw, dict):
+            raise JourneyBindingBlocked("journey_binding_missing")
+        binding = JourneyBinding.parse(raw, project_id=str(raw.get("project_id") or ""),
+            request_id=str(raw.get("request_id") or ""), repository=str(raw.get("repository") or ""))
+        github = GitHubRestAdapter(repository=binding.repository)
+        if github.get_branch_sha(binding.source_ref) != binding.source_commit:
+            raise JourneyBindingBlocked("journey_source_ref_changed")
+        facts = dict(context.get("current_state_facts") or {})
+        facts["live_candidate"] = {
+            "repository": binding.repository, "sha": binding.source_commit,
+            "branch": binding.source_ref, "observed_from": "journey_delivery_binding_v2",
+            "journey_id": binding.journey_id, "integration_branch": binding.integration_branch,
+        }
+        return {**context, "current_state_facts": facts}
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -508,15 +649,32 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if type(data.get("execution_generation")) is not int or data["execution_generation"] < 1:
             raise RuntimeError("claim RPC returned invalid execution generation")
         context = data.get("context", {})
+        try:
+            journey_id, context = self._v2_journey_context(
+                run_id=data["run_id"], project_id=data["project_id"], context=context,
+            )
+        except JourneyBindingBlocked as exc:
+            claimed=WorkItem(run_id=data["run_id"],task_id=data["task_id"],
+                project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),
+                context={},execution_generation=data["execution_generation"],worker_id=worker_id)
+            try:
+                self.fail(claimed, "journey_" + str(exc))
+            except Exception as settlement_error:
+                raise RuntimeError("claimed journey binding failure was not settled") from settlement_error
+            raise
         if "reconciliation" in stages:
             try:
                 context = self._reconciliation_context(data["project_id"], context)
-                context = self._live_candidate_context(data["project_id"], context)
+                context = self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"], context)
             except Exception as exc:
                 # The claim is already durable; RuntimeWorker has no WorkItem
                 # if this context preparation raises. Settle it with the
                 # existing epoch-fenced failure RPC before propagating.
-                if isinstance(exc, SourceScopeBlocked):
+                if isinstance(exc, JourneyBindingBlocked):
+                    # A bound journey may be retried by the resolver after a
+                    # transient ref/CAS race; do not reinterpret it as V1.
+                    reason = "journey_context_" + str(exc)
+                elif isinstance(exc, SourceScopeBlocked):
                     # Do not persist provider responses, issue content or paths
                     # in the run error. The fixed reason code is actionable.
                     reason = "reconciliation_" + exc.code
@@ -549,7 +707,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 if "_verified_resume_prior_stages" in context:
                     # Recheck the pinned nonproduction candidate using GETs;
                     # a moved branch must not enter a new paid planning call.
-                    context=self._live_candidate_context(data["project_id"],context)
+                    context=self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"],context)
                     self._reject_repeat_empty_planning(
                         run_id=data["run_id"],task_id=data["task_id"],context=context,
                     )
@@ -575,7 +733,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                         "failure settlement was not confirmed"
                     ) from settlement_error
                 raise PermissionError("planning resume provenance invalid") from None
-        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id)
+        return WorkItem(run_id=data["run_id"],task_id=data["task_id"],project_id=data["project_id"],project_key=data["project_key"],stages=tuple(stages),context=context,execution_generation=data.get("execution_generation"),worker_id=worker_id,journey_id=journey_id)
 
     def record_stage_event(self,item:WorkItem,stage:str,status:str)->None:
         if status not in {"started","failed"}:

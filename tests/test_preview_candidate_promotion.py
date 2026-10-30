@@ -217,6 +217,37 @@ class PromotionTests(unittest.TestCase):
         self.assertEqual(out["branch"], "preview/candidate-9")
 
 
+class V2PreviewReuseTests(unittest.TestCase):
+    def test_existing_vercel_status_cannot_skip_v2_branch_proof(self):
+        target=item()
+        journey="61bc7a1f-dcab-4616-9ce7-1ff28a0aa915"
+        target.journey_binding={
+            "journey_id":journey,"project_id":"e2ea3201-e9a3-489f-bf14-916aecc7de09",
+            "request_id":"d49060c4-69a0-c58d-4254-54a40003f607",
+            "execution_generation":17,"policy_version":2,"policy_digest":"a"*64,
+            "repository":"sample/other-repo","source_commit":"a"*40,"source_ref":"main",
+            "source_mode":"main_snapshot","integration_branch":"factory/journey-"+journey,
+            "preview_branch_prefix":"preview/journey-"+journey[:8],
+            "preview_base_ref":"main","release_base_ref":"main","binding_version":2,
+        }
+        target.project_id=target.journey_binding["project_id"]
+        target.request_id=target.journey_binding["request_id"]
+        target.branch=target.journey_binding["integration_branch"]
+        target.change_set_id=journey
+        gh=github()
+        gh.get_pull_request.return_value=pr(base_ref="main",head_ref=target.branch)
+        gh.get_commit_statuses.return_value=[{"context":"Vercel","state":"success"}]
+        gh.get_branch_sha.return_value=CANDIDATE
+        events=[]
+        result=promote_preview_candidate(item=target,github=gh,check_epoch=lambda:None,
+            audit=lambda name,payload:events.append((name,payload)))
+        self.assertEqual(result["status"],"ref_already_candidate")
+        self.assertEqual(events[-1][0],"preview.promotion_completed")
+        self.assertTrue(events[-1][1]["reused"])
+        self.assertEqual(events[-1][1]["branch"],
+                         "preview/journey-"+journey[:8]+"-"+journey)
+        gh.fast_forward_preview_ref_cas.assert_not_called()
+
 class GitHubAtomicCasTests(unittest.TestCase):
     def adapter(self, transport):
         with patch.dict(os.environ, {"FACTORY_GITHUB_TOKEN": "dummy"}, clear=True):

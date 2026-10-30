@@ -29,6 +29,7 @@ COMMAND = re.compile(r"/factory-start ([a-z0-9][a-z0-9_-]{0,99})\Z", re.ASCII)
 MAX_REQUEST_CHARS = 6000
 MAX_EVENT_BYTES = 131072
 _RPC = "/rest/v1/rpc/factory_enqueue_github_owner_continuation_v1"
+_V2_RPC = "/rest/v1/rpc/factory_enqueue_journey_intake_v2"
 _WORKFLOW_DISPATCH = (
     "https://api.github.com/repos/" + FACTORY_REPO
     + "/actions/workflows/autonomous-runner.yml/dispatches"
@@ -158,17 +159,24 @@ def enqueue_owner_start(
         )
     except (ValueError, RuntimeError):
         raise OwnerStartBlocked("control_plane_unavailable") from None
+    v2 = environ.get("FACTORY_JOURNEY_DELIVERY_BINDING_V2", "").strip().lower() == "true"
     try:
         status, payload = post(
-            cfg.url + _RPC,
-            {
+            cfg.url + (_V2_RPC if v2 else _RPC),
+            ({
+                "p_project_key": command.project_key, "p_request": command.request,
+                "p_request_id": command.request_id, "p_request_source": "github-owner",
+                "p_auth_actor_ref": "github-owner", "p_auth_event_id": str(command.comment_id),
+                "p_request_digest": hashlib.sha256(command.request.encode("utf-8")).hexdigest(),
+                "p_issue_repository": FACTORY_REPO, "p_issue_number": command.issue_number,
+            } if v2 else {
                 "p_project_key": command.project_key,
                 "p_request": command.request,
                 "p_comment_id": command.comment_id,
                 "p_issue_number": command.issue_number,
                 "p_actor_id": command.actor_id,
                 "p_actor_login": command.actor_login,
-            },
+            }),
             {**cfg.headers, "Content-Type": "application/json"},
         )
     except error.HTTPError as exc:
@@ -181,6 +189,37 @@ def enqueue_owner_start(
         raise OwnerStartBlocked("control_plane_unavailable") from None
     if status not in (200, 201) or not isinstance(payload, dict):
         raise OwnerStartBlocked("invalid_control_plane_receipt")
+    if v2:
+        try:
+            journey_id = str(UUID(str(payload["journey_id"])))
+            project_id = str(UUID(str(payload["project_id"])))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            raise OwnerStartBlocked("invalid_control_plane_receipt") from None
+        if (payload.get("request_id") != command.request_id or payload.get("source") != "github-owner"
+                or type(payload.get("created")) is not bool or payload.get("state") not in ("intake_accepted", "awaiting_source")):
+            raise OwnerStartBlocked("invalid_control_plane_receipt")
+        # The existing runner resolves source first; no worker is woken to
+        # claim an unbound run. Dispatch is only a durable-intent wake hint.
+        receipt={"status": "intake_accepted" if payload["created"] else "replayed",
+                "project_key": command.project_key, "project_id": project_id, "journey_id": journey_id,
+                "request_id": command.request_id, "created": payload["created"], "state": payload["state"],
+                "wake": "not_needed", "source": "github-owner", "paid_calls": 0,
+                "ready_for_production": False}
+        if not payload["created"]:
+            return receipt
+        token=environ.get("GITHUB_TOKEN", "").strip()
+        if not token:
+            receipt.update(status="intake_wake_unavailable",wake="failed")
+            return receipt
+        try:
+            wake_status,_=post(_WORKFLOW_DISPATCH,{"ref":"main","inputs":{"project_key":command.project_key}}, {
+                "Authorization":"Bearer "+token,"Accept":"application/vnd.github+json",
+                "Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"})
+            receipt["wake"]="requested" if wake_status==204 else "failed"
+        except (error.HTTPError,OSError,TimeoutError):
+            receipt["wake"]="failed"
+        if receipt["wake"]!="requested": receipt["status"]="intake_wake_unavailable"
+        return receipt
     try:
         project_id = str(UUID(str(payload["project_id"])))
         task_id = str(UUID(str(payload["task_id"])))
@@ -274,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Factory OWNER Start verified before OIDC: " + command.project_key)
             return 0
         receipt = enqueue_owner_start(command, os.environ)
-        exit_code = 0 if receipt["status"] in ("enqueued", "replayed") else 3
+        exit_code = 0 if receipt["status"] in ("enqueued", "replayed", "intake_accepted") else 3
     except OwnerStartBlocked as exc:
         receipt = _safe_error(exc.code)
     except (ValueError, OSError, RuntimeError):

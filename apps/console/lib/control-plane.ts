@@ -1,4 +1,4 @@
-import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
+import {createHash} from "crypto";import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
 import {requestIntakeWorkerWake} from "./intake-worker-wake";
 import {readCompleteOperationalRows,summarizeOperationalHealth} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
@@ -102,7 +102,7 @@ export async function commandProjectExecution(projectKey:string,command:"start"|
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
 
 export async function enqueueProjectContinuation(projectKey:string,request:string,attachmentCount=0,requestedId?:string){
- await requireConsoleOperator();
+ const operator=await requireConsoleOperator();
  const clean=request.trim();
  if(!clean)throw new Error("Descreva o que você quer mudar ou continuar.");
  if(clean.length>6000)throw new Error("O pedido deve ter no máximo 6000 caracteres.");
@@ -111,6 +111,27 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))throw new Error("Identificador do pedido inválido.");
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control plane credentials are not configured");
+ // V2 records an authenticated intention only. It cannot create a runnable
+ // task until the server-side source resolver atomically binds source and
+ // destinations. There is intentionally no fallback to the legacy enqueue.
+ if(process.env.FACTORY_JOURNEY_DELIVERY_BINDING_V2==="true"){
+  const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_journey_intake_v2`,{
+   method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},
+   body:JSON.stringify({p_project_key:projectKey,p_request:clean,p_request_id:requestId,
+    p_request_source:"factory-console",p_auth_actor_ref:`console:${operator.userId}`,
+    p_auth_event_id:requestId,p_request_digest:createHash("sha256").update(clean,"utf8").digest("hex"),
+    p_issue_repository:null,p_issue_number:null}),cache:"no-store",
+  });
+  if(!response.ok)throw new Error("Não foi possível registrar a intenção de jornada V2 de forma atômica.");
+  const result=await response.json();
+  if(!result||result.request_id!==requestId||!result.project_id||!result.journey_id||typeof result.created!=="boolean"||!["intake_accepted","awaiting_source"].includes(result.state))throw new Error("Resposta de intake V2 inválida. Nenhum trabalho foi presumido.");
+  let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
+  if(result.created){
+   try{wakeStatus=await requestIntakeWorkerWake();}
+   catch{wakeStatus="failed";console.warn("journey_v2_intake_wake_failed");}
+  }
+  return {...result,requestId,requestedAt:"",wakeStatus};
+ }
  // A single Postgres RPC locks the project and commits request, task, run and audit atomically.
  // Never split the manifest update, audit and enqueue into separate calls: they admit concurrent cycles.
  const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_continuation`,{

@@ -33,7 +33,7 @@ def active_project_followup_query(*, status: str, limit: int, offset: int = 0) -
     if type(offset) is not int or not 0 <= offset <= 1000000:
         raise ValueError("invalid bounded follow-up offset")
     return (
-        "factory_runs?select=id,task_id,branch_name,candidate_commit,"
+        "factory_runs?select=id,task_id,journey_id,branch_name,candidate_commit,"
         "execution_route,metadata," + _ACTIVE_EMBED
         + "&status=eq." + status
         + _ACTIVE_PREDICATE

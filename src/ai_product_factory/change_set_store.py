@@ -37,6 +37,8 @@ class ChangeSetIntegrationItem:
     lease_owner:str|None=None
     project_kind:str|None=None
     delivery_target:dict|None=None
+    journey_binding:dict|None=None
+    request_id:str|None=None
 
 
 class SupabaseChangeSetStore:
@@ -180,6 +182,31 @@ class SupabaseChangeSetStore:
         enriched["project_kind"]=project_kind
         enriched["delivery_target"]=delivery_target
         enriched["repin_evidence"]=repin_evidence
+        # The RPC predates V2. Enrich from the run/journey relation rather
+        # than allowing the caller or mutable manifest to select a source.
+        runs=self._get("factory_runs?select=journey_id&id=eq."+quote(run_id,safe="")+"&limit=1")
+        if not isinstance(runs,list) or len(runs)!=1:
+            raise PermissionError("run journey identity is unavailable")
+        journey_id=runs[0].get("journey_id")
+        if journey_id is not None:
+            journeys=self._get("factory_journeys?select=id,project_id,request_id,binding,request_snapshot,state"
+                "&id=eq."+quote(str(journey_id),safe="")+"&limit=1")
+            if len(journeys)!=1 or journeys[0].get("state") not in ("source_bound","executing","preview_verified","awaiting_release"):
+                raise PermissionError("journey context is not executable")
+            journey=journeys[0]
+            if journey.get("project_id") != data.get("project_id"):
+                raise PermissionError("journey context cross-project")
+            enriched["journey_id"]=journey_id
+            enriched["request_id"]=journey.get("request_id")
+            enriched["journey_binding"]=journey.get("binding")
+            snapshot=journey.get("request_snapshot")
+            if not isinstance(snapshot,dict) or not isinstance(snapshot.get("text"),str):
+                raise PermissionError("journey request snapshot unavailable")
+            enriched["journey_request"]=snapshot
+            enriched["task"]={**(enriched.get("task") if isinstance(enriched.get("task"),dict) else {}),"description":snapshot["text"]}
+            # Do not pass V1 selection/evidence to a V2 implementation prompt.
+            enriched["delivery_target"]=None
+            enriched["repin_evidence"]=None
         return enriched
 
     def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
@@ -354,13 +381,31 @@ class SupabaseChangeSetStore:
         target=manifest.get("delivery_target") if isinstance(manifest,dict) else None
         if kind=="platform" and target not in (None,{}):
             raise PermissionError("platform cannot inherit an imported-project delivery target")
+        journey_binding=None; request_id=None
+        journeys_for_change=self._get("factory_change_sets?select=journey_id&id=eq."+quote(data["change_set_id"],safe="")+"&limit=1")
+        if not isinstance(journeys_for_change,list) or len(journeys_for_change)!=1:
+            raise PermissionError("integration Change Set journey identity unavailable")
+        journey_id=journeys_for_change[0].get("journey_id")
+        if journey_id is not None:
+            journeys=self._get("factory_journeys?select=id,project_id,request_id,binding,execution_generation,state"
+                "&id=eq."+quote(str(journey_id),safe="")+"&limit=1")
+            if len(journeys)!=1 or journeys[0].get("project_id")!=data["project_id"]:
+                raise PermissionError("integration journey cross-project")
+            journey=journeys[0]
+            if journey.get("state") not in ("source_bound","executing","preview_verified","awaiting_release") or journey.get("execution_generation")!=generation:
+                raise PermissionError("integration journey is not executable in claimed epoch")
+            journey_binding=journey.get("binding"); request_id=journey.get("request_id")
+            if not isinstance(journey_binding,dict) or not isinstance(request_id,str):
+                raise PermissionError("integration journey binding unavailable")
+            # V2 never exposes the legacy mutable target to its consumer.
+            target=None
         return ChangeSetIntegrationItem(
             change_set_id=data["change_set_id"],project_key=data["project_key"],
             repository=data["repository"],source_commit=data["source_commit"],
             candidate_commit=data["candidate_commit"],integration_branch=data["integration_branch"],
             current_wave=wave,work_units=tuple(units),
             project_id=data["project_id"],execution_generation=generation,lease_owner=worker_id,
-            project_kind=kind,delivery_target=target,
+            project_kind=kind,delivery_target=target,journey_binding=journey_binding,request_id=request_id,
         )
 
     def assert_integration_epoch(self,item:ChangeSetIntegrationItem,worker_id:str)->None:

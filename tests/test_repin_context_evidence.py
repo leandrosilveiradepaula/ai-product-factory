@@ -47,6 +47,8 @@ def store_with(target=TARGET,control=CONTROL,events=(EVENT,)):
     }
     def get(path):
         requests.append(path)
+        if path.startswith("factory_runs?"):
+            return [{"journey_id":None}]
         if path.startswith("factory_projects?"):
             return [{"id":PROJECT,"project_kind":"existing",
                      "manifest":{"delivery_target":deepcopy(target)}}]
