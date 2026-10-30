@@ -72,6 +72,10 @@ class JourneyBinding:
             raise JourneyBindingBlocked("journey_binding_source_invalid")
         if value["source_mode"] not in {"main_snapshot", "authorized_preview", "greenfield_bootstrap"}:
             raise JourneyBindingBlocked("journey_binding_source_mode_invalid")
+        # A V2 implementation may be Preview-only, but the release destination
+        # is always the protected main branch and is never inferred from it.
+        if value["release_base_ref"] != "main":
+            raise JourneyBindingBlocked("journey_release_destination_not_main")
         for key in ("source_ref", "preview_base_ref", "release_base_ref"):
             ref = value[key]
             if not isinstance(ref, str) or not _REF.fullmatch(ref) or ".." in ref or "//" in ref:
@@ -90,6 +94,18 @@ class JourneyBinding:
         return cls(journey_id, project_id, request_id, generation, version, digest, repository,
                    value["source_commit"], value["source_ref"], value["source_mode"], branch, preview_prefix,
                    value["preview_base_ref"], value["release_base_ref"], binding_version)
+
+    def implementation_pr_base_ref(self) -> str:
+        """Choose the PR base from the *same* immutable V2 Preview policy.
+
+        Preview-only projects must not accidentally create main-target PRs;
+        main-target projects use a separate journey-scoped Preview ref.
+        """
+        if self.preview_base_ref == "main" and self.release_base_ref == "main":
+            return "main"
+        if self.preview_base_ref.startswith("preview/") and self.release_base_ref == "main":
+            return self.preview_base_ref
+        raise JourneyBindingBlocked("journey_delivery_route_unsupported")
 
     def as_context(self) -> dict[str, object]:
         return {

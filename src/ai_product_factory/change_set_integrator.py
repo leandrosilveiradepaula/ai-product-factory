@@ -81,7 +81,9 @@ class ChangeSetIntegrator:
                 raise PermissionError("integration V2 binding differs from claimed Change Set")
             if self.github.get_branch_sha(binding.source_ref) != binding.source_commit:
                 raise PermissionError("integration V2 source reference changed")
-            destination=binding.release_base_ref
+            # PR base and Preview promotion must agree. A Preview-only
+            # integration is not a production release candidate.
+            destination=binding.implementation_pr_base_ref()
         elif item.project_kind == "existing":
             target=PinnedNonproductionTarget.parse(item.delivery_target,repository=item.repository)
             if item.source_commit != target.sha:

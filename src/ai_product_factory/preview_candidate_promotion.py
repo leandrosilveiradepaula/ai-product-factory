@@ -149,7 +149,8 @@ def promote_preview_candidate(
     required before *every* GitHub write. GraphQL updateRef(expectedOid) is the
     atomic compare-and-swap; REST PATCH without a lease is deliberately forbidden.
     """
-    if getattr(item, "journey_binding", None) is not None:
+    is_v2 = getattr(item, "journey_binding", None) is not None
+    if is_v2:
         try:
             policy = PreviewPromotionPolicy.from_journey_binding(item)
         except JourneyBindingBlocked as exc:
@@ -166,7 +167,7 @@ def promote_preview_candidate(
     statuses = github.get_commit_statuses(candidate)
     if _vercel_quota_blocked(statuses):
         raise PreviewPromotionBlocked("vercel_quota_blocked")
-    if any(
+    if not is_v2 and any(
         "vercel" in str(row.get("context") or "").lower()
         and row.get("state") == "success" for row in statuses
     ):
@@ -202,9 +203,19 @@ def promote_preview_candidate(
             raise PreviewPromotionBlocked("preview_ref_create_conflict") from create_exc
         current = github.get_branch_sha(branch)
     if current == candidate:
+        check_epoch()
         audit("preview.promotion_ref_reused", {
             "candidate_commit": candidate, "pr_number": item.pr_number, "branch": branch,
         })
+        if is_v2:
+            # A Vercel status from some *other* ref is not a V2 Preview proof.
+            # The journey-scoped ref must itself be verified and audited.
+            if github.get_branch_sha(branch) != candidate:
+                raise PreviewPromotionBlocked("preview_ref_postwrite_mismatch")
+            audit("preview.promotion_completed", {
+                "candidate_commit": candidate, "pr_number": item.pr_number,
+                "branch": branch, "previous_sha": pr.base_sha, "reused": True,
+            })
         return {"status": "ref_already_candidate", "branch": branch}
     if current != pr.base_sha:
         raise PreviewPromotionBlocked("preview_ref_drift")
