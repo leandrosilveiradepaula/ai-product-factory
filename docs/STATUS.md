@@ -1,5 +1,7 @@
 ## 30/10/2026 — Baseline vivo pós-#1156; certificação independente ainda em execução
 
+Referências vinculantes: [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md), [Matriz de 19 critérios](FINAL_CERTIFICATION_MATRIX_20261026.md) e [release/rollback](RELEASE_AUTONOMY.md). Os controles de produção continuam exclusivamente humanos.
+
 - Factory `main=7a9f74876aa5a35a91cb35602c576ffe53a7b3dd`: `validate` push #41042113608 SUCCESS e `Product readiness certification PostgreSQL QA` #41042113773 SUCCESS. Migration `product_readiness_certification` aplicada em Supabase versão `20261030104153` com autorização humana, RLS ativo e ACL service-role-only.
 - Primeira avaliação real da própria Factory: cert `c53eaefa-c856-4a05-ae0e-fcaa3f38dba2`, eval `6a98a598-5921-4540-8fe1-23496687353f`, `failed/not_ready`, 19 critérios em escopo, 19 bloqueios (3 parciais, 16 ausentes), SHA acima. Não declarar seis domínios certificados.
 - Observador GitHub Actions [#41042177251 (attempt 2)](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/41042177251) realmente leu após a gravação: `independent_evaluation_recorded=true`, `product_ready=false`, zero writes/modelos. O recibo foi baixado e inspecionado.
