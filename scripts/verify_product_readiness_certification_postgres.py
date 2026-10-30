@@ -39,6 +39,30 @@ report={"criteria":{d:{} for d in domains},"assessment":result}
 with psycopg.connect(dsn,autocommit=True) as conn:
     conn.execute("drop schema public cascade; create schema public; grant all on schema public to public")
     conn.execute(schema); conn.execute(migration)
+    # Privileged test caller and Supabase-like service role are distinct.
+    # Exercise the migration's ACL contract, not only a superuser happy path.
+    conn.execute("grant usage on schema public to anon,authenticated,service_role")
+    conn.execute("grant select,insert,update,delete on all tables in schema public to service_role")
+    conn.execute("grant usage,select on all sequences in schema public to service_role")
+    for fn in (
+        "factory_begin_product_readiness_certification_v1(text,text,text,text)",
+        "factory_persist_product_readiness_certification_v1(uuid,uuid,text,text,jsonb,jsonb)",
+    ):
+        for role in ("anon","authenticated"):
+            assert not conn.execute(
+                "select has_function_privilege(%s,%s,'EXECUTE')",(role,"public."+fn)
+            ).fetchone()[0],(fn,role)
+        assert conn.execute(
+            "select has_function_privilege('service_role',%s,'EXECUTE')",("public."+fn,)
+        ).fetchone()[0],fn
+    security=conn.execute(
+        "select relrowsecurity from pg_class where oid='public.factory_product_readiness_certifications'::regclass"
+    ).fetchone()[0]
+    assert security is True
+    assert conn.execute(
+        "select count(*) from pg_policies where schemaname='public' "
+        "and tablename='factory_product_readiness_certifications'"
+    ).fetchone()[0]==0
     project=conn.execute("insert into public.factory_projects(project_key,repository) values('factory','owner/repo') returning id").fetchone()[0]
     def begin(connection, evidence_digest=digest):
         return connection.execute("select public.factory_begin_product_readiness_certification_v1(%s,%s,%s,%s)",("factory","owner/repo",sha,evidence_digest)).fetchone()[0]
@@ -90,6 +114,15 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert conn.execute("select count(*) from public.factory_evaluations where baseline_ref=%s",(sha,)).fetchone()[0]==2
     assert conn.execute("select count(*) from public.factory_tasks where status<>'completed'").fetchone()[0]==0
     assert conn.execute("select count(*) from public.factory_runs where status<>'completed'").fetchone()[0]==0
+    # Begin/persist RPCs can also be invoked as the intended service_role
+    # after the migration, with no public policy. Normal users cannot.
+    conn.execute("alter role service_role bypassrls")
+    conn.execute("set role service_role")
+    try:
+        svc=begin(conn,second)
+        assert svc["run_id"]==a["run_id"] and svc["idempotent"] is True
+    finally:
+        conn.execute("reset role")
     # Reject contradictory replay without destroying the authoritative row.
     try:
         conn.execute("select public.factory_persist_product_readiness_certification_v1(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",
