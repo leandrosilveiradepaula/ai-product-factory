@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from pathlib import Path
 
-from ai_product_factory.journey_delivery_binding import JourneyBinding, JourneyBindingBlocked, assert_preview_belongs_to_journey, build_main_snapshot_binding
+from ai_product_factory.journey_delivery_binding import JourneyBinding, JourneyBindingBlocked, assert_preview_belongs_to_journey, build_main_snapshot_binding, resolve_pending_main_snapshot
 
 JOURNEY = "61bc7a1f-dcab-4616-9ce7-1ff28a0aa915"
 PROJECT = "e2ea3201-e9a3-489f-bf14-916aecc7de09"
@@ -63,3 +63,14 @@ class JourneyBindingTests(unittest.TestCase):
         self.assertEqual(result["source_commit"],"c"*40)
         self.assertEqual(result["source_ref"],"main")
         self.assertTrue(result["source_proof_digest"])
+
+    def test_pending_v2_source_is_resolved_from_policy_and_verified_twice(self):
+        calls=[]
+        class GitHub:
+            repository=REPO
+            def get_branch_sha(self, ref): calls.append(ref); return "c"*40
+        result=resolve_pending_main_snapshot(journey={"id":JOURNEY,"request_id":REQUEST,"state":"awaiting_source"},
+            project={"id":PROJECT,"repository":REPO,"manifest":{"journey_delivery_binding_v2":{"enabled":True,"version":2,"digest":"d"*64,"source_mode":"main_snapshot","preview_base_ref":"preview/crm171-contracts","release_base_ref":"main"}}},
+            control={"state":"running","generation":17},github=GitHub())
+        self.assertEqual(result["source_commit"],"c"*40)
+        self.assertEqual(calls,["main","main"])

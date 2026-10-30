@@ -631,31 +631,44 @@ class ChangeSetBuilderWorker:
             raise PermissionError("task requires human approval before implementation")
         if not item.change_set_id or not item.work_unit_id:
             raise ValueError("Change Set identity is required")
-        integration_branch=f"factory/change-set-{item.change_set_id[:8]}"
         try:
             source=self.store.context_source(item.run_id)
             if source.get("project_key") != item.project_key or source.get("repository") != item.repository:
                 raise PermissionError("work unit project/repository differs from claimed run")
             kind=source.get("project_kind")
+            journey_binding=source.get("journey_binding")
+            if journey_binding is not None:
+                from .journey_delivery_binding import JourneyBinding
+                binding_v2=JourneyBinding.parse(journey_binding,
+                    project_id=str(source.get("project_id") or item.project_id or ""),
+                    request_id=str(source.get("request_id") or ""), repository=item.repository)
+                if source.get("journey_id") != binding_v2.journey_id:
+                    raise PermissionError("journey source identity mismatch")
+                integration_branch=binding_v2.integration_branch
+                if self.github.get_branch_sha(binding_v2.source_ref) != binding_v2.source_commit:
+                    raise PermissionError("journey frozen source reference changed")
+                verified_source=binding_v2.source_commit
+            else:
+                integration_branch=f"factory/change-set-{item.change_set_id[:8]}"
             # Project kind is read from the privileged Control Plane record,
             # never inferred from a task prompt. A platform is an existing
             # populated product with a protected production main; it is NOT
             # the imported-project pinned-preview lane.
-            if kind=="existing":
+            if journey_binding is None and kind=="existing":
                 target=PinnedNonproductionTarget.parse(
                     source.get("delivery_target"),repository=item.repository
                 )
                 target.verify(self.github)
                 verified_source=target.sha
-            elif kind=="platform":
+            elif journey_binding is None and kind=="platform":
                 if source.get("delivery_target") not in (None,{}):
                     raise PermissionError("platform cannot use an imported-project delivery target")
                 verified_source=self.github.get_branch_sha("main")
                 if not isinstance(verified_source,str) or not re.fullmatch(r"[0-9a-f]{40}",verified_source):
                     raise PermissionError("platform main requires a verified exact SHA")
-            elif kind in (None,"","greenfield"):
+            elif journey_binding is None and kind in (None,"","greenfield"):
                 verified_source=self.github.get_branch_sha("main")
-            else:
+            elif journey_binding is None:
                 raise PermissionError("unrecognized project kind")
             frozen_source=self.store.frozen_source_commit(item.change_set_id)
             if kind in ("existing","platform") and frozen_source and frozen_source != verified_source:

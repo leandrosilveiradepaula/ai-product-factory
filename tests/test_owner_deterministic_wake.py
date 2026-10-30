@@ -61,12 +61,12 @@ class OwnerDeterministicWakeTests(unittest.TestCase):
                 self.assertIn("github.event_name == 'repository_dispatch'",step)
                 self.assertIn("steps.backup_wake.outputs.wake == 'true'",step)
                 self.assertIn(mode,step)
-        self.assertEqual(PROBE.count(OWNER_RECEIPT),4)
+        self.assertEqual(PROBE.count(OWNER_RECEIPT),5)
 
     def test_owner_wake_only_touches_expected_deterministic_steps(self):
         # Product/direct/CI/Preview remain guarded by their existing queue
         # admission logic. The owner receipt never appears in another job.
-        self.assertEqual(WORKFLOW.count(OWNER_RECEIPT),4)
+        self.assertEqual(WORKFLOW.count(OWNER_RECEIPT),5)
         self.assertEqual(PROBE.count("id: owner_wake"),1)
         other=WORKFLOW.split("\n  github-access-preflight:\n",1)[1]
         self.assertNotIn("owner_wake.outputs",other)

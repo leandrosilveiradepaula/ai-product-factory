@@ -122,6 +122,49 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("journey source binding receipt is invalid")
         return result
 
+    def record_journey_source_evidence_v2(self, *, journey_id: str, binding: dict) -> dict:
+        result = self._rpc("factory_record_journey_source_evidence_v2", {
+            "p_journey_id": journey_id, "p_repository": binding["repository"],
+            "p_source_ref": binding["source_ref"], "p_source_commit": binding["source_commit"],
+            "p_policy_digest": binding["policy_digest"], "p_proof_digest": binding["source_proof_digest"],
+            "p_generation": binding["execution_generation"],
+        })
+        if not isinstance(result, dict) or result.get("journey_id") != journey_id:
+            raise RuntimeError("journey source evidence receipt is invalid")
+        return result
+
+    def pending_journeys_v2(self, limit: int = 4) -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= 8:
+            raise ValueError("journey resolver limit is invalid")
+        rows = self._get("factory_journeys?select=id,project_id,request_id,state,request_source,issue_repository,issue_number"
+                         "&state=in.(intake_accepted,awaiting_source)&order=created_at.asc&limit=" + str(limit))
+        return rows if isinstance(rows, list) else []
+
+    def resolve_pending_journeys_v2(self, *, github_factory, limit: int = 4) -> dict:
+        """Existing runner lane: bind vetted source, then leave wake recovery durable."""
+        from .journey_delivery_binding import resolve_pending_main_snapshot, JourneyBindingBlocked
+        outcomes=[]
+        for journey in self.pending_journeys_v2(limit):
+            project_id=journey.get("project_id")
+            if not isinstance(project_id,str):
+                continue
+            projects=self._get("factory_projects?select=id,project_key,repository,manifest,is_active&id=eq."+quote(project_id,safe="")+"&limit=1")
+            controls=self._get("factory_project_execution_controls?select=project_id,state,generation,version&project_id=eq."+quote(project_id,safe="")+"&limit=1")
+            if len(projects)!=1 or len(controls)!=1:
+                outcomes.append({"journey_id":journey.get("id"),"status":"awaiting_source","reason":"control_plane_identity_unavailable"});continue
+            project,control=projects[0],controls[0]
+            try:
+                binding=resolve_pending_main_snapshot(journey=journey,project=project,control=control,
+                    github=github_factory(project["repository"]))
+                self.record_journey_source_evidence_v2(journey_id=journey["id"], binding=binding)
+                receipt=self.bind_journey_source_v2(project_key=project["project_key"],request_id=journey["request_id"],
+                    expected_generation=control["generation"],expected_policy_version=binding["policy_version"],binding=binding)
+                outcomes.append({"journey_id":journey["id"],"status":"source_bound","run_id":receipt.get("run_id")})
+            except (JourneyBindingBlocked, PermissionError, RuntimeError) as exc:
+                # A resolver failure is recoverable and retains the same journey/request.
+                outcomes.append({"journey_id":journey.get("id"),"status":"awaiting_source","reason":str(exc)[:120]})
+        return {"resolved":sum(x["status"]=="source_bound" for x in outcomes),"outcomes":outcomes}
+
     def recover_expired(self,max_attempts:int=3)->dict:
         data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
         return data or {"requeued":0,"failed":0}
@@ -522,10 +565,11 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         before reconciliation or a model invocation, never by consulting the
         mutable project manifest.
         """
+        # This is capability detection only. Once a V2 run is identified, all
+        # authority comes from its immutable journey row, never the manifest.
         manifest = context.get("manifest")
-        enabled = (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)
-                   and manifest["journey_delivery_binding_v2"].get("enabled") is True)
-        if not enabled:
+        if not (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)
+                and manifest["journey_delivery_binding_v2"].get("enabled") is True):
             return None, context
         runs = self._get("factory_runs?select=journey_id&id=eq." + quote(run_id, safe="") + "&limit=1")
         if not isinstance(runs, list) or len(runs) != 1:
@@ -556,6 +600,24 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if row.get("execution_generation") != binding.execution_generation:
             raise JourneyBindingBlocked("journey_binding_generation_invalid")
         return journey_id, {**context, "journey_binding_v2": binding.as_context()}
+
+    def _live_journey_context(self, context: dict) -> dict:
+        """V2 source preflight: immutable binding only, never delivery_target."""
+        raw = context.get("journey_binding_v2")
+        if not isinstance(raw, dict):
+            raise JourneyBindingBlocked("journey_binding_missing")
+        binding = JourneyBinding.parse(raw, project_id=str(raw.get("project_id") or ""),
+            request_id=str(raw.get("request_id") or ""), repository=str(raw.get("repository") or ""))
+        github = GitHubRestAdapter(repository=binding.repository)
+        if github.get_branch_sha(binding.source_ref) != binding.source_commit:
+            raise JourneyBindingBlocked("journey_source_ref_changed")
+        facts = dict(context.get("current_state_facts") or {})
+        facts["live_candidate"] = {
+            "repository": binding.repository, "sha": binding.source_commit,
+            "branch": binding.source_ref, "observed_from": "journey_delivery_binding_v2",
+            "journey_id": binding.journey_id, "integration_branch": binding.integration_branch,
+        }
+        return {**context, "current_state_facts": facts}
 
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
@@ -592,12 +654,16 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if "reconciliation" in stages:
             try:
                 context = self._reconciliation_context(data["project_id"], context)
-                context = self._live_candidate_context(data["project_id"], context)
+                context = self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"], context)
             except Exception as exc:
                 # The claim is already durable; RuntimeWorker has no WorkItem
                 # if this context preparation raises. Settle it with the
                 # existing epoch-fenced failure RPC before propagating.
-                if isinstance(exc, SourceScopeBlocked):
+                if isinstance(exc, JourneyBindingBlocked):
+                    # A bound journey may be retried by the resolver after a
+                    # transient ref/CAS race; do not reinterpret it as V1.
+                    reason = "journey_context_" + str(exc)
+                elif isinstance(exc, SourceScopeBlocked):
                     # Do not persist provider responses, issue content or paths
                     # in the run error. The fixed reason code is actionable.
                     reason = "reconciliation_" + exc.code
@@ -630,7 +696,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 if "_verified_resume_prior_stages" in context:
                     # Recheck the pinned nonproduction candidate using GETs;
                     # a moved branch must not enter a new paid planning call.
-                    context=self._live_candidate_context(data["project_id"],context)
+                    context=self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"],context)
                     self._reject_repeat_empty_planning(
                         run_id=data["run_id"],task_id=data["task_id"],context=context,
                     )

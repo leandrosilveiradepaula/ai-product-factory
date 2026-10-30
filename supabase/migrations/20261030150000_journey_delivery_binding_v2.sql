@@ -42,6 +42,18 @@ alter table public.factory_change_sets add column if not exists journey_id uuid 
 create index if not exists idx_factory_journeys_project_state on public.factory_journeys(project_id,state,created_at);
 create index if not exists idx_factory_runs_journey on public.factory_runs(journey_id) where journey_id is not null;
 create index if not exists idx_factory_change_sets_journey on public.factory_change_sets(journey_id) where journey_id is not null;
+-- Evidence is written by the authenticated resolver after its exact GitHub
+-- GET and consumed under lock by bind. A client supplied binding digest alone
+-- is intentionally not an authorization proof.
+create table if not exists public.factory_journey_source_evidence_v2 (
+  journey_id uuid primary key references public.factory_journeys(id) on delete restrict,
+  repository text not null, source_ref text not null, source_commit text not null check (source_commit ~ '^[0-9a-f]{40}$'),
+  policy_digest text not null check (policy_digest ~ '^[0-9a-f]{64}$'), proof_digest text not null check (proof_digest ~ '^[0-9a-f]{64}$'),
+  observed_generation bigint not null, observed_at timestamptz not null default now()
+);
+alter table public.factory_journey_source_evidence_v2 enable row level security;
+revoke all on table public.factory_journey_source_evidence_v2 from public,anon,authenticated;
+grant all on table public.factory_journey_source_evidence_v2 to service_role;
 
 -- Propagation is structural, not an optional convention in downstream
 -- workers. Legacy rows remain NULL; a V2 descendant cannot silently lose or
@@ -50,12 +62,12 @@ create or replace function public.factory_propagate_journey_binding_v2()
 returns trigger language plpgsql security invoker set search_path='' as $fn$
 declare inherited_journey uuid;
 begin
- if tg_table_name='factory_tasks' and new.parent_task_id is not null then
-   select journey_id into inherited_journey from public.factory_tasks where id=new.parent_task_id;
+ if tg_table_name='factory_tasks' and nullif(to_jsonb(new)->>'parent_task_id','') is not null then
+   select journey_id into inherited_journey from public.factory_tasks where id=(to_jsonb(new)->>'parent_task_id')::uuid;
  elsif tg_table_name='factory_runs' then
-   select journey_id into inherited_journey from public.factory_tasks where id=new.task_id;
+   select journey_id into inherited_journey from public.factory_tasks where id=(to_jsonb(new)->>'task_id')::uuid;
  elsif tg_table_name='factory_change_sets' then
-   select journey_id into inherited_journey from public.factory_tasks where id=new.root_task_id;
+   select journey_id into inherited_journey from public.factory_tasks where id=(to_jsonb(new)->>'root_task_id')::uuid;
  end if;
  if inherited_journey is not null then
    if new.journey_id is null then new.journey_id:=inherited_journey;
@@ -86,6 +98,12 @@ begin
     or p_request_source not in ('github-owner','factory-console') or nullif(btrim(p_auth_actor_ref),'') is null
     or nullif(btrim(p_auth_event_id),'') is null or p_request_digest !~ '^[0-9a-f]{64}$'
  then raise exception 'invalid journey intake' using errcode='PT400'; end if;
+ if p_request_digest is distinct from encode(extensions.digest(convert_to(request_text,'UTF8'),'sha256'),'hex')
+ then raise exception 'journey request digest mismatch' using errcode='PT400'; end if;
+ if p_request_source='github-owner' and (p_issue_repository is distinct from 'leandrosilveiradepaula/ai-product-factory'
+    or p_issue_number is distinct from 1055 or p_auth_actor_ref is distinct from 'github-owner'
+    or p_auth_event_id !~ '^[1-9][0-9]*$')
+ then raise exception 'invalid github owner provenance' using errcode='PT403'; end if;
  select * into p from public.factory_projects where project_key=btrim(p_project_key) and is_active=true for update;
  if p.id is null then raise exception 'active project not found' using errcode='PT404'; end if;
  select * into c from public.factory_project_execution_controls where project_id=p.id for share;
@@ -96,6 +114,7 @@ begin
  if j.id is not null then
    if j.request_digest is distinct from p_request_digest or j.request_source is distinct from p_request_source
       or j.auth_actor_ref is distinct from p_auth_actor_ref or j.auth_event_id is distinct from p_auth_event_id
+      or j.issue_repository is distinct from p_issue_repository or j.issue_number is distinct from p_issue_number
    then raise exception 'journey request replay mismatch' using errcode='PT409'; end if;
    return jsonb_build_object('project_id',p.id,'journey_id',j.id,'request_id',p_request_id,'created',false,'state',j.state,'source',p_request_source);
  end if;
@@ -109,31 +128,45 @@ end $fn$;
 create or replace function public.factory_bind_journey_source_v2(
  p_project_key text,p_request_id uuid,p_expected_generation bigint,p_expected_policy_version integer,p_binding jsonb
 ) returns jsonb language plpgsql security invoker set search_path='' as $fn$
-declare p public.factory_projects%rowtype; c public.factory_project_execution_controls%rowtype; j public.factory_journeys%rowtype;
- task_id uuid; run_id uuid; policy jsonb; policy_digest text; binding_digest text; stages jsonb;
+declare p public.factory_projects%rowtype; c public.factory_project_execution_controls%rowtype; j public.factory_journeys%rowtype; evidence public.factory_journey_source_evidence_v2%rowtype;
+ task_id uuid; run_id uuid; policy jsonb; v_policy_digest text; binding_digest text; stages jsonb;
 begin
  select * into p from public.factory_projects where project_key=btrim(p_project_key) and is_active=true for update;
  if p.id is null then raise exception 'active project not found' using errcode='PT404'; end if;
- select * into c from public.factory_project_execution_controls where project_id=p.id for share;
+ select * into c from public.factory_project_execution_controls where project_id=p.id for update;
  select * into j from public.factory_journeys where project_id=p.id and request_id=p_request_id for update;
  if j.id is null or j.state not in ('intake_accepted','awaiting_source') then raise exception 'journey is not source-bindable' using errcode='PT409'; end if;
  policy:=p.manifest->'journey_delivery_binding_v2';
  if c.state is distinct from 'running' or c.generation is distinct from p_expected_generation or p_expected_generation<1
     or coalesce((policy->>'enabled')::boolean,false) is not true or (policy->>'version')::integer is distinct from p_expected_policy_version
  then raise exception 'journey source binding epoch or policy changed' using errcode='PT409'; end if;
- policy_digest:=policy->>'digest'; binding_digest:=encode(digest(p_binding::text,'sha256'),'hex');
- if policy_digest !~ '^[0-9a-f]{64}$' or p_binding is null or p_binding->>'journey_id' is distinct from j.id::text
+ v_policy_digest:=policy->>'digest'; binding_digest:=encode(extensions.digest(p_binding::text,'sha256'),'hex');
+ if v_policy_digest !~ '^[0-9a-f]{64}$' or p_binding is null or p_binding->>'journey_id' is distinct from j.id::text
     or p_binding->>'project_id' is distinct from p.id::text or p_binding->>'request_id' is distinct from p_request_id::text
     or p_binding->>'repository' is distinct from p.repository or p_binding->>'source_repository' is distinct from p.repository
     or p_binding->>'source_commit' !~ '^[0-9a-f]{40}$' or p_binding->>'source_proof_digest' !~ '^[0-9a-f]{64}$'
     or p_binding->>'source_mode' not in ('main_snapshot','authorized_preview','greenfield_bootstrap')
+    or p_binding->>'source_mode' is distinct from policy->>'source_mode'
     or p_binding->>'integration_branch' !~ ('^factory/journey-'||j.id::text||'([/-].*)?$')
-    or p_binding->>'preview_base_ref' is null or p_binding->>'release_base_ref' is null
-    or p_binding->>'policy_digest' is distinct from policy_digest or p_binding->>'binding_version' is distinct from '2'
+    or p_binding->>'preview_branch_prefix' !~ '^preview/journey-[a-z0-9_-]+$'
+    or p_binding->>'preview_base_ref' is distinct from policy->>'preview_base_ref'
+    or p_binding->>'release_base_ref' is distinct from policy->>'release_base_ref'
+    or p_binding->>'policy_digest' is distinct from v_policy_digest or p_binding->>'binding_version' is distinct from '2'
  then raise exception 'invalid journey source binding' using errcode='PT400'; end if;
+ select * into evidence from public.factory_journey_source_evidence_v2 where journey_id=j.id for update;
+ if evidence.journey_id is null or evidence.repository is distinct from p.repository
+    or evidence.source_ref is distinct from p_binding->>'source_ref'
+    or evidence.source_commit is distinct from p_binding->>'source_commit'
+    or evidence.policy_digest is distinct from v_policy_digest
+    or evidence.proof_digest is distinct from p_binding->>'source_proof_digest'
+    or evidence.observed_generation is distinct from c.generation
+ then raise exception 'journey source evidence unavailable or inconsistent' using errcode='PT409'; end if;
+ if exists(select 1 from public.factory_runs r join public.factory_tasks t on t.id=r.task_id
+   where t.project_id=p.id and r.status in ('created','queued','running') and r.journey_id is distinct from j.id)
+ then raise exception 'project already has an active incompatible run' using errcode='PT409'; end if;
  if exists(select 1 from public.factory_tasks t where t.project_id=p.id and t.journey_id=j.id) then raise exception 'journey already has work' using errcode='PT409'; end if;
  stages:=case when p.project_kind='greenfield' then jsonb_build_array('discovery','specification','planning') else jsonb_build_array('reconciliation','gap_analysis','planning') end;
- update public.factory_journeys set state='source_bound',execution_generation=c.generation,project_policy_version=p_expected_policy_version,policy_digest=policy_digest,binding=p_binding,source_commit=p_binding->>'source_commit',updated_at=now() where id=j.id;
+ update public.factory_journeys set state='source_bound',execution_generation=c.generation,project_policy_version=p_expected_policy_version,policy_digest=v_policy_digest,binding=p_binding,source_commit=p_binding->>'source_commit',updated_at=now() where id=j.id;
  insert into public.factory_tasks(project_id,journey_id,external_key,title,description,status,complexity,risk,acceptance_criteria,depends_on)
  values(p.id,j.id,'journey-v2-'||j.id::text,'Execute a source-bound journey','Only the immutable Journey Delivery Binding v2 may authorize this work.','queued','medium','{}','["bound source","bound destinations","historical journey preserved"]','[]') returning id into task_id;
  insert into public.factory_runs(task_id,journey_id,status,execution_route,source_commit,branch_name,metadata)
@@ -143,8 +176,29 @@ begin
  return jsonb_build_object('journey_id',j.id,'task_id',task_id,'run_id',run_id,'state','source_bound','created',true);
 end $fn$;
 
+create or replace function public.factory_record_journey_source_evidence_v2(
+ p_journey_id uuid,p_repository text,p_source_ref text,p_source_commit text,p_policy_digest text,p_proof_digest text,p_generation bigint
+) returns jsonb language plpgsql security invoker set search_path='' as $fn$
+declare j public.factory_journeys%rowtype; p public.factory_projects%rowtype; c public.factory_project_execution_controls%rowtype;
+begin
+ select * into j from public.factory_journeys where id=p_journey_id for update;
+ if j.id is null or j.state not in ('intake_accepted','awaiting_source') then raise exception 'journey is not awaiting source' using errcode='PT409'; end if;
+ select * into p from public.factory_projects where id=j.project_id and is_active=true;
+ select * into c from public.factory_project_execution_controls where project_id=j.project_id for share;
+ if p.id is null or c.state is distinct from 'running' or c.generation is distinct from p_generation
+    or p.repository is distinct from p_repository or p_source_ref <> 'main' or p_source_commit !~ '^[0-9a-f]{40}$'
+    or p_policy_digest !~ '^[0-9a-f]{64}$' or p_proof_digest !~ '^[0-9a-f]{64}$'
+ then raise exception 'invalid journey source evidence' using errcode='PT400'; end if;
+ insert into public.factory_journey_source_evidence_v2(journey_id,repository,source_ref,source_commit,policy_digest,proof_digest,observed_generation)
+ values(p_journey_id,p_repository,p_source_ref,p_source_commit,p_policy_digest,p_proof_digest,p_generation)
+ on conflict (journey_id) do update set repository=excluded.repository,source_ref=excluded.source_ref,source_commit=excluded.source_commit,policy_digest=excluded.policy_digest,proof_digest=excluded.proof_digest,observed_generation=excluded.observed_generation,observed_at=now();
+ return jsonb_build_object('journey_id',j.id,'recorded',true);
+end $fn$;
+
 revoke all on function public.factory_enqueue_journey_intake_v2(text,text,uuid,text,text,text,text,text,integer) from public,anon,authenticated;
 grant execute on function public.factory_enqueue_journey_intake_v2(text,text,uuid,text,text,text,text,text,integer) to service_role;
 revoke all on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) from public,anon,authenticated;
 grant execute on function public.factory_bind_journey_source_v2(text,uuid,bigint,integer,jsonb) to service_role;
+revoke all on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) from public,anon,authenticated;
+grant execute on function public.factory_record_journey_source_evidence_v2(uuid,text,text,text,text,text,bigint) to service_role;
 commit;

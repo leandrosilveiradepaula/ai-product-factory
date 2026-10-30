@@ -198,13 +198,28 @@ def enqueue_owner_start(
         if (payload.get("request_id") != command.request_id or payload.get("source") != "github-owner"
                 or type(payload.get("created")) is not bool or payload.get("state") not in ("intake_accepted", "awaiting_source")):
             raise OwnerStartBlocked("invalid_control_plane_receipt")
-        # An awaiting_source intent has no executable run and must never wake a
-        # worker. The source resolver is the only component allowed to bind it.
-        return {"status": "intake_accepted" if payload["created"] else "replayed",
+        # The existing runner resolves source first; no worker is woken to
+        # claim an unbound run. Dispatch is only a durable-intent wake hint.
+        receipt={"status": "intake_accepted" if payload["created"] else "replayed",
                 "project_key": command.project_key, "project_id": project_id, "journey_id": journey_id,
                 "request_id": command.request_id, "created": payload["created"], "state": payload["state"],
                 "wake": "not_needed", "source": "github-owner", "paid_calls": 0,
                 "ready_for_production": False}
+        if not payload["created"]:
+            return receipt
+        token=environ.get("GITHUB_TOKEN", "").strip()
+        if not token:
+            receipt.update(status="intake_wake_unavailable",wake="failed")
+            return receipt
+        try:
+            wake_status,_=post(_WORKFLOW_DISPATCH,{"ref":"main","inputs":{"project_key":command.project_key}}, {
+                "Authorization":"Bearer "+token,"Accept":"application/vnd.github+json",
+                "Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"})
+            receipt["wake"]="requested" if wake_status==204 else "failed"
+        except (error.HTTPError,OSError,TimeoutError):
+            receipt["wake"]="failed"
+        if receipt["wake"]!="requested": receipt["status"]="intake_wake_unavailable"
+        return receipt
     try:
         project_id = str(UUID(str(payload["project_id"])))
         task_id = str(UUID(str(payload["task_id"])))

@@ -42,6 +42,7 @@ class JourneyBinding:
     source_ref: str
     source_mode: str
     integration_branch: str
+    preview_branch_prefix: str
     preview_base_ref: str
     release_base_ref: str
     binding_version: int
@@ -79,11 +80,15 @@ class JourneyBinding:
         if (not isinstance(branch, str) or not _REF.fullmatch(branch)
                 or not branch.startswith("factory/journey-" + journey_id)):
             raise JourneyBindingBlocked("journey_binding_destination_invalid")
+        preview_prefix = value.get("preview_branch_prefix", "preview/journey-" + journey_id[:8])
+        if (not isinstance(preview_prefix, str) or not re.fullmatch(r"preview/journey-[a-z0-9][a-z0-9/_-]{0,50}", preview_prefix)
+                or ".." in preview_prefix or "//" in preview_prefix):
+            raise JourneyBindingBlocked("journey_binding_preview_destination_invalid")
         digest = value["policy_digest"]
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise JourneyBindingBlocked("journey_binding_policy_invalid")
         return cls(journey_id, project_id, request_id, generation, version, digest, repository,
-                   value["source_commit"], value["source_ref"], value["source_mode"], branch,
+                   value["source_commit"], value["source_ref"], value["source_mode"], branch, preview_prefix,
                    value["preview_base_ref"], value["release_base_ref"], binding_version)
 
     def as_context(self) -> dict[str, object]:
@@ -93,7 +98,7 @@ class JourneyBinding:
             "policy_version": self.policy_version, "policy_digest": self.policy_digest,
             "repository": self.repository, "source_commit": self.source_commit,
             "source_ref": self.source_ref, "source_mode": self.source_mode,
-            "integration_branch": self.integration_branch, "preview_base_ref": self.preview_base_ref,
+            "integration_branch": self.integration_branch, "preview_branch_prefix": self.preview_branch_prefix, "preview_base_ref": self.preview_base_ref,
             "release_base_ref": self.release_base_ref, "binding_version": self.binding_version,
         }
 
@@ -136,7 +141,37 @@ def build_main_snapshot_binding(*, journey_id: str, project_id: str, request_id:
            "repository": repository, "source_repository": repository, "source_commit": main_sha,
            "source_ref": "main", "source_mode": "main_snapshot",
            "integration_branch": "factory/journey-" + journey_id,
+           "preview_branch_prefix": "preview/journey-" + journey_id[:8],
            "preview_base_ref": preview, "release_base_ref": release, "binding_version": 2}
     raw["source_proof_digest"] = canonical_digest({"repository": repository, "ref": "main", "sha": main_sha,
                                                      "policy_digest": digest, "request_id": request_id})
     return JourneyBinding.parse(raw, project_id=project_id, request_id=request_id, repository=repository).as_context() | {"source_repository": repository, "source_proof_digest": raw["source_proof_digest"]}
+
+
+def resolve_pending_main_snapshot(*, journey: Mapping[str, object], project: Mapping[str, object],
+                                  control: Mapping[str, object], github: object) -> dict[str, object]:
+    """Deterministically resolve one persisted awaiting_source journey.
+
+    This is intentionally the only automatic resolver: an explicit immutable
+    project policy must authorize ``main_snapshot``. It never derives scope or
+    authority from a PR body, request text, or the legacy delivery target.
+    """
+    if journey.get("state") not in {"intake_accepted", "awaiting_source"}:
+        raise JourneyBindingBlocked("journey_not_awaiting_source")
+    project_id, journey_id, request_id = project.get("id"), journey.get("id"), journey.get("request_id")
+    repository = project.get("repository")
+    policy = project.get("manifest", {}).get("journey_delivery_binding_v2") if isinstance(project.get("manifest"), dict) else None
+    if not all(isinstance(x, str) and x for x in (project_id, journey_id, request_id, repository)):
+        raise JourneyBindingBlocked("journey_source_identity_missing")
+    if type(control.get("generation")) is not int or control.get("state") != "running":
+        raise JourneyBindingBlocked("journey_execution_epoch_revoked")
+    if getattr(github, "repository", None) != repository:
+        raise JourneyBindingBlocked("journey_source_repository_unavailable")
+    main_sha = github.get_branch_sha("main")
+    binding = build_main_snapshot_binding(journey_id=journey_id, project_id=project_id,
+        request_id=request_id, repository=repository, generation=control["generation"],
+        policy=policy if isinstance(policy, Mapping) else {}, main_sha=main_sha)
+    # A second read closes the unavoidable external-read/SQL-CAS window.
+    if github.get_branch_sha("main") != main_sha:
+        raise JourneyBindingBlocked("journey_source_ref_changed")
+    return binding

@@ -16,6 +16,8 @@ class ChangeSetStoreContextTests(unittest.TestCase):
         seen=[]
         def get(path):
             seen.append(path)
+            if path.startswith("factory_runs?"):
+                return [{"journey_id":None}]
             if path.startswith("factory_projects?"):
                 return [{"manifest":{"human_decisions":[{"gate_id":"g1","response":"Authorize /debug only"}]}}]
             if path.startswith("factory_change_set_work_units?"):
@@ -39,6 +41,8 @@ class ChangeSetStoreContextTests(unittest.TestCase):
             "assignment":{"scope_keys":[".github","apps","packages"],"required_capabilities":["implementation","backend","supabase"]},
         }
         def get(path):
+            if path.startswith("factory_runs?"):
+                return [{"journey_id":None}]
             if path.startswith("factory_projects?"):
                 return [{"manifest":{}}]
             if path.startswith("factory_change_set_work_units?"):
@@ -54,7 +58,7 @@ class ChangeSetStoreContextTests(unittest.TestCase):
     def test_context_source_defaults_to_empty_durable_decisions(self):
         store=SupabaseChangeSetStore(url="https://example.supabase.co",service_role_key="secret")
         store._rpc=lambda name,payload:{"project_key":"demo","repository":"owner/repo"}
-        store._get=lambda path:[{"manifest":{}}]
+        store._get=lambda path:[{"journey_id":None}] if path.startswith("factory_runs?") else [{"manifest":{}}]
         source=store.context_source("run-1")
         self.assertEqual(source["human_decisions"],[])
 

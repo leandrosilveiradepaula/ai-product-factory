@@ -13,7 +13,7 @@ from typing import Callable
 
 from .github_loop import CIState
 from .github_rest import GitHubRequestError, GitHubRestAdapter
-from .journey_delivery_binding import assert_preview_belongs_to_journey, JourneyBindingBlocked
+from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
 
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -65,6 +65,14 @@ class PreviewPromotionPolicy:
         ):
             raise PreviewPromotionBlocked("invalid_promotion_policy")
         return cls(prefix, source, base_ref, bound)
+
+    @classmethod
+    def from_journey_binding(cls, item: object) -> "PreviewPromotionPolicy":
+        """V2 never reads a mutable project manifest for Preview authority."""
+        binding = JourneyBinding.parse(getattr(item, "journey_binding", None),
+            project_id=getattr(item, "project_id", ""), request_id=getattr(item, "request_id", ""),
+            repository=getattr(item, "repository", ""))
+        return cls(binding.preview_branch_prefix, "change_set", binding.preview_base_ref, 16)
 
     def branch_for(self, item: object) -> str:
         if self.source == "pull_request":
@@ -141,13 +149,15 @@ def promote_preview_candidate(
     required before *every* GitHub write. GraphQL updateRef(expectedOid) is the
     atomic compare-and-swap; REST PATCH without a lease is deliberately forbidden.
     """
-    policy = PreviewPromotionPolicy.from_manifest(item.manifest)
+    if getattr(item, "journey_binding", None) is not None:
+        try:
+            policy = PreviewPromotionPolicy.from_journey_binding(item)
+        except JourneyBindingBlocked as exc:
+            raise PreviewPromotionBlocked(str(exc)) from exc
+    else:
+        policy = PreviewPromotionPolicy.from_manifest(item.manifest)
     if policy is None:
         return {"status": "not_configured"}
-    try:
-        assert_preview_belongs_to_journey(item, policy)
-    except JourneyBindingBlocked as exc:
-        raise PreviewPromotionBlocked(str(exc)) from exc
     branch = policy.branch_for(item)
     candidate = item.candidate_commit
     pr = _verify_candidate(github, item, policy)

@@ -37,6 +37,8 @@ class ChangeSetIntegrationItem:
     lease_owner:str|None=None
     project_kind:str|None=None
     delivery_target:dict|None=None
+    journey_binding:dict|None=None
+    request_id:str|None=None
 
 
 class SupabaseChangeSetStore:
@@ -180,6 +182,23 @@ class SupabaseChangeSetStore:
         enriched["project_kind"]=project_kind
         enriched["delivery_target"]=delivery_target
         enriched["repin_evidence"]=repin_evidence
+        # The RPC predates V2. Enrich from the run/journey relation rather
+        # than allowing the caller or mutable manifest to select a source.
+        runs=self._get("factory_runs?select=journey_id&id=eq."+quote(run_id,safe="")+"&limit=1")
+        if not isinstance(runs,list) or len(runs)!=1:
+            raise PermissionError("run journey identity is unavailable")
+        journey_id=runs[0].get("journey_id")
+        if journey_id is not None:
+            journeys=self._get("factory_journeys?select=id,project_id,request_id,binding,state"
+                "&id=eq."+quote(str(journey_id),safe="")+"&limit=1")
+            if len(journeys)!=1 or journeys[0].get("state") not in ("source_bound","executing","preview_verified","awaiting_release"):
+                raise PermissionError("journey context is not executable")
+            journey=journeys[0]
+            if journey.get("project_id") != data.get("project_id"):
+                raise PermissionError("journey context cross-project")
+            enriched["journey_id"]=journey_id
+            enriched["request_id"]=journey.get("request_id")
+            enriched["journey_binding"]=journey.get("binding")
         return enriched
 
     def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
