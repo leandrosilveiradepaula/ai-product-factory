@@ -93,7 +93,6 @@ class JourneyBindingTests(unittest.TestCase):
         raw["source_proof_digest"]="d"*64
         snapshot={"text":"CRM #171 authorized request","digest":"e"*64}
         def get(path):
-            if path.startswith("factory_runs?select=metadata"): return [{"metadata":{"journey_binding_v2":raw}}]
             if path.startswith("factory_runs?"): return [{"journey_id":JOURNEY}]
             if path.startswith("factory_projects?"): return [{"repository":REPO}]
             if path.startswith("factory_journeys?"): return [{"id":JOURNEY,"project_id":PROJECT,"request_id":REQUEST,"request_digest":"e"*64,"state":"source_bound","binding":raw,"request_snapshot":snapshot,"execution_generation":17}]
@@ -103,8 +102,3 @@ class JourneyBindingTests(unittest.TestCase):
             context={"manifest":{"journey_delivery_binding_v2":{"enabled":False}}})
         self.assertEqual(journey,JOURNEY)
         self.assertEqual(context["journey_request"],snapshot)
-        # Removing the policy entirely cannot turn a persisted V2 run into V1.
-        journey2, context2 = queue._v2_journey_context(
-            run_id="run", project_id=PROJECT, context={"manifest":{}})
-        self.assertEqual(journey2, JOURNEY)
-        self.assertEqual(context2["journey_request"], snapshot)

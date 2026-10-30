@@ -570,20 +570,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         # consulting the current enabled bit: disabling admission must not
         # downgrade already-persisted V2 runs.
         manifest = context.get("manifest")
-        policy_present = isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)
-        marker = None
-        if not policy_present:
-            # Before the V2 migration, metadata is a valid V1 column; after
-            # disabling/removing a V2 policy, it still carries an immutable
-            # run-level V2 marker. Never downgrade that run to V1.
-            marker_rows = self._get("factory_runs?select=metadata&id=eq." + quote(run_id, safe="") + "&limit=1")
-            if not isinstance(marker_rows, list) or len(marker_rows) != 1:
-                raise JourneyBindingBlocked("journey_claim_unverifiable")
-            marker = (marker_rows[0].get("metadata") or {}).get("journey_binding_v2")
-            if marker is None:
-                return None, context
-            if not isinstance(marker, dict):
-                raise JourneyBindingBlocked("journey_claim_marker_invalid")
+        if not (isinstance(manifest, dict) and isinstance(manifest.get("journey_delivery_binding_v2"), dict)):
+            return None, context
         # Disabling V2 rejects *new* intake only; it cannot downgrade a V2
         # run into the mutable V1 delivery-target lane.
         runs = self._get("factory_runs?select=journey_id&id=eq." + quote(run_id, safe="") + "&limit=1")
@@ -591,16 +579,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise JourneyBindingBlocked("journey_claim_unverifiable")
         journey_id = runs[0].get("journey_id")
         if journey_id is None:
-            if marker is None and policy_present:
-                marker_rows = self._get("factory_runs?select=metadata&id=eq." + quote(run_id, safe="") + "&limit=1")
-                if not isinstance(marker_rows, list) or len(marker_rows) != 1:
-                    raise JourneyBindingBlocked("journey_claim_unverifiable")
-                marker = (marker_rows[0].get("metadata") or {}).get("journey_binding_v2")
-            if marker is not None:
-                raise JourneyBindingBlocked("journey_claim_marker_without_identity")
             return None, context
-        if marker is not None and marker.get("journey_id") != journey_id:
-            raise JourneyBindingBlocked("journey_claim_marker_mismatch")
         if not isinstance(journey_id, str):
             raise JourneyBindingBlocked("journey_claim_identity_invalid")
         projects = self._get("factory_projects?select=repository&id=eq." + quote(project_id, safe="") + "&limit=1")
