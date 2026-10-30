@@ -50,10 +50,21 @@ eligible. The source-bound run becomes \`executing\` on actual execution;
 an exact-SHA native CI + quality gate + journey-specific Preview promotion +
 successful deployment and browser evaluation record \`preview_verified\`.
 A documented not-applicable Preview requires its own exact-SHA receipts.
-Only an unblocked release report, matching PR/usage/audit receipts and a
-main-target candidate can advance to \`awaiting_release\`. A human merge
-observed by the existing guarded release flow, with a released report and
-matching merge SHA, becomes \`released_observed\`. The observer never merges.
+There are two distinct, audited human gates. For a main-target PR,
+awaiting_release requires an unblocked production report and matching
+PR/usage/audit receipts. A separate human production merge, observed with
+the exact SHA and a released report, becomes released_observed.
+
+For a Preview-only PR, awaiting_release means **awaiting human
+nonproduction merge**. Its production report remains explicitly blocked
+with the single exact blocker "production requires a separate verified
+main-target release candidate". This is not a production authorization.
+The journey-scoped Preview branch, PR, SHA, CI, quality gate, browser
+evidence, usage and audit receipts must match. Only a verified human merge
+into the bound Preview base closes the journey, recording preview_merge_sha
+while production_release_sha remains NULL. Preview never becomes
+released_observed or implicitly authorizes a main-target candidate.
+The observer never merges.
 
 Each transition emits one durable \`journey.*\` audit event. The Preview merge
 SHA is recorded only from the existing verified nonproduction merge observer;
@@ -68,3 +79,9 @@ triggers, adversarial receipts and idempotency, not only static SQL assertions.
 implementation, not a live CRM #171 Start, Vercel browser session or
 production release. The PR stays unmerged; the migration stays unapplied;
 \`product_ready=false\` until independently verified operational evidence.
+
+Rollback retains the V2 policy object even when enabled=false. The
+migration rejects deleting it while V2 journeys exist; the runtime cannot
+silently reinterpret those runs as legacy V1. Isolated PostgreSQL QA
+exercises both gates, Preview-only closure, no production release on Preview
+merge, and policy deletion refusal.

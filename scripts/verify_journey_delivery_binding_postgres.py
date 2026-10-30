@@ -198,6 +198,17 @@ with psycopg.connect(DSN,autocommit=True) as db:
           (PROJECT,r3,Jsonb({"head_sha":candidate3,"pr":pr3})))
         cur.execute("select state from factory_journeys where id=%s",(j3,))
         assert cur.fetchone()[0]=="awaiting_release"
+        # A merge from the consumed CRM #22 Preview branch is not #171.
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','nonproduction-observer','change_set.nonproduction_merge.observed',%s)""",
+          (PROJECT,r3,Jsonb({"merge_sha":"3"*40,"candidate_commit":candidate3,
+            "base_ref":"preview/crm22-admin-audit-next","head_ref":b3["integration_branch"],
+            "repository":b3["repository"],"pr_number":str(pr3),"environment":"preview",
+            "merged":True,"merge_is_ancestor":True,"vercel_state":"success",
+            "production_released":False,
+            "evidence_source":"github_exact_pr_and_merge_commit_status"})))
+        cur.execute("select state,production_release_sha from factory_journeys where id=%s",(j3,))
+        assert cur.fetchone()==("awaiting_release",None)
         cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
           values(%s,%s,'system','nonproduction-observer','change_set.nonproduction_merge.observed',%s)""",
           (PROJECT,r3,Jsonb({"merge_sha":merge3,"candidate_commit":candidate3,
