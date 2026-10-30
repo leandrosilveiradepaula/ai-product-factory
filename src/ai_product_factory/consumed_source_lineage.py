@@ -15,6 +15,24 @@ _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 _MAX_RECEIPTS = 20
 _MAX_FILES = 30
+_MAX_GITHUB_PR = 2147483647
+
+
+def _canonical_pr_number(value: Any) -> int | None:
+    """Normalize only exact positive GitHub PR IDs.
+
+    The Control Plane Preview merge receipt serializes `pr_number` as a
+    decimal string (e.g. "205"), while the prepared integration request
+    and GitHub adapter use an integer. Do not accept booleans, floats,
+    whitespace, leading zeros, scientific notation, or arbitrary strings.
+    """
+    if type(value) is int:
+        return value if 1 <= value <= _MAX_GITHUB_PR else None
+    if (isinstance(value, str)
+            and re.fullmatch(r"[1-9][0-9]{0,9}", value)
+            and int(value) <= _MAX_GITHUB_PR):
+        return int(value)
+    return None
 
 
 @dataclass(frozen=True)
@@ -86,7 +104,10 @@ def attest_consumed_preview_source(
             continue
         if receipt.get("merge_sha") != observed_sha:
             continue  # An unrelated completed cycle cannot authorize this head.
-        pr_number = receipt.get("pr_number")
+        # Normalize persisted JSONB string and prepared request integer to
+        # one GitHub identity; otherwise a legitimate integration is blocked.
+        pr_number = _canonical_pr_number(receipt.get("pr_number"))
+        request_pr = _canonical_pr_number(request.get("pr_number"))
         implementation_ref = "factory/change-set-" + cs_id[:8]
         if (epoch.get("project_id") != project_id
                 or epoch.get("generation") != generation
@@ -99,8 +120,8 @@ def attest_consumed_preview_source(
                 or receipt.get("head_sha") != candidate
                 or receipt.get("candidate_commit") != candidate
                 or receipt.get("production_released") is not False
-                or type(pr_number) is not int or pr_number < 1
-                or request.get("pr_number") != pr_number
+                or pr_number is None
+                or request_pr != pr_number
                 or request.get("branch") != implementation_ref
                 or request.get("candidate_commit") != candidate
                 or not 1 <= len(changed) <= _MAX_FILES
