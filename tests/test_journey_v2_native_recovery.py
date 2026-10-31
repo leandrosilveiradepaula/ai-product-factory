@@ -33,11 +33,33 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
 
     def test_recovery_scan_is_bounded_and_reports_only_control_plane_receipts(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        q._get=lambda path:[{"id":JOURNEY}]
-        q.resume_failed_journey_v2=lambda ident:{"created":False,"journey_id":ident,"run_id":"existing"}
+        paths=[]
+        def scan(path):
+            paths.append(path)
+            return [{"journey_id":JOURNEY}]
+        q._get=scan
+        receipts=[]
+        def resume(ident):
+            receipts.append(ident)
+            return {"created":False,"journey_id":ident,"run_id":"existing"}
+        q.resume_failed_journey_v2=resume
         result=q.recover_failed_journeys_v2()
+        self.assertEqual(receipts,[JOURNEY])
+        self.assertTrue(any("select=journey_id" in path for path in paths))
+        self.assertEqual(result["attempted"],1)
         self.assertEqual(result["queued"],0)
+        self.assertEqual(result["outcomes"][0]["journey_id"],JOURNEY)
         self.assertEqual(result["outcomes"][0]["status"],"already_queued")
+
+    def test_recovery_scan_skips_rows_without_journey_identity(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        q._get=lambda path:[{"id":RUN}, {}, {"journey_id":JOURNEY}]
+        receipts=[]
+        q.resume_failed_journey_v2=lambda ident:(receipts.append(ident) or {"created":True,"run_id":"new"})
+        result=q.recover_failed_journeys_v2()
+        self.assertEqual(receipts,[JOURNEY])
+        self.assertEqual(result["attempted"],1)
+        self.assertEqual(result["queued"],1)
 
     def test_public_claim_recovers_journey_id_from_the_claimed_row(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")

@@ -124,7 +124,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                          "&order=created_at.asc&limit=" + str(limit))
         outcomes=[]
         for row in rows if isinstance(rows, list) else []:
-            journey_id = row.get("id") if isinstance(row, dict) else None
+            journey_id = row.get("journey_id") if isinstance(row, dict) else None
             if not isinstance(journey_id, str):
                 continue
             try:
