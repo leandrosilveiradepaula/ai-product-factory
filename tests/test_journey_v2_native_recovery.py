@@ -14,6 +14,24 @@ TASK="07837b7f-3fc1-43b9-8f5f-41dc65731810"
 PROJECT="11111111-1111-4111-8111-111111111111"
 SHA="fea4669258fcd832c7e187e7b00c1c5fb4d90a76"
 
+class JourneyV2DispatchIntegrationContractTests(unittest.TestCase):
+    def test_v2_route_has_epoch_before_status_trigger_and_keeps_v1_path(self):
+        sql=(ROOT/"supabase/migrations/20261031144500_v2_routed_epoch_and_integration_binding.sql").read_text()
+        self.assertIn("v_run_md:=v_run_md||jsonb_build_object(",sql)
+        self.assertIn("'execution_generation',v_generation",sql)
+        self.assertIn("'journey_binding_v2',v_journey.binding",sql)
+        self.assertIn("v_journey.source_commit else null end",sql)
+        self.assertIn("v_set.journey_id is distinct from v_task.journey_id",sql)
+        self.assertIn("v_journey.execution_generation is distinct from v_generation",sql)
+        self.assertIn("v_journey.binding->>'source_commit' is distinct from v_journey.source_commit",sql)
+        self.assertIn("s.journey_id is not null and exists",sql)
+        self.assertIn("s.journey_id is null and (",sql)
+        self.assertIn("j.binding->>'integration_branch'=s.integration_branch",sql)
+        self.assertIn("p.manifest->'delivery_target'->>'sha'=s.source_commit",sql)
+        self.assertEqual(sql.count("SECURITY INVOKER"),2)
+        self.assertIn("FROM PUBLIC,anon,authenticated",sql)
+        self.assertTrue(sql.rstrip().endswith("COMMIT;"))
+
 class JourneyV2NativeRecoveryTests(unittest.TestCase):
     def test_sql_is_single_fenced_service_only_recovery(self):
         self.assertIn("factory_resume_failed_journey_v2",SQL)
