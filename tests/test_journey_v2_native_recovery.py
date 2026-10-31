@@ -7,6 +7,7 @@ from ai_product_factory.supabase_runtime_queue import SupabaseRuntimeQueue
 
 ROOT=Path(__file__).resolve().parents[1]
 SQL=(ROOT/"supabase/migrations/20261031120000_native_journey_v2_recovery.sql").read_text()
+REQUEUE_SQL=(ROOT/"supabase/migrations/20261031130000_v2_preflight_requeue_same_run.sql").read_text()
 JOURNEY="88e94d11-4ada-4630-aa6a-fbf2c5665b2b"
 RUN="27d71826-4527-4dc4-b727-870bb5687c4e"
 TASK="07837b7f-3fc1-43b9-8f5f-41dc65731810"
@@ -23,6 +24,19 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
             self.assertIn(token,SQL)
         for forbidden in ("SECURITY DEFINER","merge_pull_request","OPENAI_API_KEY","factory_retry_failed_run","delivery_target"):
             self.assertNotIn(forbidden,SQL)
+
+    def test_preflight_requeue_is_same_run_single_use_and_fail_closed(self):
+        self.assertIn("CREATE OR REPLACE FUNCTION public.factory_resume_failed_journey_v2", REQUEUE_SQL)
+        self.assertIn("WHERE id=prior AND status='failed'", REQUEUE_SQL)
+        self.assertIn("r.metadata->>'error'='planning_resume_provenance_preflight_failed'", REQUEUE_SQL)
+        self.assertIn("NOT (r.metadata ? 'stage_evidence')", REQUEUE_SQL)
+        self.assertIn("ae.event_type='journey.planning.preflight_requeued'", REQUEUE_SQL)
+        self.assertIn("other.status IN ('created','queued','running')", REQUEUE_SQL)
+        self.assertIn("'paid_calls',0", REQUEUE_SQL)
+        self.assertIn("'requeued',true", REQUEUE_SQL)
+        self.assertIn("GRANT EXECUTE ON FUNCTION public.factory_resume_failed_journey_v2(uuid) TO service_role", REQUEUE_SQL)
+        self.assertNotIn("SECURITY DEFINER", REQUEUE_SQL)
+        self.assertNotIn("factory_retry_failed_run", REQUEUE_SQL)
 
     def test_adapter_is_idempotent_and_never_calls_legacy_retry(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
