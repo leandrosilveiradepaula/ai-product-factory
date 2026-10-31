@@ -39,6 +39,23 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         self.assertEqual(result["queued"],0)
         self.assertEqual(result["outcomes"][0]["status"],"already_queued")
 
+    def test_public_claim_recovers_journey_id_from_the_claimed_row(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        q._rpc=lambda *_: {"run_id":"new","task_id":TASK,"project_id":PROJECT,"project_key":"crm-infodive","stages":["planning"],"execution_generation":16,"context":{"manifest":{"journey_delivery_binding_v2":{}}}}
+        seen=[]
+        def get(path):
+            seen.append(path)
+            if path.startswith("factory_runs?select=journey_id&id=eq.new"): return [{"journey_id":JOURNEY}]
+            if path.startswith("factory_projects?"): return [{"repository":"leandrosilveiradepaula/crm-infodive"}]
+            if path.startswith("factory_journeys?"): return [{"id":JOURNEY,"project_id":PROJECT,"request_id":"request","request_digest":"d"*64,"state":"executing","execution_generation":16,"request_snapshot":{"text":"work","digest":"d"*64},"binding":{"journey_id":JOURNEY,"project_id":PROJECT,"request_id":"request","execution_generation":16,"policy_version":2,"policy_digest":"a"*64,"repository":"leandrosilveiradepaula/crm-infodive","source_commit":SHA,"source_ref":"main","source_mode":"main_snapshot","integration_branch":"factory/journey-"+JOURNEY,"preview_base_ref":"main","release_base_ref":"main","binding_version":2}}]
+            if path.startswith("factory_runs?select=id,task_id,journey_id,status,metadata&id=eq.new"): return [{"id":"new","task_id":TASK,"journey_id":JOURNEY,"status":"running","metadata":{}}]
+            raise AssertionError(path)
+        q._get=get
+        # Ordinary planning without a checkpoint returns after V2 identity hydration.
+        item=q.claim_next("worker")
+        self.assertEqual(item.journey_id,JOURNEY)
+        self.assertTrue(any("journey_id,status,metadata" in path for path in seen))
+
     def test_invalid_identity_and_bound_recovery_limit_fail_before_rpc(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         q._rpc=MagicMock()

@@ -3,7 +3,9 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20261030150000_journey_delivery_binding_v2.sql"
+      - "supabase/migrations/20261031120000_native_journey_v2_recovery.sql"
       - "scripts/verify_journey_delivery_binding_postgres.py"
+      - "scripts/verify_journey_v2_native_recovery_postgres.py"
   workflow_dispatch:
 permissions: { contents: read }
 jobs:
@@ -25,3 +27,6 @@ jobs:
       - run: python scripts/verify_journey_delivery_binding_postgres.py
         env:
           FACTORY_JOURNEY_BINDING_TEST_DSN: postgresql://postgres:postgres@localhost:5432/journey_binding_test
+      - run: python scripts/verify_journey_v2_native_recovery_postgres.py
+        env:
+          FACTORY_JOURNEY_RECOVERY_TEST_DSN: postgresql://postgres:postgres@localhost:5432/journey_binding_test

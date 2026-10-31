@@ -119,8 +119,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         """Attempt bounded native recovery; every candidate is fenced in SQL."""
         if type(limit) is not int or not 1 <= limit <= 8:
             raise ValueError("journey recovery limit is invalid")
-        rows = self._get("factory_journeys?select=id&state=in.(source_bound,executing)"
-                         "&candidate_commit=is.null&order=updated_at.asc&limit=" + str(limit))
+        rows = self._get("factory_runs?select=journey_id&status=eq.failed&journey_id=not.is.null"
+                         "&metadata->>error=eq.planning%20has%20no%20actionable%20tasks%20or%20decisions"
+                         "&order=created_at.asc&limit=" + str(limit))
         outcomes=[]
         for row in rows if isinstance(rows, list) else []:
             journey_id = row.get("id") if isinstance(row, dict) else None
@@ -463,7 +464,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 return False
 
         claimed = self._get(
-            "factory_runs?select=id,task_id,status,metadata"
+            "factory_runs?select=id,task_id,journey_id,status,metadata"
             "&id=eq." + quote(run_id,safe="") + "&limit=2"
         )
         if (not isinstance(claimed,list) or len(claimed)!=1

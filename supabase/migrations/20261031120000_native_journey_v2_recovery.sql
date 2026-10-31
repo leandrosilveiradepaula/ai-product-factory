@@ -25,9 +25,15 @@ BEGIN
     RAISE EXCEPTION 'journey recovery epoch or state is not eligible' USING errcode='PT409';
   END IF;
   SELECT r.* INTO source FROM public.factory_runs r WHERE r.journey_id=j.id
-   AND r.status='failed' ORDER BY r.created_at DESC LIMIT 1 FOR UPDATE;
+   AND r.status='failed' AND r.execution_route='direct' AND r.source_commit=j.source_commit
+   AND r.metadata->>'error'='planning has no actionable tasks or decisions'
+   AND r.metadata->'stages'='["reconciliation","gap_analysis","planning"]'::jsonb
+   AND r.metadata->>'execution_generation'=c.generation::text
+   AND r.metadata->'journey_binding_v2'=j.binding
+   AND r.metadata#>>'{resume_checkpoint,schema}' IS DISTINCT FROM 'journey_v2_planning_recovery_v1'
+   ORDER BY r.created_at ASC LIMIT 1 FOR UPDATE;
   SELECT * INTO t FROM public.factory_tasks WHERE id=source.task_id AND project_id=p.id FOR UPDATE;
-  IF source.id IS NULL OR t.id IS NULL OR t.journey_id IS DISTINCT FROM j.id
+  IF source.id IS NULL OR t.id IS NULL OR t.status IS DISTINCT FROM 'failed' OR t.journey_id IS DISTINCT FROM j.id
      OR source.execution_route IS DISTINCT FROM 'direct' OR source.source_commit IS DISTINCT FROM j.source_commit
      OR source.metadata->>'error' IS DISTINCT FROM 'planning has no actionable tasks or decisions'
      OR source.metadata->'stages' IS DISTINCT FROM '["reconciliation","gap_analysis","planning"]'::jsonb

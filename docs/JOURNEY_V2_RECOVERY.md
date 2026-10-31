@@ -40,7 +40,8 @@ autorizado; indisponibilidade do objeto exato falha fechada.
 ## Operação e gates
 
 O modo `recovery` faz uma varredura limitada de jornadas sem candidato e pede
-a retomada somente ao RPC. O RPC decide elegibilidade; não há SQL ad hoc,
+a retomada somente para runs com o erro tipado de planejamento vazio. O RPC
+decide elegibilidade; não há SQL ad hoc,
 reabertura de Change Set, auto-merge, Preview artificial ou mudança no CRM.
 Enfileirar é gratuito; planejamento só acontece se o worker já autorizado
 passar pelos gates de autenticação, ledger e orçamento existentes.
@@ -49,3 +50,8 @@ Antes de usar em produção: revisão humana da PR, CI no SHA da PR, merge human
 e aplicação explícita da migration pelo gate de Control Plane. A prova real da
 jornada CRM requer ainda uma credencial oficial válida para o projeto Factory e
 evidência durável da run resultante; testes offline não a substituem.
+
+`scripts/verify_journey_v2_native_recovery_postgres.py` aplica as migrations
+V2 e de recovery em PostgreSQL descartável e comprova a RPC, repetição,
+propagação de `journey_id`, checkpoint, ACL e bloqueio por pausa. Ele nunca
+usa o projeto Supabase Factory.
