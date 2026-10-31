@@ -116,6 +116,7 @@ def build_handler():
 def run_recovery_once(max_attempts:int=3)->dict:
  queue=SupabaseRuntimeQueue()
  runs=queue.recover_expired(max_attempts)
+ journeys=queue.recover_failed_journeys_v2()
  decisions=queue.resume_resolved_decisions()
  descendants=queue.reconcile_terminal_descendants()
  scheduler=SupabaseAgentScheduler()
@@ -127,7 +128,7 @@ def run_recovery_once(max_attempts:int=3)->dict:
               "deferred_to_readiness_gated_dispatch":True}
  specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
  change_sets=SupabaseChangeSetStore().recover_expired(max_attempts)
- return {"runs":runs,"decisions":decisions,"descendants":descendants,"agents":agents,"agent_retry":agent_retry,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
+ return {"runs":runs,"journeys_v2":journeys,"decisions":decisions,"descendants":descendants,"agents":agents,"agent_retry":agent_retry,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
 
 def run_product_once(worker_id:str)->dict:
  try:
