@@ -98,6 +98,44 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise RuntimeError("retry RPC returned an invalid response")
         return data
 
+    def resume_failed_journey_v2(self, journey_id: str) -> dict:
+        """Queue the one native, fenced recovery allowed for a V2 journey.
+
+        This is deliberately separate from the legacy retry RPC: a V2 run
+        carries an immutable request and delivery capability which the legacy
+        retry predates and therefore cannot safely reconstruct.
+        """
+        from uuid import UUID
+        try:
+            journey_id = str(UUID(journey_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("journey id is invalid") from exc
+        result = self._rpc("factory_resume_failed_journey_v2", {"p_journey_id": journey_id})
+        if not isinstance(result, dict) or result.get("journey_id") != journey_id:
+            raise RuntimeError("journey recovery receipt is invalid")
+        return result
+
+    def recover_failed_journeys_v2(self, limit: int = 4) -> dict:
+        """Attempt bounded native recovery; every candidate is fenced in SQL."""
+        if type(limit) is not int or not 1 <= limit <= 8:
+            raise ValueError("journey recovery limit is invalid")
+        rows = self._get("factory_runs?select=journey_id&status=eq.failed&journey_id=not.is.null"
+                         "&metadata->>error=eq.planning%20has%20no%20actionable%20tasks%20or%20decisions"
+                         "&order=created_at.asc&limit=" + str(limit))
+        outcomes=[]
+        for row in rows if isinstance(rows, list) else []:
+            journey_id = row.get("id") if isinstance(row, dict) else None
+            if not isinstance(journey_id, str):
+                continue
+            try:
+                receipt=self.resume_failed_journey_v2(journey_id)
+                outcomes.append({"journey_id":journey_id,"status":"queued" if receipt.get("created") else "already_queued","run_id":receipt.get("run_id")})
+            except RuntimeError as exc:
+                # Ineligibility is expected for ordinary V2 journeys; no
+                # broad retry and no text from a provider is persisted here.
+                outcomes.append({"journey_id":journey_id,"status":"not_eligible","reason":str(exc)[:96]})
+        return {"attempted":len(outcomes),"queued":sum(x["status"]=="queued" for x in outcomes),"outcomes":outcomes}
+
     def bind_journey_source_v2(self, *, project_key: str, request_id: str,
                                expected_generation: int, expected_policy_version: int,
                                binding: dict) -> dict:
@@ -426,7 +464,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 return False
 
         claimed = self._get(
-            "factory_runs?select=id,task_id,status,metadata"
+            "factory_runs?select=id,task_id,journey_id,status,metadata"
             "&id=eq." + quote(run_id,safe="") + "&limit=2"
         )
         if (not isinstance(claimed,list) or len(claimed)!=1
@@ -440,6 +478,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         proof=md.get("resume_checkpoint")
         if proof is None:
             return original  # Ordinary planning-only runs are unchanged.
+        if isinstance(proof, dict) and proof.get("schema") == "journey_v2_planning_recovery_v1":
+            return self._v2_planning_resume_context(
+                run_id, task_id, project_id, epoch, original, claimed[0], md, proof,
+            )
         source_id=proof.get("source_run_id") if isinstance(proof,dict) else None
         snapshot_id=proof.get("snapshot_id") if isinstance(proof,dict) else None
         if (not isinstance(proof,dict)
@@ -527,6 +569,44 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         context["_verified_resume_origin"]={
             "source_run_id":source_id,"snapshot_id":snapshot_id,
             "request_id":proof["request_id"],"generation":epoch,
+        }
+        return context
+
+    def _v2_planning_resume_context(self, run_id, task_id, project_id, epoch, original, claimed, md, proof):
+        """Rehydrate only same-journey V2 evidence after an empty-plan failure."""
+        source_id = proof.get("source_run_id") if isinstance(proof, dict) else None
+        binding = original.get("journey_binding_v2")
+        if (not isinstance(source_id, str) or claimed.get("journey_id") != proof.get("journey_id")
+                or md.get("journey_id") != proof.get("journey_id")
+                or md.get("stages") != ["planning"] or md.get("execution_generation") != epoch
+                or proof.get("project_id") != project_id or proof.get("generation") != epoch
+                or not isinstance(binding, dict) or binding.get("journey_id") != proof.get("journey_id")
+                or binding.get("source_commit") != proof.get("source_commit")
+                or not isinstance(proof.get("reconciliation"), dict)
+                or not isinstance(proof.get("gap_analysis"), dict)):
+            raise PermissionError("journey V2 recovery checkpoint identity invalid")
+        source = self._get("factory_runs?select=id,task_id,journey_id,status,execution_route,source_commit,metadata"
+                           "&id=eq." + quote(source_id, safe="") + "&limit=2")
+        if (not isinstance(source, list) or len(source) != 1 or source[0].get("id") != source_id
+                or source[0].get("task_id") != task_id or source[0].get("journey_id") != proof["journey_id"]
+                or source[0].get("status") != "failed" or source[0].get("execution_route") != "direct"
+                or source[0].get("source_commit") != proof["source_commit"]):
+            raise PermissionError("journey V2 recovery source identity invalid")
+        source_md = source[0].get("metadata")
+        stages = source_md.get("stage_evidence") if isinstance(source_md, dict) else None
+        if (not isinstance(source_md, dict) or source_md.get("error") != "planning has no actionable tasks or decisions"
+                or source_md.get("stages") != ["reconciliation", "gap_analysis", "planning"]
+                or source_md.get("execution_generation") != epoch or not isinstance(stages, dict)
+                or stages.get("reconciliation", {}).get("output") != proof["reconciliation"]
+                or stages.get("gap_analysis", {}).get("output") != proof["gap_analysis"]):
+            raise PermissionError("journey V2 recovery source evidence invalid")
+        context = dict(original)
+        context["_verified_resume_prior_stages"] = {
+            "reconciliation": proof["reconciliation"], "gap_analysis": proof["gap_analysis"],
+        }
+        context["_verified_resume_origin"] = {
+            "source_run_id": source_id, "snapshot_id": proof["source_commit"],
+            "request_id": binding["request_id"], "generation": epoch,
         }
         return context
 
@@ -620,8 +700,13 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         binding = JourneyBinding.parse(raw, project_id=str(raw.get("project_id") or ""),
             request_id=str(raw.get("request_id") or ""), repository=str(raw.get("repository") or ""))
         github = GitHubRestAdapter(repository=binding.repository)
-        if github.get_branch_sha(binding.source_ref) != binding.source_commit:
-            raise JourneyBindingBlocked("journey_source_ref_changed")
+        # Binding already proved the ref at admission.  A later main advance
+        # cannot rewrite the immutable source capability; prove that exact
+        # object still exists instead of silently switching to the new head.
+        try:
+            github.get_commit_provenance(binding.source_commit)
+        except Exception as exc:
+            raise JourneyBindingBlocked("journey_source_commit_unavailable") from exc
         # Journey V2 does not use the mutable V1 delivery_target. Inspect
         # only immutable-request paths at the verified source commit, before
         # any paid reconciliation/planning call. Read evidence is not write
