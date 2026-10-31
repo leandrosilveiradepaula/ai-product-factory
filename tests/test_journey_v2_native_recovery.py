@@ -20,7 +20,7 @@ class JourneyV2DispatchIntegrationContractTests(unittest.TestCase):
         self.assertIn("v_run_md:=v_run_md||jsonb_build_object(",sql)
         self.assertIn("'execution_generation',v_generation",sql)
         self.assertIn("'journey_binding_v2',v_journey.binding",sql)
-        self.assertIn("v_journey.source_commit else null end",sql)
+        self.assertIn("values(v_task.id,'created',v_journey.source_commit,v_run_md)",sql)
         self.assertIn("v_set.journey_id is distinct from v_task.journey_id",sql)
         self.assertIn("v_journey.execution_generation is distinct from v_generation",sql)
         self.assertIn("v_journey.binding->>'source_commit' is distinct from v_journey.source_commit",sql)
