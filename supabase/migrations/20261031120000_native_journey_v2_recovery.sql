@@ -33,7 +33,7 @@ BEGIN
    AND r.metadata#>>'{resume_checkpoint,schema}' IS DISTINCT FROM 'journey_v2_planning_recovery_v1'
    ORDER BY r.created_at ASC LIMIT 1 FOR UPDATE;
   SELECT * INTO t FROM public.factory_tasks WHERE id=source.task_id AND project_id=p.id FOR UPDATE;
-  IF source.id IS NULL OR t.id IS NULL OR t.status IS DISTINCT FROM 'failed' OR t.journey_id IS DISTINCT FROM j.id
+  IF source.id IS NULL OR t.id IS NULL OR t.journey_id IS DISTINCT FROM j.id
      OR source.execution_route IS DISTINCT FROM 'direct' OR source.source_commit IS DISTINCT FROM j.source_commit
      OR source.metadata->>'error' IS DISTINCT FROM 'planning has no actionable tasks or decisions'
      OR source.metadata->'stages' IS DISTINCT FROM '["reconciliation","gap_analysis","planning"]'::jsonb
@@ -46,6 +46,9 @@ BEGIN
    AND r.metadata#>>'{resume_checkpoint,schema}'='journey_v2_planning_recovery_v1'
    AND r.metadata#>>'{resume_checkpoint,source_run_id}'=source.id::text ORDER BY r.created_at DESC LIMIT 1;
   IF prior IS NOT NULL THEN RETURN jsonb_build_object('created',false,'journey_id',j.id,'run_id',prior,'source_run_id',source.id); END IF;
+  IF t.status IS DISTINCT FROM 'failed' THEN
+    RAISE EXCEPTION 'journey source task is not failed' USING errcode='PT409';
+  END IF;
   IF EXISTS(SELECT 1 FROM public.factory_runs other JOIN public.factory_tasks other_task ON other_task.id=other.task_id
      WHERE other_task.project_id=p.id AND other.status IN ('created','queued','running')
        AND other.journey_id IS DISTINCT FROM j.id) THEN
