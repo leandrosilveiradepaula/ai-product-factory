@@ -37,6 +37,18 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         self.assertIn("WHERE id=prior AND status='failed'", sql)
         self.assertNotIn("SECURITY DEFINER", sql)
 
+    def test_retry_event_integrity_is_bound_to_failed_run_before_metadata_cleanup(self):
+        sql=(ROOT/"supabase/migrations/20261031141500_v2_recovery_retry_event_integrity.sql").read_text()
+        self.assertIn("INTO retry_event",sql)
+        self.assertIn("IF FOUND AND retry_event IS NOT NULL",sql)
+        self.assertIn("ae.event_type=retry_event",sql)
+        self.assertIn("'journey-v2-recovery',retry_event",sql)
+        self.assertIn("metadata-'worker_id'-'claimed_at'-'error'-'stage_evidence'",sql)
+        self.assertIn("r.metadata->'stage_evidence'->'planning'->'output'='{}'::jsonb",sql)
+        self.assertIn("r.metadata#>>'{resume_checkpoint,source_run_id}'=source.id::text",sql)
+        self.assertNotIn("SECURITY DEFINER",sql)
+        self.assertNotIn("check_run.metadata->>'error'",sql)
+
     def test_preflight_requeue_is_same_run_single_use_and_fail_closed(self):
         self.assertIn("CREATE OR REPLACE FUNCTION public.factory_resume_failed_journey_v2", REQUEUE_SQL)
         self.assertIn("WHERE id=prior AND status='failed'", REQUEUE_SQL)

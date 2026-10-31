@@ -4,6 +4,9 @@ on:
     paths:
       - "supabase/migrations/20261030150000_journey_delivery_binding_v2.sql"
       - "supabase/migrations/20261031120000_native_journey_v2_recovery.sql"
+      - "supabase/migrations/20261031130000_v2_preflight_requeue_same_run.sql"
+      - "supabase/migrations/20261031140000_v2_checkpoint_failure_requeue_once.sql"
+      - "supabase/migrations/20261031141500_v2_recovery_retry_event_integrity.sql"
       - "scripts/verify_journey_delivery_binding_postgres.py"
       - "scripts/verify_journey_v2_native_recovery_postgres.py"
   workflow_dispatch:
