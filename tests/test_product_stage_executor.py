@@ -50,6 +50,42 @@ def existing_item():
 
 
 class ProductStageExecutorTests(unittest.TestCase):
+    def test_v2_checkpoint_accepts_structured_summary_and_rejects_empty_object(self):
+        class CountingProvider:
+            def __init__(self): self.calls = 0
+            def execute(self, request):
+                self.calls += 1
+                return ModelResult(ModelRole.PRIMARY, json.dumps({
+                    "tasks": [{"task_key": "crm171-fix", "required_capabilities": ["implementation"],
+                               "scope_keys": ["src/contracts.py"], "depends_on": []}],
+                    "decisions_needed": []
+                }))
+        for summary, accepted in (
+            ({"objective": "Fix CRM #171", "repository": {"name": "crm-infodive"}}, True),
+            ({}, False),
+            ({"repository": {"name": "crm-infodive"}}, False),
+            ({"objective": "  "}, False),
+        ):
+            with self.subTest(summary=summary):
+                provider = CountingProvider()
+                handler = ProductStageExecutor(ModelExecutor(primary=provider))
+                context = {
+                    "_verified_resume_prior_stages": {
+                        "reconciliation": {"summary": summary},
+                        "gap_analysis": {"recommended_next_work": [{"item": "Fix CRM #171"}]},
+                    },
+                    "_verified_resume_origin": {"generation": 16},
+                }
+                work = WorkItem("run-171", "task-171", "project-171", "crm-infodive",
+                                ("planning",), context, execution_generation=16)
+                if accepted:
+                    handler.execute(work, "planning")
+                    self.assertEqual(provider.calls, 1)
+                else:
+                    with self.assertRaisesRegex(PermissionError, "verified planning checkpoint is invalid"):
+                        handler.execute(work, "planning")
+                    self.assertEqual(provider.calls, 0)
+
     def test_planning_without_tasks_or_decisions_is_not_successful(self):
         class EmptyProvider:
             def execute(self,request):
