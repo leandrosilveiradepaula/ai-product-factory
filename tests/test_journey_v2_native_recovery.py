@@ -92,13 +92,15 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
             "reconciliation":{"summary":"observed"},"gap_analysis":{"recommended_next_work":["work"]}}
         original={"journey_binding_v2":{"journey_id":JOURNEY,"request_id":"request","source_commit":SHA}}
         claimed={"journey_id":JOURNEY}
-        metadata={"journey_id":JOURNEY,"stages":["planning"],"execution_generation":16}
+        metadata={"stages":["planning"],"execution_generation":16}
         source={"id":RUN,"task_id":TASK,"journey_id":JOURNEY,"status":"failed","execution_route":"direct","source_commit":SHA,
           "metadata":{"error":"planning has no actionable tasks or decisions","stages":["reconciliation","gap_analysis","planning"],"execution_generation":16,
             "stage_evidence":{"reconciliation":{"output":checkpoint["reconciliation"]},"gap_analysis":{"output":checkpoint["gap_analysis"]}}}}
         q._get=lambda path:[source]
         context=q._v2_planning_resume_context("new",TASK,PROJECT,16,original,claimed,metadata,checkpoint)
         self.assertEqual(context["_verified_resume_prior_stages"]["gap_analysis"],checkpoint["gap_analysis"])
+        with self.assertRaisesRegex(PermissionError,"checkpoint identity"):
+            q._v2_planning_resume_context("new",TASK,PROJECT,16,original,{"journey_id":"22222222-2222-4222-8222-222222222222"},metadata,checkpoint)
         checkpoint["generation"]=17
         with self.assertRaisesRegex(PermissionError,"checkpoint identity"):
             q._v2_planning_resume_context("new",TASK,PROJECT,16,original,claimed,metadata,checkpoint)
