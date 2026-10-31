@@ -3,7 +3,7 @@
 -- generation; its queued status invokes the V2 reconciliation trigger and 409s.
 -- Also a V2 change-set cannot be claimed for integration using an unrelated
 -- mutable V1 delivery_target SHA. No rows are modified by this migration.
--- Reviewed in a disposable PostgreSQL 16 database before human production gate.
+-- Production application requires merge gate and post-migration verification.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.factory_dispatch_preapproved_planned_task_v2(p_project_key text, p_work_unit_id uuid, p_fingerprint text, p_route text, p_codex_level integer, p_codex_used boolean, p_codex_reasons jsonb, p_routing_policy_version text, p_human_gate boolean, p_gate_reasons jsonb, p_codex_mode text)
