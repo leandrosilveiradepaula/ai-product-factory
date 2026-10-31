@@ -55,6 +55,9 @@ BEGIN
       AND r.metadata#>>'{resume_checkpoint,source_run_id}'=source.id::text
       FOR UPDATE;
     IF FOUND AND t.status='failed' AND NOT EXISTS (
+      SELECT 1 FROM public.factory_audit_events ae
+      WHERE ae.run_id=prior AND ae.event_type='journey.planning.preflight_requeued'
+    ) AND NOT EXISTS (
       SELECT 1 FROM public.factory_runs other JOIN public.factory_tasks ot ON ot.id=other.task_id
       WHERE ot.project_id=p.id AND other.status IN ('created','queued','running')
     ) THEN
