@@ -12,7 +12,7 @@ root=Path(__file__).resolve().parents[1]
 # Reuse exactly the V2 fixture schema without importing its executable body.
 prefix=(root/"scripts/verify_journey_delivery_binding_postgres.py").read_text().split("with psycopg.connect",1)[0]
 os.environ.setdefault("FACTORY_JOURNEY_BINDING_TEST_DSN",dsn)
-ns={}; exec(prefix,ns)
+ns={"__file__":str(root/"scripts/verify_journey_delivery_binding_postgres.py")}; exec(prefix,ns)
 BASE, V2=ns["BASE"], ns["MIGRATION"]
 # The preceding V2 verifier deliberately leaves service roles in the same
 # disposable cluster.  Rebuild tables only; roles are cluster-global.
