@@ -32,6 +32,18 @@ class JourneyV2DispatchIntegrationContractTests(unittest.TestCase):
         self.assertIn("FROM PUBLIC,anon,authenticated",sql)
         self.assertTrue(sql.rstrip().endswith("COMMIT;"))
 
+class JourneyV2MigrationSyntaxRegressionTests(unittest.TestCase):
+    def test_complete_function_bodies(self):
+        for name,count in (
+            ("20261031144500_v2_routed_epoch_and_integration_binding.sql",2),
+            ("20261031151500_v2_dispatch_epoch_repair.sql",1),
+            ("20261031151600_v2_integration_lineage_repair.sql",1),
+        ):
+            sql=(ROOT/"supabase/migrations"/name).read_text()
+            self.assertEqual(sql.count("CREATE OR REPLACE FUNCTION"),count)
+            self.assertEqual(sql.count("$function$"),2*count)
+            self.assertTrue(sql.rstrip().endswith("COMMIT;"))
+
 class JourneyV2NativeRecoveryTests(unittest.TestCase):
     def test_sql_is_single_fenced_service_only_recovery(self):
         self.assertIn("factory_resume_failed_journey_v2",SQL)
