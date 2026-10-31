@@ -577,7 +577,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         source_id = proof.get("source_run_id") if isinstance(proof, dict) else None
         binding = original.get("journey_binding_v2")
         if (not isinstance(source_id, str) or claimed.get("journey_id") != proof.get("journey_id")
-                or md.get("journey_id") != proof.get("journey_id")
+                or claimed.get("journey_id") != proof.get("journey_id")
                 or md.get("stages") != ["planning"] or md.get("execution_generation") != epoch
                 or proof.get("project_id") != project_id or proof.get("generation") != epoch
                 or not isinstance(binding, dict) or binding.get("journey_id") != proof.get("journey_id")
