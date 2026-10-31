@@ -13,6 +13,10 @@ root=Path(__file__).resolve().parents[1]
 prefix=(root/"scripts/verify_journey_delivery_binding_postgres.py").read_text().split("with psycopg.connect",1)[0]
 ns={}; exec(prefix,ns)
 BASE, V2=ns["BASE"], ns["MIGRATION"]
+# The preceding V2 verifier deliberately leaves service roles in the same
+# disposable cluster.  Rebuild tables only; roles are cluster-global.
+BASE=BASE.replace("create schema extensions; create extension pgcrypto with schema extensions;", "")
+BASE=BASE.replace("create role service_role; create role authenticated; create role anon;", "")
 RECOVERY=(root/"supabase/migrations/20261031120000_native_journey_v2_recovery.sql").read_text()
 project, request, sha, policy, proof=ns["PROJECT"],ns["REQUEST"],ns["SHA"],ns["POLICY"],ns["PROOF"]
 
