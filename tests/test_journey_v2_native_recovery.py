@@ -20,9 +20,9 @@ class JourneyV2DispatchIntegrationContractTests(unittest.TestCase):
         self.assertIn("v_run_md:=v_run_md||jsonb_build_object(",sql)
         self.assertIn("'execution_generation',v_generation",sql)
         self.assertIn("'journey_binding_v2',v_journey.binding",sql)
-        self.assertIn("v_journey.source_commit else null end",sql)
+        self.assertIn("values(v_task.id,'created',v_journey.source_commit,v_run_md)",sql)
         self.assertIn("v_set.journey_id is distinct from v_task.journey_id",sql)
-        self.assertIn("v_journey.execution_generation is distinct from v_generation",sql)
+        self.assertIn("v_generation is distinct from v_journey.execution_generation",sql)
         self.assertIn("v_journey.binding->>'source_commit' is distinct from v_journey.source_commit",sql)
         self.assertIn("s.journey_id is not null and exists",sql)
         self.assertIn("s.journey_id is null and (",sql)
@@ -31,6 +31,18 @@ class JourneyV2DispatchIntegrationContractTests(unittest.TestCase):
         self.assertEqual(sql.count("SECURITY INVOKER"),2)
         self.assertIn("FROM PUBLIC,anon,authenticated",sql)
         self.assertTrue(sql.rstrip().endswith("COMMIT;"))
+
+class JourneyV2MigrationSyntaxRegressionTests(unittest.TestCase):
+    def test_complete_function_bodies(self):
+        for name,count in (
+            ("20261031144500_v2_routed_epoch_and_integration_binding.sql",2),
+            ("20261031151500_v2_dispatch_epoch_repair.sql",1),
+            ("20261031151600_v2_integration_lineage_repair.sql",1),
+        ):
+            sql=(ROOT/"supabase/migrations"/name).read_text()
+            self.assertEqual(sql.count("CREATE OR REPLACE FUNCTION"),count)
+            self.assertEqual(sql.count("$function$"),2*count)
+            self.assertTrue(sql.rstrip().endswith("COMMIT;"))
 
 class JourneyV2NativeRecoveryTests(unittest.TestCase):
     def test_sql_is_single_fenced_service_only_recovery(self):
