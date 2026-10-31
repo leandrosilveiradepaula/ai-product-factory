@@ -94,7 +94,7 @@ with psycopg.connect(dsn,autocommit=True) as db:
     assert duplicate["created"] is False
     cur.execute("select count(*) from factory_runs where journey_id=%s",(journey,))
     assert cur.fetchone()[0]==2, "recovery must not mint another run"
-    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type like 'journey.planning.%requeued'",
+    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type in ('journey.planning.preflight_requeued','journey.planning.checkpoint_requeued')",
                 (first["run_id"],))
     assert cur.fetchone()[0]==2, "each retry category must be single use"
 
