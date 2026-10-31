@@ -19,6 +19,9 @@ BASE, V2=ns["BASE"], ns["MIGRATION"]
 BASE=BASE.replace("create schema extensions; create extension pgcrypto with schema extensions;", "")
 BASE=BASE.replace("create role service_role; create role authenticated; create role anon;", "")
 RECOVERY=(root/"supabase/migrations/20261031120000_native_journey_v2_recovery.sql").read_text()
+REQUEUE=(root/"supabase/migrations/20261031130000_v2_preflight_requeue_same_run.sql").read_text()
+CHECKPOINT=(root/"supabase/migrations/20261031140000_v2_checkpoint_failure_requeue_once.sql").read_text()
+EVENT_INTEGRITY=(root/"supabase/migrations/20261031141500_v2_recovery_retry_event_integrity.sql").read_text()
 project, request, sha, policy, proof=ns["PROJECT"],ns["REQUEST"],ns["SHA"],ns["POLICY"],ns["PROOF"]
 
 def call(cur,name,*args):
@@ -32,7 +35,7 @@ with psycopg.connect(dsn,autocommit=True) as db:
     # The production task schema has this lifecycle timestamp; the older V2
     # fixture predates it, so model the real column before applying recovery.
     cur.execute("alter table public.factory_tasks add column updated_at timestamptz default now()")
-    cur.execute(V2); cur.execute(RECOVERY)
+    cur.execute(V2); cur.execute(RECOVERY); cur.execute(REQUEUE); cur.execute(CHECKPOINT); cur.execute(EVENT_INTEGRITY)
     manifest={"journey_delivery_binding_v2":{"enabled":True,"version":2,"digest":policy,"source_mode":"main_snapshot","preview_base_ref":"main","release_base_ref":"main"}}
     cur.execute("insert into factory_projects values(%s,'crm-infodive','leandrosilveiradepaula/crm-infodive',%s,true,'existing')",(project,Jsonb(manifest)))
     cur.execute("insert into factory_project_execution_controls values(%s,'running',16,1)",(project,))
@@ -54,6 +57,47 @@ with psycopg.connect(dsn,autocommit=True) as db:
     jid,tid,stored_sha,md=cur.fetchone()
     assert str(jid)==journey and str(tid)==bound["task_id"] and stored_sha==sha
     assert md["resume_checkpoint"]["source_run_id"]==bound["run_id"] and md["journey_binding_v2"]==binding
+    # Simulate both pre-provider failures on exactly the same durable recovery run.
+    # Each failure class gets at most one same-run retry; no new run is minted.
+    cur.execute("update factory_runs set status='failed', metadata=metadata || %s where id=%s",
+                (Jsonb({"error":"planning_resume_provenance_preflight_failed"}),first["run_id"]))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(bound["task_id"],))
+    preflight=call(cur,"factory_resume_failed_journey_v2",journey)
+    assert preflight["created"] is True and preflight["requeued"] is True
+    assert preflight["run_id"]==first["run_id"]
+    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type=%s",
+                (first["run_id"],"journey.planning.preflight_requeued"))
+    assert cur.fetchone()[0]==1
+    cur.execute("update factory_runs set status='failed', metadata=metadata || %s where id=%s",
+                (Jsonb({"error":"planning_resume_provenance_preflight_failed"}),first["run_id"]))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(bound["task_id"],))
+    duplicate=call(cur,"factory_resume_failed_journey_v2",journey)
+    assert duplicate["created"] is False and duplicate["run_id"]==first["run_id"]
+    # Historical preflight receipt must NOT consume checkpoint-recovery allowance.
+    cur.execute("update factory_runs set metadata=metadata || %s where id=%s",
+                (Jsonb({"error":"verified planning checkpoint is invalid",
+                        "stage_evidence":{"planning":{"status":"failed","output":{}}}}),first["run_id"]))
+    checkpoint=call(cur,"factory_resume_failed_journey_v2",journey)
+    assert checkpoint["created"] is True and checkpoint["requeued"] is True
+    assert checkpoint["run_id"]==first["run_id"]
+    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type=%s",
+                (first["run_id"],"journey.planning.checkpoint_requeued"))
+    assert cur.fetchone()[0]==1
+    cur.execute("select metadata from factory_runs where id=%s",(first["run_id"],))
+    clean_metadata=cur.fetchone()[0]
+    assert "stage_evidence" not in clean_metadata and "error" not in clean_metadata
+    cur.execute("update factory_runs set status='failed', metadata=metadata || %s where id=%s",
+                (Jsonb({"error":"verified planning checkpoint is invalid",
+                        "stage_evidence":{"planning":{"status":"failed","output":{}}}}),first["run_id"]))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(bound["task_id"],))
+    duplicate=call(cur,"factory_resume_failed_journey_v2",journey)
+    assert duplicate["created"] is False
+    cur.execute("select count(*) from factory_runs where journey_id=%s",(journey,))
+    assert cur.fetchone()[0]==2, "recovery must not mint another run"
+    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type like 'journey.planning.%requeued'",
+                (first["run_id"],))
+    assert cur.fetchone()[0]==2, "each retry category must be single use"
+
     cur.execute("update factory_project_execution_controls set state='paused' where project_id=%s",(project,))
     try: call(cur,"factory_resume_failed_journey_v2",journey)
     except psycopg.Error: pass
