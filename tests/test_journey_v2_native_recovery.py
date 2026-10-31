@@ -25,6 +25,18 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         for forbidden in ("SECURITY DEFINER","merge_pull_request","OPENAI_API_KEY","factory_retry_failed_run","delivery_target"):
             self.assertNotIn(forbidden,SQL)
 
+    def test_checkpoint_requeue_requires_empty_failed_planning_and_single_use(self):
+        sql = (ROOT / "supabase/migrations/20261031140000_v2_checkpoint_failure_requeue_once.sql").read_text()
+        self.assertIn("verified planning checkpoint is invalid", sql)
+        self.assertIn("r.metadata->'stage_evidence'->'planning'->>'status'='failed'", sql)
+        self.assertIn("r.metadata->'stage_evidence'->'planning'->'output'='{}'::jsonb", sql)
+        self.assertIn("jsonb_object_keys", sql)
+        self.assertIn("journey.planning.checkpoint_requeued", sql)
+        self.assertIn("journey.planning.preflight_requeued", sql)
+        self.assertIn("metadata-'worker_id'-'claimed_at'-'error'-'stage_evidence'", sql)
+        self.assertIn("WHERE id=prior AND status='failed'", sql)
+        self.assertNotIn("SECURITY DEFINER", sql)
+
     def test_preflight_requeue_is_same_run_single_use_and_fail_closed(self):
         self.assertIn("CREATE OR REPLACE FUNCTION public.factory_resume_failed_journey_v2", REQUEUE_SQL)
         self.assertIn("WHERE id=prior AND status='failed'", REQUEUE_SQL)
