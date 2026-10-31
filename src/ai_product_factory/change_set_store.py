@@ -194,7 +194,19 @@ class SupabaseChangeSetStore:
             if len(journeys)!=1 or journeys[0].get("state") not in ("source_bound","executing","preview_verified","awaiting_release"):
                 raise PermissionError("journey context is not executable")
             journey=journeys[0]
-            if journey.get("project_id") != data.get("project_id"):
+            # The legacy context RPC returns project_key but no project_id.
+            # Resolve the unique project from the control plane; never compare
+            # against a missing field or accept caller-provided identity.
+            if not project_key:
+                raise PermissionError("journey context project key missing")
+            identity_rows=self._get(
+                "factory_projects?select=id,project_key&project_key=eq."
+                +quote(project_key,safe="")+"&limit=2"
+            )
+            if (not isinstance(identity_rows,list) or len(identity_rows)!=1
+                or identity_rows[0].get("project_key")!=project_key
+                or not identity_rows[0].get("id")
+                or str(journey.get("project_id") or "")!=str(identity_rows[0]["id"])):
                 raise PermissionError("journey context cross-project")
             enriched["journey_id"]=journey_id
             enriched["request_id"]=journey.get("request_id")
