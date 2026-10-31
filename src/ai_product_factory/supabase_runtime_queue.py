@@ -622,11 +622,23 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         github = GitHubRestAdapter(repository=binding.repository)
         if github.get_branch_sha(binding.source_ref) != binding.source_commit:
             raise JourneyBindingBlocked("journey_source_ref_changed")
+        # Journey V2 does not use the mutable V1 delivery_target. Inspect
+        # only immutable-request paths at the verified source commit, before
+        # any paid reconciliation/planning call. Read evidence is not write
+        # authorization and cannot be imported from another journey.
+        from .journey_source_inspection import inspect_journey_source
+        snapshot = context.get("journey_request")
+        if not isinstance(snapshot, dict) or not isinstance(snapshot.get("text"), str):
+            raise JourneyBindingBlocked("journey_request_snapshot_invalid")
+        source_evidence = inspect_journey_source(
+            github, sha=binding.source_commit, request=snapshot["text"],
+        )
         facts = dict(context.get("current_state_facts") or {})
         facts["live_candidate"] = {
             "repository": binding.repository, "sha": binding.source_commit,
             "branch": binding.source_ref, "observed_from": "journey_delivery_binding_v2",
             "journey_id": binding.journey_id, "integration_branch": binding.integration_branch,
+            "source_evidence": source_evidence,
         }
         return {**context, "current_state_facts": facts}
 

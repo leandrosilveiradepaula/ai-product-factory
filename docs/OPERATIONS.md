@@ -1968,3 +1968,19 @@ Correção limitada: permitir exclusivamente a origem oficial ou a URL EXATA do 
 
 ---
 
+
+
+## 31/10/2026 — Journey V2 exact-SHA source inspection (candidate)
+
+The CRM #171 V2 run produced `planning_non_actionable` after gap analysis
+explicitly stated that the repository implementation had **not been inspected**.
+The V2 `_live_journey_context` previously returned only the immutable
+binding SHA, unlike V1's bounded code evidence. This candidate adds
+read-only exact-SHA source inspection before paid reconciliation/planning.
+It resolves a uniquely matching `Class.method` filename or explicit
+repository-relative source paths from the immutable journey request, reuses
+existing 24-KiB/4-file secret and source-scope guards, and fails closed on
+ambiguous matches. No path discovery grants write scope. No fabricated task,
+planning success, CI, Preview, merge, release, migration or paid retry is
+claimed. The existing failed run stays failed; a new authorized continuation
+must independently satisfy generation, budget, GitHub and human gates.
