@@ -28,7 +28,11 @@ def call(cur,name,*args):
 with psycopg.connect(dsn,autocommit=True) as db:
   with db.cursor() as cur:
     cur.execute("drop schema public cascade; create schema public")
-    cur.execute(BASE); cur.execute(V2); cur.execute(RECOVERY)
+    cur.execute(BASE)
+    # The production task schema has this lifecycle timestamp; the older V2
+    # fixture predates it, so model the real column before applying recovery.
+    cur.execute("alter table public.factory_tasks add column updated_at timestamptz default now()")
+    cur.execute(V2); cur.execute(RECOVERY)
     manifest={"journey_delivery_binding_v2":{"enabled":True,"version":2,"digest":policy,"source_mode":"main_snapshot","preview_base_ref":"main","release_base_ref":"main"}}
     cur.execute("insert into factory_projects values(%s,'crm-infodive','leandrosilveiradepaula/crm-infodive',%s,true,'existing')",(project,Jsonb(manifest)))
     cur.execute("insert into factory_project_execution_controls values(%s,'running',16,1)",(project,))
