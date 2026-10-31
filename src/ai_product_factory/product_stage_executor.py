@@ -266,8 +266,14 @@ class ProductStageExecutor:
                 or not isinstance(origin,dict)
                 or origin.get("generation")!=item.execution_generation
                 or not all(isinstance(v,dict) for v in resume.values())
-                or not isinstance(resume["reconciliation"].get("summary"),str)
-                or not resume["reconciliation"]["summary"].strip()
+                or not (
+                    (isinstance(resume["reconciliation"].get("summary"), str)
+                     and bool(resume["reconciliation"]["summary"].strip()))
+                    or (isinstance(resume["reconciliation"].get("summary"), dict)
+                        and bool(resume["reconciliation"]["summary"])
+                        and isinstance(resume["reconciliation"]["summary"].get("objective"), str)
+                        and bool(resume["reconciliation"]["summary"]["objective"].strip()))
+                )
                 or not isinstance(resume["gap_analysis"].get("recommended_next_work"),list)
                 or not resume["gap_analysis"]["recommended_next_work"]):
                 raise PermissionError("verified planning checkpoint is invalid")
