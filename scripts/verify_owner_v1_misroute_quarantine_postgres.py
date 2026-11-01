@@ -51,7 +51,7 @@ with psycopg.connect(DSN, autocommit=True) as db:
         create table public.factory_runs(id uuid primary key,task_id uuid,status text,
           journey_id uuid,lease_owner text,lease_expires_at timestamptz,
           source_commit text,candidate_commit text,branch_name text,
-          metadata jsonb,finished_at timestamptz);
+          metadata jsonb,finished_at timestamptz,last_error text);
         create table public.factory_change_sets(root_task_id uuid);
         create table public.factory_human_gates(run_id uuid);
         create table public.factory_evaluations(run_id uuid);
