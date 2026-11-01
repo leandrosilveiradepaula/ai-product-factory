@@ -184,10 +184,26 @@ def resolve_pending_main_snapshot(*, journey: Mapping[str, object], project: Map
     if getattr(github, "repository", None) != repository:
         raise JourneyBindingBlocked("journey_source_repository_unavailable")
     main_sha = github.get_branch_sha("main")
+    # A versioned source/Preview rotation must certify the same immutable
+    # upstream SHA on BOTH refs before a new journey can be bound. Older,
+    # unpinned policies retain their original behavior for existing journeys.
+    policy = policy if isinstance(policy, Mapping) else {}
+    main_pin = policy.get("source_commit_pin")
+    preview_pin = policy.get("preview_base_source_sha")
+    if main_pin is not None or preview_pin is not None:
+        preview_ref = policy.get("preview_base_ref")
+        if (not isinstance(main_pin, str) or not _SHA.fullmatch(main_pin)
+                or not isinstance(preview_pin, str) or not _SHA.fullmatch(preview_pin)
+                or main_sha != main_pin or preview_pin != main_pin
+                or not isinstance(preview_ref, str) or not preview_ref.startswith("preview/")
+                or github.get_branch_sha(preview_ref) != preview_pin):
+            raise JourneyBindingBlocked("journey_source_preview_pin_mismatch")
     binding = build_main_snapshot_binding(journey_id=journey_id, project_id=project_id,
         request_id=request_id, repository=repository, generation=control["generation"],
         policy=policy if isinstance(policy, Mapping) else {}, main_sha=main_sha)
     # A second read closes the unavoidable external-read/SQL-CAS window.
     if github.get_branch_sha("main") != main_sha:
         raise JourneyBindingBlocked("journey_source_ref_changed")
+    if main_pin is not None and github.get_branch_sha(policy["preview_base_ref"]) != preview_pin:
+        raise JourneyBindingBlocked("journey_preview_ref_changed")
     return binding
