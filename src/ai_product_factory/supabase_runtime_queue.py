@@ -718,7 +718,26 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         source_evidence = inspect_journey_source(
             github, sha=binding.source_commit, request=snapshot["text"],
         )
+        # Before any paid reconciliation/planning, verify that an issue's
+        # explicit description of *existing code* is actually present at the
+        # bound SHA. A mismatch is not evidence of a completed feature.
+        from .issue_source_applicability import (
+            check_reported_existing_code, unique_issue,
+        )
+        issue_number = unique_issue(snapshot["text"], binding.repository)
+        applicability = None
+        if issue_number is not None:
+            issue = github.get_issue(issue_number)
+            if issue.number != issue_number:
+                raise PermissionError("journey issue identity mismatch")
+            applicability = check_reported_existing_code(
+                request=snapshot["text"], repository=binding.repository,
+                source_sha=binding.source_commit, issue_number=issue_number,
+                issue_body=issue.body, source_evidence=source_evidence,
+            )
         facts = dict(context.get("current_state_facts") or {})
+        if applicability is not None:
+            facts["source_issue_applicability"] = applicability
         facts["live_candidate"] = {
             "repository": binding.repository, "sha": binding.source_commit,
             "branch": binding.source_ref, "observed_from": "journey_delivery_binding_v2",
@@ -767,7 +786,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 # The claim is already durable; RuntimeWorker has no WorkItem
                 # if this context preparation raises. Settle it with the
                 # existing epoch-fenced failure RPC before propagating.
-                if isinstance(exc, JourneyBindingBlocked):
+                from .issue_source_applicability import IssueSourceMismatch
+                if isinstance(exc, IssueSourceMismatch):
+                    reason = str(exc)
+                elif isinstance(exc, JourneyBindingBlocked):
                     # A bound journey may be retried by the resolver after a
                     # transient ref/CAS race; do not reinterpret it as V1.
                     reason = "journey_context_" + str(exc)
