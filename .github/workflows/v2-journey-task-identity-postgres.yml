@@ -1,0 +1,29 @@
+name: V2 Journey Plan Task Identity PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261101161000_v2_planned_task_lineage_scope.sql"
+      - "scripts/verify_v2_journey_task_identity_postgres.py"
+      - ".github/workflows/v2-journey-task-identity-postgres.yml"
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: v2_task_identity_qa }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d v2_task_identity_qa"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: { python-version: "3.12" }
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify V1 unchanged, V2 collisions, recovery and negative guards
+        env:
+          FACTORY_V2_TASK_IDENTITY_QA_DSN: postgresql://postgres:postgres@localhost:5432/v2_task_identity_qa
+        run: python scripts/verify_v2_journey_task_identity_postgres.py
