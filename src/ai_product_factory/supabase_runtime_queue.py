@@ -730,11 +730,26 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             issue = github.get_issue(issue_number)
             if issue.number != issue_number:
                 raise PermissionError("journey issue identity mismatch")
-            applicability = check_reported_existing_code(
-                request=snapshot["text"], repository=binding.repository,
-                source_sha=binding.source_commit, issue_number=issue_number,
-                issue_body=issue.body, source_evidence=source_evidence,
-            )
+            try:
+                applicability = check_reported_existing_code(
+                    request=snapshot["text"], repository=binding.repository,
+                    source_sha=binding.source_commit, issue_number=issue_number,
+                    issue_body=issue.body, source_evidence=source_evidence,
+                )
+            except IssueSourceMismatch as exc:
+                # Only an explicit, exact-SHA code mismatch can trigger a
+                # bounded discovery. Discovery never changes run provenance,
+                # policy, task or source binding, and never declares success.
+                if str(exc)=="journey_reported_existing_code_not_at_source":
+                    from .existing_delivery_observation import inspect_prior_merged_delivery
+                    candidate=inspect_prior_merged_delivery(
+                        github,issue_number=issue_number,
+                        source_sha=binding.source_commit,
+                        source_evidence=source_evidence,
+                    )
+                    if candidate is not None:
+                        exc.delivery_candidate=candidate
+                raise
         facts = dict(context.get("current_state_facts") or {})
         if applicability is not None:
             facts["source_issue_applicability"] = applicability
@@ -810,6 +825,17 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     worker_id=worker_id,
                 )
                 try:
+                    candidate=getattr(exc,"delivery_candidate",None)
+                    if isinstance(exc,IssueSourceMismatch) and isinstance(candidate,dict):
+                        # Persist a read-only witness before settling failure;
+                        # never claim candidate is implemented/releasable.
+                        self.assert_execution_epoch(claimed)
+                        self._rpc("factory_record_runtime_stage",{
+                            "p_run_id":claimed.run_id,
+                            "p_stage":"existing_delivery_observation",
+                            "p_status":"started",
+                            "p_output":candidate,
+                        })
                     self.fail(claimed, reason)
                 except Exception as settlement_error:
                     raise RuntimeError(
