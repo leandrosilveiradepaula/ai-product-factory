@@ -44,6 +44,24 @@ class JourneyV2MigrationSyntaxRegressionTests(unittest.TestCase):
             self.assertEqual(sql.count("$function$"),2*count)
             self.assertTrue(sql.rstrip().endswith("COMMIT;"))
 
+class JourneyV2ContextRetryContractTests(unittest.TestCase):
+    def test_one_time_requeue_has_immutable_guards(self):
+        sql=(ROOT/"supabase/migrations/20261031200000_v2_context_requeue_once.sql").read_text()
+        for required in (
+            "PermissionError: journey context cross-project",
+            "j.execution_generation IS DISTINCT FROM c.generation",
+            "r.source_commit IS DISTINCT FROM j.source_commit",
+            "u.changed_files IS DISTINCT FROM '[]'::jsonb",
+            "r.lease_owner IS NOT NULL",
+            "change_set.v2_context_requeued",
+            "REVOKE ALL ON FUNCTION",
+            "TO service_role",
+        ):
+            self.assertIn(required,sql)
+        self.assertEqual(sql.count("$body$"),2)
+        self.assertTrue(sql.rstrip().endswith("COMMIT;"))
+
+
 class JourneyV2NativeRecoveryTests(unittest.TestCase):
     def test_sql_is_single_fenced_service_only_recovery(self):
         self.assertIn("factory_resume_failed_journey_v2",SQL)
