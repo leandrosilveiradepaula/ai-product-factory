@@ -33,6 +33,41 @@ class JourneySourceInspectionTests(unittest.TestCase):
             "src/services/ContractService.ts", ref=SHA,
         )
 
+    def test_same_issue_method_hint_inspects_frozen_source(self):
+        result = inspect_journey_source(
+            self.github, sha=SHA, request="Implementar CRM issue #209",
+            issue_body="No SHA inicial, ContractService.getContracts(organizationId) usa admin.",
+        )
+        self.assertEqual(result["status"], "bounded_source_inspected")
+        self.assertEqual(result["inspected_files"][0]["path"], "src/services/ContractService.ts")
+        self.assertEqual(result["inspected_files"][0]["assessed_commit"], SHA)
+        self.github.get_file_text.assert_called_once_with(
+            "src/services/ContractService.ts", ref=SHA,
+        )
+
+    def test_issue_hint_without_class_does_not_invent_source(self):
+        result = inspect_journey_source(
+            self.github, sha=SHA, request="Implementar CRM issue #209",
+            issue_body="Apenas critérios de tenant e owner sem path e sem método",
+        )
+        self.assertEqual(result["status"], "no_scoped_source_paths")
+        self.github.get_file_text.assert_not_called()
+
+    def test_issue_hint_ambiguous_or_oversized_is_rejected_before_code_read(self):
+        with self.assertRaisesRegex(PermissionError, "issue discovery hint invalid"):
+            inspect_journey_source(
+                self.github, sha=SHA, request="CRM issue #209",
+                issue_body="x" * 12001,
+            )
+        self.github.get_file_text.assert_not_called()
+        self.github.list_file_paths.return_value.append("packages/crm/ContractService.ts")
+        with self.assertRaisesRegex(PermissionError, "ambiguous"):
+            inspect_journey_source(
+                self.github, sha=SHA, request="CRM issue #209",
+                issue_body="ContractService.getContracts(organizationId)",
+            )
+        self.github.get_file_text.assert_not_called()
+
     def test_ambiguous_class_is_fail_closed(self):
         self.github.list_file_paths.return_value.append(
             "packages/crm/ContractService.ts"

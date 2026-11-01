@@ -22,12 +22,23 @@ _MAX_REQUEST = 12000
 _MAX_INVENTORY = 100000
 
 
-def inspect_journey_source(github: object, *, sha: str, request: str) -> dict:
+def inspect_journey_source(
+    github: object, *, sha: str, request: str, issue_body: str | None = None,
+) -> dict:
     if not isinstance(sha, str) or not _SHA.fullmatch(sha):
         raise PermissionError("journey source SHA invalid")
     if (not isinstance(request, str) or not request.strip()
         or len(request.encode("utf-8")) > _MAX_REQUEST):
         raise PermissionError("journey request missing or oversized")
+    # Same-repository issue description is a read-only discovery hint.
+    # It is never write authority; the exact source SHA and unique pathname
+    # are still required before any snippet is described as inspected.
+    if issue_body is not None and (
+        not isinstance(issue_body, str)
+        or len(issue_body.encode("utf-8")) > _MAX_REQUEST
+    ):
+        raise PermissionError("journey issue discovery hint invalid")
+    discovery_text = request + "\n" + (issue_body or "")
     paths = github.list_file_paths(ref=sha)
     if (not isinstance(paths, (list, tuple)) or len(paths) > _MAX_INVENTORY
         or any(not isinstance(p, str) or not p or p.startswith("/")
@@ -35,9 +46,9 @@ def inspect_journey_source(github: object, *, sha: str, request: str) -> dict:
         or len(paths) != len(set(paths))):
         raise PermissionError("journey source inventory invalid")
     existing = set(paths)
-    requested = list(dict.fromkeys(_EXPLICIT.findall(request)))
+    requested = list(dict.fromkeys(_EXPLICIT.findall(discovery_text)))
     # Class.method is a search hint, not permission to edit a path.
-    for class_name in dict.fromkeys(_METHOD.findall(request)):
+    for class_name in dict.fromkeys(_METHOD.findall(discovery_text)):
         matches = [
             path for path in paths
             if path.startswith(("src/", "app/", "apps/", "pages/", "lib/", "packages/"))

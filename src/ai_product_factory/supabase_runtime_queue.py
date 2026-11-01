@@ -715,21 +715,26 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         snapshot = context.get("journey_request")
         if not isinstance(snapshot, dict) or not isinstance(snapshot.get("text"), str):
             raise JourneyBindingBlocked("journey_request_snapshot_invalid")
-        source_evidence = inspect_journey_source(
-            github, sha=binding.source_commit, request=snapshot["text"],
-        )
-        # Before any paid reconciliation/planning, verify that an issue's
-        # explicit description of *existing code* is actually present at the
-        # bound SHA. A mismatch is not evidence of a completed feature.
+        # Resolve the single same-repository issue before reading source:
+        # issue text is only a bounded discovery hint, never write authority.
         from .issue_source_applicability import (
             check_reported_existing_code, unique_issue, IssueSourceMismatch,
         )
         issue_number = unique_issue(snapshot["text"], binding.repository)
-        applicability = None
+        issue = None
         if issue_number is not None:
             issue = github.get_issue(issue_number)
             if issue.number != issue_number:
                 raise PermissionError("journey issue identity mismatch")
+        source_evidence = inspect_journey_source(
+            github, sha=binding.source_commit, request=snapshot["text"],
+            issue_body=issue.body if issue is not None else None,
+        )
+        # Before any paid reconciliation/planning, verify that an issue's
+        # explicit description of *existing code* is actually present at the
+        # bound SHA. A mismatch is not evidence of a completed feature.
+        applicability = None
+        if issue is not None:
             try:
                 applicability = check_reported_existing_code(
                     request=snapshot["text"], repository=binding.repository,

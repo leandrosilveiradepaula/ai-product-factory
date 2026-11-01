@@ -1,0 +1,32 @@
+name: V2 Issue Source Discovery PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - "src/ai_product_factory/journey_source_inspection.py"
+      - "src/ai_product_factory/supabase_runtime_queue.py"
+      - "tests/test_journey_source_inspection.py"
+      - "supabase/migrations/20261101153000_v2_issue_source_discovery_recovery.sql"
+      - "scripts/verify_v2_issue_source_discovery_postgres.py"
+      - ".github/workflows/v2-issue-source-discovery-postgres.yml"
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: v2_source_discovery_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d v2_source_discovery_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: { python-version: "3.12" }
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify bounded source-discovery recovery against disposable PostgreSQL
+        env:
+          FACTORY_V2_SOURCE_DISCOVERY_TEST_DSN: postgresql://postgres:postgres@localhost:5432/v2_source_discovery_test
+        run: python scripts/verify_v2_issue_source_discovery_postgres.py
