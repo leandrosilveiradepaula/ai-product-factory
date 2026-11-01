@@ -208,6 +208,18 @@ class SupabaseChangeSetStore:
                 or not identity_rows[0].get("id")
                 or str(journey.get("project_id") or "")!=str(identity_rows[0]["id"])):
                 raise PermissionError("journey context cross-project")
+            change_sets=self._get(
+                "factory_change_sets?select=id,metadata"
+                "&id=eq."+quote(str(data.get("change_set_id") or ""),safe="")+"&limit=1"
+            )
+            if not isinstance(change_sets,list) or len(change_sets)!=1:
+                raise PermissionError("V2 change set recovery context missing")
+            meta=change_sets[0].get("metadata")
+            amendment=meta.get("governance_amendment") if isinstance(meta,dict) else None
+            if amendment is not None:
+                if not isinstance(amendment,dict):
+                    raise PermissionError("V2 governance amendment receipt invalid")
+                enriched["governance_amendment"]=amendment
             enriched["journey_id"]=journey_id
             enriched["request_id"]=journey.get("request_id")
             enriched["journey_binding"]=journey.get("binding")
