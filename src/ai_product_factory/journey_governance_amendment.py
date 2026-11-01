@@ -87,7 +87,7 @@ def verify_scoped_governance_amendment(
     if github.get_branch_sha("main")!=observed_ref_sha:
         deny()
     return {
-        "kind":"merged_document_only_task_scope_v1",
+        "kind":"merged_document_only_task_scope_v1","version":1,
         "pr_number":amendment["pr_number"],"issue_number":amendment["issue_number"],
         "source_commit":binding.source_commit,"merge_commit":observed_ref_sha,
         "journey_id":binding.journey_id,"request_id":binding.request_id,
