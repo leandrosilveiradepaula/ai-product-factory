@@ -722,7 +722,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         # explicit description of *existing code* is actually present at the
         # bound SHA. A mismatch is not evidence of a completed feature.
         from .issue_source_applicability import (
-            check_reported_existing_code, unique_issue,
+            check_reported_existing_code, unique_issue, IssueSourceMismatch,
         )
         issue_number = unique_issue(snapshot["text"], binding.repository)
         applicability = None
