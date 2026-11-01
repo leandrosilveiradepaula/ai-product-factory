@@ -92,7 +92,7 @@ class IssueSourceApplicabilityTests(unittest.TestCase):
         github=MagicMock()
         github.repository=REPO
         github.get_issue.return_value=SimpleNamespace(number=171,body=ISSUE)
-        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter",return_value=github), \\
+        with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter",return_value=github), \
              patch("ai_product_factory.journey_source_inspection.inspect_journey_source",return_value=evidence("const q=db.in('deal_id', visibleIds);")):
             result=queue._live_journey_context({
                 "journey_binding_v2":binding,
