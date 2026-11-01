@@ -47,7 +47,7 @@ with psycopg.connect(DSN, autocommit=True) as db:
           project_id uuid, state text, generation bigint, version bigint);
         create table public.factory_console_operators(user_id uuid,role text,is_active boolean);
         create table public.factory_tasks(id uuid primary key,project_id uuid,parent_task_id uuid,
-          status text,updated_at timestamptz default now());
+          journey_id uuid, status text,updated_at timestamptz default now());
         create table public.factory_runs(id uuid primary key,task_id uuid,status text,
           journey_id uuid,lease_owner text,lease_expires_at timestamptz,
           source_commit text,candidate_commit text,branch_name text,
@@ -122,7 +122,7 @@ with psycopg.connect(DSN, autocommit=True) as db:
     rejects(db,*params)
     with db.cursor() as c:
         c.execute("delete from public.factory_tool_usage where operation='unexpected'")
-        c.execute("insert into public.factory_tasks values ('99999999-9999-4999-8999-999999999999',%s,%s,'queued',now())",(PROJECT,TASK))
+        c.execute("insert into public.factory_tasks(id,project_id,parent_task_id,status) values ('99999999-9999-4999-8999-999999999999',%s,%s,'queued')",(PROJECT,TASK))
     rejects(db,*params)
     with db.cursor() as c:
         c.execute("delete from public.factory_tasks where parent_task_id=%s",(TASK,))
