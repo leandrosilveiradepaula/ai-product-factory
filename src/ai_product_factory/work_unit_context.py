@@ -164,6 +164,8 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
         "impact":impact or {},
         "repository_snapshot":repository_snapshot or {},
         "human_decisions":source.get("human_decisions") if isinstance(source.get("human_decisions"),list) else [],
+        "governance_amendment":source.get("verified_governance_amendment")
+            if isinstance(source.get("verified_governance_amendment"),dict) else None,
         "repair":repair,
         "constraints":source.get("constraints") if isinstance(source.get("constraints"),list) else [],
     }

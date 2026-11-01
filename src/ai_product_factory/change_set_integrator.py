@@ -7,6 +7,7 @@ from .github_rest import GitHubPullRequest,GitHubRestAdapter
 from .commit_provenance import provenance_commit_message
 from .pinned_nonproduction_target import PinnedNonproductionTarget
 from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
+from .journey_governance_amendment import verify_scoped_governance_amendment
 
 
 @dataclass(frozen=True)
@@ -79,8 +80,21 @@ class ChangeSetIntegrator:
                 raise PermissionError(str(exc)) from exc
             if item.source_commit != binding.source_commit or item.integration_branch != binding.integration_branch:
                 raise PermissionError("integration V2 binding differs from claimed Change Set")
-            if self.github.get_branch_sha(binding.source_ref) != binding.source_commit:
-                raise PermissionError("integration V2 source reference changed")
+            observed_sha=self.github.get_branch_sha(binding.source_ref)
+            if observed_sha != binding.source_commit:
+                proof=verify_scoped_governance_amendment(
+                    github=self.github,binding=binding,
+                    amendment=item.governance_amendment,
+                    change_set_id=item.change_set_id,observed_ref_sha=observed_sha,
+                )
+                if not any(
+                    isinstance(unit,dict)
+                    and unit.get("work_unit_id")==proof["work_unit_id"]
+                    for unit in item.work_units
+                ):
+                    raise PermissionError("integration governance receipt lacks matching completed work unit")
+            elif item.governance_amendment is not None:
+                raise PermissionError("integration governance amendment receipt is stale")
             # PR base and Preview promotion must agree. A Preview-only
             # integration is not a production release candidate.
             destination=binding.implementation_pr_base_ref()

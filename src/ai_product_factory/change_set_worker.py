@@ -13,6 +13,7 @@ from .work_unit_context import build_context_packet,enforce_write_scopes,redact_
 from .provenance_replay import SupabaseProvenanceStore,build_run_provenance
 from .commit_provenance import provenance_commit_message
 from .pinned_nonproduction_target import PinnedNonproductionTarget
+from .journey_governance_amendment import verify_scoped_governance_amendment,constrain_scoped_amendment
 from .ci_repair_candidate_evidence import verify_existing_ci_repair_candidate
 from .ci_typecheck_repair_diagnostics import verified_typecheck_repair_diagnostics
 from .ci_repair_readonly_imports import resolve_verified_readonly_imports
@@ -636,6 +637,7 @@ class ChangeSetBuilderWorker:
             if source.get("project_key") != item.project_key or source.get("repository") != item.repository:
                 raise PermissionError("work unit project/repository differs from claimed run")
             kind=source.get("project_kind")
+            governance_proof=None
             journey_binding=source.get("journey_binding")
             if journey_binding is not None:
                 from .journey_delivery_binding import JourneyBinding
@@ -645,8 +647,18 @@ class ChangeSetBuilderWorker:
                 if source.get("journey_id") != binding_v2.journey_id:
                     raise PermissionError("journey source identity mismatch")
                 integration_branch=binding_v2.integration_branch
-                if self.github.get_branch_sha(binding_v2.source_ref) != binding_v2.source_commit:
-                    raise PermissionError("journey frozen source reference changed")
+                observed_ref_sha=self.github.get_branch_sha(binding_v2.source_ref)
+                if observed_ref_sha != binding_v2.source_commit:
+                    governance_proof=verify_scoped_governance_amendment(
+                        github=self.github,binding=binding_v2,
+                        amendment=source.get("governance_amendment"),
+                        change_set_id=item.change_set_id,observed_ref_sha=observed_ref_sha,
+                    )
+                    if (governance_proof["run_id"]!=item.run_id
+                        or governance_proof["work_unit_id"]!=item.work_unit_id):
+                        raise PermissionError("V2 governance amendment does not belong to claimed work unit")
+                elif source.get("governance_amendment") is not None:
+                    raise PermissionError("stale V2 governance amendment receipt")
                 verified_source=binding_v2.source_commit
             else:
                 integration_branch=f"factory/change-set-{item.change_set_id[:8]}"
@@ -705,6 +717,21 @@ class ChangeSetBuilderWorker:
                 project_key=item.project_key,task_id=item.task_id,run_id=item.run_id,change_set_id=item.change_set_id
             )
             source=self.store.context_source(item.run_id)
+            if governance_proof is not None:
+                if source.get("governance_amendment")!={
+                    key:governance_proof[key] for key in (
+                        "version","pr_number","issue_number","source_commit","merge_commit",
+                        "journey_id","request_id","change_set_id","run_id","work_unit_id",
+                    ) if key in governance_proof
+                }:
+                    # Version is a fixed capability, not a field inferred from PR data.
+                    raise PermissionError("V2 governance recovery receipt changed after binding")
+                if self.github.get_branch_sha(binding_v2.source_ref)!=governance_proof["merge_commit"]:
+                    raise PermissionError("V2 governance amendment ref drift")
+                source=constrain_scoped_amendment(
+                    source=source,proof=governance_proof,
+                    run_id=item.run_id,work_unit_id=item.work_unit_id,
+                )
             if ci_repair_evidence is not None:
                 repair=source.get("repair")
                 if (not isinstance(repair,dict)
@@ -793,6 +820,16 @@ class ChangeSetBuilderWorker:
                 blocker_type="repository_governance",
             )
             raise
+        if governance_proof is not None:
+            try:
+                if self.github.get_branch_sha(binding_v2.source_ref)!=governance_proof["merge_commit"]:
+                    raise PermissionError("V2 governance amendment moved before implementation commit")
+            except Exception as exc:
+                self.store.block_work_unit(
+                    run_id=item.run_id,reason=f"{type(exc).__name__}: {exc}",
+                    blocker_type="repository_governance",
+                )
+                raise
         commit_message=provenance_commit_message(artifact.commit_message,{
             "Factory-Run":item.run_id,
             "Factory-Change-Set":binding.change_set_id,

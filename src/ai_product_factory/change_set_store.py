@@ -39,6 +39,7 @@ class ChangeSetIntegrationItem:
     delivery_target:dict|None=None
     journey_binding:dict|None=None
     request_id:str|None=None
+    governance_amendment:dict|None=None
 
 
 class SupabaseChangeSetStore:
@@ -208,6 +209,18 @@ class SupabaseChangeSetStore:
                 or not identity_rows[0].get("id")
                 or str(journey.get("project_id") or "")!=str(identity_rows[0]["id"])):
                 raise PermissionError("journey context cross-project")
+            change_sets=self._get(
+                "factory_change_sets?select=id,metadata"
+                "&id=eq."+quote(str(data.get("change_set_id") or ""),safe="")+"&limit=1"
+            )
+            if not isinstance(change_sets,list) or len(change_sets)!=1:
+                raise PermissionError("V2 change set recovery context missing")
+            meta=change_sets[0].get("metadata")
+            amendment=meta.get("governance_amendment") if isinstance(meta,dict) else None
+            if amendment is not None:
+                if not isinstance(amendment,dict):
+                    raise PermissionError("V2 governance amendment receipt invalid")
+                enriched["governance_amendment"]=amendment
             enriched["journey_id"]=journey_id
             enriched["request_id"]=journey.get("request_id")
             enriched["journey_binding"]=journey.get("binding")
@@ -394,7 +407,7 @@ class SupabaseChangeSetStore:
         if kind=="platform" and target not in (None,{}):
             raise PermissionError("platform cannot inherit an imported-project delivery target")
         journey_binding=None; request_id=None
-        journeys_for_change=self._get("factory_change_sets?select=journey_id&id=eq."+quote(data["change_set_id"],safe="")+"&limit=1")
+        journeys_for_change=self._get("factory_change_sets?select=journey_id,metadata&id=eq."+quote(data["change_set_id"],safe="")+"&limit=1")
         if not isinstance(journeys_for_change,list) or len(journeys_for_change)!=1:
             raise PermissionError("integration Change Set journey identity unavailable")
         journey_id=journeys_for_change[0].get("journey_id")
@@ -411,6 +424,10 @@ class SupabaseChangeSetStore:
                 raise PermissionError("integration journey binding unavailable")
             # V2 never exposes the legacy mutable target to its consumer.
             target=None
+        metadata=journeys_for_change[0].get("metadata") or {}
+        amendment=metadata.get("governance_amendment") if isinstance(metadata,dict) else None
+        if amendment is not None and not isinstance(amendment,dict):
+            raise PermissionError("integration governance amendment receipt is malformed")
         return ChangeSetIntegrationItem(
             change_set_id=data["change_set_id"],project_key=data["project_key"],
             repository=data["repository"],source_commit=data["source_commit"],
@@ -418,6 +435,7 @@ class SupabaseChangeSetStore:
             current_wave=wave,work_units=tuple(units),
             project_id=data["project_id"],execution_generation=generation,lease_owner=worker_id,
             project_kind=kind,delivery_target=target,journey_binding=journey_binding,request_id=request_id,
+            governance_amendment=amendment,
         )
 
     def assert_integration_epoch(self,item:ChangeSetIntegrationItem,worker_id:str)->None:
