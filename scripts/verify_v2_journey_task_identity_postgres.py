@@ -157,6 +157,37 @@ with psycopg.connect(DSN, autocommit=True) as db:
           project_id,parent_task_id,journey_id,title,external_key,status)
           values (%s,%s,%s,%s,%s,'blocked')""",
           (PROJECT,ROOT1,J1,TITLE,legacy_key(TITLE)))
+        # Legacy V1 remains project-scoped when no journey binding exists.
+        v1_title = "Legacy V1 isolated action"
+        v1_plan = {"tasks":[{"title":v1_title,"task_key":"legacy_v1"}],
+                   "decisions_needed":[]}
+        v1_team = {"task_assignments":[{"title":v1_title,
+                    "task_key":"legacy_v1","execution_lane":"builder",
+                    "agent_key":"development","wave":1}]}
+        v1_root = "12121212-1212-4212-8212-121212121212"
+        v1_run = "13131313-1313-4313-8313-131313131313"
+        v1_plan_id = "14141414-1414-4414-8414-141414141414"
+        c.execute("""insert into public.factory_tasks(
+          id,project_id,journey_id,title,status)
+          values(%s,%s,null,'Legacy root','completed')""",(v1_root,PROJECT))
+        c.execute("""insert into public.factory_runs(
+          id,task_id,journey_id,status,source_commit,branch_name)
+          values(%s,%s,null,'completed',null,null)""",(v1_run,v1_root))
+        c.execute("""insert into public.factory_execution_team_plans
+          values(%s,%s,%s,1,'ready',%s)""",
+          (v1_plan_id,PROJECT,v1_run,Jsonb(v1_team)))
+        c.execute("select public.factory_persist_product_stage(%s,'planning',%s)",
+                  (v1_run,Jsonb(v1_plan)))
+        c.execute("""select external_key,journey_id from public.factory_tasks
+          where parent_task_id=%s""",(v1_root,))
+        v1_key,v1_journey=c.fetchone()
+        assert v1_key==legacy_key(v1_title) and v1_journey is None
+        c.execute("select public.factory_materialize_change_set(%s)",(v1_plan_id,))
+        assert c.fetchone()[0]["builder_work_units"]==1
+        # Restore the exact generation-19 engineering plan.
+        c.execute("""update public.factory_projects
+          set manifest=jsonb_set(manifest,'{engineering_plan}',%s)
+          where id=%s""",(Jsonb(PLAN),PROJECT))
         c.execute("""insert into public.factory_runs(
           id,task_id,journey_id,status,source_commit,branch_name)
           values (%s,%s,%s,'completed',%s,%s)""",
