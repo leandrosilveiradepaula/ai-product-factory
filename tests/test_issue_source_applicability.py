@@ -38,6 +38,48 @@ class IssueSourceApplicabilityTests(unittest.TestCase):
         with self.assertRaisesRegex(IssueSourceMismatch,"journey_reported_existing_code_not_at_source"):
             self.check("const query = db.from('contracts').select('*,authorized_deal:deals!inner(id)');")
 
+    def test_crm209_qualified_declaration_is_not_a_literal_call_site(self):
+        request=("Implementar a issue #209 do repositório "
+                 "leandrosilveiradepaula/crm-infodive e revisar ContractService.getContracts")
+        issue=("No SHA atual, `ContractService.getContracts(organizationId)` "
+               "utiliza createAdminClient e filtra apenas por tenant.")
+        frozen="export class ContractService { static async getContracts(organizationId: string) { return []; } }"
+        ev=evidence(frozen)
+        result=check_reported_existing_code(
+            request=request,repository=REPO,source_sha=SHA,issue_number=209,
+            issue_body=issue,source_evidence=ev)
+        self.assertEqual(result["status"],"reported_code_present")
+        self.assertEqual(result["checked_anchor_count"],1)
+
+    def test_crm209_declaration_must_be_at_exact_class_path_and_name(self):
+        request=("Implementar a issue #209 do repositório "
+                 "leandrosilveiradepaula/crm-infodive e revisar ContractService.getContracts")
+        issue="O serviço `ContractService.getContracts(organizationId)` utiliza createAdminClient."
+        cases=(
+            ("export class ContractService { async other(organizationId: string) {} }","src/services/ContractService.ts"),
+            ("export class ContractService { static async getContracts(userId: string) {} }","src/services/ContractService.ts"),
+            ("export class OtherService { static async getContracts(organizationId: string) {} }","src/services/ContractService.ts"),
+            ("export class ContractService { static async getContracts(organizationId: string) {} }","src/services/OtherService.ts"),
+        )
+        for code,path in cases:
+            with self.subTest(path=path,code=code):
+                ev=evidence(code)
+                ev["inspected_files"][0]["path"]=path
+                with self.assertRaisesRegex(IssueSourceMismatch,"journey_reported_existing_code_not_at_source"):
+                    check_reported_existing_code(
+                        request=request,repository=REPO,source_sha=SHA,issue_number=209,
+                        issue_body=issue,source_evidence=ev)
+
+    def test_crm209_declaration_does_not_relax_exact_sql_call_check(self):
+        request=("Implementar a issue #209 do repositório "
+                 "leandrosilveiradepaula/crm-infodive e revisar ContractService.getContracts")
+        issue="A consulta `.in('deal_id', visibleIds)` usa uma lista de IDs."
+        ev=evidence("export class ContractService { static async getContracts(organizationId: string) {} }")
+        with self.assertRaisesRegex(IssueSourceMismatch,"journey_reported_existing_code_not_at_source"):
+            check_reported_existing_code(
+                request=request,repository=REPO,source_sha=SHA,issue_number=209,
+                issue_body=issue,source_evidence=ev)
+
     def test_truncated_or_omitted_code_cannot_prove_absence(self):
         self.assertEqual(self.check("const other=1;",complete=False)["status"],"insufficient_source_evidence")
         self.assertEqual(self.check("const other=1;",omitted=["src/other.ts"])["status"],"insufficient_source_evidence")

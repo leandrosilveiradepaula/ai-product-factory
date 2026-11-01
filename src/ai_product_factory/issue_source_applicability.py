@@ -19,6 +19,49 @@ _BEHAVIOR = re.compile(
 )
 _CODE = re.compile(r"^\.?[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\([A-Za-z0-9_$,'\".\s-]{1,130}\)$")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
+_QUALIFIED_METHOD = re.compile(
+    r"^(?P<class_name>[A-Z][A-Za-z0-9_]*)\."
+    r"(?P<method>[A-Za-z_][A-Za-z0-9_]*)\("
+    r"(?P<argument>[A-Za-z_][A-Za-z0-9_]*)\)$"
+)
+
+
+def _declaration_at_frozen_source(anchor: str, files: list, source_sha: str) -> bool:
+    """Resolve a class-method *reference*, not a literal invocation.
+
+    A qualified reference such as \`ContractService.getContracts(organizationId)\`
+    describes a declaration in TypeScript rather than a call expression.
+    Require a uniquely matching exact-SHA class file, class declaration,
+    method name and parameter identifier; never satisfy arbitrary code calls.
+    """
+    match = _QUALIFIED_METHOD.fullmatch(anchor)
+    if match is None:
+        return False
+    cls, method, argument = match.group("class_name", "method", "argument")
+    matching = [
+        f for f in files
+        if isinstance(f, Mapping)
+        and f.get("complete") is True
+        and f.get("assessed_commit") == source_sha
+        and isinstance(f.get("content"), str)
+        and isinstance(f.get("path"), str)
+        and f["path"].startswith(("src/", "app/", "apps/", "packages/"))
+        and f["path"].rsplit("/", 1)[-1] in (cls + ".ts", cls + ".tsx")
+    ]
+    if len(matching) != 1:
+        return False
+    code = matching[0]["content"]
+    if re.search(r"\bclass\s+" + re.escape(cls) + r"\b", code) is None:
+        return False
+    declaration = (
+        r"\b(?:static\s+)?(?:async\s+)?"
+        + re.escape(method)
+        + r"\s*\(\s*"
+        + re.escape(argument)
+        + r"\s*(?::\s*[^)\n,]+)?\s*\)"
+    )
+    return re.search(declaration, code) is not None
+
 
 
 class IssueSourceMismatch(PermissionError):
@@ -71,7 +114,11 @@ def check_reported_existing_code(
     # Whitespace differences do not change syntax. Explicit quoted expressions
     # with different identifiers/arguments still must not match.
     normalized = ["".join(c.split()) for c in complete]
-    missing = [a for a in anchors if not any("".join(a.split()) in s for s in normalized)]
+    missing = [
+        a for a in anchors
+        if not any("".join(a.split()) in s for s in normalized)
+        and not _declaration_at_frozen_source(a, files, source_sha)
+    ]
     if missing:
         raise IssueSourceMismatch("journey_reported_existing_code_not_at_source")
     return {"status":"reported_code_present","issue_number":issue_number,
