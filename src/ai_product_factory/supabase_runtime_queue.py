@@ -748,7 +748,28 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                         source_evidence=source_evidence,
                     )
                     if candidate is not None:
-                        exc.delivery_candidate=candidate
+                        from .existing_delivery_triage import classify_existing_delivery
+                        # The Control Plane project manifest is the only native
+                        # workflow identity authority. Missing policy is not a
+                        # reason to claim CI success or select another branch.
+                        projects=self._get(
+                            "factory_projects?select=id,manifest"
+                            "&id=eq."+quote(binding.project_id,safe="")+"&limit=1"
+                        )
+                        policy=None
+                        if (isinstance(projects,list) and len(projects)==1
+                            and isinstance(projects[0],dict)
+                            and projects[0].get("id")==binding.project_id):
+                            manifest=projects[0].get("manifest")
+                            target=(manifest.get("delivery_target")
+                                if isinstance(manifest,dict) else None)
+                            repin=(target.get("repin_policy")
+                                if isinstance(target,dict) else None)
+                            policy=(repin.get("native_ci")
+                                if isinstance(repin,dict) else None)
+                        exc.delivery_candidate=classify_existing_delivery(
+                            github,witness=candidate,ci_policy=policy,
+                        )
                 raise
         facts = dict(context.get("current_state_facts") or {})
         if applicability is not None:
