@@ -50,7 +50,7 @@ def check_reported_existing_code(
     # Only interpret a small, declarative sentence (not instructions, headings,
     # historical PR references, acceptance criteria or desired code snippets).
     anchors: list[str] = []
-    for sentence in re.split(r"[\n.;]+", issue_body):
+    for sentence in re.split(r"[\n;]+", issue_body):
         if not _BEHAVIOR.search(sentence):
             continue
         for match in _QUOTED.finditer(sentence):
