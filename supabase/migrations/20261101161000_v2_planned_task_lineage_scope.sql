@@ -328,7 +328,7 @@ begin
  if p_journey_id is null or p_source_run_id is null or p_team_plan_id is null
     or p_command_id is null or p_actor_id is null
     or p_expected_generation is null or p_expected_version is null
-    or p_source_sha !~ '^[0-9a-f]{40}
+    or char_length(p_source_sha)<>40 or p_source_sha !~ '^[0-9a-f]{40}'
  then raise exception 'invalid V2 plan materialization recovery request' using errcode='PT400'; end if;
  if not exists(select 1 from public.factory_console_operators o
     where o.user_id=p_actor_id and o.is_active=true and o.role='admin')
