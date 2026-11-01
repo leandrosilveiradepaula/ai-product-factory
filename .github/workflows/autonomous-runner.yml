@@ -1547,6 +1547,7 @@ jobs:
       actions: write # Limited local workflow_dispatch after committed Start
     env:
       PYTHONPATH: src
+      FACTORY_JOURNEY_DELIVERY_BINDING_V2: 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

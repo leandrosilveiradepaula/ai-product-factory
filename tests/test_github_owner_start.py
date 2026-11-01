@@ -262,6 +262,16 @@ class OwnerStartRpcTests(unittest.TestCase):
 
 
 class OwnerStartWorkflowContractTests(unittest.TestCase):
+    def test_owner_start_v2_mode_is_explicit_and_never_silently_legacy(self):
+        workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
+        owner_job=workflow.split("\n  owner-start:\n",1)[1].split("\n  owner-resume-planning:\n",1)[0]
+        self.assertIn("FACTORY_JOURNEY_DELIVERY_BINDING_V2: 'true'",owner_job)
+        self.assertIn("--mode enqueue",owner_job)
+        self.assertIn("github.event.issue.number == 1055",owner_job)
+        source=(ROOT/"src/ai_product_factory/github_owner_start.py").read_text()
+        self.assertIn('environ.get("FACTORY_JOURNEY_DELIVERY_BINDING_V2"',source)
+        self.assertIn('"/rest/v1/rpc/factory_enqueue_journey_intake_v2"',source)
+
     def test_entrypoint_never_wakes_scheduler_from_untrusted_comment(self):
         workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
         job=workflow.split("\n  owner-start:\n",1)[1]
