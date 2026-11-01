@@ -19,6 +19,7 @@ DECLARE
  evidence jsonb;
 BEGIN
  IF p_set IS NULL OR p_run IS NULL OR p_unit IS NULL
+ OR p_source_commit IS NULL OR p_merge_commit IS NULL
  OR p_pr_number IS NULL OR p_pr_number<1 OR p_issue_number IS NULL OR p_issue_number<1
  OR p_source_commit !~ '^[0-9a-f]{40}$' OR p_merge_commit !~ '^[0-9a-f]{40}$'
  OR p_merge_commit=p_source_commit OR nullif(btrim(p_reason),'') IS NULL
