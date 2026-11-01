@@ -1,0 +1,29 @@
+name: OWNER V1 misroute quarantine PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261101142000_owner_start_v1_misroute_quarantine.sql"
+      - "scripts/verify_owner_v1_misroute_quarantine_postgres.py"
+      - ".github/workflows/owner-v1-misroute-quarantine-postgres.yml"
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: owner_v1_quarantine_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d owner_v1_quarantine_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: { python-version: "3.12" }
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify isolated adversarial PostgreSQL recovery
+        env:
+          FACTORY_OWNER_V1_QUARANTINE_TEST_DSN: postgresql://postgres:postgres@localhost:5432/owner_v1_quarantine_test
+        run: python scripts/verify_owner_v1_misroute_quarantine_postgres.py
