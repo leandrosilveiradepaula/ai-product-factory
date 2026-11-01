@@ -118,13 +118,14 @@ with psycopg.connect(DSN, autocommit=True) as db:
             create function public.qa_inherit_journey()
             returns trigger language plpgsql set search_path='' as $f$
             begin
-              if tg_table_name='factory_tasks' and new.parent_task_id is not null
+              if tg_table_name='factory_tasks'
+                 and nullif(to_jsonb(new)->>'parent_task_id','') is not null
               then
                 select journey_id into new.journey_id from public.factory_tasks
-                  where id=new.parent_task_id;
+                  where id=(to_jsonb(new)->>'parent_task_id')::uuid;
               elsif tg_table_name='factory_change_sets' then
                 select journey_id into new.journey_id from public.factory_tasks
-                  where id=new.root_task_id;
+                  where id=(to_jsonb(new)->>'root_task_id')::uuid;
               end if;
               return new;
             end $f$;
