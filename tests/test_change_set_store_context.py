@@ -65,7 +65,7 @@ class ChangeSetStoreContextTests(unittest.TestCase):
 
     def test_v2_context_resolves_missing_rpc_project_id_from_unique_project_key(self):
         store=SupabaseChangeSetStore(url="https://example.supabase.co",service_role_key="secret")
-        store._rpc=lambda name,payload:{"project_key":"crm-infodive","repository":"owner/repo"}
+        store._rpc=lambda name,payload:{"project_key":"crm-infodive","repository":"owner/repo","change_set_id":"cs-1"}
         def get(path):
             if path.startswith("factory_runs?"):
                 return [{"journey_id":"journey-1"}]
@@ -73,6 +73,9 @@ class ChangeSetStoreContextTests(unittest.TestCase):
                 return [{"id":"journey-1","project_id":"project-1","request_id":"req-1",
                          "binding":{"source_commit":"a"*40},"state":"executing",
                          "request_snapshot":{"text":"Fix contract listing"}}]
+            if path.startswith("factory_change_sets?"):
+                self.assertIn("id=eq.cs-1",path)
+                return [{"id":"cs-1","metadata":{}}]
             if path.startswith("factory_projects?"):
                 return [{"id":"project-1","project_key":"crm-infodive","manifest":{}}]
             raise AssertionError(path)
