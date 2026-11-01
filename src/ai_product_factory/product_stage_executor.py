@@ -22,6 +22,28 @@ class ProductStagePrompts:
     planning: str = "Return explicit tasks array for implementation, or decisions_needed for a real unresolved product/scope decision. If neither exists, return tasks=[] and decisions_needed=[] rather than inventing work: runtime will report non-actionable planning, never a completed development run. Use current_state_facts.live_candidate.verified_open_pr and source_evidence for exact-SHA repository facts. For tasks combining implementation or UI changes with unit tests, tests/regression are acceptance deliverables, not independent required_capabilities: route to one write-capable development or ui agent using capabilities from execution_registry, and put independent QA checks in specialist_reviews. If preferred_agent_role is omitted, choose an actual active write-capable builder role; never mix unrelated builder and specialist capabilities in a single task. Do not invent additional capability labels. Inspect the supplied authorized code snippets and test snippets before choosing a change; historical CURRENT_TASK and open issue descriptions are not proof a defect remains. When a scoped defect is visibly supported by the current code and not covered by existing tests, create a concrete implementation task within that scope. An existing deployed RPC call is not a request to introduce a new SQL RPC: a no-new-RPC constraint forbids creating or modifying database functions, not preserving an existing invocation. Resolve such current-code versus historical-task ambiguity autonomously; do not ask a human for scope authorization merely to retain existing behavior. A scope decision is warranted only if the proposed change genuinely exceeds authorized files, data access, permissions or requirements. Do not require working-tree status before planning (that is checked at worker checkout), and do not confuse a verified remote PR head with unverified CI, Preview, or release. If all inspected scope is implemented, state the remaining evidence gaps instead of inventing code work. If current_state_facts.global_product_readiness exists, treat it as an evidence obligation from a prior release: never interpret the candidate release as global product completion, never create implementation tasks merely because an audit domain is unassessed, and never turn previously completed tasks into new work. Correlate pending readiness dimensions with concrete current repository gaps; put verification-only work in test_strategy or specialist_reviews, and propose executable builder tasks only for substantiated missing functionality or defects inside the operator-requested scope. Create an actionable engineering plan. Return JSON only with architecture, workstreams, tasks, specialist_reviews, dependencies, test_strategy, release_strategy, risks, decisions_needed. The tasks array is strictly pre-PR implementation work and must contain only work executable by a write-capable builder profile from execution_registry (normally development or ui). Do not create product/reconciliation/planning tasks: resolve analysis from supplied evidence in this response. Do not create Security, QA, Operations, CI, Preview, deployment, or human-release tasks in tasks; list required post-candidate specialist roles in specialist_reviews using only security, qa, operations. Human approval/release is always a later gate, never a planning decision or task. If manifest.human_decisions contains human-approved answers to an earlier planning gate, treat those answers as authoritative product constraints. Continue from the existing manifest.engineering_plan, preserve stable task keys and accepted requirements when possible, and never re-ask an already answered decision unless new evidence reveals an actual contradiction. If a genuine current human decision is unresolved, put it in decisions_needed and do not make implementation depend on an invented executable task. Each decisions_needed item must be an object with decision_key, decision_kind, question, why_needed, and suggested_response. question, why_needed, and suggested_response must be concise, user-facing Brazilian Portuguese (pt-BR). suggested_response is an advisory draft only: it must preserve least privilege, stay within the supplied user intent, never claim approval already happened, and remain safe for the human to edit before explicitly approving. Avoid internal identifiers and implementation jargon in the question. A business_priority decision must also include candidate_work_keys with at least two external_key values that are currently active in current_state_facts.recent_tasks; historical references and terminal tasks are forbidden candidates. decision_kind must be one of product_requirement, scope_authorization, business_priority. Never ask a human to confirm repository facts, CI/readiness state, credentials/capabilities, already-closed work, or future production/release approval in decisions_needed; resolve supplied evidence autonomously or report a technical blocker outside decisions_needed. Every task must include task_key (stable short identifier), acceptance_criteria (non-empty array of independently verifiable outcomes), required_capabilities, scope_keys, depends_on, and may include preferred_agent_role and context_paths. scope_keys may be semantic when repository paths are not yet known, but prefer explicit repository-relative paths or prefixes when supported by supplied evidence. context_paths, when known, must contain repository-relative existing files that should be read before implementation; never invent a path not supported by supplied evidence. task_key values must be unique. depends_on may contain only task_key values from other tasks in this same output; never put decisions, gates, approvals, credentials, or external conditions in depends_on. Every task must be ownable by one write-capable builder profile. Each scope_keys item must be a repository-relative exact path or recognized concise semantic identifier; NEVER append prose to a path (for example 'somente se' or 'testes relacionados'). Put conditional requirements only in acceptance_criteria. For tests use an explicit, narrowly co-located test filename such as src/lib/example.test.ts or src/components/Example.test.tsx, never a descriptive test phrase or a broad repository test root. Do not assume a fixed number of agents."
 
 
+def _verified_v2_reconciliation_summary(summary: object) -> bool:
+    """Recognize only established, non-empty exact-source work objectives.
+
+    Reconciliation may represent work directly in summary.objective, or in
+    summary.active_work.objective. The latter is a structured stage result,
+    not a second source or permission to infer work from historical notes.
+    """
+    if isinstance(summary, str):
+        return bool(summary.strip())
+    if not isinstance(summary, dict):
+        return False
+    direct = summary.get("objective")
+    if isinstance(direct, str) and direct.strip():
+        return True
+    active = summary.get("active_work")
+    return (
+        isinstance(active, dict)
+        and isinstance(active.get("objective"), str)
+        and bool(active["objective"].strip())
+    )
+
+
 def _drop_unsubstantiated_business_priorities(output: dict, current_state_facts: dict | None) -> None:
     decisions=output.get("decisions_needed")
     if not isinstance(decisions,list):
@@ -266,13 +288,8 @@ class ProductStageExecutor:
                 or not isinstance(origin,dict)
                 or origin.get("generation")!=item.execution_generation
                 or not all(isinstance(v,dict) for v in resume.values())
-                or not (
-                    (isinstance(resume["reconciliation"].get("summary"), str)
-                     and bool(resume["reconciliation"]["summary"].strip()))
-                    or (isinstance(resume["reconciliation"].get("summary"), dict)
-                        and bool(resume["reconciliation"]["summary"])
-                        and isinstance(resume["reconciliation"]["summary"].get("objective"), str)
-                        and bool(resume["reconciliation"]["summary"]["objective"].strip()))
+                or not _verified_v2_reconciliation_summary(
+                    resume["reconciliation"].get("summary")
                 )
                 or not isinstance(resume["gap_analysis"].get("recommended_next_work"),list)
                 or not resume["gap_analysis"]["recommended_next_work"]):
