@@ -101,7 +101,7 @@ class GovernanceAmendmentTests(TestCase):
             lambda a,g: setattr(g.get_pull_request.return_value,"merged",False),
             lambda a,g: setattr(g.get_pull_request.return_value,"base_sha",MERGE),
             lambda a,g: setattr(g.get_pull_request.return_value,"head_repository","attacker/repo"),
-            lambda a,g: g.get_pull_request_files.return_value.__class__,
+            lambda a,g: None,
             lambda a,g: g.get_branch_sha.configure_mock(return_value=SOURCE),
             lambda a,g: a.update(issue_number=22),
             lambda a,g: a.update(change_set_id=RUN),
