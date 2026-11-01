@@ -288,6 +288,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             path.name for path in (ROOT / "supabase/migrations").glob("*.sql")
         }
         expected_history = {
+            "20261101041000_v2_governance_requeue_once.sql",
             "20261031200000_v2_context_requeue_once.sql",
             "20261031151500_v2_dispatch_epoch_repair.sql",
             "20261031151600_v2_integration_lineage_repair.sql",
