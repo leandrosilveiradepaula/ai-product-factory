@@ -76,8 +76,9 @@ def verify_scoped_governance_amendment(
     approved=[]
     for raw in re.findall(r"(?m)^-\s+`([^`]+)`",first_section):
         path=raw.strip()
-        if (not _EXACT_PATH.fullmatch(path) or any(p in (".","..") for p in path.split("/"))
-            or "//" in path or path.endswith(("/","."))):
+        if not _EXACT_PATH.fullmatch(path):
+            continue  # Broad test/documentation patterns are NOT authorization.
+        if any(p in (".","..") for p in path.split("/")) or "//" in path:
             deny()
         if path not in approved:
             approved.append(path)
@@ -117,7 +118,6 @@ def constrain_scoped_amendment(*,source:dict,proof:dict,run_id:str,work_unit_id:
     exact=[p for p in scopes if isinstance(p,str) and p in approved]
     if not exact:
         raise PermissionError("V2 amendment does not authorize any planned exact file")
-    context_paths=assignment.get("context_paths")
     enriched=dict(source)
     enriched["assignment"]={**assignment,"scope_keys":exact}
     enriched["verified_governance_amendment"]=proof
@@ -141,6 +141,4 @@ def constrain_scoped_amendment(*,source:dict,proof:dict,run_id:str,work_unit_id:
         "A document-only merge after the frozen source does not rebase "
         "the frozen code SHA or authorize edits to CURRENT_TASK.md.",
     ]
-    if isinstance(context_paths,list):
-        enriched["assignment"]["context_paths"]=context_paths
     return enriched
