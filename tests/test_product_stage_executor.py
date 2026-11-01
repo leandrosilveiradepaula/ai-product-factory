@@ -62,6 +62,13 @@ class ProductStageExecutorTests(unittest.TestCase):
                 }))
         for summary, accepted in (
             ({"objective": "Fix CRM #171", "repository": {"name": "crm-infodive"}}, True),
+            ({"active_work": {"objective": "Corrigir contratos CRM #209", "status": "running"}}, True),
+            ({"active_work": {"objective": " Corrigir contratos "}, "objective": " "}, True),
+            ({"active_work": {"objective": ""}}, False),
+            ({"active_work": {"objective": "  "}}, False),
+            ({"active_work": {"objective": ["CRM #209"]}}, False),
+            ({"active_work": {"status": "running"}}, False),
+            ({"active_work": "CRM #209"}, False),
             ({}, False),
             ({"repository": {"name": "crm-infodive"}}, False),
             ({"objective": "  "}, False),
