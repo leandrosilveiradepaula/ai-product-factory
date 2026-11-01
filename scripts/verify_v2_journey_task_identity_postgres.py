@@ -175,7 +175,7 @@ with psycopg.connect(DSN, autocommit=True) as db:
         assert first["builder_work_units"]==1 and first["status"]=="planned"
         c.execute("""select source_commit,integration_branch,journey_id from
           public.factory_change_sets where id=%s""",(first["change_set_id"],))
-        assert c.fetchone()==(SHA,binding(J2)["integration_branch"],J2)
+        assert tuple(map(str,c.fetchone()))==(SHA,binding(J2)["integration_branch"],J2)
         # Current real incident: two earlier failures and the materialization
         # failure on a third run, but the engineering/team plans were recorded.
         for ident in (PREV1,PREV2):
@@ -218,10 +218,10 @@ with psycopg.connect(DSN, autocommit=True) as db:
         assert recover(c,*ARGS)==receipt, "same command replay must be idempotent"
         c.execute("select external_key,journey_id,status from public.factory_tasks where id=%s",
                   (receipt["task_id"],))
-        assert c.fetchone()==(scoped_key(TITLE,J3),J3,"queued")
+        assert tuple(map(str,c.fetchone()))==(scoped_key(TITLE,J3),J3,"queued")
         c.execute("select status,journey_id,source_commit,integration_branch from public.factory_change_sets where id=%s",
                   (receipt["change_set_id"],))
-        assert c.fetchone()==("planned",J3,SHA,binding(J3)["integration_branch"])
+        assert tuple(map(str,c.fetchone()))==("planned",J3,SHA,binding(J3)["integration_branch"])
         c.execute("select count(*) from public.factory_change_set_work_units where change_set_id=%s and status='pending'",
                   (receipt["change_set_id"],))
         assert c.fetchone()[0]==1
