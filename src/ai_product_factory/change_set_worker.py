@@ -462,7 +462,7 @@ class ChangeSetBuilderWorker:
         # to edit callers. Verify the real call chain at the frozen SHA,
         # including readonly type/auth context, before invoking a paid model.
         readonly_callers=discover_verified_readonly_callers(
-            github=self.github,source=enriched,base_commit=base_commit,
+            github=self.github,source=source,base_commit=base_commit,
             all_paths=all_paths,existing_paths=tuple(context_paths),
             limit=12-len(required_context),
         )
