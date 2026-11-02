@@ -91,7 +91,7 @@ with psycopg.connect(DSN, autocommit=True) as db:
             updated_at timestamptz default now());
           create table public.factory_runs(
             id uuid primary key,task_id uuid,journey_id uuid,status text,source_commit text,
-            candidate_commit text,metadata jsonb,lease_owner text,
+            candidate_commit text,metadata jsonb,lease_owner text,last_error text,
             lease_expires_at timestamptz,finished_at timestamptz);
           create table public.factory_change_sets(
             id uuid primary key,project_id uuid,journey_id uuid,status text,source_commit text,
