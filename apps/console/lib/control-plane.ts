@@ -532,7 +532,50 @@ export async function getProjectStateContext(projectId:string):Promise<ProjectSt
  };
 }
 
-export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){const operator=await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_resolve_human_gate`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_gate_id:gateId,p_resolution:resolution,p_resolved_by:operator.email||operator.userId,p_note:note||null}),cache:"no-store"});if(!response.ok)throw new Error("Unable to resolve human gate");return response.json();}
+export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){
+ const operator=await requireConsoleOperator();
+ const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");
+ if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(gateId))
+  throw new Error("Gate identity invalid");
+ const lookup=await fetch(`${cfg.url}/rest/v1/factory_human_gates?select=id,gate_type,status,resolution&`+
+   "id=eq."+encodeURIComponent(gateId)+"&limit=2",{headers:cfg.headers,cache:"no-store"});
+ if(!lookup.ok)throw new Error("Unable to verify gate identity");
+ const rows=await lookup.json();
+ if(!Array.isArray(rows)||rows.length!==1||rows[0]?.id!==gateId)
+  throw new Error("Human gate not found or ambiguous");
+ const gate=rows[0];
+ const v2=(gate.gate_type==="material_requirement_change"
+   && gate.resolution?.v2_anchor?.schema==="v2_material_decision_gate_v1");
+ if(v2){
+  if(operator.role!=="admin")throw new Error("Only an active admin can decide material requirements");
+  if(gate.status!=="pending")throw new Error("This gate has already been resolved");
+  if(resolution==="approved"&&(!note||note.trim().length<8))
+   throw new Error("A material requirement needs an explicit written decision");
+  const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_resolve_v2_material_decision_gate`,{
+   method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},
+   body:JSON.stringify({p_gate_id:gateId,p_resolution:resolution,p_note:note||null,p_actor_id:operator.userId}),
+   cache:"no-store",
+  });
+  if(!response.ok)throw new Error("Material decision rejected by source/epoch safety gate");
+  const receipt=await response.json();
+  if(receipt?.gate_id!==gateId
+    ||receipt?.status!==(resolution==="approved"?"resumed":"decision_rejected")
+    ||receipt.release_authorized!==false
+    ||!/^[0-9a-f]{40}$/.test(String(receipt.source_commit||"")))
+   throw new Error("Material decision receipt is incomplete");
+  if(resolution==="approved"){
+   try{await requestIntakeWorkerWake();}catch{console.warn("material_decision_wake_will_retry");}
+  }
+  return receipt;
+ }
+ const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_resolve_human_gate`,{
+  method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},
+  body:JSON.stringify({p_gate_id:gateId,p_resolution:resolution,p_resolved_by:operator.email||operator.userId,p_note:note||null}),
+  cache:"no-store",
+ });
+ if(!response.ok)throw new Error("Unable to resolve human gate");
+ return response.json();
+}
 
 
 export type OperatorAdminRow={userId:string;email:string|null;role:"operator"|"admin"|null;active:boolean};
