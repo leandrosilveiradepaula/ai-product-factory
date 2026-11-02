@@ -287,7 +287,15 @@ Deno.serve(async(req:Request)=>{
         "leandrosilveiradepaula/ai-product-factory/.github/workflows/cross-repo-preview-browser-evidence.yml@refs/heads/main",
       ]);
       if(!tokenWorkflows.has(workflowRef)) return json(403,{error:"github_app_token_workflow_not_allowed"});
-      if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName)) {
+      // A Console decision wakes the same trusted main runner via
+      // repository_dispatch. The generic OIDC proxy already verifies this
+      // runner and bot actor; token minting must enforce that identity again.
+      // No other workflow may mint a cross-repo token from repository_dispatch.
+      const trustedConsoleWake=eventName==="repository_dispatch"
+        && workflowRef===TRUSTED_BACKUP_WORKFLOW_REF
+        && String(identity.actor||"")==="infodive-ai-product-factory[bot]";
+      const standardTokenEvent=["schedule","workflow_dispatch","issue_comment","push"].includes(eventName);
+      if(!standardTokenEvent && !trustedConsoleWake) {
         return json(403,{error:"github_app_token_event_not_allowed"});
       }
       return await mintGithubInstallationToken(req,supabaseUrl,key);
