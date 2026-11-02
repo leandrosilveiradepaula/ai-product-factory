@@ -314,6 +314,14 @@ def repin_project(project: dict, *, github_factory=None, rpc=None) -> dict:
     generation, version = controls.get("generation"), controls.get("version")
     if type(generation) is not int or generation < 1 or type(version) is not int or version < 0:
         raise PermissionError("existing project execution control is invalid")
+    # The V1 candidate source and Journey V2's immutable source policy are
+    # distinct lineages. If V2 owns this project, the legacy repin worker
+    # must not attempt to move the project epoch or misread a human draft.
+    # This is a bounded, read-only deferral; no control-plane mutation.
+    v2 = project.get("manifest", {}).get("journey_delivery_binding_v2")
+    if isinstance(v2, dict) and v2.get("enabled") is True:
+        return {"status": "deferred", "project_key": key,
+                "reason_code": "candidate_legacy_repin_suspended_by_v2"}
     github = github_factory(repository) if github_factory else GitHubRestAdapter(repository=repository, token=resolve_github_token(repository))
     new_sha = github.get_branch_sha(policy.target.branch)
     if new_sha == policy.target.sha:

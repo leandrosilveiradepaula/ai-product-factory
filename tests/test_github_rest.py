@@ -126,6 +126,53 @@ class GitHubRestAdapterTests(unittest.TestCase):
         sha = self.github.commit_files("feat/x", {"a.py": "print('x')"}, message="feat: x")
         self.assertEqual(sha, "commit1")
 
+    def test_nested_branch_refs_use_slashes_not_percent_encoded_slashes(self):
+        branch="factory/cs-3f09952e/issue209-contracts-isolated-read"
+        sha="a"*40
+        self.github.get_branch_sha(branch)
+        self.assertTrue(self.transport.calls[-1][1].endswith(
+            "/git/ref/heads/"+branch))
+        self.github.create_branch_at_sha(branch,sha)
+        self.assertEqual(self.transport.calls[-1][3],
+                         {"ref":"refs/heads/"+branch,"sha":sha})
+        self.assertFalse(any("%2F" in call[1] for call in self.transport.calls))
+
+    def test_missing_candidate_sha_fails_before_any_branch_call(self):
+        branch="factory/cs-3f09952e/issue209-contracts-isolated-read"
+        for invalid in (None,"None","","abc","a"*39,"g"*40,"A"*40):
+            before=len(self.transport.calls)
+            with self.subTest(sha=invalid), self.assertRaises(ValueError):
+                self.github.ensure_branch_at_sha(branch,invalid)
+            self.assertEqual(len(self.transport.calls),before)
+            with self.subTest(sha=invalid), self.assertRaises(ValueError):
+                self.github.create_branch_at_sha(branch,invalid)
+            self.assertEqual(len(self.transport.calls),before)
+
+    def test_branch_validation_rejects_ref_path_traversal(self):
+        for bad in ("../main","factory//bad","factory/../main",
+                    "factory/.hidden","factory/unsafe.lock","main?ref=x"):
+            with self.subTest(branch=bad),self.assertRaises(ValueError):
+                self.github.get_branch_sha(bad)
+
+    def test_ensure_branch_at_sha_detects_real_create_race_without_reset(self):
+        sha="a"*40
+        class Race(FakeGitHubTransport):
+            def __init__(self):
+                super().__init__()
+                self.gets=0
+            def __call__(self,method,url,headers,body):
+                if "/git/ref/heads/factory/cs-1/work" in url and method=="GET":
+                    self.gets+=1
+                    return (404,{"message":"Not Found"}) if self.gets==1 else (
+                        200,{"object":{"sha":sha}})
+                if url.endswith("/git/refs") and method=="POST":
+                    return 422,{"message":"Reference already exists"}
+                return super().__call__(method,url,headers,body)
+        tr=Race()
+        github=GitHubRestAdapter(repository="owner/repo",token="local",transport=tr)
+        self.assertEqual(github.ensure_branch_at_sha("factory/cs-1/work",sha),sha)
+        self.assertEqual(tr.gets,2)
+
     def test_create_pr_and_green_ci(self):
         pr = self.github.create_pull_request(title="x", body="y", head="feat/x")
         self.assertEqual(pr.number, 9)

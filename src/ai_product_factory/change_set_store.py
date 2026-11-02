@@ -103,11 +103,21 @@ class SupabaseChangeSetStore:
             "p_run_id":run_id,"p_source_commit":source_commit,
             "p_integration_branch":integration_branch,"p_work_branch":work_branch,
         })
-        if not isinstance(data,dict):raise RuntimeError("change-set source binding returned no data")
+        if not isinstance(data,dict):
+            raise RuntimeError("change-set source binding returned no data")
+        # A SQL NULL must never become the literal string "None" and reach
+        # GitHub POST /git/refs as a supposed commit SHA (HTTP 422).
+        for key in ("base_commit", "source_commit"):
+            if not isinstance(data.get(key), str) or not re.fullmatch(r"[0-9a-f]{40}", data[key]):
+                raise PermissionError("change-set binding lacks verified exact " + key)
+        if data["source_commit"] != source_commit:
+            raise PermissionError("change-set binding source differs from request")
+        if data.get("integration_branch") != integration_branch:
+            raise PermissionError("change-set binding integration ref differs from request")
         return ChangeSetBinding(
             change_set_id=str(data["change_set_id"]),work_unit_id=str(data["work_unit_id"]),
-            base_commit=str(data["base_commit"]),source_commit=str(data["source_commit"]),
-            integration_branch=str(data["integration_branch"]),wave=int(data["wave"]),
+            base_commit=data["base_commit"],source_commit=data["source_commit"],
+            integration_branch=integration_branch,wave=int(data["wave"]),
         )
 
     def context_source(self,run_id:str)->dict:
