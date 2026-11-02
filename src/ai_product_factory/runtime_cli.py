@@ -227,16 +227,30 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  elif not agent_key:
   raise ValueError("agent_key is required when run_id is explicit")
  scheduler.require_route_tools(agent_key,"direct")
- item=SupabaseDirectRunQueue().claim_next(worker_id,agent_key,run_id)
+ queue=SupabaseDirectRunQueue()
+ # Fail before lease claim or model call when the trusted Actions identity
+ # cannot acquire its narrowly scoped cross-repository credential.
+ preflight_github=None
+ preflight_target=None
+ if os.getenv("GITHUB_ACTIONS","").strip().lower()=="true":
+  preflight_target=queue.preflight_target(run_id)
+  if preflight_target is None:return {"claimed":False,"status":"empty"}
+  target_repo,target_key=preflight_target
+  if target_repo!=os.getenv("GITHUB_REPOSITORY","").strip():
+   SupabaseProjectGitHubAccessStore().require_capabilities(target_key,("contents_write","issues_write","pull_requests_write"))
+  preflight_github=GitHubRestAdapter(repository=target_repo)
+ item=queue.claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
   _routed_checkpoint(item,worker_id)
+  if preflight_target is not None and (item.repository,item.project_key)!=preflight_target:
+   raise PermissionError("Direct preflight repository binding changed during claim")
   checkpoint=lambda:_routed_checkpoint(item,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
   producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
   producer=_CheckpointedProducer(producer,checkpoint)
-  github=_CheckpointedGitHub(GitHubRestAdapter(repository=item.repository),checkpoint)
+  github=_CheckpointedGitHub(preflight_github or GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):
    try:
     result=ChangeSetBuilderWorker(github=github,store=SupabaseChangeSetStore(),producer=producer,execution_route="direct").execute(item)
