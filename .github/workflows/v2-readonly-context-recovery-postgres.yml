@@ -1,0 +1,29 @@
+name: V2 Readonly Context Recovery PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261102211000_v2_readonly_context_recovery.sql"
+      - "scripts/verify_v2_readonly_context_recovery_postgres.py"
+      - ".github/workflows/v2-readonly-context-recovery-postgres.yml"
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: readonly_context_qa }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d readonly_context_qa"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: { python-version: "3.12" }
+      - run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Validate no-effect replay and negative predicates in isolated PG
+        env:
+          FACTORY_READONLY_CONTEXT_QA_DSN: postgresql://postgres:postgres@127.0.0.1:5432/readonly_context_qa
+        run: python scripts/verify_v2_readonly_context_recovery_postgres.py
