@@ -37,6 +37,19 @@ class GitHubAppBrokerBindingTests(unittest.TestCase):
         self.assertIn('["schedule","workflow_dispatch","issue_comment","push"]', edge)
         self.assertIn(".github/workflows/crm-cross-repo-preflight.yml@refs/heads/main", edge)
 
+    def test_console_wake_mints_only_for_trusted_main_runner_and_bot(self):
+        edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        self.assertIn('const trustedConsoleWake=eventName==="repository_dispatch"', edge)
+        self.assertIn('&& workflowRef===TRUSTED_BACKUP_WORKFLOW_REF', edge)
+        self.assertIn('&& String(identity.actor||"")==="infodive-ai-product-factory[bot]"', edge)
+        self.assertIn('if(!standardTokenEvent && !trustedConsoleWake)', edge)
+        self.assertIn('github_app_token_event_not_allowed', edge)
+        self.assertIn('const standardTokenEvent=["schedule","workflow_dispatch","issue_comment","push"]', edge)
+        self.assertNotIn('["schedule","workflow_dispatch","issue_comment","push","repository_dispatch"]', edge)
+        self.assertIn('String(payload.workflow_ref??"")!==TRUSTED_BACKUP_WORKFLOW_REF ||', edge)
+        self.assertIn('String(payload.actor??"")!=="infodive-ai-product-factory[bot]"', edge)
+        self.assertIn('if(event==="workflow_run")', edge)
+
     def test_crm_workflow_is_not_authorized_for_generic_control_plane_proxy(self):
         edge = (ROOT / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
         self.assertIn("GENERIC_PROXY_WORKFLOW_REFS", edge)

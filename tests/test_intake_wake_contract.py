@@ -35,8 +35,13 @@ class IntakeWakeContract(unittest.TestCase):
   self.assertIn('github.event.client_payload.source == \'console-intake\'',RUNNER)
   self.assertIn('github.actor == \'infodive-ai-product-factory[bot]\'',RUNNER)
   self.assertNotIn('["schedule","workflow_dispatch","push","issue_comment","repository_dispatch"]',BROKER)
-  # A wake event must not mint cross-repo tokens via the privileged endpoint.
-  self.assertIn('if(!["schedule","workflow_dispatch","issue_comment","push"].includes(eventName))',BROKER)
+  # The wake may mint only for the exact trusted Factory runner and bot.
+  # No generic repository_dispatch authorization or workflow_run escalation.
+  self.assertIn('const trustedConsoleWake=eventName==="repository_dispatch"',BROKER)
+  self.assertIn('&& workflowRef===TRUSTED_BACKUP_WORKFLOW_REF',BROKER)
+  self.assertIn('&& String(identity.actor||"")==="infodive-ai-product-factory[bot]"',BROKER)
+  self.assertIn('if(!standardTokenEvent && !trustedConsoleWake)',BROKER)
+  self.assertNotIn('["schedule","workflow_dispatch","issue_comment","push","repository_dispatch"]',BROKER)
 
  def test_registration_does_not_wake_or_create_runnable_work(self):
   registration=CONTROL.split("export async function createProjectIntakeAndBootstrap(",1)[1].split("export type ProjectExecutionControl",1)[0]
