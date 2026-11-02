@@ -100,7 +100,8 @@ with psycopg.connect(DSN,autocommit=True) as db:
           %s,%s,'executing',19,%s,%s,4,%s,%s,null,null,null,null)""",
           (J,P,SHA,Jsonb(BINDING),"c"*64,
            Jsonb({"text":"issue #209 on leandrosilveiradepaula/crm-infodive"})))
-        c.execute("insert into public.factory_tasks values(%s,%s,%s,null,'blocked',now())",(T,P,J))
+        c.execute("insert into public.factory_tasks values(%s,%s,%s,%s,'blocked',now())",
+                  (T,P,J,"99999999-9999-4999-8999-999999999998"))
         c.execute("""insert into public.factory_runs(
           id,task_id,status,execution_route,source_commit,candidate_commit,
           metadata,last_error)
