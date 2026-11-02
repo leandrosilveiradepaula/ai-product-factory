@@ -53,15 +53,15 @@ class DirectPreclaimTests(unittest.TestCase):
         scheduler = MagicMock()
         auth = MagicMock()
         auth.resolve_primary_api.return_value = SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "factory/main"}, clear=False), \\
-             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \\
-             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \\
-             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \\
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler", return_value=scheduler), \\
-             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \\
-             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore") as access, \\
-             patch("ai_product_factory.runtime_cli.GitHubRestAdapter", side_effect=PermissionError("broker 403")) as github, \\
-             patch("ai_product_factory.runtime_cli.ModelImplementationProducer") as producer, \\
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "factory/main"}, clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler", return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore") as access, \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter", side_effect=PermissionError("broker 403")) as github, \
+             patch("ai_product_factory.runtime_cli.ModelImplementationProducer") as producer, \
              patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as model:
             with self.assertRaisesRegex(PermissionError, "broker 403"):
                 run_direct_once("w", "development", "run")
@@ -81,14 +81,14 @@ class DirectPreclaimTests(unittest.TestCase):
         scheduler = MagicMock()
         auth = MagicMock()
         auth.resolve_primary_api.return_value = SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "factory/main"}, clear=False), \\
-             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \\
-             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \\
-             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \\
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler", return_value=scheduler), \\
-             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \\
-             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"), \\
-             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \\
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "factory/main"}, clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler", return_value=scheduler), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \
+             patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"), \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
              patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as model:
             result = run_direct_once("w", "development", "run")
         self.assertEqual(result, {"claimed": False, "status": "empty"})
@@ -102,12 +102,12 @@ class DirectPreclaimTests(unittest.TestCase):
         queue.preflight_target.return_value = None
         auth = MagicMock()
         auth.resolve_primary_api.return_value = SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}, clear=False), \\
-             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \\
-             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \\
-             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \\
-             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \\
-             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \\
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}, clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+             patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
+             patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \
+             patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
+             patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \
              patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
             result = run_direct_once("w", "development", "run")
         self.assertEqual(result["status"], "empty")
