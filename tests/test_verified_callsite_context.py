@@ -32,6 +32,7 @@ FILES = {
     "docs/codex/CURRENT_TASK.md": "Issue scope read-only callers",
     "src/services/ContractService.ts":
         "export class ContractService { static async getContracts(organizationId: string) {} }",
+    "src/services/ContractService.test.ts": "export const contractScopeTest = true;",
     "src/app/(dashboard)/contracts/actions.ts":
         "import { ContractService } from '@/services/ContractService'; "
         "export async function getContracts() { return ContractService.getContracts('org'); }",
