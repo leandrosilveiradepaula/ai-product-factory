@@ -86,7 +86,7 @@ def summarize(payload: object) -> tuple[dict, str]:
             reason_code = None
         if outcome == "deferred" and reason_code not in {"candidate_draft_hold", "candidate_source_consumed", "candidate_legacy_repin_suspended_by_v2"}:
             raise ValueError("unrecognized candidate deferral")
-        if outcome in {"blocked", "error"} and reason_code in {"candidate_draft_hold", "candidate_source_consumed"}:
+        if outcome in {"blocked", "error"} and reason_code in {"candidate_draft_hold", "candidate_source_consumed", "candidate_legacy_repin_suspended_by_v2"}:
             raise ValueError("draft hold cannot mask candidate failure")
         safe.append({"project_key": key, "status": outcome, "sha": sha if outcome in
                      {"unchanged", "updated", "deferred"} else None,
