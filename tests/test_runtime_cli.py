@@ -159,7 +159,8 @@ class RuntimeCliTests(unittest.TestCase):
         scheduler=MagicMock()
         queue=MagicMock();queue.claim_next.return_value=None
         auth=MagicMock();auth.resolve_primary_api.return_value=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+        with patch.dict("os.environ",{"GITHUB_ACTIONS":"false"},clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
              patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=auth), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
@@ -340,7 +341,8 @@ class RuntimeCliTests(unittest.TestCase):
         }
         queue=MagicMock();queue.claim_next.return_value=None
         auth=MagicMock();auth.resolve_primary_api.return_value=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+        with patch.dict("os.environ",{"GITHUB_ACTIONS":"false"},clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
              patch("ai_product_factory.runtime_cli.RuntimeAuthResolver",return_value=auth), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
@@ -1283,7 +1285,8 @@ class RuntimeCliTests(unittest.TestCase):
         queue=MagicMock();queue.claim_next.return_value=item
         worker=MagicMock();worker.execute.side_effect=RuntimeError("implementation failed")
         auth=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
+        with patch.dict("os.environ",{"GITHUB_ACTIONS":"false"},clear=False), \
+             patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
              patch("ai_product_factory.runtime_cli.RuntimeAuthResolver") as resolver, \
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler",return_value=scheduler), \
@@ -1308,7 +1311,7 @@ class RuntimeCliTests(unittest.TestCase):
         queue=MagicMock();queue.claim_next.return_value=item
         access=MagicMock();access.require_capabilities.side_effect=PermissionError("GitHub capabilities are not ready")
         auth=SimpleNamespace(kind=AuthKind.OPENAI_API_KEY)
-        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"factory/own"},clear=False), \
+        with patch.dict("os.environ",{"GITHUB_REPOSITORY":"factory/own","GITHUB_ACTIONS":"false"},clear=False), \
              patch("ai_product_factory.runtime_cli.require_primary_runtime_enabled"), \
              patch("ai_product_factory.runtime_cli.RuntimeAuthResolver") as resolver, \
              patch("ai_product_factory.runtime_cli.require_paid_runtime_budget"), \
