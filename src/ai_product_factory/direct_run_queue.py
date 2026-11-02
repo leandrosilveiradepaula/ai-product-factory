@@ -6,6 +6,46 @@ from .supabase_server import resolve_supabase_server_config
 class SupabaseDirectRunQueue:
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
   cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers
+ def preflight_target(self,run_id:str)->tuple[str,str]|None:
+  """Read exact queued Direct target before taking a lease or spending tokens.
+
+  Only the trusted server's project repository is returned.  This read is
+  advisory; the post-claim epoch and identity checks remain authoritative.
+  """
+  if not isinstance(run_id,str) or not run_id.strip():
+   raise ValueError("run ID is required for Direct preflight")
+  from urllib.parse import quote
+  def rows(path:str)->list[dict]:
+   req=urllib.request.Request(f"{self.url}/rest/v1/{path}",method="GET",headers=self.headers)
+   try:
+    with urllib.request.urlopen(req,timeout=30) as response:
+     result=json.loads(response.read().decode())
+   except urllib.error.HTTPError as exc:
+    raise RuntimeError("Direct repository preflight Control Plane read failed") from exc
+   if not isinstance(result,list):
+    raise RuntimeError("Direct repository preflight response was invalid")
+   return result
+  runs=rows("factory_runs?select=id,task_id,status,execution_route&id=eq."+quote(run_id,safe="")+"&limit=1")
+  if not runs or runs[0].get("status")!="queued" or runs[0].get("execution_route")!="direct":
+   return None
+  task_id=runs[0].get("task_id")
+  if not isinstance(task_id,str) or not task_id:
+   raise RuntimeError("Direct preflight lacks task identity")
+  tasks=rows("factory_tasks?select=id,project_id,status&id=eq."+quote(task_id,safe="")+"&limit=1")
+  if len(tasks)!=1 or tasks[0].get("status")!="queued_execution":
+   return None
+  project_id=tasks[0].get("project_id")
+  if not isinstance(project_id,str) or not project_id:
+   raise RuntimeError("Direct preflight lacks project identity")
+  projects=rows("factory_projects?select=id,project_key,repository,is_active&id=eq."+quote(project_id,safe="")+"&limit=1")
+  if len(projects)!=1 or projects[0].get("is_active") is not True:
+   return None
+  repository=projects[0].get("repository")
+  project_key=projects[0].get("project_key")
+  if not isinstance(repository,str) or repository.count("/")!=1 or not isinstance(project_key,str) or not project_key.strip():
+   raise RuntimeError("Direct repository preflight returned invalid binding")
+  return repository,project_key
+
  def claim_next(self,worker_id:str,agent_key:str|None=None,run_id:str|None=None)->DirectExecutionItem|None:
   if not isinstance(worker_id,str) or not worker_id.strip():
       raise ValueError("worker ID is required to claim routed work")
