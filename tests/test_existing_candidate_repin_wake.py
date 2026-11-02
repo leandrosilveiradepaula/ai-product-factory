@@ -154,6 +154,32 @@ class ExistingCandidateWakeTests(unittest.TestCase):
         self.assertNotIn("updated", str(out))
         self.assertIn("candidate_source_consumed", md)
 
+    def test_v2_owned_legacy_lane_is_truthfully_deferred_without_sha(self):
+        case = example()
+        case["status"] = "deferred"
+        case["results"] = [{
+            "project_key": "existing-00", "status": "deferred",
+            "reason_code": "candidate_legacy_repin_suspended_by_v2",
+        }]
+        output, summary = summarize(case)
+        self.assertEqual(output["results"], [{
+            "project_key": "existing-00", "status": "deferred",
+            "sha": None, "reason_code": "candidate_legacy_repin_suspended_by_v2",
+        }])
+        self.assertIn("| existing-00 | deferred | N/A | candidate_legacy_repin_suspended_by_v2 |", summary)
+        self.assertNotIn("successfully verified", summary)
+        # A claimed SHA would be fabricated: the V2 guard never reads GitHub.
+        for addition in ({"sha": SHA}, {"new_sha": SHA}, {"observed_sha": SHA}):
+            bad = dict(case)
+            bad["results"] = [{**case["results"][0], **addition}]
+            with self.subTest(addition=addition), self.assertRaises(ValueError):
+                summarize(bad)
+        bad = dict(case)
+        bad["results"] = [{**case["results"][0], "status": "blocked"}]
+        bad["status"] = "partial_failure"
+        with self.assertRaises(ValueError):
+            summarize(bad)
+
     def test_partial_failure_cannot_be_hidden_by_another_draft_hold(self):
         case = example(projects=2, eligible=2, outcome="error")
         case["results"][0] = {"project_key":"existing-00","status":"deferred",
