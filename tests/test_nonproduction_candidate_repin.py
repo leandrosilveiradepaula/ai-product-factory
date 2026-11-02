@@ -98,6 +98,19 @@ class CandidateRePinTests(unittest.TestCase):
         item = project()
         return ExistingCandidatePolicy.parse(item["manifest"], repository=item["repository"])
 
+    def test_legacy_repin_defers_when_v2_policy_owns_project(self):
+        item=project()
+        item["manifest"]["journey_delivery_binding_v2"]={
+            "enabled":True,"version":4,"source_mode":"main_snapshot",
+            "source_commit_pin":OLD}
+        gh=github(item["repository"])
+        rpc=MagicMock()
+        result=repin_project(item,github_factory=lambda _:gh,rpc=rpc)
+        self.assertEqual(result["status"],"deferred")
+        self.assertEqual(result["reason_code"],"candidate_legacy_repin_suspended_by_v2")
+        gh.get_branch_sha.assert_not_called()
+        rpc.assert_not_called()
+
     def test_verified_exact_sha_uses_declared_repository_workflow(self):
         policy = self.policy()
         result = verify_candidate(github(policy.target.repository), target=policy.target, ci_policy=policy.ci, new_sha=NEW)

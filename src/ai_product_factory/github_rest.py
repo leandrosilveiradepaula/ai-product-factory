@@ -189,8 +189,22 @@ class GitHubRestAdapter:
             raise RuntimeError("GitHub commit statuses are not a valid list")
         return rows
 
+    @staticmethod
+    def _branch_ref_path(branch: str) -> str:
+        # The GitHub /git/ref/heads/{branch} route expects slash-separated
+        # branch components. Escaping "/" as %2F makes existing nested refs
+        # appear absent, then the create-on-404 path can misread HTTP 422.
+        if (not isinstance(branch, str) or not 1 <= len(branch) <= 200
+            or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.\-/]*", branch)
+            or any(part in ("", ".", "..") or part.startswith(".")
+                   or part.endswith((".", ".lock"))
+                   for part in branch.split("/"))
+            or "@{" in branch or "//" in branch):
+            raise ValueError("invalid GitHub branch ref")
+        return parse.quote(branch, safe="/")
+
     def get_branch_sha(self, branch: str) -> str:
-        encoded = parse.quote(branch, safe="")
+        encoded = self._branch_ref_path(branch)
         row = self._call("GET", f"/repos/{self.repository}/git/ref/heads/{encoded}")
         return row["object"]["sha"]
 
@@ -201,13 +215,17 @@ class GitHubRestAdapter:
         return base_sha
 
     def create_branch_at_sha(self, branch: str, sha: str) -> str:
-        if not sha.strip():
-            raise ValueError("sha is required")
+        self._branch_ref_path(branch)
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("branch creation requires exact lowercase commit SHA")
         self._call("POST", f"/repos/{self.repository}/git/refs",
                    payload={"ref": f"refs/heads/{branch}", "sha": sha})
         return sha
 
     def ensure_branch_at_sha(self, branch: str, sha: str) -> str:
+        self._branch_ref_path(branch)
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("branch base requires exact lowercase commit SHA")
         try:
             current=self.get_branch_sha(branch)
         except GitHubRequestError as exc:
@@ -340,7 +358,7 @@ class GitHubRestAdapter:
                               payload={"base_tree": base_tree_sha, "tree": tree})
         new_commit = self._call("POST", f"/repos/{self.repository}/git/commits",
                                 payload={"message": message, "tree": new_tree["sha"], "parents": [base_sha]})
-        self._call("PATCH", f"/repos/{self.repository}/git/refs/heads/{parse.quote(branch, safe='')}",
+        self._call("PATCH", f"/repos/{self.repository}/git/refs/heads/{self._branch_ref_path(branch)}",
                    payload={"sha": new_commit["sha"], "force": False})
         return new_commit["sha"]
 
