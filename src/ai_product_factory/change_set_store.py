@@ -242,6 +242,19 @@ class SupabaseChangeSetStore:
             # Do not pass V1 selection/evidence to a V2 implementation prompt.
             enriched["delivery_target"]=None
             enriched["repin_evidence"]=None
+            # Project-scoped V1 human decisions must not authorize changes
+            # in another immutable Journey V2 or sibling Change Set.
+            cs_id=str(data.get("change_set_id") or "")
+            enriched["human_decisions"]=[
+                decision for decision in decisions
+                if isinstance(decision,dict)
+                and decision.get("journey_id")==journey_id
+                and decision.get("change_set_id")==cs_id
+                and decision.get("decision_kind")=="material_requirement_change"
+                and isinstance(decision.get("gate_id"),str)
+                and isinstance(decision.get("response"),str)
+                and decision.get("source_commit")==journey["binding"].get("source_commit")
+            ]
         return enriched
 
     def record_context(self,*,run_id:str,packet_hash:str,packet:dict)->dict:
@@ -251,6 +264,16 @@ class SupabaseChangeSetStore:
 
     def set_repair_status(self,*,run_id:str,status:str)->dict:
         return self._rpc("factory_set_repair_status",{"p_run_id":run_id,"p_status":status}) or {}
+
+    def open_v2_material_decision_gate(self, *, run_id: str, decision: dict) -> dict:
+        receipt=self._rpc("factory_open_v2_work_unit_decision_gate",{
+            "p_run_id":run_id,"p_decision":decision,
+        })
+        if (not isinstance(receipt,dict) or receipt.get("status")!="awaiting_human"
+            or receipt.get("run_id")!=run_id
+            or not isinstance(receipt.get("gate_id"),str)):
+            raise RuntimeError("material decision gate did not produce durable verified receipt")
+        return receipt
 
     def block_work_unit(self,*,run_id:str,reason:str,blocker_type:str="implementation_blocked")->dict:
         if not run_id.strip() or not reason.strip():

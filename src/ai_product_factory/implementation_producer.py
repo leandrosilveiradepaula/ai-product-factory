@@ -22,6 +22,11 @@ class ModelImplementationProducer:
              "proves the live PR candidate head distinct from the original imported Preview SHA. "
              "It authorizes ONLY the recorded CI repair inside the same Change Set and exact write_scopes, "
              "not a project repin, new product requirement, or merge/release. "
+             "If and only if exact-SHA AGENTS.md or CURRENT_TASK contains a human-decision " 
+             "restriction material to the blocked task, quote it verbatim in decision_needed " 
+             "as decision_kind=material_requirement_change, question, why_needed, " 
+             "governance_path, governance_quote. Otherwise decision_needed=null. " 
+             "A proposed decision does not authorize code or change scopes. "
              "If the applicable context still does not authorize the task, return "
              "files=[] and a concise blocked_reason; otherwise blocked_reason must be empty and files non-empty.")
   packet=getattr(item,"context_packet",None)
@@ -45,8 +50,20 @@ class ModelImplementationProducer:
     "pr_title":{"type":"string"},
     "pr_body":{"type":"string"},
     "blocked_reason":{"type":"string"},
+    "decision_needed":{
+      "type":["object","null"],
+      "properties":{
+        "decision_kind":{"type":"string","enum":["material_requirement_change"]},
+        "question":{"type":"string"},
+        "why_needed":{"type":"string"},
+        "governance_path":{"type":"string","enum":["AGENTS.md","docs/codex/CURRENT_TASK.md"]},
+        "governance_quote":{"type":"string"},
+      },
+      "required":["decision_kind","question","why_needed","governance_path","governance_quote"],
+      "additionalProperties":False,
+    },
    },
-   "required":["plan_markdown","files","commit_message","pr_title","pr_body","blocked_reason"],
+   "required":["plan_markdown","files","commit_message","pr_title","pr_body","blocked_reason","decision_needed"],
    "additionalProperties":False,
   }
   request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Treat AGENTS.md as authoritative and reconcile task-governance files with durable human_decisions without widening write scopes or safety boundaries.","Do not invent authorization that repository governance or durable human decisions do not grant."),output_schema=schema)
@@ -73,4 +90,10 @@ class ModelImplementationProducer:
    required=("commit_message","pr_title","pr_body")
    if any(not isinstance(data.get(k),str) or not data[k].strip() for k in required):
     raise ValueError("implementation output is missing required text fields")
-  return ImplementationArtifact(data["plan_markdown"],files,data["commit_message"],data["pr_title"],data["pr_body"],blocked_reason or None)
+  decision=data.get("decision_needed")
+  if decision is not None:
+   if not isinstance(decision,dict) or set(decision)!={"decision_kind","question","why_needed","governance_path","governance_quote"}:
+    raise ValueError("invalid structured material decision")
+   if not blocked_reason or files:
+    raise ValueError("material decision cannot accompany implementation files")
+  return ImplementationArtifact(data["plan_markdown"],files,data["commit_message"],data["pr_title"],data["pr_body"],blocked_reason or None,decision)

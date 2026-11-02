@@ -795,11 +795,32 @@ class ChangeSetBuilderWorker:
             )
             raise
         if artifact.blocked_reason:
-            self.store.block_work_unit(
-                run_id=item.run_id,
-                reason=artifact.blocked_reason,
-                blocker_type="repository_governance",
-            )
+            if artifact.decision_needed is not None:
+                from .v2_material_decision import validated_material_decision
+                try:
+                    decision=validated_material_decision(
+                        artifact.decision_needed,
+                        source=source, snapshot=snapshot,
+                        blocked_reason=artifact.blocked_reason,
+                    )
+                    self.store.open_v2_material_decision_gate(
+                        run_id=item.run_id, decision=decision,
+                    )
+                except Exception:
+                    # Missing migration, forged quotation, or unavailable DB
+                    # can never leave a paid worker leased or running.
+                    self.store.block_work_unit(
+                        run_id=item.run_id,
+                        reason=artifact.blocked_reason,
+                        blocker_type="repository_governance",
+                    )
+                    raise
+            else:
+                self.store.block_work_unit(
+                    run_id=item.run_id,
+                    reason=artifact.blocked_reason,
+                    blocker_type="repository_governance",
+                )
             raise ImplementationBlocked(artifact.blocked_reason)
         if not artifact.files:
             self.store.block_work_unit(
