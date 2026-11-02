@@ -17,6 +17,7 @@ from .journey_governance_amendment import verify_scoped_governance_amendment,con
 from .ci_repair_candidate_evidence import verify_existing_ci_repair_candidate
 from .ci_typecheck_repair_diagnostics import verified_typecheck_repair_diagnostics
 from .ci_repair_readonly_imports import resolve_verified_readonly_imports
+from .verified_callsite_context import discover_verified_readonly_callers
 
 
 @dataclass(frozen=True)
@@ -457,6 +458,19 @@ class ChangeSetBuilderWorker:
         assignment["scope_keys"]=resolved_scopes
         enriched=dict(source)
         enriched["assignment"]=assignment
+        # A semantic call-site scope is an evidence requirement, not a grant
+        # to edit callers. Verify the real call chain at the frozen SHA,
+        # including readonly type/auth context, before invoking a paid model.
+        readonly_callers=discover_verified_readonly_callers(
+            github=self.github,source=source,base_commit=base_commit,
+            all_paths=all_paths,existing_paths=tuple(context_paths),
+            limit=12-len(required_context),
+        )
+        if readonly_callers:
+            selected=[*required_context,*readonly_callers]
+            selected.extend(p for p in context_paths if p not in selected)
+            context_paths=selected[:12]
+        enriched["verified_readonly_callsite_paths"]=list(readonly_callers)
         # Exact native TypeScript failures may refer to a module outside the
         # allowed *write* files. Resolve the imported symbol against exports
         # in the real candidate tree and make the unique module READ ONLY.
@@ -467,9 +481,9 @@ class ChangeSetBuilderWorker:
         )
         readonly_paths=list(dict.fromkeys(row.exported_from for row in readonly_imports))
         if readonly_paths:
-            if len(required_context)+len(readonly_paths)>12:
+            if len(required_context)+len(readonly_callers)+len(readonly_paths)>12:
                 raise PermissionError("required CI repair import context exceeds safe file count")
-            selected=[*required_context,*readonly_paths]
+            selected=[*required_context,*readonly_callers,*readonly_paths]
             selected.extend(p for p in context_paths if p not in selected)
             context_paths=selected[:12]
             enriched["ci_verified_readonly_import_paths"]=readonly_paths
@@ -532,7 +546,15 @@ class ChangeSetBuilderWorker:
                    or p.startswith("/") or ".." in p.split("/")
                    for p in readonly)):
             raise PermissionError("invalid attested CI import read-only context")
-        required = governance | (set(paths) & exact_scopes) | set(readonly)
+        callsite=source.get("verified_readonly_callsite_paths")
+        if callsite is None:
+            callsite=[]
+        if (not isinstance(callsite,list) or len(callsite)>9
+            or any(not isinstance(p,str) or p not in paths or p in exact_scopes
+                   or p.startswith("/") or ".." in p.split("/")
+                   for p in callsite)):
+            raise PermissionError("invalid pinned call-site read-only context")
+        required = governance | (set(paths) & exact_scopes) | set(readonly) | set(callsite)
         ordered = [path for path in paths if path in required] + [
             path for path in paths if path not in required
         ]
@@ -563,8 +585,8 @@ class ChangeSetBuilderWorker:
             encoded = clean.encode("utf-8")
             if clean != original:
                 unsafe.add(path)
-                if path in readonly:
-                    raise PermissionError("verified read-only CI import contains redacted secret")
+                if path in readonly or path in callsite:
+                    raise PermissionError("verified read-only context contains redacted secret")
                 if path in exact_scopes:
                     raise PermissionError(
                         "editable repository context contains redacted secret: " + path
