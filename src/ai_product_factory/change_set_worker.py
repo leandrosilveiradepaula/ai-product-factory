@@ -225,7 +225,11 @@ class ChangeSetBuilderWorker:
             return None
         path=match.group("path")
         segments=path.split("/")
-        if (len(segments)<3 or any(segment in ("",".","..") or segment.startswith(".") for segment in segments)
+        # Exact new test files directly inside an already populated test/ or
+        # tests/ root are legitimate. They must never imply a wildcard grant.
+        root_level_test=(len(segments)==2 and segments[0] in ("test","tests"))
+        if ((len(segments)<3 and not root_level_test)
+                or any(segment in ("",".","..") or segment.startswith(".") for segment in segments)
                 or "//" in path or "/.github/" in path.lower()):
             return None
         if path not in all_paths:
@@ -238,7 +242,7 @@ class ChangeSetBuilderWorker:
                 # directory, but only when its immediate parent namespace
                 # already contains real files in the pinned commit. This
                 # never expands an exact scope to a prefix or a sibling file.
-                if len(parent.split("/")) < 3:
+                if len(parent.split("/")) < 3 and parent not in ("test","tests"):
                     # Never create a new immediate child of src/ or app/.
                     return None
                 existing_ancestor=parent.rsplit("/",1)[0]+"/"
