@@ -83,6 +83,30 @@ class VerifiedCallsiteContextTests(unittest.TestCase):
         for call in worker.github.get_file_text.call_args_list:
             self.assertEqual(call.kwargs["ref"], SHA)
 
+    def test_approved_exact_server_action_becomes_writable_not_readonly(self):
+        """Only an exact plan scope can make a verified callsite writable."""
+        worker = self.worker()
+        source = {**SOURCE, "assignment": {
+            **SOURCE["assignment"],
+            "scope_keys": [
+                *SOURCE["assignment"]["scope_keys"],
+                "src/app/(dashboard)/contracts/actions.ts",
+            ],
+        }}
+        result, context = worker._resolved_repository_context(source=source, base_commit=SHA)
+        action = "src/app/(dashboard)/contracts/actions.ts"
+        self.assertIn(action, context)
+        self.assertIn(action, result["assignment"]["scope_keys"])
+        self.assertNotIn(action, result["verified_readonly_callsite_paths"])
+        self.assertIn("src/types/contract.ts", result["verified_readonly_callsite_paths"])
+        packet, unsafe = worker._repository_snapshot_with_safety(source=result, base_commit=SHA)
+        self.assertEqual(packet[action], FILES[action])
+        self.assertNotIn(action, unsafe)
+        self.assertNotIn("src/lib/auth-server.ts", result["assignment"]["scope_keys"])
+        self.assertNotIn("src/app/(dashboard)/contracts/page.tsx", result["assignment"]["scope_keys"])
+        for call in worker.github.get_file_text.call_args_list:
+            self.assertEqual(call.kwargs["ref"], SHA)
+
     def test_missing_verified_server_callsite_blocks_before_producer(self):
         files = dict(FILES)
         files["src/app/(dashboard)/contracts/actions.ts"] = "export function noop() {}"
