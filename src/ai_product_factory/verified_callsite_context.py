@@ -60,7 +60,10 @@ def discover_verified_readonly_callers(
         raise PermissionError("call-site evidence source symbols unavailable")
 
     candidates = [
-        path for path in all_paths if path not in existing_paths
+        # An explicitly writable, pinned server action can already be
+        # present in existing_paths. Verify its real callsite reference;
+        # the worker separately controls whether it is read-only or writable.
+        path for path in all_paths if (path not in existing_paths or "/actions." in path)
         and path.startswith(("src/", "app/", "apps/", "packages/"))
         and path.endswith(_CODE)
         and any(feature in path.lower() for feature in features)
