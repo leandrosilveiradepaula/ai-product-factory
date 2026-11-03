@@ -146,6 +146,32 @@ class SupabaseCIRepairQueue:
             raise PermissionError("multiple test contracts cannot extend a work unit")
         return True
 
+    @staticmethod
+    def _verified_existing_scope_native_failure(
+        item: CIFollowupItem, failures: tuple[DurableCIFailure, ...],
+    ) -> bool:
+        """Attested failed Vitest step, but NO permission to add test scopes.
+
+        GitHub's exact-run/attempt job metadata proves a native test failed;
+        it does not by itself prove the static-count witness required for
+        adding a file. The legacy RPC is safe for an existing-scope repair
+        because it derives write_scopes only from integrated Work Unit files
+        stored in the Control Plane, never from the failure summary.
+        """
+        if len(failures)!=1:
+            return False
+        failure=failures[0]
+        if (failure.name!="native-ci/tests" or failure.conclusion!="failure"
+            or failure.failure_class!="code"
+            or failure.summary!="Verified failed GitHub Actions step (run and attempt bound)"
+            or not isinstance(failure.details_url,str)):
+            return False
+        url_pattern=(
+            r"https://github[.]com/" + re.escape(item.repository)
+            + r"/actions/runs/[1-9][0-9]*/job/[1-9][0-9]*"
+        )
+        return re.fullmatch(url_pattern,failure.details_url) is not None
+
     def enqueue_failure(self, *, item: CIFollowupItem, failures: Iterable[DurableCIFailure], max_attempts: int = 3) -> dict:
         values = self._validate(item, failures)
         if type(max_attempts) is not int or not 1 <= max_attempts <= 3:
@@ -153,7 +179,15 @@ class SupabaseCIRepairQueue:
         failure_class = values[0].failure_class
         if any(value.failure_class != failure_class for value in values):
             failure_class = "unknown"
-        scoped_test=self._verified_test_scope_receipt(values)
+        try:
+            scoped_test=self._verified_test_scope_receipt(values)
+        except PermissionError:
+            # Fail closed on unverified NEW test scope. A certified failing
+            # native test may instead be repaired only within the files
+            # already integrated into the exact candidate (DB revalidates).
+            if not self._verified_existing_scope_native_failure(item,values):
+                raise
+            scoped_test=False
         rpc_name=(
             "factory_enqueue_ci_repair_verified_test_scope_v1"
             if scoped_test else "factory_enqueue_ci_repair"
