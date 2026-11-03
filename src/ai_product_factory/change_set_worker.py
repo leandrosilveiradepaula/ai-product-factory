@@ -461,10 +461,16 @@ class ChangeSetBuilderWorker:
         # A semantic call-site scope is an evidence requirement, not a grant
         # to edit callers. Verify the real call chain at the frozen SHA,
         # including readonly type/auth context, before invoking a paid model.
-        readonly_callers=discover_verified_readonly_callers(
+        verified_callers=discover_verified_readonly_callers(
             github=self.github,source=source,base_commit=base_commit,
             all_paths=all_paths,existing_paths=tuple(context_paths),
             limit=12-len(required_context),
+        )
+        # A callsite may become writable only through a precise work-unit
+        # scope recorded by the approved plan, never through discovery.
+        # Keeping it in both lists would incorrectly mark it read-only.
+        readonly_callers=tuple(
+            path for path in verified_callers if path not in resolved_scopes
         )
         if readonly_callers:
             selected=[*required_context,*readonly_callers]
