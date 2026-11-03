@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 from pathlib import Path
+from decimal import Decimal
 from urllib.parse import urlsplit
 import psycopg
 from psycopg.types.json import Jsonb
@@ -137,5 +138,5 @@ with psycopg.connect(dsn,autocommit=True) as db:
         cur.execute("select count(*) from public.factory_audit_events where event_type='journey.v2.explicit_single_caller_scope_requeued'")
         assert cur.fetchone()[0]==1
         cur.execute("select sum(estimated_cost) from public.factory_tool_usage where run_id=%s",(run,))
-        assert cur.fetchone()[0]==0.034782
+        assert cur.fetchone()[0]==Decimal("0.034782")
 print("V2_EXACT_CALLER_SCOPE_POSTGRES_PASS")
