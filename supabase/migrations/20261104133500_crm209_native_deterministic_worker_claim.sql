@@ -220,4 +220,83 @@ revoke all on function public.factory_claim_crm209_native_ci_once(text,text,bigi
  from public,anon,authenticated;
 grant execute on function public.factory_claim_crm209_native_ci_once(text,text,bigint,uuid)
  to service_role;
+
+-- Read-only epoch/lease fence that the runtime calls immediately before
+-- creating any GitHub branch or commit (the wrapper also checks before
+-- ensure_branch and all other writing API operations).
+create or replace function public.factory_assert_crm209_native_ci_claim(
+ p_run_id uuid,p_worker_id text,p_candidate_commit text,p_generation bigint
+) returns jsonb
+language plpgsql security invoker set search_path='' as $fn$
+declare
+ v_r public.factory_runs%rowtype;
+ v_u public.factory_change_set_work_units%rowtype;
+ v_cs public.factory_change_sets%rowtype;
+ v_rr public.factory_ci_repair_requests%rowtype;
+ v_j public.factory_journeys%rowtype;
+ v_p public.factory_projects%rowtype;
+ v_state text;
+ v_epoch bigint;
+begin
+ select c.state,c.generation into v_state,v_epoch
+ from public.factory_project_execution_controls c
+ where c.project_id='2d30e00a-ff72-4044-b838-011c263ed672'::uuid
+ for share;
+ if v_state is distinct from 'running' or v_epoch is distinct from 19
+    or p_generation is distinct from 19
+    or p_worker_id is null or btrim(p_worker_id) !~ '^[A-Za-z0-9_-]{8,100}
+
+    or p_candidate_commit is distinct from 'e5eb59c1a56b0c922a5e0d1e956e8c442dff152b'
+ then raise exception 'CRM209 native execution epoch revoked' using errcode='PT409';
+ end if;
+ select * into v_r from public.factory_runs where id=p_run_id;
+ select * into v_u from public.factory_change_set_work_units
+ where run_id=p_run_id;
+ select * into v_cs from public.factory_change_sets where id=v_u.change_set_id;
+ select * into v_rr from public.factory_ci_repair_requests
+ where id='ca53e605-b132-4937-aed3-f907cea2e221'::uuid;
+ select * into v_j from public.factory_journeys
+ where id='bb14e150-2c7e-423b-8e5d-e211dab6225c'::uuid;
+ select * into v_p from public.factory_projects where id=v_cs.project_id;
+ if v_r.id is null or v_r.status is distinct from 'implementing'
+    or v_r.lease_owner is distinct from p_worker_id
+    or v_r.lease_expires_at is null or v_r.lease_expires_at<=clock_timestamp()
+    or v_r.metadata->>'ci_repair_request_id' is distinct from v_rr.id::text
+    or v_r.metadata->>'execution_generation' is distinct from '19'
+    or v_r.metadata->>'deterministic_only' is distinct from 'true'
+    or v_r.metadata->>'model_calls_allowed' is distinct from 'false'
+    or v_r.execution_route is not null
+    or v_r.journey_id is distinct from v_j.id
+    or v_r.candidate_commit is distinct from p_candidate_commit
+    or v_r.branch_name is distinct from 'factory/cs-3f09952e/ci-repair-4'
+    or v_u.status not in ('queued','running')
+    or v_u.wave is distinct from 5
+    or v_u.change_set_id is distinct from v_cs.id
+    or v_cs.status is distinct from 'building'
+    or v_cs.current_wave is distinct from 5
+    or v_cs.candidate_commit is distinct from p_candidate_commit
+    or v_rr.status is distinct from 'running'
+    or v_rr.work_unit_id is distinct from v_u.id
+    or v_rr.lease_owner is distinct from p_worker_id
+    or v_rr.lease_expires_at is null or v_rr.lease_expires_at<=clock_timestamp()
+    or v_rr.deterministic_only is distinct from true
+    or v_rr.write_scopes is distinct from
+      '["src/services/ContractService.ts","test/contract-access.test.ts"]'::jsonb
+    or v_j.execution_generation is distinct from v_epoch
+    or v_j.state is distinct from 'executing'
+    or v_p.project_key is distinct from 'crm-infodive'
+    or v_p.repository is distinct from 'leandrosilveiradepaula/crm-infodive'
+    or not v_p.is_active
+    or exists(select 1 from public.factory_project_scheduling sc
+       where sc.project_id=v_p.id and sc.paused)
+ then raise exception 'CRM209 native CI claim invalidated' using errcode='PT409';
+ end if;
+ return jsonb_build_object('status','verified','run_id',p_run_id,
+    'model_calls_allowed',false,'release_authorized',false);
+end;
+$fn$;
+revoke all on function public.factory_assert_crm209_native_ci_claim(uuid,text,text,bigint)
+ from public,anon,authenticated;
+grant execute on function public.factory_assert_crm209_native_ci_claim(uuid,text,text,bigint)
+ to service_role;
 commit;
