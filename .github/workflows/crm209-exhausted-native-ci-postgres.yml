@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/*v2_crm209_exhausted_native_ci_recovery.sql"
+      - "supabase/migrations/*crm209_native_deterministic_worker_claim.sql"
+      - "src/ai_product_factory/crm209_native_ci_worker.py"
+      - "scripts/run_crm209_native_ci_recovery.py"
+      - "tests/test_crm209_native_ci_worker.py"
       - "scripts/verify_crm209_exhausted_native_ci_postgres.py"
       - "src/ai_product_factory/change_set_store.py"
       - "src/ai_product_factory/change_set_worker.py"
