@@ -36,6 +36,7 @@ declare
  v_epoch bigint;
  v_state text;
  v_new_run uuid;
+ v_resume jsonb;
  v_branch text := 'factory/cs-3f09952e/ci-repair-4';
  v_scope jsonb := '["src/services/ContractService.ts","test/contract-access.test.ts"]'::jsonb;
 begin
@@ -77,7 +78,26 @@ begin
 
  select * into v_rr from public.factory_ci_repair_requests
  where id=p_expected_request_id for update skip locked;
- if not found or v_rr.status is distinct from 'queued' then
+ if not found then
+   return jsonb_build_object('status','idle','claimed',false,
+                             'paid_model_calls',0,'release_authorized',false);
+ end if;
+ -- Resume the already exhausted request AND claim it atomically inside this
+ -- transaction. Never expose a queued Work Unit to the normal paid dispatcher.
+ if v_rr.status='exhausted' then
+   v_resume:=public.factory_resume_crm209_exhausted_native_ci_once(
+      p_expected_candidate_commit,p_expected_generation,p_expected_request_id);
+   if (v_resume->>'status' is distinct from 'requeued'
+       or v_resume->>'requeued' is distinct from 'true'
+       or v_resume->>'model_calls_allowed' is distinct from 'false'
+       or v_resume->>'paid_model_calls' is distinct from '0'
+       or v_resume->>'release_authorized' is distinct from 'false') then
+      raise exception 'CRM209 native atomic resume rejected' using errcode='PT409';
+   end if;
+   select * into v_rr from public.factory_ci_repair_requests
+   where id=p_expected_request_id for update;
+ end if;
+ if v_rr.status is distinct from 'queued' then
    return jsonb_build_object('status','idle','claimed',false,
                              'paid_model_calls',0,'release_authorized',false);
  end if;
