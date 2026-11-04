@@ -25,7 +25,7 @@ KNOWN_RUN_STATUSES = frozenset({
     "awaiting_gate", "awaiting_human", "awaiting_ci", "ci_pending",
     "review_ready", "specialist_review_pending", "repair_pending",
     "preview_ready", "completed", "integrated", "merged",
-    "failed", "cancelled", "blocked", "planning", "routing",
+    "failed", "failed_gate", "cancelled", "blocked", "planning", "routing",
 })
 
 
@@ -194,7 +194,7 @@ class SupabaseOperationalHealthReader:
         now=now or datetime.now(timezone.utc)
         runs=self._all_runs()
         stale_ci_dispatches=self._stale_ci_dispatches(runs,now)
-        task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status")=="failed"})
+        task_ids=sorted({str(row.get("task_id") or "") for row in runs if row.get("task_id") and row.get("status") in {"failed", "failed_gate"}})
         task_status_by_id={}
         for start in range(0,len(task_ids),FAILED_TASK_BATCH):
             batch_ids=task_ids[start:start+FAILED_TASK_BATCH]
@@ -235,7 +235,7 @@ class SupabaseOperationalHealthReader:
             lease=_parse_time(row.get("lease_expires_at"))
             if lease is not None and lease < now and status in {"running","implementing","preparing_codex_manual"}:
                 expired+=1
-            if status == "failed" and task_status_by_id.get(str(row.get("task_id") or ""))=="failed":
+            if status in {"failed", "failed_gate"} and task_status_by_id.get(str(row.get("task_id") or ""))=="failed":
                 failed+=1
                 if "maximum attempts" in str(row.get("last_error") or "").lower():
                     dead+=1
