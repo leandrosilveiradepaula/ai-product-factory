@@ -104,13 +104,38 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
         # Its authority is the already-verified PR and bounded failure
         # lineage, not a fabricated second project repin.
         target=source.get("delivery_target")
-        if (not isinstance(candidate_proof,dict) or not isinstance(target,dict)
+        journey_raw=source.get("journey_binding")
+        if journey_raw is not None:
+            from .journey_delivery_binding import JourneyBinding
+            if not isinstance(journey_raw,dict) or target is not None:
+                raise PermissionError("V2 CI repair packet cannot use V1 target")
+            binding=JourneyBinding.parse(
+                journey_raw,project_id=str(journey_raw.get("project_id") or ""),
+                request_id=str(source.get("request_id") or ""),
+                repository=repository["repository"],
+            )
+            if (source.get("journey_id")!=binding.journey_id
+                or source.get("project_id") not in (None,binding.project_id)
+                or candidate_proof.get("journey_id")!=binding.journey_id
+                or candidate_proof.get("execution_generation")!=binding.execution_generation
+                or candidate_proof.get("binding_version")!=binding.binding_version):
+                raise PermissionError("V2 CI repair packet journey provenance mismatch")
+            preview_sha=binding.source_commit
+            preview_branch=binding.preview_base_ref
+        else:
+            if not isinstance(target,dict):
+                raise PermissionError("V1 CI repair packet has no verified target")
+            if any(k in candidate_proof for k in ("journey_id","execution_generation","binding_version")) if isinstance(candidate_proof,dict) else False:
+                raise PermissionError("V1 CI repair packet cannot import V2 evidence")
+            preview_sha=target.get("sha")
+            preview_branch=target.get("branch")
+        if (not isinstance(candidate_proof,dict)
             or candidate_proof.get("kind")!="verified_native_ci_repair_candidate"
             or candidate_proof.get("candidate_commit")!=base_commit
             or candidate_proof.get("repository")!=repository["repository"]
             or candidate_proof.get("project_key")!=repository["project_key"]
-            or candidate_proof.get("base_preview_sha")!=target.get("sha")
-            or candidate_proof.get("base_preview_branch")!=target.get("branch")
+            or candidate_proof.get("base_preview_sha")!=preview_sha
+            or candidate_proof.get("base_preview_branch")!=preview_branch
             or candidate_proof.get("integration_branch")!=repair.get("branch")
             or candidate_proof.get("pr_number")!=repair.get("pr_number")
             or candidate_proof.get("repair_request_id")!=repair.get("repair_request_id")
