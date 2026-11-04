@@ -25,6 +25,10 @@ migration = (
     Path(__file__).resolve().parents[1]
     / "supabase/migrations/20261104123000_v2_crm209_exhausted_native_ci_recovery.sql"
 ).read_text()
+claim_migration = (
+    Path(__file__).resolve().parents[1]
+    / "supabase/migrations/20261104133500_crm209_native_deterministic_worker_claim.sql"
+).read_text()
 
 PROJECT = "2d30e00a-ff72-4044-b838-011c263ed672"
 JOURNEY = "bb14e150-2c7e-423b-8e5d-e211dab6225c"
@@ -63,9 +67,9 @@ create table public.factory_tasks (
   journey_id uuid, updated_at timestamptz
 );
 create table public.factory_runs (
-  id uuid primary key, task_id uuid, journey_id uuid, status text,
-  attempt_count integer, source_commit text, candidate_commit text,
-  branch_name text, lease_owner text, lease_expires_at timestamptz,
+  id uuid primary key default gen_random_uuid(), task_id uuid, journey_id uuid, status text,
+  execution_route text,attempt_count integer, source_commit text, candidate_commit text,
+  branch_name text, started_at timestamptz, lease_owner text, lease_expires_at timestamptz,
   metadata jsonb
 );
 create table public.factory_journeys (
@@ -81,7 +85,9 @@ create table public.factory_change_sets (
 );
 create table public.factory_change_set_work_units (
   id uuid primary key default gen_random_uuid(), change_set_id uuid, task_id uuid,
-  plan_task_key text, agent_key text, wave integer, status text
+  plan_task_key text, agent_key text, wave integer, status text,
+  run_id uuid,base_commit text,branch_name text,output_commit text,
+  changed_files jsonb not null default '[]'::jsonb,updated_at timestamptz
 );
 create table public.factory_ci_repair_requests (
   id uuid primary key, project_id uuid, change_set_id uuid,
@@ -119,6 +125,7 @@ def receipt(db, *, sha=CANDIDATE, generation=19, request=EXHAUSTED):
 with psycopg.connect(dsn, autocommit=True) as db:
     db.execute(schema)
     db.execute(migration)
+    db.execute(claim_migration)
     access = db.execute("""
       select prosecdef,
              has_function_privilege('service_role',oid,'execute'),
@@ -255,6 +262,122 @@ with psycopg.connect(dsn, autocommit=True) as db:
         raise AssertionError("unrelated over-limit request was accepted")
     except psycopg.Error as exc:
         assert exc.sqlstate == "23514", exc
+
+    # Revert the *disposable* first-stage fixture, retaining the earlier
+    # immutable paid attempt history. This second path proves the native claim
+    # performs the same resume atomically before any paid dispatcher can see it.
+    first_unit = first["work_unit_id"]
+    first_task = db.execute(
+        "select task_id from factory_change_set_work_units where id=%s", (first_unit,)
+    ).fetchone()[0]
+    db.execute("delete from factory_change_set_work_units where id=%s", (first_unit,))
+    db.execute("delete from factory_tasks where id=%s", (first_task,))
+    db.execute("""
+        update factory_ci_repair_requests
+        set status='exhausted',deterministic_only=false,task_id=null,
+            work_unit_id=null,write_scopes='[]'::jsonb,
+            blocker_reason='ci_repair_attempts_exhausted',
+            lease_owner=null,lease_expires_at=null
+        where id=%s
+    """, (EXHAUSTED,))
+    db.execute("update factory_tasks set status='failed' where id=%s", (ROOT_TASK,))
+    db.execute("""
+        update factory_runs
+        set status='failed_gate',metadata=%s::jsonb
+        where id=%s
+    """, (json.dumps(run_meta),ROOT_RUN))
+    db.execute("""
+        update factory_change_sets
+        set status='blocked',current_wave=4,attempt_count=1,
+            release_run_id=%s,metadata=%s::jsonb
+        where id=%s
+    """, (ROOT_RUN,json.dumps(meta),CS))
+    db.execute("delete from factory_audit_events")
+
+    for wave in (1,2,3,4):
+        db.execute("""
+            insert into factory_change_set_work_units (
+                change_set_id,task_id,plan_task_key,agent_key,wave,status,
+                base_commit,output_commit,changed_files
+            ) values (%s,%s,%s,'development',%s,'integrated',%s,%s,%s::jsonb)
+        """, (CS,ROOT_TASK,"previous-wave-"+str(wave),wave,SOURCE,CANDIDATE,
+              json.dumps(SCOPES)))
+    claim_rpc = "public.factory_claim_crm209_native_ci_once"
+    assert_rpc = "public.factory_assert_crm209_native_ci_claim"
+    for name in ("factory_claim_crm209_native_ci_once",
+                 "factory_assert_crm209_native_ci_claim"):
+        acl = db.execute("""
+           select prosecdef,
+                  has_function_privilege('service_role',oid,'execute'),
+                  has_function_privilege('anon',oid,'execute'),
+                  has_function_privilege('authenticated',oid,'execute')
+           from pg_proc where proname=%s
+        """, (name,)).fetchone()
+        assert acl == (False,True,False,False), (name,acl)
+
+    def claim_once(worker="nativeci-12345678",candidate=CANDIDATE):
+        return db.execute(
+            "select "+claim_rpc+"(%s,%s,%s,%s)",
+            (worker,candidate,19,EXHAUSTED)
+        ).fetchone()[0]
+    assert claim_once(candidate="f"*40)["status"]=="idle"
+    db.execute("insert into factory_project_scheduling values (%s,true)",(PROJECT,))
+    try:
+        claim_once()
+        raise AssertionError("paused native worker admitted")
+    except psycopg.Error as exc:
+        assert exc.sqlstate=="PT409",exc
+    db.execute("delete from factory_project_scheduling")
+
+    claimed=claim_once()
+    assert claimed["status"]=="claimed" and claimed["claimed"] is True,claimed
+    assert claimed["paid_model_calls"]==0 and claimed["release_authorized"] is False
+    assert claimed["model_calls_allowed"] is False
+    assert claimed["candidate_commit"]==CANDIDATE
+    assert claimed["work_unit_id"] != first_unit
+    assert claim_once()["status"]=="idle"
+    assert db.execute(
+      "select status from factory_ci_repair_requests where id=%s", (EXHAUSTED,)
+    ).fetchone()[0]=="running"
+    assert db.execute(
+      "select status from factory_change_sets where id=%s",(CS,)
+    ).fetchone()[0]=="building"
+    assert db.execute(
+      "select status from factory_runs where id=%s",(claimed["run_id"],)
+    ).fetchone()[0]=="implementing"
+    checkpoint=db.execute(
+      "select "+assert_rpc+"(%s,%s,%s,%s)",
+      (claimed["run_id"],"nativeci-12345678",CANDIDATE,19)
+    ).fetchone()[0]
+    assert checkpoint["status"]=="verified" and checkpoint["model_calls_allowed"] is False
+    try:
+        db.execute(
+          "select "+assert_rpc+"(%s,%s,%s,%s)",
+          (claimed["run_id"],"wrong-worker",CANDIDATE,19)
+        )
+        raise AssertionError("forged worker checkpoint accepted")
+    except psycopg.Error as exc:
+        assert exc.sqlstate=="PT409"
+    db.execute("update factory_project_execution_controls set generation=20")
+    try:
+        db.execute(
+          "select "+assert_rpc+"(%s,%s,%s,%s)",
+          (claimed["run_id"],"nativeci-12345678",CANDIDATE,19)
+        )
+        raise AssertionError("revoked epoch checkpoint accepted")
+    except psycopg.Error as exc:
+        assert exc.sqlstate=="PT409"
+
+    events = db.execute(
+      "select event_type,payload from factory_audit_events order by id"
+    ).fetchall()
+    assert [e[0] for e in events] == [
+        "journey.v2.native_ci_deterministic_exception",
+        "journey.v2.native_ci.claimed",
+    ],events
+    assert all(e[1]["paid_model_calls"]==0 for e in events)
+    print("CRM209_NATIVE_ATOMIC_CLAIM_QA=PASS")
+    print("PAID_DISPATCH_WINDOW=0 RELEASE_AUTHORIZED=false")
 
     print("CRM209_NATIVE_EXHAUSTED_RECOVERY_QA=PASS")
     print("EXCEPTION_REQUESTS=1 PAID_MODEL_CALLS=0 RELEASE_AUTHORIZED=false")

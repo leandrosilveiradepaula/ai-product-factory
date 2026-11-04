@@ -331,6 +331,12 @@ jobs:
       - name: Requeue proven CI-repair candidate preflight mismatch (migration gated, model-free)
         shell: bash
         run: python scripts/resume_blocked_ci_repair_candidate.py --max-items 2
+      - name: Execute exact CRM209 native CI recovery without any model (migration gated)
+        if: ${{ github.event_name == 'schedule' }}
+        env:
+          FACTORY_CRM209_NATIVE_ENABLED: "true"
+        shell: bash
+        run: python scripts/run_crm209_native_ci_recovery.py
       - name: Reconcile up to three explicitly enabled existing candidates
         shell: bash
         run: |
