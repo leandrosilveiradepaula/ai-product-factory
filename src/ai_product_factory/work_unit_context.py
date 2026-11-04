@@ -103,6 +103,8 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
         # A newer CI repair candidate is NOT the imported Preview source.
         # Its authority is the already-verified PR and bounded failure
         # lineage, not a fabricated second project repin.
+        if not isinstance(candidate_proof,dict):
+            raise PermissionError("verified CI repair candidate evidence missing")
         target=source.get("delivery_target")
         journey_raw=source.get("journey_binding")
         if journey_raw is not None:
@@ -125,7 +127,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
         else:
             if not isinstance(target,dict):
                 raise PermissionError("V1 CI repair packet has no verified target")
-            if any(k in candidate_proof for k in ("journey_id","execution_generation","binding_version")) if isinstance(candidate_proof,dict) else False:
+            if any(k in candidate_proof for k in ("journey_id","execution_generation","binding_version")):
                 raise PermissionError("V1 CI repair packet cannot import V2 evidence")
             preview_sha=target.get("sha")
             preview_branch=target.get("branch")
