@@ -264,8 +264,8 @@ begin
  for share;
  if v_state is distinct from 'running' or v_epoch is distinct from 19
     or p_generation is distinct from 19
-    or p_worker_id is null or btrim(p_worker_id) !~ '^[A-Za-z0-9_-]{8,100}
-
+    or p_worker_id is null or length(btrim(p_worker_id)) not between 8 and 100
+    or btrim(p_worker_id) ~ '[^A-Za-z0-9_-]'
     or p_candidate_commit is distinct from 'e5eb59c1a56b0c922a5e0d1e956e8c442dff152b'
  then raise exception 'CRM209 native execution epoch revoked' using errcode='PT409';
  end if;
