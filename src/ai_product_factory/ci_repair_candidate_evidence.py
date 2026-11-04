@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
+from .journey_delivery_binding import JourneyBinding
+
 _SHA = re.compile(r"[a-f0-9]{40}\Z")
 
 
@@ -25,12 +27,39 @@ def verify_existing_ci_repair_candidate(
         return None
     if source.get("project_kind") != "existing":
         return None
-    target = source.get("delivery_target")
     assignment = source.get("assignment")
-    if not isinstance(target, dict) or not isinstance(assignment, dict):
-        raise PermissionError("CI repair requires the existing project's verified target")
+    if not isinstance(assignment, dict):
+        raise PermissionError("CI repair requires the existing project's verified assignment")
     project_key = source.get("project_key")
     repository = source.get("repository")
+    raw_journey = source.get("journey_binding")
+    journey = None
+    if raw_journey is not None:
+        # V2 deliberately masks the mutable V1 imported-project target.
+        # Reuse ONLY its immutable, request-scoped delivery binding.
+        if (not isinstance(raw_journey, dict)
+            or source.get("delivery_target") is not None):
+            raise PermissionError("V2 CI repair cannot inherit a V1 delivery target")
+        journey = JourneyBinding.parse(
+            raw_journey,
+            project_id=str(raw_journey.get("project_id") or ""),
+            request_id=str(source.get("request_id") or ""),
+            repository=repository,
+        )
+        if (source.get("journey_id") != journey.journey_id
+            or source.get("project_id") not in (None, journey.project_id)
+            or journey.integration_branch != integration_branch
+            or github.get_branch_sha(journey.preview_base_ref) != journey.source_commit):
+            raise PermissionError("V2 CI repair journey or pinned Preview source changed")
+        target = {"repository": repository, "sha": journey.source_commit,
+                  "branch": journey.preview_base_ref}
+        valid_branch = True
+    else:
+        target = source.get("delivery_target")
+        if not isinstance(target, dict):
+            raise PermissionError("CI repair requires the existing project's verified target")
+        valid_branch = (isinstance(integration_branch, str)
+                        and integration_branch.startswith("factory/change-set-"))
     scopes = assignment.get("scope_keys")
     requested = repair.get("write_scopes")
     candidate = repair.get("candidate_commit")
@@ -45,7 +74,7 @@ def verify_existing_ci_repair_candidate(
         or not isinstance(candidate, str) or not _SHA.fullmatch(candidate)
         or candidate != base_commit
         or repair.get("branch") != integration_branch
-        or not isinstance(integration_branch, str) or not integration_branch.startswith("factory/change-set-")
+        or not valid_branch
         or not _positive(pr_number)
         or not _positive(attempt) or not _positive(max_attempts)
         or max_attempts > 3 or attempt > max_attempts
@@ -78,7 +107,7 @@ def verify_existing_ci_repair_candidate(
         or getattr(pr, "head_repository", None) != repository
     ):
         raise PermissionError("CI repair PR head or base differs from approved candidate")
-    return {
+    proof = {
         "kind": "verified_native_ci_repair_candidate",
         "project_key": project_key,
         "repository": repository,
@@ -92,3 +121,8 @@ def verify_existing_ci_repair_candidate(
         "max_attempts": max_attempts,
         "write_scopes": list(scopes),
     }
+    if journey is not None:
+        proof["journey_id"] = journey.journey_id
+        proof["execution_generation"] = journey.execution_generation
+        proof["binding_version"] = journey.binding_version
+    return proof
