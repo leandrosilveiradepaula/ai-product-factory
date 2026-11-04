@@ -79,7 +79,7 @@ begin
  from (select * from eligible order by coalesce(incident_rank,9),priority_rank,deadline nulls last,customer_impact desc,project_key limit p_limit) q;
  return v_rows;
 end;
-$function$
+$function$;
 
 
 -- Preserve existing service_role-only ACL, fail-closed if function is recreated.
