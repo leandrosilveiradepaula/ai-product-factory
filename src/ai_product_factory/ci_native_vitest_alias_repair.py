@@ -169,4 +169,45 @@ def verified_native_vitest_alias_patch(
     corrected = content[:m.start("alias")] + specifier + content[m.end("alias"):]
     if corrected == content or redact_repository_text(corrected) != corrected:
         return None
-    return {test_path: corrected}
+    if repair.get("deterministic_only") is not True:
+        return {test_path: corrected}
+    # Exhausted request #ca53e605 is authorized for ONLY two files in the
+    # already integrated CRM candidate. A relative test import alone would
+    # leave two unresolved @/ imports in the service and a stale mock alias.
+    # Requiring all three exact replacements avoids another paid repair loop.
+    if (proof.get("deterministic_only") is not True
+        or repository != "leandrosilveiradepaula/crm-infodive"
+        or proof.get("pr_number") != 212
+        or proof.get("repair_request_id") != "ca53e605-b132-4937-aed3-f907cea2e221"
+        or base_commit != "e5eb59c1a56b0c922a5e0d1e956e8c442dff152b"
+        or tuple(write_scopes) != (
+            "src/services/ContractService.ts", "test/contract-access.test.ts"
+        )):
+        return None
+    service_path = "src/services/ContractService.ts"
+    if service_path not in paths:
+        return None
+    service = github.get_file_text(service_path, ref=base_commit)
+    if (not isinstance(service, str) or len(service.encode("utf-8")) > 16384
+        or redact_repository_text(service) != service):
+        return None
+    old_mock = "vi.mock('@/lib/supabase/admin',"
+    new_mock = "vi.mock('../src/lib/supabase/admin',"
+    old_imports = (
+        ("from '@/lib/supabase/admin'", "from '../lib/supabase/admin'"),
+        ("from '@/types/contract'", "from '../types/contract'"),
+    )
+    if content.count(old_mock) != 1 or any(
+        service.count(before) != 1 for before, _ in old_imports
+    ):
+        return None
+    corrected_test = corrected.replace(old_mock, new_mock)
+    corrected_service = service
+    for before, after in old_imports:
+        corrected_service = corrected_service.replace(before, after)
+    if ("@/" in corrected_test or "@/" in corrected_service
+        or corrected_test == content or corrected_service == service
+        or redact_repository_text(corrected_test) != corrected_test
+        or redact_repository_text(corrected_service) != corrected_service):
+        return None
+    return {test_path: corrected_test, service_path: corrected_service}
