@@ -15,6 +15,43 @@ class Response:
 
 
 class Tests(unittest.TestCase):
+
+    def test_real_ci_repair_exhaustion_failed_gate_is_alerted(self):
+        # A completed CI repair can terminate in failed_gate with its root task
+        # still failed. The native scheduled alert job must not crash or hide it.
+        runs=[{"id":"terminal","task_id":"task","status":"failed_gate",
+               "attempt_count":0,"last_error":None,"lease_expires_at":None}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(runs),Response([{"id":"task","status":"failed"}]),
+            Response([]),Response([])
+        ]):
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,11,4,tzinfo=timezone.utc))
+        self.assertEqual(health.failed_runs,1)
+        self.assertEqual(health.dead_letter_runs,0)
+
+    def test_recovered_failed_gate_is_not_an_active_alert(self):
+        runs=[{"id":"terminal","task_id":"task","status":"failed_gate",
+               "attempt_count":0,"last_error":None,"lease_expires_at":None}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(runs),Response([{"id":"task","status":"completed"}]),
+            Response([]),Response([])
+        ]):
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,11,4,tzinfo=timezone.utc))
+        self.assertEqual(health.failed_runs,0)
+
+    def test_unrecognized_run_status_still_fails_closed(self):
+        with patch("urllib.request.urlopen",side_effect=[
+            Response([{"id":"unexpected","status":"unrecognized_future_state"}])
+        ]):
+            with self.assertRaisesRegex(RuntimeError,"unknown status"):
+                SupabaseOperationalHealthReader(
+                    url="https://x.supabase.co",secret_key="sb_secret_x"
+                ).read()
+
     def test_maps_operational_health_without_side_effects(self):
         runs=[
             {"id":"r1","task_id":"t1","status":"running","attempt_count":1,"last_error":None,"lease_expires_at":"2026-01-01T00:00:00+00:00"},
