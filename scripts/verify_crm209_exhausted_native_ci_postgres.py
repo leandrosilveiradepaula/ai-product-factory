@@ -229,7 +229,11 @@ with psycopg.connect(dsn, autocommit=True) as db:
         where rr.id=%s
     """, (EXHAUSTED,)).fetchone()
     assert row == ("queued",True,4,3,SCOPES,"building",5,
-                   "repair_pending","queued_execution","pending"), row
+                   "repair_pending","queued","pending"), row
+    root_state = db.execute(
+        "select status from factory_tasks where id=%s", (ROOT_TASK,),
+    ).fetchone()[0]
+    assert root_state == "queued_execution", root_state
     previous = db.execute(
         "select count(*) from factory_ci_repair_requests "
         "where change_set_id=%s and status='ci_failed' and not deterministic_only",
