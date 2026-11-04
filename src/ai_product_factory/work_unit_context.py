@@ -144,6 +144,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
             or candidate_proof.get("attempt")!=repair.get("attempt")
             or candidate_proof.get("max_attempts")!=repair.get("max_attempts")
             or candidate_proof.get("write_scopes")!=scopes
+            or candidate_proof.get("deterministic_only",False)!=repair.get("deterministic_only",False)
             or repair.get("write_scopes")!=scopes):
             raise PermissionError("verified CI repair candidate evidence missing or drifted")
         repository["ci_repair_candidate_evidence"]=dict(candidate_proof)

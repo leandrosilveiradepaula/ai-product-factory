@@ -189,6 +189,24 @@ class SupabaseChangeSetStore:
 
         enriched=dict(data)
         enriched["assignment"]=assignment
+        repair=enriched.get("repair")
+        if (isinstance(repair,dict) and repair.get("repair_kind")=="ci"
+            and repair.get("repair_request_id")=="ca53e605-b132-4937-aed3-f907cea2e221"):
+            # The optional column exists only after the separately gated SQL
+            # migration. Never query it for ordinary bounded CI requests.
+            repair_id=repair["repair_request_id"]
+            repair_rows=self._get(
+                "factory_ci_repair_requests?select=id,work_unit_id,deterministic_only"
+                "&id=eq."+quote(repair_id,safe="")+"&limit=2"
+            )
+            if (not isinstance(repair_rows,list) or len(repair_rows)!=1
+                or repair_rows[0].get("id")!=repair_id
+                or repair_rows[0].get("work_unit_id")!=work_unit_id
+                or type(repair_rows[0].get("deterministic_only")) is not bool):
+                raise PermissionError("CI repair deterministic-only authority is unavailable")
+            enriched["repair"]={**repair,
+                "deterministic_only":repair_rows[0]["deterministic_only"]}
+
         enriched["human_decisions"]=decisions
         enriched["project_kind"]=project_kind
         enriched["delivery_target"]=delivery_target
