@@ -59,6 +59,9 @@ def verified_native_vitest_alias_patch(
         return None
     if not isinstance(proof, dict) or proof.get("kind") != "verified_native_ci_repair_candidate":
         return None
+    if not any(_valid_path(path) for path in write_scopes):
+        # A source-only scope never justifies downloading test job logs.
+        return None
     if not _SHA.fullmatch(base_commit):
         raise PermissionError("native Vitest alias repair requires exact candidate SHA")
     if (proof.get("candidate_commit") != base_commit
