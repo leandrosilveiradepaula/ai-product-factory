@@ -27,7 +27,7 @@ alter table public.factory_ci_repair_requests
         and attempt = max_attempts + 1 and max_attempts = 3
         and failure_class = 'code'
         and original_candidate_commit = 'e5eb59c1a56b0c922a5e0d1e956e8c442dff152b'
-        and write_scopes = '["test/contract-access.test.ts"]'::jsonb
+        and write_scopes = '["src/services/ContractService.ts","test/contract-access.test.ts"]'::jsonb
       )
     ))
   );
@@ -47,7 +47,7 @@ declare
  v_count integer;
  v_task uuid;
  v_unit uuid;
- v_scopes jsonb := '["test/contract-access.test.ts"]'::jsonb;
+ v_scopes jsonb := '["src/services/ContractService.ts","test/contract-access.test.ts"]'::jsonb;
  v_issued_at timestamptz := now();
 begin
  if p_expected_candidate_commit is distinct from 'e5eb59c1a56b0c922a5e0d1e956e8c442dff152b'
