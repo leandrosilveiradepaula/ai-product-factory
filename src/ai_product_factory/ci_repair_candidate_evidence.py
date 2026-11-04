@@ -76,7 +76,7 @@ def verify_existing_ci_repair_candidate(
         and repair.get("repair_request_id")=="ca53e605-b132-4937-aed3-f907cea2e221"
         and candidate=="e5eb59c1a56b0c922a5e0d1e956e8c442dff152b"
         and pr_number==212 and attempt==4 and max_attempts==3
-        and requested==["test/contract-access.test.ts"]
+        and requested==["src/services/ContractService.ts","test/contract-access.test.ts"]
         and scopes==requested
     )
     if deterministic_only and not exceptional:
