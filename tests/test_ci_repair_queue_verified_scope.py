@@ -57,6 +57,21 @@ class AttestedNativeTestRepairQueueTests(unittest.TestCase):
         self.assertNotIn("write_scopes",calls[0][1])
         self.assertEqual(calls[0][1]["p_candidate_commit"],SHA)
 
+    def test_attested_native_failure_with_verified_suffix_keeps_integrated_scopes(self):
+        q=object.__new__(SupabaseCIRepairQueue)
+        calls=[]
+        q._rpc=lambda name,payload:calls.append((name,payload)) or {"status":"repair_pending"}
+        summary=(
+            "Verified failed GitHub Actions step (run and attempt bound); "
+            "Verified native Vitest count: test=test/contract-access.test.ts "
+            "source=src/services/ContractService.ts expected=1 actual=3"
+        )
+        result=q.enqueue_failure(item=item(),failures=(failure(summary),))
+        self.assertEqual(result["status"],"repair_pending")
+        self.assertEqual(calls[0][0],"factory_enqueue_ci_repair")
+        self.assertEqual(calls[0][1]["p_candidate_commit"],SHA)
+        self.assertNotIn("write_scopes",calls[0][1])
+
     def test_unverified_native_scope_witness_never_extends_or_routes_to_legacy_rpc(self):
         for receipt in (
             SUMMARY.replace("actual=17","actual=20"),
