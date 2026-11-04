@@ -249,6 +249,10 @@ class SupabaseChangeSetStore:
                 if not isinstance(amendment,dict):
                     raise PermissionError("V2 governance amendment receipt invalid")
                 enriched["governance_amendment"]=amendment
+            # The legacy SQL context omits project_id. Bind the independently
+            # resolved unique project identity to the V2 execution context:
+            # JourneyBinding.parse must not depend on optional caller fields.
+            enriched["project_id"]=str(identity_rows[0]["id"])
             enriched["journey_id"]=journey_id
             enriched["request_id"]=journey.get("request_id")
             enriched["journey_binding"]=journey.get("binding")
