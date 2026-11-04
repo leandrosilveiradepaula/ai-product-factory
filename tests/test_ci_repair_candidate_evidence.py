@@ -237,6 +237,7 @@ class JourneyV2CIRepairCandidateTests(unittest.TestCase):
         gh.repository=repository
         gh.branch_sha=sha
         gh.pr.head_sha=sha
+        gh.pr.head_repository=repository
         gh.pr.number=212
         src["repair"].update({
             "candidate_commit":sha,
