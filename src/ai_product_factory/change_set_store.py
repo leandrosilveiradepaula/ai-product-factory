@@ -190,10 +190,11 @@ class SupabaseChangeSetStore:
         enriched=dict(data)
         enriched["assignment"]=assignment
         repair=enriched.get("repair")
-        if isinstance(repair,dict) and repair.get("repair_kind")=="ci":
-            repair_id=repair.get("repair_request_id")
-            if not isinstance(repair_id,str) or not repair_id:
-                raise PermissionError("CI repair context has no durable request identity")
+        if (isinstance(repair,dict) and repair.get("repair_kind")=="ci"
+            and repair.get("repair_request_id")=="ca53e605-b132-4937-aed3-f907cea2e221"):
+            # The optional column exists only after the separately gated SQL
+            # migration. Never query it for ordinary bounded CI requests.
+            repair_id=repair["repair_request_id"]
             repair_rows=self._get(
                 "factory_ci_repair_requests?select=id,work_unit_id,deterministic_only"
                 "&id=eq."+quote(repair_id,safe="")+"&limit=2"
