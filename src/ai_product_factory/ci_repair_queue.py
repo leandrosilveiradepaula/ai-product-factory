@@ -163,7 +163,7 @@ class SupabaseCIRepairQueue:
         failure=failures[0]
         if (failure.name!="native-ci/tests" or failure.conclusion!="failure"
             or failure.failure_class!="code"
-            or not failure.summary.startswith("Verified failed GitHub Actions step (run and attempt bound)")
+            or failure.summary!="Verified failed GitHub Actions step (run and attempt bound)"
             or not isinstance(failure.details_url,str)):
             return False
         url_pattern=(
