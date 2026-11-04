@@ -226,6 +226,58 @@ def v2_evidence(src=None,gh=None):
 
 
 class JourneyV2CIRepairCandidateTests(unittest.TestCase):
+    def test_crm209_exhausted_exception_is_exact_and_no_model_only(self):
+        src=v2_source()
+        gh=V2GitHub()
+        sha="e5eb59c1a56b0c922a5e0d1e956e8c442dff152b"
+        repository="leandrosilveiradepaula/crm-infodive"
+        scopes=["src/services/ContractService.ts","test/contract-access.test.ts"]
+        src["repository"]=repository
+        src["journey_binding"]["repository"]=repository
+        gh.repository=repository
+        gh.branch_sha=sha
+        gh.pr.head_sha=sha
+        gh.pr.number=212
+        src["repair"].update({
+            "candidate_commit":sha,
+            "pr_number":212,"attempt":4,"max_attempts":3,
+            "repair_request_id":"ca53e605-b132-4937-aed3-f907cea2e221",
+            "write_scopes":scopes,"deterministic_only":True,
+        })
+        src["assignment"]["scope_keys"]=scopes
+        proof=verify_existing_ci_repair_candidate(
+            source=src,base_commit=sha,integration_branch=V2_BRANCH,github=gh,
+        )
+        self.assertTrue(proof["deterministic_only"])
+        src["ci_repair_evidence"]=proof
+        packet=build_context_packet(
+            source=src,impact={},base_commit=sha,
+            branch="factory/cs-3f09952e/ci-repair-4",
+            repository_snapshot={"AGENTS.md":"governance"},
+        )
+        self.assertTrue(packet.payload["repository"]["ci_repair_candidate_evidence"]["deterministic_only"])
+        for key,value in (
+            ("attempt",5),("pr_number",213),
+            ("repair_request_id","00000000-0000-4000-8000-000000000000"),
+            ("deterministic_only",False),
+            ("write_scopes",["test/contract-access.test.ts"]),
+        ):
+            with self.subTest(field=key):
+                altered=deepcopy(src)
+                altered["repair"][key]=value
+                with self.assertRaises(PermissionError):
+                    verify_existing_ci_repair_candidate(
+                        source=altered,base_commit=sha,integration_branch=V2_BRANCH,github=gh,
+                    )
+        altered=deepcopy(src)
+        altered["ci_repair_evidence"]["deterministic_only"]=False
+        with self.assertRaises(PermissionError):
+            build_context_packet(
+                source=altered,impact={},base_commit=sha,
+                branch="factory/cs-3f09952e/ci-repair-4",
+                repository_snapshot={"AGENTS.md":"governance"},
+            )
+
     def test_v2_native_repair_uses_immutable_journey_not_legacy_project_target(self):
         src=v2_source()
         proof=v2_evidence(src)
