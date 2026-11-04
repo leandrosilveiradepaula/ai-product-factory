@@ -173,5 +173,131 @@ class CIRepairCandidateEvidenceTests(unittest.TestCase):
             context(src)
 
 
+V2_JOURNEY="bb14e150-2c7e-423b-8e5d-e211dab6225c"
+V2_BRANCH="factory/journey-"+V2_JOURNEY
+V2_PREVIEW="preview/crm209-delivery-v4"
+V2_PROJECT="2d30e00a-ff72-4044-b838-011c263ed672"
+V2_REQUEST="1c19ce32-b42a-9e0a-29af-0767474b9244"
+
+
+def v2_source():
+    src=source()
+    src["delivery_target"]=None
+    src["repin_evidence"]=None
+    src["project_id"]=V2_PROJECT
+    src["request_id"]=V2_REQUEST
+    src["journey_id"]=V2_JOURNEY
+    src["repair"]["branch"]=V2_BRANCH
+    src["journey_binding"]={
+        "journey_id":V2_JOURNEY,"project_id":V2_PROJECT,"request_id":V2_REQUEST,
+        "execution_generation":19,"policy_version":4,"policy_digest":"d"*64,
+        "repository":REPO,"source_commit":SOURCE,"source_ref":"main",
+        "source_mode":"main_snapshot","integration_branch":V2_BRANCH,
+        "preview_branch_prefix":"preview/journey-bb14e150",
+        "preview_base_ref":V2_PREVIEW,"release_base_ref":"main",
+        "binding_version":2,
+    }
+    return src
+
+
+class V2GitHub(GitHub):
+    def __init__(self):
+        super().__init__()
+        self.pr.head_ref=V2_BRANCH
+        self.pr.base_ref=V2_PREVIEW
+        self.preview_sha=SOURCE
+
+    def get_branch_sha(self,branch):
+        if branch==V2_BRANCH:
+            return self.branch_sha
+        if branch==V2_PREVIEW:
+            return self.preview_sha
+        if branch=="main":
+            return SOURCE
+        raise AssertionError("unexpected ref "+str(branch))
+
+
+def v2_evidence(src=None,gh=None):
+    return verify_existing_ci_repair_candidate(
+        source=src if src is not None else v2_source(),
+        base_commit=CANDIDATE,integration_branch=V2_BRANCH,
+        github=gh if gh is not None else V2GitHub(),
+    )
+
+
+class JourneyV2CIRepairCandidateTests(unittest.TestCase):
+    def test_v2_native_repair_uses_immutable_journey_not_legacy_project_target(self):
+        src=v2_source()
+        proof=v2_evidence(src)
+        self.assertEqual(proof["candidate_commit"],CANDIDATE)
+        self.assertEqual(proof["base_preview_sha"],SOURCE)
+        self.assertEqual(proof["base_preview_branch"],V2_PREVIEW)
+        self.assertEqual(proof["journey_id"],V2_JOURNEY)
+        self.assertEqual(proof["execution_generation"],19)
+        src["ci_repair_evidence"]=proof
+        packet=context(src).payload["repository"]
+        self.assertEqual(packet["ci_repair_candidate_evidence"],proof)
+        self.assertNotIn("delivery_repin_evidence",packet)
+        self.assertEqual(packet["write_scopes"],SCOPES)
+
+    def test_v2_forged_journey_or_reintroduced_v1_target_is_rejected(self):
+        for field,value in (
+            ("journey_id","b"*36),
+            ("request_id","00000000-0000-0000-0000-000000000000"),
+            ("project_id","00000000-0000-0000-0000-000000000000"),
+            ("integration_branch","factory/journey-00000000-0000-0000-0000-000000000000"),
+            ("preview_base_ref","main"),
+            ("source_commit","c"*40),
+        ):
+            with self.subTest(field=field):
+                src=v2_source()
+                if field in ("journey_id","request_id","project_id"):
+                    src[field]=value
+                else:
+                    src["journey_binding"][field]=value
+                with self.assertRaises(PermissionError):
+                    v2_evidence(src)
+
+        src=v2_source()
+        src["delivery_target"]=source()["delivery_target"]
+        with self.assertRaises(PermissionError):
+            v2_evidence(src)
+
+    def test_v2_preview_ref_drift_and_pr_drift_fail_closed(self):
+        gh=V2GitHub()
+        gh.preview_sha="c"*40
+        with self.assertRaises(PermissionError):
+            v2_evidence(gh=gh)
+        for field,value in (
+            ("base_ref","main"),
+            ("head_ref",BRANCH),
+            ("head_sha","c"*40),
+            ("head_repository","owner/other"),
+            ("draft",True),
+        ):
+            with self.subTest(field=field):
+                gh=V2GitHub()
+                setattr(gh.pr,field,value)
+                with self.assertRaises(PermissionError):
+                    v2_evidence(gh=gh)
+
+    def test_v2_context_packet_rejects_tampered_provenance(self):
+        src=v2_source()
+        proof=v2_evidence(src)
+        for field,value in (
+            ("journey_id","00000000-0000-0000-0000-000000000000"),
+            ("execution_generation",20),
+            ("binding_version",1),
+            ("base_preview_sha","c"*40),
+            ("base_preview_branch",PREVIEW),
+        ):
+            with self.subTest(field=field):
+                tampered={**src,"ci_repair_evidence":{**proof,field:value}}
+                with self.assertRaises(PermissionError):
+                    context(tampered)
+        with self.assertRaises(PermissionError):
+            context({**src,"ci_repair_evidence":proof,"delivery_target":source()["delivery_target"]})
+
+
 if __name__=="__main__":
     unittest.main()
