@@ -90,7 +90,9 @@ class VpsWakeTests(unittest.TestCase):
     def test_existing_crm_recovery_lane_accepts_vps_dispatch(self):
         workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
         self.assertIn("vps_wake:",workflow)
-        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.vps_wake == true",workflow)
+        self.assertIn("inputs.vps_wake == true",workflow)
+        candidate=workflow.split("  candidate-repin:",1)[1].split("\\n  # Human-merged PR",1)[0]
+        self.assertNotIn("github.event_name == 'workflow_dispatch'",candidate)
         self.assertIn("python scripts/run_crm209_native_ci_recovery.py",workflow)
         self.assertIn("FACTORY_CRM209_NATIVE_ENABLED: \"true\"",workflow)
 
