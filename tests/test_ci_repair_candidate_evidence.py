@@ -212,6 +212,8 @@ class V2GitHub(GitHub):
             return self.branch_sha
         if branch==V2_PREVIEW:
             return self.preview_sha
+        if branch=="main":
+            return SOURCE
         raise AssertionError("unexpected ref "+str(branch))
 
 
