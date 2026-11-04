@@ -17,6 +17,7 @@ from .journey_governance_amendment import verify_scoped_governance_amendment,con
 from .ci_repair_candidate_evidence import verify_existing_ci_repair_candidate
 from .ci_typecheck_repair_diagnostics import verified_typecheck_repair_diagnostics
 from .ci_repair_readonly_imports import resolve_verified_readonly_imports
+from .ci_native_vitest_alias_repair import verified_native_vitest_alias_patch
 from .verified_callsite_context import discover_verified_readonly_callers
 
 
@@ -809,6 +810,12 @@ class ChangeSetBuilderWorker:
                 item,impact_context=impact.as_context(),base_commit=binding.base_commit,
                 context_packet=packet.as_dict(),write_scopes=write_scopes,
             )
+            # Exact GitHub job + SHA + frozen write scope can authorize a
+            # deterministic import fix, never a new model/paid attempt.
+            deterministic_files=verified_native_vitest_alias_patch(
+                github=self.github,source=source,base_commit=binding.base_commit,
+                repository=item.repository,write_scopes=write_scopes,
+            )
             self.store.set_repair_status(run_id=item.run_id,status="running")
         except Exception as exc:
             self.store.block_work_unit(
@@ -818,7 +825,16 @@ class ChangeSetBuilderWorker:
             )
             raise
         try:
-            artifact=self.producer.produce(item)
+            if deterministic_files is not None:
+                artifact=ImplementationArtifact(
+                    plan_markdown="Verified native CI import resolution in approved exact test file.",
+                    files=deterministic_files,
+                    commit_message="fix(ci): resolve exact Vitest test import without model",
+                    pr_title="Resolve verified Vitest alias import",
+                    pr_body="Deterministic exact-SHA, exact-job CI repair; no new scopes or paid model.",
+                )
+            else:
+                artifact=self.producer.produce(item)
         except Exception as exc:
             self.store.block_work_unit(
                 run_id=item.run_id,
