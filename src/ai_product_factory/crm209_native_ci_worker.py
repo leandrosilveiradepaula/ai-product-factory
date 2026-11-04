@@ -146,23 +146,10 @@ def run_once(*, worker_id: str, rpc: Callable[[str, dict], dict] = _rpc,
         PROJECT, ("contents_write", "issues_write", "pull_requests_write")
     )
     github = github_factory(repository=REPO)
-    if resume:
-        revived = rpc(_RESUME, {
-            "p_expected_candidate_commit": SHA,
-            "p_expected_generation": GENERATION,
-            "p_expected_request_id": REQUEST,
-        })
-        if _idle(revived):
-            if revived.get("status") == "blocked_migration_not_applied":
-                return {"status": "blocked_migration_not_applied", "claimed": False,
-                        "paid_model_calls": 0, "release_authorized": False}
-        elif (revived.get("status") != "requeued" or revived.get("requeued") is not True
-              or revived.get("paid_model_calls") != 0
-              or revived.get("model_calls_allowed") is not False
-              or revived.get("release_authorized") is not False
-              or revived.get("candidate_commit") != SHA
-              or revived.get("request_id") != REQUEST):
-            raise PermissionError("CRM209 native recovery receipt mismatch")
+    # The database atomically resumes exhausted and claims the native Work Unit.
+    # A separate resume call would briefly expose a queued paid Direct task.
+    if resume is not True:
+        raise ValueError("CRM209 native claim must always be atomic")
     # Re-verify the frozen GitHub candidate BEFORE claiming a lease.
     if github.get_branch_sha("factory/journey-bb14e150-2c7e-423b-8e5d-e211dab6225c") != SHA:
         raise PermissionError("CRM209 native PR candidate has changed")
