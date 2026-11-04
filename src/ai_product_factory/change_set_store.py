@@ -189,6 +189,23 @@ class SupabaseChangeSetStore:
 
         enriched=dict(data)
         enriched["assignment"]=assignment
+        repair=enriched.get("repair")
+        if isinstance(repair,dict) and repair.get("repair_kind")=="ci":
+            repair_id=repair.get("repair_request_id")
+            if not isinstance(repair_id,str) or not repair_id:
+                raise PermissionError("CI repair context has no durable request identity")
+            repair_rows=self._get(
+                "factory_ci_repair_requests?select=id,work_unit_id,deterministic_only"
+                "&id=eq."+quote(repair_id,safe="")+"&limit=2"
+            )
+            if (not isinstance(repair_rows,list) or len(repair_rows)!=1
+                or repair_rows[0].get("id")!=repair_id
+                or repair_rows[0].get("work_unit_id")!=work_unit_id
+                or type(repair_rows[0].get("deterministic_only")) is not bool):
+                raise PermissionError("CI repair deterministic-only authority is unavailable")
+            enriched["repair"]={**repair,
+                "deterministic_only":repair_rows[0]["deterministic_only"]}
+
         enriched["human_decisions"]=decisions
         enriched["project_kind"]=project_kind
         enriched["delivery_target"]=delivery_target
