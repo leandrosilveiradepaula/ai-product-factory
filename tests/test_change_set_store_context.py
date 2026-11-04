@@ -82,6 +82,7 @@ class ChangeSetStoreContextTests(unittest.TestCase):
         store._get=get
         context=store.context_source("run-1")
         self.assertEqual(context["journey_id"],"journey-1")
+        self.assertEqual(context["project_id"],"project-1")
         self.assertEqual(context["task"]["description"],"Fix contract listing")
         self.assertIsNone(context["delivery_target"])
 
