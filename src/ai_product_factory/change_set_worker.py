@@ -772,7 +772,8 @@ class ChangeSetBuilderWorker:
                     or repair.get("candidate_commit")!=ci_repair_evidence["candidate_commit"]
                     or repair.get("repair_request_id")!=ci_repair_evidence["repair_request_id"]
                     or repair.get("pr_number")!=ci_repair_evidence["pr_number"]
-                    or repair.get("branch")!=ci_repair_evidence["integration_branch"]):
+                    or repair.get("branch")!=ci_repair_evidence["integration_branch"]
+                    or repair.get("deterministic_only",False)!=ci_repair_evidence.get("deterministic_only",False)):
                     raise PermissionError("CI repair context changed after live PR verification")
                 source={**source,"ci_repair_evidence":ci_repair_evidence}
                 if ci_typecheck_diagnostics:
@@ -816,6 +817,12 @@ class ChangeSetBuilderWorker:
                 github=self.github,source=source,base_commit=binding.base_commit,
                 repository=item.repository,write_scopes=write_scopes,
             )
+            # The exceptional exhausted CRM209 request is never permitted to
+            # fall back to paid generation if GitHub evidence disappears.
+            repair=source.get("repair")
+            if (isinstance(repair,dict) and repair.get("deterministic_only") is True
+                and deterministic_files is None):
+                raise PermissionError("deterministic-only CI repair was not independently verified")
             self.store.set_repair_status(run_id=item.run_id,status="running")
         except Exception as exc:
             self.store.block_work_unit(
