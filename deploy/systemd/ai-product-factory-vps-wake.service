@@ -1,0 +1,31 @@
+# Install only after reviewing the deployment target and provisioning a
+# workflow-dispatch-only token in /etc/ai-product-factory/vps-wake.env.
+[Unit]
+Description=Wake AI Product Factory queues through authenticated GitHub Actions
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=factory-wake
+Group=factory-wake
+WorkingDirectory=/opt/ai-product-factory
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/ai-product-factory/vps-wake.env
+ExecStart=/usr/bin/python3 /opt/ai-product-factory/scripts/dispatch_factory_vps_wake.py
+TimeoutStartSec=25
+Restart=no
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+StandardOutput=journal
+StandardError=journal

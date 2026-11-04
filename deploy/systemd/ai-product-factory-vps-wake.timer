@@ -1,0 +1,13 @@
+# OFF by default: enable only after a human verifies the token and VPS.
+[Unit]
+Description=Wake AI Product Factory every fifteen minutes (UTC)
+
+[Timer]
+OnCalendar=*-*-* *:00/15:00 UTC
+AccuracySec=30s
+RandomizedDelaySec=0
+Persistent=false
+Unit=ai-product-factory-vps-wake.service
+
+[Install]
+WantedBy=timers.target
