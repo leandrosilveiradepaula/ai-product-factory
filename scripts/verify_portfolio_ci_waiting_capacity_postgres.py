@@ -72,11 +72,6 @@ create table public.factory_change_set_work_units (
 );
 """
 
-def ids(db):
-    return [str(r["project_id"]) for r in db.execute(
-        "select jsonb_array_elements(public.factory_portfolio_candidates(20)) as item"
-    ).fetchall() for r in [r] if False]
-
 with psycopg.connect(DSN, autocommit=True) as db:
     db.execute(SCHEMA)
     db.execute(baseline)
@@ -120,7 +115,7 @@ with psycopg.connect(DSN, autocommit=True) as db:
         assert isinstance(value,list),value
         return {item["project_key"]:item for item in value}
 
-    assert candidates()=={}, "legacy predicate must reproduce stalled pilot"
+    assert set(candidates())=={"incident-p0"}, "legacy predicate must hide CRM candidate"
     db.execute(migration)
     acl=db.execute("""
         select prosecdef,
