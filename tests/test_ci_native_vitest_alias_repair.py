@@ -38,6 +38,7 @@ class Failure:
 
 class GitHub:
     def __init__(self):
+        self.sha = SHA
         self.paths = [
             TEST, SOURCE, "tsconfig.json", "package.json",
             "src/lib/supabase/admin.ts",
@@ -57,11 +58,11 @@ class GitHub:
         return self.failures
 
     def list_file_paths(self, *, ref):
-        assert ref == SHA
+        assert ref == self.sha
         return self.paths
 
     def get_file_text(self, path, *, ref):
-        assert ref == SHA
+        assert ref == self.sha
         return self.files[path]
 
     def native_log_reader(self, job_id):
@@ -95,12 +96,12 @@ def source():
     }
 
 
-def run(gh=None, src=None, scopes=(TEST,), commit=SHA):
+def run(gh=None, src=None, scopes=(TEST,), commit=SHA, repo=REPO):
     return verified_native_vitest_alias_patch(
         github=gh if gh is not None else GitHub(),
         source=src if src is not None else source(),
         base_commit=commit,
-        repository=REPO,
+        repository=repo,
         write_scopes=scopes,
     )
 
@@ -115,6 +116,47 @@ class NativeVitestAliasRepairTests(unittest.TestCase):
         self.assertNotIn("import { ContractService } from '@/services/ContractService'", patch[TEST])
         self.assertEqual(gh.requested_sha, SHA)
         self.assertEqual(gh.log_job, 126358570861)
+
+    def test_exhausted_crm209_uses_two_exact_files_without_model(self):
+        real_sha = "e5eb59c1a56b0c922a5e0d1e956e8c442dff152b"
+        real_repo = "leandrosilveiradepaula/crm-infodive"
+        real_url = (
+            "https://github.com/" + real_repo
+            + "/actions/runs/41764182167/job/126358570861"
+        )
+        gh = GitHub()
+        gh.sha = real_sha
+        gh.failures = (Failure(details_url=real_url),)
+        gh.log = LOG.replace(URL, real_url).replace(
+            "/home/runner/work/crm-infodive/crm-infodive",
+            "/home/runner/work/crm-infodive/crm-infodive",
+        )
+        gh.files[SOURCE] = (
+            "import { createAdminClient } from '@/lib/supabase/admin';\n"
+            "import { type Contract } from '@/types/contract';\n"
+            "export class ContractService {}\n"
+        )
+        src = source()
+        src["repair"]["deterministic_only"] = True
+        src["ci_repair_evidence"]["deterministic_only"] = True
+        src["repair"]["candidate_commit"] = real_sha
+        src["ci_repair_evidence"]["candidate_commit"] = real_sha
+        src["repair"]["repair_request_id"] = "ca53e605-b132-4937-aed3-f907cea2e221"
+        src["ci_repair_evidence"]["repair_request_id"] = "ca53e605-b132-4937-aed3-f907cea2e221"
+        src["ci_repair_evidence"]["repository"] = real_repo
+        src["repair"]["failures"][0]["details_url"] = real_url
+        scopes = (SOURCE, TEST)
+        patch = run(gh, src=src, scopes=scopes, commit=real_sha, repo=real_repo)
+        self.assertEqual(set(patch), {SOURCE, TEST})
+        self.assertIn("from '../src/services/ContractService'", patch[TEST])
+        self.assertIn("vi.mock('../src/lib/supabase/admin'", patch[TEST])
+        self.assertIn("from '../lib/supabase/admin'", patch[SOURCE])
+        self.assertIn("from '../types/contract'", patch[SOURCE])
+        self.assertNotIn("@/", patch[TEST] + patch[SOURCE])
+        self.assertEqual(gh.requested_sha, real_sha)
+        gh.files[SOURCE] = "export class ContractService {}"
+        self.assertIsNone(run(gh, src=src, scopes=scopes, commit=real_sha, repo=real_repo))
+        self.assertIsNone(run(gh, src=src, scopes=(TEST,), commit=real_sha, repo=real_repo))
 
     def test_no_scope_no_model_no_edit(self):
         gh = GitHub()
