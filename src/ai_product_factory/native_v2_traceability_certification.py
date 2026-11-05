@@ -306,7 +306,8 @@ def verify_existing_crm_v2_traceability(
         and current.get("event") == "workflow_run"
         and current.get("head_branch") == "main"
         and current.get("head_sha") == assessed_commit
-        and current.get("run_attempt") == 1,
+        and current.get("run_attempt") == 1
+        and current.get("event") == "workflow_run",
         "v2_current_assessment_run_not_verified",
     )
     audited = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN_ID))
