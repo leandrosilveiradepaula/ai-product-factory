@@ -35,6 +35,15 @@ class ConsoleRouteAuditTests(unittest.TestCase):
             self.assertIn("mutation_content_type_guard_not_found", flags)
             self.assertFalse(report["security_certified"])
 
+    def test_public_exceptions_match_actual_api_relative_paths(self):
+        report = mod.audit(ROOT)
+        self.assertEqual(report["stale_public_exceptions"], [])
+        categories = {row["route"]: row["category"] for row in report["routes"]}
+        self.assertEqual(categories["health/route.ts"], "health_no_sensitive_data")
+        self.assertEqual(categories["integrations/github-app/webhook/route.ts"], "hmac_and_feature_gate")
+        self.assertEqual(categories["integrations/github-app/callback/route.ts"], "oauth_callback")
+        self.assertEqual(categories["integrations/supabase/callback/route.ts"], "oauth_callback")
+
     def test_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
