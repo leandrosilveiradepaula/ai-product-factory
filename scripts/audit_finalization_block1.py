@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -25,6 +24,7 @@ BLOCK = {
 DOCUMENTS = {
     "README.md": ("PYTHONPATH=src", "python -m ai_product_factory.cli validate"),
     "AGENTS.md": ("docs/FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
+    "PROJECT_PLAN.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "PROJECT_PLAN.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "docs/STATUS.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "docs/OPERATIONS.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
@@ -44,7 +44,6 @@ SOURCE = (
     "config/factory.example.json",
 )
 SIMULATION = re.compile(r"(?i)(?<![a-z0-9_])(dry_run|dry-run|mock|noop|no_op|fixture|demo)(?![a-z0-9_])")
-SENSITIVE_NAME = re.compile(r"(?i)(secret|token|password|api[_-]?key|credential)")
 HEX_SHA = re.compile(r"[a-f0-9]{40}\Z")
 
 
@@ -100,7 +99,6 @@ def audit(root: Path, *, sha: str) -> dict:
             hashes[path] = hashlib.sha256(body.encode("utf-8")).hexdigest()
         except (ValueError, OSError, UnicodeError):
             findings[path] = ["source_missing_or_unreadable"]
-    docs_ok = lambda *paths: all(not findings.get(p, ["not_scanned"]) for p in paths)
     docs = {
         "setup_configuration": ("README.md", "config/factory.example.json"),
         "operations": ("docs/OPERATIONS.md", "docs/STATUS.md", "AGENTS.md"),
