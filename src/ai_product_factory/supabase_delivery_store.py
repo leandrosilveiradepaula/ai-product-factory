@@ -77,14 +77,19 @@ class SupabaseDeliveryStore:
    raise RuntimeError("invalid cross-repo browser receipt inventory")
   for row in rows:
    if not isinstance(row,dict):raise RuntimeError("malformed cross-repo browser receipt")
-   evidence=row.get("evidence") or {}
+   evidence=row.get("evidence")
+   # Historical product state snapshots legitimately store evidence as a
+   # list. They cannot bind an exact repository + merge SHA, so skip them.
+   # Do not weaken validation of any exact-matching browser receipt.
    if not isinstance(evidence,dict):
-    raise RuntimeError("malformed cross-repo browser evidence payload")
+    continue
    if evidence.get("candidate_commit")!=merge_sha or evidence.get("target_repository")!=repository:
     continue
-   preview=evidence.get("preview") or {}
-   status=row.get("source_status") or {}
-   constraints=row.get("constraints") or {}
+   preview=evidence.get("preview")
+   status=row.get("source_status")
+   constraints=row.get("constraints")
+   if not isinstance(preview,dict) or not isinstance(status,dict) or not isinstance(constraints,dict):
+    raise RuntimeError("cross-repo browser receipt is not a verified exact merge")
    url=str(preview.get("url") or "")
    parsed=urlparse(url)
    verifier_id=preview.get("browser_verifier_run_id")
