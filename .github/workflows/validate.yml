@@ -32,6 +32,10 @@ jobs:
         run: python scripts/audit_finalization_block1.py
       - name: Inventory mock/noop/demo runtime source markers without certifying reachability
         run: python scripts/inventory_block1_simulation_paths.py
+      - name: Map all 19 requirements to source and tests without granting PASS
+        env:
+          PYTHONPATH: src
+        run: python scripts/trace_block1_requirements.py
       - name: Test collection guard
         run: python scripts/check_test_collection.py
       - name: Unit tests
