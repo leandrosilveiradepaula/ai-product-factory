@@ -129,11 +129,20 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         rows = self._get("factory_runs?select=journey_id&status=eq.failed&journey_id=not.is.null"
                          "&metadata->>error=eq.planning%20has%20no%20actionable%20tasks%20or%20decisions"
                          "&order=created_at.asc&limit=" + str(limit * 8))
+        from uuid import UUID
         ids = []
         for row in rows if isinstance(rows, list) else []:
             ident = row.get("journey_id") if isinstance(row, dict) else None
-            if isinstance(ident, str) and ident and ident not in ids:
-                ids.append(ident)
+            if not isinstance(ident, str):
+                continue
+            try:
+                # IDs enter a PostgREST filter; canonical UUID validation
+                # prevents malformed historical metadata from changing it.
+                canonical = str(UUID(ident))
+            except (ValueError, AttributeError):
+                continue
+            if canonical == ident and canonical not in ids:
+                ids.append(canonical)
         if not ids:
             return {"attempted": 0, "queued": 0, "outcomes": [], "ineligible_skipped": 0}
         # The explicit state filter prevents the repeated 409s observed on
