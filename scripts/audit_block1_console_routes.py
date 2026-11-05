@@ -12,10 +12,10 @@ from pathlib import Path
 import re
 
 PUBLIC = {
-    "api/health/route.ts": "health_no_sensitive_data",
-    "api/integrations/github-app/webhook/route.ts": "hmac_and_feature_gate",
-    "api/integrations/github-app/callback/route.ts": "oauth_callback",
-    "api/integrations/supabase/callback/route.ts": "oauth_callback",
+    "health/route.ts": "health_no_sensitive_data",
+    "integrations/github-app/webhook/route.ts": "hmac_and_feature_gate",
+    "integrations/github-app/callback/route.ts": "oauth_callback",
+    "integrations/supabase/callback/route.ts": "oauth_callback",
 }
 MUTATION = re.compile(r"export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\s*\(")
 HANDLER = re.compile(r"export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\s*\(")
