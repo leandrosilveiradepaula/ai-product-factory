@@ -49,7 +49,7 @@ create table public.factory_projects (
 );
 create table public.factory_tasks (
  id uuid primary key, project_id uuid not null, status text not null,
- journey_id uuid, risk jsonb not null default '{}'::jsonb
+ journey_id uuid, updated_at timestamptz default now(), risk jsonb not null default '{}'::jsonb
 );
 create table public.factory_runs (
  id uuid primary key, task_id uuid not null, status text not null,
