@@ -50,3 +50,14 @@ Projeto `fjplmxfcshhbmzgvyqlm`, SQL somente SELECT sobre catálogos PostgreSQL:
 - Quatro funções `factory_*` de trigger (`factory_propagate_journey_binding_v2`, `factory_stamp_ci_release_epoch`, `factory_sync_ci_repair_lease`, `factory_sync_ci_repair_request`) herdam EXECUTE de `PUBLIC` para `anon`/`authenticated`; todas são `SECURITY INVOKER`, `RETURNS trigger`, e não fornecem caminho RPC direto de mutação. Registrar como observação para revisar grants em eventual hardening, sem afirmar exploração ou revogar sem migration aprovada.
 
 **Alcance:** metadados atuais de RLS/GRANT/trigger verificados; não prova sessão real de usuário, tenant cross-repo ou autorização do Console. `security/data_access_boundaries` continua sem PASS. Nenhuma alteração de política, privilégio, dados ou Auth foi feita.
+
+## 05/11 — inventário de caminhos de simulação e rastreabilidade de requisitos
+
+A trilha agora executa em `validate/test`:
+1. `scripts/inventory_block1_simulation_paths.py` faz parse AST de todos os módulos Python de runtime em `src/ai_product_factory`, enumera **somente** arquivo, linha e categoria de marcadores `dry_run/mock/noop/fixture/demo`, registra SHA-256 determinístico, rejeita symlink e Python inválido. O inventário não lê testes, não revela conteúdo de linhas e **não** confunde marcador de comentário com caminho alcançável.
+2. `scripts/trace_block1_requirements.py` valida que todos os 19 critérios do contrato estão mapeados a fontes/testes candidatos existentes e registra hashes por arquivo; em fonte ausente, marca `incomplete`, nunca `passed`.
+3. `tests/test_block1_simulation_inventory.py` e `tests/test_block1_requirements_trace.py` cobrem determinismo, falta de fonte, sintaxe inválida, symlink, valores de segredos não publicados, 19 critérios e recusa de certificação por inventário.
+
+**Próxima prova para PASS de completude funcional:** classificar o inventário de ocorrências reais por alcance do runtime e comprovar por teste adversarial que nenhum fallback mock/noop entra no produto/release; vincular requisito → jornada executada → recibo independente, não apenas código/documentação.
+
+**Nota de controle:** O Bloco 1 tem nove células. A certificação oficial continua vinculada a `main` pós-merge e **não** se atualiza por PR/CI. O trabalho é seguro e read-only, mas ainda não conclui o Bloco 1.
