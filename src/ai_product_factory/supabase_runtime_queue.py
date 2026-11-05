@@ -129,9 +129,11 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         rows = self._get("factory_runs?select=journey_id&status=eq.failed&journey_id=not.is.null"
                          "&metadata->>error=eq.planning%20has%20no%20actionable%20tasks%20or%20decisions"
                          "&order=created_at.asc&limit=" + str(limit * 8))
+        if not isinstance(rows, list):
+            raise RuntimeError("journey recovery failed-run lookup is invalid")
         from uuid import UUID
         ids = []
-        for row in rows if isinstance(rows, list) else []:
+        for row in rows:
             ident = row.get("journey_id") if isinstance(row, dict) else None
             if not isinstance(ident, str):
                 continue
