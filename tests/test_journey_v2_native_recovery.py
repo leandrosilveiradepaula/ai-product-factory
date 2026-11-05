@@ -122,30 +122,53 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         paths=[]
         def scan(path):
             paths.append(path)
-            return [{"journey_id":JOURNEY}]
+            if path.startswith("factory_runs?"):
+                return [{"journey_id":JOURNEY}, {"journey_id":JOURNEY}]
+            return [{"id":JOURNEY,"state":"source_bound"}]
         q._get=scan
         receipts=[]
-        def resume(ident):
-            receipts.append(ident)
-            return {"created":False,"journey_id":ident,"run_id":"existing"}
-        q.resume_failed_journey_v2=resume
+        q.resume_failed_journey_v2=lambda ident:(receipts.append(ident) or {"created":False,"run_id":"existing"})
         result=q.recover_failed_journeys_v2()
         self.assertEqual(receipts,[JOURNEY])
-        self.assertTrue(any("select=journey_id" in path for path in paths))
         self.assertEqual(result["attempted"],1)
         self.assertEqual(result["queued"],0)
-        self.assertEqual(result["outcomes"][0]["journey_id"],JOURNEY)
-        self.assertEqual(result["outcomes"][0]["status"],"already_queued")
+        self.assertEqual(result["ineligible_skipped"],0)
+        self.assertTrue(any("state=in.(source_bound,executing)" in p for p in paths))
 
     def test_recovery_scan_skips_rows_without_journey_identity(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
-        q._get=lambda path:[{"id":RUN}, {}, {"journey_id":JOURNEY}]
+        def scan(path):
+            if path.startswith("factory_runs?"):
+                return [{"id":RUN}, {}, {"journey_id":JOURNEY}]
+            return [{"id":JOURNEY,"state":"executing"}]
+        q._get=scan
         receipts=[]
         q.resume_failed_journey_v2=lambda ident:(receipts.append(ident) or {"created":True,"run_id":"new"})
         result=q.recover_failed_journeys_v2()
         self.assertEqual(receipts,[JOURNEY])
         self.assertEqual(result["attempted"],1)
         self.assertEqual(result["queued"],1)
+
+    def test_superseded_and_preview_verified_are_not_replayed(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        old="88e94d11-4ada-4630-aa6a-fbf2c5665b2b"
+        verified="bb14e150-2c7e-423b-8e5d-e211dab6225c"
+        def scan(path):
+            if path.startswith("factory_runs?"):
+                return [{"journey_id":old},{"journey_id":verified},{"journey_id":verified}]
+            return []
+        q._get=scan
+        q.resume_failed_journey_v2=lambda _:self.fail("ineligible journey replayed")
+        result=q.recover_failed_journeys_v2()
+        self.assertEqual(result["attempted"],0)
+        self.assertEqual(result["ineligible_skipped"],2)
+
+    def test_eligibility_lookup_failure_is_fail_closed(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        q._get=lambda path:[{"journey_id":JOURNEY}] if path.startswith("factory_runs?") else None
+        q.resume_failed_journey_v2=lambda _:self.fail("must not replay without eligibility")
+        with self.assertRaises(RuntimeError):
+            q.recover_failed_journeys_v2()
 
     def test_public_claim_recovers_journey_id_from_the_claimed_row(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
