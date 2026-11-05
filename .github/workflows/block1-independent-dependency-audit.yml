@@ -11,12 +11,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
       - name: Scan exact production lockfile without package installation
         working-directory: apps/console
         shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           set +e
@@ -35,7 +39,7 @@ jobs:
           valid = isinstance(counts, dict) and all(isinstance(counts.get(k), int) for k in ("high", "critical"))
           result = {
               "schema": "factory-block1-npm-advisory-evidence-v1",
-              "sha": os.environ["GITHUB_SHA"],
+              "sha": os.environ["CANDIDATE_SHA"],
               "scope": "production_dependencies_lockfile",
               "scanner": "npm audit",
               "scanner_exit_code": code,
