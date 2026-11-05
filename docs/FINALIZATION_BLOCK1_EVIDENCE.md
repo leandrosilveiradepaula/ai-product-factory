@@ -39,3 +39,14 @@ O job `test` também executa `scripts/audit_block1_source_boundaries.py` e os te
 ## Ensaio offline de política de release/rollback
 
 `tests/test_block1_release_rollback_exercise.py` executa a política real `evaluate_release` para PROD/DEV/PREVIEW, exige gate humano em PROD mesmo em risco default e verifica recusa de enum inválido. O procedimento de rollback continua exigindo PR de reversão e novo CI no SHA revertido; o teste não simula revert executado nem certifica rollback real. Nenhuma chamada de produção.
+
+## 05/11 — consulta direta read-only de fronteiras RLS no Supabase Factory
+
+Projeto `fjplmxfcshhbmzgvyqlm`, SQL somente SELECT sobre catálogos PostgreSQL:
+
+- **58/58** tabelas `public.factory_*` possuem RLS habilitado; 0 sem RLS.
+- `pg_policies` retornou **uma única política**: `factory_console_operators_select_self` para `authenticated`, apenas SELECT, com `auth.uid() = user_id AND is_active = true`. Nenhuma política de leitura/escrita pública para as demais 57 tabelas.
+- `has_table_privilege` retornou **zero** tabelas `factory_*` com INSERT/UPDATE/DELETE concedido a `anon` ou `authenticated`.
+- Quatro funções `factory_*` de trigger (`factory_propagate_journey_binding_v2`, `factory_stamp_ci_release_epoch`, `factory_sync_ci_repair_lease`, `factory_sync_ci_repair_request`) herdam EXECUTE de `PUBLIC` para `anon`/`authenticated`; todas são `SECURITY INVOKER`, `RETURNS trigger`, e não fornecem caminho RPC direto de mutação. Registrar como observação para revisar grants em eventual hardening, sem afirmar exploração ou revogar sem migration aprovada.
+
+**Alcance:** metadados atuais de RLS/GRANT/trigger verificados; não prova sessão real de usuário, tenant cross-repo ou autorização do Console. `security/data_access_boundaries` continua sem PASS. Nenhuma alteração de política, privilégio, dados ou Auth foi feita.
