@@ -337,8 +337,13 @@ jobs:
       - name: Requeue proven CI-repair candidate preflight mismatch (migration gated, model-free)
         shell: bash
         run: python scripts/resume_blocked_ci_repair_candidate.py --max-items 2
+      # One-shot CRM209 repair already completed (wave 5 integrated, CI passed,
+      # Preview verified and human Preview merge observed). Never make every
+      # scheduler tick retry its obsolete frozen PR/SHA. Fail closed by default;
+      # a future reactivation requires an explicit repository configuration gate
+      # AND the existing exact GitHub/SQL admission guards.
       - name: Execute exact CRM209 native CI recovery without any model (migration gated)
-        if: ${{ github.event_name == 'schedule' || (inputs.vps_wake == true) }}
+        if: ${{ vars.FACTORY_CRM209_NATIVE_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.vps_wake == true) }}
         env:
           FACTORY_CRM209_NATIVE_ENABLED: "true"
         shell: bash
