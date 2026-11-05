@@ -31,3 +31,7 @@ Data de reconciliação: 2026-11-05. Este é um inventário **read-only**, não 
 4. Falta de permissão de operador, ajuste administrativo de ruleset ou ensaio produtivo deve ser reportada como gate externo, sem inventar aprovação.
 
 O Bloco 1 não exige reexecutar o CRM #209, ativar Codex/WIF, pagar API, criar greenfield fictício, executar migration nem abrir acesso público. O objetivo é fechar lacunas reais, não multiplicar certificados artificiais.
+
+## 05/11 — verificação estrutural negativa integrada ao CI
+
+O job `test` também executa `scripts/audit_block1_source_boundaries.py` e os testes adversariais `tests/test_block1_source_boundaries.py`. A prova inspeciona a sintaxe AST de `resolve_github_token` e bloqueia remoção do `PermissionError` cross-repo, ausência da identidade `GITHUB_REPOSITORY`, ausência da exigência de baseline, desaparecimento de `test`/`factory-acceptance` e fontes ilegíveis. O relatório registra `security_certified=false` e `release_authorized=false` mesmo com todos os contratos presentes. Isso fortalece regressão, mas não substitui teste real de Auth/RLS/tenant.
