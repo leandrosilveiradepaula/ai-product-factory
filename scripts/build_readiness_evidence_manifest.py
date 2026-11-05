@@ -19,16 +19,44 @@ from ai_product_factory.product_readiness_certification import (
     certify_product_readiness,
     conservative_verified_manifest,
 )
+from ai_product_factory.native_v2_traceability_certification import (
+    TraceabilityUnverified, verify_existing_crm_v2_traceability,
+)
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
-def build_verified_baseline(*, repository: str, sha: str, github_get) -> dict:
+def build_verified_baseline(*, repository: str, sha: str, github_get,
+                            verify_native_v2: bool = False) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
+    proof = None
+    if verify_native_v2:
+        try:
+            proof = verify_existing_crm_v2_traceability(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+            )
+        except (TraceabilityUnverified, ValueError, RuntimeError, OSError, KeyError,
+                TypeError, UnicodeError):
+            # Preserve existing exact-SHA unit/integration baseline; never
+            # manufacture a positive traceability claim after failed source.
+            proof = None
+        if proof is not None:
+            entry = manifest["criteria"]["observability_operations"]["traceability"]
+            entry.update(
+                status="passed",
+                verification_state=proof.verification_state,
+                reason="independent native V2 evidence reverified on current SHA",
+                evidence=list(proof.evidence),
+            )
+    def trusted(domain, criterion, snapshot):
+        if (domain, criterion) == ("observability_operations", "traceability"):
+            return proof
+        return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
+        trusted_verifier=trusted if proof is not None else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -59,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only verified Factory readiness baseline")
     parser.add_argument("--event-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--verify-native-v2-traceability", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -68,7 +97,10 @@ def main(argv: list[str] | None = None) -> int:
     sha, _, _ = resolve_observer_event(event, repo)
     token = resolve_github_token(repo)
     github_get = lambda path: github_read(token, path)
-    report = build_verified_baseline(repository=repo, sha=sha, github_get=github_get)
+    report = build_verified_baseline(
+        repository=repo, sha=sha, github_get=github_get,
+        verify_native_v2=args.verify_native_v2_traceability,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
