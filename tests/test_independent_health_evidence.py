@@ -76,7 +76,7 @@ class Sources:
         self.github_calls.append(path)
         if path.endswith("/git/ref/heads/main"):
             return copy.deepcopy(self.values["ref"])
-        if path.endswith("/commits/" + DEPLOYED):
+        if path.endswith("/commits/" + DEPLOYED[:12]):
             return copy.deepcopy(self.values["commit"])
         if path.endswith("/commits/" + DEPLOYED + "/status"):
             return copy.deepcopy(self.values["provider"])
