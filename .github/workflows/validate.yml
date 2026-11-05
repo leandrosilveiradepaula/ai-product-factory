@@ -36,6 +36,10 @@ jobs:
         env:
           PYTHONPATH: src
         run: python scripts/trace_block1_requirements.py
+      - name: Inspect supply chain and pinned actions without credentials
+        run: python scripts/audit_block1_supply_chain.py
+      - name: Exercise documented setup in isolated credential-free environment
+        run: python scripts/exercise_block1_setup.py
       - name: Test collection guard
         run: python scripts/check_test_collection.py
       - name: Unit tests
