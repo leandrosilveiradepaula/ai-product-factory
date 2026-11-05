@@ -442,6 +442,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261031120000_native_journey_v2_recovery.sql",
             "20261104011200_resume_blocked_v2_ci_repair_target.sql",
             "20261104014200_portfolio_ci_waiting_capacity.sql",
+            "20261105043000_v2_preview_root_terminal_reconciliation.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
