@@ -17,7 +17,7 @@ WITH factory_tables AS (
  SELECT p.tablename,p.policyname,p.cmd,p.roles
  FROM pg_policies p WHERE p.schemaname='public'
  AND p.tablename LIKE 'factory\_%' ESCAPE '\'
- AND (p.cmd <> 'SELECT' OR p.roles && ARRAY['anon','public'])
+ AND (p.cmd <> 'SELECT' OR p.roles && ARRAY['anon','public']::name[])
 ), exposed_functions AS (
  SELECT p.proname,p.prosecdef,
  has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
