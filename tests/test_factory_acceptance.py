@@ -291,6 +291,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261104123000_v2_crm209_exhausted_native_ci_recovery.sql",
             "20261104133500_crm209_native_deterministic_worker_claim.sql",
             "20261104155600_v2_integration_scheduler_signals.sql",
+            "20261105021000_v2_preview_merge_root_task_guard.sql",
             "20261103042000_v2_approved_contract_test_path.sql",
             "20261103012000_v2_approved_single_caller_scope.sql",
             "20261102211000_v2_readonly_context_recovery.sql",
