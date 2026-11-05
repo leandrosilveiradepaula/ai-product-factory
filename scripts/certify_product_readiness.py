@@ -12,6 +12,7 @@ from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
 from ai_product_factory.native_v2_traceability_certification import (
     verify_existing_crm_v2_traceability,
 )
+from ai_product_factory.independent_health_evidence import verify_health_for_certification
 
 
 def _github_get(token: str):
@@ -56,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--assessed-commit", required=True)
     parser.add_argument("--evidence-file", type=Path, required=True)
     parser.add_argument("--verify-native-v2-traceability", action="store_true")
+    parser.add_argument("--verify-independent-health", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -85,12 +87,28 @@ def main(argv: list[str] | None = None) -> int:
             # The baseline builder may have failed closed. Persist only the
             # conservative one-cell state; do not retroactively claim success.
             proof = None
+    if args.verify_independent_health and not args.require_verified_baseline:
+        raise CertificationEvidenceError("health proof requires independent conservative baseline")
+    health_proof = None
+    if args.verify_independent_health:
+        health = manifest.get("criteria", {}).get("observability_operations", {}).get("health")
+        if isinstance(health, dict) and health.get("status") == "passed":
+            # A positive claim MUST re-fetch live sources before begin/persist.
+            # A lost deployment/probe/source invalidates the entire write.
+            health_proof = verify_health_for_certification(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                github_get=github_get,
+            )
     def trusted(domain, criterion, snapshot):
-        return proof if (domain, criterion) == ("observability_operations", "traceability") else None
+        if (domain, criterion) == ("observability_operations", "traceability"):
+            return proof
+        if (domain, criterion) == ("observability_operations", "health"):
+            return health_proof
+        return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
-        trusted_verifier=trusted if proof is not None else None,
+        trusted_verifier=trusted if (proof is not None or health_proof is not None) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
