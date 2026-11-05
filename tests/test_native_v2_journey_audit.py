@@ -239,7 +239,7 @@ class GitHub:
             return {"total_count": 1, "jobs": [
                 {"name": "browser-evidence", "status": "completed",
                  "conclusion": "success"}]}
-        raise AssertionError("unrecognized GET " + path)
+        raise EvidenceBlocked("independent_github_evidence_missing")
 
     def get_pull_request(self, number):
         assert number == 212
