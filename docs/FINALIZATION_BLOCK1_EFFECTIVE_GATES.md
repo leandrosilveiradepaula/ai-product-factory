@@ -15,3 +15,9 @@ A correção das regras GitHub requer acesso administrativo e decisão humana se
 ## Linha de base
 
 A PR #1241 foi mergeada humanamente em `512f0bb7652e271ce4e9f4e42de1398571c64031`, com `validate` push #42079696529 SUCCESS. Os nove critérios do Bloco 1 continuam sem certificação integral; não confundir inventário com prova de acesso/autorização/rollback.
+
+## Inventário de superfície de autenticação e mutação
+
+A mesma PR executa `scripts/audit_block1_console_routes.py` no CI. O script enumera todos os `apps/console/app/api/**/route.ts`, métodos HTTP e sinais de guardas `requireConsoleOperator/requireConsoleAdmin`, Origin e Content-Type para mutações. Exceções públicas são **explícitas e limitadas** a health, callbacks OAuth e webhook GitHub, cuja assinatura HMAC e feature flag são verificadas no código. Endpoints novos sem guarda aparecem como bloqueios no relatório; não são ignorados.
+
+O inventário é apenas estático: não comprova bypass nem segurança por si só. Para `security/authn_authz` e `security/data_access_boundaries`, ainda são necessários testes de sessão autenticada, operador não autorizado, origem inválida, separação de projetos e respostas do Control Plane, no SHA correto. Não acessar tokens nem criar usuários de teste em produção.
