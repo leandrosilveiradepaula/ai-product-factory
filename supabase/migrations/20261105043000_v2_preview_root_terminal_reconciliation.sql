@@ -80,11 +80,16 @@ begin
      and v_change.journey_id is not null
      and v_change.root_task_id=t.id
      and t.journey_id=v_change.journey_id
+     and coalesce(t.risk->>'destructive_data_change','false')<>'true'
+     and coalesce(t.risk->>'expands_sensitive_access','false')<>'true'
+     and coalesce(t.risk->>'material_requirement_change','false')<>'true'
+     and coalesce(t.risk->>'new_paid_service','false')<>'true'
      and exists (
        select 1 from public.factory_journeys j
        join public.factory_projects p on p.id=j.project_id
        where j.id=v_change.journey_id
          and j.project_id=v_change.project_id
+         and j.state='preview_verified'
          and j.execution_generation=v_control.generation
          and j.source_commit=v_change.source_commit
          and j.binding->>'journey_id'=j.id::text
