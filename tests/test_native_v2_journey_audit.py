@@ -281,6 +281,28 @@ class NativeV2AuditTests(unittest.TestCase):
         self.assertEqual(proof["paid_calls"], 0)
         self.assertEqual(proof["writes"], 0)
 
+    def test_native_v2_never_requests_nonexistent_run_project_id(self):
+        # Real Postgres factory_runs belongs to project through its task,
+        # not a project_id column. Keep the whole linkage explicit on tasks.
+        reader = FrozenReader(fixture())
+        with patch(
+            "ai_product_factory.native_v2_journey_audit.verify_copied_work_unit_waves",
+            return_value=True,
+        ):
+            proof = audit_existing_native_v2(
+                reader=reader,
+                project_key="crm-infodive",
+                journey_id=JID,
+                github_factory=GitHub,
+            )
+        self.assertTrue(proof["nonproduction_integrated"])
+        run_reads = [path for path, _ in reader.calls if path.startswith("factory_runs?")]
+        self.assertGreaterEqual(len(run_reads), 3)
+        for path in run_reads:
+            select = parse_qs(path.split("?", 1)[1]).get("select", [""])[0].split(",")
+            self.assertNotIn("project_id", select)
+            self.assertIn("task_id", select)
+
     def test_owner_comment_and_intake_fail_closed(self):
         for change in (
             lambda d, f: d["factory_journeys"][0].update(auth_event_id="6559266554"),
