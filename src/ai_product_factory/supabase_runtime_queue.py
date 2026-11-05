@@ -116,25 +116,60 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         return result
 
     def recover_failed_journeys_v2(self, limit: int = 4) -> dict:
-        """Attempt bounded native recovery; every candidate is fenced in SQL."""
+        """Bounded recovery of unique, currently eligible V2 journeys only.
+
+        Old failed runs remain immutable evidence. A superseded or
+        preview-verified journey must never be replayed because of its history.
+        The SQL RPC still owns the authoritative transactional eligibility fence.
+        """
         if type(limit) is not int or not 1 <= limit <= 8:
             raise ValueError("journey recovery limit is invalid")
+        # Overfetch to avoid duplicate historical runs consuming the entire
+        # bounded candidate window; no unbounded pagination or paid calls.
         rows = self._get("factory_runs?select=journey_id&status=eq.failed&journey_id=not.is.null"
                          "&metadata->>error=eq.planning%20has%20no%20actionable%20tasks%20or%20decisions"
-                         "&order=created_at.asc&limit=" + str(limit))
-        outcomes=[]
+                         "&order=created_at.asc&limit=" + str(limit * 8))
+        ids = []
         for row in rows if isinstance(rows, list) else []:
-            journey_id = row.get("journey_id") if isinstance(row, dict) else None
-            if not isinstance(journey_id, str):
+            ident = row.get("journey_id") if isinstance(row, dict) else None
+            if isinstance(ident, str) and ident and ident not in ids:
+                ids.append(ident)
+        if not ids:
+            return {"attempted": 0, "queued": 0, "outcomes": [], "ineligible_skipped": 0}
+        # The explicit state filter prevents the repeated 409s observed on
+        # superseded and preview_verified journeys. RPC still validates epoch,
+        # policy, provenance, active work and state under its own locks.
+        eligible_rows = self._get(
+            "factory_journeys?select=id,state&id=in.(" + ",".join(ids) + ")"
+            + "&state=in.(source_bound,executing)"
+        )
+        if not isinstance(eligible_rows, list):
+            raise RuntimeError("journey recovery eligibility lookup is invalid")
+        eligible = {
+            row.get("id") for row in eligible_rows
+            if isinstance(row, dict)
+            and row.get("state") in {"source_bound", "executing"}
+            and row.get("id") in ids
+        }
+        outcomes = []
+        skipped = 0
+        for journey_id in ids:
+            if journey_id not in eligible:
+                skipped += 1
                 continue
+            if len(outcomes) >= limit:
+                break
             try:
-                receipt=self.resume_failed_journey_v2(journey_id)
-                outcomes.append({"journey_id":journey_id,"status":"queued" if receipt.get("created") else "already_queued","run_id":receipt.get("run_id")})
+                receipt = self.resume_failed_journey_v2(journey_id)
+                outcomes.append({"journey_id": journey_id,
+                                 "status": "queued" if receipt.get("created") else "already_queued",
+                                 "run_id": receipt.get("run_id")})
             except RuntimeError as exc:
-                # Ineligibility is expected for ordinary V2 journeys; no
-                # broad retry and no text from a provider is persisted here.
-                outcomes.append({"journey_id":journey_id,"status":"not_eligible","reason":str(exc)[:96]})
-        return {"attempted":len(outcomes),"queued":sum(x["status"]=="queued" for x in outcomes),"outcomes":outcomes}
+                outcomes.append({"journey_id": journey_id, "status": "not_eligible",
+                                 "reason": str(exc)[:96]})
+        return {"attempted": len(outcomes),
+                "queued": sum(x["status"] == "queued" for x in outcomes),
+                "outcomes": outcomes, "ineligible_skipped": skipped}
 
     def bind_journey_source_v2(self, *, project_key: str, request_id: str,
                                expected_generation: int, expected_policy_version: int,
