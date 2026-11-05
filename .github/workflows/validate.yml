@@ -30,6 +30,8 @@ jobs:
         run: python scripts/audit_block1_source_boundaries.py
       - name: Inventory nine Block 1 criteria without granting PASS
         run: python scripts/audit_finalization_block1.py
+      - name: Inventory mock/noop/demo runtime source markers without certifying reachability
+        run: python scripts/inventory_block1_simulation_paths.py
       - name: Test collection guard
         run: python scripts/check_test_collection.py
       - name: Unit tests
