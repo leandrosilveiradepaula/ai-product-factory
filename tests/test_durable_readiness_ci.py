@@ -26,7 +26,7 @@ class DurableReadinessCITests(unittest.TestCase):
             repository=REPO, sha=SHA, github_get=lambda path: data[path]
         )
 
-    def run_cli(self, envelope, *, sha=SHA, verify_native_v2=False):
+    def run_cli(self, envelope, *, sha=SHA, verify_native_v2=False, verify_health=False):
         data = github()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "baseline.json"
@@ -54,6 +54,7 @@ class DurableReadinessCITests(unittest.TestCase):
                                 "--evidence-file", str(path),
                                 "--require-verified-baseline",
                                 *(['--verify-native-v2-traceability'] if verify_native_v2 else []),
+                                *(['--verify-independent-health'] if verify_health else []),
                             ])
                         return result, cls, store, stdout.getvalue()
 
@@ -136,6 +137,77 @@ class DurableReadinessCITests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.run_cli(baseline, verify_native_v2=True)
 
+    def test_source_verified_health_creates_only_one_additional_pass(self):
+        def proof(repository, assessed_commit, **kwargs):
+            return VerifiedCriterionEvidence(
+                domain="observability_operations", criterion="health",
+                repository=repository, assessed_commit=assessed_commit,
+                verification_state="observed", source="live_github_console_cp",
+                evidence=("https://github.com/" + REPO + "/actions/runs/7#sha=" + SHA,),
+            )
+        with patch("build_readiness_evidence_manifest.verify_health_for_certification",
+                   side_effect=proof):
+            baseline = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda p: github()[p],
+                verify_health=True,
+            )
+        passed = [row for row in baseline["criteria"] if row["status"] == "passed"]
+        self.assertEqual(
+            {(row["domain"], row["criterion"]) for row in passed},
+            {("test_strategy", "unit_integration"),
+             ("observability_operations", "health")},
+        )
+        self.assertFalse(baseline["product_ready"])
+        with patch.object(cli, "verify_health_for_certification", side_effect=proof) as again:
+            result, _, store, output = self.run_cli(baseline, verify_health=True)
+        self.assertEqual(result, 0)
+        self.assertEqual(again.call_count, 1)
+        attestation = store.persist_product_readiness_certification.call_args.kwargs
+        self.assertFalse(attestation["assessment"].ready)
+        self.assertEqual(
+            attestation["report"]["criteria"]["observability_operations"]["health"]["status"],
+            "passed",
+        )
+        self.assertFalse(json.loads(output)["product_ready"])
+
+    def test_lost_live_health_source_never_persists_a_claim(self):
+        from ai_product_factory.independent_health_evidence import HealthEvidenceBlocked
+        def proof(repository, assessed_commit, **kwargs):
+            return VerifiedCriterionEvidence(
+                domain="observability_operations", criterion="health",
+                repository=repository, assessed_commit=assessed_commit,
+                verification_state="observed", source="live_github_console_cp",
+                evidence=("https://github.com/" + REPO + "/actions/runs/7#sha=" + SHA,),
+            )
+        with patch("build_readiness_evidence_manifest.verify_health_for_certification",
+                   side_effect=proof):
+            baseline = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda p: github()[p],
+                verify_health=True,
+            )
+        with patch.object(cli, "verify_health_for_certification",
+                          side_effect=HealthEvidenceBlocked("health_changed")):
+            with self.assertRaises(HealthEvidenceBlocked):
+                self.run_cli(baseline, verify_health=True)
+
+    def test_missing_health_sources_stay_missing_not_fake_pass(self):
+        from ai_product_factory.independent_health_evidence import HealthEvidenceBlocked
+        with patch("build_readiness_evidence_manifest.verify_health_for_certification",
+                   side_effect=HealthEvidenceBlocked("health_endpoint_blocked")):
+            baseline = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda p: github()[p],
+                verify_health=True,
+            )
+        self.assertEqual(
+            next(row["status"] for row in baseline["criteria"]
+                 if (row["domain"], row["criterion"])
+                 == ("observability_operations", "health")),
+            "missing",
+        )
+        self.assertEqual(sum(row["status"] == "passed"
+                             for row in baseline["criteria"]), 1)
+        self.assertFalse(baseline["product_ready"])
+
     def test_unsupported_input_or_sha_mismatch_never_writes(self):
         cases = []
         base = self.baseline()
@@ -207,6 +279,7 @@ class DurableReadinessCITests(unittest.TestCase):
         self.assertNotIn("certify_product_readiness.py", observer)
         self.assertIn("scripts/build_readiness_evidence_manifest.py", observer)
         self.assertIn("--verify-native-v2-traceability", block)
+        self.assertEqual(block.count("--verify-independent-health"), 2)
         self.assertLess(
             block.index("uses: ./.github/actions/control-plane-oidc"),
             block.index("scripts/build_readiness_evidence_manifest.py"),
