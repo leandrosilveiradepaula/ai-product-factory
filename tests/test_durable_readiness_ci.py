@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import certify_product_readiness as cli
 from build_readiness_evidence_manifest import build_verified_baseline
-from ai_product_factory.product_readiness_certification import CertificationEvidenceError
+from ai_product_factory.product_readiness_certification import CertificationEvidenceError, VerifiedCriterionEvidence
 from tests.test_product_readiness_certification import REPO, SHA, github
 
 
@@ -26,7 +26,7 @@ class DurableReadinessCITests(unittest.TestCase):
             repository=REPO, sha=SHA, github_get=lambda path: data[path]
         )
 
-    def run_cli(self, envelope, *, sha=SHA):
+    def run_cli(self, envelope, *, sha=SHA, verify_native_v2=False):
         data = github()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "baseline.json"
@@ -53,6 +53,7 @@ class DurableReadinessCITests(unittest.TestCase):
                                 "--assessed-commit", sha,
                                 "--evidence-file", str(path),
                                 "--require-verified-baseline",
+                                *(['--verify-native-v2-traceability'] if verify_native_v2 else []),
                             ])
                         return result, cls, store, stdout.getvalue()
 
@@ -80,6 +81,60 @@ class DurableReadinessCITests(unittest.TestCase):
                 for row in rows.values()), 1
         )
         self.assertNotIn("fixture-only-token", output)
+
+    def test_sha_bound_v2_proof_can_attest_only_traceability(self):
+        def proof(repository, assessed_commit, **_):
+            return VerifiedCriterionEvidence(
+                domain="observability_operations",
+                criterion="traceability",
+                repository=repository, assessed_commit=assessed_commit,
+                verification_state="observed", source="github_exact_native_v2_artifact",
+                evidence=("https://github.com/" + REPO + "/actions/runs/42026802447#sha=" + SHA,),
+            )
+        with patch("build_readiness_evidence_manifest.verify_existing_crm_v2_traceability",
+                   side_effect=proof):
+            baseline = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_native_v2=True,
+            )
+        passed = [r for r in baseline["criteria"] if r["status"] == "passed"]
+        self.assertEqual(len(passed), 2)
+        self.assertEqual(
+            {(r["domain"], r["criterion"]) for r in passed},
+            {("test_strategy", "unit_integration"),
+             ("observability_operations", "traceability")},
+        )
+        self.assertFalse(baseline["product_ready"])
+        with patch.object(cli, "verify_existing_crm_v2_traceability", side_effect=proof) as verify:
+            code, cls, store, output = self.run_cli(baseline, verify_native_v2=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(verify.call_count, 1)
+        persisted = store.persist_product_readiness_certification.call_args.kwargs
+        rows = persisted["report"]["criteria"]
+        self.assertEqual(rows["observability_operations"]["traceability"]["status"], "passed")
+        self.assertEqual(sum(v["status"] == "passed"
+                             for table in rows.values() for v in table.values()), 2)
+        self.assertFalse(persisted["assessment"].ready)
+        self.assertFalse(json.loads(output)["product_ready"])
+
+    def test_verified_v2_proof_disappears_fail_closed_before_persistence(self):
+        def proof(repository, assessed_commit, **_):
+            return VerifiedCriterionEvidence(
+                domain="observability_operations", criterion="traceability",
+                repository=repository, assessed_commit=assessed_commit,
+                verification_state="observed", source="github_native_v2_source",
+                evidence=("evidence#sha=" + SHA,),
+            )
+        with patch("build_readiness_evidence_manifest.verify_existing_crm_v2_traceability",
+                   side_effect=proof):
+            baseline = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_native_v2=True,
+            )
+        with patch.object(cli, "verify_existing_crm_v2_traceability",
+                          side_effect=RuntimeError("artifact deleted")):
+            with self.assertRaises(RuntimeError):
+                self.run_cli(baseline, verify_native_v2=True)
 
     def test_unsupported_input_or_sha_mismatch_never_writes(self):
         cases = []
@@ -151,6 +206,15 @@ class DurableReadinessCITests(unittest.TestCase):
         )[0]
         self.assertNotIn("certify_product_readiness.py", observer)
         self.assertIn("scripts/build_readiness_evidence_manifest.py", observer)
+        self.assertIn("--verify-native-v2-traceability", block)
+        self.assertLess(
+            block.index("uses: ./.github/actions/control-plane-oidc"),
+            block.index("scripts/build_readiness_evidence_manifest.py"),
+        )
+        self.assertLess(
+            block.index("scripts/build_readiness_evidence_manifest.py"),
+            block.index("scripts/certify_product_readiness.py"),
+        )
 
 
 if __name__ == "__main__":
