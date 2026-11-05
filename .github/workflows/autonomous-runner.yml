@@ -1487,6 +1487,63 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  product-readiness-certification-post-ci:
+    # Independent durable certifier: successful validate push at current main
+    # SHA only. Distinct from the read-only global readiness observer.
+    # This conservatively certifies exact CI and persists not_ready until
+    # all remaining 18 criteria have independent verified evidence.
+    # Existing runner topology requires jobs rooted in schedule-probe.
+    # For a main push, that probe is intentionally SKIPPED: always() allows
+    # only the strict validate workflow_run identity, never a scheduler wake.
+    needs: schedule-probe
+    if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'validate' && github.event.workflow_run.event == 'push' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository }}
+    environment: openai-api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Collect conservative exact-SHA criterion evidence without writes
+        run: |
+          set -euo pipefail
+          python scripts/build_readiness_evidence_manifest.py \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/factory-readiness-certified-baseline.json"
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Persist current-SHA not-ready certificate only after independent GitHub verification
+        run: |
+          set -euo pipefail
+          python scripts/certify_product_readiness.py \
+            --project-key ai-product-factory \
+            --repository "$GITHUB_REPOSITORY" \
+            --assessed-commit "${{ github.event.workflow_run.head_sha }}" \
+            --evidence-file "$RUNNER_TEMP/factory-readiness-certified-baseline.json" \
+            --require-verified-baseline \
+            | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
+      - name: Preserve bounded certifier receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: factory-readiness-certification-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/factory-readiness-certified-baseline.json
+            ${{ runner.temp }}/factory-readiness-persistence-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
   global-readiness-post-ci:
     # The Control Plane broker ALREADY allows this trusted runner OIDC identity.
     # Validate and visual completion are observer signals, NEVER scheduler wakes.
