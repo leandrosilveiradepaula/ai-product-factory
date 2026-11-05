@@ -26,6 +26,8 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m ai_product_factory.cli validate config/factory.example.json
+      - name: Inventory nine Block 1 criteria without granting PASS
+        run: python scripts/audit_finalization_block1.py
       - name: Test collection guard
         run: python scripts/check_test_collection.py
       - name: Unit tests
