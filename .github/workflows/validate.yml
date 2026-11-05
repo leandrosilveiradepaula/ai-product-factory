@@ -45,6 +45,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python scripts/audit_block1_effective_gates.py
+      - name: Inventory Console API authorization and CSRF boundaries
+        run: python scripts/audit_block1_console_routes.py
       - name: Test collection guard
         run: python scripts/check_test_collection.py
       - name: Unit tests
