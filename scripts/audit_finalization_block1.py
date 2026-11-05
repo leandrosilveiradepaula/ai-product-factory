@@ -25,7 +25,6 @@ DOCUMENTS = {
     "README.md": ("PYTHONPATH=src", "python -m ai_product_factory.cli validate"),
     "AGENTS.md": ("docs/FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "PROJECT_PLAN.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
-    "PROJECT_PLAN.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "docs/STATUS.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "docs/OPERATIONS.md": ("FINALIZATION_EXECUTION_CONTRACT.md", "product_ready=false"),
     "docs/FINALIZATION_EXECUTION_CONTRACT.md": ("CRM", "Service Desk", "product_ready=false"),
