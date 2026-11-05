@@ -9,6 +9,9 @@ from pathlib import Path
 
 from ai_product_factory.product_readiness_certification import certify_product_readiness, CertificationEvidenceError
 from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
+from ai_product_factory.native_v2_traceability_certification import (
+    verify_existing_crm_v2_traceability,
+)
 
 
 def _github_get(token: str):
@@ -52,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--assessed-commit", required=True)
     parser.add_argument("--evidence-file", type=Path, required=True)
+    parser.add_argument("--verify-native-v2-traceability", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -62,8 +66,32 @@ def main(argv: list[str] | None = None) -> int:
     manifest = (require_verified_baseline(
         evidence, repository=args.repository, assessed_commit=args.assessed_commit
     ) if args.require_verified_baseline else evidence)
-    certification = certify_product_readiness(repository=args.repository, assessed_commit=args.assessed_commit,
-                                               manifest=manifest, github_get=_github_get(token))
+    if args.verify_native_v2_traceability and not args.require_verified_baseline:
+        raise CertificationEvidenceError("native V2 proof requires independent conservative baseline")
+    github_get = _github_get(token)
+    proof = None
+    if args.verify_native_v2_traceability:
+        trace = manifest.get("criteria", {}).get("observability_operations", {}).get("traceability")
+        if isinstance(trace, dict) and trace.get("status") == "passed":
+            # This independently re-fetches and verifies the historical OWNER
+            # run, artifact bytes, current code identity and live Control Plane.
+            # A missing/altered source fails before begin/persist RPC.
+            proof = verify_existing_crm_v2_traceability(
+                repository=args.repository,
+                assessed_commit=args.assessed_commit,
+                github_get=github_get,
+            )
+        else:
+            # The baseline builder may have failed closed. Persist only the
+            # conservative one-cell state; do not retroactively claim success.
+            proof = None
+    def trusted(domain, criterion, snapshot):
+        return proof if (domain, criterion) == ("observability_operations", "traceability") else None
+    certification = certify_product_readiness(
+        repository=args.repository, assessed_commit=args.assessed_commit,
+        manifest=manifest, github_get=github_get,
+        trusted_verifier=trusted if proof is not None else None,
+    )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
                 or certification.evidence_digest != evidence["evidence_digest"]
