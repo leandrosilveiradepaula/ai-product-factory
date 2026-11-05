@@ -75,6 +75,22 @@ VERIFIED={"status":"verified","run_id":CLAIM["run_id"],
 
 
 class NativeCIWorkerTests(unittest.TestCase):
+    def test_completed_one_shot_is_disabled_in_routine_scheduler_by_default(self):
+        """No recurring scheduled failure from a consumed CRM209 exact-SHA repair."""
+        from pathlib import Path
+        workflow = (Path(__file__).resolve().parents[1]
+                    / ".github/workflows/autonomous-runner.yml").read_text()
+        step = workflow.split(
+            "- name: Execute exact CRM209 native CI recovery without any model"
+        )[1].split("- name:", 1)[0]
+        self.assertIn("vars.FACTORY_CRM209_NATIVE_ENABLED == 'true'", step)
+        self.assertIn("github.event_name == 'schedule'", step)
+        self.assertIn("inputs.vps_wake == true", step)
+        self.assertIn('FACTORY_CRM209_NATIVE_ENABLED: "true"', step)
+        self.assertNotIn("run_direct", step)
+        self.assertNotIn("run_codex", step)
+        self.assertNotIn("auto_merge", step)
+
     def test_model_producer_always_refuses_even_for_direct(self):
         with self.assertRaisesRegex(PermissionError,"refuses ALL paid"):
             PaidModelForbidden().produce(SimpleNamespace())
