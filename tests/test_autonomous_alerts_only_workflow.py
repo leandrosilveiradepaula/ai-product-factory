@@ -18,7 +18,9 @@ class TestAlertsOnlyWorkflow(unittest.TestCase):
         alert=body(self.text,"alerts")
         self.assertIn("needs: schedule-probe",alert)
         self.assertNotIn("needs: release-followup",alert)
-        self.assertIn("inputs.run_alerts == true",alert)
+        self.assertIn("github.event_name == 'workflow_dispatch'",alert)
+        self.assertIn("needs.schedule-probe.result == 'success'",alert)
+        self.assertNotIn("inputs.run_alerts == true",alert)
         self.assertIn("--mode alerts",alert)
     def test_all_other_jobs_skip_alerts_only(self):
         for job in OTHER_JOBS:
