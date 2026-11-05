@@ -62,8 +62,8 @@ class SafetyInvariantTests(unittest.TestCase):
   self.assertIn("--mode alerts",alerts)
   self.assertIn("always()",alerts)
   self.assertIn("github.event_name == 'workflow_dispatch'",alerts)
-        self.assertIn("needs.schedule-probe.result == 'success'",alerts)
-        self.assertNotIn("inputs.run_alerts == true",alerts)
+  self.assertIn("needs.schedule-probe.result == 'success'",alerts)
+  self.assertNotIn("inputs.run_alerts == true",alerts)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',probe)
   self.assertIn('FACTORY_GITHUB_ALERTS_ENABLED: "true"',alerts)
  def test_idle_schedule_does_not_start_manual_codex_from_empty_dispatch_outputs(self):
