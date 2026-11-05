@@ -1,0 +1,66 @@
+name: Block 1 independent dependency advisory evidence
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  npm-production-advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      - name: Scan exact production lockfile without package installation
+        working-directory: apps/console
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          set +e
+          npm audit --package-lock-only --omit=dev --audit-level=high --json > "$RUNNER_TEMP/block1-npm-audit.json" 2> "$RUNNER_TEMP/block1-npm-audit.stderr"
+          rc=$?
+          set -e
+          cp "$RUNNER_TEMP/block1-npm-audit.json" block1-npm-audit.json
+          python - "$RUNNER_TEMP/block1-npm-audit.json" "$rc" <<'PY'
+          import json, pathlib, sys, os
+          path, code = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+          try:
+              report = json.loads(path.read_text())
+          except (OSError, ValueError):
+              report = {}
+          counts = report.get("metadata", {}).get("vulnerabilities", {})
+          valid = isinstance(counts, dict) and all(isinstance(counts.get(k), int) for k in ("high", "critical"))
+          result = {
+              "schema": "factory-block1-npm-advisory-evidence-v1",
+              "sha": os.environ["CANDIDATE_SHA"],
+              "scope": "production_dependencies_lockfile",
+              "scanner": "npm audit",
+              "scanner_exit_code": code,
+              "high": counts.get("high") if valid else None,
+              "critical": counts.get("critical") if valid else None,
+              "valid_report": valid,
+              "passed": bool(valid and code == 0 and counts["high"] == 0 and counts["critical"] == 0),
+              "block1_certified": False,
+          }
+          pathlib.Path("block1-npm-audit-summary.json").write_text(json.dumps(result, sort_keys=True))
+          print(json.dumps(result, sort_keys=True))
+          if not result["passed"]:
+              print("::error::Dependency audit failed or advisory service unavailable (fail closed)")
+              sys.exit(1)
+          PY
+      - name: Upload scanner evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: block1-npm-advisories
+          path: |
+            apps/console/block1-npm-audit-summary.json
+            apps/console/block1-npm-audit.json
+          retention-days: 14
