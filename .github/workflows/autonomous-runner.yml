@@ -1578,13 +1578,16 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Collect conservative exact-SHA criterion evidence without writes
+      # Source verification needs the existing broker's read-only PostgREST
+      # token. It runs only on successful exact-SHA main validation.
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Collect exact-SHA CI and independently audited CRM V2 traceability without writes
         run: |
           set -euo pipefail
           python scripts/build_readiness_evidence_manifest.py \
             --event-path "$GITHUB_EVENT_PATH" \
-            --output "$RUNNER_TEMP/factory-readiness-certified-baseline.json"
-      - uses: ./.github/actions/control-plane-oidc
+            --output "$RUNNER_TEMP/factory-readiness-certified-baseline.json" \
+            --verify-native-v2-traceability
       - name: Persist current-SHA not-ready certificate only after independent GitHub verification
         run: |
           set -euo pipefail
@@ -1594,6 +1597,7 @@ jobs:
             --assessed-commit "${{ github.event.workflow_run.head_sha }}" \
             --evidence-file "$RUNNER_TEMP/factory-readiness-certified-baseline.json" \
             --require-verified-baseline \
+            --verify-native-v2-traceability \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       - name: Preserve bounded certifier receipts
         if: always()
