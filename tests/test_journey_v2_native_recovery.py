@@ -163,6 +163,30 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         self.assertEqual(result["attempted"],0)
         self.assertEqual(result["ineligible_skipped"],2)
 
+    def test_malformed_historical_id_cannot_enter_postgrest_filter(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        paths=[]
+        def scan(path):
+            paths.append(path)
+            if path.startswith("factory_runs?"):
+                return [{"journey_id":"not-a-uuid),state=eq.running"},
+                        {"journey_id":JOURNEY}]
+            return [{"id":JOURNEY,"state":"source_bound"}]
+        q._get=scan
+        q.resume_failed_journey_v2=lambda ident:{"created":False,"run_id":"existing"}
+        result=q.recover_failed_journeys_v2()
+        self.assertEqual(result["attempted"],1)
+        self.assertEqual(len(paths),2)
+        self.assertNotIn("not-a-uuid",paths[1])
+
+    def test_no_historical_failed_runs_skips_eligibility_query(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        paths=[]
+        q._get=lambda path:(paths.append(path) or [])
+        result=q.recover_failed_journeys_v2()
+        self.assertEqual(result["attempted"],0)
+        self.assertEqual(len(paths),1)
+
     def test_eligibility_lookup_failure_is_fail_closed(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         q._get=lambda path:[{"journey_id":JOURNEY}] if path.startswith("factory_runs?") else None
