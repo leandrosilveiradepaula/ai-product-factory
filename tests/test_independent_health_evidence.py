@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -76,7 +77,7 @@ class Sources:
         self.github_calls.append(path)
         if path.endswith("/git/ref/heads/main"):
             return copy.deepcopy(self.values["ref"])
-        if path.endswith("/commits/" + DEPLOYED[:12]):
+        if re.fullmatch(r"/repos/" + re.escape(REPO) + r"/commits/[0-9a-f]{12}", path):
             return copy.deepcopy(self.values["commit"])
         if path.endswith("/commits/" + DEPLOYED + "/status"):
             return copy.deepcopy(self.values["provider"])
