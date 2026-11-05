@@ -127,6 +127,8 @@ class DurableReadinessCITests(unittest.TestCase):
             "\n  global-readiness-post-ci:", 1
         )[0]
         for field in (
+            "needs: schedule-probe",
+            "always() && github.event_name == 'workflow_run'",
             "github.event_name == 'workflow_run'",
             "github.event.workflow_run.name == 'validate'",
             "github.event.workflow_run.event == 'push'",
