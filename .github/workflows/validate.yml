@@ -40,6 +40,11 @@ jobs:
         run: python scripts/audit_block1_supply_chain.py
       - name: Exercise documented setup in isolated credential-free environment
         run: python scripts/exercise_block1_setup.py
+      - name: Audit effective main ruleset without changing access
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/audit_block1_effective_gates.py
       - name: Test collection guard
         run: python scripts/check_test_collection.py
       - name: Unit tests
