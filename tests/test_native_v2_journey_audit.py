@@ -5,6 +5,7 @@ import copy
 import hashlib
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 from urllib.parse import parse_qs
 from uuid import UUID
 
@@ -348,6 +349,31 @@ class NativeV2AuditTests(unittest.TestCase):
         for paths in ([], ["src/a.ts", "src/a.ts"], ["/tmp/a.ts"],
                       ["a/../b.ts"], [".."], ["x\\y.ts"]):
             self.assertFalse(safe_paths(paths))
+
+    def test_oidc_audit_in_existing_trusted_runner_only(self):
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/autonomous-runner.yml").read_text()
+        broker = (root / "supabase/functions/factory-runtime-control-plane/index.ts").read_text()
+        other = root / ".github/workflows/native-v2-readonly-audit.yml"
+        self.assertFalse(other.exists(), "standalone OIDC workflow must remain removed")
+        trusted_ref = "ai-product-factory/.github/workflows/autonomous-runner.yml@refs/heads/main"
+        self.assertIn(trusted_ref, broker)
+        job = workflow.split("\n  native-v2-journey-readonly:\n", 1)
+        self.assertEqual(len(job), 2)
+        body = job[1].split("\n  continuation-offline-preflight:\n", 1)[0]
+        self.assertIn("github.event.issue.number == 713", body)
+        self.assertIn("github.event.comment.author_association == 'OWNER'", body)
+        self.assertIn("github.event.comment.user.id == 256917842", body)
+        self.assertIn("github.event.sender.id == 256917842", body)
+        self.assertIn("startsWith(github.event.comment.body, '/factory-v2-journey-audit ')", body)
+        self.assertIn("GITHUB_EVENT_NAME: " + chr(36) + "{{ github.event_name }}", body)
+        self.assertIn("persist-credentials: false", body)
+        self.assertIn("FACTORY_GITHUB_TOKEN: " + chr(36) + "{{ secrets.FACTORY_GITHUB_TOKEN }}", body)
+        self.assertLess(body.index("--check-event"), body.index("control-plane-oidc"))
+        self.assertLess(body.index("control-plane-oidc"), body.index("--output"))
+        self.assertNotIn("FACTORY_PRIMARY_MODEL_ENABLED: true", body)
+        self.assertNotIn("run_codex", body)
+        self.assertNotIn("merge_pull_request", body)
 
     def test_exact_owner_dispatch_and_comment(self):
         env = {
