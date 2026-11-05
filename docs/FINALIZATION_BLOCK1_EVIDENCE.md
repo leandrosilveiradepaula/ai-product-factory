@@ -35,3 +35,7 @@ O Bloco 1 não exige reexecutar o CRM #209, ativar Codex/WIF, pagar API, criar g
 ## 05/11 — verificação estrutural negativa integrada ao CI
 
 O job `test` também executa `scripts/audit_block1_source_boundaries.py` e os testes adversariais `tests/test_block1_source_boundaries.py`. A prova inspeciona a sintaxe AST de `resolve_github_token` e bloqueia remoção do `PermissionError` cross-repo, ausência da identidade `GITHUB_REPOSITORY`, ausência da exigência de baseline, desaparecimento de `test`/`factory-acceptance` e fontes ilegíveis. O relatório registra `security_certified=false` e `release_authorized=false` mesmo com todos os contratos presentes. Isso fortalece regressão, mas não substitui teste real de Auth/RLS/tenant.
+
+## Ensaio offline de política de release/rollback
+
+`tests/test_block1_release_rollback_exercise.py` executa a política real `evaluate_release` para PROD/DEV/PREVIEW, exige gate humano em PROD mesmo em risco default e verifica recusa de enum inválido. O procedimento de rollback continua exigindo PR de reversão e novo CI no SHA revertido; o teste não simula revert executado nem certifica rollback real. Nenhuma chamada de produção.
