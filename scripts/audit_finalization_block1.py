@@ -45,7 +45,7 @@ SOURCE = (
 )
 SIMULATION = re.compile(r"(?i)(?<![a-z0-9_])(dry_run|dry-run|mock|noop|no_op|fixture|demo)(?![a-z0-9_])")
 SENSITIVE_NAME = re.compile(r"(?i)(secret|token|password|api[_-]?key|credential)")
-HEX_SHA = re.compile(r"[a-f0-9]{40}\\Z")
+HEX_SHA = re.compile(r"[a-f0-9]{40}\Z")
 
 
 def _read(root: Path, path: str) -> str:
@@ -185,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     report = audit(args.root, sha=_git_sha(args.root))
-    serialized = json.dumps(report, sort_keys=True, ensure_ascii=True) + "\\n"
+    serialized = json.dumps(report, sort_keys=True, ensure_ascii=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(serialized, encoding="utf-8")
