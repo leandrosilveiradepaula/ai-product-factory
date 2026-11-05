@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/*v2_preview_merge_root_task_guard.sql"
+      - "supabase/migrations/*v2_preview_root_terminal_reconciliation.sql"
       - "scripts/verify_v2_preview_merge_root_task_postgres.py"
       - ".github/workflows/v2-preview-merge-root-task-postgres.yml"
 
