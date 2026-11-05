@@ -1147,9 +1147,13 @@ jobs:
         run: python -m ai_product_factory.runtime_cli --mode preview --run-id "$FACTORY_PREVIEW_EXPECTED_RUN_ID" --expected-preview-sha "$FACTORY_PREVIEW_EXPECTED_SHA"
 
   alerts:
+    # The VPS 15-minute wake is workflow_dispatch, not native schedule.
+    # Reconcile alerts on every successful real dispatch probe as well as
+    # native schedule; the issue adapter is idempotent and never wakes work.
+    # Read-only audits skip schedule-probe and cannot enter this job.
     # Alert collector failure must be visible, but must not invalidate the
     # durable work probe or suppress ready product/dispatch/CI lanes.
-    if: ${{ always() && (github.event_name == 'schedule' || (needs.schedule-probe.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_alerts == true)) }}
+    if: ${{ always() && (github.event_name == 'schedule' || (needs.schedule-probe.result == 'success' && github.event_name == 'workflow_dispatch')) }}
     needs: schedule-probe
     runs-on: ubuntu-latest
     timeout-minutes: 5
