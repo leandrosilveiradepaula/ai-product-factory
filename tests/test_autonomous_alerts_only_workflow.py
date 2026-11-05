@@ -44,7 +44,9 @@ class TestAlertsOnlyWorkflow(unittest.TestCase):
         self.assertNotIn("FACTORY_GITHUB_TOKEN",alerts)
         self.assertIn("issues: write",alerts)
         self.assertIn("needs.schedule-probe.result == 'success'",alerts)
-        self.assertIn("inputs.run_alerts == true",alerts)
+        self.assertIn("github.event_name == 'workflow_dispatch'",alerts)
+        self.assertIn("needs.schedule-probe.result == 'success'",alerts)
+        self.assertNotIn("inputs.run_alerts == true",alerts)
         self.assertNotIn("continue-on-error: true",alerts)
         # The optional alert collector can fail, while work scheduling is
         # still gated by the successful durable probe alone.
