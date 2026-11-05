@@ -26,7 +26,7 @@ if (
     raise SystemExit("refusing non-isolated PostgreSQL connection")
 
 root = Path(__file__).resolve().parents[1]
-sql = (root / "supabase/migrations/20261105021000_v2_preview_merge_root_task_guard.sql").read_text()
+sql = (root / "supabase/migrations/20261105043000_v2_preview_root_terminal_reconciliation.sql").read_text()
 assert sql.count("create or replace function public.factory_observe_nonproduction_preview_merge(") == 1
 assert sql.count("\ncommit;") == 1
 assert sql.strip().endswith("commit;")
@@ -49,7 +49,7 @@ create table public.factory_projects (
 );
 create table public.factory_tasks (
  id uuid primary key, project_id uuid not null, status text not null,
- journey_id uuid, risk jsonb not null default '{}'::jsonb
+ journey_id uuid, updated_at timestamptz default now(), risk jsonb not null default '{}'::jsonb
 );
 create table public.factory_runs (
  id uuid primary key, task_id uuid not null, status text not null,
@@ -305,6 +305,7 @@ with psycopg.connect(dsn, autocommit=True) as conn:
     assert ok["idempotent"] is False,ok
     assert query(conn,"select status from public.factory_runs where id=%s",run_id)[0]=="integrated"
     assert query(conn,"select status from public.factory_change_sets where id=%s",change_set_id)[0]=="completed"
+    assert query(conn,"select status from public.factory_tasks where id=%s",task_id)[0]=="integrated"
     assert query(conn,"select status from public.factory_release_reports where run_id=%s",run_id)[0]=="blocked"
     report = query(conn,"select report from public.factory_release_reports where run_id=%s",run_id)[0]
     assert report["release_state"]=="nonproduction_integrated"
@@ -318,6 +319,15 @@ with psycopg.connect(dsn, autocommit=True) as conn:
                    "select public.factory_observe_nonproduction_preview_merge(%s,%s,%s,%s,%s,%s::jsonb)",
                    run_id,180,head,merge,base,json.dumps(evidence))[0]
     assert replay["idempotent"] is True,replay
+    assert query(conn,"select status from public.factory_tasks where id=%s",task_id)[0]=="integrated"
+    # Reproduce the prior broken observation without touching production:
+    # the run/CS are already terminal but the bound V2 root is still queued.
+    conn.execute("update public.factory_tasks set status='queued_execution' where id=%s",(task_id,))
+    repaired = query(conn,
+        "select public.factory_observe_nonproduction_preview_merge(%s,%s,%s,%s,%s,%s::jsonb)",
+        run_id,180,head,merge,base,json.dumps(evidence))[0]
+    assert repaired["idempotent"] is True,repaired
+    assert query(conn,"select status from public.factory_tasks where id=%s",task_id)[0]=="integrated"
     assert query(conn,"select count(*) from public.factory_audit_events")[0]==1
     assert query(conn,"select count(*) from public.factory_tool_usage where operation='nonproduction_merge_observed'")[0]==1
 
