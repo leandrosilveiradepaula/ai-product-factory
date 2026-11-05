@@ -56,6 +56,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
+      - name: Adversarial Console Auth response and operator role tests
+        run: node --no-warnings --experimental-strip-types --test apps/console/tests/auth-api-boundaries.test.mjs
       - name: Signed GitHub App event authentication unit tests
         run: node --no-warnings --experimental-strip-types --test apps/console/tests/github-webhook-security.test.mjs
       - name: Authenticated Console visual origin and credential boundary regression
