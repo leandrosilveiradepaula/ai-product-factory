@@ -253,22 +253,20 @@ def _check_lineage(*, reader, project: dict, journey: dict, bound: dict) -> tupl
         "v2_root_task_not_terminal",
     )
     source_run = one(
-        reader, "factory_runs", "id,project_id,task_id,status",
+        reader, "factory_runs", "id,task_id,status",
         "id=eq." + _uuid(bound["run_id"]), "v2_bound_run_missing",
     )
     require(
-        source_run.get("project_id") == pid
-        and source_run.get("task_id") == root_id,
+        source_run.get("task_id") == root_id,
         "v2_source_run_not_root",
     )
     run = one(
         reader, "factory_runs",
-        "id,project_id,task_id,status,candidate_commit,branch_name,metadata",
+        "id,task_id,status,candidate_commit,branch_name,metadata",
         "id=eq." + release_id, "v2_release_run_missing",
     )
     require(
-        run.get("project_id") == pid
-        and run.get("task_id") == root_id
+        run.get("task_id") == root_id
         and run.get("status") == "integrated"
         and run.get("candidate_commit") == journey["candidate_commit"]
         and run.get("branch_name") == binding["integration_branch"]
@@ -302,7 +300,7 @@ def _check_lineage(*, reader, project: dict, journey: dict, bound: dict) -> tupl
         limit=MAX_UNITS + 1, code="v2_unit_tasks_unavailable",
     )
     runs = rows(
-        reader, "factory_runs", "id,project_id,task_id,status",
+        reader, "factory_runs", "id,task_id,status",
         "id=in.(" + ",".join(sorted(unit_runs)) + ")",
         limit=MAX_UNITS + 1, code="v2_unit_runs_unavailable",
     )
@@ -315,7 +313,6 @@ def _check_lineage(*, reader, project: dict, journey: dict, bound: dict) -> tupl
              and task_by_id[u["task_id"]].get("journey_id") == jid
              and task_by_id[u["task_id"]].get("parent_task_id") == root_id
              and task_by_id[u["task_id"]].get("status") == "integrated"
-             and run_by_id[u["run_id"]].get("project_id") == pid
              and run_by_id[u["run_id"]].get("task_id") == u["task_id"]
              and run_by_id[u["run_id"]].get("status") == "completed")
             for u in units
@@ -323,12 +320,12 @@ def _check_lineage(*, reader, project: dict, journey: dict, bound: dict) -> tupl
         "v2_cross_journey_work_unit",
     )
     root_runs = rows(
-        reader, "factory_runs", "id,project_id,task_id,status",
+        reader, "factory_runs", "id,task_id,status",
         "task_id=eq." + root_id,
         limit=31, code="v2_root_run_inventory_unbounded",
     )
     require(
-        all(r.get("project_id") == pid and r.get("task_id") == root_id for r in root_runs)
+        all(r.get("task_id") == root_id for r in root_runs)
         and release_id in {r["id"] for r in root_runs},
         "v2_root_run_inventory_mismatch",
     )
