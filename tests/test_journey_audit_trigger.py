@@ -94,7 +94,7 @@ class ReadonlyOwnerJourneyTriggerTests(TestCase):
         workflow=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
         assert "\n  journey-readonly:" in workflow
         audit=workflow.split("\n  journey-readonly:",1)[1].split(
-            "\n  continuation-offline-preflight:",1
+            "\n  native-v2-journey-readonly:",1
         )[0]
         schedule=workflow.split("\n  schedule-probe:",1)[1].split(
             "\n  github-access-preflight:",1

@@ -345,7 +345,7 @@ class JourneyReaderContractTests(unittest.TestCase):
         self.assertIn("persist-credentials: false",workflow)
         self.assertIn("audit_autonomy_journey.py",workflow)
         self.assertIn("upload-artifact@",workflow)
-        audit_job=workflow.split("\n  journey-readonly:\n",1)[1].split("\n  continuation-offline-preflight:\n",1)[0]
+        audit_job=workflow.split("\n  journey-readonly:\n",1)[1].split("\n  native-v2-journey-readonly:\n",1)[0]
         self.assertLess(audit_job.index("journey_audit_trigger"),
                         audit_job.index("uses: ./.github/actions/control-plane-oidc"))
         self.assertNotIn("      contents: write",audit_job)
@@ -386,7 +386,7 @@ class JourneyReaderContractTests(unittest.TestCase):
                 self.assertNotIn("github.event_name == 'workflow_dispatch'",body)
                 self.assertNotIn("inputs.run_journey_audit",body)
                 continue
-            if name in {"schedule-probe","journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci","alerts-owner-comment"}:
+            if name in {"schedule-probe","journey-readonly","native-v2-journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci","alerts-owner-comment"}:
                 continue
             seen=set()
             def depends_on_probe(current):

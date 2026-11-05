@@ -81,7 +81,7 @@ class OwnerAlertsOnlyContract(unittest.TestCase):
                 self.assertNotIn("github.event_name == 'workflow_dispatch'",body)
                 self.assertEqual(job_needs(body),set())
                 continue
-            if name in ("schedule-probe","alerts-owner-comment","journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci"):
+            if name in ("schedule-probe","alerts-owner-comment","journey-readonly","native-v2-journey-readonly","continuation-offline-preflight","admission-readonly","global-readiness-post-ci"):
                 continue
             seen=set()
             pending=[name]

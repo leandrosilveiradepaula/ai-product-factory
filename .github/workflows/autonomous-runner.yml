@@ -1375,6 +1375,68 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  native-v2-journey-readonly:
+    # The Control Plane broker recognizes THIS trusted workflow_ref. A
+    # standalone workflow cannot use its OIDC proxy without a sensitive broker
+    # allowlist expansion. Keep V2 audit as a separate OWNER-only job here.
+    # The scheduler and all model/paid workers stay skipped for this command.
+    if: >-
+      ${{
+        github.event_name == 'issue_comment' &&
+        github.event.action == 'created' &&
+        github.event.issue.number == 713 &&
+        !github.event.issue.pull_request &&
+        github.event.comment.author_association == 'OWNER' &&
+        github.event.comment.user.id == 256917842 &&
+        github.event.sender.id == 256917842 &&
+        github.actor == 'leandrosilveiradepaula' &&
+        github.repository == 'leandrosilveiradepaula/ai-product-factory' &&
+        startsWith(github.event.comment.body, '/factory-v2-journey-audit ')
+      }}
+    environment: openai-api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+      pull-requests: read
+      statuses: read
+      checks: read
+      issues: read
+    env:
+      PYTHONPATH: src
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_REF: ${{ github.ref }}
+      GITHUB_ACTOR: ${{ github.actor }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Require exact OWNER and immutable V2 command before OIDC
+        run: python scripts/audit_native_v2_journey.py --event-path "$GITHUB_EVENT_PATH" --check-event
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Independently audit existing V2 Preview without any model
+        env:
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: >-
+          python scripts/audit_native_v2_journey.py
+          --event-path "$GITHUB_EVENT_PATH"
+          --output "$RUNNER_TEMP/native-v2-journey-evidence.json"
+      - name: Preserve exact read-only proof or fail-closed blocker
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-v2-readonly-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-v2-journey-evidence.json
+          if-no-files-found: warn
+          retention-days: 7
+
   continuation-offline-preflight:
     # Owner issue comments are a read-only trigger when the GitHub connector
     # has no workflow_dispatch. Normal scheduler/worker jobs remain gated.

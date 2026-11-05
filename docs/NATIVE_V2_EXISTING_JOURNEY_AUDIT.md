@@ -4,18 +4,13 @@ Este procedimento reutiliza a jornada **real** `crm-infodive` criada por OWNER e
 
 ## Execução após CI e merge humano da Factory
 
-No GitHub Actions, executar manualmente o workflow `Native V2 existing journey read-only audit` em `main`, com:
-
-- `project_key=crm-infodive`
-- `journey_id=bb14e150-2c7e-423b-8e5d-e211dab6225c`
-
-Alternativamente, o próprio OWNER pode comentar **na issue #713**, em linha única exata:
+O broker do Control Plane possui allowlist de `workflow_ref`; o workflow V2 independente de #1234 foi corretamente negado pelo broker na execução [#42023882762](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42023882762) (`unverifiable_live_evidence`), embora identidade OWNER e OIDC tenham passado. **Não** ampliar a allowlist do broker apenas para auditoria: executar o job `native-v2-journey-readonly` dentro do workflow **Factory autonomous runner** já autorizado, sem acordar outras lanes. O próprio OWNER comenta **na issue #713**, em linha única exata:
 
 ```text
 /factory-v2-journey-audit crm-infodive bb14e150-2c7e-423b-8e5d-e211dab6225c
 ```
 
-O workflow verifica evento, identidade OWNER e GitHub repository **antes** do OIDC, usa somente `GET` PostgREST/GitHub, exige `FACTORY_GITHUB_TOKEN` de leitura cross-repo e guarda o artefato `native-v2-readonly-<run_id>`. Ausência de credencial/evidência gera bloqueio; nunca substituir com dados fabricados.
+O job isolado verifica evento, identidade OWNER e GitHub repository **antes** do OIDC, usa somente `GET` PostgREST/GitHub, exige `FACTORY_GITHUB_TOKEN` de leitura cross-repo e guarda o artefato `native-v2-readonly-<run_id>`. Ausência de credencial/evidência gera bloqueio; nunca substituir com dados fabricados.
 
 O auditor liga comentário GitHub original, SHA256 da solicitação, request UUID, recibos de intake/source binding, geração e política V2, root task + runs + Change Set, cinco Work Units, ondas sequenciais de PR e bytes de implementação, GitHub PR mergeado **somente** em `preview/**`, CI do candidato, QA, security, operations, gate de qualidade, deployment e browser do candidato. Revalida o merge SHA usando o snapshot pós-merge, a branch Preview e o run Actions do verificador. Qualquer ambiguidade, drift, mudança material de permissão ou ausência de prova bloqueia.
 
