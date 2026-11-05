@@ -124,4 +124,78 @@ class Tests(unittest.TestCase):
              "r",candidate_commit="a"*40,pr_number=19,
              github_state="closed",github_merged=False)
 
+ def test_preview_merge_browser_inventory_skips_unrelated_legacy_arrays(self):
+  repo="leandrosilveiradepaula/crm-infodive"
+  sha="d84f41938a5e36b4b5f86133434c900c433bffc1"
+  verified={
+   "id":"12345678-1234-4123-8123-123456789012",
+   "evidence":{
+    "target_repository":repo,"candidate_commit":sha,
+    "preview":{"provider":"vercel","status":"browser_verified",
+               "url":"https://crm-example.vercel.app",
+               "browser_verifier_run_id":12345}
+   },
+   "source_status":{"browser_visual_validation":"success","vercel_preview":"resolved"},
+   "constraints":{"production_merge_authorized":False},
+   "gaps":[]
+  }
+  rows=[
+   {"id":"77777777-0000-4000-8000-000000000000",
+    "evidence":[{"domain":"security","status":"passed"}],
+    "constraints":[],"source_status":{},"gaps":[]},
+   {"id":"77777777-0000-4000-8000-000000000001",
+    "evidence":{"target_repository":repo,"candidate_commit":"f"*40,
+                "preview":[]},
+    "constraints":{},"source_status":{},"gaps":[]},
+   verified,
+  ]
+  with patch("urllib.request.urlopen",return_value=Response(rows)) as request:
+   out=SupabaseDeliveryStore(
+    url="https://x.supabase.co",service_role_key="secret"
+   ).find_verified_nonproduction_browser_snapshot(
+    project_id="2d30e00a-ff72-4044-b838-011c263ed672",
+    repository=repo,merge_sha=sha,
+   )
+  self.assertEqual(out,{"snapshot_id":verified["id"],
+                        "preview_url":"https://crm-example.vercel.app",
+                        "verifier_run_id":12345})
+  self.assertEqual(request.call_count,1)
+  self.assertIn("limit=50",request.call_args.args[0].full_url)
+
+ def test_preview_merge_browser_missing_exact_receipt_waits(self):
+  with patch("urllib.request.urlopen",return_value=Response([
+   {"id":"77777777-0000-4000-8000-000000000000",
+    "evidence":[{"unrelated":"legacy"}],"gaps":[]}
+  ])):
+   result=SupabaseDeliveryStore(
+    url="https://x.supabase.co",service_role_key="secret"
+   ).find_verified_nonproduction_browser_snapshot(
+    project_id="2d30e00a-ff72-4044-b838-011c263ed672",
+    repository="leandrosilveiradepaula/crm-infodive",
+    merge_sha="d84f41938a5e36b4b5f86133434c900c433bffc1",
+   )
+  self.assertIsNone(result)
+
+ def test_preview_merge_matching_malformed_receipts_fail_closed(self):
+  repo="leandrosilveiradepaula/crm-infodive"
+  sha="d84f41938a5e36b4b5f86133434c900c433bffc1"
+  for preview in ([],{},{"provider":"vercel","status":"browser_verified",
+                        "url":"https://example.com","browser_verifier_run_id":10}):
+   with self.subTest(preview=preview):
+    with patch("urllib.request.urlopen",return_value=Response([
+     {"id":"11111111-1111-4111-8111-111111111111",
+      "evidence":{"target_repository":repo,"candidate_commit":sha,
+                  "preview":preview},
+      "source_status":{"browser_visual_validation":"success",
+                       "vercel_preview":"resolved"},
+      "constraints":{"production_merge_authorized":False},
+      "gaps":[]}
+    ])):
+     with self.assertRaisesRegex(RuntimeError,"not a verified exact merge"):
+      SupabaseDeliveryStore(
+       url="https://x.supabase.co",service_role_key="secret"
+      ).find_verified_nonproduction_browser_snapshot(
+       project_id="2d30e00a-ff72-4044-b838-011c263ed672",
+       repository=repo,merge_sha=sha)
+  
 if __name__=="__main__":unittest.main()
