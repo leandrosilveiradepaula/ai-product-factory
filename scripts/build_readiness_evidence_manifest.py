@@ -22,11 +22,15 @@ from ai_product_factory.product_readiness_certification import (
 from ai_product_factory.native_v2_traceability_certification import (
     TraceabilityUnverified, verify_existing_crm_v2_traceability,
 )
+from ai_product_factory.independent_health_evidence import (
+    HealthEvidenceBlocked, verify_health_for_certification,
+)
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
 def build_verified_baseline(*, repository: str, sha: str, github_get,
-                            verify_native_v2: bool = False) -> dict:
+                            verify_native_v2: bool = False,
+                            verify_health: bool = False) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -49,14 +53,34 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="independent native V2 evidence reverified on current SHA",
                 evidence=list(proof.evidence),
             )
+    health_proof = None
+    if verify_health:
+        try:
+            health_proof = verify_health_for_certification(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+            )
+        except (HealthEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            # Failure remains MISSING: no guessed deployment, no synthetic
+            # scheduler events and no unverified data-driven PASS.
+            health_proof = None
+        if health_proof is not None:
+            health = manifest["criteria"]["observability_operations"]["health"]
+            health.update(
+                status="passed", verification_state=health_proof.verification_state,
+                reason="independent current-SHA live health attestation",
+                evidence=list(health_proof.evidence),
+            )
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
+        if (domain, criterion) == ("observability_operations", "health"):
+            return health_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
-        trusted_verifier=trusted if proof is not None else None,
+        trusted_verifier=trusted if (proof is not None or health_proof is not None) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -88,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--event-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--verify-native-v2-traceability", action="store_true")
+    parser.add_argument("--verify-independent-health", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -100,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
+        verify_health=args.verify_independent_health,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
