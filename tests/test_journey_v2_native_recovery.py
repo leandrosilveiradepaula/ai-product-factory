@@ -187,6 +187,13 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         self.assertEqual(result["attempted"],0)
         self.assertEqual(len(paths),1)
 
+    def test_failed_run_lookup_failure_is_fail_closed(self):
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        q._get=lambda _:None
+        q.resume_failed_journey_v2=lambda _:self.fail("must not replay without failed-run evidence")
+        with self.assertRaises(RuntimeError):
+            q.recover_failed_journeys_v2()
+
     def test_eligibility_lookup_failure_is_fail_closed(self):
         q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
         q._get=lambda path:[{"journey_id":JOURNEY}] if path.startswith("factory_runs?") else None
