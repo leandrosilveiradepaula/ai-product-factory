@@ -25,11 +25,15 @@ jobs:
           tar --exclude=.git -cf - . | tar -C "$isolated" -xf -
           chmod -R a+rX "$isolated"
           cd "$isolated"
+          set +e
           sudo -n -u nobody -- env -i \
             PATH=/usr/bin:/bin HOME=/tmp PYTHONPATH="$isolated/src" \
             PYTHONDONTWRITEBYTECODE=1 "$python_bin" \
             scripts/exercise_block1_clean_setup.py > "$GITHUB_WORKSPACE/block1-clean-setup-receipt.json"
-          cat block1-clean-setup-receipt.json
+          rc=$?
+          set -e
+          cat "$GITHUB_WORKSPACE/block1-clean-setup-receipt.json"
+          exit "$rc"
       - name: Preserve credential-free setup result
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
