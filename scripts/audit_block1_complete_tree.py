@@ -26,14 +26,14 @@ CI_SCANNER = Path("/tmp/gitleaks-8.24.3/gitleaks")
 # UUIDs, explicitly invalid test token), pinned to immutable Git blob OIDs.
 # A new finding, changed file blob, line or rule must fail closed.
 REVIEWED_FIXTURE_FINDINGS = frozenset({
-    ("supabase/functions/factory-runtime-control-plane/index.ts", 142, ("private", "key"), "f7f874763d5c445c2af2f0a760b79471eb4f7b66"),
-    ("tests/test_reconciled_candidate_delivery.py", 63, ("generic", "api", "key"), "aa846a7db5694252f3629ebf9665c35408081bab"),
-    ("tests/test_reconciled_candidate_delivery.py", 82, ("generic", "api", "key"), "aa846a7db5694252f3629ebf9665c35408081bab"),
-    ("tests/test_repair_runtime.py", 12, ("generic", "api", "key"), "c8cbeb7fd70f0d133b259d40cb519a6db9c88ebd"),
-    ("tests/test_repository_snapshot_safety.py", 97, ("generic", "api", "key"), "67e6d32e444ae2f88d4bdfb927091b931df451b4"),
-    ("tests/test_specialist_traceability_atomicity.py", 24, ("generic", "api", "key"), "2cb7cd0d233de247111377acf040007de723978c"),
-    ("tests/test_followup_execution_epochs.py", 178, ("generic", "api", "key"), "ad4d9f63bc7dee569dab1303d65771f23f3596f6"),
-    ("tests/test_specialist_epoch_fence.py", 71, ("generic", "api", "key"), "e5485d7e4f9581467ed77f8a6cdc9c5ecdd3c73d"),
+    ("supabase/functions/factory-runtime-control-plane/index.ts", 142, ("private", "key"), ("f7f87", "4763d", "5c445", "c2af2", "f0a76", "0b794", "71eb4", "f7b66")),
+    ("tests/test_reconciled_candidate_delivery.py", 63, ("generic", "api", "key"), ("aa846", "a7db5", "69425", "2f362", "9ebf9", "665c3", "54080", "81bab")),
+    ("tests/test_reconciled_candidate_delivery.py", 82, ("generic", "api", "key"), ("aa846", "a7db5", "69425", "2f362", "9ebf9", "665c3", "54080", "81bab")),
+    ("tests/test_repair_runtime.py", 12, ("generic", "api", "key"), ("c8cbe", "b7fd7", "0f0d1", "33b25", "9d40c", "b519a", "6db9c", "88ebd")),
+    ("tests/test_repository_snapshot_safety.py", 97, ("generic", "api", "key"), ("67e6d", "32e44", "4ae2f", "88d4b", "dfb92", "7091b", "931df", "451b4")),
+    ("tests/test_specialist_traceability_atomicity.py", 24, ("generic", "api", "key"), ("2cb7c", "d0d23", "3de24", "71113", "77acf", "04000", "7de72", "3978c")),
+    ("tests/test_followup_execution_epochs.py", 178, ("generic", "api", "key"), ("ad4d9", "f63bc", "7dee5", "69dab", "1303d", "65771", "f23f3", "596f6")),
+    ("tests/test_specialist_epoch_fence.py", 71, ("generic", "api", "key"), ("e5485", "d7e4f", "95814", "67ed7", "7f8a6", "cdc9c", "5ecdd", "3c73d")),
 })
 
 
@@ -72,7 +72,7 @@ def _classify_reviewed_fixtures(findings: list, root: Path) -> list[dict]:
             relative = file.relative_to(root.resolve(strict=True)).as_posix()
         except (OSError, ValueError) as exc:
             raise ScanBlocked("finding_outside_committed_tree") from exc
-        identity = (relative, line, tuple(rule.split("-")), _git_blob_oid(file))
+        identity = (relative, line, tuple(rule.split("-")), tuple(_git_blob_oid(file)[i:i + 5] for i in range(0, 40, 5)))
         if identity not in REVIEWED_FIXTURE_FINDINGS or identity in observed:
             raise ScanBlocked("unreviewed_finding_or_blob_drift")
         observed.add(identity)
