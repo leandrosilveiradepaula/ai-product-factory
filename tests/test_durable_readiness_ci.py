@@ -26,7 +26,8 @@ class DurableReadinessCITests(unittest.TestCase):
             repository=REPO, sha=SHA, github_get=lambda path: data[path]
         )
 
-    def run_cli(self, envelope, *, sha=SHA, verify_native_v2=False, verify_health=False):
+    def run_cli(self, envelope, *, sha=SHA, verify_native_v2=False, verify_health=False,
+                persist_error=None):
         data = github()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "baseline.json"
@@ -41,13 +42,16 @@ class DurableReadinessCITests(unittest.TestCase):
                             "run_id": "run-fixture",
                             "assessed_commit": SHA,
                         }
-                        store.persist_product_readiness_certification.return_value = {
-                            "run_id": "run-fixture",
-                            "assessed_commit": SHA,
-                            "evaluation_status": "failed",
-                        }
+                        if persist_error is None:
+                            store.persist_product_readiness_certification.return_value = {
+                                "run_id": "run-fixture",
+                                "assessed_commit": SHA,
+                                "evaluation_status": "failed",
+                            }
+                        else:
+                            store.persist_product_readiness_certification.side_effect = persist_error
                         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-                            result = cli.main([
+                            argv = [
                                 "--project-key", "ai-product-factory",
                                 "--repository", REPO,
                                 "--assessed-commit", sha,
@@ -55,12 +59,20 @@ class DurableReadinessCITests(unittest.TestCase):
                                 "--require-verified-baseline",
                                 *(['--verify-native-v2-traceability'] if verify_native_v2 else []),
                                 *(['--verify-independent-health'] if verify_health else []),
-                            ])
-                        return result, cls, store, stdout.getvalue()
+                            ]
+                            if persist_error is None:
+                                result = cli.main(argv)
+                                raised = None
+                            else:
+                                with self.assertRaises(RuntimeError) as failure:
+                                    cli.main(argv)
+                                result = None
+                                raised = failure.exception
+                        return result, cls, store, stdout.getvalue(), raised
 
     def test_current_sha_baseline_persists_only_not_ready(self):
         envelope = self.baseline()
-        result, cls, store, output = self.run_cli(envelope)
+        result, cls, store, output, _ = self.run_cli(envelope)
         self.assertEqual(result, 0)
         self.assertFalse(json.loads(output)["product_ready"])
         self.assertEqual(json.loads(output)["status"], "not_ready")
@@ -107,7 +119,7 @@ class DurableReadinessCITests(unittest.TestCase):
         )
         self.assertFalse(baseline["product_ready"])
         with patch.object(cli, "verify_existing_crm_v2_traceability", side_effect=proof) as verify:
-            code, cls, store, output = self.run_cli(baseline, verify_native_v2=True)
+            code, cls, store, output, _ = self.run_cli(baseline, verify_native_v2=True)
         self.assertEqual(code, 0)
         self.assertEqual(verify.call_count, 1)
         persisted = store.persist_product_readiness_certification.call_args.kwargs
@@ -159,7 +171,7 @@ class DurableReadinessCITests(unittest.TestCase):
         )
         self.assertFalse(baseline["product_ready"])
         with patch.object(cli, "verify_health_for_certification", side_effect=proof) as again:
-            result, _, store, output = self.run_cli(baseline, verify_health=True)
+            result, _, store, output, _ = self.run_cli(baseline, verify_health=True)
         self.assertEqual(result, 0)
         self.assertEqual(again.call_count, 1)
         attestation = store.persist_product_readiness_certification.call_args.kwargs
@@ -189,6 +201,24 @@ class DurableReadinessCITests(unittest.TestCase):
                           side_effect=HealthEvidenceBlocked("health_changed")):
             with self.assertRaises(HealthEvidenceBlocked):
                 self.run_cli(baseline, verify_health=True)
+
+    def test_persistence_block_writes_only_sanitized_diagnostic_receipt(self):
+        error = RuntimeError(
+            "control-plane RPC failed: factory_persist_product_readiness_certification_v1 "
+            "(403; code=42501)"
+        )
+        result, _, store, output, raised = self.run_cli(
+            self.baseline(), persist_error=error
+        )
+        self.assertIsNone(result)
+        self.assertIs(raised, error)
+        receipt = json.loads(output)
+        self.assertEqual(receipt["persistence"], {
+            "status": "blocked", "diagnostic": str(error),
+        })
+        self.assertEqual(receipt["certification"]["run_id"], "run-fixture")
+        self.assertFalse(receipt["product_ready"])
+        self.assertEqual(store.persist_product_readiness_certification.call_count, 1)
 
     def test_missing_health_sources_stay_missing_not_fake_pass(self):
         from ai_product_factory.independent_health_evidence import HealthEvidenceBlocked

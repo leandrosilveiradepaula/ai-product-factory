@@ -53,6 +53,11 @@ on:
       - "tests/test_nonproduction_preview_merge_migration.py"
       - "src/ai_product_factory/nonproduction_preview_merge.py"
       - "src/ai_product_factory/runtime_cli.py"
+      # The regression certifier accepts this workflow only when the passed
+      # PR tree is identical to the assessed main tree. Changes to that
+      # verifier must therefore rerun isolated lifecycle QA.
+      - "src/ai_product_factory/independent_regression_evidence.py"
+      - "tests/test_independent_regression_evidence.py"
       - ".github/workflows/autonomous-runner.yml"
       - ".github/workflows/manual-project-control-postgres.yml"
 permissions:

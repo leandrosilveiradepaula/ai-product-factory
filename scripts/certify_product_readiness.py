@@ -185,9 +185,18 @@ def main(argv: list[str] | None = None) -> int:
     begun = store.begin_product_readiness_certification(project_key=args.project_key,
         repository=args.repository, assessed_commit=args.assessed_commit,
         evidence_digest=certification.evidence_digest)
-    saved = store.persist_product_readiness_certification(certification_id=begun["certification_id"],
-        run_id=begun["run_id"], assessment=certification.assessment, report=certification.report,
-        evidence_digest=certification.evidence_digest)
+    try:
+        saved = store.persist_product_readiness_certification(certification_id=begun["certification_id"],
+            run_id=begun["run_id"], assessment=certification.assessment, report=certification.report,
+            evidence_digest=certification.evidence_digest)
+    except RuntimeError as exc:
+        # Keep the receipt bounded to immutable identifiers and a sanitized
+        # provider code; never persist broker/SQL/credential response bodies.
+        print(json.dumps({"certification": begun,
+                          "persistence": {"status": "blocked", "diagnostic": str(exc)},
+                          "product_ready": certification.assessment.ready,
+                          "status": certification.assessment.status}, sort_keys=True))
+        raise
     print(json.dumps({"certification": begun, "evaluation": saved,
                       "product_ready": certification.assessment.ready,
                       "status": certification.assessment.status}, sort_keys=True))

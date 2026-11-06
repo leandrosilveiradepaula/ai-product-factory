@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json,os,urllib.error,urllib.request
+import json,os,re,urllib.error,urllib.request
 from dataclasses import dataclass
 from urllib.parse import quote
 from .supabase_server import resolve_supabase_server_config
@@ -12,11 +12,21 @@ class SupabaseDeliveryStore:
  """Narrow durable store for the GitHub delivery loop."""
  def __init__(self,*,url:str|None=None,service_role_key:str|None=None)->None:
   cfg=resolve_supabase_server_config(url=url,service_role_key=service_role_key);self.url=cfg.url;self.key=cfg.key;self.headers=cfg.headers
+ def _rpc_error(self,name:str,exc:urllib.error.HTTPError)->RuntimeError:
+  """Expose only a stable provider error code, never the response body."""
+  code="unknown"
+  try:
+   raw=exc.read(4096).decode("utf-8","replace")
+   body=json.loads(raw)
+   candidate=body.get("code") if isinstance(body,dict) else None
+   if isinstance(candidate,str) and re.fullmatch(r"[A-Z0-9]{5}",candidate): code=candidate
+  except (OSError,UnicodeError,json.JSONDecodeError): pass
+  return RuntimeError(f"control-plane RPC failed: {name} ({exc.code}; code={code})")
  def _rpc(self,name:str,payload:dict):
   req=urllib.request.Request(f"{self.url}/rest/v1/rpc/{name}",data=json.dumps(payload).encode(),method="POST",headers={**self.headers,"Content-Type":"application/json"})
   try:
    with urllib.request.urlopen(req,timeout=30) as response:raw=response.read().decode()
-  except urllib.error.HTTPError as exc:raise RuntimeError(f"control-plane RPC failed: {name} ({exc.code})") from exc
+  except urllib.error.HTTPError as exc:raise self._rpc_error(name,exc) from exc
   return None if not raw else json.loads(raw)
  def update_run_status(self,run_id:str,status:str,*,candidate_commit:str|None=None)->DurableRunRecord:
   d=self._rpc("factory_update_run_delivery_status",{"p_run_id":run_id,"p_status":status,"p_candidate_commit":candidate_commit})
