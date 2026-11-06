@@ -11,7 +11,7 @@ from unittest.mock import patch
 import zipfile
 
 from ai_product_factory.independent_setup_evidence import (
-    REPO, SOURCE_SHA, MERGE_SHA, SOURCE_PR, SOURCE_RUN,
+    REPO, SOURCE_SHA, MERGE_SHA, SOURCE_PR, SOURCE_RUN, SOURCE_VALIDATE_RUN,
     ARTIFACT_ID, ARTIFACT_NAME, ARTIFACT_FILE, SOURCE_FILES,
     SETUP_WORKFLOW, OWNER_WORKFLOW, _verify_archive,
     _verify_source, verify_existing_clean_setup, SetupEvidenceBlocked,
@@ -114,6 +114,21 @@ def fixture(*, assessed_commit=None, archive=None):
                 },
             }],
         },
+        prefix + "/actions/runs/" + str(SOURCE_VALIDATE_RUN): {
+            "id": SOURCE_VALIDATE_RUN, "name": "validate",
+            "path": ".github/workflows/validate.yml", "event": "pull_request",
+            "head_sha": SOURCE_SHA, "run_attempt": 1,
+            "status": "completed", "conclusion": "success",
+        },
+        prefix + "/actions/runs/" + str(SOURCE_VALIDATE_RUN) + "/jobs?per_page=100": {
+            "total_count": 2,
+            "jobs": [
+                {"name": "test", "run_id": SOURCE_VALIDATE_RUN,
+                 "head_sha": SOURCE_SHA, "status": "completed", "conclusion": "success"},
+                {"name": "factory-acceptance", "run_id": SOURCE_VALIDATE_RUN,
+                 "head_sha": SOURCE_SHA, "status": "completed", "conclusion": "success"},
+            ],
+        },
         prefix + "/compare/" + MERGE_SHA + "..." + sha: {
             "status": "ahead", "behind_by": 0,
             "merge_base_commit": {"sha": MERGE_SHA},
@@ -149,7 +164,7 @@ class IndependentSetupEvidenceTests(unittest.TestCase):
         self.assertIn(str(ARTIFACT_ID), proof.source)
 
     def test_no_artifact_or_changed_source_or_foreign_sha_can_pass(self):
-        for mutation in ("expired", "wrong_sha", "bad_digest", "bad_job",
+        for mutation in ("expired", "wrong_sha", "bad_digest", "bad_job", "bad_validate",
                          "unmerged_pr", "changed_blob", "wrong_ancestry"):
             data, archive, sha = fixture()
             prefix = "/repos/" + REPO
@@ -164,6 +179,9 @@ class IndependentSetupEvidenceTests(unittest.TestCase):
                 record["digest"] = "sha256:" + "0" * 64
             elif mutation == "bad_job":
                 data[prefix + "/actions/runs/" + str(SOURCE_RUN)
+                     + "/jobs?per_page=100"]["jobs"][0]["conclusion"] = "failure"
+            elif mutation == "bad_validate":
+                data[prefix + "/actions/runs/" + str(SOURCE_VALIDATE_RUN)
                      + "/jobs?per_page=100"]["jobs"][0]["conclusion"] = "failure"
             elif mutation == "unmerged_pr":
                 data[prefix + "/pulls/" + str(SOURCE_PR)]["merged_at"] = None
