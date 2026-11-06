@@ -1,9 +1,11 @@
 """Fail-closed effective regression-gate evidence from GitHub rulesets."""
 from __future__ import annotations
 
+import json
 import os
 import re
-import json
+import time
+import urllib.error
 from pathlib import Path
 from collections.abc import Callable, Mapping
 
@@ -24,6 +26,20 @@ class RegressionEvidenceBlocked(RuntimeError):
 def require(value: bool, code: str) -> None:
     if not value:
         raise RegressionEvidenceBlocked(code)
+
+
+def _retrying_get(github_get: Callable[[str], object]) -> Callable[[str], object]:
+    """Retry only transient GitHub read failures; every bad receipt still blocks."""
+    def get(path: str) -> object:
+        for attempt in range(3):
+            try:
+                return github_get(path)
+            except urllib.error.HTTPError as exc:
+                if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
+        raise AssertionError("unreachable")
+    return get
 
 
 def _effective_rules(rulesets: object, *, default_branch: str) -> dict:
@@ -126,6 +142,7 @@ def verify_regression_gates(*, repository: str, assessed_commit: str, github_get
     require(run_id.isdecimal(), "regression_runner_id_invalid")
     upstream_run_id = _upstream_validate_event(_event_payload(env, event_payload), assessed_commit=assessed_commit)
     prefix = "/repos/" + REPOSITORY
+    github_get = _retrying_get(github_get)
     repo = github_get(prefix)
     branch = repo.get("default_branch") if isinstance(repo, dict) else None
     require(branch == "main", "regression_default_branch_invalid")

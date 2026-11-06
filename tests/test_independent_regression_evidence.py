@@ -1,4 +1,5 @@
 import unittest
+import urllib.error
 from ai_product_factory.independent_regression_evidence import REPOSITORY, POSTGRES_JOBS, RegressionEvidenceBlocked, verify_regression_gates
 
 SHA="a"*40; ROOT="/repos/"+REPOSITORY
@@ -27,3 +28,13 @@ class RegressionEvidenceTests(unittest.TestCase):
   values[ROOT+"/git/commits/"+qa]={"tree":{"sha":"d"*40}}
   values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]=[{**job,"head_sha":qa} for job in values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]]
   with self.assertRaises(RegressionEvidenceBlocked): self.proof(values)
+ def test_transient_github_read_is_retried_but_permanent_failure_is_not_accepted(self):
+  values=fixture(); calls=[]
+  def transient(path):
+   calls.append(path)
+   if len(calls)==1: raise urllib.error.HTTPError("https://api.github.com",502,"bad gateway",None,None)
+   return values[path]
+  proof=verify_regression_gates(repository=REPOSITORY,assessed_commit=SHA,github_get=transient,environment=environment(),event_payload=event())
+  self.assertEqual(proof.criterion,"regression_gates")
+  def permanent(path): raise urllib.error.HTTPError("https://api.github.com",403,"forbidden",None,None)
+  with self.assertRaises(urllib.error.HTTPError): verify_regression_gates(repository=REPOSITORY,assessed_commit=SHA,github_get=permanent,environment=environment(),event_payload=event())
