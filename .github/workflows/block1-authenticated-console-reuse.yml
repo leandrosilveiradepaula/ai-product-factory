@@ -1,0 +1,33 @@
+name: Block 1 independent authenticated Console reuse
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-historical-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify historical encrypted browser evidence and identical live Console tree
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python scripts/verify_block1_authenticated_console_reuse.py \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --output block1-console-reuse-receipt.json
+      - name: Retain SHA-bound result even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: block1-authenticated-console-reuse
+          path: block1-console-reuse-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

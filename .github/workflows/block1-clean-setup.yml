@@ -1,0 +1,44 @@
+name: Block 1 credential-free clean setup evidence
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  nonroot-setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Reproduce README without root, inherited credentials or install
+        shell: bash
+        run: |
+          set -euo pipefail
+          python_bin="$(command -v python3)"
+          test -x "$python_bin"
+          isolated="$(mktemp -d /tmp/factory-block1.XXXXXXXX)"
+          trap 'rm -rf "$isolated"' EXIT
+          tar --exclude=.git -cf - . | tar -C "$isolated" -xf -
+          chmod -R a+rX "$isolated"
+          cd "$isolated"
+          set +e
+          sudo -n -u nobody -- env -i \
+            PATH=/usr/bin:/bin HOME=/tmp PYTHONPATH="$isolated/src" \
+            PYTHONDONTWRITEBYTECODE=1 "$python_bin" \
+            scripts/exercise_block1_clean_setup.py > "$GITHUB_WORKSPACE/block1-clean-setup-receipt.json"
+          rc=$?
+          set -e
+          cat "$GITHUB_WORKSPACE/block1-clean-setup-receipt.json"
+          exit "$rc"
+      - name: Preserve credential-free setup result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: block1-clean-setup-receipt
+          path: block1-clean-setup-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
