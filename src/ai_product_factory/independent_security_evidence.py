@@ -56,6 +56,13 @@ def _receipt(raw: bytes,digest: str,kind: str,member: str,sha: str,tree: str,tra
   require(value.get("schema")=="factory-block1-npm-advisory-evidence-v1" and value.get("sha")==sha and value.get("scope")=="production_dependencies_lockfile" and value.get("scanner")=="npm audit" and value.get("valid_report") is True and value.get("passed") is True and value.get("high")==0 and value.get("critical")==0 and value.get("scanner_exit_code")==0 and value.get("block1_certified") is False,"security_npm_receipt_scope_invalid")
  return value
 
+def _credential_receipt(raw: bytes)->dict:
+ try:
+  with zipfile.ZipFile(io.BytesIO(raw)) as archive: value=json.loads(archive.read("block1-credential-exposure-receipt.json").decode("utf-8"))
+ except (KeyError,zipfile.BadZipFile,OSError,UnicodeError,ValueError) as exc: raise SecurityEvidenceBlocked("credential_exposure_receipt_unavailable") from exc
+ require(isinstance(value,dict) and value.get("schema")=="factory-block1-credential-exposure-v1" and type(value.get("console_files_scanned")) is int and value["console_files_scanned"]>0 and value.get("credential_exposure_detected") is False and value.get("privileged_values_read") is False and value.get("security_certified") is False and value.get("writes")==0 and value.get("paid_calls")==0 and value.get("findings")==[],"credential_exposure_receipt_invalid")
+ return value
+
 def _tree(github_get: Callable[[str],object],prefix: str,sha: str)->tuple[str,int]:
  commit=github_get(prefix+"/git/commits/"+sha); tree=(commit.get("tree") or {}).get("sha") if isinstance(commit,dict) else None; require(isinstance(tree,str) and SHA.fullmatch(tree),"security_commit_tree_invalid")
  listing=github_get(prefix+"/git/trees/"+tree+"?recursive=1"); rows=listing.get("tree") if isinstance(listing,dict) else None; require(isinstance(rows,list) and listing.get("truncated") is False,"security_tree_listing_incomplete")
@@ -85,6 +92,7 @@ def verify_existing_secrets_dependencies(*,repository: str,assessed_commit: str,
   run,run_id=_scan_run(github_get,prefix,kind,tree); _trusted_scanner_source(github_get,prefix,run["head_sha"]); runs[kind]=run_id; _,_,_,artifact_name,member,_=WORKFLOWS[kind]; inventory=github_get(prefix+"/actions/runs/"+str(run_id)+"/artifacts?per_page=100"); artifacts=inventory.get("artifacts") if isinstance(inventory,dict) else None
   require(isinstance(artifacts,list) and inventory.get("total_count")==1 and len(artifacts)==1 and isinstance(artifacts[0],dict),"security_artifact_inventory_invalid"); artifact=artifacts[0]; binding=artifact.get("workflow_run") or {}
   require(artifact.get("name")==artifact_name and artifact.get("expired") is False and type(artifact.get("id")) is int and artifact["id"]>0 and isinstance(artifact.get("digest"),str) and DIGEST.fullmatch(artifact["digest"]) and type(artifact.get("size_in_bytes")) is int and 0<artifact["size_in_bytes"]<=32768 and binding.get("id")==run_id and binding.get("head_sha")==run["head_sha"] and binding.get("head_repository_id")==1387883686,"security_artifact_provenance_invalid")
-  receipts[kind]=_receipt(archive_fetch(artifact.get("archive_download_url",""),env.get("GITHUB_TOKEN",""),artifact["id"]),artifact["digest"],kind,member,run["head_sha"],tree,tracked)
+  raw=archive_fetch(artifact.get("archive_download_url",""),env.get("GITHUB_TOKEN",""),artifact["id"]); receipts[kind]=_receipt(raw,artifact["digest"],kind,member,run["head_sha"],tree,tracked)
+  if kind=="gitleaks": receipts["credential_exposure"]=_credential_receipt(raw)
  latest=github_get(prefix+"/git/ref/heads/main"); require(isinstance(latest,dict) and (latest.get("object") or {}).get("sha")==assessed_commit,"security_main_changed_while_verifying")
- return VerifiedCriterionEvidence(domain="security",criterion="secrets_dependencies",repository=repository,assessed_commit=assessed_commit,verification_state="reviewed",source="tree-bound-gitleaks-and-npm:"+tree+":"+":".join(str(runs[x]) for x in sorted(runs)),evidence=("https://github.com/"+repository+"/actions/runs/"+str(current_id)+"#sha="+assessed_commit,),retained_receipt={"tree_oid":tree,"tracked_files":tracked,"gitleaks":receipts["gitleaks"],"npm":receipts["npm"]})
+ return VerifiedCriterionEvidence(domain="security",criterion="secrets_dependencies",repository=repository,assessed_commit=assessed_commit,verification_state="reviewed",source="tree-bound-gitleaks-and-npm:"+tree+":"+":".join(str(runs[x]) for x in sorted(runs)),evidence=("https://github.com/"+repository+"/actions/runs/"+str(current_id)+"#sha="+assessed_commit,),retained_receipt={"tree_oid":tree,"tracked_files":tracked,"gitleaks":receipts["gitleaks"],"credential_exposure":receipts["credential_exposure"],"npm":receipts["npm"]})

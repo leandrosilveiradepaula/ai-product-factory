@@ -7,7 +7,9 @@ def receipt(k):
  return {"schema":"factory-block1-npm-advisory-evidence-v1","sha":SHA,"scope":"production_dependencies_lockfile","scanner":"npm audit","valid_report":True,"passed":True,"high":0,"critical":0,"scanner_exit_code":0,"block1_certified":False}
 def z(k,m):
  o=io.BytesIO()
- with zipfile.ZipFile(o,"w") as a:a.writestr(m,json.dumps(receipt(k)))
+ with zipfile.ZipFile(o,"w") as a:
+  a.writestr(m,json.dumps(receipt(k)))
+  if k=="gitleaks":a.writestr("block1-credential-exposure-receipt.json",json.dumps({"schema":"factory-block1-credential-exposure-v1","console_files_scanned":1,"credential_exposure_detected":False,"privileged_values_read":False,"security_certified":False,"writes":0,"paid_calls":0,"findings":[]}))
  return o.getvalue()
 def fixture():
  v={ROOT+"/git/ref/heads/main":{"object":{"sha":SHA}},ROOT+"/actions/runs/7":{"id":7,"name":"Factory autonomous runner","path":OWNER_WORKFLOW,"event":"workflow_run","head_sha":SHA,"head_branch":"main","run_attempt":1},ROOT+"/git/commits/"+SHA:{"tree":{"sha":TREE}},ROOT+"/git/trees/"+TREE+"?recursive=1":{"truncated":False,"tree":[{"type":"blob","path":str(i),"sha":f"{i:040x}"[-40:]} for i in range(100)]}}; raw={}
