@@ -23,7 +23,7 @@ README = (
     "python -m ai_product_factory.cli codex-decision --complexity high --files 20 --deep-debug",
     "python scripts/check_test_collection.py",
 )
-ALLOWED_ENV = frozenset({"PATH", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE", "HOME", "LANG", "LC_ALL"})
+ALLOWED_ENV = frozenset({"PATH", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE", "HOME", "LANG", "LC_ALL", "LC_CTYPE"})
 
 
 def exercise(root: Path = ROOT, environ: dict | None = None, uid: int | None = None) -> dict:
