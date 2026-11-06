@@ -128,7 +128,7 @@ def audit(root: Path, scanner: Path) -> dict:
         # Raw scanner stdout, stderr, and findings remain private; none is
         # written to an Actions artifact or included in this receipt.
         if scan.returncode != 0:
-            raise ScanBlocked("secret_findings_or_scanner_error")
+            raise ScanBlocked("secret_findings_detected" if scan.returncode == 2 else "scanner_runtime_error")
         if report_file.exists():
             try:
                 parsed = json.loads(report_file.read_text(encoding="utf-8"))
@@ -165,9 +165,10 @@ def main() -> int:
     try:
         result = audit(args.root, args.scanner)
         code = 0
-    except (ScanBlocked, OSError, ValueError, subprocess.TimeoutExpired):
+    except (ScanBlocked, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        error_code = str(exc) if type(exc) is ScanBlocked else type(exc).__name__
         result = {"schema": "factory-block1-complete-tracked-tree-gitleaks-v1",
-                  "scan_passed": False, "secrets_dependencies_certified": False,
+                  "block_reason": error_code, "scan_passed": False, "secrets_dependencies_certified": False,
                   "block1_certified": False, "paid_calls": 0,
                   "production_writes": 0}
         code = 1
