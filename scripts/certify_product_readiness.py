@@ -13,6 +13,7 @@ from ai_product_factory.native_v2_traceability_certification import (
     verify_existing_crm_v2_traceability,
 )
 from ai_product_factory.independent_health_evidence import verify_health_for_certification
+from ai_product_factory.independent_setup_evidence import verify_existing_clean_setup
 
 
 def _github_get(token: str):
@@ -41,7 +42,8 @@ def require_verified_baseline(value: object, *, repository: str, assessed_commit
             or value.get("assessed_commit") != assessed_commit
             or value.get("writes") != 0 or value.get("paid_calls") != 0
             or value.get("start_authorized") is not False
-            or value.get("product_ready") is not False
+            or type(value.get("product_ready")) is not bool
+            or value.get("product_ready") is not value.get("assessment", {}).get("ready")
             or not isinstance(value.get("manifest"), dict)
             or not isinstance(value.get("source_snapshot"), dict)
             or not isinstance(value.get("evidence_digest"), str)
@@ -58,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence-file", type=Path, required=True)
     parser.add_argument("--verify-native-v2-traceability", action="store_true")
     parser.add_argument("--verify-independent-health", action="store_true")
+    parser.add_argument("--verify-independent-setup", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -99,23 +102,42 @@ def main(argv: list[str] | None = None) -> int:
                 repository=args.repository, assessed_commit=args.assessed_commit,
                 github_get=github_get,
             )
+    setup_proof = None
+    if args.verify_independent_setup:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError(
+                "setup proof requires independent verified baseline"
+            )
+        setup = manifest.get("criteria", {}).get("documentation", {}).get(
+            "setup_configuration"
+        )
+        if isinstance(setup, dict) and setup.get("status") == "passed":
+            # Re-open real GitHub run/artifact, confirm immutable source,
+            # and validate receipt bytes before any database reservation.
+            setup_proof = verify_existing_clean_setup(
+                repository=args.repository,
+                assessed_commit=args.assessed_commit,
+                github_get=github_get,
+            )
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
         if (domain, criterion) == ("observability_operations", "health"):
             return health_proof
+        if (domain, criterion) == ("documentation", "setup_configuration"):
+            return setup_proof
         return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
-        trusted_verifier=trusted if (proof is not None or health_proof is not None) else None,
+        trusted_verifier=trusted if any(x is not None for x in
+            (proof, health_proof, setup_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
                 or certification.evidence_digest != evidence["evidence_digest"]
                 or certification.assessment.as_result() != evidence["assessment"]
-                or certification.assessment.ready
-                or certification.assessment.status != "not_ready"):
+                or evidence["product_ready"] is not certification.assessment.ready):
             raise CertificationEvidenceError("readiness evidence changed before persistence")
     store = SupabaseDeliveryStore()
     begun = store.begin_product_readiness_certification(project_key=args.project_key,
