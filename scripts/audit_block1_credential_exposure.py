@@ -22,6 +22,7 @@ PUBLIC_HEALTH = "apps/console/app/api/health/route.ts"
 SOURCE_SUFFIXES = (".ts", ".tsx")
 OPERATOR_GUARD = re.compile(r"\bawait\s+requireConsole(?:Admin|Operator)\s*\(")
 WEBHOOK_GUARD = re.compile(r"\bauthenticateGitHubWebhook\s*\(")
+HTTP_HANDLER = re.compile(r"\bexport\s+(?:async\s+)?(?:function\s+)?(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b")
 
 def _relative(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
@@ -77,12 +78,92 @@ def _reachable_privileged(start: Path, edges: dict[Path, set[Path]], environment
         pending.extend(sorted(edges[current] - visited, key=lambda path: path.as_posix()))
     return None
 
-def _route_guard(body: str) -> str | None:
-    if OPERATOR_GUARD.search(body):
-        return "operator_authentication"
-    if WEBHOOK_GUARD.search(body):
-        return "github_webhook_hmac"
+def _handler_block_start(body: str, start: int) -> int | None:
+    """Find a function body after its complete parameter declaration."""
+    parentheses = 0
+    saw_parameter_close = False
+    quote: str | None = None
+    escaped = False
+    for index in range(start, len(body)):
+        char = body[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char == "(":
+            parentheses += 1
+        elif char == ")" and parentheses:
+            parentheses -= 1
+            saw_parameter_close |= parentheses == 0
+        elif char == "{" and parentheses == 0 and saw_parameter_close:
+            return index
     return None
+
+
+def _balanced_block(body: str, start: int) -> str | None:
+    """Return the handler body, rejecting malformed TypeScript fail-closed."""
+    opening = _handler_block_start(body, start)
+    if opening < 0:
+        return None
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index in range(opening, len(body)):
+        char = body[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return body[opening + 1:index]
+    return None
+
+
+def _route_guards(body: str) -> dict[str, str | None]:
+    """Find an authentication guard in every exported HTTP handler.
+
+    A route can expose more than one method.  A guard in POST must never
+    authorize a separate GET handler that reaches privileged configuration.
+    """
+    handlers: dict[str, str | None] = {}
+    for match in HTTP_HANDLER.finditer(body):
+        handler = _balanced_block(body, match.end())
+        if handler is None:
+            handlers[match.group(1)] = None
+        elif ("405" in handler and "await" not in handler and
+              "process.env" not in handler):
+            # Explicit method rejection cannot consume a server-side import
+            # merely because a sibling handler in the same route module does.
+            handlers[match.group(1)] = "method_rejected"
+        elif OPERATOR_GUARD.search(handler):
+            handlers[match.group(1)] = "operator_authentication"
+        elif WEBHOOK_GUARD.search(handler):
+            handlers[match.group(1)] = "github_webhook_hmac"
+        else:
+            handlers[match.group(1)] = None
+    return handlers
+
+
+def _route_guard(body: str) -> str | None:
+    """Compatibility helper for a single-handler route."""
+    guards = _route_guards(body)
+    return next(iter(guards.values()), None) if len(guards) == 1 else None
 
 def audit(root: Path) -> dict:
     root = root.resolve(strict=True)
@@ -110,12 +191,13 @@ def audit(root: Path) -> dict:
         reached = _reachable_privileged(route, edges, environment)
         if reached is None:
             continue
-        guard = _route_guard(route.read_text(encoding="utf-8"))
-        if guard is None:
+        handlers = _route_guards(route.read_text(encoding="utf-8"))
+        unguarded = sorted(name for name, guard in handlers.items() if guard is None)
+        if not handlers or unguarded:
             source, names = reached
-            findings.append({"path": _relative(root, route), "line": 1, "kind": "privileged_environment_reachable_from_unprotected_route", "source_path": _relative(root, source), "environment_names": sorted(names)})
+            findings.append({"path": _relative(root, route), "line": 1, "kind": "privileged_environment_reachable_from_unprotected_route", "source_path": _relative(root, source), "environment_names": sorted(names), "unguarded_handlers": unguarded})
     findings.sort(key=lambda finding: (str(finding["path"]), int(finding["line"]), str(finding["kind"])))
-    return {"schema": "factory-block1-credential-exposure-v3", "scope": "static-import-reachability-for-client-public-health-and-privileged-route-handler-guards-not-runtime-authentication", "console_files_scanned": len(files), "client_entrypoints_scanned": len(clients), "route_handlers_scanned": len(route_handlers), "public_surface_roots": [PUBLIC_HEALTH], "findings": findings, "privileged_values_read": False, "credential_exposure_detected": bool(findings), "security_certified": False, "writes": 0, "paid_calls": 0}
+    return {"schema": "factory-block1-credential-exposure-v4", "scope": "static-import-reachability-for-client-public-health-and-per-http-handler-guards-not-runtime-authentication", "console_files_scanned": len(files), "client_entrypoints_scanned": len(clients), "route_handlers_scanned": len(route_handlers), "public_surface_roots": [PUBLIC_HEALTH], "findings": findings, "privileged_values_read": False, "credential_exposure_detected": bool(findings), "security_certified": False, "writes": 0, "paid_calls": 0}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

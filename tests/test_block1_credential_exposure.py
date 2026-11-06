@@ -28,3 +28,9 @@ class CredentialExposureTests(unittest.TestCase):
  def test_hmac_guard_allows_server_only_webhook_path(self):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);self.write(root,"apps/console/app/api/x/route.ts","import {token} from '@/lib/a'; export async function POST(){await authenticateGitHubWebhook(); return Response.json({ok:true})}");self.write(root,"apps/console/lib/a.ts","export const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN");self.assertFalse(module.audit(root)["credential_exposure_detected"])
+ def test_guard_in_one_http_method_cannot_authorize_another(self):
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);self.write(root,"apps/console/app/api/x/route.ts","import {token} from '@/lib/a'; export async function POST(){await authenticateGitHubWebhook(); return Response.json({ok:true})} export async function GET(){return Response.json({ok:true})}");self.write(root,"apps/console/lib/a.ts","export const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN");receipt=module.audit(root);self.assertTrue(receipt["credential_exposure_detected"]);self.assertEqual(receipt["findings"][0]["unguarded_handlers"],["GET"])
+ def test_405_handler_cannot_be_confused_with_a_credential_flow(self):
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);self.write(root,"apps/console/app/api/x/route.ts","import {token} from '@/lib/a'; export function GET(){return Response.json({error:'method not allowed'},{status:405})} export async function POST(){await authenticateGitHubWebhook(); return Response.json({ok:true})}");self.write(root,"apps/console/lib/a.ts","export const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN");self.assertFalse(module.audit(root)["credential_exposure_detected"])

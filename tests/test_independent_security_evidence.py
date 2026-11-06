@@ -9,7 +9,7 @@ def z(k,m):
  o=io.BytesIO()
  with zipfile.ZipFile(o,"w") as a:
   a.writestr(m,json.dumps(receipt(k)))
-  if k=="gitleaks":a.writestr("block1-credential-exposure-receipt.json",json.dumps({"schema":"factory-block1-credential-exposure-v3","scope":"static-import-reachability-for-client-public-health-and-privileged-route-handler-guards-not-runtime-authentication","console_files_scanned":1,"client_entrypoints_scanned":1,"route_handlers_scanned":1,"public_surface_roots":["apps/console/app/api/health/route.ts"],"credential_exposure_detected":False,"privileged_values_read":False,"security_certified":False,"writes":0,"paid_calls":0,"findings":[]}))
+  if k=="gitleaks":a.writestr("block1-credential-exposure-receipt.json",json.dumps({"schema":"factory-block1-credential-exposure-v4","scope":"static-import-reachability-for-client-public-health-and-per-http-handler-guards-not-runtime-authentication","console_files_scanned":1,"client_entrypoints_scanned":1,"route_handlers_scanned":1,"public_surface_roots":["apps/console/app/api/health/route.ts"],"credential_exposure_detected":False,"privileged_values_read":False,"security_certified":False,"writes":0,"paid_calls":0,"findings":[]}))
  return o.getvalue()
 def fixture():
  v={ROOT+"/git/ref/heads/main":{"object":{"sha":SHA}},ROOT+"/actions/runs/7":{"id":7,"name":"Factory autonomous runner","path":OWNER_WORKFLOW,"event":"workflow_run","head_sha":SHA,"head_branch":"main","run_attempt":1},ROOT+"/git/commits/"+SHA:{"tree":{"sha":TREE}},ROOT+"/git/trees/"+TREE+"?recursive=1":{"truncated":False,"tree":[{"type":"blob","path":str(i),"sha":f"{i:040x}"[-40:]} for i in range(100)]}}; raw={}
@@ -40,6 +40,6 @@ class TestSecurityEvidence(unittest.TestCase):
  def test_credential_exposure_receipt_blocks_pass(self):
   v,r=fixture();wid=WORKFLOWS["gitleaks"][0];rid=100+wid;b=receipt("gitleaks");o=io.BytesIO()
   with zipfile.ZipFile(o,"w") as a:
-   a.writestr(WORKFLOWS["gitleaks"][4],json.dumps(b));a.writestr("block1-credential-exposure-receipt.json",json.dumps({"schema":"factory-block1-credential-exposure-v3","scope":"static-import-reachability-for-client-public-health-and-privileged-route-handler-guards-not-runtime-authentication","console_files_scanned":1,"client_entrypoints_scanned":1,"route_handlers_scanned":1,"public_surface_roots":["apps/console/app/api/health/route.ts"],"credential_exposure_detected":True,"privileged_values_read":False,"security_certified":False,"writes":0,"paid_calls":0,"findings":[{"path":"x"}]}))
+   a.writestr(WORKFLOWS["gitleaks"][4],json.dumps(b));a.writestr("block1-credential-exposure-receipt.json",json.dumps({"schema":"factory-block1-credential-exposure-v4","scope":"static-import-reachability-for-client-public-health-and-per-http-handler-guards-not-runtime-authentication","console_files_scanned":1,"client_entrypoints_scanned":1,"route_handlers_scanned":1,"public_surface_roots":["apps/console/app/api/health/route.ts"],"credential_exposure_detected":True,"privileged_values_read":False,"security_certified":False,"writes":0,"paid_calls":0,"findings":[{"path":"x"}]}))
   r[rid]=o.getvalue();artifact=v[ROOT+f"/actions/runs/{rid}/artifacts?per_page=100"]["artifacts"][0];artifact["digest"]="sha256:"+hashlib.sha256(r[rid]).hexdigest();artifact["size_in_bytes"]=len(r[rid])
   with self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)
