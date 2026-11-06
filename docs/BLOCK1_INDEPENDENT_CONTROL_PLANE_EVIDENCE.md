@@ -13,7 +13,7 @@ The executable SQL audits ordinary and partitioned tables, public write grants, 
 - Negative `anon`, authenticated non-operator, operator, and cross-tenant access attempts against isolated test fixtures.
 - Signed operator browser login, negative route/role/CSRF cases, and immutable SHA/browser evidence.
 - Independent secret scanner and dependency advisory results for the exact candidate.
-- Effective GitHub ruleset with at least one human approval, strict checks, and applicable PostgreSQL QA.
+- Effective GitHub ruleset with strict checks, applicable PostgreSQL QA, and **observed owner-only merge** for the single-maintainer repository. Mandatory approval count remains zero to avoid self-review deadlock; a ruleset by itself cannot prove the owner clicked Merge. See `docs/BLOCK1_RUNTIME_SECURITY_EVIDENCE_20261106.md`.
 - Clean setup, scheduler/recovery, rollback, requirements-to-journey and simulation-reachability receipts.
 
 **No migrations, writes, paid model calls, merge, or release are authorized by this audit.**
