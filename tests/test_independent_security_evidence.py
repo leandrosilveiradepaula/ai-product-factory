@@ -1,5 +1,5 @@
 import hashlib, io, json, unittest, zipfile
-from ai_product_factory.independent_security_evidence import REPO, OWNER_WORKFLOW, REVIEWED_FIXTURES, WORKFLOWS, SecurityEvidenceBlocked, verify_existing_secrets_dependencies
+from ai_product_factory.independent_security_evidence import REPO, OWNER_WORKFLOW, REVIEWED_FIXTURES, WORKFLOWS, TRUSTED_SCANNER_FILES, TRUSTED_SCANNER_SHA, SecurityEvidenceBlocked, verify_existing_secrets_dependencies
 SHA="a"*40; TREE="b"*40; ROOT="/repos/"+REPO
 def env(): return {"GITHUB_ACTIONS":"true","GITHUB_REPOSITORY":REPO,"GITHUB_EVENT_NAME":"workflow_run","GITHUB_REF":"refs/heads/main","GITHUB_WORKFLOW_REF":REPO+"/"+OWNER_WORKFLOW+"@refs/heads/main","GITHUB_RUN_ID":"7","GITHUB_TOKEN":"x"}
 def receipt(k):
@@ -13,6 +13,7 @@ def fixture():
  v={ROOT+"/git/ref/heads/main":{"object":{"sha":SHA}},ROOT+"/actions/runs/7":{"id":7,"name":"Factory autonomous runner","path":OWNER_WORKFLOW,"event":"workflow_run","head_sha":SHA,"head_branch":"main","run_attempt":1},ROOT+"/git/commits/"+SHA:{"tree":{"sha":TREE}},ROOT+"/git/trees/"+TREE+"?recursive=1":{"truncated":False,"tree":[{"type":"blob","path":str(i),"sha":f"{i:040x}"[-40:]} for i in range(100)]}}; raw={}
  for k,(wid,name,job,art,member,steps) in WORKFLOWS.items():
   rid=100+wid; raw[rid]=z(k,member); v[ROOT+f"/actions/workflows/{wid}/runs?event=pull_request&status=success&per_page=100"]={"workflow_runs":[{"id":rid,"name":name,"event":"pull_request","status":"completed","conclusion":"success","run_attempt":1,"head_sha":SHA}]}; v[ROOT+f"/actions/runs/{rid}/jobs?per_page=100"]={"total_count":1,"jobs":[{"name":job,"run_id":rid,"head_sha":SHA,"status":"completed","conclusion":"success","steps":[{"name":x,"status":"completed","conclusion":"success"} for x in steps]}]}; v[ROOT+f"/actions/runs/{rid}/artifacts?per_page=100"]={"total_count":1,"artifacts":[{"id":rid,"name":art,"expired":False,"digest":"sha256:"+hashlib.sha256(raw[rid]).hexdigest(),"size_in_bytes":len(raw[rid]),"archive_download_url":f"https://api.github.com/repos/{REPO}/actions/artifacts/{rid}/zip","workflow_run":{"id":rid,"head_sha":SHA,"head_repository_id":1387883686}}]}
+ for path in TRUSTED_SCANNER_FILES:v[ROOT+"/contents/"+path+"?ref="+TRUSTED_SCANNER_SHA]={"sha":"e"*40,"size":1};v[ROOT+"/contents/"+path+"?ref="+SHA]={"sha":"e"*40,"size":1}
  return v,raw
 class TestSecurityEvidence(unittest.TestCase):
  def proof(self,v=None,r=None):
@@ -31,3 +32,6 @@ class TestSecurityEvidence(unittest.TestCase):
     with zipfile.ZipFile(o,"w") as a:a.writestr(WORKFLOWS["gitleaks"][4],json.dumps(b))
     r[rid]=o.getvalue();q=v[ROOT+f"/actions/runs/{rid}/artifacts?per_page=100"]["artifacts"][0];q["digest"]="sha256:"+hashlib.sha256(r[rid]).hexdigest();q["size_in_bytes"]=len(r[rid])
    with self.subTest(x=x),self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)
+ def test_scanner_source_drift_blocks(self):
+  v,r=fixture();path=TRUSTED_SCANNER_FILES[0];v[ROOT+"/contents/"+path+"?ref="+SHA]["sha"]="f"*40
+  with self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)

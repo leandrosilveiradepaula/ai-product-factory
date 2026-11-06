@@ -18,6 +18,12 @@ REVIEWED_FIXTURES = frozenset({
  ("tests/test_repair_runtime.py",12,"generic-api-key"),("tests/test_repository_snapshot_safety.py",97,"generic-api-key"),
  ("tests/test_specialist_traceability_atomicity.py",24,"generic-api-key"),("tests/test_followup_execution_epochs.py",178,"generic-api-key"),("tests/test_specialist_epoch_fence.py",71,"generic-api-key"),
 })
+TRUSTED_SCANNER_SHA = "07fe30d6c7a83614016610ab6b734e16cd306a27"
+TRUSTED_SCANNER_FILES = (
+ "scripts/audit_block1_complete_tree.py", "scripts/audit_block1_supply_chain.py",
+ ".github/workflows/block1-independent-secrets.yml",
+ ".github/workflows/block1-independent-dependency-audit.yml",
+)
 class SecurityEvidenceBlocked(RuntimeError): pass
 def require(value: bool, code: str) -> None:
  if not value: raise SecurityEvidenceBlocked(code)
@@ -65,13 +71,18 @@ def _scan_run(github_get: Callable[[str],object],prefix: str,kind: str,tree: str
  jobs=github_get(prefix+"/actions/runs/"+str(run_id)+"/jobs?per_page=100"); rows=jobs.get("jobs") if isinstance(jobs,dict) else None
  require(isinstance(rows,list) and jobs.get("total_count")==1 and len(rows)==1 and isinstance(rows[0],dict) and rows[0].get("name")==job_name and rows[0].get("run_id")==run_id and rows[0].get("head_sha")==run["head_sha"] and rows[0].get("status")=="completed" and rows[0].get("conclusion")=="success" and all(any(isinstance(x,dict) and x.get("name")==step and x.get("status")=="completed" and x.get("conclusion")=="success" for x in rows[0].get("steps",[])) for step in steps),"security_source_job_invalid"); return run,run_id
 
+def _trusted_scanner_source(github_get: Callable[[str],object],prefix: str,sha: str)->None:
+ for path in TRUSTED_SCANNER_FILES:
+  trusted=github_get(prefix+"/contents/"+path+"?ref="+TRUSTED_SCANNER_SHA); candidate=github_get(prefix+"/contents/"+path+"?ref="+sha)
+  require(isinstance(trusted,dict) and isinstance(candidate,dict) and isinstance(trusted.get("sha"),str) and SHA.fullmatch(trusted["sha"]) and trusted.get("sha")==candidate.get("sha") and type(trusted.get("size")) is int and trusted.get("size")==candidate.get("size") and trusted["size"]>0,"security_scanner_source_drift")
+
 def verify_existing_secrets_dependencies(*,repository: str,assessed_commit: str,github_get: Callable[[str],object],archive_fetch: Callable[[str,str,int],bytes]=_download,environment: Mapping[str,str]|None=None)->VerifiedCriterionEvidence:
  env=os.environ if environment is None else environment; require(repository==REPO and isinstance(assessed_commit,str) and SHA.fullmatch(assessed_commit) and env.get("GITHUB_ACTIONS")=="true" and env.get("GITHUB_REPOSITORY")==REPO and env.get("GITHUB_EVENT_NAME")=="workflow_run" and env.get("GITHUB_REF")=="refs/heads/main" and env.get("GITHUB_WORKFLOW_REF")==REPO+"/"+OWNER_WORKFLOW+"@refs/heads/main","security_runner_identity_invalid")
  current_id=env.get("GITHUB_RUN_ID",""); require(current_id.isdecimal(),"security_current_run_invalid"); prefix="/repos/"+REPO; current=github_get(prefix+"/actions/runs/"+current_id)
  require(isinstance(current,dict) and current.get("id")==int(current_id) and current.get("name")=="Factory autonomous runner" and current.get("path")==OWNER_WORKFLOW and current.get("event")=="workflow_run" and current.get("head_sha")==assessed_commit and current.get("head_branch")=="main" and current.get("run_attempt")==1,"security_current_runner_unbound")
  main=github_get(prefix+"/git/ref/heads/main"); require(isinstance(main,dict) and (main.get("object") or {}).get("sha")==assessed_commit,"security_main_drift"); tree,tracked=_tree(github_get,prefix,assessed_commit); receipts={}; runs={}
  for kind in WORKFLOWS:
-  run,run_id=_scan_run(github_get,prefix,kind,tree); runs[kind]=run_id; _,_,_,artifact_name,member,_=WORKFLOWS[kind]; inventory=github_get(prefix+"/actions/runs/"+str(run_id)+"/artifacts?per_page=100"); artifacts=inventory.get("artifacts") if isinstance(inventory,dict) else None
+  run,run_id=_scan_run(github_get,prefix,kind,tree); _trusted_scanner_source(github_get,prefix,run["head_sha"]); runs[kind]=run_id; _,_,_,artifact_name,member,_=WORKFLOWS[kind]; inventory=github_get(prefix+"/actions/runs/"+str(run_id)+"/artifacts?per_page=100"); artifacts=inventory.get("artifacts") if isinstance(inventory,dict) else None
   require(isinstance(artifacts,list) and inventory.get("total_count")==1 and len(artifacts)==1 and isinstance(artifacts[0],dict),"security_artifact_inventory_invalid"); artifact=artifacts[0]; binding=artifact.get("workflow_run") or {}
   require(artifact.get("name")==artifact_name and artifact.get("expired") is False and type(artifact.get("id")) is int and artifact["id"]>0 and isinstance(artifact.get("digest"),str) and DIGEST.fullmatch(artifact["digest"]) and type(artifact.get("size_in_bytes")) is int and 0<artifact["size_in_bytes"]<=32768 and binding.get("id")==run_id and binding.get("head_sha")==run["head_sha"] and binding.get("head_repository_id")==1387883686,"security_artifact_provenance_invalid")
   receipts[kind]=_receipt(archive_fetch(artifact.get("archive_download_url",""),env.get("GITHUB_TOKEN",""),artifact["id"]),artifact["digest"],kind,member,run["head_sha"],tree,tracked)
