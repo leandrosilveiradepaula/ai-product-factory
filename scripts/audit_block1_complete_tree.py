@@ -155,7 +155,10 @@ def audit(root: Path, scanner: Path) -> dict:
                     relative = Path(file_path).resolve(strict=True).relative_to(source.resolve(strict=True))
                 except (OSError, ValueError) as exc:
                     raise ScanBlocked("finding_path_outside_tree") from exc
-                inventory.append({"rule_id": rule, "path": relative.as_posix()})
+                line = finding.get("StartLine")
+                if type(line) is not int or line <= 0 or line > 200000:
+                    raise ScanBlocked("finding_line_invalid")
+                inventory.append({"rule_id": rule, "path": relative.as_posix(), "line": line})
             raise ScanBlocked("secret_findings_detected", finding_inventory=inventory)
         if report_file.exists():
             try:
