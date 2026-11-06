@@ -15,6 +15,7 @@ from .operational_alerts import OperationalAlert
 WORKFLOW_PATH = ".github/workflows/autonomous-runner.yml"
 PAGE_SIZE = 30
 MAX_AGE = timedelta(hours=2)
+ACTIVE_GRACE = timedelta(minutes=30)
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class NativeScheduleRun:
 @dataclass(frozen=True)
 class NativeScheduleHealth:
     completed: tuple[NativeScheduleRun, ...]
+    active: tuple[NativeScheduleRun, ...]
     checked_at: datetime
 
 
@@ -64,6 +66,7 @@ class GithubNativeScheduledRunReader:
         if not isinstance(rows, list) or len(rows) > PAGE_SIZE:
             raise RuntimeError("native scheduler run inventory is incomplete or malformed")
         completed: list[NativeScheduleRun] = []
+        active: list[NativeScheduleRun] = []
         seen: set[int] = set()
         previous_time: datetime | None = None
         for row in rows:
@@ -93,12 +96,21 @@ class GithubNativeScheduledRunReader:
                 completed.append(NativeScheduleRun(run_id, created_at, conclusion))
             elif status not in ("queued", "in_progress", "requested", "waiting", "pending"):
                 raise RuntimeError("native scheduler run has unknown status")
+            else:
+                active.append(NativeScheduleRun(run_id, created_at, status))
         # Exclude in-progress schedules: a run cannot yet certify its own success.
         # We intentionally keep failures among the last two completed runs.
-        return NativeScheduleHealth(tuple(completed[:2]), now)
+        return NativeScheduleHealth(tuple(completed[:2]), tuple(active), now)
 
 
 def evaluate_native_scheduler_health(state: NativeScheduleHealth) -> tuple[OperationalAlert, ...]:
+    # The alert job runs inside the same scheduled workflow. While that run is
+    # still executing, Actions cannot report it as completed. A recent trusted
+    # active run is therefore evidence of an advancing pipeline, not a stale
+    # completion. Do not close failures here; the next completed observation
+    # will still require two timely successes.
+    if any(state.checked_at - run.created_at <= ACTIVE_GRACE for run in state.active):
+        return ()
     finished = state.completed
     if len(finished) < 2:
         return (OperationalAlert(
