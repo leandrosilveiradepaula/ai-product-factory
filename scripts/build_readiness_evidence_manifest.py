@@ -25,12 +25,16 @@ from ai_product_factory.native_v2_traceability_certification import (
 from ai_product_factory.independent_health_evidence import (
     HealthEvidenceBlocked, verify_health_for_certification,
 )
+from ai_product_factory.independent_setup_evidence import (
+    SetupEvidenceBlocked, verify_existing_clean_setup,
+)
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
 def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_native_v2: bool = False,
-                            verify_health: bool = False) -> dict:
+                            verify_health: bool = False,
+                            verify_setup: bool = False) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -71,16 +75,36 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="independent current-SHA live health attestation",
                 evidence=list(health_proof.evidence),
             )
+    setup_proof = None
+    if verify_setup:
+        try:
+            setup_proof = verify_existing_clean_setup(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+            )
+        except (SetupEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            # Missing or stale artifact is not a passing documentation review.
+            setup_proof = None
+        if setup_proof is not None:
+            setup = manifest["criteria"]["documentation"]["setup_configuration"]
+            setup.update(
+                status="passed", verification_state=setup_proof.verification_state,
+                reason="independent credential-free README setup reverified on current SHA",
+                evidence=list(setup_proof.evidence),
+            )
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
         if (domain, criterion) == ("observability_operations", "health"):
             return health_proof
+        if (domain, criterion) == ("documentation", "setup_configuration"):
+            return setup_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
-        trusted_verifier=trusted if (proof is not None or health_proof is not None) else None,
+        trusted_verifier=trusted if any(x is not None for x in
+            (proof, health_proof, setup_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -88,8 +112,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         for domain, criteria in certification.report["criteria"].items()
         for key, evidence in criteria.items()
     ]
-    if len(statuses) != 19 or certification.assessment.ready:
-        raise ValueError("conservative baseline cannot certify the whole Factory")
+    if len(statuses) != 19:
+        raise ValueError("verified baseline requires exactly 19 criteria")
     return {
         "schema_version": 1,
         "scope": "read_only_independent_source_verified_baseline",
@@ -103,7 +127,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         "writes": 0,
         "paid_calls": 0,
         "start_authorized": False,
-        "product_ready": False,
+        "product_ready": certification.assessment.ready,
     }
 
 
@@ -113,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--verify-native-v2-traceability", action="store_true")
     parser.add_argument("--verify-independent-health", action="store_true")
+    parser.add_argument("--verify-independent-setup", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -126,11 +151,12 @@ def main(argv: list[str] | None = None) -> int:
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
         verify_health=args.verify_independent_health,
+        verify_setup=args.verify_independent_setup,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
-        "status": "verified_not_ready",
+        "status": report["assessment"]["status"],
         "assessed_commit": sha,
         "verified_criteria": sum(x["status"] == "passed" for x in report["criteria"]),
         "missing_or_partial_criteria": sum(x["status"] != "passed" for x in report["criteria"]),
