@@ -45,6 +45,43 @@ class ScanBlocked(RuntimeError):
         self.finding_inventory = finding_inventory or []
 
 
+def _git_blob_oid(path: Path) -> str:
+    contents = path.read_bytes()
+    if len(contents) > 40 * 1024 * 1024:
+        raise ScanBlocked("finding_file_out_of_bounds")
+    data = b"blob " + str(len(contents)).encode("ascii") + bytes([0]) + contents
+    return hashlib.sha1(data).hexdigest()
+
+
+def _classify_reviewed_fixtures(findings: list, root: Path) -> list[dict]:
+    # Exact complete multiset of findings required; additions AND omissions fail.
+    if len(findings) != len(REVIEWED_FIXTURE_FINDINGS):
+        raise ScanBlocked("unreviewed_finding_count")
+    observed = set()
+    inventory = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise ScanBlocked("finding_invalid")
+        rule, path, line = finding.get("RuleID"), finding.get("File"), finding.get("StartLine")
+        if not isinstance(rule, str) or not re.fullmatch("[A-Za-z0-9_-]{1,90}", rule):
+            raise ScanBlocked("finding_rule_invalid")
+        if not isinstance(path, str) or type(line) is not int or not 0 < line < 200000:
+            raise ScanBlocked("finding_locator_invalid")
+        try:
+            file = Path(path).resolve(strict=True)
+            relative = file.relative_to(root.resolve(strict=True)).as_posix()
+        except (OSError, ValueError) as exc:
+            raise ScanBlocked("finding_outside_committed_tree") from exc
+        identity = (relative, line, rule, _git_blob_oid(file))
+        if identity not in REVIEWED_FIXTURE_FINDINGS or identity in observed:
+            raise ScanBlocked("unreviewed_finding_or_blob_drift")
+        observed.add(identity)
+        inventory.append({"rule_id": rule, "path": relative, "line": line})
+    if observed != REVIEWED_FIXTURE_FINDINGS:
+        raise ScanBlocked("reviewed_fixture_set_incomplete")
+    return sorted(inventory, key=lambda x: (x["path"], x["line"], x["rule_id"]))
+
+
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(root), *args],
