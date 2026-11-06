@@ -28,13 +28,17 @@ from ai_product_factory.independent_health_evidence import (
 from ai_product_factory.independent_setup_evidence import (
     SetupEvidenceBlocked, verify_existing_clean_setup,
 )
+from ai_product_factory.independent_rollback_evidence import (
+    RollbackEvidenceBlocked, verify_existing_isolated_rollback,
+)
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
 def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_native_v2: bool = False,
                             verify_health: bool = False,
-                            verify_setup: bool = False) -> dict:
+                            verify_setup: bool = False,
+                            verify_rollback: bool = False) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -92,6 +96,20 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="independent credential-free README setup reverified on current SHA",
                 evidence=list(setup_proof.evidence),
             )
+    rollback_proof = None
+    if verify_rollback:
+        try:
+            rollback_proof = verify_existing_isolated_rollback(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+            )
+        except (RollbackEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            rollback_proof = None
+        if rollback_proof is not None:
+            rollback = manifest["criteria"]["documentation"]["release_rollback"]
+            rollback.update(status="passed", verification_state=rollback_proof.verification_state,
+                            reason="independent isolated code rollback and human gate reverified",
+                            evidence=list(rollback_proof.evidence))
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -99,12 +117,14 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return health_proof
         if (domain, criterion) == ("documentation", "setup_configuration"):
             return setup_proof
+        if (domain, criterion) == ("documentation", "release_rollback"):
+            return rollback_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -138,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-native-v2-traceability", action="store_true")
     parser.add_argument("--verify-independent-health", action="store_true")
     parser.add_argument("--verify-independent-setup", action="store_true")
+    parser.add_argument("--verify-isolated-rollback", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -152,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_native_v2=args.verify_native_v2_traceability,
         verify_health=args.verify_independent_health,
         verify_setup=args.verify_independent_setup,
+        verify_rollback=args.verify_isolated_rollback,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
