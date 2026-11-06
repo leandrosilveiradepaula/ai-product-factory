@@ -52,6 +52,10 @@ REQUIRED_STEPS = (
     "Reproduce README without root, inherited credentials or install",
     "Preserve credential-free setup result",
 )
+REQUIRED_VALIDATE_STEPS = {
+    "test": "Unit tests",
+    "factory-acceptance": "Factory acceptance gate",
+}
 
 
 class SetupEvidenceBlocked(RuntimeError):
@@ -304,6 +308,20 @@ def verify_existing_clean_setup(
         ),
         "setup_full_unittest_or_acceptance_not_executed",
     )
+    for job in all_jobs:
+        expected_step = REQUIRED_VALIDATE_STEPS[job["name"]]
+        steps = job.get("steps")
+        require(
+            isinstance(steps, list)
+            and sum(
+                isinstance(step, dict)
+                and step.get("name") == expected_step
+                and step.get("status") == "completed"
+                and step.get("conclusion") == "success"
+                for step in steps
+            ) == 1,
+            "setup_full_unittest_or_acceptance_step_not_executed",
+        )
     artifacts = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN)
                            + "/artifacts?per_page=100")
     records = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
@@ -329,7 +347,7 @@ def verify_existing_clean_setup(
     )
     _verify_source(github_get, assessed_commit)
     archive = archive_fetch(record.get("archive_download_url", ""), env.get("GITHUB_TOKEN", ""))
-    _verify_archive(archive, digest=record["digest"])
+    receipt = _verify_archive(archive, digest=record["digest"])
     # A second identity check closes the time-of-check / time-of-use gap.
     after = github_get(prefix + "/git/ref/heads/main")
     require(isinstance(after, dict) and isinstance(after.get("object"), dict)
@@ -348,4 +366,5 @@ def verify_existing_clean_setup(
             "https://github.com/" + repository + "/actions/runs/"
             + current_id + "#sha=" + assessed_commit,
         ),
+        retained_receipt=receipt,
     )

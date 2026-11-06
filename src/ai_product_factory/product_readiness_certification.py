@@ -116,6 +116,10 @@ class VerifiedCriterionEvidence:
     verification_state: str
     source: str
     evidence: tuple[str, ...]
+    # A small, sanitized receipt that the verifier has already authenticated.
+    # Keeping it in the durable report prevents an expiring Actions artifact
+    # from becoming the only surviving record of a positive criterion.
+    retained_receipt: dict | None = None
 
 
 TrustedCriterionVerifier = Callable[[str, str, dict], VerifiedCriterionEvidence | None]
@@ -135,6 +139,11 @@ def _externally_verified_claim(*, proof: object, domain: str, key: str,
                    or snapshot["assessed_commit"] not in ref
                    for ref in proof.evidence)):
         return None
+    if proof.retained_receipt is not None:
+        try:
+            canonical_evidence_digest(proof.retained_receipt)
+        except CertificationEvidenceError:
+            return None
     return {
         "status": "passed",
         "evidence": list(proof.evidence),
@@ -149,6 +158,8 @@ def _externally_verified_claim(*, proof: object, domain: str, key: str,
             "assessed_commit": proof.assessed_commit,
             "domain": domain,
             "criterion": key,
+            **({"retained_receipt": proof.retained_receipt}
+               if proof.retained_receipt is not None else {}),
         },
     }
 

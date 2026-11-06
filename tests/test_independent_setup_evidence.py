@@ -124,9 +124,11 @@ def fixture(*, assessed_commit=None, archive=None):
             "total_count": 2,
             "jobs": [
                 {"name": "test", "run_id": SOURCE_VALIDATE_RUN,
-                 "head_sha": SOURCE_SHA, "status": "completed", "conclusion": "success"},
+                 "head_sha": SOURCE_SHA, "status": "completed", "conclusion": "success",
+                 "steps": [{"name": "Unit tests", "status": "completed", "conclusion": "success"}]},
                 {"name": "factory-acceptance", "run_id": SOURCE_VALIDATE_RUN,
-                 "head_sha": SOURCE_SHA, "status": "completed", "conclusion": "success"},
+                 "head_sha": SOURCE_SHA, "status": "completed", "conclusion": "success",
+                 "steps": [{"name": "Factory acceptance gate", "status": "completed", "conclusion": "success"}]},
             ],
         },
         prefix + "/compare/" + MERGE_SHA + "..." + sha: {
@@ -162,6 +164,7 @@ class IndependentSetupEvidenceTests(unittest.TestCase):
         self.assertEqual(proof.verification_state, "reviewed")
         self.assertIn("f" * 40, proof.evidence[0])
         self.assertIn(str(ARTIFACT_ID), proof.source)
+        self.assertEqual(proof.retained_receipt["schema"], "factory-block1-clean-setup-v1")
 
     def test_no_artifact_or_changed_source_or_foreign_sha_can_pass(self):
         for mutation in ("expired", "wrong_sha", "bad_digest", "bad_job", "bad_validate",
@@ -193,6 +196,18 @@ class IndependentSetupEvidenceTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 with self.assertRaises(SetupEvidenceBlocked):
                     self.proof(data=data, zipped=archive, assessed_commit=sha)
+
+    def test_missing_or_failed_full_suite_steps_cannot_pass(self):
+        for job_index, mutation in ((0, "missing"), (1, "failed")):
+            data, archive, sha = fixture()
+            jobs = data["/repos/" + REPO + "/actions/runs/" + str(SOURCE_VALIDATE_RUN)
+                        + "/jobs?per_page=100"]["jobs"]
+            if mutation == "missing":
+                jobs[job_index]["steps"] = []
+            else:
+                jobs[job_index]["steps"][0]["conclusion"] = "failure"
+            with self.subTest(job_index=job_index, mutation=mutation), self.assertRaises(SetupEvidenceBlocked):
+                self.proof(data=data, zipped=archive, assessed_commit=sha)
 
     def test_cannot_reuse_unauthorized_runtime_or_wrong_repository(self):
         data, zipped, sha = fixture()
@@ -276,6 +291,30 @@ class IndependentSetupEvidenceTests(unittest.TestCase):
             )
         self.assertEqual(blocked["manifest"]["criteria"]["documentation"]
                          ["setup_configuration"]["status"], "missing")
+
+    def test_persisted_attestation_retains_sanitized_verified_receipt(self):
+        data = github()
+        receipt = {"schema": "factory-block1-clean-setup-v1", "paid_model_calls": 0}
+        proof = VerifiedCriterionEvidence(
+            domain="documentation", criterion="setup_configuration",
+            repository=TEST_REPO, assessed_commit=TEST_SHA,
+            verification_state="reviewed", source="durable-source",
+            evidence=("proof@sha:" + TEST_SHA,), retained_receipt=receipt,
+        )
+        manifest = conservative_verified_manifest(
+            repository=TEST_REPO, assessed_commit=TEST_SHA, github_get=lambda p: data[p]
+        )
+        manifest["criteria"]["documentation"]["setup_configuration"].update(
+            status="passed", verification_state="reviewed"
+        )
+        report = certify_product_readiness(
+            repository=TEST_REPO, assessed_commit=TEST_SHA, manifest=manifest,
+            github_get=lambda p: data[p],
+            trusted_verifier=lambda domain, criterion, snapshot: proof
+            if (domain, criterion) == ("documentation", "setup_configuration") else None,
+        )
+        item = report.report["criteria"]["documentation"]["setup_configuration"]
+        self.assertEqual(item["attestation"]["retained_receipt"], receipt)
 
 
 if __name__ == "__main__":
