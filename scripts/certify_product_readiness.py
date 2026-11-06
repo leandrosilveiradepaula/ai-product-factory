@@ -16,6 +16,7 @@ from ai_product_factory.independent_health_evidence import verify_health_for_cer
 from ai_product_factory.independent_setup_evidence import verify_existing_clean_setup
 from ai_product_factory.independent_rollback_evidence import verify_existing_isolated_rollback
 from ai_product_factory.independent_security_evidence import verify_existing_secrets_dependencies
+from ai_product_factory.independent_regression_evidence import verify_regression_gates
 
 
 def _github_get(token: str):
@@ -65,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-independent-setup", action="store_true")
     parser.add_argument("--verify-isolated-rollback", action="store_true")
     parser.add_argument("--verify-secrets-dependencies", action="store_true")
+    parser.add_argument("--verify-regression-gates", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -143,6 +145,16 @@ def main(argv: list[str] | None = None) -> int:
                 repository=args.repository, assessed_commit=args.assessed_commit,
                 github_get=github_get,
             )
+    regression_proof = None
+    if args.verify_regression_gates:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError("regression gates proof requires independent verified baseline")
+        regression = manifest.get("criteria", {}).get("test_strategy", {}).get("regression_gates")
+        if isinstance(regression, dict) and regression.get("status") == "passed":
+            regression_proof = verify_regression_gates(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                github_get=github_get,
+            )
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -154,12 +166,14 @@ def main(argv: list[str] | None = None) -> int:
             return rollback_proof
         if (domain, criterion) == ("security", "secrets_dependencies"):
             return security_proof
+        if (domain, criterion) == ("test_strategy", "regression_gates"):
+            return regression_proof
         return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
