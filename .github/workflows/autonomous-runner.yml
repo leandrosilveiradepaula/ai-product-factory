@@ -1556,7 +1556,7 @@ jobs:
   product-readiness-certification-post-ci:
     # Independent durable certifier: successful validate push at current main
     # SHA only. Distinct from the read-only global readiness observer.
-    # This conservatively certifies exact CI and persists not_ready until
+    # Claims require independent verification; remaining criteria stay blocked until
     # all remaining 18 criteria have independent verified evidence.
     # Existing runner topology requires jobs rooted in schedule-probe.
     # For a main push, that probe is intentionally SKIPPED: always() allows
@@ -1585,15 +1585,16 @@ jobs:
       # Source verification needs the existing broker's read-only PostgREST
       # token. It runs only on successful exact-SHA main validation.
       - uses: ./.github/actions/control-plane-oidc
-      - name: Collect exact-SHA CI, CRM V2 traceability and independent operational health
+      - name: Collect exact-SHA CI, CRM V2 traceability, health and independent setup
         run: |
           set -euo pipefail
           python scripts/build_readiness_evidence_manifest.py \
             --event-path "$GITHUB_EVENT_PATH" \
             --output "$RUNNER_TEMP/factory-readiness-certified-baseline.json" \
             --verify-native-v2-traceability \
-            --verify-independent-health
-      - name: Persist current-SHA not-ready certificate only after independent GitHub verification
+            --verify-independent-health \
+            --verify-independent-setup
+      - name: Persist independently reverified criterion states on exact-SHA
         run: |
           set -euo pipefail
           python scripts/certify_product_readiness.py \
@@ -1604,6 +1605,7 @@ jobs:
             --require-verified-baseline \
             --verify-native-v2-traceability \
             --verify-independent-health \
+            --verify-independent-setup \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       - name: Preserve bounded certifier receipts
         if: always()
