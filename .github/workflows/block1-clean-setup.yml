@@ -20,10 +20,15 @@ jobs:
           set -euo pipefail
           python_bin="$(command -v python3)"
           test -x "$python_bin"
+          isolated="$(mktemp -d /tmp/factory-block1.XXXXXXXX)"
+          trap 'rm -rf "$isolated"' EXIT
+          tar --exclude=.git -cf - . | tar -C "$isolated" -xf -
+          chmod -R a+rX "$isolated"
+          cd "$isolated"
           sudo -n -u nobody -- env -i \
-            PATH=/usr/bin:/bin HOME=/tmp PYTHONPATH="$GITHUB_WORKSPACE/src" \
+            PATH=/usr/bin:/bin HOME=/tmp PYTHONPATH="$isolated/src" \
             PYTHONDONTWRITEBYTECODE=1 "$python_bin" \
-            scripts/exercise_block1_clean_setup.py > block1-clean-setup-receipt.json
+            scripts/exercise_block1_clean_setup.py > "$GITHUB_WORKSPACE/block1-clean-setup-receipt.json"
           cat block1-clean-setup-receipt.json
       - name: Preserve credential-free setup result
         if: always()
