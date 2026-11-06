@@ -20,9 +20,12 @@ identidade de usuário. `block1_certified=false`, `production_writes=0`,
 o CI e a revalidação independente de fonte/recibo, pode fechar somente o critério
 documental `documentation/release_rollback`. Ele não fecha Resiliência/Operações,
 E2E, Release ou o produto. Um revert isolado prova a mecânica do Git e a política determinística,
-não executa rollback do Console, CRM, Supabase ou database migrations. Não é
-critério integral certificado; a reconciliação com incidente/QA/capacidade de
-rollback reais continua pendente. Não ativa modelo, não cria Start nem auto-merge.
+não executa rollback do Console, CRM, Supabase ou database migrations. O
+critério **documental** pode ser certificado somente após revalidação independente
+desta evidência, do runbook e do gate no SHA avaliado; essa aprovação **não**
+certifica rollback produtivo, recuperação operacional, release observado nem a
+Factory inteira. Evidências de incidentes, QA de recuperação e capacidade de
+rollback reais continuam pendentes nos respectivos critérios operacionais. Não ativa modelo, não cria Start nem auto-merge.
 
 A CI `validate/test` também executa os testes negativos. Depois de merge humano,
 confirmar `validate` em `main` e o certificado real no Supabase: `product_ready`
