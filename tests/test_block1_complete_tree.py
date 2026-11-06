@@ -93,6 +93,38 @@ class CompleteTrackedTreeScanTests(unittest.TestCase):
             with self.assertRaises(mod.ScanBlocked):
                 mod.audit(root, root / "scanner")
 
+    def test_reviewed_fixtures_require_exact_source_blob_rule_and_line(self):
+        from unittest.mock import patch
+        expected = sorted(mod.REVIEWED_FIXTURE_FINDINGS)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            findings = []
+            hashes = {}
+            for rel, line, rule, oid in expected:
+                path = root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("reviewed synthetic fixture", encoding="utf-8")
+                hashes[str(path)] = oid
+                findings.append({"File": str(path), "StartLine": line, "RuleID": rule})
+            with patch.object(mod, "_git_blob_oid", side_effect=lambda p: hashes[str(p)]):
+                result = mod._classify_reviewed_fixtures(findings, root)
+                self.assertEqual(len(result), 8)
+                for mutation in ("extra", "removed", "wrong_line", "wrong_rule"):
+                    altered = [dict(x) for x in findings]
+                    if mutation == "extra":
+                        altered.append(dict(altered[0]))
+                    elif mutation == "removed":
+                        altered.pop()
+                    elif mutation == "wrong_line":
+                        altered[0]["StartLine"] += 1
+                    else:
+                        altered[0]["RuleID"] = "other-rule"
+                    with self.subTest(mutation=mutation), self.assertRaises(mod.ScanBlocked):
+                        mod._classify_reviewed_fixtures(altered, root)
+            with patch.object(mod, "_git_blob_oid", return_value="0" * 40):
+                with self.assertRaisesRegex(mod.ScanBlocked, "blob_drift"):
+                    mod._classify_reviewed_fixtures(findings, root)
+
     def test_scanner_argv_enforces_ignore_override_and_redaction(self):
         script = P.read_text(encoding="utf-8")
         for required in (
