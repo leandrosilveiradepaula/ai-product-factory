@@ -22,6 +22,20 @@ SHA = re.compile(r"[a-f0-9]{40}\Z")
 VERSION = "8.24.3"
 CI_SCANNER = Path("/tmp/gitleaks-8.24.3/gitleaks")
 
+# Exactly eight reviewed benign source fixtures (PEM format header, synthetic
+# UUIDs, explicitly invalid test token), pinned to immutable Git blob OIDs.
+# A new finding, changed file blob, line or rule must fail closed.
+REVIEWED_FIXTURE_FINDINGS = frozenset({
+    ("supabase/functions/factory-runtime-control-plane/index.ts", 142, "private-key", "f7f874763d5c445c2af2f0a760b79471eb4f7b66"),
+    ("tests/test_reconciled_candidate_delivery.py", 63, "generic-api-key", "aa846a7db5694252f3629ebf9665c35408081bab"),
+    ("tests/test_reconciled_candidate_delivery.py", 82, "generic-api-key", "aa846a7db5694252f3629ebf9665c35408081bab"),
+    ("tests/test_repair_runtime.py", 12, "generic-api-key", "c8cbeb7fd70f0d133b259d40cb519a6db9c88ebd"),
+    ("tests/test_repository_snapshot_safety.py", 97, "generic-api-key", "67e6d32e444ae2f88d4bdfb927091b931df451b4"),
+    ("tests/test_specialist_traceability_atomicity.py", 24, "generic-api-key", "2cb7cd0d233de247111377acf040007de723978c"),
+    ("tests/test_followup_execution_epochs.py", 178, "generic-api-key", "ad4d9f63bc7dee569dab1303d65771f23f3596f6"),
+    ("tests/test_specialist_epoch_fence.py", 71, "generic-api-key", "e5485d7e4f9581467ed77f8a6cdc9c5ecdd3c73d"),
+})
+
 
 class ScanBlocked(RuntimeError):
     """Expected fail-closed outcome, without secret content."""
