@@ -105,7 +105,7 @@ class CompleteTrackedTreeScanTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("reviewed synthetic fixture", encoding="utf-8")
                 hashes[str(path)] = oid
-                findings.append({"File": str(path), "StartLine": line, "RuleID": rule})
+                findings.append({"File": str(path), "StartLine": line, "RuleID": "-".join(rule)})
             with patch.object(mod, "_git_blob_oid", side_effect=lambda p: hashes[str(p)]):
                 result = mod._classify_reviewed_fixtures(findings, root)
                 self.assertEqual(len(result), 8)
