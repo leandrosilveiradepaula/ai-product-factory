@@ -14,6 +14,7 @@ from ai_product_factory.native_v2_traceability_certification import (
 )
 from ai_product_factory.independent_health_evidence import verify_health_for_certification
 from ai_product_factory.independent_setup_evidence import verify_existing_clean_setup
+from ai_product_factory.independent_rollback_evidence import verify_existing_isolated_rollback
 
 
 def _github_get(token: str):
@@ -61,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-native-v2-traceability", action="store_true")
     parser.add_argument("--verify-independent-health", action="store_true")
     parser.add_argument("--verify-independent-setup", action="store_true")
+    parser.add_argument("--verify-isolated-rollback", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -119,6 +121,16 @@ def main(argv: list[str] | None = None) -> int:
                 assessed_commit=args.assessed_commit,
                 github_get=github_get,
             )
+    rollback_proof = None
+    if args.verify_isolated_rollback:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError("rollback proof requires independent verified baseline")
+        rollback = manifest.get("criteria", {}).get("documentation", {}).get("release_rollback")
+        if isinstance(rollback, dict) and rollback.get("status") == "passed":
+            rollback_proof = verify_existing_isolated_rollback(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                github_get=github_get,
+            )
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -126,12 +138,14 @@ def main(argv: list[str] | None = None) -> int:
             return health_proof
         if (domain, criterion) == ("documentation", "setup_configuration"):
             return setup_proof
+        if (domain, criterion) == ("documentation", "release_rollback"):
+            return rollback_proof
         return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
