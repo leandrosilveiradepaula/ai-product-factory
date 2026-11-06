@@ -25,6 +25,7 @@ SOURCE_SHA = "0a78ba0c72dfb803eb0b9019787fd77e1d5e537b"
 MERGE_SHA = "9129f4db6cec6fc936f219f7c34cb1c928457a9d"
 SOURCE_PR = 1255
 SOURCE_RUN = 42160722506
+SOURCE_VALIDATE_RUN = 42160722518
 SOURCE_JOB = "nonroot-setup"
 ARTIFACT_ID = 13475949818
 ARTIFACT_NAME = "block1-clean-setup-receipt"
@@ -37,6 +38,7 @@ DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z", re.ASCII)
 # A change revokes historical reuse; unrelated changes to the certifier do not.
 SOURCE_FILES = (
     "README.md",
+    "pyproject.toml",
     "config/factory.example.json",
     "scripts/exercise_block1_clean_setup.py",
     "scripts/check_test_collection.py",
@@ -269,6 +271,39 @@ def verify_existing_clean_setup(
         ),
         "setup_source_steps_invalid",
     )
+    # README includes a fourth command: full unittest discovery. The
+    # independent exact-source validate job executed that suite and the
+    # acceptance suite; checking only the three non-root commands is partial.
+    validated = github_get(prefix + "/actions/runs/" + str(SOURCE_VALIDATE_RUN))
+    require(
+        isinstance(validated, dict) and validated.get("id") == SOURCE_VALIDATE_RUN
+        and validated.get("name") == "validate"
+        and validated.get("path") == ".github/workflows/validate.yml"
+        and validated.get("event") == "pull_request"
+        and validated.get("head_sha") == SOURCE_SHA
+        and validated.get("run_attempt") == 1
+        and validated.get("status") == "completed"
+        and validated.get("conclusion") == "success",
+        "setup_full_unittest_run_invalid",
+    )
+    validation_jobs = github_get(
+        prefix + "/actions/runs/" + str(SOURCE_VALIDATE_RUN) + "/jobs?per_page=100"
+    )
+    all_jobs = validation_jobs.get("jobs") if isinstance(validation_jobs, dict) else None
+    require(
+        isinstance(all_jobs, list) and len(all_jobs) == 2
+        and validation_jobs.get("total_count") == 2
+        and {j.get("name") for j in all_jobs if isinstance(j, dict)}
+            == {"test", "factory-acceptance"}
+        and all(
+            isinstance(j, dict) and j.get("run_id") == SOURCE_VALIDATE_RUN
+            and j.get("head_sha") == SOURCE_SHA
+            and j.get("status") == "completed"
+            and j.get("conclusion") == "success"
+            for j in all_jobs
+        ),
+        "setup_full_unittest_or_acceptance_not_executed",
+    )
     artifacts = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN)
                            + "/artifacts?per_page=100")
     records = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
@@ -306,7 +341,8 @@ def verify_existing_clean_setup(
         verification_state="reviewed",
         source=(
             "source-verified-credential-free-setup:" + str(SOURCE_RUN)
-            + "/" + str(ARTIFACT_ID) + ":" + record["digest"]
+            + "/" + str(ARTIFACT_ID) + ":validate/" + str(SOURCE_VALIDATE_RUN)
+            + ":" + record["digest"]
         ),
         evidence=(
             "https://github.com/" + repository + "/actions/runs/"
