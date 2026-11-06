@@ -26,6 +26,10 @@ CI_SCANNER = Path("/tmp/gitleaks-8.24.3/gitleaks")
 class ScanBlocked(RuntimeError):
     """Expected fail-closed outcome, without secret content."""
 
+    def __init__(self, reason: str, *, finding_inventory: list[dict] | None = None):
+        super().__init__(reason)
+        self.finding_inventory = finding_inventory or []
+
 
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
@@ -128,7 +132,31 @@ def audit(root: Path, scanner: Path) -> dict:
         # Raw scanner stdout, stderr, and findings remain private; none is
         # written to an Actions artifact or included in this receipt.
         if scan.returncode != 0:
-            raise ScanBlocked("secret_findings_detected" if scan.returncode == 2 else "scanner_runtime_error")
+            if scan.returncode != 2:
+                raise ScanBlocked("scanner_runtime_error")
+            # Publish only rule IDs and paths, never actual matched values.
+            try:
+                findings = json.loads(report_file.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError) as exc:
+                raise ScanBlocked("findings_report_unavailable") from exc
+            if not isinstance(findings, list):
+                raise ScanBlocked("findings_report_invalid")
+            inventory = []
+            for finding in findings[:40]:
+                if not isinstance(finding, dict):
+                    raise ScanBlocked("findings_report_invalid")
+                rule = finding.get("RuleID")
+                file_path = finding.get("File")
+                if not isinstance(rule, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,90}", rule):
+                    raise ScanBlocked("finding_rule_invalid")
+                if not isinstance(file_path, str):
+                    raise ScanBlocked("finding_path_invalid")
+                try:
+                    relative = Path(file_path).resolve(strict=True).relative_to(source.resolve(strict=True))
+                except (OSError, ValueError) as exc:
+                    raise ScanBlocked("finding_path_outside_tree") from exc
+                inventory.append({"rule_id": rule, "path": relative.as_posix()})
+            raise ScanBlocked("secret_findings_detected", finding_inventory=inventory)
         if report_file.exists():
             try:
                 parsed = json.loads(report_file.read_text(encoding="utf-8"))
@@ -167,8 +195,10 @@ def main() -> int:
         code = 0
     except (ScanBlocked, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         error_code = str(exc) if type(exc) is ScanBlocked else type(exc).__name__
+        inventory = exc.finding_inventory if type(exc) is ScanBlocked else []
         result = {"schema": "factory-block1-complete-tracked-tree-gitleaks-v1",
-                  "block_reason": error_code, "scan_passed": False, "secrets_dependencies_certified": False,
+                  "block_reason": error_code, "finding_inventory": inventory,
+                  "scan_passed": False, "secrets_dependencies_certified": False,
                   "block1_certified": False, "paid_calls": 0,
                   "production_writes": 0}
         code = 1
