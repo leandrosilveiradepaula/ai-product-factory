@@ -1,0 +1,174 @@
+"""Source-bound evidence for native scheduler recovery and alerting.
+
+The historical scheduler execution is reusable only when every operational
+file it exercised is byte-identical in the assessed tree.  This is deliberately
+stricter than a successful cron run or a green CI check: provenance, job
+identity, ancestry, relevant blobs and the current certifier identity all
+must agree.
+"""
+from __future__ import annotations
+
+import os
+import re
+from collections.abc import Callable, Mapping
+
+from .product_readiness_certification import VerifiedCriterionEvidence
+
+REPOSITORY = "leandrosilveiradepaula/ai-product-factory"
+OWNER_WORKFLOW = ".github/workflows/autonomous-runner.yml"
+SOURCE_RUN = 42297612896
+SOURCE_SHA = "a7f76758d4bb2275cb410e09703c36dffc201078"
+REQUIRED_JOBS = frozenset({"schedule-probe", "alerts"})
+SOURCE_FILES = frozenset({
+    ".github/workflows/autonomous-runner.yml",
+    "src/ai_product_factory/runtime_cli.py",
+    "src/ai_product_factory/operational_alerts.py",
+    "src/ai_product_factory/github_alert_adapter.py",
+    "src/ai_product_factory/github_scheduler_health.py",
+    "src/ai_product_factory/supabase_scheduler_liveness.py",
+    "src/ai_product_factory/supabase_operational_health.py",
+    "src/ai_product_factory/external_webhook_recovery.py",
+})
+SHA = re.compile(r"[0-9a-f]{40}\Z")
+
+
+class RecoveryEvidenceBlocked(RuntimeError):
+    pass
+
+
+def _require(value: bool, code: str) -> None:
+    if not value:
+        raise RecoveryEvidenceBlocked(code)
+
+
+def _blobs(tree: object) -> dict[str, tuple[str, str]]:
+    _require(isinstance(tree, dict) and tree.get("truncated") is False,
+             "recovery_tree_unavailable")
+    rows = tree.get("tree")
+    _require(isinstance(rows, list) and 0 < len(rows) <= 20_000,
+             "recovery_tree_invalid")
+    found: dict[str, tuple[str, str]] = {}
+    for row in rows:
+        _require(isinstance(row, dict), "recovery_tree_entry_invalid")
+        path = row.get("path")
+        if path not in SOURCE_FILES:
+            continue
+        blob, mode = row.get("sha"), row.get("mode")
+        _require(row.get("type") == "blob" and isinstance(blob, str)
+                 and SHA.fullmatch(blob) is not None and isinstance(mode, str)
+                 and path not in found, "recovery_source_blob_invalid")
+        found[path] = (blob, mode)
+    _require(set(found) == SOURCE_FILES, "recovery_source_blob_missing")
+    return found
+
+
+def _upstream(event: Mapping[str, object], assessed_commit: str) -> int:
+    run = event.get("workflow_run")
+    _require(isinstance(run, dict), "recovery_upstream_event_missing")
+    _require(run.get("name") == "validate"
+             and run.get("path") == ".github/workflows/validate.yml"
+             and run.get("event") == "push"
+             and run.get("status") == "completed"
+             and run.get("conclusion") == "success"
+             and run.get("head_sha") == assessed_commit
+             and run.get("head_branch") == "main"
+             and run.get("run_attempt") == 1
+             and isinstance(run.get("repository"), dict)
+             and run["repository"].get("full_name") == REPOSITORY,
+             "recovery_upstream_validate_invalid")
+    run_id = run.get("id")
+    _require(type(run_id) is int and run_id > 0, "recovery_upstream_run_invalid")
+    return run_id
+
+
+def verify_recovery_alerting(*, repository: str, assessed_commit: str,
+                             github_get: Callable[[str], object],
+                             environment: Mapping[str, str] | None = None,
+                             event_payload: Mapping[str, object] | None = None) -> VerifiedCriterionEvidence:
+    env = os.environ if environment is None else environment
+    _require(repository == REPOSITORY and isinstance(assessed_commit, str)
+             and SHA.fullmatch(assessed_commit) is not None,
+             "recovery_repository_or_sha_invalid")
+    _require(env.get("GITHUB_ACTIONS") == "true"
+             and env.get("GITHUB_REPOSITORY") == REPOSITORY
+             and env.get("GITHUB_EVENT_NAME") == "workflow_run"
+             and env.get("GITHUB_REF") == "refs/heads/main"
+             and env.get("GITHUB_WORKFLOW_REF")
+             == REPOSITORY + "/" + OWNER_WORKFLOW + "@refs/heads/main"
+             and str(env.get("GITHUB_RUN_ID", "")).isdecimal(),
+             "recovery_certifier_identity_invalid")
+    if event_payload is None:
+        import json
+        from pathlib import Path
+        event_path = env.get("GITHUB_EVENT_PATH", "")
+        _require(bool(event_path), "recovery_event_path_missing")
+        event_payload = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    _require(isinstance(event_payload, Mapping), "recovery_event_payload_invalid")
+    upstream_id = _upstream(event_payload, assessed_commit)
+    prefix = "/repos/" + REPOSITORY
+    current_id = int(env["GITHUB_RUN_ID"])
+    current = github_get(prefix + "/actions/runs/" + str(current_id))
+    _require(isinstance(current, dict) and current.get("id") == current_id
+             and current.get("name") == "Factory autonomous runner"
+             and current.get("path") == OWNER_WORKFLOW
+             and current.get("event") == "workflow_run"
+             and current.get("head_sha") == assessed_commit
+             and current.get("head_branch") == "main"
+             and current.get("run_attempt") == 1
+             and current.get("status") in {"queued", "in_progress", "completed"}
+             and (current.get("status") != "completed"
+                  or current.get("conclusion") == "success"),
+             "recovery_certifier_run_unbound")
+    source = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN))
+    _require(isinstance(source, dict) and source.get("id") == SOURCE_RUN
+             and source.get("name") == "Factory autonomous runner"
+             and source.get("path") == OWNER_WORKFLOW
+             and source.get("event") == "schedule"
+             and source.get("head_sha") == SOURCE_SHA
+             and source.get("head_branch") == "main"
+             and source.get("status") == "completed"
+             and source.get("conclusion") == "success"
+             and source.get("run_attempt") == 1
+             and isinstance(source.get("repository"), dict)
+             and source["repository"].get("full_name") == REPOSITORY,
+             "recovery_source_run_invalid")
+    jobs = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN) + "/jobs?per_page=100")
+    rows = jobs.get("jobs") if isinstance(jobs, dict) else None
+    _require(isinstance(rows, list) and 0 < len(rows) <= 100,
+             "recovery_source_jobs_invalid")
+    successful = {row.get("name") for row in rows if isinstance(row, dict)
+                  and row.get("run_id") == SOURCE_RUN
+                  and row.get("head_sha") == SOURCE_SHA
+                  and row.get("status") == "completed"
+                  and row.get("conclusion") == "success"}
+    _require(REQUIRED_JOBS.issubset(successful), "recovery_source_jobs_missing")
+    compare = github_get(prefix + "/compare/" + SOURCE_SHA + "..." + assessed_commit)
+    _require(isinstance(compare, dict)
+             and compare.get("status") in {"ahead", "identical"}
+             and compare.get("behind_by") == 0
+             and isinstance(compare.get("merge_base_commit"), dict)
+             and compare["merge_base_commit"].get("sha") == SOURCE_SHA,
+             "recovery_source_not_ancestor")
+    source_blobs = _blobs(github_get(prefix + "/git/trees/" + SOURCE_SHA + "?recursive=1"))
+    assessed_blobs = _blobs(github_get(prefix + "/git/trees/" + assessed_commit + "?recursive=1"))
+    _require(source_blobs == assessed_blobs, "recovery_operational_source_drift")
+    latest = github_get(prefix + "/git/ref/heads/main")
+    _require(isinstance(latest, dict)
+             and isinstance(latest.get("object"), dict)
+             and latest["object"].get("sha") == assessed_commit,
+             "recovery_main_drift")
+    return VerifiedCriterionEvidence(
+        domain="observability_operations", criterion="recovery_alerting",
+        repository=repository, assessed_commit=assessed_commit,
+        verification_state="executed",
+        source="github-native-schedule-recovery-alerts:" + str(SOURCE_RUN),
+        evidence=("https://github.com/" + repository + "/actions/runs/"
+                  + str(current_id) + "#sha=" + assessed_commit,),
+        retained_receipt={"source_run_id": SOURCE_RUN,
+                          "source_sha": SOURCE_SHA,
+                          "source_jobs": sorted(REQUIRED_JOBS),
+                          "upstream_validate_run_id": upstream_id,
+                          "source_blobs": {key: list(value)
+                                           for key, value in sorted(source_blobs.items())},
+                          "assessed_commit": assessed_commit},
+    )
