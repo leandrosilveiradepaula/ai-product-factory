@@ -168,16 +168,20 @@ def main() -> int:
         print('{"reusable_within_unchanged_console_scope":false,"block1_certified":false}')
         return 2
     token = os.environ.get("GITHUB_TOKEN", "")
+    stage = "run"
     try:
         run = github("actions/runs/" + str(args.source_run), token)
         source = run["head_sha"]
         if not exact_sha(source):
             raise ValueError("invalid source sha")
+        stage = "jobs"
         jobs = github("actions/runs/" + str(args.source_run) + "/jobs?per_page=100", token)
         capture_jobs = [j for j in jobs.get("jobs", []) if j.get("name") == "capture"]
         if len(capture_jobs) != 1:
             raise ValueError("capture job missing or duplicated")
+        stage = "capture_log"
         capture_log = github("actions/jobs/" + str(capture_jobs[0]["id"]) + "/logs", token, raw=True)
+        stage = "evidence_bundle"
         result = assess(
             args.candidate_sha,
             run,
@@ -193,6 +197,8 @@ def main() -> int:
             "schema": "factory-block1-authenticated-console-reuse-v1",
             "candidate_sha": args.candidate_sha,
             "error_type": type(exc).__name__,
+            "error_stage": stage,
+            "http_status": exc.code if isinstance(exc, urllib.error.HTTPError) else None,
             "reusable_within_unchanged_console_scope": False,
             "authn_authz_certified": False,
             "block1_certified": False,
