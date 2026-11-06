@@ -60,7 +60,7 @@ def _credential_receipt(raw: bytes)->dict:
  try:
   with zipfile.ZipFile(io.BytesIO(raw)) as archive: value=json.loads(archive.read("block1-credential-exposure-receipt.json").decode("utf-8"))
  except (KeyError,zipfile.BadZipFile,OSError,UnicodeError,ValueError) as exc: raise SecurityEvidenceBlocked("credential_exposure_receipt_unavailable") from exc
- require(isinstance(value,dict) and value.get("schema")=="factory-block1-credential-exposure-v1" and type(value.get("console_files_scanned")) is int and value["console_files_scanned"]>0 and value.get("credential_exposure_detected") is False and value.get("privileged_values_read") is False and value.get("security_certified") is False and value.get("writes")==0 and value.get("paid_calls")==0 and value.get("findings")==[],"credential_exposure_receipt_invalid")
+ require(isinstance(value,dict) and value.get("schema")=="factory-block1-credential-exposure-v2" and value.get("scope")=="static-import-reachability-for-client-and-public-health-surfaces-not-runtime-authentication" and type(value.get("console_files_scanned")) is int and value["console_files_scanned"]>0 and type(value.get("client_entrypoints_scanned")) is int and value["client_entrypoints_scanned"]>0 and value.get("public_surface_roots")==["apps/console/app/api/health/route.ts"] and value.get("credential_exposure_detected") is False and value.get("privileged_values_read") is False and value.get("security_certified") is False and value.get("writes")==0 and value.get("paid_calls")==0 and value.get("findings")==[],"credential_exposure_receipt_invalid")
  return value
 
 def _tree(github_get: Callable[[str],object],prefix: str,sha: str)->tuple[str,int]:
