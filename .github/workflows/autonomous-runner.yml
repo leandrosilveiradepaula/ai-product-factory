@@ -1585,7 +1585,7 @@ jobs:
       # Source verification needs the existing broker's read-only PostgREST
       # token. It runs only on successful exact-SHA main validation.
       - uses: ./.github/actions/control-plane-oidc
-      - name: Collect exact-SHA CI, CRM V2 traceability, health and independent setup
+      - name: Collect exact-SHA CI, operations and independent security evidence
         run: |
           set -euo pipefail
           python scripts/build_readiness_evidence_manifest.py \
@@ -1594,7 +1594,8 @@ jobs:
             --verify-native-v2-traceability \
             --verify-independent-health \
             --verify-independent-setup \
-            --verify-isolated-rollback
+            --verify-isolated-rollback \
+            --verify-secrets-dependencies
       - name: Persist independently reverified criterion states on exact-SHA
         run: |
           set -euo pipefail
@@ -1608,6 +1609,7 @@ jobs:
             --verify-independent-health \
             --verify-independent-setup \
             --verify-isolated-rollback \
+            --verify-secrets-dependencies \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       - name: Preserve bounded certifier receipts
         if: always()
