@@ -34,6 +34,9 @@ from ai_product_factory.independent_rollback_evidence import (
 from ai_product_factory.independent_security_evidence import (
     SecurityEvidenceBlocked, verify_existing_secrets_dependencies,
 )
+from ai_product_factory.independent_regression_evidence import (
+    RegressionEvidenceBlocked, verify_regression_gates as verify_effective_regression_gates,
+)
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
@@ -42,7 +45,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_health: bool = False,
                             verify_setup: bool = False,
                             verify_rollback: bool = False,
-                            verify_secrets_dependencies: bool = False) -> dict:
+                            verify_secrets_dependencies: bool = False,
+                            verify_regression_gates: bool = False) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -128,6 +132,20 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             entry.update(status="passed", verification_state=security_proof.verification_state,
                          reason="independent full-tree Gitleaks and production dependency audit reverified",
                          evidence=list(security_proof.evidence))
+    regression_proof = None
+    if verify_regression_gates:
+        try:
+            regression_proof = verify_effective_regression_gates(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+            )
+        except (RegressionEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            regression_proof = None
+        if regression_proof is not None:
+            entry = manifest["criteria"]["test_strategy"]["regression_gates"]
+            entry.update(status="passed", verification_state=regression_proof.verification_state,
+                         reason="independent effective GitHub regression gates reverified",
+                         evidence=list(regression_proof.evidence))
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -139,12 +157,14 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return rollback_proof
         if (domain, criterion) == ("security", "secrets_dependencies"):
             return security_proof
+        if (domain, criterion) == ("test_strategy", "regression_gates"):
+            return regression_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -180,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-independent-setup", action="store_true")
     parser.add_argument("--verify-isolated-rollback", action="store_true")
     parser.add_argument("--verify-secrets-dependencies", action="store_true")
+    parser.add_argument("--verify-regression-gates", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -196,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_setup=args.verify_independent_setup,
         verify_rollback=args.verify_isolated_rollback,
         verify_secrets_dependencies=args.verify_secrets_dependencies,
+        verify_regression_gates=args.verify_regression_gates,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
