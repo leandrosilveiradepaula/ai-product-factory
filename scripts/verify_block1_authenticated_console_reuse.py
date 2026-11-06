@@ -180,7 +180,14 @@ def main() -> int:
         if len(capture_jobs) != 1:
             raise ValueError("capture job missing or duplicated")
         stage = "capture_log"
-        capture_log = github("actions/jobs/" + str(capture_jobs[0]["id"]) + "/logs", token, raw=True)
+        try:
+            capture_log = github("actions/jobs/" + str(capture_jobs[0]["id"]) + "/logs", token, raw=True)
+        except urllib.error.HTTPError as err:
+            if err.code != 401:
+                raise
+            # Public source repository: retry anonymous GitHub access only.
+            # Never log or forward bearer credentials to an alternate host.
+            capture_log = github("actions/jobs/" + str(capture_jobs[0]["id"]) + "/logs", "", raw=True)
         stage = "evidence_bundle"
         result = assess(
             args.candidate_sha,
