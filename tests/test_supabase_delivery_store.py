@@ -1,4 +1,4 @@
-import json,unittest
+import io,json,unittest,urllib.error
 from unittest.mock import patch,MagicMock
 from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
 from ai_product_factory.product_readiness import assess_product_readiness,REQUIRED_COVERAGE_BY_DOMAIN,REQUIRED_DOMAINS
@@ -12,6 +12,18 @@ class Tests(unittest.TestCase):
   with patch("urllib.request.urlopen",return_value=Response({"run_id":"r","task_id":"t","status":"pr_open","candidate_commit":"abc"})) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").update_run_status("r","pr_open",candidate_commit="abc")
   self.assertEqual(out.candidate_commit,"abc");self.assertTrue(call.call_args.args[0].full_url.endswith("/rpc/factory_update_run_delivery_status"));self.assertNotIn(b"secret",call.call_args.args[0].data)
+ def test_rpc_error_exposes_only_stable_provider_code(self):
+  error=urllib.error.HTTPError("https://x.supabase.co/rest/v1/rpc/x",403,"forbidden",None,io.BytesIO(b'{"code":"42501","message":"permission denied for table secret_rows"}'))
+  with patch("urllib.request.urlopen",side_effect=error):
+   with self.assertRaisesRegex(RuntimeError,r"factory_update_run_delivery_status \(403; code=42501\)") as raised:
+    SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").update_run_status("r","completed")
+  self.assertNotIn("secret_rows",str(raised.exception))
+ def test_rpc_error_rejects_untrusted_provider_code(self):
+  error=urllib.error.HTTPError("https://x.supabase.co/rest/v1/rpc/x",403,"forbidden",None,io.BytesIO(b'{"code":"raw error detail must not leak"}'))
+  with patch("urllib.request.urlopen",side_effect=error):
+   with self.assertRaisesRegex(RuntimeError,r"code=unknown") as raised:
+    SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").update_run_status("r","completed")
+  self.assertNotIn("raw error",str(raised.exception))
  def test_tool_usage_uses_rpc(self):
   with patch("urllib.request.urlopen",return_value=Response(9)) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_tool_usage(run_id="r",tool_family="github",operation="commit",estimated_cost=0)
