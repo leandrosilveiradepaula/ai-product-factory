@@ -35,8 +35,10 @@ class TestSecurityEvidence(unittest.TestCase):
     r[rid]=o.getvalue();q=v[ROOT+f"/actions/runs/{rid}/artifacts?per_page=100"]["artifacts"][0];q["digest"]="sha256:"+hashlib.sha256(r[rid]).hexdigest();q["size_in_bytes"]=len(r[rid])
    with self.subTest(x=x),self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)
  def test_scanner_source_drift_blocks(self):
-  v,r=fixture();path=TRUSTED_SCANNER_FILES[0];v[ROOT+"/contents/"+path+"?ref="+SHA]["sha"]="f"*40
-  with self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)
+  for path in TRUSTED_SCANNER_FILES:
+   with self.subTest(path=path):
+    v,r=fixture();v[ROOT+"/contents/"+path+"?ref="+SHA]["sha"]="f"*40
+    with self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)
  def test_credential_exposure_receipt_blocks_pass(self):
   v,r=fixture();wid=WORKFLOWS["gitleaks"][0];rid=100+wid;b=receipt("gitleaks");o=io.BytesIO()
   with zipfile.ZipFile(o,"w") as a:
