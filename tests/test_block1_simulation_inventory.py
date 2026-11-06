@@ -48,7 +48,10 @@ class SimulationInventoryTests(unittest.TestCase):
             with self.assertRaises(SyntaxError):
                 mod.inventory(root)
             (src / "runtime.py").unlink()
-            (src / "runtime.py").symlink_to(ROOT / "src" / "ai_product_factory" / "__init__.py")
+            try:
+                (src / "runtime.py").symlink_to(ROOT / "src" / "ai_product_factory" / "__init__.py")
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc.winerror if hasattr(exc, 'winerror') else exc}")
             with self.assertRaises(ValueError):
                 mod.inventory(root)
 
