@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import re
+import json
+from pathlib import Path
 from collections.abc import Callable, Mapping
 
 from .product_readiness_certification import VerifiedCriterionEvidence
@@ -63,26 +65,66 @@ def _effective_rules(rulesets: object, *, default_branch: str) -> dict:
     require(REQUIRED_CHECKS.issubset(checks), "regression_required_checks_incomplete")
     return {"active_rulesets": active, "required_checks": sorted(checks), "single_maintainer_merge_gate": True, "bypass_free": bypass_free}
 
-def _postgres_qa(github_get: Callable[[str], object], prefix: str, sha: str) -> int:
+def _commit_tree(github_get: Callable[[str], object], prefix: str, sha: str) -> str:
+    row = github_get(prefix + "/git/commits/" + sha)
+    tree = row.get("tree") if isinstance(row, dict) else None
+    value = tree.get("sha") if isinstance(tree, dict) else None
+    require(isinstance(value, str) and SHA.fullmatch(value), "regression_commit_tree_invalid")
+    return value
+
+
+def _postgres_qa(github_get: Callable[[str], object], prefix: str, sha: str) -> dict:
     runs = github_get(prefix + "/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100")
     rows = runs.get("workflow_runs") if isinstance(runs, dict) else None
     require(isinstance(rows, list) and 0 < len(rows) <= 100, "regression_postgres_inventory_invalid")
-    candidates = [row for row in rows if isinstance(row, dict) and row.get("name") == POSTGRES_WORKFLOW and row.get("event") == "pull_request" and row.get("status") == "completed" and row.get("conclusion") == "success" and row.get("head_sha") == sha and type(row.get("id")) is int]
-    require(len(candidates) == 1, "regression_postgres_exact_sha_missing")
+    assessed_tree = _commit_tree(github_get, prefix, sha)
+    candidates = []
+    for row in rows:
+        candidate_sha = row.get("head_sha") if isinstance(row, dict) else None
+        if not (isinstance(row, dict) and row.get("name") == POSTGRES_WORKFLOW and row.get("event") == "pull_request" and row.get("status") == "completed" and row.get("conclusion") == "success" and type(row.get("id")) is int and isinstance(candidate_sha, str) and SHA.fullmatch(candidate_sha)):
+            continue
+        if _commit_tree(github_get, prefix, candidate_sha) == assessed_tree:
+            candidates.append(row)
+    require(len(candidates) == 1, "regression_postgres_matching_tree_missing")
     run_id = candidates[0]["id"]
+    candidate_sha = candidates[0]["head_sha"]
     jobs = github_get(prefix + "/actions/runs/" + str(run_id) + "/jobs?per_page=100")
     rows = jobs.get("jobs") if isinstance(jobs, dict) else None
-    names = {row.get("name") for row in rows if isinstance(row, dict) and row.get("run_id") == run_id and row.get("head_sha") == sha and row.get("status") == "completed" and row.get("conclusion") == "success"}
+    names = {row.get("name") for row in rows if isinstance(row, dict) and row.get("run_id") == run_id and row.get("head_sha") == candidate_sha and row.get("status") == "completed" and row.get("conclusion") == "success"}
     require(isinstance(rows, list) and POSTGRES_JOBS.issubset(names), "regression_postgres_jobs_invalid")
+    return {"run_id": run_id, "source_sha": candidate_sha, "tree_oid": assessed_tree}
+
+
+def _upstream_validate_event(event_payload: Mapping[str, object], *, assessed_commit: str) -> int:
+    run = event_payload.get("workflow_run")
+    require(isinstance(run, dict), "regression_upstream_event_missing")
+    require(run.get("name") == "validate" and run.get("path") == ".github/workflows/validate.yml" and run.get("event") == "push" and run.get("status") == "completed" and run.get("conclusion") == "success" and run.get("head_sha") == assessed_commit and run.get("head_branch") == "main", "regression_upstream_validate_invalid")
+    repository = run.get("repository")
+    require(isinstance(repository, dict) and repository.get("full_name") == REPOSITORY, "regression_upstream_repository_invalid")
+    run_id = run.get("id")
+    require(type(run_id) is int and run_id > 0 and run.get("run_attempt") == 1, "regression_upstream_run_invalid")
     return run_id
 
 
-def verify_regression_gates(*, repository: str, assessed_commit: str, github_get: Callable[[str], object], environment: Mapping[str, str] | None = None) -> VerifiedCriterionEvidence:
+def _event_payload(env: Mapping[str, str], payload: Mapping[str, object] | None) -> Mapping[str, object]:
+    if payload is not None:
+        return payload
+    path = env.get("GITHUB_EVENT_PATH")
+    require(isinstance(path, str) and path, "regression_event_path_missing")
+    raw = Path(path).read_bytes()
+    require(0 < len(raw) <= 256_000, "regression_event_payload_size_invalid")
+    value = json.loads(raw)
+    require(isinstance(value, dict), "regression_event_payload_invalid")
+    return value
+
+
+def verify_regression_gates(*, repository: str, assessed_commit: str, github_get: Callable[[str], object], environment: Mapping[str, str] | None = None, event_payload: Mapping[str, object] | None = None) -> VerifiedCriterionEvidence:
     env = os.environ if environment is None else environment
     require(repository == REPOSITORY and isinstance(assessed_commit, str) and SHA.fullmatch(assessed_commit), "regression_repository_or_sha_invalid")
     require(env.get("GITHUB_ACTIONS") == "true" and env.get("GITHUB_REPOSITORY") == REPOSITORY and env.get("GITHUB_EVENT_NAME") == "workflow_run" and env.get("GITHUB_REF") == "refs/heads/main" and env.get("GITHUB_WORKFLOW_REF") == REPOSITORY + "/" + OWNER_WORKFLOW + "@refs/heads/main", "regression_runner_identity_invalid")
     run_id = env.get("GITHUB_RUN_ID", "")
     require(run_id.isdecimal(), "regression_runner_id_invalid")
+    upstream_run_id = _upstream_validate_event(_event_payload(env, event_payload), assessed_commit=assessed_commit)
     prefix = "/repos/" + REPOSITORY
     repo = github_get(prefix)
     branch = repo.get("default_branch") if isinstance(repo, dict) else None
@@ -100,7 +142,8 @@ def verify_regression_gates(*, repository: str, assessed_commit: str, github_get
         require(isinstance(detail, dict) and detail.get("id") == row["id"], "regression_ruleset_detail_unbound")
         details.append(detail)
     receipt = _effective_rules(details, default_branch=branch)
-    receipt["postgres_qa_run_id"] = _postgres_qa(github_get, prefix, assessed_commit)
+    receipt["upstream_validate_run_id"] = upstream_run_id
+    receipt["postgres_qa"] = _postgres_qa(github_get, prefix, assessed_commit)
     latest = github_get(prefix + "/git/ref/heads/" + branch)
     require(isinstance(latest, dict) and (latest.get("object") or {}).get("sha") == assessed_commit, "regression_main_changed")
     return VerifiedCriterionEvidence(domain="test_strategy", criterion="regression_gates", repository=repository, assessed_commit=assessed_commit, verification_state="executed", source="github-effective-protected-regression-gates:" + ",".join(receipt["required_checks"]), evidence=("https://github.com/" + repository + "/actions/runs/" + run_id + "#sha=" + assessed_commit,), retained_receipt=receipt)
