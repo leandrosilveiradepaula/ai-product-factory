@@ -29,6 +29,9 @@ The owner is the only authorized human reviewer. Ruleset #24457514 was verified 
 
 Use `python scripts/audit_block1_owner_merge_evidence.py --sha <exact_main_merge_sha> --pr <number>` immediately after owner merge. It read-only checks that GitHub records the expected owner account as `merged_by`, exact main SHA, strict rules, and no bypass. GitHub API evidence **cannot prove physical human button-click or rule out a stolen owner credential**. The Factory must still have no runtime merge capability and must remain in `awaiting_release` for production. The audit returns `block1_certified=false` and `release_authorized=false` unconditionally.
 
+
+Independent GitHub API observation on 2026-11-06: [PR #1248](https://github.com/leandrosilveiradepaula/ai-product-factory/pull/1248) was merged by account `leandrosilveiradepaula` (actor type `User`) into `main` at SHA `09888f175c9ad00ec1f99ba1c42b6e814eec0134`. The live branch tip matched that SHA; the effective ruleset required both checks and strict freshness, with no bypass. This documents **owner-account merge attribution** for the prior release; it does not prove the physical interaction or absence of automation.
+
 The quality gate still needs applicable PostgreSQL QA evidence and Preview/browser checks when Console changes. No change in this PR requires Vercel Preview, because `apps/console/**` is untouched.
 
 ## Remaining evidence before Block 1 acceptance
