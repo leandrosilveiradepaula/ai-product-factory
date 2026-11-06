@@ -1,0 +1,35 @@
+name: Block 1 isolated rollback rehearsal
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  isolated-git-revert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Reproduce offline Git revert and enforce production human gate
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_block1_isolated_revert -v
+          python scripts/verify_block1_isolated_revert.py --output block1-isolated-revert-receipt.json
+      - name: Retain bounded, nonproduction receipt even when rehearsal fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: block1-offline-revert-receipt
+          path: block1-isolated-revert-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
