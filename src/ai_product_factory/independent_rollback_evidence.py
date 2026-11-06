@@ -8,6 +8,7 @@ documentation/release_rollback criterion.
 from __future__ import annotations
 
 import hashlib
+import base64
 import io
 import json
 import os
@@ -29,8 +30,16 @@ ARTIFACT_NAME = "block1-offline-revert-receipt"
 ARTIFACT_FILE = "block1-isolated-revert-receipt.json"
 WORKFLOW = ".github/workflows/block1-offline-revert-evidence.yml"
 OWNER_WORKFLOW = ".github/workflows/autonomous-runner.yml"
-SOURCE_FILES = ("scripts/verify_block1_isolated_revert.py", "src/ai_product_factory/release_policy.py", "src/ai_product_factory/models.py", WORKFLOW)
+SOURCE_FILES = (
+    "scripts/verify_block1_isolated_revert.py",
+    "src/ai_product_factory/release_policy.py",
+    "src/ai_product_factory/models.py",
+    "tests/test_block1_release_rollback_exercise.py",
+    "tests/test_block1_isolated_revert.py",
+    WORKFLOW,
+)
 SHA = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
+DIGEST = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 
 
 class RollbackEvidenceBlocked(RuntimeError):
@@ -83,8 +92,44 @@ def _receipt(raw: bytes, digest: str) -> dict:
         "production_rollback_executed": False, "schema_rollback_executed": False,
         "block1_certified": False, "paid_calls": 0, "production_writes": 0,
     }
-    require(isinstance(value, dict) and all(value.get(key) == item for key, item in expected.items()) and isinstance(value.get("baseline_tree_digest"), str) and isinstance(value.get("revert_tree_digest"), str), "rollback_receipt_scope_invalid")
+    booleans = (
+        "git_revert_executed", "reverted_tree_equal_to_baseline", "working_tree_clean",
+        "no_git_remotes", "original_bytes_restored", "distinct_revert_commit",
+        "production_human_gate_required", "passed", "production_rollback_executed",
+        "schema_rollback_executed", "block1_certified",
+    )
+    baseline = value.get("baseline_tree_digest") if isinstance(value, dict) else None
+    reverted = value.get("revert_tree_digest") if isinstance(value, dict) else None
+    require(
+        isinstance(value, dict)
+        and all(type(value.get(key)) is bool and value[key] is item
+                for key, item in expected.items() if key in booleans)
+        and type(value.get("commit_count")) is int and value["commit_count"] == 3
+        and type(value.get("paid_calls")) is int and value["paid_calls"] == 0
+        and type(value.get("production_writes")) is int and value["production_writes"] == 0
+        and all(value.get(key) == item for key, item in expected.items()
+                if key not in booleans and key not in {"commit_count", "paid_calls", "production_writes"})
+        and isinstance(baseline, str) and isinstance(reverted, str)
+        and DIGEST.fullmatch(baseline) and DIGEST.fullmatch(reverted)
+        and baseline == reverted,
+        "rollback_receipt_scope_invalid",
+    )
     return value
+
+
+def _verify_current_runbook(github_get: Callable[[str], object], prefix: str,
+                            assessed_commit: str) -> None:
+    required = {
+        "docs/RELEASE_AUTONOMY.md": ("CI", "novo SHA", "humano", "nunca faz auto-merge", "health"),
+        "docs/BLOCK1_ISOLATED_ROLLBACK_EVIDENCE_20261106.md": ("não produtivo", "production_rollback_executed=false", "schema_rollback_executed=false"),
+    }
+    for path, markers in required.items():
+        row = github_get(prefix + "/contents/" + path + "?ref=" + assessed_commit)
+        try:
+            text = base64.b64decode(row["content"], validate=False).decode("utf-8")
+        except (KeyError, TypeError, UnicodeError, ValueError) as exc:
+            raise RollbackEvidenceBlocked("rollback_runbook_unavailable") from exc
+        require(all(marker in text for marker in markers), "rollback_runbook_contract_invalid")
 
 
 def verify_existing_isolated_rollback(*, repository: str, assessed_commit: str, github_get: Callable[[str], object], archive_fetch: Callable[[str, str], bytes] = _download, environment: Mapping[str, str] | None = None) -> VerifiedCriterionEvidence:
@@ -109,6 +154,7 @@ def verify_existing_isolated_rollback(*, repository: str, assessed_commit: str, 
         old = github_get(prefix + "/contents/" + path + "?ref=" + SOURCE_SHA)
         new = github_get(prefix + "/contents/" + path + "?ref=" + assessed_commit)
         require(isinstance(old, dict) and isinstance(new, dict) and isinstance(old.get("sha"), str) and old.get("sha") == new.get("sha") and type(old.get("size")) is int and old["size"] > 0 and old.get("size") == new.get("size"), "rollback_source_code_drift")
+    _verify_current_runbook(github_get, prefix, assessed_commit)
     inventory = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN) + "/artifacts?per_page=100")
     artifacts = inventory.get("artifacts") if isinstance(inventory, dict) else None
     require(isinstance(artifacts, list) and inventory.get("total_count") == 1 and len(artifacts) == 1 and isinstance(artifacts[0], dict), "rollback_artifact_inventory_invalid")

@@ -1,4 +1,5 @@
 import hashlib
+import base64
 import io
 import json
 import zipfile
@@ -21,7 +22,7 @@ from tests.test_product_readiness_certification import REPO as TEST_REPO, SHA as
 
 
 def archive():
-    receipt = {"schema":"factory-block1-isolated-git-revert-v1","scope":"synthetic_offline_revert_not_production_rollback","git_revert_executed":True,"reverted_tree_equal_to_baseline":True,"working_tree_clean":True,"no_git_remotes":True,"original_bytes_restored":True,"distinct_revert_commit":True,"commit_count":3,"baseline_tree_digest":"a"*64,"revert_tree_digest":"b"*64,"production_human_gate_required":True,"passed":True,"production_rollback_executed":False,"schema_rollback_executed":False,"block1_certified":False,"paid_calls":0,"production_writes":0}
+    receipt = {"schema":"factory-block1-isolated-git-revert-v1","scope":"synthetic_offline_revert_not_production_rollback","git_revert_executed":True,"reverted_tree_equal_to_baseline":True,"working_tree_clean":True,"no_git_remotes":True,"original_bytes_restored":True,"distinct_revert_commit":True,"commit_count":3,"baseline_tree_digest":"a"*64,"revert_tree_digest":"a"*64,"production_human_gate_required":True,"passed":True,"production_rollback_executed":False,"schema_rollback_executed":False,"block1_certified":False,"paid_calls":0,"production_writes":0}
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(ARTIFACT_FILE, json.dumps(receipt, sort_keys=True))
@@ -45,6 +46,13 @@ def fixture(sha="f" * 40):
     for path in SOURCE_FILES:
         values[root + "/contents/" + path + "?ref=" + SOURCE_SHA] = {"sha":"a"*40,"size":1}
         values[root + "/contents/" + path + "?ref=" + sha] = {"sha":"a"*40,"size":1}
+    for path, text in {
+        "docs/RELEASE_AUTONOMY.md": "CI novo SHA humano nunca faz auto-merge health",
+        "docs/BLOCK1_ISOLATED_ROLLBACK_EVIDENCE_20261106.md": "não produtivo production_rollback_executed=false schema_rollback_executed=false",
+    }.items():
+        values[root + "/contents/" + path + "?ref=" + sha] = {
+            "content": base64.b64encode(text.encode()).decode(), "encoding": "base64"
+        }
     return values, raw, receipt
 
 
@@ -71,6 +79,31 @@ class RollbackEvidenceTests(unittest.TestCase):
                 values[root + "/contents/" + SOURCE_FILES[0] + "?ref=" + "f"*40]["sha"] = "b"*40
             with self.subTest(mutation=mutation), self.assertRaises(RollbackEvidenceBlocked):
                 self.proof(values, raw)
+
+    def test_divergent_invalid_or_non_boolean_receipt_fields_fail_closed(self):
+        for key, value in (("revert_tree_digest", "b" * 64), ("baseline_tree_digest", "not-a-digest"),
+                           ("commit_count", True), ("paid_calls", False),
+                           ("production_human_gate_required", 1),
+                           ("production_rollback_executed", 0),
+                           ("schema_rollback_executed", None), ("production_writes", False)):
+            raw, receipt = archive()
+            receipt[key] = value
+            changed = io.BytesIO()
+            with zipfile.ZipFile(changed, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(ARTIFACT_FILE, json.dumps(receipt, sort_keys=True))
+            values, _, _ = fixture()
+            record = values["/repos/" + REPO + "/actions/runs/" + str(SOURCE_RUN) + "/artifacts?per_page=100"]["artifacts"][0]
+            record["digest"] = "sha256:" + hashlib.sha256(changed.getvalue()).hexdigest()
+            record["size_in_bytes"] = len(changed.getvalue())
+            with self.subTest(key=key), self.assertRaises(RollbackEvidenceBlocked):
+                self.proof(values, changed.getvalue())
+
+    def test_current_runbook_contract_is_rechecked_at_assessment_sha(self):
+        values, raw, _ = fixture()
+        path = "/repos/" + REPO + "/contents/docs/RELEASE_AUTONOMY.md?ref=" + "f" * 40
+        values[path]["content"] = base64.b64encode(b"CI only").decode()
+        with self.assertRaises(RollbackEvidenceBlocked):
+            self.proof(values, raw)
 
     def test_builder_uses_trusted_rollback_only(self):
         proof = VerifiedCriterionEvidence(domain="documentation", criterion="release_rollback", repository=TEST_REPO, assessed_commit=TEST_SHA, verification_state="reviewed", source="trusted", evidence=("proof:" + TEST_SHA,), retained_receipt={"safe":True})
