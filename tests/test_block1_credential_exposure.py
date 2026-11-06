@@ -22,3 +22,9 @@ class CredentialExposureTests(unittest.TestCase):
  def test_next_public_secret_name_fails_closed(self):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);self.write(root,"apps/console/app/page.tsx","'use client'; export default function Page(){return <p>{process.env.NEXT_PUBLIC_OPENAI_API_KEY}</p>}");self.assertTrue(module.audit(root)["credential_exposure_detected"])
+ def test_privileged_route_without_operator_or_hmac_guard_fails_closed(self):
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);self.write(root,"apps/console/app/api/x/route.ts","import {token} from '@/lib/a'; export const GET=()=>Response.json({ok:true})");self.write(root,"apps/console/lib/a.ts","export const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN");receipt=module.audit(root);self.assertTrue(receipt["credential_exposure_detected"]);self.assertEqual(receipt["findings"][0]["kind"],"privileged_environment_reachable_from_unprotected_route")
+ def test_hmac_guard_allows_server_only_webhook_path(self):
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);self.write(root,"apps/console/app/api/x/route.ts","import {token} from '@/lib/a'; export async function POST(){await authenticateGitHubWebhook(); return Response.json({ok:true})}");self.write(root,"apps/console/lib/a.ts","export const token=process.env.FACTORY_RELEASE_GITHUB_TOKEN");self.assertFalse(module.audit(root)["credential_exposure_detected"])

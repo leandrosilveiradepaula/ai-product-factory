@@ -20,6 +20,8 @@ CLIENT_DIRECTIVE = re.compile(r"^\s*['\"]use client['\"]\s*;?", re.MULTILINE)
 SERVER_DIRECTIVE = re.compile(r"^\s*['\"]use server['\"]\s*;?", re.MULTILINE)
 PUBLIC_HEALTH = "apps/console/app/api/health/route.ts"
 SOURCE_SUFFIXES = (".ts", ".tsx")
+OPERATOR_GUARD = re.compile(r"\bawait\s+requireConsole(?:Admin|Operator)\s*\(")
+WEBHOOK_GUARD = re.compile(r"\bauthenticateGitHubWebhook\s*\(")
 
 def _relative(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
@@ -75,6 +77,13 @@ def _reachable_privileged(start: Path, edges: dict[Path, set[Path]], environment
         pending.extend(sorted(edges[current] - visited, key=lambda path: path.as_posix()))
     return None
 
+def _route_guard(body: str) -> str | None:
+    if OPERATOR_GUARD.search(body):
+        return "operator_authentication"
+    if WEBHOOK_GUARD.search(body):
+        return "github_webhook_hmac"
+    return None
+
 def audit(root: Path) -> dict:
     root = root.resolve(strict=True)
     console = root / "apps" / "console"
@@ -94,8 +103,19 @@ def audit(root: Path) -> dict:
         if reached is not None:
             source, names = reached
             findings.append({"path": _relative(root, surface), "line": 1, "kind": "privileged_environment_reachable_from_public_surface", "source_path": _relative(root, source), "environment_names": sorted(names)})
+    route_handlers = [path for path in files if path.name == "route.ts" and "/app/api/" in path.as_posix()]
+    for route in route_handlers:
+        if route == health:
+            continue
+        reached = _reachable_privileged(route, edges, environment)
+        if reached is None:
+            continue
+        guard = _route_guard(route.read_text(encoding="utf-8"))
+        if guard is None:
+            source, names = reached
+            findings.append({"path": _relative(root, route), "line": 1, "kind": "privileged_environment_reachable_from_unprotected_route", "source_path": _relative(root, source), "environment_names": sorted(names)})
     findings.sort(key=lambda finding: (str(finding["path"]), int(finding["line"]), str(finding["kind"])))
-    return {"schema": "factory-block1-credential-exposure-v2", "scope": "static-import-reachability-for-client-and-public-health-surfaces-not-runtime-authentication", "console_files_scanned": len(files), "client_entrypoints_scanned": len(clients), "public_surface_roots": [PUBLIC_HEALTH], "findings": findings, "privileged_values_read": False, "credential_exposure_detected": bool(findings), "security_certified": False, "writes": 0, "paid_calls": 0}
+    return {"schema": "factory-block1-credential-exposure-v3", "scope": "static-import-reachability-for-client-public-health-and-privileged-route-handler-guards-not-runtime-authentication", "console_files_scanned": len(files), "client_entrypoints_scanned": len(clients), "route_handlers_scanned": len(route_handlers), "public_surface_roots": [PUBLIC_HEALTH], "findings": findings, "privileged_values_read": False, "credential_exposure_detected": bool(findings), "security_certified": False, "writes": 0, "paid_calls": 0}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
