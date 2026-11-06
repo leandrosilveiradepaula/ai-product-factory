@@ -69,6 +69,20 @@ class Tests(unittest.TestCase):
             sample(1, "2026-10-14T19:17:00Z"),
         ]), ())
 
+    def test_recent_active_scheduler_suppresses_stale_completion_false_positive(self):
+        self.assertEqual(observe([
+            sample(3, "2026-10-14T19:58:00Z", conclusion=None, status="in_progress"),
+            sample(2, "2026-10-14T17:00:00Z"),
+            sample(1, "2026-10-14T14:00:00Z"),
+        ]), ())
+
+    def test_old_active_scheduler_does_not_hide_stale_pipeline(self):
+        self.assertEqual([x.code for x in observe([
+            sample(3, "2026-10-14T18:00:00Z", conclusion=None, status="in_progress"),
+            sample(2, "2026-10-14T17:00:00Z"),
+            sample(1, "2026-10-14T14:00:00Z"),
+        ])], ["scheduler_pipeline"])
+
     def test_one_completed_run_is_insufficient(self):
         self.assertIn("Fewer than two", observe([
             sample(1, "2026-10-14T19:47:00Z"),
