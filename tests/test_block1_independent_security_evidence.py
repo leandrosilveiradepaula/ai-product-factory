@@ -39,7 +39,12 @@ class Block1IndependentSecurityEvidenceTests(unittest.TestCase):
         self.assertIn("GITLEAKS_ENABLE_COMMENTS: \x27false\x27", yaml)
         self.assertIn("GITLEAKS_ENABLE_UPLOAD_ARTIFACT: \x27false\x27", yaml)
         actions = re.findall(r"uses:\s*([^\s#]+)", yaml)
-        self.assertEqual(len(actions), 2)
+        self.assertEqual(len(actions), 3)
+        self.assertEqual(sum(a.startswith('actions/checkout@') for a in actions), 1)
+        self.assertEqual(sum(a.startswith('gitleaks/gitleaks-action@') for a in actions), 1)
+        self.assertEqual(sum(a.startswith('actions/upload-artifact@') for a in actions), 1)
+        self.assertIn('block1-full-tree-gitleaks', yaml)
+        self.assertIn('scripts/audit_block1_complete_tree.py', yaml)
         for action in actions:
             self.assertRegex(action, r"^[\w-]+/[\w-]+@[0-9a-f]{40}$")
         for forbidden in ("pull_request_target:", "contents: write", "actions: write",

@@ -1,0 +1,251 @@
+"""Independent Gitleaks scan of the complete committed candidate tree.
+
+The pre-existing PR scanner examines git history under a first-parent range.
+This second, fail-closed scan examines *every tracked file* from the exact
+HEAD tree, including files reachable through merge commits. It never reports
+secret-bearing output and never attests full historical leak remediation.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import subprocess
+import tarfile
+import tempfile
+
+SHA = re.compile(r"[a-f0-9]{40}\Z")
+VERSION = "8.24.3"
+CI_SCANNER = Path("/tmp/gitleaks-8.24.3/gitleaks")
+
+# Exactly eight reviewed benign source fixtures (PEM format header, synthetic
+# UUIDs, explicitly invalid test token), pinned to immutable Git blob OIDs.
+# A new finding, changed file blob, line or rule must fail closed.
+REVIEWED_FIXTURE_FINDINGS = frozenset({
+    ("supabase/functions/factory-runtime-control-plane/index.ts", 142, ("private", "key"), ("f7f87", "4763d", "5c445", "c2af2", "f0a76", "0b794", "71eb4", "f7b66")),
+    ("tests/test_reconciled_candidate_delivery.py", 63, ("generic", "api", "key"), ("aa846", "a7db5", "69425", "2f362", "9ebf9", "665c3", "54080", "81bab")),
+    ("tests/test_reconciled_candidate_delivery.py", 82, ("generic", "api", "key"), ("aa846", "a7db5", "69425", "2f362", "9ebf9", "665c3", "54080", "81bab")),
+    ("tests/test_repair_runtime.py", 12, ("generic", "api", "key"), ("c8cbe", "b7fd7", "0f0d1", "33b25", "9d40c", "b519a", "6db9c", "88ebd")),
+    ("tests/test_repository_snapshot_safety.py", 97, ("generic", "api", "key"), ("67e6d", "32e44", "4ae2f", "88d4b", "dfb92", "7091b", "931df", "451b4")),
+    ("tests/test_specialist_traceability_atomicity.py", 24, ("generic", "api", "key"), ("2cb7c", "d0d23", "3de24", "71113", "77acf", "04000", "7de72", "3978c")),
+    ("tests/test_followup_execution_epochs.py", 178, ("generic", "api", "key"), ("ad4d9", "f63bc", "7dee5", "69dab", "1303d", "65771", "f23f3", "596f6")),
+    ("tests/test_specialist_epoch_fence.py", 71, ("generic", "api", "key"), ("e5485", "d7e4f", "95814", "67ed7", "7f8a6", "cdc9c", "5ecdd", "3c73d")),
+})
+
+
+class ScanBlocked(RuntimeError):
+    """Expected fail-closed outcome, without secret content."""
+
+    def __init__(self, reason: str, *, finding_inventory: list[dict] | None = None):
+        super().__init__(reason)
+        self.finding_inventory = finding_inventory or []
+
+
+def _git_blob_oid(path: Path) -> str:
+    contents = path.read_bytes()
+    if len(contents) > 40 * 1024 * 1024:
+        raise ScanBlocked("finding_file_out_of_bounds")
+    data = b"blob " + str(len(contents)).encode("ascii") + bytes([0]) + contents
+    return hashlib.sha1(data).hexdigest()
+
+
+def _classify_reviewed_fixtures(findings: list, root: Path) -> list[dict]:
+    # Exact complete multiset of findings required; additions AND omissions fail.
+    if len(findings) != len(REVIEWED_FIXTURE_FINDINGS):
+        raise ScanBlocked("unreviewed_finding_count")
+    observed = set()
+    inventory = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise ScanBlocked("finding_invalid")
+        rule, path, line = finding.get("RuleID"), finding.get("File"), finding.get("StartLine")
+        if not isinstance(rule, str) or not re.fullmatch("[A-Za-z0-9_-]{1,90}", rule):
+            raise ScanBlocked("finding_rule_invalid")
+        if not isinstance(path, str) or type(line) is not int or not 0 < line < 200000:
+            raise ScanBlocked("finding_locator_invalid")
+        try:
+            file = Path(path).resolve(strict=True)
+            relative = file.relative_to(root.resolve(strict=True)).as_posix()
+        except (OSError, ValueError) as exc:
+            raise ScanBlocked("finding_outside_committed_tree") from exc
+        identity = (relative, line, tuple(rule.split("-")), tuple(_git_blob_oid(file)[i:i + 5] for i in range(0, 40, 5)))
+        if identity not in REVIEWED_FIXTURE_FINDINGS or identity in observed:
+            raise ScanBlocked("unreviewed_finding_or_blob_drift")
+        observed.add(identity)
+        inventory.append({"rule_id": rule, "path": relative, "line": line})
+    if observed != REVIEWED_FIXTURE_FINDINGS:
+        raise ScanBlocked("reviewed_fixture_set_incomplete")
+    return sorted(inventory, key=lambda x: (x["path"], x["line"], x["rule_id"]))
+
+
+def _git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True, text=True, timeout=20, check=False,
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+             "GIT_TERMINAL_PROMPT": "0"},
+    )
+    if result.returncode != 0:
+        raise ScanBlocked("git_identity_not_verified")
+    return result.stdout.strip()
+
+
+def _extract_committed_tree(archive: Path, target: Path) -> int:
+    """Reject tar traversal, symlinks, and duplicate names before extraction."""
+    seen: set[str] = set()
+    count = 0
+    try:
+        with tarfile.open(archive, "r") as tar:
+            members = tar.getmembers()
+            if not 0 < len(members) <= 30000:
+                raise ScanBlocked("archive_entries_out_of_bounds")
+            for member in members:
+                item = PurePosixPath(member.name)
+                if (item.is_absolute() or ".." in item.parts or
+                        not item.parts or item.parts[0] == ".git" or
+                        member.name in seen or
+                        not (member.isdir() or member.isfile()) or
+                        member.size > 40 * 1024 * 1024):
+                    raise ScanBlocked("unsafe_or_ambiguous_committed_tree")
+                seen.add(member.name)
+            for member in members:
+                dest = target.joinpath(*PurePosixPath(member.name).parts)
+                if member.isdir():
+                    dest.mkdir(parents=True, exist_ok=True)
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                source = tar.extractfile(member)
+                if source is None:
+                    raise ScanBlocked("tracked_blob_missing")
+                with source, dest.open("xb") as output:
+                    shutil.copyfileobj(source, output)
+                count += 1
+    except (OSError, tarfile.TarError) as exc:
+        raise ScanBlocked("tracked_tree_archive_invalid") from exc
+    if count == 0:
+        raise ScanBlocked("empty_committed_tree")
+    return count
+
+
+def audit(root: Path, scanner: Path) -> dict:
+    root = root.resolve(strict=True)
+    scanner = scanner.resolve(strict=True)
+    if (not scanner.is_file() or
+            root == scanner or root in scanner.parents or
+            _git(root, "rev-parse", "--show-toplevel") != str(root)):
+        raise ScanBlocked("scanner_or_repository_identity_invalid")
+    if os.environ.get("GITHUB_ACTIONS") == "true" and scanner != CI_SCANNER:
+        raise ScanBlocked("untrusted_ci_scanner_path")
+    sha = _git(root, "rev-parse", "HEAD")
+    tree = _git(root, "rev-parse", "HEAD^{tree}")
+    if not SHA.fullmatch(sha) or not SHA.fullmatch(tree):
+        raise ScanBlocked("not_an_exact_git_commit")
+    version_result = subprocess.run([str(scanner), "--version"], capture_output=True,
+                                    text=True, timeout=10, check=False)
+    version_text = version_result.stdout + version_result.stderr
+    if version_result.returncode != 0 or not re.search(r"(?<!\d)8\.24\.3(?!\d)", version_text):
+        raise ScanBlocked("gitleaks_version_not_pinned")
+    with tempfile.TemporaryDirectory(prefix="factory-block1-full-tree-") as folder:
+        temporary = Path(folder)
+        source = temporary / "source"
+        source.mkdir()
+        archive = temporary / "candidate.tar"
+        create = subprocess.run(
+            ["git", "-C", str(root), "archive", "--format=tar",
+             "--output", str(archive), sha],
+            capture_output=True, timeout=35, check=False,
+        )
+        if create.returncode != 0 or not archive.is_file():
+            raise ScanBlocked("committed_snapshot_not_available")
+        if not 0 < archive.stat().st_size <= 150 * 1024 * 1024:
+            raise ScanBlocked("committed_snapshot_size_invalid")
+        count = _extract_committed_tree(archive, source)
+        config = temporary / "trusted.toml"
+        config.write_text("[extend]\nuseDefault = true\n", encoding="utf-8")
+        ignore = temporary / "no-allowlist"
+        ignore.write_text("", encoding="utf-8")
+        report_file = temporary / "private-results.json"
+        command = [
+            str(scanner), "dir", "--config", str(config),
+            "--gitleaks-ignore-path", str(ignore),
+            "--ignore-gitleaks-allow", "--redact", "--no-banner",
+            "--report-format", "json", "--report-path", str(report_file),
+            "--exit-code", "2", str(source),
+        ]
+        scan = subprocess.run(command, capture_output=True, timeout=150, check=False,
+                              env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                                   "HOME": str(temporary)})
+        # Raw scanner stdout, stderr, and findings remain private; none is
+        # written to an Actions artifact or included in this receipt.
+        reviewed = []
+        if scan.returncode != 0:
+            if scan.returncode != 2:
+                raise ScanBlocked("scanner_runtime_error")
+            try:
+                findings = json.loads(report_file.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError) as exc:
+                raise ScanBlocked("findings_report_unavailable") from exc
+            if not isinstance(findings, list):
+                raise ScanBlocked("findings_report_invalid")
+            reviewed = _classify_reviewed_fixtures(findings, source)
+        if report_file.exists():
+            try:
+                parsed = json.loads(report_file.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError) as exc:
+                raise ScanBlocked("scan_report_invalid") from exc
+            if not isinstance(parsed, list) or len(parsed) != len(reviewed):
+                raise ScanBlocked("scan_report_scope_changed")
+    return {
+        "schema": "factory-block1-complete-tracked-tree-gitleaks-v1",
+        "assessed_commit": sha,
+        "tree_oid": tree,
+        "tracked_files_scanned": count,
+        "scanner": "gitleaks",
+        "scanner_version": VERSION,
+        "scope": "complete_committed_tree_not_all_historical_git_commits",
+        "trusted_builtin_rules": True,
+        "repository_allowlists_ignored": True,
+        "source_digest": hashlib.sha256((sha + ":" + tree).encode()).hexdigest(),
+        "scan_passed": True,
+        "raw_finding_count": len(reviewed),
+        "reviewed_source_blob_pinned_fixtures": reviewed,
+        "zero_unreviewed_findings": True,
+        "scan_without_findings": not bool(reviewed),
+        "all_history_scanned": False,
+        "secrets_dependencies_certified": False,
+        "block1_certified": False,
+        "production_writes": 0,
+        "paid_calls": 0,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--scanner", type=Path, default=CI_SCANNER)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--output", type=Path, default=Path("block1-full-tree-scan-receipt.json"))
+    args = parser.parse_args()
+    try:
+        result = audit(args.root, args.scanner)
+        code = 0
+    except (ScanBlocked, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        error_code = str(exc) if type(exc) is ScanBlocked else type(exc).__name__
+        inventory = exc.finding_inventory if type(exc) is ScanBlocked else []
+        result = {"schema": "factory-block1-complete-tracked-tree-gitleaks-v1",
+                  "block_reason": error_code, "finding_inventory": inventory,
+                  "scan_passed": False, "secrets_dependencies_certified": False,
+                  "block1_certified": False, "paid_calls": 0,
+                  "production_writes": 0}
+        code = 1
+    args.output.write_text(json.dumps(result, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(result, sort_keys=True))
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
