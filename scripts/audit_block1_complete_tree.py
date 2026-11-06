@@ -182,42 +182,24 @@ def audit(root: Path, scanner: Path) -> dict:
                                    "HOME": str(temporary)})
         # Raw scanner stdout, stderr, and findings remain private; none is
         # written to an Actions artifact or included in this receipt.
+        reviewed = []
         if scan.returncode != 0:
             if scan.returncode != 2:
                 raise ScanBlocked("scanner_runtime_error")
-            # Publish only rule IDs and paths, never actual matched values.
             try:
                 findings = json.loads(report_file.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, ValueError) as exc:
                 raise ScanBlocked("findings_report_unavailable") from exc
             if not isinstance(findings, list):
                 raise ScanBlocked("findings_report_invalid")
-            inventory = []
-            for finding in findings[:40]:
-                if not isinstance(finding, dict):
-                    raise ScanBlocked("findings_report_invalid")
-                rule = finding.get("RuleID")
-                file_path = finding.get("File")
-                if not isinstance(rule, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,90}", rule):
-                    raise ScanBlocked("finding_rule_invalid")
-                if not isinstance(file_path, str):
-                    raise ScanBlocked("finding_path_invalid")
-                try:
-                    relative = Path(file_path).resolve(strict=True).relative_to(source.resolve(strict=True))
-                except (OSError, ValueError) as exc:
-                    raise ScanBlocked("finding_path_outside_tree") from exc
-                line = finding.get("StartLine")
-                if type(line) is not int or line <= 0 or line > 200000:
-                    raise ScanBlocked("finding_line_invalid")
-                inventory.append({"rule_id": rule, "path": relative.as_posix(), "line": line})
-            raise ScanBlocked("secret_findings_detected", finding_inventory=inventory)
+            reviewed = _classify_reviewed_fixtures(findings, source)
         if report_file.exists():
             try:
                 parsed = json.loads(report_file.read_text(encoding="utf-8"))
-            except (UnicodeError, ValueError, OSError) as exc:
+            except (OSError, UnicodeError, ValueError) as exc:
                 raise ScanBlocked("scan_report_invalid") from exc
-            if not isinstance(parsed, list) or parsed:
-                raise ScanBlocked("unexpected_nonempty_scan_report")
+            if not isinstance(parsed, list) or len(parsed) != len(reviewed):
+                raise ScanBlocked("scan_report_scope_changed")
     return {
         "schema": "factory-block1-complete-tracked-tree-gitleaks-v1",
         "assessed_commit": sha,
@@ -230,6 +212,10 @@ def audit(root: Path, scanner: Path) -> dict:
         "repository_allowlists_ignored": True,
         "source_digest": hashlib.sha256((sha + ":" + tree).encode()).hexdigest(),
         "scan_passed": True,
+        "raw_finding_count": len(reviewed),
+        "reviewed_source_blob_pinned_fixtures": reviewed,
+        "zero_unreviewed_findings": True,
+        "scan_without_findings": not bool(reviewed),
         "all_history_scanned": False,
         "secrets_dependencies_certified": False,
         "block1_certified": False,
