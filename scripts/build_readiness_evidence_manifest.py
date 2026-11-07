@@ -37,6 +37,9 @@ from ai_product_factory.independent_security_evidence import (
 from ai_product_factory.independent_regression_evidence import (
     RegressionEvidenceBlocked, verify_regression_gates as verify_effective_regression_gates,
 )
+from ai_product_factory.independent_recovery_evidence import (
+    RecoveryEvidenceBlocked, verify_recovery_alerting as verify_recovery_alerting_fn,
+)
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
@@ -46,7 +49,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_setup: bool = False,
                             verify_rollback: bool = False,
                             verify_secrets_dependencies: bool = False,
-                            verify_regression_gates: bool = False) -> dict:
+                            verify_regression_gates: bool = False,
+                            verify_recovery_alerting: bool = False) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -146,6 +150,20 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             entry.update(status="passed", verification_state=regression_proof.verification_state,
                          reason="independent effective GitHub regression gates reverified",
                          evidence=list(regression_proof.evidence))
+    recovery_proof = None
+    if verify_recovery_alerting:
+        try:
+            recovery_proof = verify_recovery_alerting_fn(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+            )
+        except (RecoveryEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            recovery_proof = None
+        if recovery_proof is not None:
+            entry = manifest["criteria"]["observability_operations"]["recovery_alerting"]
+            entry.update(status="passed", verification_state=recovery_proof.verification_state,
+                         reason="independent source-bound native recovery and alerting reverified",
+                         evidence=list(recovery_proof.evidence))
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -159,12 +177,14 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return security_proof
         if (domain, criterion) == ("test_strategy", "regression_gates"):
             return regression_proof
+        if (domain, criterion) == ("observability_operations", "recovery_alerting"):
+            return recovery_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -201,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-isolated-rollback", action="store_true")
     parser.add_argument("--verify-secrets-dependencies", action="store_true")
     parser.add_argument("--verify-regression-gates", action="store_true")
+    parser.add_argument("--verify-recovery-alerting", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -218,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_rollback=args.verify_isolated_rollback,
         verify_secrets_dependencies=args.verify_secrets_dependencies,
         verify_regression_gates=args.verify_regression_gates,
+        verify_recovery_alerting=args.verify_recovery_alerting,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

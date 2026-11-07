@@ -18,8 +18,14 @@ import urllib.request
 
 REPO = "leandrosilveiradepaula/ai-product-factory"
 VISUAL_WORKFLOW = ".github/workflows/authenticated-visual-evidence.yml"
-VISUAL_RUN = 42100072898
-SOURCE_SHA = "16ae1f28d1807399990727b7e524520347f5f62d"
+# This is an immutable, successful, explicitly dispatched capture.  The
+# workflow itself verifies the official target URL and its deployed commit
+# before it provisions the one-time operator, and removes that operator in its
+# finalization step.  Keep the source commit separate from the deployment
+# target: Actions records the former as ``head_sha`` for dispatch runs.
+VISUAL_RUN = 42407152600
+SOURCE_SHA = "c62297b7538ba9479aabd8f870ffd9eb142187ca"
+VISUAL_EVENT = "workflow_dispatch"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -58,7 +64,7 @@ def assess(candidate: str, run: dict, artifacts: dict, jobs: dict,
         and run.get("head_sha") == SOURCE_SHA
         and run.get("name") == "Authenticated Console visual evidence"
         and run.get("path") == VISUAL_WORKFLOW
-        and run.get("event") == "push"
+        and run.get("event") == VISUAL_EVENT
         and run.get("head_branch") == "main"
         and run.get("run_attempt") == 1
         and run.get("status") == "completed"

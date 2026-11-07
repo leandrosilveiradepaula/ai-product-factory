@@ -16,12 +16,12 @@ def fixture():
     run = {
         "id": mod.VISUAL_RUN,
         "name": "Authenticated Console visual evidence",
-        "path": mod.VISUAL_WORKFLOW, "event": "push", "head_branch": "main",
+        "path": mod.VISUAL_WORKFLOW, "event": mod.VISUAL_EVENT, "head_branch": "main",
         "run_attempt": 1, "status": "completed", "conclusion": "success",
         "head_sha": mod.SOURCE_SHA,
     }
     artifacts = {"artifacts": [
-        {"name": "authenticated-console-42100072898",
+        {"name": "authenticated-console-" + str(mod.VISUAL_RUN),
          "expired": False, "size_in_bytes": 1024}
     ]}
     jobs = {"jobs": [{"name": "capture", "status": "completed", "conclusion": "success"}]}
@@ -84,7 +84,7 @@ class AuthenticatedBrowserMetadataTests(unittest.TestCase):
                          "wrong_merge_base"):
             args = fixture()
             if mutation == "wrong_event":
-                args[0]["event"] = "workflow_dispatch"
+                args[0]["event"] = "push"
             elif mutation == "rerun":
                 args[0]["run_attempt"] = 2
             elif mutation == "untrusted_branch":
