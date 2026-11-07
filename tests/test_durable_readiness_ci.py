@@ -220,6 +220,31 @@ class DurableReadinessCITests(unittest.TestCase):
         self.assertFalse(receipt["product_ready"])
         self.assertEqual(store.persist_product_readiness_certification.call_count, 1)
 
+    def test_trusted_workflow_run_renews_oidc_before_allocating_certification(self):
+        with patch.dict(os.environ, {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "workflow_run",
+        }):
+            with patch.object(cli, "refresh_certification_broker_oidc") as refresh:
+                code, _, store, _, _ = self.run_cli(self.baseline())
+        self.assertEqual(code, 0)
+        refresh.assert_called_once_with()
+        self.assertEqual(store.begin_product_readiness_certification.call_count, 1)
+
+    def test_oidc_refresh_rejection_prevents_durable_begin_and_persist(self):
+        from ai_product_factory.control_plane_oidc_refresh import BrokerOIDCRefreshBlocked
+        with patch.dict(os.environ, {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "workflow_run",
+        }):
+            with patch.object(cli, "refresh_certification_broker_oidc",
+                              side_effect=BrokerOIDCRefreshBlocked("broker_oidc_claims_mismatch")):
+                with patch.object(cli, "SupabaseDeliveryStore") as store:
+                    with self.assertRaisesRegex(BrokerOIDCRefreshBlocked,
+                                                "broker_oidc_claims_mismatch"):
+                        self.run_cli(self.baseline())
+                    store.assert_not_called()
+
     def test_missing_health_sources_stay_missing_not_fake_pass(self):
         from ai_product_factory.independent_health_evidence import HealthEvidenceBlocked
         with patch("build_readiness_evidence_manifest.verify_health_for_certification",
