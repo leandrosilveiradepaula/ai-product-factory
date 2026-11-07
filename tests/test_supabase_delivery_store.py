@@ -24,6 +24,12 @@ class Tests(unittest.TestCase):
    with self.assertRaisesRegex(RuntimeError,r"code=unknown") as raised:
     SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").update_run_status("r","completed")
   self.assertNotIn("raw error",str(raised.exception))
+ def test_rpc_error_preserves_only_bounded_broker_forbidden_code(self):
+  error=urllib.error.HTTPError("https://x.supabase.co/rest/v1/rpc/x",403,"forbidden",None,io.BytesIO(b'{"error":"forbidden","detail":"do not leak"}'))
+  with patch("urllib.request.urlopen",side_effect=error):
+   with self.assertRaisesRegex(RuntimeError,r"code=broker_forbidden") as raised:
+    SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").update_run_status("r","completed")
+  self.assertNotIn("do not leak",str(raised.exception))
  def test_tool_usage_uses_rpc(self):
   with patch("urllib.request.urlopen",return_value=Response(9)) as call:
    out=SupabaseDeliveryStore(url="https://x.supabase.co",service_role_key="secret").record_tool_usage(run_id="r",tool_family="github",operation="commit",estimated_cost=0)

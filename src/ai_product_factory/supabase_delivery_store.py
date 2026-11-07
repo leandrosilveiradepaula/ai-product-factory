@@ -20,6 +20,10 @@ class SupabaseDeliveryStore:
    body=json.loads(raw)
    candidate=body.get("code") if isinstance(body,dict) else None
    if isinstance(candidate,str) and re.fullmatch(r"[A-Z0-9]{5}",candidate): code=candidate
+   # The OIDC broker returns a bounded lowercase machine error rather than a
+   # PostgREST SQLSTATE. Preserve only this exact safe token; never surface a
+   # provider message, URL, response body or credential material.
+   elif isinstance(body,dict) and body.get("error")=="forbidden": code="broker_forbidden"
   except (OSError,UnicodeError,json.JSONDecodeError): pass
   return RuntimeError(f"control-plane RPC failed: {name} ({exc.code}; code={code})")
  def _rpc(self,name:str,payload:dict):
