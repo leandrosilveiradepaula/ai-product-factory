@@ -239,11 +239,24 @@ class DurableReadinessCITests(unittest.TestCase):
         }):
             with patch.object(cli, "refresh_certification_broker_oidc",
                               side_effect=BrokerOIDCRefreshBlocked("broker_oidc_claims_mismatch")):
-                with patch.object(cli, "SupabaseDeliveryStore") as store:
-                    with self.assertRaisesRegex(BrokerOIDCRefreshBlocked,
-                                                "broker_oidc_claims_mismatch"):
-                        self.run_cli(self.baseline())
-                    store.assert_not_called()
+                with tempfile.TemporaryDirectory() as directory:
+                    file = Path(directory) / "verified.json"
+                    file.write_text(json.dumps(self.baseline()), encoding="utf-8")
+                    argv = [
+                        "--project-key", "ai-product-factory",
+                        "--repository", REPO,
+                        "--assessed-commit", SHA,
+                        "--evidence-file", str(file),
+                        "--require-verified-baseline",
+                    ]
+                    with patch.dict(os.environ, {"GITHUB_TOKEN": "fixture-only-token"}):
+                        with patch.object(cli, "_github_get",
+                                          return_value=lambda route: github()[route]):
+                            with patch.object(cli, "SupabaseDeliveryStore") as store:
+                                with self.assertRaisesRegex(BrokerOIDCRefreshBlocked,
+                                                            "broker_oidc_claims_mismatch"):
+                                    cli.main(argv)
+                                store.assert_not_called()
 
     def test_missing_health_sources_stay_missing_not_fake_pass(self):
         from ai_product_factory.independent_health_evidence import HealthEvidenceBlocked
