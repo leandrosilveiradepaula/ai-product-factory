@@ -7,6 +7,7 @@ The broker independently validates the signed JWT and its workflow claims.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import re
@@ -26,7 +27,7 @@ WORKFLOW_REF = (
 )
 AUDIENCE = "factory-runtime-control-plane"
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
-OIDC_REQUEST_HOST = "pipelines.actions.githubusercontent.com"
+OIDC_REQUEST_HOST = re.compile(r"pipelines[a-z0-9-]*\.actions\.githubusercontent\.com\Z")
 JWT_SEGMENT = re.compile(r"[A-Za-z0-9_-]+\Z")
 
 
@@ -50,7 +51,7 @@ def _claims(token: str) -> dict:
         raw = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
         _require(len(raw) <= 8192, "broker_oidc_claims_too_large")
         value = json.loads(raw)
-    except (ValueError, UnicodeError) as exc:
+    except (ValueError, UnicodeError, binascii.Error):
         raise BrokerOIDCRefreshBlocked("broker_oidc_claims_invalid") from None
     _require(isinstance(value, dict), "broker_oidc_claims_invalid")
     return value
@@ -99,7 +100,7 @@ def refresh_certification_broker_oidc(
         raise BrokerOIDCRefreshBlocked("broker_oidc_endpoint_invalid") from None
     _require(
         parsed.scheme == "https"
-        and parsed.hostname == OIDC_REQUEST_HOST
+        and bool(parsed.hostname and OIDC_REQUEST_HOST.fullmatch(parsed.hostname))
         and port in (None, 443)
         and not parsed.username
         and not parsed.password
@@ -110,7 +111,7 @@ def refresh_certification_broker_oidc(
     )
     audience_url = urlunsplit((
         "https",
-        OIDC_REQUEST_HOST,
+        parsed.netloc,
         parsed.path,
         urlencode([*pairs, ("audience", AUDIENCE)]),
         "",
