@@ -16,11 +16,10 @@ from .product_readiness_certification import VerifiedCriterionEvidence
 
 REPOSITORY = "leandrosilveiradepaula/ai-product-factory"
 OWNER_WORKFLOW = ".github/workflows/autonomous-runner.yml"
-SOURCE_RUN = 42297612896
-SOURCE_SHA = "a7f76758d4bb2275cb410e09703c36dffc201078"
+SOURCE_RUN = 42392345319
+SOURCE_SHA = "c62297b7538ba9479aabd8f870ffd9eb142187ca"
 REQUIRED_JOBS = frozenset({"schedule-probe", "alerts"})
 SOURCE_FILES = frozenset({
-    ".github/workflows/autonomous-runner.yml",
     "src/ai_product_factory/runtime_cli.py",
     "src/ai_product_factory/operational_alerts.py",
     "src/ai_product_factory/github_alert_adapter.py",

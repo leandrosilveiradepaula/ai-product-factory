@@ -1597,7 +1597,8 @@ jobs:
             --verify-isolated-rollback \
               --verify-secrets-dependencies \
               --verify-regression-gates \
-              --verify-recovery-alerting
+              --verify-recovery-alerting \
+              --verify-operations-runbook
       - name: Persist independently reverified criterion states on exact-SHA
         run: |
           set -euo pipefail
@@ -1614,6 +1615,7 @@ jobs:
               --verify-secrets-dependencies \
               --verify-regression-gates \
               --verify-recovery-alerting \
+              --verify-operations-runbook \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       - name: Preserve bounded certifier receipts
         if: always()
