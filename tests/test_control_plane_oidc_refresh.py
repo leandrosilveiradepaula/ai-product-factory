@@ -82,6 +82,41 @@ class RefreshTests(unittest.TestCase):
             request.get_header("Authorization"), "bearer request-token-sentinel",
         )
 
+    def test_reuses_exact_runtime_audience_without_duplicate_request_parameter(self):
+        env = self.environ()
+        env["ACTIONS_ID_TOKEN_REQUEST_URL"] += "&audience=" + AUDIENCE
+        observed = []
+
+        def open_request(req, *, timeout):
+            observed.append(req)
+            return Response({"value": jwt()})
+
+        refresh_certification_broker_oidc(
+            environment=env, opener=open_request, now=100000,
+        )
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(
+            parse_qs(urlsplit(observed[0].full_url).query)["audience"], [AUDIENCE],
+        )
+
+    def test_normalizes_repeated_exact_runtime_audiences(self):
+        env = self.environ()
+        env["ACTIONS_ID_TOKEN_REQUEST_URL"] += (
+            "&audience=" + AUDIENCE + "&audience=" + AUDIENCE
+        )
+        observed = []
+
+        def open_request(req, *, timeout):
+            observed.append(req)
+            return Response({"value": jwt()})
+
+        refresh_certification_broker_oidc(
+            environment=env, opener=open_request, now=100000,
+        )
+        self.assertEqual(
+            parse_qs(urlsplit(observed[0].full_url).query)["audience"], [AUDIENCE],
+        )
+
     def test_invalid_runner_or_endpoint_never_requests_token(self):
         cases = [
             ("GITHUB_ACTIONS", "false"),
@@ -93,6 +128,7 @@ class RefreshTests(unittest.TestCase):
             ("ACTIONS_ID_TOKEN_REQUEST_URL", "https://attacker.example/idtoken"),
             ("ACTIONS_ID_TOKEN_REQUEST_URL", "http://pipelines.actions.githubusercontent.com/id"),
             ("ACTIONS_ID_TOKEN_REQUEST_URL", "https://pipelines.actions.githubusercontent.com/id?audience=attacker"),
+            ("ACTIONS_ID_TOKEN_REQUEST_URL", "https://pipelines.actions.githubusercontent.com/id?audience=" + AUDIENCE + "&audience=attacker"),
             ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", ""),
         ]
         for field, value in cases:

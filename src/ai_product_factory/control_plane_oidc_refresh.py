@@ -98,6 +98,7 @@ def refresh_certification_broker_oidc(
         pairs = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
     except ValueError:
         raise BrokerOIDCRefreshBlocked("broker_oidc_endpoint_invalid") from None
+    audiences = [value for key, value in pairs if key.lower() == "audience"]
     _require(
         parsed.scheme == "https"
         and bool(parsed.hostname and OIDC_REQUEST_HOST.fullmatch(parsed.hostname))
@@ -106,14 +107,21 @@ def refresh_certification_broker_oidc(
         and not parsed.password
         and bool(parsed.path)
         and not parsed.fragment
-        and not any(key.lower() == "audience" for key, _ in pairs),
+        # GitHub may supply the job's requested audience in the runtime URL.
+        # Accept repetitions only when every value is our exact audience, then
+        # normalize the request below. A divergent value remains fail-closed.
+        and all(value == AUDIENCE for value in audiences),
         "broker_oidc_endpoint_invalid",
     )
+    query_pairs = [
+        (key, value) for key, value in pairs if key.lower() != "audience"
+    ]
+    query_pairs.append(("audience", AUDIENCE))
     audience_url = urlunsplit((
         "https",
         parsed.netloc,
         parsed.path,
-        urlencode([*pairs, ("audience", AUDIENCE)]),
+        urlencode(query_pairs),
         "",
     ))
     request = urllib.request.Request(
