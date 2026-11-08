@@ -108,12 +108,15 @@ def refresh_certification_broker_oidc(
         and bool(parsed.path)
         and not parsed.fragment
         # GitHub may supply the job's requested audience in the runtime URL.
-        # It is safe to reuse only our exact audience, once; a different or
-        # duplicated audience would make the token request ambiguous.
-        and (not audiences or audiences == [AUDIENCE]),
+        # Accept repetitions only when every value is our exact audience, then
+        # normalize the request below. A divergent value remains fail-closed.
+        and all(value == AUDIENCE for value in audiences),
         "broker_oidc_endpoint_invalid",
     )
-    query_pairs = pairs if audiences else [*pairs, ("audience", AUDIENCE)]
+    query_pairs = [
+        (key, value) for key, value in pairs if key.lower() != "audience"
+    ]
+    query_pairs.append(("audience", AUDIENCE))
     audience_url = urlunsplit((
         "https",
         parsed.netloc,
