@@ -4,7 +4,7 @@ import unittest
 
 
 SQL = (Path(__file__).resolve().parents[1] /
-       "supabase/migrations/20261108011146_harden_trigger_function_acls.sql"
+       "supabase/migrations/20261108020832_harden_trigger_function_acls.sql"
        ).read_text(encoding="utf-8").lower()
 
 FUNCTIONS = (
