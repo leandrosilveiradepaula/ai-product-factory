@@ -9,7 +9,6 @@ from pathlib import Path
 
 from ai_product_factory.product_readiness_certification import certify_product_readiness, CertificationEvidenceError
 from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
-from ai_product_factory.control_plane_oidc_refresh import refresh_certification_broker_oidc
 from ai_product_factory.native_v2_traceability_certification import (
     verify_existing_crm_v2_traceability,
 )
@@ -210,12 +209,11 @@ def main(argv: list[str] | None = None) -> int:
                 or certification.assessment.as_result() != evidence["assessment"]
                 or evidence["product_ready"] is not certification.assessment.ready):
             raise CertificationEvidenceError("readiness evidence changed before persistence")
-    # GitHub OIDC JWTs expire while independent proofs are reverified.
-    # Mint the SAME trusted workflow/audience identity only after verification,
-    # immediately before the two atomic Control Plane RPCs; never persist JWTs.
-    if (args.require_verified_baseline and os.environ.get("GITHUB_ACTIONS") == "true"
-            and os.environ.get("GITHUB_EVENT_NAME") == "workflow_run"):
-        refresh_certification_broker_oidc()
+    # In the protected workflow, the same pinned control-plane-oidc action is
+    # run immediately before this command. Keeping token acquisition there
+    # avoids a second, differently implemented OIDC client at the write
+    # boundary. This process only receives its short-lived broker token via
+    # the runner environment and never records it.
     store = SupabaseDeliveryStore()
     begun = store.begin_product_readiness_certification(project_key=args.project_key,
         repository=args.repository, assessed_commit=args.assessed_commit,

@@ -1599,6 +1599,10 @@ jobs:
               --verify-regression-gates \
               --verify-recovery-alerting \
               --verify-operations-runbook
+      # Evidence collection can take several minutes. Mint a fresh, pinned
+      # broker token only after it is complete and immediately before the
+      # certifier's two atomic Control Plane RPCs.
+      - uses: ./.github/actions/control-plane-oidc
       - name: Persist independently reverified criterion states on exact-SHA
         run: |
           set -euo pipefail
