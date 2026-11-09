@@ -50,6 +50,24 @@ class OperationsEvidenceTests(unittest.TestCase):
         proof = self.prove(fixture())
         self.assertEqual((proof.domain, proof.criterion), ("documentation", "operations"))
         self.assertEqual(proof.retained_receipt["source_run_id"], SOURCE_RUN)
+        self.assertEqual(proof.retained_receipt["scope"],
+                         "exact_operational_runbooks_and_executable_commands_only")
+        self.assertFalse(proof.retained_receipt["governance_contract_proved_by_this_criterion"])
+
+    def test_governance_preface_does_not_invalidate_executed_operations(self):
+        # A planning document is not an executable operations runbook. It is
+        # covered by the independent requirements inventory instead.
+        self.assertNotIn("docs/FINALIZATION_EXECUTION_CONTRACT.md", SOURCE_FILES)
+        rows = fixture()
+        for digest, suffix in (("a" * 40, "source"), ("f" * 40, "assessed")):
+            path = (ROOT + "/git/trees/" + SOURCE_SHA + "?recursive=1"
+                    if suffix == "source" else
+                    ROOT + "/git/trees/" + SHA + "?recursive=1")
+            rows[path]["tree"].append({
+                "path": "docs/FINALIZATION_EXECUTION_CONTRACT.md",
+                "type": "blob", "mode": "100644", "sha": digest,
+            })
+        self.assertEqual(self.prove(rows).criterion, "operations")
 
     def test_job_event_ancestry_and_each_bound_file_drift_block(self):
         for mutation in ("job", "event", "ancestor", "blob", "missing"):

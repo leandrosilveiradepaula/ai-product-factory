@@ -1,3 +1,13 @@
+## 09/11/2026 — Correção de regressão das próprias provas (candidato)
+
+**Motivo real da queda 9→8:** a adição de um prefácio de planejamento ao contrato `docs/FINALIZATION_EXECUTION_CONTRACT.md` invalidou `documentation/operations` porque o verificador comparava esse arquivo de governança à prova de um `schedule` antigo. O escopo de `documentation/operations` passa a comparar somente os **runbooks e comandos operacionais realmente executados**: `docs/OPERATIONS.md`, `docs/RELEASE_AUTONOMY.md`, e implementações de runtime/alertas/scheduler/recovery. Qualquer byte alterado nesses arquivos ainda bloqueia; o contrato de governança continua versionado, coberto pelo inventário de requisitos (não por esta prova de operações).
+
+**Regressão indevida de `regression_gates` em alterações só de Markdown:** um SHA da `main` com arquivos `.md` distintos do candidato QA não reaproveitava a bateria de 11 jobs PostgreSQL, embora todos os **blobs executáveis, SQL, scripts, workflows e testes fossem idênticos**. A prova passa a exigir igualdade de todas as entradas Git não-Markdown e árvore completa não truncada, ou árvore integral idêntica; verificações do check-run, regras de branch e CI atual permanecem. Mudanças de código, SQL, YAML, tests, symlink/submodule, entradas ausentes, árvore truncada ou QA falho continuam bloqueadas. Execuções duplicadas com mesmo conteúdo não anulam uma prova legítima; há checagem de jobs do run selecionado.
+
+**Aceite:** regressões positivas/negativas no verificador original, CI, QA PostgreSQL isolado no SHA candidato e certificação nova após merge humano. Não copiar `passed` histórico, não reescrever critérios, não afrouxar RLS, não criar Start, Preview, serviços pagos, migrations nem auto-merge. O resultado real da #1315 permanece condicionado à avaliação durável no seu SHA.
+
+---
+
 ## 09/11/2026 — B2: falha real no contrato de saída de Product Stage (candidato)
 
 Referências vinculantes: [Plano 19 critérios](PLANO_CERTIFICACAO_19_CRITERIOS.md), [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md) e [release/rollback com gate humano](RELEASE_AUTONOMY.md). Nenhuma prova deste bloco substitui autorização humana de produção.
