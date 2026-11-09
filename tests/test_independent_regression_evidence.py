@@ -82,3 +82,20 @@ class RegressionEvidenceTests(unittest.TestCase):
   self.assertEqual(proof.criterion,"regression_gates")
   def permanent(path): raise urllib.error.HTTPError("https://api.github.com",403,"forbidden",None,None)
   with self.assertRaises(urllib.error.HTTPError): verify_regression_gates(repository=REPOSITORY,assessed_commit=SHA,github_get=permanent,environment=environment(),event_payload=event())
+
+class PostgresWorkflowCoverageTests(unittest.TestCase):
+ def test_workflow_triggers_on_every_non_markdown_change(self):
+  from pathlib import Path
+  workflow=Path(__file__).resolve().parents[1]/".github/workflows/manual-project-control-postgres.yml"
+  source=workflow.read_text(encoding="utf-8")
+  trigger=source.split("permissions:",1)[0]
+  self.assertIn("  pull_request:",trigger)
+  self.assertIn("    branches: [main]",trigger)
+  self.assertIn('      - "**"',trigger)
+  self.assertIn('      - "!**/*.md"',trigger)
+  self.assertIn('      - "!*.md"',trigger)
+  # A narrow positive filter silently invalidates the independent certifier
+  # whenever a new executable file is added without updating the allowlist.
+  positive=[line.strip() for line in trigger.splitlines() if line.strip().startswith('- "') and not line.strip().startswith('- "!')]
+  self.assertEqual(positive,['- "**"'])
+
