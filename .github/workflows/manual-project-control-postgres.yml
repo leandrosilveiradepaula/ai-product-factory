@@ -2,15 +2,83 @@ name: Manual project lifecycle PostgreSQL QA
 on:
   pull_request:
     branches: [main]
-    # The readiness certifier hashes every non-Markdown blob in the Git tree.
-    # Any executable/source/config change must therefore produce fresh,
-    # same-tree isolated PostgreSQL evidence before a human merge.
     paths:
+      # Broad positive filter: every non-Markdown blob change is covered.
       - "**"
       - "!**/*.md"
       - "!**/*.MD"
       - "!*.md"
       - "!*.MD"
+      - "supabase/migrations/*manual_project_execution_controls.sql"
+      - "supabase/migrations/*fence_scheduler_eligibility_manual_control.sql"
+      - "supabase/migrations/*fence_recovery_manual_project_control.sql"
+      - "supabase/migrations/*fence_terminal_descendant_recovery_manual_control.sql"
+      - "supabase/migrations/*quarantine_cross_epoch_recovery_replay.sql"
+      - "supabase/migrations/*fence_specialist_epoch_and_lease_token.sql"
+      - "supabase/migrations/*atomic_specialist_repair_handoff.sql"
+      - "supabase/migrations/*atomic_specialist_traceability_evidence.sql"
+      - "supabase/migrations/*atomic_release_state_and_replay_outbox.sql"
+      - "src/ai_product_factory/project_release_reconciliation.py"
+      - "scripts/verify_atomic_project_release_postgres.py"
+      - "tests/test_atomic_project_release_reconciliation.py"
+      - "tests/test_specialist_traceability_atomicity.py"
+      - "tests/test_atomic_specialist_repair_handoff.py"
+      - "src/ai_product_factory/specialist_lane_queue.py"
+      - "scripts/verify_specialist_epoch_postgres.py"
+      - "tests/test_specialist_epoch_fence.py"
+      - "tests/test_cross_epoch_recovery_fence.py"
+      - "tests/test_terminal_descendant_operator_fence.py"
+      - "scripts/verify_recovery_manual_project_control_postgres.py"
+      - "tests/test_recovery_operator_control_contract.py"
+      - "scripts/verify_scheduler_control_eligibility_postgres.py"
+      - "supabase/migrations/*project_control_wake_outbox.sql"
+      - "supabase/migrations/*repin_nonproduction_target.sql"
+      - "supabase/migrations/*repin_terminal_repair_history.sql"
+      - "supabase/migrations/*guard_stale_change_set_integration.sql"
+      - "scripts/verify_stale_change_set_integration_postgres.py"
+      - "supabase/migrations/*retry_blocked_platform_kind.sql"
+      - "scripts/verify_platform_kind_recovery_postgres.py"
+      - "scripts/verify_retire_obsolete_artifacts_postgres.py"
+      - "supabase/migrations/*retire_obsolete_factory_artifacts.sql"
+      - "scripts/verify_nonproduction_candidate_repin_postgres.py"
+      - "scripts/verify_project_control_wake_postgres.py"
+      - "src/ai_product_factory/project_control_wake_outbox.py"
+      - "apps/console/lib/project-control-wake-outbox.ts"
+      - "supabase/migrations/*graceful_stop_preserve_queue.sql"
+      - "supabase/migrations/*fence_change_set_integration_epoch.sql"
+      - "supabase/migrations/*atomic_change_set_integration_epoch_writes.sql"
+      - "tests/test_atomic_integration_epoch_migration.py"
+      - "src/ai_product_factory/change_set_integrator.py"
+      - "src/ai_product_factory/change_set_store.py"
+      - "tests/test_integration_epoch_migration.py"
+      - "scripts/verify_manual_project_control_postgres.py"
+      - "src/ai_product_factory/project_control_settlement.py"
+      - "src/ai_product_factory/project_execution_control.py"
+      - "supabase/migrations/*observe_preview_branch_integration.sql"
+      - "scripts/verify_nonproduction_preview_merge_postgres.py"
+      - "tests/test_nonproduction_preview_merge_migration.py"
+      - "src/ai_product_factory/nonproduction_preview_merge.py"
+      - "src/ai_product_factory/runtime_cli.py"
+      # Product Stage outputs are persisted by the runtime; changes to their
+      # non-execution gate must exercise isolated SQL lifecycle regression.
+      - "src/ai_product_factory/product_stage_output_contract.py"
+      - "tests/test_block1_stage_execution_boundaries.py"
+      # Block 1 static source inventory participates in the independent
+      # post-CI readiness baseline; changes must run isolated PostgreSQL QA.
+      - "scripts/build_readiness_evidence_manifest.py"
+      - "tests/test_readiness_evidence_manifest.py"
+      # B2 exact-version Console Auth/RLS and paid-entrypoint negative tests.
+      - "scripts/verify_block1_console_auth_rls_postgres.py"
+      - "tests/test_block1_b2_execution_and_access.py"
+      - "supabase/migrations/20260925232713_factory_console_auth_and_gate_resolution.sql"
+      - "supabase/migrations/20260925234331_factory_console_operator_admin.sql"
+      # The regression certifier accepts this workflow only when the passed
+      # PR tree is identical to the assessed main tree. Changes to that
+      # verifier must therefore rerun isolated lifecycle QA.
+      - "src/ai_product_factory/independent_regression_evidence.py"
+      - "tests/test_independent_regression_evidence.py"
+      - ".github/workflows/autonomous-runner.yml"
+      - ".github/workflows/manual-project-control-postgres.yml"
 permissions:
   contents: read
 jobs:
