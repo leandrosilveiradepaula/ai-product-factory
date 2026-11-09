@@ -31,6 +31,34 @@ class RuntimeSimulationReachabilityTests(unittest.TestCase):
             report = module.audit(root)
             self.assertEqual(report["unclassified_runtime_markers"][0]["constant"], "MODE")
 
+    def test_unrelated_raise_does_not_make_simulation_safe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root, "src/ai_product_factory/runtime_cli.py", "from .worker import execute\n")
+            self.write(root, "src/ai_product_factory/worker.py",
+                       "BAD = {'mock'}\ndef execute(x):\n if x == 'invalid': raise ValueError('invalid')\n return x in BAD\n")
+            report = module.audit(root)
+            self.assertEqual([row["constant"] for row in report["unclassified_runtime_markers"]], ["BAD"])
+            self.assertFalse(report["independent_pass"])
+
+    def test_raise_in_else_does_not_certify_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root, "src/ai_product_factory/runtime_cli.py", "from .worker import execute\n")
+            self.write(root, "src/ai_product_factory/worker.py",
+                       "BAD = {'mock'}\ndef execute(x):\n if x in BAD:\n  return 'accepted'\n else:\n  raise ValueError('unrelated')\n")
+            report = module.audit(root)
+            self.assertEqual(len(report["unclassified_runtime_markers"]), 1)
+
+    def test_nested_raise_does_not_certify_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root, "src/ai_product_factory/runtime_cli.py", "from .worker import execute\n")
+            self.write(root, "src/ai_product_factory/worker.py",
+                       "BAD = {'demo'}\ndef execute(x):\n if x in BAD:\n  def unrelated():\n   raise ValueError('unused')\n  return True\n")
+            report = module.audit(root)
+            self.assertEqual(len(report["unclassified_runtime_markers"]), 1)
+
     def test_marker_with_raise_is_classified_as_guard(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
