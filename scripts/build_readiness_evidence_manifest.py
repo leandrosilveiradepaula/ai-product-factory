@@ -291,8 +291,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                         reason=("complete local Python marker scan and bounded static import closure; "
                                 + ("unclassified markers remain; " if reachable["unclassified_runtime_markers"] else "")
                                 + "dynamic production entrypoints remain unverified"),
-                        evidence=["https://github.com/" + repository + "/actions/runs/"
-                                  + str(manifest["source_snapshot"]["validation_run_id"]) + "#sha=" + sha],
+                        # The conservative manifest already bound this
+                        # CI URL to the exact SHA. It has no source_snapshot
+                        # key; that belongs to the final report envelope.
+                        evidence=list(manifest["criteria"]["test_strategy"]["regression_gates"]["evidence"]),
                     )
                 else:
                     entry["reason"] = "simulation_inventory_source_contract_unverified"
