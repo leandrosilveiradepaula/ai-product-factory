@@ -28,6 +28,12 @@ class RegressionEvidenceTests(unittest.TestCase):
   values[ROOT+"/git/commits/"+qa]={"tree":{"sha":"d"*40}}
   values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]=[{**job,"head_sha":qa} for job in values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]]
   with self.assertRaises(RegressionEvidenceBlocked): self.proof(values)
+ def test_two_successful_postgres_qa_runs_for_same_tree_are_ambiguous(self):
+  values=fixture()
+  endpoint=ROOT+"/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100"
+  values[endpoint]["workflow_runs"].append({**values[endpoint]["workflow_runs"][0],"id":10})
+  with self.assertRaisesRegex(RegressionEvidenceBlocked,"regression_postgres_matching_tree_missing"):
+   self.proof(values)
  def test_transient_github_read_is_retried_but_permanent_failure_is_not_accepted(self):
   values=fixture(); calls=[]
   def transient(path):

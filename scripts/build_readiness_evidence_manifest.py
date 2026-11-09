@@ -149,19 +149,30 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                          reason="independent full-tree Gitleaks and production dependency audit reverified",
                          evidence=list(security_proof.evidence))
     regression_proof = None
+    regression_blocker = None
     if verify_regression_gates:
         try:
             regression_proof = verify_effective_regression_gates(
                 repository=repository, assessed_commit=sha, github_get=github_get,
             )
-        except (RegressionEvidenceBlocked, ValueError, RuntimeError, OSError,
-                KeyError, TypeError, UnicodeError):
-            regression_proof = None
+        except RegressionEvidenceBlocked as exc:
+            # The verifier emits bounded internal error codes. Preserve only
+            # valid codes, never provider response bodies or secrets.
+            code = str(exc)
+            regression_blocker = (code if len(code) <= 100 and code.startswith("regression_")
+                                  and all(ch.isascii() and (ch.islower() or ch.isdigit() or ch == "_") for ch in code)
+                                  else "regression_evidence_source_unavailable")
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
+            regression_blocker = "regression_evidence_source_unavailable"
         if regression_proof is not None:
             entry = manifest["criteria"]["test_strategy"]["regression_gates"]
             entry.update(status="passed", verification_state=regression_proof.verification_state,
                          reason="independent effective GitHub regression gates reverified",
                          evidence=list(regression_proof.evidence))
+        elif regression_blocker is not None:
+            entry = manifest["criteria"]["test_strategy"]["regression_gates"]
+            entry.update(status="partial",
+                         reason="independent regression gate evidence blocked: " + regression_blocker)
     recovery_proof = None
     if verify_recovery_alerting:
         try:

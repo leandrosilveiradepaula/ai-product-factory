@@ -54,6 +54,27 @@ Falhas são registradas nos três critérios visuais por motivo sanitizado,
 sempre mantendo `missing`; não há PASS automático de UX, RBAC ou E2E.
 Nenhuma nova captura, permissão ou gasto é iniciado.
 
+## Diagnóstico comprovado em 09/11/2026 (pós-#1310)
+
+Na avaliação durável da `main=a7b093816a7c2803348bdf6eca981a839fbadbe9`
+o verificador histórico registrou
+`Console blob provenance mismatch` porque a árvore recursiva real do GitHub
+inclui 46 entradas de diretório (`type=tree, mode=040000`) além de
+90 arquivos (`type=blob, mode=100644`) em `apps/console/**`.
+O verificador tratava qualquer entrada que não fosse blob como inválida.
+A correção aceita apenas diretórios com modo exato `040000`, preserva a
+comparação integral de blobs e rejeita symlinks, submodules, paths inseguros,
+duplicatas, entradas malformadas e inventários truncados. Não faz nova captura.
+
+A mesma avaliação registrou `regression_gates=partial` porque a prova de QA
+PostgreSQL exige um run de `pull_request` com **árvore Git idêntica** à
+avaliada; a PR #1310 não alterou paths habilitados no workflow de QA e portanto
+não produziu run PostgreSQL naquele candidato. Essa condição não pode ser
+substituída por CI verde anterior. A nova versão preserva esse gate,
+registra o código de bloqueio independente de forma sanitizada e acrescenta
+regressão contra resultados PostgreSQL ambíguos. A mudança neste teste
+ativa QA isolado no PR candidato, sem migration de produção.
+
 ## Operação
 
 Após merge humano desta alteração, uma nova captura autenticada legítima no

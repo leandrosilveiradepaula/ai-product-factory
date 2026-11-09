@@ -117,6 +117,31 @@ class VerifiedBaselineTests(unittest.TestCase):
             "authenticated Console evidence source unavailable",
         )
 
+    def test_regression_gate_blockers_are_actionable_but_never_promoted(self):
+        from ai_product_factory.independent_regression_evidence import RegressionEvidenceBlocked
+        with patch("build_readiness_evidence_manifest.verify_effective_regression_gates",
+                   side_effect=RegressionEvidenceBlocked("regression_postgres_matching_tree_missing")):
+            result = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_regression_gates=True,
+            )
+        entry = result["manifest"]["criteria"]["test_strategy"]["regression_gates"]
+        self.assertEqual(entry["status"], "partial")
+        self.assertIn("regression_postgres_matching_tree_missing", entry["reason"])
+        self.assertFalse(result["product_ready"])
+
+    def test_regression_gate_provider_errors_are_sanitized(self):
+        with patch("build_readiness_evidence_manifest.verify_effective_regression_gates",
+                   side_effect=OSError("secret=DO_NOT_LEAK")):
+            result = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_regression_gates=True,
+            )
+        self.assertNotIn("DO_NOT_LEAK", json.dumps(result))
+        entry = result["manifest"]["criteria"]["test_strategy"]["regression_gates"]
+        self.assertEqual(entry["status"], "partial")
+        self.assertIn("regression_evidence_source_unavailable", entry["reason"])
+
     def test_observer_identity_remains_read_only_and_preserves_both_receipts(self):
         yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         job = yaml.split("\n  global-readiness-post-ci:", 1)[1].split("\n  owner-start:", 1)[0]
