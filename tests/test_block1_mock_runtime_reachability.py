@@ -59,6 +59,15 @@ class RuntimeSimulationReachabilityTests(unittest.TestCase):
             report = module.audit(root)
             self.assertEqual(len(report["unclassified_runtime_markers"]), 1)
 
+    def test_negative_membership_raise_must_not_count_as_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root, "src/ai_product_factory/runtime_cli.py", "from .worker import execute\n")
+            self.write(root, "src/ai_product_factory/worker.py",
+                       "BAD = {'noop'}\ndef execute(x):\n if x not in BAD: raise ValueError('ordinary')\n return 'accepted'\n")
+            report = module.audit(root)
+            self.assertEqual([row["constant"] for row in report["unclassified_runtime_markers"]], ["BAD"])
+
     def test_marker_with_raise_is_classified_as_guard(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
