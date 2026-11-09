@@ -21,13 +21,27 @@ class CertificationRunbookPrecedenceTests(unittest.TestCase):
         self.assertNotIn("só usar o procedimento de [recuperação]",active)
 
     def test_dated_priority_and_no_disposable_production_projects(self):
-        agents=self.read("AGENTS.md").split("\n---\n",1)[0]
-        plan=self.read("PROJECT_PLAN.md").split("\n\n",1)[0]
+        agents_doc=self.read("AGENTS.md")
+        plan_doc=self.read("PROJECT_PLAN.md")
+        agents=agents_doc.split("\n---\n",1)[0]
+        plan=plan_doc.split("\n\n",1)[0]
+        memory=self.read("MEMORY.md")
+        certification_plan=self.read("docs/PLANO_CERTIFICACAO_19_CRITERIOS.md")
         manual=self.read("docs/MANUAL_LIFECYCLE_ACCEPTANCE.md")
+        # New priority outranks historical snapshots; both older, stricter
+        # controls and the legitimate existing/greenfield requirements remain.
         for scope in (agents,plan):
-            self.assertIn("27/10/2026",scope)
-            self.assertIn("CRM",scope)
+            self.assertIn("09/11/2026",scope)
+            self.assertIn("PLANO_CERTIFICACAO_19_CRITERIOS.md",scope)
+        self.assertIn("MEMORY.md",agents)
+        self.assertIn("27/10/2026",agents_doc)
+        self.assertIn("27/10/2026",plan_doc)
+        for scope in (memory,certification_plan):
+            self.assertIn("CRM Infodive",scope)
             self.assertIn("greenfield",scope.lower())
+            self.assertIn("19",scope)
+        self.assertIn("product_ready=true",certification_plan)
+        self.assertIn("merge humano",certification_plan.lower())
         self.assertIn("Não criar projetos descartáveis",manual)
         self.assertNotIn("Register a disposable project",manual)
         self.assertNotIn("newly registered disposable project",manual)

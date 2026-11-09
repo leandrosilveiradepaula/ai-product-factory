@@ -1,3 +1,7 @@
+## PRIORIDADE VINCULANTE — FECHAMENTO DOS 19 CRITÉRIOS (09/11/2026)
+
+**PLANO OBRIGATÓRIO:** [docs/PLANO_CERTIFICACAO_19_CRITERIOS.md](docs/PLANO_CERTIFICACAO_19_CRITERIOS.md). **MEMÓRIA OPERACIONAL OBRIGATÓRIA:** [MEMORY.md](MEMORY.md) (ler antes de decidir próximo trabalho; estado histórico deve ser reconciliado com GitHub/Supabase). Antes de gerar novo trabalho, ler o plano e reconciliar o certificado persistido no SHA da `main`. Seguir **B1 inventário → B2 segurança/runtime → B3 Console/UX → B4 jornada real/E2E**, sem desviar para outro produto ou expandir funcionalidades fora de defeito que bloqueie a certificação. Não contar sucesso de CI como `product_ready`. Executar autonomamente etapas seguras e somente solicitar ação humana em gates reais (produção/merge, acesso, custo, migration ou ação irreversível). O baseline histórico de 09/11 era 9 PASS, 3 PARTIAL, 7 MISSING; recalcular no Control Plane antes de reportar. **"Prossiga" significa continuar esse plano.**
+
 # PRIORIDADE VIGENTE — CERTIFICAÇÃO DA FACTORY (27/10/2026)
 
 **Antes de qualquer nova issue, PR ou run:** ler o [contrato de finalização](docs/FINALIZATION_EXECUTION_CONTRACT.md) e conferir SHA/CI/Control Plane reais. As notas abaixo são histórico e não anulam esta prioridade.

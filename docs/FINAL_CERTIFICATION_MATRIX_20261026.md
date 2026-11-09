@@ -1,5 +1,7 @@
 # AI Product Factory — six-domain certification evidence matrix
 
+> **Plano operacional vigente (09/11/2026):** [Fechamento dos 19 critérios em quatro blocos](PLANO_CERTIFICACAO_19_CRITERIOS.md). Esta matriz é uma referência de provas e lacunas; somente certificado durável no SHA da `main` pode alterar as contagens.
+
 ## Reconciliação 27/10/2026 — decisão de arquitetura e escopo das evidências
 
 O Service Desk **não** é mais alvo greenfield: foi integrado como módulo do CRM por PR #201, com migrations no Supabase do CRM. O projeto Factory `infodive-service-desk` está `stopped` desde `2026-10-27T17:59:48Z`, sem tarefas ativas. O F6 antigo e a PR independente #10 são históricos **não certificados** e não devem ser retomados. O browser E2E do CRM em `c9aaacd28140c9f132a5d8ae2ff250afc823c75c` verificou somente login público (runs [40551449688](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551449688) e [40551487676](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/40551487676)), sem autenticação ou CRUD do módulo. O alvo greenfield legítimo ainda precisa ser identificado e autorizado; **nenhum domínio recebe PASS por esta reconciliação**.
