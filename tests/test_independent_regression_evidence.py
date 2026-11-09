@@ -54,10 +54,10 @@ class RegressionEvidenceTests(unittest.TestCase):
   base=[{"path":"src/source_%03d.py"%i,"type":"blob","mode":"100644","sha":"e"*40}
         for i in range(105)]
   values[ROOT+"/git/trees/"+source_tree+"?recursive=1"]={
-      "truncated":False,"tree":base+[{"path":"docs/FINALIZATION_EXECUTION_CONTRACT.md",
+      "truncated":False,"tree":[dict(item) for item in base]+[{"path":"docs/FINALIZATION_EXECUTION_CONTRACT.md",
                                      "type":"blob","mode":"100644","sha":"f"*40}]}
   values[ROOT+"/git/trees/"+"b"*40+"?recursive=1"]={
-      "truncated":False,"tree":base+[{"path":"docs/FINALIZATION_EXECUTION_CONTRACT.md",
+      "truncated":False,"tree":[dict(item) for item in base]+[{"path":"docs/FINALIZATION_EXECUTION_CONTRACT.md",
                                      "type":"blob","mode":"100644","sha":"a"*40}]}
   proof=self.proof(values)
   receipt=proof.retained_receipt["postgres_qa"]
