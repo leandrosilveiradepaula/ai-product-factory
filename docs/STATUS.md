@@ -1,3 +1,13 @@
+## 09/11/2026 — B2: testes reais de fronteiras de acesso e admissão (candidato)
+
+**Diagnóstico read-only real no Supabase Factory:** 58/58 tabelas `factory_*` com RLS; nenhuma com DML `anon`; somente `factory_console_operators` com SELECT de `authenticated` limitado a `auth.uid()` e `is_active`; 181 funções `factory_*` observadas, zero executáveis por `anon` ou `authenticated`; sujeitos desconhecidos e ausentes recebem zero linhas. Esses resultados não são certificado durável nem prova de JWT real.
+
+A nova regressão do **PostgreSQL isolado do GitHub Actions** aplica o bloco original de política Console da migration e a migration de operadores, cria somente usuários sintéticos dentro do container, executa comandos SQL negativos como `anon` e `authenticated`, testa RLS para operador/admin/inativo/estranho, nega escrita e chamadas RPC administrativas e verifica SQLSTATE 42501. O script proíbe DSN remoto por host, nome do banco e flag de isolamento; não usa nem modifica Supabase real. A bateria Python exercita Product/Direct/Codex com modelos e custos bloqueados, impedindo criação de lease/claim antes de admissão.
+
+**Limite:** QA isolado e sondagens read-only não bastam para atestar JWT assinado, toda a superfície HTTP e broker ou isolamento entre todos os tenants em produção. `security/authn_authz`, `security/data_access_boundaries` e `mock_noop_demo_inventory` não recebem PASS sem verificadores independentes adicionais no SHA real. Não aplicar migration, expandir RLS, criar Start, comprar saldo, usar Vercel ou auto-merge.
+
+---
+
 ## 09/11/2026 — Correção de regressão das próprias provas (candidato)
 
 **Motivo real da queda 9→8:** a adição de um prefácio de planejamento ao contrato `docs/FINALIZATION_EXECUTION_CONTRACT.md` invalidou `documentation/operations` porque o verificador comparava esse arquivo de governança à prova de um `schedule` antigo. O escopo de `documentation/operations` passa a comparar somente os **runbooks e comandos operacionais realmente executados**: `docs/OPERATIONS.md`, `docs/RELEASE_AUTONOMY.md`, e implementações de runtime/alertas/scheduler/recovery. Qualquer byte alterado nesses arquivos ainda bloqueia; o contrato de governança continua versionado, coberto pelo inventário de requisitos (não por esta prova de operações).

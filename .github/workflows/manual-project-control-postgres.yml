@@ -61,6 +61,11 @@ on:
       # post-CI readiness baseline; changes must run isolated PostgreSQL QA.
       - "scripts/build_readiness_evidence_manifest.py"
       - "tests/test_readiness_evidence_manifest.py"
+      # B2 exact-version Console Auth/RLS and paid-entrypoint negative tests.
+      - "scripts/verify_block1_console_auth_rls_postgres.py"
+      - "tests/test_block1_b2_execution_and_access.py"
+      - "supabase/migrations/20260925232713_factory_console_auth_and_gate_resolution.sql"
+      - "supabase/migrations/20260925234331_factory_console_operator_admin.sql"
       # The regression certifier accepts this workflow only when the passed
       # PR tree is identical to the assessed main tree. Changes to that
       # verifier must therefore rerun isolated lifecycle QA.
@@ -97,6 +102,11 @@ jobs:
           FACTORY_CONTROL_TEST_ISOLATED: "true"
           FACTORY_CONTROL_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_project_control_test"
         run: python scripts/verify_manual_project_control_postgres.py
+      - name: Verify Console Auth/RLS migrations with real denied role claims
+        env:
+          FACTORY_CONTROL_TEST_ISOLATED: "true"
+          FACTORY_CONTROL_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_project_control_test"
+        run: python scripts/verify_block1_console_auth_rls_postgres.py
 
   preview-integration-postgres:
     runs-on: ubuntu-latest
