@@ -94,6 +94,29 @@ def _guarded_names(tree: ast.Module, constants: dict[str, set[str]]) -> set[str]
             # function, or subsequent statement as a rejection of this marker.
             if any(isinstance(statement, ast.Raise) for statement in conditional.body):
                 guarded.update(names)
+        # Runtime contract pattern: for key in MARKERS, then a condition
+        # uses that key and raises directly. Mere iteration or an unrelated
+        # exception elsewhere in the loop must never be counted.
+        for loop in ast.walk(function):
+            if not isinstance(loop, (ast.For, ast.AsyncFor)):
+                continue
+            if not isinstance(loop.iter, ast.Name) or loop.iter.id not in constants:
+                continue
+            if not isinstance(loop.target, ast.Name):
+                continue
+            key = loop.target.id
+            for statement in loop.body:
+                if not isinstance(statement, ast.If):
+                    continue
+                predicate_uses_key = any(
+                    isinstance(node, ast.Name) and node.id == key
+                    for node in ast.walk(statement.test)
+                )
+                direct_rejection = any(
+                    isinstance(node, ast.Raise) for node in statement.body
+                )
+                if predicate_uses_key and direct_rejection:
+                    guarded.add(loop.iter.id)
     return guarded
 
 
