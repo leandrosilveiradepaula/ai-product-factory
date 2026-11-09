@@ -3,7 +3,9 @@ from __future__ import annotations
 import unittest
 
 from ai_product_factory.independent_authenticated_console_evidence import (
-    AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
+    AuthenticatedConsoleEvidenceBlocked, HISTORICAL_SOURCE_SHA,
+    HISTORICAL_WORKFLOW_RUN_ID, verify_authenticated_console_evidence,
+    verify_reusable_historical_authenticated_console_evidence,
 )
 
 
@@ -71,3 +73,46 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
             else: data[prefix + "/git/ref/heads/main"]["object"].update(update)
             with self.subTest(path=path, update=update), self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
                 self.verify(data)
+
+    def test_expired_historical_capture_requires_registry_ancestry_and_identical_console(self):
+        candidate = "b" * 40
+        prefix = "/repos/" + REPO
+        tree = {"truncated": False, "tree": [{"type": "blob", "path": "apps/console/app/page.tsx",
+                                                 "mode": "100644", "sha": "c" * 40}]}
+        data = {
+            prefix: {"full_name": REPO, "default_branch": "main"},
+            prefix + "/git/ref/heads/main": {"object": {"sha": candidate}},
+            prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID): {
+                "id": HISTORICAL_WORKFLOW_RUN_ID, "name": "Authenticated Console visual evidence",
+                "path": ".github/workflows/authenticated-visual-evidence.yml", "event": "workflow_dispatch",
+                "head_branch": "main", "head_sha": HISTORICAL_SOURCE_SHA, "run_attempt": 1,
+                "status": "completed", "conclusion": "success", "repository": {"full_name": REPO},
+            },
+            prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID) + "/jobs?per_page=100": {
+                "total_count": 1, "jobs": [{"name": "capture", "run_id": HISTORICAL_WORKFLOW_RUN_ID,
+                "head_sha": HISTORICAL_SOURCE_SHA, "status": "completed", "conclusion": "success"}]},
+            prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID) + "/artifacts?per_page=100": {
+                "total_count": 0, "artifacts": []},
+            prefix + "/compare/" + HISTORICAL_SOURCE_SHA + "..." + candidate: {
+                "status": "ahead", "behind_by": 0, "base_commit": {"sha": HISTORICAL_SOURCE_SHA},
+                "merge_base_commit": {"sha": HISTORICAL_SOURCE_SHA}},
+            prefix + "/git/trees/" + HISTORICAL_SOURCE_SHA + "?recursive=1": tree,
+            prefix + "/git/trees/" + candidate + "?recursive=1": tree,
+        }
+        registry = [{"workflow_run_id": HISTORICAL_WORKFLOW_RUN_ID,
+                     "source_commit": HISTORICAL_SOURCE_SHA,
+                     "artifact_name": "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID),
+                     "status": "captured"}]
+        proof = verify_reusable_historical_authenticated_console_evidence(
+            repository=REPO, assessed_commit=candidate, github_get=lambda path: data[path],
+            control_plane_get=lambda path: registry,
+        )
+        self.assertIsNone(proof.artifact_id)
+        self.assertFalse(proof.receipt()["artifact_available"])
+        data[prefix + "/git/trees/" + candidate + "?recursive=1"] = {
+            "truncated": False, "tree": []}
+        with self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
+            verify_reusable_historical_authenticated_console_evidence(
+                repository=REPO, assessed_commit=candidate, github_get=lambda path: data[path],
+                control_plane_get=lambda path: registry,
+            )
