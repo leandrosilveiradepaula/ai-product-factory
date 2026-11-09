@@ -268,12 +268,13 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                     and source_inventory["writes_to_production"] == 0
                     and source_inventory["paid_calls"] == 0
                     and reachable["reachable_modules"]
-                    and not reachable["unclassified_runtime_markers"]
                     and reachable["independent_pass"] is False):
                 entry = manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
                 entry.update(
                     status="partial", verification_state="reviewed",
-                    reason="full Python source marker inventory and static runtime_cli closure only; dynamic production entrypoints remain unverified",
+                    reason=("full Python source marker inventory and static runtime_cli closure only; "
+                            + ("unclassified static markers remain; " if reachable["unclassified_runtime_markers"] else "")
+                            + "dynamic production entrypoints remain unverified"),
                     evidence=["https://github.com/" + repository + "/actions/runs/"
                               + str(manifest["source_snapshot"]["validation_run_id"]) + "#sha=" + sha],
                 )

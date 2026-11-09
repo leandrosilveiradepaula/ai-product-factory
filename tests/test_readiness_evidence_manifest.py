@@ -212,7 +212,7 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertFalse(report["product_ready"])
 
     def test_requirements_source_failure_fails_closed_without_leaking_remote_errors(self):
-        from scripts.trace_block1_requirements import RequirementsInventoryBlocked
+        from trace_block1_requirements import RequirementsInventoryBlocked
         with patch("build_readiness_evidence_manifest.verify_requirements_inventory_fn",
                    side_effect=RequirementsInventoryBlocked("requirements_source_tree_incomplete")):
             report = build_verified_baseline(

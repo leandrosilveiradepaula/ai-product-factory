@@ -65,9 +65,13 @@ def event():
 class RequirementsInventoryEvidenceTests(unittest.TestCase):
     def proof(self, data=None, env=None, payload=None, root=None, criteria=None):
         sources = fixture() if data is None else data
+        # Build baseline from unmodified CI first, then mutate only the
+        # verifier's own independent source. Otherwise the upstream
+        # conservative certifier correctly rejects the fixture before
+        # the target negative path can be exercised.
         rows = (conservative_verified_manifest(
             repository=REPO, assessed_commit=SHA,
-            github_get=lambda path: sources[path],
+            github_get=lambda path: fixture()[path],
         )["criteria"] if criteria is None else criteria)
         return verify_requirements_inventory(
             repository=REPO, assessed_commit=SHA,
