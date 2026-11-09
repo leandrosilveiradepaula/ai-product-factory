@@ -85,6 +85,38 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertEqual(report["manifest"]["criteria"]["security"]["authn_authz"]["status"], "missing")
         self.assertEqual(report["manifest"]["criteria"]["test_strategy"]["critical_e2e"]["status"], "missing")
 
+    def test_historical_capture_blocker_is_visible_without_ux_promotion(self):
+        from ai_product_factory.independent_authenticated_console_evidence import (
+            AuthenticatedConsoleEvidenceBlocked,
+        )
+        with patch("build_readiness_evidence_manifest.verify_reusable_historical_authenticated_console_evidence",
+                   side_effect=AuthenticatedConsoleEvidenceBlocked("historical artifact provenance mismatch")):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                reuse_historical_authenticated_console_evidence=True,
+                control_plane_get=lambda path: [],
+            )
+        self.assertNotIn("authenticated_console_evidence", report)
+        for criterion in ("surface_inventory", "responsive", "accessibility"):
+            item = report["manifest"]["criteria"]["product_experience"][criterion]
+            self.assertEqual(item["status"], "missing")
+            self.assertIn("historical artifact provenance mismatch", item["reason"])
+        self.assertFalse(report["product_ready"])
+
+    def test_historical_capture_provider_errors_are_sanitized(self):
+        with patch("build_readiness_evidence_manifest.verify_reusable_historical_authenticated_console_evidence",
+                   side_effect=OSError("secret=DO_NOT_LEAK")):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                reuse_historical_authenticated_console_evidence=True,
+                control_plane_get=lambda path: [],
+            )
+        self.assertNotIn("DO_NOT_LEAK", json.dumps(report))
+        self.assertEqual(
+            report["manifest"]["criteria"]["product_experience"]["responsive"]["reason"],
+            "authenticated Console evidence source unavailable",
+        )
+
     def test_observer_identity_remains_read_only_and_preserves_both_receipts(self):
         yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         job = yaml.split("\n  global-readiness-post-ci:", 1)[1].split("\n  owner-start:", 1)[0]

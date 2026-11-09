@@ -101,7 +101,7 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
                                                                assessed_commit: str,
                                                                github_get, control_plane_get,
                                                                require_default_head: bool = True) -> AuthenticatedConsoleEvidence:
-    """Reuse a single expired capture only when its rendered Console is unchanged.
+    """Reuse a single durable capture only when its rendered Console is unchanged.
 
     The Control Plane registry proves that the encrypted capture completed
     before artifact expiry.  We never download or decrypt that artifact; a
@@ -134,8 +134,31 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
     _capture_job(github_get=github_get, prefix=prefix,
                  workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, sha=HISTORICAL_SOURCE_SHA)
     artifacts = github_get(prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID) + "/artifacts?per_page=100")
-    if not isinstance(artifacts, dict) or artifacts.get("total_count") != 0 or artifacts.get("artifacts") != []:
-        raise AuthenticatedConsoleEvidenceBlocked("historical artifact has not expired unambiguously")
+    # GitHub may retain an expired artifact in its inventory before purging
+    # it. Either a deleted artifact or one with exact, non-ambiguous source
+    # metadata is safe to pair with the durable capture registry; this does
+    # not certify browser interactions, RBAC or a complete UX review.
+    rows = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
+    count = artifacts.get("total_count") if isinstance(artifacts, dict) else None
+    if (type(count) is not int or count not in (0, 1)
+            or not isinstance(rows, list) or len(rows) != count):
+        raise AuthenticatedConsoleEvidenceBlocked("historical artifact inventory is ambiguous")
+    artifact_id = None
+    if count == 1:
+        artifact = rows[0]
+        provenance = artifact.get("workflow_run") if isinstance(artifact, dict) else None
+        if (not isinstance(artifact, dict)
+                or artifact.get("name") != "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID)
+                or type(artifact.get("id")) is not int or artifact["id"] < 1
+                or type(artifact.get("size_in_bytes")) is not int or artifact["size_in_bytes"] < 1
+                or type(artifact.get("expired")) is not bool
+                or not isinstance(provenance, dict)
+                or provenance.get("id") != HISTORICAL_WORKFLOW_RUN_ID
+                or provenance.get("head_sha") != HISTORICAL_SOURCE_SHA
+                or provenance.get("head_branch") != branch):
+            raise AuthenticatedConsoleEvidenceBlocked("historical artifact provenance mismatch")
+        if artifact["expired"] is False:
+            artifact_id = artifact["id"]
     rows = control_plane_get(
         "factory_visual_evidence_runs?select=workflow_run_id,source_commit,artifact_name,status"
         "&workflow_run_id=eq." + str(HISTORICAL_WORKFLOW_RUN_ID) + "&limit=2"
@@ -162,7 +185,7 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
         raise AuthenticatedConsoleEvidenceBlocked("Console changed after historical browser capture")
     return AuthenticatedConsoleEvidence(
         repository=repository, assessed_commit=assessed_commit,
-        workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, artifact_id=None,
+        workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, artifact_id=artifact_id,
     )
 
 

@@ -109,6 +109,41 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
         )
         self.assertIsNone(proof.artifact_id)
         self.assertFalse(proof.receipt()["artifact_available"])
+        # GitHub can report one retained artifact (active or expired but not
+        # purged) or an empty inventory. In each case provenance must agree.
+        artifact_path = prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID) + "/artifacts?per_page=100"
+        for expired in (False, True):
+            kept = {"id": 73, "name": "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID),
+                    "expired": expired, "size_in_bytes": 1024,
+                    "workflow_run": {"id": HISTORICAL_WORKFLOW_RUN_ID,
+                                     "head_sha": HISTORICAL_SOURCE_SHA, "head_branch": "main"}}
+            data[artifact_path] = {"total_count": 1, "artifacts": [kept]}
+            with self.subTest(expired=expired):
+                receipt = verify_reusable_historical_authenticated_console_evidence(
+                    repository=REPO, assessed_commit=candidate, github_get=lambda path: data[path],
+                    control_plane_get=lambda path: registry,
+                )
+                self.assertEqual(receipt.artifact_id, None if expired else 73)
+                self.assertIn("authn_authz", receipt.receipt()["does_not_certify"])
+                self.assertIn("product_ready", receipt.receipt()["does_not_certify"])
+            for mutation in ("wrong_sha", "empty", "ambiguous"):
+                import copy
+                invalid = copy.deepcopy(kept)
+                if mutation == "wrong_sha":
+                    invalid["workflow_run"]["head_sha"] = "f" * 40
+                elif mutation == "empty":
+                    invalid["size_in_bytes"] = 0
+                if mutation == "ambiguous":
+                    data[artifact_path] = {"total_count": 2, "artifacts": [kept, invalid]}
+                else:
+                    data[artifact_path] = {"total_count": 1, "artifacts": [invalid]}
+                with self.subTest(expired=expired, mutation=mutation):
+                    with self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
+                        verify_reusable_historical_authenticated_console_evidence(
+                            repository=REPO, assessed_commit=candidate, github_get=lambda path: data[path],
+                            control_plane_get=lambda path: registry,
+                        )
+        data[artifact_path] = {"total_count": 0, "artifacts": []}
         data[prefix + "/git/trees/" + candidate + "?recursive=1"] = {
             "truncated": False, "tree": []}
         with self.assertRaises(AuthenticatedConsoleEvidenceBlocked):

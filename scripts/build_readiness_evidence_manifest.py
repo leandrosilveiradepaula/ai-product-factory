@@ -191,17 +191,18 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                          reason="independent source-bound scheduled operations and runbooks reverified",
                          evidence=list(operations_proof.evidence))
     authenticated_console_proof = None
+    authenticated_console_blocker = None
     if authenticated_console_run_id is not None:
         try:
             authenticated_console_proof = verify_authenticated_console_evidence(
                 repository=repository, assessed_commit=sha,
                 workflow_run_id=authenticated_console_run_id, github_get=github_get,
             )
-        except (AuthenticatedConsoleEvidenceBlocked, ValueError, RuntimeError, OSError,
-                KeyError, TypeError, UnicodeError):
-            # A missing/expired/mismatched browser artifact must never become
-            # a UX claim or a durable partial result.
-            authenticated_console_proof = None
+        except AuthenticatedConsoleEvidenceBlocked as exc:
+            authenticated_console_blocker = "authenticated Console evidence blocked: " + str(exc)
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
+            # Do not expose HTTP error bodies, broker tokens or provider data.
+            authenticated_console_blocker = "authenticated Console evidence source unavailable"
     elif reuse_historical_authenticated_console_evidence:
         try:
             if control_plane_get is None:
@@ -210,9 +211,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 repository=repository, assessed_commit=sha, github_get=github_get,
                 control_plane_get=control_plane_get,
             )
-        except (AuthenticatedConsoleEvidenceBlocked, ValueError, RuntimeError, OSError,
-                KeyError, TypeError, UnicodeError):
-            authenticated_console_proof = None
+        except AuthenticatedConsoleEvidenceBlocked as exc:
+            authenticated_console_blocker = "authenticated Console evidence blocked: " + str(exc)
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
+            authenticated_console_blocker = "authenticated Console evidence source unavailable"
     if authenticated_console_proof is not None:
         for criterion in ("surface_inventory", "responsive", "accessibility"):
             entry = manifest["criteria"]["product_experience"][criterion]
@@ -221,6 +223,11 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="authenticated Console metadata verifies a bounded browser capture; full criterion review remains required",
                 evidence=list(authenticated_console_proof.evidence),
             )
+    elif authenticated_console_blocker is not None:
+        # Explicitly retain a bounded blocker, never a positive evidence claim.
+        for criterion in ("surface_inventory", "responsive", "accessibility"):
+            manifest["criteria"]["product_experience"][criterion]["reason"] = authenticated_console_blocker
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof

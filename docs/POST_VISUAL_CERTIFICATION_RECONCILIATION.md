@@ -38,6 +38,22 @@ O job não inicia trabalho, não faz deploy, não chama modelo, não altera RLS 
 não libera merge. A avaliação persistida segue `not_ready` até que cada um dos
 19 critérios tenha prova independente adequada.
 
+## Reutilização em SHA posterior com Console imutável
+
+A captura histórica autorizada #42439592059 pode ser reutilizada apenas como
+prova visual **parcial** se o run/job e o registro durável
+`factory_visual_evidence_runs` concordarem, o SHA de origem for ancestral do
+candidato e todos os blobs de `apps/console/**` forem idênticos. O GitHub
+pode devolver zero artefatos após expiração, ou um artefato válido, ainda
+ativo ou expirado mas ainda listado. Quando presente, o metadado deve ser
+único e vinculado à origem exata, sem tamanhos nulos nem identidade divergente.
+Um artefato que muda de disponibilidade entre coleta e persistência bloqueia
+por divergência do recibo. Não há leitura nem descriptografia da captura.
+
+Falhas são registradas nos três critérios visuais por motivo sanitizado,
+sempre mantendo `missing`; não há PASS automático de UX, RBAC ou E2E.
+Nenhuma nova captura, permissão ou gasto é iniciado.
+
 ## Operação
 
 Após merge humano desta alteração, uma nova captura autenticada legítima no
