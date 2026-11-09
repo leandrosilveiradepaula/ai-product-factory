@@ -177,6 +177,58 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertIn("Persist independently reverified criterion states on exact-SHA", job)
         self.assertIn("Collect exact-SHA CI, operations and independent security evidence", job)
 
+    def test_requirements_attestation_never_approves_other_journeys(self):
+        from ai_product_factory.product_readiness_certification import VerifiedCriterionEvidence
+        proof = VerifiedCriterionEvidence(
+            repository=REPO, assessed_commit=SHA,
+            domain="functional_completeness", criterion="requirements_inventory",
+            verification_state="reviewed", source="source-verified-inventory",
+            evidence=("https://github.com/" + REPO + "/actions/runs/7#sha=" + SHA,),
+        )
+        with patch("build_readiness_evidence_manifest.verify_requirements_inventory_fn",
+                   return_value=proof):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_requirements_inventory=True,
+            )
+        self.assertEqual(
+            report["manifest"]["criteria"]["functional_completeness"]["requirements_inventory"]["status"],
+            "passed",
+        )
+        self.assertEqual(
+            report["manifest"]["criteria"]["functional_completeness"]["critical_journeys"]["status"],
+            "missing",
+        )
+        self.assertFalse(report["product_ready"])
+
+    def test_mock_inventory_is_bounded_partial_never_a_fabricated_pass(self):
+        report = build_verified_baseline(
+            repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+            verify_static_simulation_inventory=True,
+        )
+        row = report["manifest"]["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
+        # A source scan alone must never force partial/PASS: if the
+        # import-closure audit cannot establish its bounded provenance,
+        # retaining missing is the correct fail-closed result.
+        self.assertIn(row["status"], {"missing", "partial"})
+        if row["status"] == "partial":
+            self.assertIn("dynamic production entrypoints remain unverified", row["reason"])
+        else:
+            self.assertIn("simulation source inventory unavailable", row["reason"])
+        self.assertFalse(report["product_ready"])
+
+    def test_requirements_source_failure_fails_closed_without_leaking_remote_errors(self):
+        from trace_block1_requirements import RequirementsInventoryBlocked
+        with patch("build_readiness_evidence_manifest.verify_requirements_inventory_fn",
+                   side_effect=RequirementsInventoryBlocked("requirements_source_tree_incomplete")):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_requirements_inventory=True,
+            )
+        row = report["manifest"]["criteria"]["functional_completeness"]["requirements_inventory"]
+        self.assertEqual(row["status"], "missing")
+        self.assertIn("requirements_source_tree_incomplete", row["reason"])
+
     def test_observer_identity_remains_read_only_and_preserves_both_receipts(self):
         yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         job = yaml.split("\n  global-readiness-post-ci:", 1)[1].split("\n  owner-start:", 1)[0]
