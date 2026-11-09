@@ -57,6 +57,10 @@ on:
       # non-execution gate must exercise isolated SQL lifecycle regression.
       - "src/ai_product_factory/product_stage_output_contract.py"
       - "tests/test_block1_stage_execution_boundaries.py"
+      # Block 1 static source inventory participates in the independent
+      # post-CI readiness baseline; changes must run isolated PostgreSQL QA.
+      - "scripts/build_readiness_evidence_manifest.py"
+      - "tests/test_readiness_evidence_manifest.py"
       # The regression certifier accepts this workflow only when the passed
       # PR tree is identical to the assessed main tree. Changes to that
       # verifier must therefore rerun isolated lifecycle QA.
