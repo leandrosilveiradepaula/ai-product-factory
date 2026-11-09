@@ -2,6 +2,8 @@
 
 **Decisão do proprietário: 09/11/2026. Prioridade única: concluir a certificação da própria Factory; não expandir funcionalidades ou iniciar produtos paralelos para inflar a contagem.**
 
+A [memória operacional da Factory](../MEMORY.md) preserva a decisão e a sequência para novos chats/agentes, mas não substitui a certificação atual.
+
 Este plano complementa [AGENTS.md](../AGENTS.md), [contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md), [matriz de seis domínios](FINAL_CERTIFICATION_MATRIX_20261026.md) e [issue #713](https://github.com/leandrosilveiradepaula/ai-product-factory/issues/713). Deve ser lido **antes de criar issues, branches, PRs, Starts ou novos workflows**. O código e as evidências atuais prevalecem sobre qualquer snapshot deste documento.
 
 ## 1. Objetivo e definição de conclusão
