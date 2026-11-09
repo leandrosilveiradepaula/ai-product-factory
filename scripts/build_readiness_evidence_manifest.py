@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 
 from ai_product_factory.existing_project_github_inventory import _get as github_read
@@ -86,22 +87,31 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 evidence=list(proof.evidence),
             )
     health_proof = None
+    health_blocker = None
     if verify_health:
         try:
             health_proof = verify_health_for_certification(
                 repository=repository, assessed_commit=sha, github_get=github_get,
             )
-        except (HealthEvidenceBlocked, ValueError, RuntimeError, OSError,
-                KeyError, TypeError, UnicodeError):
-            # Failure remains MISSING: no guessed deployment, no synthetic
-            # scheduler events and no unverified data-driven PASS.
-            health_proof = None
+        except HealthEvidenceBlocked as exc:
+            # The verifier exposes only fixed internal error codes; never
+            # record URLs, provider payloads or credentials in the receipt.
+            code = str(exc)
+            health_blocker = (code if re.fullmatch(r"health_[a-z0-9_]{1,96}", code)
+                              else "health_evidence_source_unavailable")
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
+            health_blocker = "health_evidence_source_unavailable"
         if health_proof is not None:
             health = manifest["criteria"]["observability_operations"]["health"]
             health.update(
                 status="passed", verification_state=health_proof.verification_state,
                 reason="independent current-SHA live health attestation",
                 evidence=list(health_proof.evidence),
+            )
+        elif health_blocker is not None:
+            manifest["criteria"]["observability_operations"]["health"].update(
+                status="missing",
+                reason="independent operational health evidence blocked: " + health_blocker,
             )
     setup_proof = None
     if verify_setup:
