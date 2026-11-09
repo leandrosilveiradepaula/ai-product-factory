@@ -62,6 +62,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: npm ci
+      - name: Execute Block 1 B2 denied Console HTTP handlers and Auth/RBAC boundaries
+        run: node ../../scripts/test_block1_b2_console_boundary.cjs
       - name: Test exact Console visual target and deployment identity guards
         run: node ../../scripts/test_console_visual_deployment.mjs
       - name: Test complete operational health reader
