@@ -56,6 +56,10 @@ from inventory_block1_simulation_paths import inventory as scan_simulation_sourc
 from audit_block1_mock_runtime_reachability import audit as audit_simulation_reachability
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
+# Checkout root is the script's location, never mutable working directory.
+# Evidence collection can run after other verifiers and OIDC actions.
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
+
 
 def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_native_v2: bool = False,
@@ -256,31 +260,44 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         for criterion in ("surface_inventory", "responsive", "accessibility"):
             manifest["criteria"]["product_experience"][criterion]["reason"] = authenticated_console_blocker
 
-    # Source scan is deliberately BOUNDED: full Python marker inventory and
-    # static runtime_cli closure, not dynamic reachability of every entrypoint.
-    # It may add partial information but cannot approve the criterion.
+    # This is a BOUNDED static inventory only. It never certifies runtime
+    # reachability, authorization, E2E or release. The exact-SHA CI check is
+    # retained while independent dynamic ingress proof remains missing.
     if verify_static_simulation_inventory:
+        entry = manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
         try:
-            source_inventory = scan_simulation_sources(Path.cwd())
-            reachable = audit_simulation_reachability(Path.cwd())
-            if (source_inventory["source_files"] > 0
-                    and source_inventory["writes_to_production"] == 0
-                    and source_inventory["paid_calls"] == 0
-                    and reachable["reachable_modules"]
-                    and reachable["independent_pass"] is False):
-                entry = manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
-                entry.update(
-                    status="partial", verification_state="reviewed",
-                    reason=("full Python source marker inventory and static runtime_cli closure only; "
-                            + ("unclassified static markers remain; " if reachable["unclassified_runtime_markers"] else "")
-                            + "dynamic production entrypoints remain unverified"),
-                    evidence=["https://github.com/" + repository + "/actions/runs/"
-                              + str(manifest["source_snapshot"]["validation_run_id"]) + "#sha=" + sha],
-                )
+            source_inventory = scan_simulation_sources(SOURCE_ROOT)
         except (ValueError, SyntaxError, OSError, KeyError, TypeError, UnicodeError):
-            manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]["reason"] = (
-                "simulation source inventory unavailable or unclassified"
-            )
+            # Do not leak exception details: source may contain credentials.
+            entry["reason"] = "simulation_source_scan_unavailable"
+        else:
+            try:
+                reachable = audit_simulation_reachability(SOURCE_ROOT)
+            except (ValueError, SyntaxError, OSError, KeyError, TypeError, UnicodeError):
+                entry["reason"] = "simulation_reachability_scan_unavailable"
+            else:
+                if (source_inventory.get("scope") == "source_markers_not_runtime_reachability"
+                        and type(source_inventory.get("source_files")) is int
+                        and source_inventory["source_files"] > 0
+                        and source_inventory.get("writes_to_production") == 0
+                        and source_inventory.get("paid_calls") == 0
+                        and reachable.get("scope") == "static-runtime-cli-import-closure-and-guard-classification-not-runtime-proof"
+                        and isinstance(reachable.get("reachable_modules"), list)
+                        and "runtime_cli" in reachable["reachable_modules"]
+                        and isinstance(reachable.get("unclassified_runtime_markers"), list)
+                        and reachable.get("independent_pass") is False):
+                    entry.update(
+                        status="partial", verification_state="reviewed",
+                        reason=("complete local Python marker scan and bounded static import closure; "
+                                + ("unclassified markers remain; " if reachable["unclassified_runtime_markers"] else "")
+                                + "dynamic production entrypoints remain unverified"),
+                        # The conservative manifest already bound this
+                        # CI URL to the exact SHA. It has no source_snapshot
+                        # key; that belongs to the final report envelope.
+                        evidence=list(manifest["criteria"]["test_strategy"]["regression_gates"]["evidence"]),
+                    )
+                else:
+                    entry["reason"] = "simulation_inventory_source_contract_unverified"
     requirements_proof = None
     if verify_requirements_inventory:
         try:

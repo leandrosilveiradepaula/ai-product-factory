@@ -202,20 +202,49 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertFalse(report["product_ready"])
 
     def test_mock_inventory_is_bounded_partial_never_a_fabricated_pass(self):
+        # This executes BOTH original scanners on the actual source tree.
         report = build_verified_baseline(
             repository=REPO, sha=SHA, github_get=lambda path: github()[path],
             verify_static_simulation_inventory=True,
         )
         row = report["manifest"]["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
-        # A source scan alone must never force partial/PASS: if the
-        # import-closure audit cannot establish its bounded provenance,
-        # retaining missing is the correct fail-closed result.
-        self.assertIn(row["status"], {"missing", "partial"})
-        if row["status"] == "partial":
-            self.assertIn("dynamic production entrypoints remain unverified", row["reason"])
-        else:
-            self.assertIn("simulation source inventory unavailable", row["reason"])
+        self.assertEqual(row["status"], "partial", row["reason"])
+        self.assertIn("dynamic production entrypoints remain unverified", row["reason"])
+        self.assertNotEqual(row["status"], "passed")
         self.assertFalse(report["product_ready"])
+
+    def test_source_inventory_uses_checkout_root_not_process_cwd(self):
+        # Changing the worker's working directory must never silently
+        # invalidate a source proof: it was the actual post-CI failure mode.
+        with patch("build_readiness_evidence_manifest.Path.cwd",
+                   return_value=Path("/outside-checkout/none")):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_static_simulation_inventory=True,
+            )
+        row = report["manifest"]["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
+        self.assertEqual(row["status"], "partial", row["reason"])
+        self.assertFalse(report["product_ready"])
+
+    def test_source_inventory_failure_remains_missing_and_never_leaks_secrets(self):
+        for target, diagnostic in (
+            ("build_readiness_evidence_manifest.scan_simulation_sources",
+             "simulation_source_scan_unavailable"),
+            ("build_readiness_evidence_manifest.audit_simulation_reachability",
+             "simulation_reachability_scan_unavailable"),
+        ):
+            with self.subTest(target=target):
+                with patch(target, side_effect=OSError("secret=DO_NOT_LEAK")):
+                    report = build_verified_baseline(
+                        repository=REPO, sha=SHA,
+                        github_get=lambda path: github()[path],
+                        verify_static_simulation_inventory=True,
+                    )
+                self.assertNotIn("DO_NOT_LEAK", json.dumps(report))
+                row = report["manifest"]["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
+                self.assertEqual(row["status"], "missing")
+                self.assertEqual(row["reason"], diagnostic)
+                self.assertFalse(report["product_ready"])
 
     def test_requirements_source_failure_fails_closed_without_leaking_remote_errors(self):
         from trace_block1_requirements import RequirementsInventoryBlocked
