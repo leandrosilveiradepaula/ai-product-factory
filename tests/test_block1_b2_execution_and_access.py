@@ -107,5 +107,60 @@ class IsolatedRoleEvidenceContract(unittest.TestCase):
         self.assertIn('FACTORY_CONTROL_TEST_ISOLATED: "true"', workflow)
 
 
+class DirectIssueBoundaryEvidence(unittest.TestCase):
+    """Execute real Direct worker with sentinels; no network, models or GitHub writes."""
+
+    def test_blocked_and_decision_outputs_never_create_issue_or_pr(self):
+        from ai_product_factory.execution_worker import (
+            DirectExecutionItem, DirectExecutionWorker, ImplementationArtifact,
+            ImplementationBlocked,
+        )
+
+        class Producer:
+            def __init__(self, artifact):
+                self.artifact = artifact
+
+            def produce(self, item):
+                return self.artifact
+
+        class Materializer:
+            def __init__(self):
+                self.calls = 0
+
+            def ensure_issue(self, item):
+                self.calls += 1
+                raise AssertionError("blocked work created an issue")
+
+        class Delivery:
+            def start_issue(self, **kwargs):
+                raise AssertionError("blocked work reached delivery")
+
+        item = DirectExecutionItem(
+            run_id="synthetic-run", task_id="synthetic-task",
+            project_key="synthetic", repository="owner/repo",
+            issue_number=None, title="Synthetic", description="No work",
+            branch="synthetic/blocked",
+        )
+        for reason, decision in (
+            ("blocked", None),
+            ("demo", None),
+            ("", None),
+            (None, {"decision_kind": "material_requirement_change"}),
+        ):
+            with self.subTest(reason=reason, decision=decision):
+                artifact = ImplementationArtifact(
+                    "# Plan", {"app.py": "content"}, "feat: x", "PR", "body",
+                    blocked_reason=reason, decision_needed=decision,
+                )
+                materializer = Materializer()
+                worker = DirectExecutionWorker(
+                    loop=Delivery(), producer=Producer(artifact),
+                    issue_materializer=materializer,
+                )
+                with self.assertRaises(ImplementationBlocked):
+                    worker.execute(item)
+                self.assertEqual(materializer.calls, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

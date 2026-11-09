@@ -29,9 +29,11 @@ class DirectExecutionWorker:
  def __init__(self,*,loop:AutonomousGitHubLoop,producer:ImplementationProducer,issue_materializer:IssueMaterializer|None=None)->None:self.loop=loop;self.producer=producer;self.issue_materializer=issue_materializer
  def execute(self,item:DirectExecutionItem)->GitHubWorkSession:
   if item.human_gate_required:raise PermissionError("task requires human approval before implementation")
-  if item.issue_number is None:
-   if self.issue_materializer is None:raise RuntimeError("GitHub issue is required before Direct execution")
-   item=self.issue_materializer.ensure_issue(item)
+  # Never spend on generation when the missing issue cannot be materialized.
+  # But do not publish an issue until the artifact has passed its independent
+  # blocked/decision checks. An unexecutable producer response is not a Start.
+  if item.issue_number is None and self.issue_materializer is None:
+   raise RuntimeError("GitHub issue is required before Direct execution")
   artifact=self.producer.produce(item)
   # The delivery boundary must not trust a producer implementation to enforce
   # its own blocked/decision contract. A blocked artifact never reaches GitHub
@@ -47,6 +49,10 @@ class DirectExecutionWorker:
   if any(not isinstance(path,str) or not path.strip()
          or not isinstance(content,str) for path,content in artifact.files.items()):
    raise ValueError("implementation producer returned malformed files")
+  if item.issue_number is None:
+   item=self.issue_materializer.ensure_issue(item)
+   if not isinstance(item,DirectExecutionItem) or not isinstance(item.issue_number,int) or isinstance(item.issue_number,bool) or item.issue_number < 1:
+    raise ValueError("issue materializer did not return a valid bound issue")
   session=self.loop.start_issue(issue_number=item.issue_number,branch=item.branch,run_id=item.run_id,plan_markdown=artifact.plan_markdown)
   self.loop.commit_implementation(session,files=artifact.files,message=artifact.commit_message)
   return self.loop.open_pull_request(session,title=artifact.pr_title,body=artifact.pr_body)
