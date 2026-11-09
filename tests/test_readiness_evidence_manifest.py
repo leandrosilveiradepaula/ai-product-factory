@@ -142,6 +142,41 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertEqual(entry["status"], "partial")
         self.assertIn("regression_evidence_source_unavailable", entry["reason"])
 
+    def test_health_blocker_is_durable_without_false_positive(self):
+        from ai_product_factory.independent_health_evidence import HealthEvidenceBlocked
+        with patch("build_readiness_evidence_manifest.verify_health_for_certification",
+                   side_effect=HealthEvidenceBlocked("health_scheduler_cadence_invalid")):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_health=True,
+            )
+        row = report["manifest"]["criteria"]["observability_operations"]["health"]
+        self.assertEqual(row["status"], "missing")
+        self.assertEqual(row["reason"],
+                         "independent operational health evidence blocked: health_scheduler_cadence_invalid")
+        self.assertFalse(report["product_ready"])
+
+    def test_health_provider_errors_never_leak_secrets(self):
+        with patch("build_readiness_evidence_manifest.verify_health_for_certification",
+                   side_effect=OSError("provider secret=DO_NOT_LEAK")):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                verify_health=True,
+            )
+        self.assertNotIn("DO_NOT_LEAK", json.dumps(report))
+        self.assertEqual(
+            report["manifest"]["criteria"]["observability_operations"]["health"]["reason"],
+            "independent operational health evidence blocked: health_evidence_source_unavailable",
+        )
+
+    def test_post_ci_certifier_has_time_for_both_live_verifications(self):
+        yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+        job = yaml.split("\n  product-readiness-certification-post-ci:", 1)[1].split(
+            "\n  global-readiness-post-ci:", 1)[0]
+        self.assertIn("timeout-minutes: 15", job)
+        self.assertIn("Persist independently reverified criterion states on exact-SHA", job)
+        self.assertIn("Collect exact-SHA CI, operations and independent security evidence", job)
+
     def test_observer_identity_remains_read_only_and_preserves_both_receipts(self):
         yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         job = yaml.split("\n  global-readiness-post-ci:", 1)[1].split("\n  owner-start:", 1)[0]

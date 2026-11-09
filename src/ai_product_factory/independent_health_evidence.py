@@ -94,7 +94,11 @@ def verify_probes(
     )
     require(len(events) >= 2, "health_scheduler_pair_missing")
     dates = []
-    for event in events[:2]:
+    # A genuine VPS cadence can include extra authorized dispatch probes.
+    # Validate EVERY newer/intermediate record; use the first sufficiently
+    # older valid observation for cadence instead of rejecting a harmless
+    # more-frequent observation. Never skip a malformed or forged event.
+    for event in events:
         require(
             event.get("event_type") == "schedule_probe.observed"
             and event.get("actor_type") == "system"
@@ -135,13 +139,14 @@ def verify_probes(
             now - timedelta(minutes=50) <= observed <= now + timedelta(seconds=90),
             "health_scheduler_event_stale_or_future",
         )
+        if dates:
+            require(dates[-1] > observed, "health_scheduler_cadence_invalid")
         dates.append(observed)
-    require(
-        dates[0] > dates[1] and dates[0] - dates[1] >= timedelta(minutes=10)
-        and now - dates[0] <= timedelta(minutes=25),
-        "health_scheduler_cadence_invalid",
-    )
-    return dates[0].isoformat(), dates[1].isoformat()
+        if len(dates) > 1 and dates[0] - observed >= timedelta(minutes=10):
+            require(now - dates[0] <= timedelta(minutes=25),
+                    "health_scheduler_cadence_invalid")
+            return dates[0].isoformat(), observed.isoformat()
+    raise HealthEvidenceBlocked("health_scheduler_cadence_invalid")
 
 
 def verify_control_plane(cp_get: Callable[[str], object]) -> int:

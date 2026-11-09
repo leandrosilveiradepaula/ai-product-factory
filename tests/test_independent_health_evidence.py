@@ -156,6 +156,34 @@ class IndependentHealthTests(unittest.TestCase):
             with self.subTest(mutation=repr(mutation)), self.assertRaises(HealthEvidenceBlocked):
                 Sources(d).verify()
 
+    def test_valid_extra_probe_does_not_invalidate_authoritative_cadence(self):
+        d = data()
+        # 8 minutes apart is a valid extra observation, not a missing wake.
+        # The third, source-validated event is 30 minutes before the newest.
+        d["events"][1]["created_at"] = (NOW - timedelta(minutes=12)).isoformat()
+        proof = Sources(d).verify()
+        self.assertEqual(proof.last_probe, (NOW - timedelta(minutes=4)).isoformat())
+        self.assertEqual(proof.previous_probe, (NOW - timedelta(minutes=34)).isoformat())
+
+    def test_extra_probes_cannot_hide_invalid_or_unproven_cadence(self):
+        d = data()
+        d["events"][1]["created_at"] = (NOW - timedelta(minutes=12)).isoformat()
+        for mutation in ("forged_intermediate", "clock_replay", "no_spaced_pair",
+                         "false_idle", "stale"):
+            altered = copy.deepcopy(d)
+            if mutation == "forged_intermediate":
+                altered["events"][1]["actor_ref"] = "attacker"
+            elif mutation == "clock_replay":
+                altered["events"][1]["created_at"] = altered["events"][0]["created_at"]
+            elif mutation == "no_spaced_pair":
+                altered["events"][2]["created_at"] = (NOW - timedelta(minutes=13)).isoformat()
+            elif mutation == "false_idle":
+                altered["events"][1]["payload"]["queue_diagnostics"]["queued_tasks"] = 2
+            elif mutation == "stale":
+                altered["events"][2]["created_at"] = (NOW - timedelta(minutes=60)).isoformat()
+            with self.subTest(mutation=mutation), self.assertRaises(HealthEvidenceBlocked):
+                Sources(altered).verify()
+
     def test_two_latest_scheduler_events_not_old_selected_success(self):
         for mutation in (
             lambda d: d.update(events=d["events"][:1]),
