@@ -27,12 +27,50 @@ class RegressionEvidenceTests(unittest.TestCase):
   values[ROOT+"/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100"]["workflow_runs"][0]["head_sha"]=qa
   values[ROOT+"/git/commits/"+qa]={"tree":{"sha":"d"*40}}
   values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]=[{**job,"head_sha":qa} for job in values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]]
-  with self.assertRaises(RegressionEvidenceBlocked): self.proof(values)
- def test_two_successful_postgres_qa_runs_for_same_tree_are_ambiguous(self):
+  source=[{"path":"src/source_%03d.py"%i,"type":"blob","mode":"100644","sha":"e"*40} for i in range(105)]
+  assessed=[dict(x) for x in source]
+  assessed[0]["sha"]="f"*40
+  values[ROOT+"/git/trees/"+"b"*40+"?recursive=1"]={"truncated":False,"tree":assessed}
+  values[ROOT+"/git/trees/"+"d"*40+"?recursive=1"]={"truncated":False,"tree":source}
+  with self.assertRaisesRegex(RegressionEvidenceBlocked,"regression_postgres_matching_tree_missing"):
+   self.proof(values)
+ def test_duplicate_successful_postgres_qa_uses_latest_verified_run(self):
   values=fixture()
   endpoint=ROOT+"/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100"
   values[endpoint]["workflow_runs"].append({**values[endpoint]["workflow_runs"][0],"id":10})
+  values[ROOT+"/actions/runs/10/jobs?per_page=100"]={
+      "jobs":[{**job,"run_id":10} for job in values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]]}
+  proof=self.proof(values)
+  self.assertEqual(proof.retained_receipt["postgres_qa"]["run_id"],10)
+
+ def test_docs_only_change_reuses_executed_postgres_with_exact_code_blobs(self):
+  values=fixture()
+  source="c"*40
+  source_tree="d"*40
+  values[ROOT+"/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100"]["workflow_runs"][0]["head_sha"]=source
+  values[ROOT+"/git/commits/"+source]={"tree":{"sha":source_tree}}
+  values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]=[
+      {**job,"head_sha":source} for job in values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]]
+  base=[{"path":"src/source_%03d.py"%i,"type":"blob","mode":"100644","sha":"e"*40}
+        for i in range(105)]
+  values[ROOT+"/git/trees/"+source_tree+"?recursive=1"]={
+      "truncated":False,"tree":[dict(item) for item in base]+[{"path":"docs/FINALIZATION_EXECUTION_CONTRACT.md",
+                                     "type":"blob","mode":"100644","sha":"f"*40}]}
+  values[ROOT+"/git/trees/"+"b"*40+"?recursive=1"]={
+      "truncated":False,"tree":[dict(item) for item in base]+[{"path":"docs/FINALIZATION_EXECUTION_CONTRACT.md",
+                                     "type":"blob","mode":"100644","sha":"a"*40}]}
+  proof=self.proof(values)
+  receipt=proof.retained_receipt["postgres_qa"]
+  self.assertEqual(receipt["source_sha"],source)
+  self.assertEqual(receipt["scope"],"identical_non_markdown_git_blobs")
+  self.assertEqual(len(receipt["non_document_tree_digest"]),64)
+  # Executable changes cannot exploit the documentation exception.
+  values[ROOT+"/git/trees/"+"b"*40+"?recursive=1"]["tree"][0]["sha"]="7"*40
   with self.assertRaisesRegex(RegressionEvidenceBlocked,"regression_postgres_matching_tree_missing"):
+   self.proof(values)
+  # Unknown/missing Git tree entries cannot be used as a match either.
+  values[ROOT+"/git/trees/"+"b"*40+"?recursive=1"]["truncated"]=True
+  with self.assertRaisesRegex(RegressionEvidenceBlocked,"regression_postgres_tree_incomplete"):
    self.proof(values)
  def test_transient_github_read_is_retried_but_permanent_failure_is_not_accepted(self):
   values=fixture(); calls=[]

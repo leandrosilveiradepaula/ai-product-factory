@@ -1,7 +1,12 @@
 """Source-bound evidence that the current operational runbooks match a real run.
 
-This verifies a bounded documentation criterion only.  It does not claim a
+This verifies a bounded documentation criterion only. It does not claim a
 production recovery, a release, or any other readiness domain.
+
+Executable operational runbooks and commands are protected by exact Git blobs;
+the product-finalization GOVERNANCE contract is separately mapped by the 19-item
+requirements inventory. Adding a planning preface to that contract cannot
+invalidate a previously executed schedule-probe and alert proof.
 """
 from __future__ import annotations
 
@@ -18,7 +23,6 @@ SOURCE_SHA = "c62297b7538ba9479aabd8f870ffd9eb142187ca"
 REQUIRED_JOBS = frozenset({"schedule-probe", "alerts"})
 SOURCE_FILES = frozenset({
     "docs/OPERATIONS.md", "docs/RELEASE_AUTONOMY.md",
-    "docs/FINALIZATION_EXECUTION_CONTRACT.md",
     "src/ai_product_factory/runtime_cli.py",
     "src/ai_product_factory/operational_alerts.py",
     "src/ai_product_factory/external_webhook_recovery.py",
@@ -137,7 +141,9 @@ def verify_operations_runbook(*, repository: str, assessed_commit: str,
         assessed_commit=assessed_commit, verification_state="reviewed",
         source="github-native-scheduled-operations-runbook:" + str(SOURCE_RUN),
         evidence=("https://github.com/" + repository + "/actions/runs/" + str(current_id) + "#sha=" + assessed_commit,),
-        retained_receipt={"source_run_id": SOURCE_RUN, "source_sha": SOURCE_SHA,
+        retained_receipt={"scope": "exact_operational_runbooks_and_executable_commands_only",
+                          "governance_contract_proved_by_this_criterion": False,
+                          "source_run_id": SOURCE_RUN, "source_sha": SOURCE_SHA,
                           "source_jobs": sorted(REQUIRED_JOBS), "upstream_validate_run_id": upstream_id,
                           "source_blobs": {k: list(v) for k, v in sorted(source_blobs.items())},
                           "assessed_commit": assessed_commit},

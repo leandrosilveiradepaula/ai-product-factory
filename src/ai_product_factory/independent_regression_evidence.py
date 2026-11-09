@@ -1,6 +1,7 @@
 """Fail-closed effective regression-gate evidence from GitHub rulesets."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -89,26 +90,86 @@ def _commit_tree(github_get: Callable[[str], object], prefix: str, sha: str) -> 
     return value
 
 
+def _non_document_tree(github_get: Callable[[str], object], prefix: str, tree_oid: str) -> dict[str, tuple[str, str, str]]:
+    """Complete Git tree with only Markdown excluded.
+
+    The isolated PostgreSQL suite validates executable sources, migration SQL,
+    scripts, CI workflows and tests. Changes solely to *.md MUST NOT silently
+    invalidate that execution; changes to any other committed file MUST.
+    """
+    listing = github_get(prefix + "/git/trees/" + tree_oid + "?recursive=1")
+    rows = listing.get("tree") if isinstance(listing, dict) else None
+    require(isinstance(listing, dict) and listing.get("truncated") is False
+            and isinstance(rows, list) and 0 < len(rows) <= 20000,
+            "regression_postgres_tree_incomplete")
+    result: dict[str, tuple[str, str, str]] = {}
+    for row in rows:
+        require(isinstance(row, dict) and isinstance(row.get("path"), str),
+                "regression_postgres_tree_entry_invalid")
+        path = row["path"]
+        if row.get("type") == "tree" or path.lower().endswith(".md"):
+            continue
+        require(row.get("type") in {"blob", "commit"}
+                and isinstance(row.get("mode"), str)
+                and isinstance(row.get("sha"), str)
+                and SHA.fullmatch(row["sha"]) is not None
+                and path not in result,
+                "regression_postgres_tree_entry_invalid")
+        result[path] = (row["type"], row["mode"], row["sha"])
+    require(len(result) >= 100, "regression_postgres_tree_insufficient")
+    return result
+
+
 def _postgres_qa(github_get: Callable[[str], object], prefix: str, sha: str) -> dict:
     runs = github_get(prefix + "/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100")
     rows = runs.get("workflow_runs") if isinstance(runs, dict) else None
     require(isinstance(rows, list) and 0 < len(rows) <= 100, "regression_postgres_inventory_invalid")
     assessed_tree = _commit_tree(github_get, prefix, sha)
-    candidates = []
-    for row in rows:
-        candidate_sha = row.get("head_sha") if isinstance(row, dict) else None
-        if not (isinstance(row, dict) and row.get("name") == POSTGRES_WORKFLOW and row.get("event") == "pull_request" and row.get("status") == "completed" and row.get("conclusion") == "success" and type(row.get("id")) is int and isinstance(candidate_sha, str) and SHA.fullmatch(candidate_sha)):
-            continue
-        if _commit_tree(github_get, prefix, candidate_sha) == assessed_tree:
-            candidates.append(row)
-    require(len(candidates) == 1, "regression_postgres_matching_tree_missing")
-    run_id = candidates[0]["id"]
-    candidate_sha = candidates[0]["head_sha"]
-    jobs = github_get(prefix + "/actions/runs/" + str(run_id) + "/jobs?per_page=100")
-    rows = jobs.get("jobs") if isinstance(jobs, dict) else None
-    names = {row.get("name") for row in rows if isinstance(row, dict) and row.get("run_id") == run_id and row.get("head_sha") == candidate_sha and row.get("status") == "completed" and row.get("conclusion") == "success"}
-    require(isinstance(rows, list) and POSTGRES_JOBS.issubset(names), "regression_postgres_jobs_invalid")
-    return {"run_id": run_id, "source_sha": candidate_sha, "tree_oid": assessed_tree}
+    current_sources = None
+    # A duplicate successful execution of the SAME verified tree is not an
+    # ambiguity. Prefer latest run with validated jobs and complete provenance.
+    candidates = sorted(
+        (row for row in rows
+         if isinstance(row, dict) and row.get("name") == POSTGRES_WORKFLOW
+         and row.get("event") == "pull_request"
+         and row.get("status") == "completed"
+         and row.get("conclusion") == "success"
+         and type(row.get("id")) is int and row["id"] > 0
+         and isinstance(row.get("head_sha"), str)
+         and SHA.fullmatch(row["head_sha"]) is not None),
+        key=lambda row: row["id"], reverse=True,
+    )
+    for candidate in candidates:
+        source_sha = candidate["head_sha"]
+        source_tree = _commit_tree(github_get, prefix, source_sha)
+        if source_tree == assessed_tree:
+            scope = "identical_git_tree"
+            digest = assessed_tree
+        else:
+            if current_sources is None:
+                current_sources = _non_document_tree(github_get, prefix, assessed_tree)
+            candidate_sources = _non_document_tree(github_get, prefix, source_tree)
+            if candidate_sources != current_sources:
+                continue
+            scope = "identical_non_markdown_git_blobs"
+            digest = hashlib.sha256(json.dumps(
+                current_sources, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")).hexdigest()
+        run_id = candidate["id"]
+        jobs = github_get(prefix + "/actions/runs/" + str(run_id) + "/jobs?per_page=100")
+        jobrows = jobs.get("jobs") if isinstance(jobs, dict) else None
+        require(isinstance(jobrows, list) and 0 < len(jobrows) <= 100,
+                "regression_postgres_jobs_invalid")
+        names = {row.get("name") for row in jobrows if isinstance(row, dict)
+                 and row.get("run_id") == run_id
+                 and row.get("head_sha") == source_sha
+                 and row.get("status") == "completed"
+                 and row.get("conclusion") == "success"}
+        require(POSTGRES_JOBS.issubset(names), "regression_postgres_jobs_invalid")
+        return {"run_id": run_id, "source_sha": source_sha,
+                "tree_oid": assessed_tree, "source_tree_oid": source_tree,
+                "scope": scope, "non_document_tree_digest": digest}
+    raise RegressionEvidenceBlocked("regression_postgres_matching_tree_missing")
 
 
 def _upstream_validate_event(event_payload: Mapping[str, object], *, assessed_commit: str) -> int:
