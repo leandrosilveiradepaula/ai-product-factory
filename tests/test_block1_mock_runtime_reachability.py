@@ -68,6 +68,24 @@ class RuntimeSimulationReachabilityTests(unittest.TestCase):
             report = module.audit(root)
             self.assertEqual([row["constant"] for row in report["unclassified_runtime_markers"]], ["BAD"])
 
+    def test_marker_loop_unrelated_raise_is_not_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root, "src/ai_product_factory/runtime_cli.py", "from .worker import execute\n")
+            self.write(root, "src/ai_product_factory/worker.py",
+                       "BAD = {'demo'}\ndef execute(x):\n for key in BAD:\n  if x == 'invalid': raise ValueError('invalid')\n return True\n")
+            report = module.audit(root)
+            self.assertEqual([row["constant"] for row in report["unclassified_runtime_markers"]], ["BAD"])
+
+    def test_marker_loop_guard_recognized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root, "src/ai_product_factory/runtime_cli.py", "from .worker import execute\n")
+            self.write(root, "src/ai_product_factory/worker.py",
+                       "BAD = {'demo'}\ndef execute(x):\n for key in BAD:\n  if x.get(key): raise ValueError('blocked')\n return True\n")
+            report = module.audit(root)
+            self.assertEqual(report["unclassified_runtime_markers"], [])
+
     def test_marker_with_raise_is_classified_as_guard(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
