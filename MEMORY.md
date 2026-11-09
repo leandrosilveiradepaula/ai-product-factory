@@ -29,7 +29,7 @@ Metas **10/13/17/19** são apenas cenários condicionais. Provas que já são v�
 
 ## Restrições que não podem ser esquecidas
 
-- **Não sair do Bloco 1** e não transformar a solicitação "prossiga" em novo escopo. CRM é somente piloto de prova de autonomia, não foco de desenvolvimento separado. Service Desk standalone foi aposentado; não o reativar nem criar projeto descartável/Start sintético.
+- **Não sair do Bloco 1** e não transformar a solicitação "prossiga" em novo escopo. CRM Infodive é somente piloto de prova de autonomia, não foco de desenvolvimento separado. Service Desk standalone foi aposentado; não o reativar nem criar projeto descartável/Start sintético.
 - Preferir **blocos substanciais**, correção da causa raiz e testes com evidência real, não PRs cosméticas. Se não há defeito/prova nova, não mudar código para forçar 19/19.
 - No runtime, **sem auto-merge**. CI + quality + Preview não autorizam produção; parar em `awaiting_release`; release observer só reconcilia merge humano.
 - Não aplicar migrations de produção, relaxar RLS, expandir acesso sensível, destruir dados, comprar saldo/créditos ou habilitar `FACTORY_PRIMARY_MODEL_ENABLED` sem autorização real. Não rodar benchmark de 63 perguntas do Agente SQL nem chamadas pagas apenas para testar.
