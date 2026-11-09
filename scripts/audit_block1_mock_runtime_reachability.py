@@ -75,8 +75,19 @@ def _guarded_names(tree: ast.Module, constants: dict[str, set[str]]) -> set[str]
         for conditional in ast.walk(function):
             if not isinstance(conditional, ast.If):
                 continue
-            names = {node.id for node in ast.walk(conditional.test)
-                     if isinstance(node, ast.Name) and node.id in constants}
+            # A negative test ("not in BAD") followed by a raise rejects
+            # ordinary input, not the simulation marker. Require a positive
+            # membership comparison with the marker on the right.
+            names = set()
+            for comparison in ast.walk(conditional.test):
+                if not isinstance(comparison, ast.Compare):
+                    continue
+                operands = [comparison.left, *comparison.comparators]
+                for operator, right in zip(comparison.ops, operands[1:]):
+                    if not isinstance(operator, ast.In):
+                        continue
+                    names.update(node.id for node in ast.walk(right)
+                                 if isinstance(node, ast.Name) and node.id in constants)
             if not names:
                 continue
             # Do not count a raise found in an unrelated else branch, nested
