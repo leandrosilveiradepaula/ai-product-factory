@@ -21,7 +21,9 @@ from ai_product_factory.independent_recovery_evidence import verify_recovery_ale
 from ai_product_factory.independent_operations_evidence import verify_operations_runbook
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
+    verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 
 
 def _github_get(token: str):
@@ -75,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-recovery-alerting", action="store_true")
     parser.add_argument("--verify-operations-runbook", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
+    parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -91,6 +94,14 @@ def main(argv: list[str] | None = None) -> int:
             workflow_run_id=args.authenticated_console_run_id,
             github_get=_github_get(token),
         )
+    elif args.reuse_historical_authenticated_console_evidence and "authenticated_console_evidence" in evidence:
+        proof = verify_reusable_historical_authenticated_console_evidence(
+            repository=args.repository, assessed_commit=args.assessed_commit,
+            github_get=_github_get(token), control_plane_get=SupabaseAdmissionReader()._get,
+        )
+    else:
+        proof = None
+    if proof is not None:
         if evidence.get("authenticated_console_evidence") != proof.receipt():
             raise CertificationEvidenceError("authenticated Console receipt changed before persistence")
         for criterion in ("surface_inventory", "responsive", "accessibility"):

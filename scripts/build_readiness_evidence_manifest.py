@@ -45,7 +45,9 @@ from ai_product_factory.independent_operations_evidence import (
 )
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
+    verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
@@ -58,7 +60,9 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_regression_gates: bool = False,
                             verify_recovery_alerting: bool = False,
                             verify_operations_runbook: bool = False,
-                            authenticated_console_run_id: int | None = None) -> dict:
+                            authenticated_console_run_id: int | None = None,
+                            reuse_historical_authenticated_console_evidence: bool = False,
+                            control_plane_get=None) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -198,14 +202,25 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             # A missing/expired/mismatched browser artifact must never become
             # a UX claim or a durable partial result.
             authenticated_console_proof = None
-        if authenticated_console_proof is not None:
-            for criterion in ("surface_inventory", "responsive", "accessibility"):
-                entry = manifest["criteria"]["product_experience"][criterion]
-                entry.update(
-                    status="partial", verification_state="observed",
-                    reason="authenticated Console metadata verifies a bounded browser capture; full criterion review remains required",
-                    evidence=list(authenticated_console_proof.evidence),
-                )
+    elif reuse_historical_authenticated_console_evidence:
+        try:
+            if control_plane_get is None:
+                raise AuthenticatedConsoleEvidenceBlocked("Control Plane reader unavailable")
+            authenticated_console_proof = verify_reusable_historical_authenticated_console_evidence(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+                control_plane_get=control_plane_get,
+            )
+        except (AuthenticatedConsoleEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            authenticated_console_proof = None
+    if authenticated_console_proof is not None:
+        for criterion in ("surface_inventory", "responsive", "accessibility"):
+            entry = manifest["criteria"]["product_experience"][criterion]
+            entry.update(
+                status="partial", verification_state="observed",
+                reason="authenticated Console metadata verifies a bounded browser capture; full criterion review remains required",
+                evidence=list(authenticated_console_proof.evidence),
+            )
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -270,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-recovery-alerting", action="store_true")
     parser.add_argument("--verify-operations-runbook", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
+    parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if (not args.event_path.is_file()
@@ -279,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
     sha, _, _ = resolve_observer_event(event, repo)
     token = resolve_github_token(repo)
     github_get = lambda path: github_read(token, path)
+    control_plane_get = (SupabaseAdmissionReader()._get
+                         if args.reuse_historical_authenticated_console_evidence else None)
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
@@ -290,6 +308,8 @@ def main(argv: list[str] | None = None) -> int:
         verify_recovery_alerting=args.verify_recovery_alerting,
         verify_operations_runbook=args.verify_operations_runbook,
         authenticated_console_run_id=args.authenticated_console_run_id,
+        reuse_historical_authenticated_console_evidence=args.reuse_historical_authenticated_console_evidence,
+        control_plane_get=control_plane_get,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
