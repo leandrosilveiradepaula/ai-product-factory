@@ -1,5 +1,9 @@
 # Contrato de finalização da AI Product Factory — Infodive
 
+## Plano vinculante de fechamento dos 19 critérios (09/11/2026)
+
+A sequência operacional aprovada para a própria Factory é [PLANO_CERTIFICACAO_19_CRITERIOS.md](PLANO_CERTIFICACAO_19_CRITERIOS.md): B1 inventário; B2 segurança e runtime; B3 Console/UX integral; B4 jornadas reais e E2E. O plano obriga revalidação por SHA, testes executados e certificação durável no Control Plane, não cria novos produtos ou autoriza contornar gates. Preserva integralmente as exigências cumulativas deste contrato, inclusive **jornada greenfield real autorizada** e merge humano de produção. Em conflito com registros históricos de execução, consultar a fonte atual do Control Plane e manter as exigências de segurança e prova deste contrato.
+
 ## Atualização vinculante — 27/10/2026: Service Desk independente aposentado
 
 **Esta decisão substitui a sequência F6 histórica nas seções 2 e 3 quando houver conflito.** O proprietário definiu que Service Desk é módulo do CRM Infodive, não produto greenfield autônomo. A PR CRM [#201](https://github.com/leandrosilveiradepaula/crm-infodive/pull/201) foi mergeada humanamente (merge SHA `5072e0ea311e27ce4b5e2382e32399deece5adf8`); o schema `service_desk` e as migrations aditivas foram aplicados **no Supabase existente do CRM**, sem substituir Auth, contas ou perfis. O projeto independente `infodive-service-desk` foi parado via controle autenticado da Factory, confirmado no Control Plane em `2026-10-27T17:59:48Z`, `state=stopped`, `version=1`, 0 tarefas ativas. CRM e Factory continuam `running`.
