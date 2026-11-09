@@ -32,10 +32,11 @@ class RequirementTraceabilityTests(unittest.TestCase):
     def test_digest_only_and_no_source_contents(self):
         result = matrix(ROOT)
         for row in result["requirements"]:
-            self.assertEqual(set(row), {"criterion", "candidate_sources", "missing_sources",
+            self.assertEqual(set(row), {"criterion", "journey_stages", "candidate_sources", "missing_sources",
                                         "independent_execution_verified", "source_inventory_status",
                                         "certification_status"})
             self.assertTrue(all(len(x["sha256"]) == 64 for x in row["candidate_sources"]))
+            self.assertTrue(row["journey_stages"])
 
 
 if __name__ == "__main__":

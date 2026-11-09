@@ -183,3 +183,22 @@ execução do teste, resultado e escopo. Onde existir apenas declaração textua
 reportar `partial` ou `missing`. A avaliação nova deve substituir a anterior
 somente depois do fechamento de novas células. Cron, PR verde, status `running`
 e 19 campos preenchidos não substituem certificação.
+
+## 09/11/2026 — Inventário independente de requisitos e simulações
+
+A célula \`functional_completeness/requirements_inventory\` é um inventário dos
+19 critérios, **não** uma declaração de que foram implementados. O verificador
+vincula cada critério à(s) etapa(s) da jornada, ao código/teste/documentação e ao
+estado atual (inclusive \`missing\`/ \`partial\`), exige identidade GitHub
+\`workflow_run\` → \`validate/push/main\`, os dois jobs de CI aprovados no SHA,
+árvore recursiva completa e bytes locais idênticos aos Git blobs. O atestado
+é repetido no produtor e no persistidor; qualquer divergência bloqueia.
+
+\`mock_noop_demo_inventory\` continua no máximo **partial**: a varredura de
+marcadores em todo \`src/ai_product_factory\` e análise estática da árvore de
+imports de \`runtime_cli\` não certificam todas as entradas dinâmicas da
+Factory/Console, nem garantem que um mock não execute em produção. A conclusão
+dessa célula exige prova independente de cada entrypoint e testes negativos,
+sem habilitar bypass. \`critical_journeys\`, \`critical_e2e\`, segurança e
+a11y continuam sujeitos a provas próprias. Não houve Start, deploy Vercel,
+migration, ampliação de RLS, chamada paga ou liberação de merge.

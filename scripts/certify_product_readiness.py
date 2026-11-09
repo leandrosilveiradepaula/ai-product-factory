@@ -24,6 +24,7 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     verify_reusable_historical_authenticated_console_evidence,
 )
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
+from trace_block1_requirements import verify_requirements_inventory
 
 
 def _github_get(token: str):
@@ -76,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-regression-gates", action="store_true")
     parser.add_argument("--verify-recovery-alerting", action="store_true")
     parser.add_argument("--verify-operations-runbook", action="store_true")
+    parser.add_argument("--verify-requirements-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
@@ -206,6 +208,19 @@ def main(argv: list[str] | None = None) -> int:
                 repository=args.repository, assessed_commit=args.assessed_commit,
                 github_get=github_get,
             )
+    requirements_proof = None
+    if args.verify_requirements_inventory:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError("requirements proof requires independent verified baseline")
+        row = manifest.get("criteria", {}).get("functional_completeness", {}).get("requirements_inventory")
+        if isinstance(row, dict) and row.get("status") == "passed":
+            # Recalculate exact same Git tree, source bytes, 19 stages and all
+            # OTHER criterion states. No JSON-provided proof is trusted.
+            requirements_proof = verify_requirements_inventory(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                github_get=github_get, criteria=manifest["criteria"],
+            )
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -223,12 +238,14 @@ def main(argv: list[str] | None = None) -> int:
             return recovery_proof
         if (domain, criterion) == ("documentation", "operations"):
             return operations_proof
+        if (domain, criterion) == ("functional_completeness", "requirements_inventory"):
+            return requirements_proof
         return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]

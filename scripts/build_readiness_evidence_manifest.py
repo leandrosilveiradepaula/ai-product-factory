@@ -49,6 +49,11 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     verify_reusable_historical_authenticated_console_evidence,
 )
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
+from trace_block1_requirements import (
+    RequirementsInventoryBlocked, verify_requirements_inventory as verify_requirements_inventory_fn,
+)
+from inventory_block1_simulation_paths import inventory as scan_simulation_sources
+from audit_block1_mock_runtime_reachability import audit as audit_simulation_reachability
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 
 
@@ -61,6 +66,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_regression_gates: bool = False,
                             verify_recovery_alerting: bool = False,
                             verify_operations_runbook: bool = False,
+                            verify_requirements_inventory: bool = False,
+                            verify_static_simulation_inventory: bool = False,
                             authenticated_console_run_id: int | None = None,
                             reuse_historical_authenticated_console_evidence: bool = False,
                             control_plane_get=None) -> dict:
@@ -249,6 +256,55 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         for criterion in ("surface_inventory", "responsive", "accessibility"):
             manifest["criteria"]["product_experience"][criterion]["reason"] = authenticated_console_blocker
 
+    # Source scan is deliberately BOUNDED: full Python marker inventory and
+    # static runtime_cli closure, not dynamic reachability of every entrypoint.
+    # It may add partial information but cannot approve the criterion.
+    if verify_static_simulation_inventory:
+        try:
+            source_inventory = scan_simulation_sources(Path.cwd())
+            reachable = audit_simulation_reachability(Path.cwd())
+            if (source_inventory["source_files"] > 0
+                    and source_inventory["marker_occurrences_by_line"] > 0
+                    and source_inventory["writes_to_production"] == 0
+                    and source_inventory["paid_calls"] == 0
+                    and reachable["reachable_modules"]
+                    and not reachable["unclassified_runtime_markers"]
+                    and reachable["independent_pass"] is False):
+                entry = manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
+                entry.update(
+                    status="partial", verification_state="reviewed",
+                    reason="full Python source marker inventory and static runtime_cli closure only; dynamic production entrypoints remain unverified",
+                    evidence=["https://github.com/" + repository + "/actions/runs/"
+                              + str(manifest["source_snapshot"]["validation_run_id"]) + "#sha=" + sha],
+                )
+        except (ValueError, SyntaxError, OSError, KeyError, TypeError, UnicodeError):
+            manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]["reason"] = (
+                "simulation source inventory unavailable or unclassified"
+            )
+    requirements_proof = None
+    if verify_requirements_inventory:
+        try:
+            requirements_proof = verify_requirements_inventory_fn(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+                criteria=manifest["criteria"],
+            )
+        except RequirementsInventoryBlocked as exc:
+            code = str(exc)
+            safe = (code if re.fullmatch(r"requirements_[a-z0-9_]{1,96}", code)
+                    else "requirements_source_unavailable")
+            manifest["criteria"]["functional_completeness"]["requirements_inventory"]["reason"] = (
+                "independent requirements inventory blocked: " + safe
+            )
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
+            manifest["criteria"]["functional_completeness"]["requirements_inventory"]["reason"] = (
+                "independent requirements inventory source unavailable"
+            )
+        if requirements_proof is not None:
+            item = manifest["criteria"]["functional_completeness"]["requirements_inventory"]
+            item.update(status="passed", verification_state="reviewed",
+                        reason="independently mapped 19 acceptance criteria, lifecycle stages and current gaps on exact Git tree",
+                        evidence=list(requirements_proof.evidence))
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -266,12 +322,14 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return recovery_proof
         if (domain, criterion) == ("documentation", "operations"):
             return operations_proof
+        if (domain, criterion) == ("functional_completeness", "requirements_inventory"):
+            return requirements_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -312,6 +370,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-regression-gates", action="store_true")
     parser.add_argument("--verify-recovery-alerting", action="store_true")
     parser.add_argument("--verify-operations-runbook", action="store_true")
+    parser.add_argument("--verify-requirements-inventory", action="store_true")
+    parser.add_argument("--verify-static-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
@@ -335,6 +395,8 @@ def main(argv: list[str] | None = None) -> int:
         verify_regression_gates=args.verify_regression_gates,
         verify_recovery_alerting=args.verify_recovery_alerting,
         verify_operations_runbook=args.verify_operations_runbook,
+        verify_requirements_inventory=args.verify_requirements_inventory,
+        verify_static_simulation_inventory=args.verify_static_simulation_inventory,
         authenticated_console_run_id=args.authenticated_console_run_id,
         reuse_historical_authenticated_console_evidence=args.reuse_historical_authenticated_console_evidence,
         control_plane_get=control_plane_get,

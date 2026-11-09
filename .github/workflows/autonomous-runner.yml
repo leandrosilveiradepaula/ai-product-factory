@@ -1612,6 +1612,8 @@ jobs:
               --verify-regression-gates \
               --verify-recovery-alerting \
               --verify-operations-runbook \
+              --verify-requirements-inventory \
+            --verify-static-simulation-inventory \
             "${visual_args[@]}"
       # Evidence collection can take several minutes. Mint a fresh, pinned
       # broker token only after it is complete and immediately before the
@@ -1638,6 +1640,7 @@ jobs:
               --verify-regression-gates \
               --verify-recovery-alerting \
               --verify-operations-runbook \
+              --verify-requirements-inventory \
             "${visual_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       - name: Preserve bounded certifier receipts
