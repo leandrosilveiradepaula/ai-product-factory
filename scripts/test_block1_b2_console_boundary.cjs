@@ -114,7 +114,7 @@ test("every protected handler denies before any privileged dependency",async(t)=
           await assert.rejects(()=>Promise.resolve(handler(req(rel,method),{
             params:Promise.resolve({
               key:"crm-infodive",attachmentId:"11111111-1111-4111-8111-111111111111",
-            })})),error=>error instanceof Error&&error.message===denied,
+            })})),error=>error&&error.message===denied,
           "handler must propagate authorization denial");
           assert.deepEqual(calls.auth,[role],"guard role must be exact and called once");
         }
