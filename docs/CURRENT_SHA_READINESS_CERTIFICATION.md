@@ -46,6 +46,12 @@ Provas recentes úteis, mas **não automaticamente certificadas** aqui:
 - Console Vercel: deployment atual preservado em commits sem
   `apps/console/**`; não equivale a nova auditoria autenticada de UX.
 
+Uma captura autenticada manual posterior ao `validate` pode gerar uma nova
+avaliação durável no mesmo SHA somente pelo fluxo descrito em
+[`POST_VISUAL_CERTIFICATION_RECONCILIATION.md`](POST_VISUAL_CERTIFICATION_RECONCILIATION.md).
+Ela preserva três critérios de UX como `partial`, nunca como `passed`, e não
+altera o estado de produto.
+
 Os critérios restantes exigem verificadores próprios com provas de
 execução e identidade, ou ficam explicitamente `missing`,
 `partial` ou `external_gate`. Um greenfield legítimo, autorizado e não

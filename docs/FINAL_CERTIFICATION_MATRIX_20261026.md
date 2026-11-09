@@ -40,6 +40,23 @@ evaluation or a new workflow/paid test. Source of truth:
 - Preview for this code-only Factory change is **N/A** by existing
   `apps/console/**` policy; no deployment should be manufactured.
 
+## 08/11/2026 — reconciliação segura de evidência autenticada posterior ao CI
+
+O recibo do Console [#42439592059](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42439592059)
+foi concluído no SHA `d83a7095e18244c2833d626430cb3f575eb35130` depois do
+certificador acionado por `validate`. A evidência contém workflow dispatch
+tentativa 1, job `capture` aprovado e artefato criptografado não expirado, mas
+isso não constitui uma aprovação de autenticação, RBAC, isolamento, E2E
+crítico ou UX integral.
+
+O próximo certificador de pós-captura revalida origem, `main`, SHA, tentativa,
+job e artefato antes e imediatamente antes da persistência. Se válidos, só
+`surface_inventory`, `responsive` e `accessibility` passam a `partial`; nenhum
+critério recebe `passed` por este recibo. `states`, Segurança, E2E crítico e
+Completude funcional continuam pendentes. Consultar
+[`POST_VISUAL_CERTIFICATION_RECONCILIATION.md`](POST_VISUAL_CERTIFICATION_RECONCILIATION.md)
+para contrato e recuperação fail-closed.
+
 ## 26/10/2026 — Audited provider signal versus effective deployment
 
 The official Vercel API returned `CANCELED` (ignored-build-step) for

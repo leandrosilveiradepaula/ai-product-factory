@@ -23,8 +23,8 @@ VISUAL_WORKFLOW = ".github/workflows/authenticated-visual-evidence.yml"
 # before it provisions the one-time operator, and removes that operator in its
 # finalization step.  Keep the source commit separate from the deployment
 # target: Actions records the former as ``head_sha`` for dispatch runs.
-VISUAL_RUN = 42407152600
-SOURCE_SHA = "c62297b7538ba9479aabd8f870ffd9eb142187ca"
+VISUAL_RUN = 42439592059
+SOURCE_SHA = "d83a7095e18244c2833d626430cb3f575eb35130"
 VISUAL_EVENT = "workflow_dispatch"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 

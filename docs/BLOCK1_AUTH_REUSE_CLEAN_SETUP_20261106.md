@@ -4,7 +4,14 @@ This is an evidence ledger for **two scoped observations**, not a product or sec
 
 ## Reused authenticated Console evidence
 
-Trusted source: [Authenticated Console visual evidence #42100072898](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42100072898), successful `push main` attempt 1 at `16ae1f28d1807399990727b7e524520347f5f62d`. Independent GitHub inspection found:
+Superseded evidence note: the historical source below expired and is retained
+only as context. The active reusable source is [Authenticated Console visual
+evidence #42439592059](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42439592059), successful `workflow_dispatch` attempt 1 at `d83a7095e18244c2833d626430cb3f575eb35130`.
+It has a successful `capture` job and its encrypted artifact is the current
+fail-closed reuse source. It remains bounded metadata, not auth/RBAC/tenant
+or full UX certification.
+
+Historical source: [Authenticated Console visual evidence #42100072898](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42100072898), successful `push main` attempt 1 at `16ae1f28d1807399990727b7e524520347f5f62d`. Independent GitHub inspection found:
 
 - Successful `capture` job and an unexpired nonempty encrypted `authenticated-console-42100072898` artifact; matching `factory_visual_evidence_runs` status `captured` in Supabase (no sensitive columns read).
 - The protected browser log, inspected using the connected GitHub audit client, reported 14 screens, 12 navigation paths with HTTP 200, mobile/accessibility evidence and negative operator RBAC transition `/admin/operators` → `/unauthorized`. The Console deployment SHA was verified before and after capture.

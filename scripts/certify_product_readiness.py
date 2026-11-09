@@ -19,6 +19,9 @@ from ai_product_factory.independent_security_evidence import verify_existing_sec
 from ai_product_factory.independent_regression_evidence import verify_regression_gates
 from ai_product_factory.independent_recovery_evidence import verify_recovery_alerting
 from ai_product_factory.independent_operations_evidence import verify_operations_runbook
+from ai_product_factory.independent_authenticated_console_evidence import (
+    AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
+)
 
 
 def _github_get(token: str):
@@ -71,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-regression-gates", action="store_true")
     parser.add_argument("--verify-recovery-alerting", action="store_true")
     parser.add_argument("--verify-operations-runbook", action="store_true")
+    parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
     args = parser.parse_args(argv)
@@ -81,6 +85,18 @@ def main(argv: list[str] | None = None) -> int:
     manifest = (require_verified_baseline(
         evidence, repository=args.repository, assessed_commit=args.assessed_commit
     ) if args.require_verified_baseline else evidence)
+    if args.authenticated_console_run_id is not None:
+        proof = verify_authenticated_console_evidence(
+            repository=args.repository, assessed_commit=args.assessed_commit,
+            workflow_run_id=args.authenticated_console_run_id,
+            github_get=_github_get(token),
+        )
+        if evidence.get("authenticated_console_evidence") != proof.receipt():
+            raise CertificationEvidenceError("authenticated Console receipt changed before persistence")
+        for criterion in ("surface_inventory", "responsive", "accessibility"):
+            row = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
+            if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != list(proof.evidence):
+                raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
     if args.verify_native_v2_traceability and not args.require_verified_baseline:
         raise CertificationEvidenceError("native V2 proof requires independent conservative baseline")
     github_get = _github_get(token)

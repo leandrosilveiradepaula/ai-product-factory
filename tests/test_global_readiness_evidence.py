@@ -799,7 +799,7 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
         with self.assertRaises(GlobalReadinessEvidenceError):
             find_current_validation_run(repository=REPO,sha=S,branch="main",github_get=gg)
 
-    def test_visual_event_accepts_only_main_push_same_repo_without_dispatch(self):
+    def test_visual_event_accepts_only_main_push_or_first_dispatch_same_repo(self):
         path=Path(__file__).resolve().parents[1]/"scripts/audit_global_readiness.py"
         spec=importlib.util.spec_from_file_location("global_post_visual_test",path)
         assert spec and spec.loader
@@ -811,7 +811,9 @@ class GlobalPostVisualReceiptTests(unittest.TestCase):
                                "conclusion":"success"}}
         self.assertEqual(mod.resolve_observer_event(event,REPO),(S,142,"visual"))
         self.assertEqual(mod.resolve_observer_event({**event,"workflow_run":{**event["workflow_run"],"conclusion":"failure"}},REPO),(S,142,"visual"))
-        for update in ({"event":"workflow_dispatch"},{"head_branch":"preview/pr-1"},
+        dispatch = {**event,"workflow_run":{**event["workflow_run"],"event":"workflow_dispatch","run_attempt":1}}
+        self.assertEqual(mod.resolve_observer_event(dispatch,REPO),(S,142,"visual"))
+        for update in ({"event":"workflow_dispatch","run_attempt":2},{"head_branch":"preview/pr-1"},
                        {"head_sha":"main"},{"status":"in_progress"},
                        {"name":"untrusted visual"},{"id":True}):
             with self.subTest(update=update),self.assertRaises(ValueError):

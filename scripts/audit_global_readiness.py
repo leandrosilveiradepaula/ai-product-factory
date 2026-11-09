@@ -50,13 +50,17 @@ def resolve_observer_event(event: object, repository: str) -> tuple[str,int,str]
         return sha,run_id,"validate"
     repo = event["repository"]
     if (run.get("name") != "Authenticated Console visual evidence"
-            or run.get("event") != "push" or run.get("status") != "completed"
+            or run.get("event") not in ("push", "workflow_dispatch")
+            or run.get("status") != "completed"
             or run.get("conclusion") not in ("success","failure")
             or repo.get("full_name") != repository
             or run.get("head_branch") != repo.get("default_branch")
             or not isinstance(run.get("head_sha"),str)
             or SHA.fullmatch(run["head_sha"]) is None
-            or type(run.get("id")) is not int or run["id"] <= 0):
+            or type(run.get("id")) is not int or run["id"] <= 0
+            # A visual rerun overwrites the broker's run-id identity.  The
+            # manual post-visual certifier only accepts the first execution.
+            or (run.get("event") == "workflow_dispatch" and run.get("run_attempt") != 1)):
         raise ValueError("not an approved exact-HEAD visual event")
     return run["head_sha"],run["id"],"visual"
 
