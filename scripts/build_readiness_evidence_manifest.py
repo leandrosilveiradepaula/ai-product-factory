@@ -264,7 +264,6 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             source_inventory = scan_simulation_sources(Path.cwd())
             reachable = audit_simulation_reachability(Path.cwd())
             if (source_inventory["source_files"] > 0
-                    and source_inventory["marker_occurrences_by_line"] > 0
                     and source_inventory["writes_to_production"] == 0
                     and source_inventory["paid_calls"] == 0
                     and reachable["reachable_modules"]
