@@ -97,5 +97,6 @@ class PostgresWorkflowCoverageTests(unittest.TestCase):
   # A narrow positive filter silently invalidates the independent certifier
   # whenever a new executable file is added without updating the allowlist.
   positive=[line.strip() for line in trigger.splitlines() if line.strip().startswith('- "') and not line.strip().startswith('- "!')]
-  self.assertEqual(positive,['- "**"'])
+  self.assertEqual(positive[0],'- "**"')
+  self.assertGreater(len(positive),1,"preserve existing targeted workflow contracts")
 
