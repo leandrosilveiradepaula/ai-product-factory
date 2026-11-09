@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -62,6 +63,27 @@ class VerifiedBaselineTests(unittest.TestCase):
         data["/repos/" + REPO + "/actions/runs/7/jobs?per_page=100"]["jobs"][0]["status"] = "queued"
         with self.assertRaisesRegex(RuntimeError, "job is not executed"):
             self.collect(data)
+
+    def test_authenticated_console_receipt_is_partial_and_never_a_product_pass(self):
+        from ai_product_factory.independent_authenticated_console_evidence import AuthenticatedConsoleEvidence
+        proof = AuthenticatedConsoleEvidence(
+            repository=REPO, assessed_commit=SHA, workflow_run_id=42, artifact_id=9,
+        )
+        with patch("build_readiness_evidence_manifest.verify_authenticated_console_evidence",
+                   return_value=proof):
+            report = build_verified_baseline(
+                repository=REPO, sha=SHA, github_get=lambda path: github()[path],
+                authenticated_console_run_id=42,
+            )
+        self.assertFalse(report["product_ready"])
+        self.assertEqual(report["authenticated_console_evidence"], proof.receipt())
+        rows = report["manifest"]["criteria"]["product_experience"]
+        for criterion in ("surface_inventory", "responsive", "accessibility"):
+            self.assertEqual(rows[criterion]["status"], "partial")
+            self.assertEqual(rows[criterion]["evidence"], list(proof.evidence))
+        self.assertEqual(rows["states"]["status"], "missing")
+        self.assertEqual(report["manifest"]["criteria"]["security"]["authn_authz"]["status"], "missing")
+        self.assertEqual(report["manifest"]["criteria"]["test_strategy"]["critical_e2e"]["status"], "missing")
 
     def test_observer_identity_remains_read_only_and_preserves_both_receipts(self):
         yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()

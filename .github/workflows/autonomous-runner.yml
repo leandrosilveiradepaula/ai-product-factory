@@ -1554,15 +1554,17 @@ jobs:
           retention-days: 7
 
   product-readiness-certification-post-ci:
-    # Independent durable certifier: successful validate push at current main
-    # SHA only. Distinct from the read-only global readiness observer.
+    # Independent durable certifier: successful validate push, or one
+    # successful first-attempt authenticated Console dispatch, at current main
+    # SHA. The latter records only bounded partial UX evidence; it never
+    # promotes the browser suite to auth, E2E, or product readiness.
     # Claims require independent verification; remaining criteria stay blocked until
     # all remaining 18 criteria have independent verified evidence.
     # Existing runner topology requires jobs rooted in schedule-probe.
     # For a main push, that probe is intentionally SKIPPED: always() allows
-    # only the strict validate workflow_run identity, never a scheduler wake.
+    # only the strict CI/visual workflow_run identities, never a scheduler wake.
     needs: schedule-probe
-    if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'validate' && github.event.workflow_run.event == 'push' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository }}
+    if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.status == 'completed' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository && ((github.event.workflow_run.name == 'validate' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') || (github.event.workflow_run.name == 'Authenticated Console visual evidence' && github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success')) }}
     environment: openai-api
     runs-on: ubuntu-24.04
     timeout-minutes: 8
@@ -1574,6 +1576,7 @@ jobs:
     env:
       PYTHONPATH: src
       GITHUB_TOKEN: ${{ github.token }}
+      AUTHENTICATED_CONSOLE_RUN_ID: ${{ github.event.workflow_run.name == 'Authenticated Console visual evidence' && github.event.workflow_run.id || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -1588,6 +1591,10 @@ jobs:
       - name: Collect exact-SHA CI, operations and independent security evidence
         run: |
           set -euo pipefail
+          visual_args=()
+          if [ -n "$AUTHENTICATED_CONSOLE_RUN_ID" ]; then
+            visual_args=(--authenticated-console-run-id "$AUTHENTICATED_CONSOLE_RUN_ID")
+          fi
           python scripts/build_readiness_evidence_manifest.py \
             --event-path "$GITHUB_EVENT_PATH" \
             --output "$RUNNER_TEMP/factory-readiness-certified-baseline.json" \
@@ -1598,7 +1605,8 @@ jobs:
               --verify-secrets-dependencies \
               --verify-regression-gates \
               --verify-recovery-alerting \
-              --verify-operations-runbook
+              --verify-operations-runbook \
+            "${visual_args[@]}"
       # Evidence collection can take several minutes. Mint a fresh, pinned
       # broker token only after it is complete and immediately before the
       # certifier's two atomic Control Plane RPCs.
@@ -1606,6 +1614,10 @@ jobs:
       - name: Persist independently reverified criterion states on exact-SHA
         run: |
           set -euo pipefail
+          visual_args=()
+          if [ -n "$AUTHENTICATED_CONSOLE_RUN_ID" ]; then
+            visual_args=(--authenticated-console-run-id "$AUTHENTICATED_CONSOLE_RUN_ID")
+          fi
           python scripts/certify_product_readiness.py \
             --project-key ai-product-factory \
             --repository "$GITHUB_REPOSITORY" \
@@ -1620,6 +1632,7 @@ jobs:
               --verify-regression-gates \
               --verify-recovery-alerting \
               --verify-operations-runbook \
+            "${visual_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       - name: Preserve bounded certifier receipts
         if: always()
