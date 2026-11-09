@@ -31,6 +31,9 @@ _BOOLEAN_NON_EXECUTION_MARKERS = frozenset(
         "fixture",
         "simulated",
         "dry_run",
+        "noop",
+        "no_op",
+        "demo",
     }
 )
 _STATUS_FIELDS = frozenset(
@@ -53,6 +56,11 @@ _NON_EXECUTION_STATUSES = frozenset(
         "dry_run",
         "deferred",
         "requires_model",
+        "noop",
+        "no_op",
+        "demo",
+        "not_executed",
+        "skipped",
     }
 )
 
@@ -71,8 +79,10 @@ def assert_executed_product_stage_output(output: dict) -> None:
     """Reject explicit simulation/deferment markers before recording a stage.
 
     This deliberately evaluates only execution metadata at the response root.
-    Product content may legitimately discuss fixtures, mocks, or simulations;
+    Product content may legitimately discuss fixtures, mocks, demos or simulations;
     such mentions do not turn a genuinely executed Product Stage into a mock.
+    But execution metadata saying noop/no-op/demo/skipped/not_executed is never
+    evidence of a completed stage or authority for a release.
     """
     if not isinstance(output, dict):
         raise ValueError("product stage output must be a mapping")

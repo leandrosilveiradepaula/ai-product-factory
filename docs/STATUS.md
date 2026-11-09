@@ -1,3 +1,11 @@
+## 09/11/2026 — B2: falha real no contrato de saída de Product Stage (candidato)
+
+**Em escopo:** certificação `functional_completeness/mock_noop_demo_inventory` e fronteiras de runtime. Em `main=61539e5ae2aec652395c2bca770c251cad825598`, foi reproduzido que o normalizador de execução não tratava `noop`, `no_op` ou `demo` como status não executados; uma saída dessas não era rejeitada pelo contrato compartilhado de estágio. O candidato adiciona esses marcadores (além de `skipped`/`not_executed`) nas chaves **de metadados de execução**, mantendo menções legítimas no conteúdo do produto. Testes adversariais verificam o validador real e o `RuntimeWorker` sem gravar etapa nem completar execução simulada. O QA PostgreSQL foi ligado aos arquivos desse gate para testar a persistência isolada e produzir prova de regressão da árvore Git. Nenhum novo Start, modelo pago, migration, credencial, RLS, Console, Preview ou merge automático.
+
+**Limite de evidência:** isso corrige um caminho real de falso sucesso, mas **não certifica sozinho** todos os entrypoints de produção, Auth/RBAC ou `mock_noop_demo_inventory`. Exigir CI/QA da PR, merge humano e novo certificado independente antes de alterar contagem. Baseline durável anterior (SHA `c5f1f36e`): 9 PASS, 4 PARTIAL, 6 MISSING. A `main` já mudou com #1314; revalidar estado pós-merge.
+
+---
+
 ## 09/11/2026 — Continuidade vinculante da certificação 19/19
 
 Plano de execução aprovado pelo proprietário: [PLANO_CERTIFICACAO_19_CRITERIOS.md](PLANO_CERTIFICACAO_19_CRITERIOS.md). Ordem B1 inventário → B2 segurança/runtime → B3 UX integral → B4 jornada real/E2E; sem expansão de escopo, projetos fictícios ou auto-merge. Estado histórico verificado antes da PR #1313: 9 passed, 3 partial, 7 missing no certificado `d1991fd4-423a-4bc5-bbb8-2dab0bb529d8` (SHA `41f1f971...`). PR #1313 mergeada humanamente no SHA `c5f1f36e5312e7c7d664a6b41d95d5cb06041316`; CI push #42666745860 SUCCESS; certifier #42666843470 estava em andamento ao registrar este snapshot. Consultar Control Plane atual antes de atualizar qualquer número. Nenhum item recebeu PASS adicional só pela documentação.
