@@ -62,11 +62,61 @@ def _marker_constants(tree: ast.Module) -> dict[str, set[str]]:
 
 
 def _guarded_names(tree: ast.Module, constants: dict[str, set[str]]) -> set[str]:
+    """Conservatively identify an explicit marker-dependent rejection.
+
+    An unrelated raise in the same function is NOT a simulation guard. Only
+    an if/elif whose predicate references the marker and whose rejecting
+    branch raises directly can be classified; this is still static evidence,
+    not proof of runtime authorization or release safety.
+    """
     guarded: set[str] = set()
-    for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
-        used = {node.id for node in ast.walk(function) if isinstance(node, ast.Name) and node.id in constants}
-        if used and any(isinstance(node, ast.Raise) for node in ast.walk(function)):
-            guarded.update(used)
+    for function in (node for node in ast.walk(tree)
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        for conditional in ast.walk(function):
+            if not isinstance(conditional, ast.If):
+                continue
+            # A negative test ("not in BAD") followed by a raise rejects
+            # ordinary input, not the simulation marker. Require a positive
+            # membership comparison with the marker on the right.
+            names = set()
+            for comparison in ast.walk(conditional.test):
+                if not isinstance(comparison, ast.Compare):
+                    continue
+                operands = [comparison.left, *comparison.comparators]
+                for operator, right in zip(comparison.ops, operands[1:]):
+                    if not isinstance(operator, ast.In):
+                        continue
+                    names.update(node.id for node in ast.walk(right)
+                                 if isinstance(node, ast.Name) and node.id in constants)
+            if not names:
+                continue
+            # Do not count a raise found in an unrelated else branch, nested
+            # function, or subsequent statement as a rejection of this marker.
+            if any(isinstance(statement, ast.Raise) for statement in conditional.body):
+                guarded.update(names)
+        # Runtime contract pattern: for key in MARKERS, then a condition
+        # uses that key and raises directly. Mere iteration or an unrelated
+        # exception elsewhere in the loop must never be counted.
+        for loop in ast.walk(function):
+            if not isinstance(loop, (ast.For, ast.AsyncFor)):
+                continue
+            if not isinstance(loop.iter, ast.Name) or loop.iter.id not in constants:
+                continue
+            if not isinstance(loop.target, ast.Name):
+                continue
+            key = loop.target.id
+            for statement in loop.body:
+                if not isinstance(statement, ast.If):
+                    continue
+                predicate_uses_key = any(
+                    isinstance(node, ast.Name) and node.id == key
+                    for node in ast.walk(statement.test)
+                )
+                direct_rejection = any(
+                    isinstance(node, ast.Raise) for node in statement.body
+                )
+                if predicate_uses_key and direct_rejection:
+                    guarded.add(loop.iter.id)
     return guarded
 
 
