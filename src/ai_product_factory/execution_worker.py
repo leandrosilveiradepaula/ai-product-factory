@@ -33,7 +33,20 @@ class DirectExecutionWorker:
    if self.issue_materializer is None:raise RuntimeError("GitHub issue is required before Direct execution")
    item=self.issue_materializer.ensure_issue(item)
   artifact=self.producer.produce(item)
-  if not artifact.files:raise ValueError("implementation producer returned no files")
+  # The delivery boundary must not trust a producer implementation to enforce
+  # its own blocked/decision contract. A blocked artifact never reaches GitHub
+  # branch, commit, or PR actions, even if it also contains files.
+  if not isinstance(artifact,ImplementationArtifact):
+   raise ValueError("implementation producer returned invalid artifact")
+  if artifact.blocked_reason is not None:
+   raise ImplementationBlocked("implementation producer reported blocked work")
+  if artifact.decision_needed is not None:
+   raise ImplementationBlocked("implementation producer requires a human decision")
+  if not isinstance(artifact.files,dict) or not artifact.files:
+   raise ValueError("implementation producer returned no files")
+  if any(not isinstance(path,str) or not path.strip()
+         or not isinstance(content,str) for path,content in artifact.files.items()):
+   raise ValueError("implementation producer returned malformed files")
   session=self.loop.start_issue(issue_number=item.issue_number,branch=item.branch,run_id=item.run_id,plan_markdown=artifact.plan_markdown)
   self.loop.commit_implementation(session,files=artifact.files,message=artifact.commit_message)
   return self.loop.open_pull_request(session,title=artifact.pr_title,body=artifact.pr_body)

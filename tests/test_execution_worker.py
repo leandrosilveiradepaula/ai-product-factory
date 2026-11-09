@@ -1,5 +1,5 @@
 import unittest
-from ai_product_factory.execution_worker import DirectExecutionItem,DirectExecutionWorker,ImplementationArtifact
+from ai_product_factory.execution_worker import DirectExecutionItem,DirectExecutionWorker,ImplementationArtifact,ImplementationBlocked
 
 class Loop:
  def __init__(self):self.calls=[]
@@ -22,4 +22,44 @@ class Tests(unittest.TestCase):
   loop=Loop()
   with self.assertRaises(ValueError):DirectExecutionWorker(loop=loop,producer=Producer({})).execute(item())
   self.assertEqual(loop.calls,[])
+class ExplicitProducer:
+ def __init__(self,artifact):self.artifact=artifact
+ def produce(self,item):return self.artifact
+
+class DirectProducerNegativeBoundaries(unittest.TestCase):
+ def execute(self,artifact):
+  loop=Loop()
+  worker=DirectExecutionWorker(loop=loop,producer=ExplicitProducer(artifact))
+  return loop,worker
+
+ def test_blocked_producer_with_files_never_opens_pr_or_commits(self):
+  for reason in ("blocked", "noop", "demo", "dry_run", ""):
+   with self.subTest(reason=reason):
+    artifact=ImplementationArtifact("# Plan",{"app.py":"real code"},"feat","PR","body",blocked_reason=reason)
+    loop,worker=self.execute(artifact)
+    with self.assertRaises(ImplementationBlocked):worker.execute(item())
+    self.assertEqual(loop.calls,[])
+
+ def test_pending_material_decision_with_files_never_opens_pr(self):
+  for reason in (None,"scope conflict"):
+   artifact=ImplementationArtifact("# Plan",{"app.py":"real code"},"feat","PR","body",
+                                   blocked_reason=reason,decision_needed={"decision_kind":"material_requirement_change"})
+   loop,worker=self.execute(artifact)
+   with self.assertRaises(ImplementationBlocked):worker.execute(item())
+   self.assertEqual(loop.calls,[])
+
+ def test_invalid_artifacts_fail_before_github_mutation(self):
+  invalid=[
+   None,{"files":{"app.py":"code"}},
+   ImplementationArtifact("# Plan",None,"feat","PR","body"),
+   ImplementationArtifact("# Plan",{"app.py":None},"feat","PR","body"),
+   ImplementationArtifact("# Plan",{1:"code"},"feat","PR","body"),
+   ImplementationArtifact("# Plan",{"":"code"},"feat","PR","body"),
+  ]
+  for artifact in invalid:
+   with self.subTest(artifact=repr(artifact)[:80]):
+    loop,worker=self.execute(artifact)
+    with self.assertRaises(ValueError):worker.execute(item())
+    self.assertEqual(loop.calls,[])
+
 if __name__=="__main__":unittest.main()
