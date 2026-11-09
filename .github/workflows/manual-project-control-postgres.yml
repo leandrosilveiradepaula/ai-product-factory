@@ -53,6 +53,10 @@ on:
       - "tests/test_nonproduction_preview_merge_migration.py"
       - "src/ai_product_factory/nonproduction_preview_merge.py"
       - "src/ai_product_factory/runtime_cli.py"
+      # Product Stage outputs are persisted by the runtime; changes to their
+      # non-execution gate must exercise isolated SQL lifecycle regression.
+      - "src/ai_product_factory/product_stage_output_contract.py"
+      - "tests/test_block1_stage_execution_boundaries.py"
       # The regression certifier accepts this workflow only when the passed
       # PR tree is identical to the assessed main tree. Changes to that
       # verifier must therefore rerun isolated lifecycle QA.
