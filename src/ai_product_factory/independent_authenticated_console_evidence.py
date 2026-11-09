@@ -81,15 +81,25 @@ def _console_blobs(tree: object) -> dict[str, tuple[str, str]]:
     if not isinstance(entries, list):
         raise AuthenticatedConsoleEvidenceBlocked("Console tree is unavailable")
     blobs = {}
+    paths_seen = set()
     for item in entries:
         if not isinstance(item, dict):
             raise AuthenticatedConsoleEvidenceBlocked("Console tree entry is invalid")
         path = item.get("path")
         if not isinstance(path, str) or not path.startswith("apps/console/"):
             continue
-        if (item.get("type") != "blob" or path in blobs
-                or not isinstance(item.get("mode"), str)
-                or not isinstance(item.get("sha"), str) or SHA.fullmatch(item["sha"]) is None):
+        # GitHub's recursive tree legitimately includes directories with
+        # type=tree/mode=040000. Only file blobs are compared; unsafe modes,
+        # duplicate paths, and malformed directory metadata must still fail.
+        if (path in paths_seen or any(part in ("", ".", "..") for part in path.split("/"))
+                or not isinstance(item.get("sha"), str)
+                or SHA.fullmatch(item["sha"]) is None):
+            raise AuthenticatedConsoleEvidenceBlocked("Console tree provenance mismatch")
+        paths_seen.add(path)
+        if item.get("type") == "tree" and item.get("mode") == "040000":
+            continue
+        if (item.get("type") != "blob"
+                or item.get("mode") not in ("100644", "100755")):
             raise AuthenticatedConsoleEvidenceBlocked("Console blob provenance mismatch")
         blobs[path] = (item["sha"], item["mode"])
     if not blobs:

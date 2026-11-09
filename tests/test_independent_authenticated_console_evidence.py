@@ -4,7 +4,7 @@ import unittest
 
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, HISTORICAL_SOURCE_SHA,
-    HISTORICAL_WORKFLOW_RUN_ID, verify_authenticated_console_evidence,
+    HISTORICAL_WORKFLOW_RUN_ID, _console_blobs, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
 )
 
@@ -74,11 +74,49 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
             with self.subTest(path=path, update=update), self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
                 self.verify(data)
 
+    def test_recursive_console_tree_accepts_directories_and_compares_only_files(self):
+        tree = {"truncated": False, "tree": [
+            {"type": "tree", "path": "apps/console/app", "mode": "040000", "sha": "d" * 40},
+            {"type": "blob", "path": "apps/console/app/page.tsx", "mode": "100644", "sha": "c" * 40},
+            {"type": "blob", "path": "apps/console/run.sh", "mode": "100755", "sha": "e" * 40},
+        ]}
+        self.assertEqual(_console_blobs(tree), {
+            "apps/console/app/page.tsx": ("c" * 40, "100644"),
+            "apps/console/run.sh": ("e" * 40, "100755"),
+        })
+        import copy
+        for case in ("invalid_directory", "duplicate", "symlink", "submodule",
+                     "unsafe_path", "incomplete", "changed_blob"):
+            altered = copy.deepcopy(tree)
+            if case == "invalid_directory":
+                altered["tree"][0]["mode"] = "100644"
+            elif case == "duplicate":
+                altered["tree"].append(dict(altered["tree"][1]))
+            elif case == "symlink":
+                altered["tree"][1]["mode"] = "120000"
+            elif case == "submodule":
+                altered["tree"][1]["type"] = "commit"
+            elif case == "unsafe_path":
+                altered["tree"][1]["path"] = "apps/console/../external.tsx"
+            elif case == "incomplete":
+                altered["truncated"] = True
+            elif case == "changed_blob":
+                altered["tree"][1]["sha"] = "f" * 40
+            with self.subTest(case=case):
+                if case == "changed_blob":
+                    self.assertNotEqual(_console_blobs(altered), _console_blobs(tree))
+                else:
+                    with self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
+                        _console_blobs(altered)
+
     def test_expired_historical_capture_requires_registry_ancestry_and_identical_console(self):
         candidate = "b" * 40
         prefix = "/repos/" + REPO
-        tree = {"truncated": False, "tree": [{"type": "blob", "path": "apps/console/app/page.tsx",
-                                                 "mode": "100644", "sha": "c" * 40}]}
+        tree = {"truncated": False, "tree": [
+            {"type": "tree", "path": "apps/console/app", "mode": "040000", "sha": "d" * 40},
+            {"type": "blob", "path": "apps/console/app/page.tsx",
+             "mode": "100644", "sha": "c" * 40},
+        ]}
         data = {
             prefix: {"full_name": REPO, "default_branch": "main"},
             prefix + "/git/ref/heads/main": {"object": {"sha": candidate}},
