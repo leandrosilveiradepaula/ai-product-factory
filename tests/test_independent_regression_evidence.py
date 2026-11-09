@@ -27,7 +27,13 @@ class RegressionEvidenceTests(unittest.TestCase):
   values[ROOT+"/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100"]["workflow_runs"][0]["head_sha"]=qa
   values[ROOT+"/git/commits/"+qa]={"tree":{"sha":"d"*40}}
   values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]=[{**job,"head_sha":qa} for job in values[ROOT+"/actions/runs/9/jobs?per_page=100"]["jobs"]]
-  with self.assertRaises(RegressionEvidenceBlocked): self.proof(values)
+  source=[{"path":"src/source_%03d.py"%i,"type":"blob","mode":"100644","sha":"e"*40} for i in range(105)]
+  assessed=[dict(x) for x in source]
+  assessed[0]["sha"]="f"*40
+  values[ROOT+"/git/trees/"+"b"*40+"?recursive=1"]={"truncated":False,"tree":assessed}
+  values[ROOT+"/git/trees/"+"d"*40+"?recursive=1"]={"truncated":False,"tree":source}
+  with self.assertRaisesRegex(RegressionEvidenceBlocked,"regression_postgres_matching_tree_missing"):
+   self.proof(values)
  def test_duplicate_successful_postgres_qa_uses_latest_verified_run(self):
   values=fixture()
   endpoint=ROOT+"/actions/workflows/manual-project-control-postgres.yml/runs?event=pull_request&status=success&per_page=100"
