@@ -50,7 +50,8 @@ class DurableReadinessCITests(unittest.TestCase):
                             }
                         else:
                             store.persist_product_readiness_certification.side_effect = persist_error
-                        with patch.object(cli, "require_monotonic_before_write"):
+                        with patch.object(cli, "SupabaseAdmissionReader") as reader:
+                         reader.return_value._get.return_value = []
                          with patch("sys.stdout", new_callable=io.StringIO) as stdout:
                             argv = [
                                 "--project-key", "ai-product-factory",
