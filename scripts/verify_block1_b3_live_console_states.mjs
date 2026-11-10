@@ -7,13 +7,40 @@ const fixtures={
  cleared:{status:200,body:{status:"ok",count:0,projects:[]}},
  malformed:{status:200,body:{status:"ok",count:-1,projects:[]}},
 };
+// Chromium emits a native failed-resource console error for OUR deliberate
+// GET /api/human-attention -> 503 fixture, even when React handles it correctly.
+// The scope is strictly one 503 message with an exact resource URL per
+// intercepted 503. Every other console/page error (including React #418) fails.
+const EXPECTED_503_RESOURCE_ERROR=/^Failed to load resource: the server responded with a status of 503(?: \(Service Unavailable\))?$/;
+export function isExpectedFixture503ResourceError(message,origin){
+ if(typeof origin!=="string"||!origin.startsWith("https://"))return false;
+ try{
+  if(message?.type()!=="error"||
+     !EXPECTED_503_RESOURCE_ERROR.test(message.text()))return false;
+  const url=new URL(message.location()?.url);
+  return url.origin===origin&&url.pathname==="/api/human-attention"&&
+    url.search===""&&url.hash==="";
+ }catch{return false;}
+}
+
 export function safeB3StateWitness({observed,runId,sourceCommit,targetCommit}){
- if(!Number.isSafeInteger(Number(runId))||Number(runId)<1||
-    !SHA.test(String(sourceCommit))||!SHA.test(String(targetCommit))||
-    !observed||observed.blocked!==false||observed.browserErrors!==0||
-    observed.mutatingRequests!==0||names.some(name=>observed[name]!==true||
-       !Number.isSafeInteger(observed.hits?.[name])||observed.hits[name]<1))
-    throw Error("b3_state_witness_incomplete");
+ const reason=(!Number.isSafeInteger(Number(runId))||Number(runId)<1||
+    !SHA.test(String(sourceCommit))||!SHA.test(String(targetCommit)))
+      ?"identity_unverified"
+      :!observed||typeof observed!=="object"||observed.blocked!==false
+      ?"interception_unverified"
+      :observed.browserErrors!==0
+      ?"unexpected_browser_error"
+      :observed.mutatingRequests!==0
+      ?"unexpected_mutation"
+      :names.some(name=>observed[name]!==true||
+        !Number.isSafeInteger(observed.hits?.[name])||observed.hits[name]<1)
+      ?"missing_state_transition"
+      :!Number.isSafeInteger(observed.expected503ResourceErrors)||
+       observed.expected503ResourceErrors<0||
+       observed.expected503ResourceErrors>observed.hits.unavailable
+      ?"unaccounted_fixture_http_error":null;
+ if(reason)throw Error("b3_state_witness_incomplete:"+reason);
  return {
    schema:"factory-b3-authenticated-ui-state-fixture-v1",
    runId:Number(runId),sourceCommit,targetCommit,
@@ -21,6 +48,8 @@ export function safeB3StateWitness({observed,runId,sourceCommit,targetCommit}){
    scope:"authenticated_browser_with_intercepted_get_responses_only",
    actualBackendStateCertified:false,fullUserExperienceCertified:false,
    independentCriterionCertified:false,visualAuditPassed:false,
+   // This number counts only the exact synthetic 503 resource diagnostic.
+   expected503ResourceConsoleErrors:observed.expected503ResourceErrors,
    productionWrites:0,paidCalls:0,credentialOrUserDataRetained:false,
  };
 }
@@ -33,11 +62,19 @@ export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceC
    origin=u.origin;
  }catch{throw Error("b3_invalid_console_origin");}
  const page=await context.newPage();
- const observed={blocked:false,browserErrors:0,mutatingRequests:0,
+ const observed={blocked:false,browserErrors:0,mutatingRequests:0,expected503ResourceErrors:0,
     hits:{pending:0,unavailable:0,cleared:0,malformed:0}};
  let scenario="pending";
  page.on("pageerror",()=>{observed.browserErrors++;});
- page.on("console",m=>{if(m.type()==="error")observed.browserErrors++;});
+ page.on("console",m=>{
+   if(m.type()!=="error")return;
+   if(observed.expected503ResourceErrors<observed.hits.unavailable&&
+      isExpectedFixture503ResourceError(m,origin)){
+     observed.expected503ResourceErrors++;
+     return;
+   }
+   observed.browserErrors++;
+ });
  page.on("request",r=>{
    if(new URL(r.url()).origin===origin&&!["GET","HEAD","OPTIONS"].includes(r.method()))
      observed.mutatingRequests++;
