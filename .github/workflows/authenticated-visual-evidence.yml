@@ -256,6 +256,18 @@ jobs:
           path: block1-b3-console-state-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # Complete source-verified B3 inventory/responsiveness receipt only.
+      # This is never produced when hydration, route, keyboard or viewport
+      # checks fail; final workflow success and CP captured registry are also
+      # required by the independent certifier.
+      - name: Preserve completed authenticated B3 surface proof
+        if: steps.capture_console.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-full-surface-${{ github.run_id }}
+          path: block1-b3-completed-surface-witness.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Reconfirm exact served SHA before accepting browser evidence
         if: steps.capture_console.outcome == 'success'
         shell: bash
