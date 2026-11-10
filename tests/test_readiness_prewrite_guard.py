@@ -22,6 +22,16 @@ class GuardTests(unittest.TestCase):
    later["criteria"]["product_experience"][k]["status"]="passed"
   with self.assertRaises(ReadinessPrewriteRegression):
    require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=later,get=lambda p:old(earlier))
+ def test_blocks_loss_hidden_in_third_latest_certificate(self):
+  passed=report()
+  passed["criteria"]["documentation"]["operations"]["status"]="passed"
+  latest=report()
+  rows=old(latest)+old(latest)+old(passed)
+  with self.assertRaisesRegex(ReadinessPrewriteRegression,"readiness_guard_regression_blocked"):
+   require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=latest,get=lambda p:rows)
+ def test_refuses_truncated_history(self):
+  with self.assertRaisesRegex(ReadinessPrewriteRegression,"readiness_guard_history_invalid"):
+   require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=report(),get=lambda p:old(report())*100)
  def test_invalid_history_fails_closed(self):
   with self.assertRaises(ReadinessPrewriteRegression):
    require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=report(),get=lambda p:{"error":"unavailable"})

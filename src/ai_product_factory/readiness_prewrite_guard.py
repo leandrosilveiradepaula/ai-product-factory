@@ -40,13 +40,16 @@ def require_monotonic_before_write(*, repository: str, assessed_commit: str,
     new=_statuses(new_report)
     path=("factory_product_readiness_certifications?select=repository,assessed_commit,state,report"
           "&repository=eq."+quote(repository,safe="")+
-          "&state=eq.persisted&order=created_at.desc&limit=2")
+          "&state=eq.persisted&order=created_at.desc&limit=100")
     rows=get(path)
-    if not isinstance(rows,list) or len(rows)>2 or any(
+    if not isinstance(rows,list) or len(rows)>=100 or any(
         not isinstance(r,dict) or r.get("repository")!=repository
         or r.get("state")!="persisted" for r in rows
     ):
         raise ReadinessPrewriteRegression("readiness_guard_history_invalid")
+    # Compare every retained row, not merely the last two: a regression can
+    # already have been persisted before this guard was deployed.
+    # A full page is ambiguous (older passes may be hidden): fail closed.
     for old in rows:
         previous=_statuses(old.get("report"))
         lost=sorted((domain,key) for (domain,key),status in previous.items()
