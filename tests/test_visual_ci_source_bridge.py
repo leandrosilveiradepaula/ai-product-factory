@@ -34,6 +34,16 @@ class ExactCIVisualBridgeTests(unittest.TestCase):
         result=resolve()
         self.assertEqual(result["workflow_run"]["id"],RID)
         self.assertEqual(result["workflow_run"]["name"],"validate")
+    def test_first_attempt_post_merge_push_visual_derives_real_exact_sha_validation(self):
+        visual, data = fixture()
+        visual["event"] = "push"
+        data[P+"/actions/runs/"+str(VID)]["event"] = "push"
+        result = resolve(visual, data)
+        self.assertEqual(result["workflow_run"]["id"], RID)
+        for changes in ({"run_attempt": 2}, {"head_sha": "b"*40}, {"conclusion": "failure"}):
+            with self.subTest(changes=changes), self.assertRaises(VisualCIBindingBlocked):
+                resolve({**visual,**changes}, data)
+
     def test_validate_event_never_substituted(self):
         visual,_=fixture()
         self.assertIsNone(resolve({**visual,"name":"validate"}))
