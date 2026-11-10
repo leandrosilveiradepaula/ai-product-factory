@@ -48,9 +48,9 @@ def github(expected_sha=SHA, override=None):
     if override is not None:
         override(values)
     def get(path):
-        if path not in values:
-            raise AssertionError("unexpected source URL")
-        return values[path]
+        # An unavailable source must be treated as an invalid receipt by the
+        # verifier, never as a success or an unrelated test harness error.
+        return values.get(path)
     return get
 
 
