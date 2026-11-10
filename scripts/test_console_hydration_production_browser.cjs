@@ -291,3 +291,18 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
   await context.close();
  }
 });
+
+test("B2: expired token without refresh stays denied, never accesses protected Console",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:EXPIRED_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const count=refreshCalls;
+ try{
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200,"safe login destination");
+  assert.equal(new URL(page.url()).pathname,"/login");
+  assert.equal(await page.locator("h1.title").innerText(),"Entrar na Factory");
+  assert.equal(await page.locator("#orcamento").count(),0);
+  assert.equal(refreshCalls,count,"no refresh credential means no refresh call");
+ }finally{await context.close();}
+});
