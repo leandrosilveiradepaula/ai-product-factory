@@ -112,3 +112,12 @@ jobs:
           --policy ../../config/console_dependency_audit_exceptions.json
       - run: npm run typecheck
       - run: npm run build
+      # Actual isolated Next/React production server: no real Supabase,
+      # operator, model call, production writes or browser credentials.
+      # Fails on HTML hydration #418 across repeated cached and throttled loads.
+      - name: Exercise real authenticated configuration SSR and React hydration in isolated Chromium
+        shell: bash
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
+        run: node --test ../../scripts/test_console_hydration_production_browser.cjs
