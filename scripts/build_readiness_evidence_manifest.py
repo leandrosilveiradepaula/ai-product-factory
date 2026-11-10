@@ -47,6 +47,10 @@ from ai_product_factory.independent_operations_evidence import (
 from ai_product_factory.independent_simulation_runtime_evidence import (
     verify_executed_simulation_inventory, RuntimeSimulationEvidenceBlocked,
 )
+from ai_product_factory.independent_complete_console_evidence import (
+    ConsoleFullSurfaceEvidenceBlocked, read_verified_artifact_json,
+    verify_complete_console_surface as verify_complete_console_surface_fn,
+)
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
@@ -77,7 +81,9 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_static_simulation_inventory: bool = False,
                             authenticated_console_run_id: int | None = None,
                             reuse_historical_authenticated_console_evidence: bool = False,
-                            control_plane_get=None) -> dict:
+                            control_plane_get=None,
+                            verify_complete_console_surface: bool = False,
+                            artifact_reader=None) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
@@ -250,6 +256,24 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             authenticated_console_blocker = "authenticated Console evidence blocked: " + str(exc)
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
             authenticated_console_blocker = "authenticated Console evidence source unavailable"
+    # Executed and sanitized full-surface evidence can pass ONLY two narrow
+    # criteria. Browser metadata, synthetic states or expired artifacts alone
+    # must never become positives. A failed optional proof retains PARTIAL.
+    full_surface_proof = None
+    if (verify_complete_console_surface and authenticated_console_run_id is not None
+            and authenticated_console_proof is not None):
+        try:
+            if control_plane_get is None or artifact_reader is None:
+                raise ConsoleFullSurfaceEvidenceBlocked("b3_source_readers_unavailable")
+            full_surface_proof = verify_complete_console_surface_fn(
+                repository=repository, assessed_commit=sha,
+                authenticated_capture=authenticated_console_proof,
+                github_get=github_get, control_plane_get=control_plane_get,
+                artifact_reader=artifact_reader,
+            )
+        except (ConsoleFullSurfaceEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            full_surface_proof = None
     if authenticated_console_proof is not None:
         for criterion in ("surface_inventory", "responsive", "accessibility"):
             entry = manifest["criteria"]["product_experience"][criterion]
@@ -258,6 +282,13 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="authenticated Console metadata verifies a bounded browser capture; full criterion review remains required",
                 evidence=list(authenticated_console_proof.evidence),
             )
+    if full_surface_proof is not None:
+        for criterion in ("surface_inventory", "responsive"):
+            item = manifest["criteria"]["product_experience"][criterion]
+            item.update(status="passed", verification_state="observed",
+                        reason="independent complete authenticated browser audit reverified",
+                        evidence=list(full_surface_proof.criterion(criterion).evidence))
+
     elif authenticated_console_blocker is not None:
         # Explicitly retain a bounded blocker, never a positive evidence claim.
         for criterion in ("surface_inventory", "responsive", "accessibility"):
@@ -366,6 +397,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return operations_proof
         if (domain, criterion) == ("functional_completeness", "requirements_inventory"):
             return requirements_proof
+        if domain == "product_experience" and criterion in ("surface_inventory", "responsive"):
+            return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -373,7 +406,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -417,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-requirements-inventory", action="store_true")
     parser.add_argument("--verify-static-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
+    parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -428,7 +462,10 @@ def main(argv: list[str] | None = None) -> int:
     token = resolve_github_token(repo)
     github_get = lambda path: github_read(token, path)
     control_plane_get = (SupabaseAdmissionReader()._get
-                         if args.reuse_historical_authenticated_console_evidence else None)
+                         if args.reuse_historical_authenticated_console_evidence or args.verify_complete_console_surface else None)
+    artifact_reader = (lambda repository, artifact_id: read_verified_artifact_json(
+        repository=repository, artifact_id=artifact_id, token=token
+    )) if args.verify_complete_console_surface else None
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
@@ -444,6 +481,8 @@ def main(argv: list[str] | None = None) -> int:
         authenticated_console_run_id=args.authenticated_console_run_id,
         reuse_historical_authenticated_console_evidence=args.reuse_historical_authenticated_console_evidence,
         control_plane_get=control_plane_get,
+        verify_complete_console_surface=args.verify_complete_console_surface,
+        artifact_reader=artifact_reader,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

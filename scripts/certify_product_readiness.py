@@ -24,6 +24,10 @@ from ai_product_factory.independent_simulation_runtime_evidence import (
 )
 from inventory_block1_simulation_paths import inventory as simulation_inventory
 from audit_block1_mock_runtime_reachability import audit as simulation_reachability
+from ai_product_factory.independent_complete_console_evidence import (
+    ConsoleFullSurfaceEvidenceBlocked, read_verified_artifact_json,
+    verify_complete_console_surface,
+)
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
@@ -85,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-requirements-inventory", action="store_true")
     parser.add_argument("--verify-executed-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
+    parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
@@ -116,6 +121,26 @@ def main(argv: list[str] | None = None) -> int:
             row = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
             if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
+    full_surface_proof = None
+    if args.verify_complete_console_surface:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError("complete Console proof requires verified baseline")
+        if args.authenticated_console_run_id is None or proof is None:
+            raise CertificationEvidenceError("complete Console proof requires successful exact-run evidence")
+        full_surface_proof = verify_complete_console_surface(
+            repository=args.repository, assessed_commit=args.assessed_commit,
+            authenticated_capture=proof, github_get=_github_get(token),
+            control_plane_get=SupabaseAdmissionReader()._get,
+            artifact_reader=lambda repository, artifact_id: read_verified_artifact_json(
+                repository=repository, artifact_id=artifact_id, token=token
+            ),
+        )
+        for criterion in ("surface_inventory", "responsive"):
+            item = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
+            verified = full_surface_proof.criterion(criterion)
+            if not isinstance(item, dict) or item.get("status") != "passed" or item.get("evidence") != list(verified.evidence):
+                raise CertificationEvidenceError("complete Console baseline proof inconsistent")
+
     if args.verify_native_v2_traceability and not args.require_verified_baseline:
         raise CertificationEvidenceError("native V2 proof requires independent conservative baseline")
     github_get = _github_get(token)
@@ -259,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
             return operations_proof
         if (domain, criterion) == ("functional_completeness", "requirements_inventory"):
             return requirements_proof
+        if domain == "product_experience" and criterion in ("surface_inventory", "responsive"):
+            return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -266,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
