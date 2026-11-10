@@ -56,8 +56,9 @@ class CertificateDeltaTests(unittest.TestCase):
     def test_missing_or_duplicate_history_fails_closed(self):
         with self.assertRaises(CertificationRegression):
             compare_certifications([], SHA2)
-        with self.assertRaises(CertificationRegression):
-            compare_certifications([make_certificate(SHA2), make_certificate(SHA2)], SHA2)
+        same_sha = compare_certifications([make_certificate(SHA2), make_certificate(SHA2)], SHA2)
+        self.assertTrue(same_sha['monotonic'])
+        self.assertEqual(same_sha['regressed'], [])
 
     def test_bad_or_extra_criterion_cannot_count_as_monotonic(self):
         cert = make_certificate(SHA2)

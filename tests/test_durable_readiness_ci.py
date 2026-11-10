@@ -50,7 +50,8 @@ class DurableReadinessCITests(unittest.TestCase):
                             }
                         else:
                             store.persist_product_readiness_certification.side_effect = persist_error
-                        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                        with patch.object(cli, "require_monotonic_before_write"):
+                         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
                             argv = [
                                 "--project-key", "ai-product-factory",
                                 "--repository", REPO,

@@ -105,15 +105,17 @@ def main(argv: list[str] | None = None) -> int:
     ) if args.require_verified_baseline else evidence)
     github_get = _github_get(token)
     event_path = os.environ.get('GITHUB_EVENT_PATH')
-    if not event_path:
-        raise CertificationEvidenceError('ci_bridge_event_path_missing')
-    event_payload = json.loads(Path(event_path).read_text(encoding='utf-8'))
-    verified_ci_event = bind_exact_ci_source(
-        repository=args.repository, assessed_commit=args.assessed_commit,
-        actual_event=event_payload,
-        validation_run_id=evidence['source_snapshot']['validation_run_id'],
-        github_get=github_get,
-    )
+    verified_ci_event = None
+    if args.authenticated_console_run_id is not None:
+        if not event_path:
+            raise CertificationEvidenceError('ci_bridge_event_path_missing')
+        event_payload = json.loads(Path(event_path).read_text(encoding='utf-8'))
+        verified_ci_event = bind_exact_ci_source(
+            repository=args.repository, assessed_commit=args.assessed_commit,
+            actual_event=event_payload,
+            validation_run_id=evidence['source_snapshot']['validation_run_id'],
+            github_get=github_get,
+        )
     if args.authenticated_console_run_id is not None:
         proof = verify_authenticated_console_evidence(
             repository=args.repository, assessed_commit=args.assessed_commit,

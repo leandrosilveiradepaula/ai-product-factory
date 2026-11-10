@@ -10,7 +10,7 @@ import re
 from typing import Callable, Mapping
 
 REPOSITORY="leandrosilveiradepaula/ai-product-factory"
-SHA=re.compile(r"[0-9a-f]{40}\\Z")
+SHA=re.compile(r"[0-9a-f]{40}$")
 VISUAL="Authenticated Console visual evidence"
 VISUAL_PATH=".github/workflows/authenticated-visual-evidence.yml"
 VALIDATION_PATH=".github/workflows/validate.yml"
