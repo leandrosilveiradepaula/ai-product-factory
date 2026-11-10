@@ -2,7 +2,6 @@
 import {useActionState,useState} from "react";
 import {normalizeIntake,parseReferenceLines,validateIntake,type ProjectIntake} from "../../../lib/intake";
 import {Button} from "../../ui";
-import type {ProjectIntake} from "../../../lib/intake";
 import {submitIntake,type IntakeState} from "./actions";
 
 export type IntakeFormInitial=ProjectIntake&{draftId?:string;attachmentCount?:number};
@@ -28,7 +27,7 @@ export function IntakeForm({initial}:{initial?:IntakeFormInitial}){
   const payload=JSON.stringify({...clean,draftId:crypto.randomUUID(),attachmentCount:0});
   const bytes=new TextEncoder().encode(payload);
   let binary="";for(const byte of bytes)binary+=String.fromCharCode(byte);
-  const encoded=btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+  const encoded=btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
   window.location.assign("/projects/new/review?intake="+encodeURIComponent(encoded));
  };
  const existing=mode==="existing";
