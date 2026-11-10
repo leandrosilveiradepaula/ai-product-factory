@@ -37,6 +37,23 @@ export function safeB2Witness({observation,runId,sourceCommit,targetCommit}){
     productionWrites:0,
   };
 }
+// Console messages and HTTP URLs may contain private text or query strings.
+// Preserve only a fixed route taxonomy and an error class, never raw strings.
+export function safeConsoleError(message,currentUrl){
+  const parsed=safeBrowserError(message,currentUrl);
+  return {route:parsed.route,code:parsed.code==="browser_runtime_error"
+    ?"console_error":parsed.code};
+}
+export function safeHttpFailure({status,requestUrl,pageUrl}){
+  if(!Number.isInteger(status)||status<400||status>599)
+    throw Error("http_diagnostic_invalid");
+  return {
+    route:safeBrowserError(null,pageUrl).route,
+    resource:safeBrowserError(null,requestUrl).route,
+    status,
+  };
+}
+
 export function safeBrowserError(error,currentUrl){
   let route="unknown";
   try{
