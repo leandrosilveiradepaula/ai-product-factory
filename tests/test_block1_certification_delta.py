@@ -49,6 +49,18 @@ class CertificateDeltaTests(unittest.TestCase):
         self.assertEqual(report["regressed"], ["%s/%s" % cells[0]])
         self.assertEqual(len(report["newly_passed"]), 2)
 
+    def test_third_older_certificate_loss_is_detected(self):
+        cell = ("documentation", "operations")
+        rows = [make_certificate(SHA2), make_certificate(SHA1),
+                make_certificate(SHA1, {cell: "passed"})]
+        result = compare_certifications(rows, SHA2)
+        self.assertEqual(result["regressed"], ["documentation/operations"])
+        self.assertFalse(result["monotonic"])
+
+    def test_full_page_fails_closed(self):
+        with self.assertRaisesRegex(CertificationRegression, "history_unavailable"):
+            compare_certifications([make_certificate(SHA2)] * 100, SHA2)
+
     def test_stale_main_cannot_reuse_old_passes(self):
         with self.assertRaisesRegex(CertificationRegression, "current_main"):
             compare_certifications([make_certificate(SHA1)], SHA2)
