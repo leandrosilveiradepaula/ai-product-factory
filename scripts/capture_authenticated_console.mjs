@@ -446,6 +446,27 @@ try {
     throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length} failedResources=${badResponses.length}`);
   }
 
+  // Only after a complete, error-free authenticated browser audit. The
+  // artifact is a fixed, nonpersonal route/viewport receipt; screenshots
+  // stay encrypted and cannot be promoted to certificates by themselves.
+  const completedCoverage=interactionEvidence.surfaceCoverage;
+  const b3CompleteReceipt={
+    schema:"factory-b3-completed-surface-witness-v1",
+    runId:Number(runId),sourceCommit:workflowSourceCommit,targetCommit,
+    desktopRoutes:completedCoverage.desktopRoutes,
+    mobileRoutes:completedCoverage.mobileRoutes,
+    accessibleRoutes:completedCoverage.accessibleRoutes,
+    routeNames:completedCoverage.routeNames,
+    mobileDetailVerified:completedCoverage.verifiedRealProjectDetailOnMobile,
+    keyboardSkipVerified:completedCoverage.keyboardSkipTested,
+    browserErrors:0,pageErrors:0,failedResources:0,
+    productionWrites:0,paidCalls:0,
+    fullStatesCertified:false,fullAccessibilityCertified:false,
+    criticalE2eCertified:false,
+  };
+  await fs.writeFile("block1-b3-completed-surface-witness.json",
+    JSON.stringify(b3CompleteReceipt,null,2),{mode:0o600,flag:"wx"});
+
   console.log(JSON.stringify({
     status:"success",
     captured:captured.map(x=>x.name),
