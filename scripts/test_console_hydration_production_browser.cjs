@@ -268,9 +268,9 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
  const errors=[];
  page.on("pageerror",()=>errors.push("pageerror"));
  try{
-  const response=await page.goto(appOrigin+"/",{waitUntil:"domcontentloaded",timeout:45000});
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
   assert.equal(response?.status(),200);
-  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Visão geral");
+  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Configuração");
   await page.waitForFunction(()=>document.querySelector("a.skipToMain")!==null);
   // First request must be pending; the second event must commit newer data.
   await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
