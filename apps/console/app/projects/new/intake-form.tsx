@@ -1,6 +1,6 @@
 "use client";
 import {useActionState,useState} from "react";
-import {normalizeIntake,parseReferenceLines,validateIntake,type ProjectIntake} from "../../../lib/intake";
+import type {ProjectIntake} from "../../../lib/intake";
 import {Button} from "../../ui";
 import {submitIntake,type IntakeState} from "./actions";
 
@@ -19,10 +19,13 @@ export function IntakeForm({initial}:{initial?:IntakeFormInitial}){
   // new empty draft needs no privileged storage call or server mutation.
   if(files.length||initial?.attachmentCount||initial?.draftId)return;
   event.preventDefault();
-  const input:ProjectIntake={mode,name:String(data.get("name")||""),summary:String(data.get("summary")||""),repository:String(data.get("repository")||""),users:String(data.get("users")||""),mustHave:String(data.get("mustHave")||""),integrations:String(data.get("integrations")||""),references:parseReferenceLines(String(data.get("references")||"")),reportedStage:String(data.get("reportedStage")||"unknown") as ProjectIntake["reportedStage"],knownPending:String(data.get("knownPending")||""),constraints:String(data.get("constraints")||"")};
-  const clean=normalizeIntake(input);
-  const validation=validateIntake(clean);
-  if(!validation.ok){setLocalErrors(validation.errors);return;}
+  const input:ProjectIntake={mode,name:String(data.get("name")||""),summary:String(data.get("summary")||""),repository:String(data.get("repository")||""),users:String(data.get("users")||""),mustHave:String(data.get("mustHave")||""),integrations:String(data.get("integrations")||""),references:String(data.get("references")||"").split(/\r?\n/).map(v=>v.trim()).filter(v=>/^https:\/\//i.test(v)).slice(0,20).map(value=>({kind:value.includes("figma.com/")?"figma" as const:"url" as const,value})),reportedStage:String(data.get("reportedStage")||"unknown") as ProjectIntake["reportedStage"],knownPending:String(data.get("knownPending")||""),constraints:String(data.get("constraints")||"")};
+  const clean={...input,name:input.name.trim(),summary:input.summary.trim(),repository:input.repository?.trim()||undefined};
+  const errors:Record<string,string>={};
+  if(!clean.name)errors.name="Informe um nome para o produto.";
+  if(!clean.summary)errors.summary="Descreva o que o produto deve resolver.";
+  if(clean.repository&&!/^[\w.-]+\/[\w.-]+$/.test(clean.repository))errors.repository="Use o formato owner/repository.";
+  if(Object.keys(errors).length){setLocalErrors(errors);return;}
   setLocalErrors({});
   const payload=JSON.stringify({...clean,draftId:crypto.randomUUID(),attachmentCount:0});
   const bytes=new TextEncoder().encode(payload);
