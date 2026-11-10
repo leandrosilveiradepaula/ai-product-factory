@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {safeB2Witness,safeBrowserError} from "./block1_b2_b3_sanitized_witness.mjs";
+import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 
 const source="a".repeat(40),target="b".repeat(40);
 function allowedObservation() {
@@ -112,4 +112,42 @@ test("workflow never turns a failed B3 capture into success or skips cleanup",()
   assert.ok(workflow.includes('if: steps.capture_console.outcome == \'success\''));
   assert.ok(workflow.includes('if [ "$CAPTURE_OUTCOME" = "success" ]'));
   assert.ok(workflow.includes("Finalize registry and remove ephemeral operator"));
+});
+
+
+test("console error retains only route class, no private text, user IDs or query",()=>{
+  const value=safeConsoleError(
+    "Minified React error #418 secret=private-user",
+    "https://ai-product-factory-console.vercel.app/configuration?email=private@example.com"
+  );
+  assert.deepEqual(value,{route:"/configuration",code:"react_hydration_418"});
+  const generic=safeConsoleError(
+    "payment token sensitive content",
+    "https://ai-product-factory-console.vercel.app/projects/private-id"
+  );
+  assert.deepEqual(generic,{route:"/projects/[key]",code:"console_error"});
+  assert.ok(!JSON.stringify(generic).includes("private-id"));
+});
+test("HTTP failure retains status and safe route taxonomy, no private URL",()=>{
+  const output=safeHttpFailure({
+    status:403,
+    requestUrl:"https://ai-product-factory-console.vercel.app/api/private?token=secret",
+    pageUrl:"https://ai-product-factory-console.vercel.app/configuration?email=private"
+  });
+  assert.deepEqual(output,{route:"/configuration",resource:"other",status:403});
+  assert.equal(JSON.stringify(output).includes("secret"),false);
+  assert.equal(JSON.stringify(output).includes("email"),false);
+  for(const status of [200,399,600,NaN,"500"]){
+    assert.throws(()=>safeHttpFailure({
+      status,requestUrl:"https://example.invalid",pageUrl:"https://example.invalid"
+    }),/http_diagnostic_invalid/);
+  }
+});
+test("capture records only allowlisted browser error and failed HTTP fields",()=>{
+  const source=fs.readFileSync(new URL("./capture_authenticated_console.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes('consoleErrors.push(safeConsoleError(msg.text(),page.url()))'));
+  assert.ok(source.includes('badResponses.push(safeHttpFailure({status:response.status(),requestUrl:response.url(),pageUrl:page.url()}))'));
+  assert.ok(source.includes('pageErrors.push(safeBrowserError(err,page.url()))'));
+  assert.ok(!source.includes('consoleErrors.push({url:page.url(),text:msg.text()})'));
+  assert.ok(!source.includes('badResponses.push({pageUrl:page.url(),status:response.status(),url:response.url()})'));
 });
