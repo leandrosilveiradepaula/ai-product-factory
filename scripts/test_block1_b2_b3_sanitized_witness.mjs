@@ -82,6 +82,20 @@ test("sanitize unknown and unsafe browser errors without leaking URLs",()=>{
   assert.deepEqual(safeBrowserError(Error("oops"),"javascript:alert('private')"),
     {route:"unknown",code:"browser_runtime_error"});
 });
+test("redact dynamic project/run identities from browser errors",()=>{
+  assert.deepEqual(
+    safeBrowserError(Error("hydration failed for private project"),"https://console.example.invalid/projects/confidential-client?token=secret"),
+    {route:"/projects/[key]",code:"react_hydration_unclassified"},
+  );
+  assert.deepEqual(
+    safeBrowserError(Error("oops"),"https://console.example.invalid/runs/secret-run-identifier"),
+    {route:"/runs/[id]",code:"browser_runtime_error"},
+  );
+  assert.deepEqual(
+    safeBrowserError(Error("oops"),"https://console.example.invalid/secret-sensitive-path"),
+    {route:"other",code:"browser_runtime_error"},
+  );
+});
 test("capture retains B2 witness before visual route loop and preserves B3 failing gate",()=>{
   const source=fs.readFileSync(new URL("./capture_authenticated_console.mjs",import.meta.url),"utf8");
   assert.ok(source.indexOf("safeB2Witness({")>source.indexOf("verifyLiveConsoleAccess({"));
