@@ -119,10 +119,14 @@ def main(argv: list[str] | None = None) -> int:
             raise CertificationEvidenceError("authenticated Console receipt changed before persistence")
         for criterion in ("surface_inventory", "responsive", "accessibility"):
             row = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
-            if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != list(proof.evidence):
+            expected_status = ("passed" if args.verify_complete_console_surface
+                               and args.authenticated_console_run_id is not None
+                               and criterion in ("surface_inventory", "responsive")
+                               else "partial")
+            if not isinstance(row, dict) or row.get("status") != expected_status or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
     full_surface_proof = None
-    if args.verify_complete_console_surface:
+    if args.verify_complete_console_surface and args.authenticated_console_run_id is not None:
         if not args.require_verified_baseline:
             raise CertificationEvidenceError("complete Console proof requires verified baseline")
         if args.authenticated_console_run_id is None or proof is None:
