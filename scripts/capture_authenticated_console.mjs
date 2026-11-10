@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {validateProjectLifecycleReadOnly} from "./project_control_readonly_contract.mjs";
@@ -77,6 +78,12 @@ try {
     const bodySample=(await page.locator("body").innerText().catch(()=>"")).replace(/\\s+/g," ").slice(0,500);
     throw new Error(`authenticated landing redirected to login at ${page.url()} body=${bodySample}`);
   }
+
+  // Execute real, read-only HTTP authorization denials with the ephemeral
+  // operator and a separate anonymous browser context. Do not retain tokens.
+  const b2AccessEvidence=await verifyLiveConsoleAccess({
+    browser,operatorContext:context,baseUrl:consoleUrl,trustedOidc,
+  });
 
   // The visual quality gate covers the authenticated Console routes below.
   // Keep protection/login bootstrap diagnostics as evidence, but do not mix
@@ -392,6 +399,7 @@ try {
     workflowSourceCommit,
     captured,
     interactionEvidence,
+    b2AccessEvidence,
     bootstrapDiagnostics,
     consoleErrors,
     pageErrors,
