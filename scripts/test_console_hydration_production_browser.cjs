@@ -238,8 +238,12 @@ test("B2: expired token refresh reaches same-request Server Components without u
   assert.equal(new URL(page.url()).pathname,"/configuration");
   assert.equal(await page.locator("h1.title").innerText(),"Configuração");
   assert.ok(refreshCalls>beforeCount,"middleware must renew expired access");
-  const cookies=await context.cookies(appOrigin);
-  assert.equal(cookies.find(x=>x.name==="factory_access_token")?.value,FRESH_TOKEN);
+  // Production cookies are Secure; Chromium intentionally does not persist
+  // Secure Set-Cookie on this isolated plain-HTTP origin. Verify the server
+  // emitted the renewed cookie instead of weakening production cookie flags.
+  const setCookies=response.headersArray().filter(h=>h.name.toLowerCase()==="set-cookie").map(h=>h.value);
+  assert.ok(setCookies.some(v=>v.startsWith("factory_access_token=")&&v.includes(FRESH_TOKEN)&&/;\s*secure/i.test(v)),
+    "middleware must emit the fresh Secure access cookie");
   assert.deepEqual(errors,[]);
  }finally{await context.close();}
 });
