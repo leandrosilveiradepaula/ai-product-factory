@@ -34,6 +34,7 @@ from ai_product_factory.independent_authenticated_console_evidence import (
 )
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
+from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
 from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
 
 
@@ -329,6 +330,11 @@ def main(argv: list[str] | None = None) -> int:
                 or certification.assessment.as_result() != evidence["assessment"]
                 or evidence["product_ready"] is not certification.assessment.ready):
             raise CertificationEvidenceError("readiness evidence changed before persistence")
+    # Block an evidence-source regression before the irreversible certificate write.
+    require_monotonic_before_write(
+        repository=args.repository, assessed_commit=args.assessed_commit,
+        new_report=certification.report, get=SupabaseAdmissionReader()._get,
+    )
     # In the protected workflow, the same pinned control-plane-oidc action is
     # run immediately before this command. Keeping token acquisition there
     # avoids a second, differently implemented OIDC client at the write

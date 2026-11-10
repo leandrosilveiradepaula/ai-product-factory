@@ -63,8 +63,8 @@ def compare_certifications(rows: object, expected_sha: str) -> dict:
     previous_sha = None
     if len(rows) == 2:
         previous_sha, previous = _criteria(rows[1])
-        if previous_sha == current_sha:
-            raise CertificationRegression("duplicate_sha_certification_history")
+        # A new independent visual receipt may legitimately recertify the same
+        # main SHA. Compare all 19 cells instead of rejecting the identity.
     regressed = sorted("%s/%s" % cell for cell in previous
                        if previous[cell] == "passed" and current[cell] != "passed")
     gained = sorted("%s/%s" % cell for cell in current
