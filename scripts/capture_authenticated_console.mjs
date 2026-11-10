@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
-import {safeB2Witness,safeBrowserError} from "./block1_b2_b3_sanitized_witness.mjs";
+import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {validateProjectLifecycleReadOnly} from "./project_control_readonly_contract.mjs";
@@ -40,12 +40,12 @@ try {
   });
   const page = await context.newPage();
   page.on("console", msg => {
-    if (msg.type() === "error") consoleErrors.push({url:page.url(),text:msg.text()});
+    if (msg.type() === "error") consoleErrors.push(safeConsoleError(msg.text(),page.url()));
   });
   page.on("pageerror", err => pageErrors.push(safeBrowserError(err,page.url())));
   page.on("response", response => {
     if (response.status() >= 400) {
-      badResponses.push({pageUrl:page.url(),status:response.status(),url:response.url()});
+      badResponses.push(safeHttpFailure({status:response.status(),requestUrl:response.url(),pageUrl:page.url()}));
     }
   });
 
