@@ -11,7 +11,7 @@ const fixtures={
 // GET /api/human-attention -> 503 fixture, even when React handles it correctly.
 // The scope is strictly one 503 message with an exact resource URL per
 // intercepted 503. Every other console/page error (including React #418) fails.
-const EXPECTED_503_RESOURCE_ERROR=/^Failed to load resource: the server responded with a status of 503(?: \\(Service Unavailable\\))?$/;
+const EXPECTED_503_RESOURCE_ERROR=/^Failed to load resource: the server responded with a status of 503(?: \(Service Unavailable\))?$/;
 export function isExpectedFixture503ResourceError(message,origin){
  if(typeof origin!=="string"||!origin.startsWith("https://"))return false;
  try{
