@@ -104,7 +104,9 @@ class VisualEvidenceBrokerRetryContract(unittest.TestCase):
     def test_authenticated_capture_fails_on_http_errors_and_mobile_overflow(self):
         self.assertIn('consoleErrors.length || pageErrors.length || badResponses.length',CAPTURE)
         self.assertIn('response.status() >= 400',CAPTURE)
-        self.assertIn('{name:"configuration-mobile",path:"/configuration"}',CAPTURE)
+        self.assertIn("for (const route of routes.map(",CAPTURE)
+        routes=(ROOT/"scripts/console_surface_coverage_contract.mjs").read_text()
+        self.assertIn('{name:"configuration",path:"/configuration"',routes)
         self.assertIn('layout.scrollWidth > layout.innerWidth + 2',CAPTURE)
         self.assertNotIn('body{overflow-x:hidden',CAPTURE)
 
