@@ -32,6 +32,11 @@ class GuardTests(unittest.TestCase):
  def test_refuses_truncated_history(self):
   with self.assertRaisesRegex(ReadinessPrewriteRegression,"readiness_guard_history_invalid"):
    require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=report(),get=lambda p:old(report())*100)
+ def test_reports_exact_lost_criterion_without_source_data(self):
+  earlier=report()
+  earlier["criteria"]["documentation"]["operations"]["status"]="passed"
+  with self.assertRaisesRegex(ReadinessPrewriteRegression,"documentation/operations"):
+   require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=report(),get=lambda p:old(earlier))
  def test_invalid_history_fails_closed(self):
   with self.assertRaises(ReadinessPrewriteRegression):
    require_monotonic_before_write(repository=REPO,assessed_commit=SHA,new_report=report(),get=lambda p:{"error":"unavailable"})

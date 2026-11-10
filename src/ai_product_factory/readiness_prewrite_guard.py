@@ -50,9 +50,9 @@ def require_monotonic_before_write(*, repository: str, assessed_commit: str,
     # Compare every retained row, not merely the last two: a regression can
     # already have been persisted before this guard was deployed.
     # A full page is ambiguous (older passes may be hidden): fail closed.
-    for old in rows:
+    for index, old in enumerate(rows):
         previous=_statuses(old.get("report"))
         lost=sorted((domain,key) for (domain,key),status in previous.items()
                     if status=="passed" and new[(domain,key)]!="passed")
         if lost:
-            raise ReadinessPrewriteRegression("readiness_guard_regression_blocked")
+            raise ReadinessPrewriteRegression("readiness_guard_regression_blocked:historical_row="+str(index)+":criteria="+",".join(domain+"/"+key for domain,key in lost))
