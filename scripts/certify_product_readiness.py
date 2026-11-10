@@ -36,6 +36,7 @@ from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
 from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
+from ai_product_factory.product_readiness_certification import _source_snapshot
 
 
 def _github_get(token: str):
@@ -113,7 +114,10 @@ def main(argv: list[str] | None = None) -> int:
         verified_ci_event = bind_exact_ci_source(
             repository=args.repository, assessed_commit=args.assessed_commit,
             actual_event=event_payload,
-            validation_run_id=evidence['source_snapshot']['validation_run_id'],
+            validation_run_id=_source_snapshot(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                github_get=github_get,
+            )['validation_run_id'],
             github_get=github_get,
         )
     if args.authenticated_console_run_id is not None:
