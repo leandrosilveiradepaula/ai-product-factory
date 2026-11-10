@@ -139,9 +139,42 @@ class Tests(unittest.TestCase):
         q=object.__new__(SupabaseProjectReleaseReconciler)
         q._request=lambda *_args,**_kwargs:[{"event_id":5,"project_id":PID,"run_id":RUN,"merge_sha":SHA},
                                              {"event_id":4,"project_id":PID,"run_id":RUN,"merge_sha":SHA}]
-        q.reconcile=lambda **kw:{"idempotent":True}
+        reconciled=[]
+        q.reconcile=lambda **kw:reconciled.append(kw) or {"idempotent":True}
         with self.assertRaisesRegex(RuntimeError,"keyset cursor"):
             q.settle_pending(max_items=4)
+        self.assertEqual(reconciled,[],"do not reconcile the first event of an invalid page")
+
+    def test_invalid_tail_cannot_trigger_prior_release_write_or_deferral(self):
+        valid={"event_id":12,"project_id":PID,"run_id":RUN,"merge_sha":SHA}
+        for invalid in (
+            {**valid,"event_id":12},       # duplicate
+            {**valid,"event_id":11},       # backwards
+            {**valid,"event_id":True},     # bool must not coerce to integer
+            {**valid,"event_id":"13"},    # string from untrusted adapter
+        ):
+            with self.subTest(invalid=invalid):
+                q=object.__new__(SupabaseProjectReleaseReconciler)
+                q._request=lambda *_args,**_kwargs:[valid,invalid]
+                mutations=[]
+                q.reconcile=lambda **kw:mutations.append(("reconcile",kw))
+                q._defer_manual_review=lambda eid:mutations.append(("defer",eid))
+                with self.assertRaisesRegex(RuntimeError,"invalid release keyset cursor"):
+                    q.settle_pending(max_items=1)
+                self.assertEqual(mutations,[])
+
+    def test_valid_pending_page_still_reconciles_idempotently(self):
+        q=object.__new__(SupabaseProjectReleaseReconciler)
+        q._request=lambda *_args,**_kwargs:[
+            {"event_id":12,"project_id":PID,"run_id":RUN,"merge_sha":SHA},
+            {"event_id":13,"project_id":PID,"run_id":RUN,"merge_sha":SHA},
+        ]
+        seen=[]
+        q.reconcile=lambda **kw:seen.append(kw) or {"idempotent":True}
+        out=q.settle_pending(max_items=2)
+        self.assertEqual(out["scanned"],2)
+        self.assertEqual(out["idempotent"],2)
+        self.assertEqual(len(seen),2)
 
 
 if __name__=="__main__":
