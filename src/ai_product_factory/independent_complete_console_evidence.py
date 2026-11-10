@@ -188,6 +188,9 @@ def verify_complete_console_surface(*, repository: str, assessed_commit: str,
         raise ConsoleFullSurfaceEvidenceBlocked("b3_original_capture_unverified")
     prefix = "/repos/" + repository
     run_id = authenticated_capture.workflow_run_id
+    source_sha = authenticated_capture.source_commit or assessed_commit
+    if not isinstance(source_sha, str) or SHA.fullmatch(source_sha) is None:
+        raise ConsoleFullSurfaceEvidenceBlocked("b3_source_sha_invalid")
     artifacts = github_get(prefix + "/actions/runs/" + str(run_id) + "/artifacts?per_page=100")
     rows = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
     if not isinstance(rows, list) or artifacts.get("total_count") != len(rows):
@@ -202,7 +205,7 @@ def verify_complete_console_surface(*, repository: str, assessed_commit: str,
             or a.get("expired") is not False
             or type(a.get("size_in_bytes")) is not int or not 100 <= a["size_in_bytes"] <= 65536
             or not isinstance(provenance, dict)
-            or provenance.get("id") != run_id or provenance.get("head_sha") != assessed_commit
+            or provenance.get("id") != run_id or provenance.get("head_sha") != source_sha
             or provenance.get("head_branch") != "main"):
         raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_provenance_invalid")
     rows = control_plane_get(
@@ -211,13 +214,13 @@ def verify_complete_console_surface(*, repository: str, assessed_commit: str,
     )
     if not isinstance(rows, list) or len(rows) != 1 or rows[0] != {
         "workflow_run_id": run_id,
-        "source_commit": assessed_commit,
+        "source_commit": source_sha,
         "artifact_name": "authenticated-console-" + str(run_id),
         "status": "captured",
     }:
         raise ConsoleFullSurfaceEvidenceBlocked("b3_control_plane_capture_unverified")
     payload = artifact_reader(repository=repository, artifact_id=a["id"])
-    served_sha = validate_surface_witness(payload, run_id=run_id, source_sha=assessed_commit)
+    served_sha = validate_surface_witness(payload, run_id=run_id, source_sha=source_sha)
     if served_sha != assessed_commit:
         comparison = github_get(prefix + "/compare/" + served_sha + "..." + assessed_commit)
         if (not isinstance(comparison, dict)
