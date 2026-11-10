@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import {usePathname} from "next/navigation";
-import {useCallback,useEffect,useRef,useState} from "react";
+import {useCallback,useEffect,useState} from "react";
 import type {ReactNode} from "react";
 import {signOutAction} from "./auth-actions";
 import {ConsoleNav} from "./nav";
@@ -32,27 +32,16 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const context=routeContext(pathname);
  const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
- // A slower stale response (including 503) must never replace a newer
- // snapshot after focus, route change or a new poll.
- const attentionEpoch=useRef(0);
  const refreshAttention=useCallback(async()=>{
-  const epoch=++attentionEpoch.current;
   try{
    const response=await fetch("/api/human-attention",{cache:"no-store"});
    if(!response.ok)throw new Error("attention unavailable");
    const snapshot:unknown=await response.json();
    if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
-   if(epoch===attentionEpoch.current){
-    setAttention({count:Number(snapshot.count),projects:snapshot.projects});
-    setAttentionUnavailable(false);
-   }
-  }catch{
-   if(epoch===attentionEpoch.current){
-    setAttention(null);setAttentionUnavailable(true);
-   }
-  }
+   setAttention({count:Number(snapshot.count),projects:snapshot.projects});setAttentionUnavailable(false);
+  }catch{setAttention(null);setAttentionUnavailable(true);}
  },[]);
- useEffect(()=>{void refreshAttention();const tick=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshAttention();},60000);const onFocus=()=>{void refreshAttention();};window.addEventListener("focus",onFocus);return()=>{++attentionEpoch.current;window.clearInterval(tick);window.removeEventListener("focus",onFocus);};},[refreshAttention,pathname]);
+ useEffect(()=>{void refreshAttention();const tick=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshAttention();},60000);const onFocus=()=>{void refreshAttention();};window.addEventListener("focus",onFocus);return()=>{window.clearInterval(tick);window.removeEventListener("focus",onFocus);};},[refreshAttention,pathname]);
  if(authOnly){
   return <div className="authShell">
    <main className="authMain">{children}</main>
