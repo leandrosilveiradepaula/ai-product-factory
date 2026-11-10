@@ -20,7 +20,9 @@ class ConfigurationMobileContractTests(unittest.TestCase):
         self.assertNotIn("body{overflow-x:hidden",CSS)
 
     def test_visual_audit_still_fails_on_horizontal_overflow(self):
-        self.assertIn('{name:"configuration-mobile",path:"/configuration"}',CAPTURE)
+        self.assertIn("for (const route of routes.map(",CAPTURE)
+        surface=(ROOT/"scripts/console_surface_coverage_contract.mjs").read_text()
+        self.assertIn('{name:"configuration",path:"/configuration"',surface)
         self.assertIn("layout.scrollWidth > layout.innerWidth + 2",CAPTURE)
         self.assertIn("mobile horizontal overflow on",CAPTURE)
         self.assertIn("offenders=",CAPTURE)
