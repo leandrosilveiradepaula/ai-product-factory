@@ -85,7 +85,7 @@ test("truncated tree, unavailable health and wrong live SHA fail closed",async()
  await assert.rejects(reconcileServedConsole(a.args),/console_git_tree_incomplete/);
  const b=fixture({},deployed.slice(0,12),503);
  await assert.rejects(reconcileServedConsole(b.args),/console_live_health_unavailable/);
- const c=fixture({},"c".repeat(12));
+ const c=fixture({[R+"/commits/"+"c".repeat(12)]:{sha:"d".repeat(40)}},"c".repeat(12));
  await assert.rejects(reconcileServedConsole(c.args),/console_served_commit_ambiguous/);
 });
 test("host is validated before OIDC-bearing request, including owned Preview",async()=>{
