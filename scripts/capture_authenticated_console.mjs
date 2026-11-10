@@ -313,6 +313,10 @@ try {
         .slice(0,12));
       throw new Error(`mobile horizontal overflow on ${route.path}: ${layout.scrollWidth} > ${layout.innerWidth}; offenders=${JSON.stringify(offenders)}`);
     }
+    // B3: apply the same semantic accessibility contract to every mobile
+    // route, not only the desktop capture. Keep numeric evidence only.
+    const mobileAccessibility=verifyAccessibilitySnapshot(
+      await page.evaluate(collectAccessibilitySnapshot),route.name);
     // Executed layout and touch readability, not screenshots alone. Record
     // metrics only: never include operator content, cookie or form fields.
     const readability = await page.evaluate(() => {
@@ -363,7 +367,7 @@ try {
     }
     await menuSummary.click();
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
-    interactionEvidence.mobile.push({...route,status:response.status(),layout,readability,quickNavHrefs,expandedLayout});
+    interactionEvidence.mobile.push({...route,status:response.status(),layout,readability,quickNavHrefs,expandedLayout,accessibility:mobileAccessibility});
   }
 
   // A real project-detail route must remain usable on a phone, not just /projects.
