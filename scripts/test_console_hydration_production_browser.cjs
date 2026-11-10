@@ -306,3 +306,17 @@ test("B2: expired token without refresh stays denied, never accesses protected C
   assert.equal(refreshCalls,count,"no refresh credential means no refresh call");
  }finally{await context.close();}
 });
+
+test("B2: public login prefix never bypasses authentication middleware",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ const page=await context.newPage();
+ try{
+  const response=await page.goto(appOrigin+"/login-unprotected-canary",{
+   waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  const u=new URL(page.url());
+  assert.equal(u.pathname,"/login");
+  assert.equal(u.searchParams.get("next"),"/login-unprotected-canary");
+  assert.equal(await page.locator("h1.title").innerText(),"Entrar na Factory");
+ }finally{await context.close();}
+});
