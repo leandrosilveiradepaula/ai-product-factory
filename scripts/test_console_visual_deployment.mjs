@@ -36,6 +36,20 @@ test("manual audit only uses the explicit target",()=>{
  assert.equal(selected.source,"manual_exact");
 });
 
+test("manual capture fails closed without explicit URL or with production URL for Preview SHA",()=>{
+ assert.throws(()=>selectConsoleVisualTarget({
+  eventName:"workflow_dispatch",headSha:DEPLOYED_SHA,dispatchCommit:OLD_SHA,
+ }),/explicit target URL/);
+ assert.throws(()=>selectConsoleVisualTarget({
+  eventName:"workflow_dispatch",headSha:DEPLOYED_SHA,
+  dispatchUrl:PRODUCTION_URL,dispatchCommit:OLD_SHA,
+ }),/Preview target URL required/);
+ assert.equal(selectConsoleVisualTarget({
+  eventName:"workflow_dispatch",headSha:DEPLOYED_SHA,
+  dispatchUrl:OWNED_PREVIEW,dispatchCommit:OLD_SHA,
+ }).preview_url,OWNED_PREVIEW);
+});
+
 test("unsupported trigger, invalid SHA, outside host and dirty URL are rejected",()=>{
  assert.throws(()=>selectConsoleVisualTarget({eventName:"issue_comment",headSha:DEPLOYED_SHA}),/unsupported/);
  assert.throws(()=>selectConsoleVisualTarget({eventName:"push",headSha:"123",consoleChanged:true}),/invalid/);
