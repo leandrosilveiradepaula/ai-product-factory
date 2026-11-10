@@ -69,6 +69,10 @@ function localApi(req,res){
   });
   return;
  }
+ if(req.method==="POST"&&u.pathname==="/rest/v1/rpc/factory_get_github_app_status"&&req.headers.apikey===MOCK_KEY){
+  // Read-only status RPC, not a write; no external GitHub or database access.
+  send(res,200,{configured:false,status:"unavailable"});return;
+ }
  if(req.method!=="GET"){
   violations.push("mutation_attempt:"+req.method+":"+u.pathname);send(res,405,{});return;
  }
@@ -87,7 +91,10 @@ function localApi(req,res){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
  }else if(u.pathname==="/rest/v1/factory_audit_events"||
-          u.pathname==="/rest/v1/factory_tool_usage"){
+          u.pathname==="/rest/v1/factory_tool_usage"||
+          u.pathname==="/rest/v1/factory_human_gates"||
+          u.pathname==="/rest/v1/factory_release_reports"||
+          u.pathname==="/rest/v1/factory_project_github_access"){
   send(res,200,[]);
  }else{
   violations.push("unmocked_internal_route:"+req.method+":"+u.pathname);
@@ -241,7 +248,7 @@ test("B2: expired token refresh reaches same-request Server Components without u
   // Production cookies are Secure; Chromium intentionally does not persist
   // Secure Set-Cookie on this isolated plain-HTTP origin. Verify the server
   // emitted the renewed cookie instead of weakening production cookie flags.
-  const setCookies=response.headersArray().filter(h=>h.name.toLowerCase()==="set-cookie").map(h=>h.value);
+  const setCookies=(await response.headersArray()).filter(h=>h.name.toLowerCase()==="set-cookie").map(h=>h.value);
   assert.ok(setCookies.some(v=>v.startsWith("factory_access_token=")&&v.includes(FRESH_TOKEN)&&/;\s*secure/i.test(v)),
     "middleware must emit the fresh Secure access cookie");
   assert.deepEqual(errors,[]);
