@@ -323,19 +323,21 @@ class DurableReadinessCITests(unittest.TestCase):
             block.index("uses: ./.github/actions/control-plane-oidc"),
             block.index("scripts/build_readiness_evidence_manifest.py"),
         )
-        self.assertEqual(block.count("uses: ./.github/actions/control-plane-oidc"), 2)
-        self.assertLess(
-            block.index("scripts/build_readiness_evidence_manifest.py"),
-            block.rindex("uses: ./.github/actions/control-plane-oidc"),
-        )
-        self.assertLess(
-            block.rindex("uses: ./.github/actions/control-plane-oidc"),
-            block.index("scripts/certify_product_readiness.py"),
-        )
-        self.assertLess(
-            block.index("scripts/build_readiness_evidence_manifest.py"),
-            block.index("scripts/certify_product_readiness.py"),
-        )
+        self.assertEqual(block.count("uses: ./.github/actions/control-plane-oidc"), 3)
+        oidc="uses: ./.github/actions/control-plane-oidc"
+        first=block.index(oidc)
+        second=block.index(oidc,first+len(oidc))
+        third=block.index(oidc,second+len(oidc))
+        collect=block.index("scripts/build_readiness_evidence_manifest.py")
+        persist=block.index("scripts/certify_product_readiness.py")
+        delta=block.index("scripts/check_block1_certification_delta.py")
+        witness=block.index("scripts/audit_block1_real_journeys_readonly.py")
+        self.assertLess(first,collect)
+        self.assertLess(collect,second)
+        self.assertLess(second,persist)
+        self.assertLess(persist,third)
+        self.assertLess(third,delta)
+        self.assertLess(delta,witness)
 
 
 if __name__ == "__main__":
