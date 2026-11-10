@@ -54,21 +54,26 @@ def _criteria(record: object) -> tuple[str, dict[tuple[str, str], str]]:
 def compare_certifications(rows: object, expected_sha: str) -> dict:
     if not isinstance(expected_sha, str) or SHA.fullmatch(expected_sha) is None:
         raise CertificationRegression("expected_sha_invalid")
-    if not isinstance(rows, list) or not 1 <= len(rows) <= 2:
+    if not isinstance(rows, list) or not 1 <= len(rows) < 100:
         raise CertificationRegression("certification_history_unavailable")
     current_sha, current = _criteria(rows[0])
     if current_sha != expected_sha:
         raise CertificationRegression("current_main_certificate_not_persisted")
     previous = {}
     previous_sha = None
-    if len(rows) == 2:
+    if len(rows) >= 2:
         previous_sha, previous = _criteria(rows[1])
-        # A new independent visual receipt may legitimately recertify the same
-        # main SHA. Compare all 19 cells instead of rejecting the identity.
-    regressed = sorted("%s/%s" % cell for cell in previous
-                       if previous[cell] == "passed" and current[cell] != "passed")
+    # The immediately previous score can already be regressed. Check the
+    # high-water mark across every available historical certificate instead.
+    historical_passed = set()
+    for record in rows[1:]:
+        _, statuses = _criteria(record)
+        historical_passed.update(cell for cell, value in statuses.items()
+                                 if value == "passed")
+    regressed = sorted("%s/%s" % cell for cell in historical_passed
+                       if current[cell] != "passed")
     gained = sorted("%s/%s" % cell for cell in current
-                    if current[cell] == "passed" and previous.get(cell) != "passed")
+                    if current[cell] == "passed" and cell not in historical_passed)
     return {
         "schema": "factory-block1-certified-criterion-delta-v1",
         "assessed_commit": current_sha,
@@ -88,12 +93,13 @@ def compare_certifications(rows: object, expected_sha: str) -> dict:
 
 
 def collect(get: Callable[[str], object], expected_sha: str) -> dict:
-    # Read only the two most recent durable reports; no read of secret/operator
+    # Read up to 99 durable reports; fail closed on a full page rather than
+    # silently omit an older PASS. No read of secret/operator
     # records. Row count and identity are checked before evaluating any status.
     path = ("factory_product_readiness_certifications"
             "?select=repository,assessed_commit,state,report"
             "&repository=eq." + REPO
-            + "&state=eq.persisted&order=created_at.desc&limit=2")
+            + "&state=eq.persisted&order=created_at.desc&limit=100")
     rows = get(path)
     if not isinstance(rows, list) or any(
         not isinstance(row, dict) or row.get("repository") != REPO for row in rows

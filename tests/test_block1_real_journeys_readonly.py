@@ -40,11 +40,22 @@ class RealJourneyWitnessTests(unittest.TestCase):
         self.assertEqual(result["writes"], 0)
 
     def test_release_sha_alone_never_certifies_full_journey(self):
-        result = self.audit(journeys=[{**JOURNEY, "production_release_sha": "b" * 40}])
+        result = self.audit(journeys=[{**JOURNEY, "preview_merge_sha": "a" * 40,
+                                      "production_release_sha": "b" * 40}])
         self.assertTrue(result["crm_production_release_sha_observed"])
         self.assertEqual(result["crm_blocker"],
                          "independent_full_journey_e2e_unverified")
         self.assertFalse(result["critical_e2e_certified"])
+
+    def test_release_cannot_skip_preview_or_candidate(self):
+        for changes in (
+            {"production_release_sha": "b" * 40},
+            {"candidate_commit": None, "preview_merge_sha": "b" * 40},
+            {"candidate_commit": None, "preview_merge_sha": "b" * 40,
+             "production_release_sha": "c" * 40},
+        ):
+            with self.subTest(changes=changes),self.assertRaises(JourneyEvidenceUnverifiable):
+                self.audit(journeys=[{**JOURNEY, **changes}])
 
     def test_retired_service_desk_never_satisfies_greenfield(self):
         result = self.audit()
