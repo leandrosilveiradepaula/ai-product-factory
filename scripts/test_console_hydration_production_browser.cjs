@@ -70,7 +70,7 @@ function localApi(req,res){
   return;
  }
  if(req.method!=="GET"){
-  violations.push("mutation_attempt");send(res,405,{});return;
+  violations.push("mutation_attempt:"+req.method+":"+u.pathname);send(res,405,{});return;
  }
  if(u.pathname==="/auth/v1/user"&&
     req.headers.authorization==="Bearer "+EXPIRED_TOKEN&&req.headers.apikey===PUB_KEY){
@@ -90,7 +90,7 @@ function localApi(req,res){
           u.pathname==="/rest/v1/factory_tool_usage"){
   send(res,200,[]);
  }else{
-  violations.push("unmocked_internal_route");
+  violations.push("unmocked_internal_route:"+req.method+":"+u.pathname);
   send(res,404,{error:"not_available"});
  }
 }
@@ -233,7 +233,7 @@ test("B2: expired token refresh reaches same-request Server Components without u
  const errors=[];
  page.on("pageerror",()=>errors.push("pageerror"));
  try{
-  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"networkidle",timeout:45000});
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
   assert.equal(response?.status(),200);
   assert.equal(new URL(page.url()).pathname,"/configuration");
   assert.equal(await page.locator("h1.title").innerText(),"Configuração");
