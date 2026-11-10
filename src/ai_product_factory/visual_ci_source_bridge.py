@@ -39,7 +39,7 @@ def bind_exact_ci_source(*, repository: str, assessed_commit: str,
     if not all((
         upstream.get("name")==VISUAL,
         upstream.get("path")==VISUAL_PATH,
-        upstream.get("event")=="workflow_dispatch",
+        upstream.get("event") in ("workflow_dispatch", "push"),
         upstream.get("head_sha")==assessed_commit,
         upstream.get("head_branch")=="main",
         upstream.get("run_attempt")==1,
