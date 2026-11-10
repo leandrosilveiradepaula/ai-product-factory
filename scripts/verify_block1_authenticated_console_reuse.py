@@ -182,6 +182,25 @@ def main() -> int:
     print(json.dumps(result, sort_keys=True))
     if result["reusable_encrypted_evidence_metadata_verified"]:
         return 0
+    # Historical evidence can only be reused for byte-identical Console code.
+    # When the Console changed, this reuse check is NOT APPLICABLE, not a
+    # failed functional test and never an authentication/release certificate.
+    # Require trusted provenance and verified ancestry before classifying N/A.
+    checks = result.get("checks")
+    if (isinstance(checks, dict)
+            and checks.get("trusted_visual_run") is True
+            and checks.get("source_ancestor") is True
+            and checks.get("capture_job_completed") is True
+            and checks.get("console_blobs_identical") is False):
+        result["historical_reuse_applicability"] = "not_applicable_console_changed"
+        result["requires_fresh_authenticated_console_capture"] = True
+        result["reusable_encrypted_evidence_metadata_verified"] = False
+        result["authn_authz_certified"] = False
+        result["block1_certified"] = False
+        result["release_authorized"] = False
+        args.output.write_text(json.dumps(result, sort_keys=True) + "\n", encoding="utf-8")
+        print(json.dumps(result, sort_keys=True))
+        return 0
     checks = result.get("checks")
     if (result.get("durable_registry_revalidation_deferred_to_trusted_main_observer") is True
             and isinstance(checks, dict)
