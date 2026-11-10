@@ -44,6 +44,9 @@ from ai_product_factory.independent_recovery_evidence import (
 from ai_product_factory.independent_operations_evidence import (
     OperationsEvidenceBlocked, verify_operations_runbook as verify_operations_runbook_fn,
 )
+from ai_product_factory.independent_simulation_runtime_evidence import (
+    verify_executed_simulation_inventory, RuntimeSimulationEvidenceBlocked,
+)
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
@@ -263,6 +266,9 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
     # This is a BOUNDED static inventory only. It never certifies runtime
     # reachability, authorization, E2E or release. The exact-SHA CI check is
     # retained while independent dynamic ingress proof remains missing.
+    simulation_proof = None
+    source_inventory = None
+    reachable = None
     if verify_static_simulation_inventory:
         entry = manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"]
         try:
@@ -298,6 +304,25 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                     )
                 else:
                     entry["reason"] = "simulation_inventory_source_contract_unverified"
+    # Positive B2 proof requires real executed entrypoints in exact-SHA CI,
+    # a blob-pinned test source, the complete marker inventory and no
+    # unclassified imports. Missing or modified tests remain partial.
+    if verify_static_simulation_inventory and source_inventory and reachable:
+        try:
+            simulation_proof = verify_executed_simulation_inventory(
+                repository=repository, assessed_commit=sha, github_get=github_get,
+                source_inventory=source_inventory, runtime_reachability=reachable,
+            )
+        except (RuntimeSimulationEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            simulation_proof = None
+        if simulation_proof is not None:
+            manifest["criteria"]["functional_completeness"]["mock_noop_demo_inventory"].update(
+                status="passed", verification_state="reviewed",
+                reason="independently verified exact-SHA executed runtime denials and static import closure",
+                evidence=list(simulation_proof.evidence),
+            )
+
     requirements_proof = None
     if verify_requirements_inventory:
         try:
@@ -341,12 +366,14 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return operations_proof
         if (domain, criterion) == ("functional_completeness", "requirements_inventory"):
             return requirements_proof
+        if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
+            return simulation_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
