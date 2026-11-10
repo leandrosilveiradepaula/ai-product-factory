@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, 'release/**']
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
     branches: [main]
   workflow_dispatch:
 
@@ -22,6 +23,42 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
+      # Enforce source scope from PR BASE, never trust a changed checker in the PR.
+      # This separate checkout is for a read-only git diff; no credentials persist.
+      - name: Fetch exact PR head for B1-B4 scope gate
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: .factory-focus-checkout
+      - name: Enforce exact-SHA B1-B4 Factory scope
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          FOCUS_REPOSITORY: ${{ github.repository }}
+          FOCUS_BASE: ${{ github.event.pull_request.base.sha }}
+          FOCUS_HEAD: ${{ github.event.pull_request.head.sha }}
+          FOCUS_EVENT: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+          ROOT=".factory-focus-checkout"
+          test "$FOCUS_REPOSITORY" = 'leandrosilveiradepaula/ai-product-factory'
+          [[ "$FOCUS_BASE" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FOCUS_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$FOCUS_HEAD"
+          git -C "$ROOT" cat-file -e "$FOCUS_BASE^{commit}"
+          if git -C "$ROOT" cat-file -e "$FOCUS_BASE:scripts/check_block1_focus.py" 2>/dev/null; then
+            git -C "$ROOT" show "$FOCUS_BASE:scripts/check_block1_focus.py" > "$RUNNER_TEMP/factory-base-focus.py"
+          else
+            # First bootstrap PR only. Human reviewer must inspect new guard.
+            test -f "$ROOT/scripts/check_block1_focus.py"
+            cp "$ROOT/scripts/check_block1_focus.py" "$RUNNER_TEMP/factory-base-focus.py"
+          fi
+          python "$RUNNER_TEMP/factory-base-focus.py" \
+            --event "$FOCUS_EVENT" --repository "$FOCUS_REPOSITORY" \
+            --base "$FOCUS_BASE" --head "$FOCUS_HEAD" --worktree "$ROOT"
       - name: Validate manifest
         env:
           PYTHONPATH: src
