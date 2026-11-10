@@ -163,6 +163,23 @@ class Tests(unittest.TestCase):
                     q.settle_pending(max_items=1)
                 self.assertEqual(mutations,[])
 
+    def test_invalid_tail_identity_never_writes_an_earlier_release(self):
+        valid={"event_id":12,"project_id":PID,"run_id":RUN,"merge_sha":SHA}
+        for bad in (
+            {**valid,"event_id":13,"project_id":"cross-project"},
+            {**valid,"event_id":13,"run_id":None},
+            {**valid,"event_id":13,"merge_sha":"not-a-sha"},
+        ):
+            with self.subTest(bad=bad):
+                q=object.__new__(SupabaseProjectReleaseReconciler)
+                q._request=lambda *_args,**_kwargs:[valid,bad]
+                writes=[]
+                q.reconcile=lambda **kw:writes.append(("reconcile",kw))
+                q._defer_manual_review=lambda eid:writes.append(("defer",eid))
+                with self.assertRaisesRegex(RuntimeError,"invalid pending release identity"):
+                    q.settle_pending(max_items=2)
+                self.assertEqual(writes,[])
+
     def test_valid_pending_page_still_reconciles_idempotently(self):
         q=object.__new__(SupabaseProjectReleaseReconciler)
         q._request=lambda *_args,**_kwargs:[
