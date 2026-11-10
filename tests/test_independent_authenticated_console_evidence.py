@@ -69,7 +69,7 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
 
     def test_wrong_identity_artifact_or_rerun_fails_closed(self):
         for path, update in (
-            ("run", {"run_attempt": 2}), ("run", {"event": "push"}),
+            ("run", {"run_attempt": 2}), ("run", {"event": "issues"}),
             ("artifact", {"expired": True}), ("artifact", {"head_sha": "b" * 40}),
             ("head", {"sha": "b" * 40}),
         ):
