@@ -1,19 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
+import {verifyLiveConsoleAccess,B2_PROTECTED_ROUTES} from "./verify_block1_b2_live_console_access.mjs";
 
 const origin="https://console.example.invalid";
-function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenied=false,adminAllowed=false}={}) {
-  const records={anonymousPages:[],operatorPages:[],anonymousApi:0,operatorApi:0};
+function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenied=false,adminAllowed=false,
+  invalidSessionAllowed=false,invalidSessionApiAllowed=false}={}) {
+  const records={anonymousPages:[],operatorPages:[],anonymousApi:0,operatorApi:0,invalidApi:0,invalidPages:[]};
+  let forgedCookie=false;
   function page(kind) {
     let url=origin+"/";
     return {
       url:()=>url,
       async goto(target) {
         const path=new URL(target).pathname;
-        if(kind==="anon") {
-          records.anonymousPages.push(path);
-          url=origin+(anonymousAllowed?path:"/login");
+        if(kind==="anon"||kind==="invalid") {
+          if(kind==="invalid")records.invalidPages.push(path);
+          else records.anonymousPages.push(path);
+          url=origin+((kind==="invalid"?invalidSessionAllowed:anonymousAllowed)?path:"/login");
         } else {
           records.operatorPages.push(path);
           url=origin+(adminAllowed?path:"/unauthorized");
@@ -24,9 +27,10 @@ function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenie
     };
   }
   const noAuth={
-    async newPage(){return page("anon");},
-    request:{async get(){records.anonymousApi++;return {
-      status:()=>anonymousApiAllowed?200:307,
+    async addCookies(cookies){assert.equal(cookies.length,1);assert.equal(cookies[0].name,"factory_access_token");forgedCookie=true;},
+    async newPage(){return page(forgedCookie?"invalid":"anon");},
+    request:{async get(){if(forgedCookie)records.invalidApi++;else records.anonymousApi++;return {
+      status:()=>(forgedCookie?invalidSessionApiAllowed:anonymousApiAllowed)?200:307,
       headers:()=>({location:"/login"}),
     };}},
     async close(){},
@@ -47,13 +51,18 @@ function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenie
 test("read-only live boundary contract covers anonymous, operator and admin denial",async()=>{
   const f=fixture();
   const r=await verifyLiveConsoleAccess({...f,baseUrl:origin,trustedOidc:"synthetic"});
-  assert.equal(r.anonymousRouteDenials.length,3);
+  assert.equal(r.anonymousRouteDenials.length,B2_PROTECTED_ROUTES.length);
+  assert.deepEqual(r.anonymousRouteDenials.map(v=>v.route),B2_PROTECTED_ROUTES);
+  assert.equal(r.invalidSessionRouteDenied,true);
+  assert.equal(r.invalidSessionApiDenied,true);
   assert.equal(r.operatorAdminPageDenied,true);
   assert.equal(r.operatorReadOnlyApiAllowed,true);
   assert.equal(r.productionWrites,0);
   assert.equal(r.fullAuthnAuthzCertified,false);
   assert.equal(r.crossTenantIsolationCertified,false);
   assert.equal(f.records.anonymousApi,1);
+  assert.equal(f.records.invalidApi,1);
+  assert.deepEqual(f.records.invalidPages,["/projects"]);
   assert.equal(f.records.operatorApi,1);
 });
 for(const [label,change] of [
@@ -61,6 +70,8 @@ for(const [label,change] of [
   ["anonymous API exposed",{anonymousApiAllowed:true}],
   ["operator API denied",{operatorDenied:true}],
   ["operator allowed admin page",{adminAllowed:true}],
+  ["forged session allowed on page",{invalidSessionAllowed:true}],
+  ["forged session allowed on API",{invalidSessionApiAllowed:true}],
 ]) {
   test("fail closed: "+label,async()=>{
     const f=fixture(change);
