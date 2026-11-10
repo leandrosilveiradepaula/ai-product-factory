@@ -273,8 +273,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
     # criteria. Browser metadata, synthetic states or expired artifacts alone
     # must never become positives. A failed optional proof retains PARTIAL.
     full_surface_proof = None
-    if (verify_complete_console_surface and authenticated_console_run_id is not None
-            and authenticated_console_proof is not None):
+    if (verify_complete_console_surface and authenticated_console_proof is not None):
         try:
             if control_plane_get is None or artifact_reader is None:
                 raise ConsoleFullSurfaceEvidenceBlocked("b3_source_readers_unavailable")
