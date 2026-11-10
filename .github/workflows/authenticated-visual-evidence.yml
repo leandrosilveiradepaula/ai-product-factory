@@ -5,8 +5,7 @@ on:
     inputs:
       target_url:
         description: Exact Console production or Vercel Preview URL to capture
-        required: false
-        default: https://ai-product-factory-console.vercel.app
+        required: true
         type: string
       target_commit:
         description: Optional; blank resolves the live deployed production SHA and proves identical Console bytes
