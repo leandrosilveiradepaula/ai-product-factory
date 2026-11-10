@@ -276,8 +276,29 @@ try {
   const auditSummary = "Validar revisão e edição do intake sem iniciar Descoberta nem criar projeto real.";
   await page.locator('input[name="name"]').fill(auditName);
   await page.locator('textarea[name="summary"]').fill(auditSummary);
-  await page.getByRole("button", {name:"Revisar e iniciar Descoberta"}).click();
-  await page.waitForURL(url => url.pathname === "/projects/new/review" && url.searchParams.has("intake"), {timeout:60000});
+  // Inspect the actual server-action outcome instead of reporting an opaque navigation timeout.
+  // Only report HTTP status and allowlisted form-error presence; never log intake data or credentials.
+  const actionResponses=[];
+  const observeAction=response=>{
+    const request=response.request();
+    if(request.method()==="POST" && new URL(response.url()).pathname==="/projects/new")
+      actionResponses.push({status:response.status(),redirected:response.headers()["location"]?.startsWith("/projects/new/review")===true});
+  };
+  page.on("response",observeAction);
+  try {
+    await page.getByRole("button", {name:"Revisar e iniciar Descoberta"}).click();
+    await page.waitForURL(url => url.pathname === "/projects/new/review" && url.searchParams.has("intake"), {timeout:15000});
+  } catch(error) {
+    const alerts=await page.locator('[role="alert"]').count().catch(()=>-1);
+    const pending=await page.getByRole("button", {name:/Preparando Descoberta/}).count().catch(()=>-1);
+    const route=new URL(page.url()).pathname;
+    throw new Error("intake_review_navigation_failed: route="+route+
+      " actionResponses="+JSON.stringify(actionResponses)+
+      " formAlertCount="+alerts+" pendingButtonCount="+pending+
+      " browserErrorCount="+pageErrors.length+" httpFailureCount="+badResponses.length);
+  } finally {
+    page.off("response",observeAction);
+  }
   if (!(await page.getByText(auditName, {exact:true}).count())) throw new Error("review did not preserve project name");
   await page.getByRole("link", {name:"Editar"}).click();
   await page.waitForURL(url => url.pathname === "/projects/new" && url.searchParams.has("intake"), {timeout:60000});

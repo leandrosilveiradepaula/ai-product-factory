@@ -15,8 +15,10 @@ class WebhookMiddlewareContract(unittest.TestCase):
     def test_exact_github_webhook_path_bypasses_operator_session_only(self):
         self.assertIn('path==="/api/integrations/github-app/webhook"', MIDDLEWARE)
         self.assertIn('path==="/api/health"', MIDDLEWARE)
-        self.assertIn('path.startsWith("/login")', MIDDLEWARE)
-        self.assertIn('path.startsWith("/unauthorized")', MIDDLEWARE)
+        self.assertIn('path==="/login"', MIDDLEWARE)
+        self.assertNotIn('path.startsWith("/login")', MIDDLEWARE)
+        self.assertIn('path==="/unauthorized"', MIDDLEWARE)
+        self.assertNotIn('path.startsWith("/unauthorized")', MIDDLEWARE)
         self.assertNotIn('path.startsWith("/api/integrations")', MIDDLEWARE)
         self.assertNotIn('path.startsWith("/api/")', MIDDLEWARE)
         self.assertIn('if(!user)', MIDDLEWARE)

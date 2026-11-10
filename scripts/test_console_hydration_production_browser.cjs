@@ -15,6 +15,10 @@ const consoleDir=path.join(root,"apps","console");
 const {chromium}=require(path.join(consoleDir,"node_modules","playwright"));
 const UUID="11111111-1111-4111-8111-111111111111";
 const AUTH_TOKEN="offline-fixture-auth-token";
+const FRESH_TOKEN="offline-fixture-renewed-access";
+const EXPIRED_TOKEN="offline-fixture-expired-access";
+const REFRESH_TOKEN="offline-fixture-refresh";
+let refreshCalls=0;
 const MOCK_KEY="sb_secret_offline_fixture_not_real";
 const PUB_KEY="offline-fixture-publishable";
 let mock,nextProcess,browser,appOrigin,mockOrigin;
@@ -33,10 +37,12 @@ function send(res,code,value){
 }
 function requireLocalAuth(req,route){
  if(route.pathname==="/auth/v1/user"){
-  return req.headers.apikey===PUB_KEY&&req.headers.authorization==="Bearer "+AUTH_TOKEN;
+  return req.headers.apikey===PUB_KEY&&(req.headers.authorization==="Bearer "+AUTH_TOKEN||
+   req.headers.authorization==="Bearer "+FRESH_TOKEN);
  }
  if(route.pathname==="/rest/v1/factory_console_operators"){
-  return req.headers.apikey===PUB_KEY&&req.headers.authorization==="Bearer "+AUTH_TOKEN;
+  return req.headers.apikey===PUB_KEY&&
+    (req.headers.authorization==="Bearer "+AUTH_TOKEN||req.headers.authorization==="Bearer "+FRESH_TOKEN);
  }
  return req.headers.apikey===MOCK_KEY;
 }
@@ -44,8 +50,35 @@ function localApi(req,res){
  let u;
  try{u=new URL(req.url,"http://127.0.0.1");}
  catch {violations.push("invalid_internal_route");send(res,400,{});return;}
+ // The only write-shaped fixture is Supabase Auth's local token-renewal
+ // handshake. It changes no data and rejects every other POST.
+ if(req.method==="POST"&&u.pathname==="/auth/v1/token"&&
+    u.searchParams.get("grant_type")==="refresh_token"){
+  if(req.headers.apikey!==PUB_KEY){violations.push("invalid_refresh_key");send(res,403,{});return;}
+  let raw="";
+  req.on("data",chunk=>{raw+=chunk.toString();if(raw.length>1024)req.destroy();});
+  req.on("end",()=>{
+   let payload;
+   try{payload=JSON.parse(raw);}catch{payload=null;}
+   if(payload?.refresh_token!==REFRESH_TOKEN){
+    violations.push("invalid_refresh_token");send(res,403,{});return;
+   }
+   refreshCalls++;
+   send(res,200,{access_token:FRESH_TOKEN,refresh_token:REFRESH_TOKEN,
+    expires_in:3600,user:{id:UUID,email:"browser-fixture@example.invalid"}});
+  });
+  return;
+ }
+ if(req.method==="POST"&&u.pathname==="/rest/v1/rpc/factory_get_github_app_status"&&req.headers.apikey===MOCK_KEY){
+  // Read-only status RPC, not a write; no external GitHub or database access.
+  send(res,200,{configured:false,status:"unavailable"});return;
+ }
  if(req.method!=="GET"){
-  violations.push("mutation_attempt");send(res,405,{});return;
+  violations.push("mutation_attempt:"+req.method+":"+u.pathname);send(res,405,{});return;
+ }
+ if(u.pathname==="/auth/v1/user"&&
+    req.headers.authorization==="Bearer "+EXPIRED_TOKEN&&req.headers.apikey===PUB_KEY){
+  send(res,401,{message:"expired_fixture_token"});return;
  }
  if(!requireLocalAuth(req,u)){violations.push("unauthorized_internal_fetch");send(res,403,{});return;}
  if(u.pathname==="/auth/v1/user"){
@@ -58,10 +91,13 @@ function localApi(req,res){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
  }else if(u.pathname==="/rest/v1/factory_audit_events"||
-          u.pathname==="/rest/v1/factory_tool_usage"){
+          u.pathname==="/rest/v1/factory_tool_usage"||
+          u.pathname==="/rest/v1/factory_human_gates"||
+          u.pathname==="/rest/v1/factory_release_reports"||
+          u.pathname==="/rest/v1/factory_project_github_access"){
   send(res,200,[]);
  }else{
-  violations.push("unmocked_internal_route");
+  violations.push("unmocked_internal_route:"+req.method+":"+u.pathname);
   send(res,404,{error:"not_available"});
  }
 }
@@ -190,4 +226,139 @@ test("real Next production SSR hydration of authenticated /configuration is clea
 });
 test("real Next production SSR hydration remains clean under streaming network throttling",async()=>{
  const n=await hydrationRound({throttled:true,repeats:4});assert.equal(n,4);
+});
+
+test("B2: expired token refresh reaches same-request Server Components without unauthorized redirect",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([
+  {name:"factory_access_token",value:EXPIRED_TOKEN,url:appOrigin},
+  {name:"factory_refresh_token",value:REFRESH_TOKEN,url:appOrigin},
+ ]);
+ // The refresh occurs server-side via the strict local auth fixture.
+ const beforeCount=refreshCalls;
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",()=>errors.push("pageerror"));
+ try{
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(new URL(page.url()).pathname,"/configuration");
+  assert.equal(await page.locator("h1.title").innerText(),"Configuração");
+  assert.ok(refreshCalls>beforeCount,"middleware must renew expired access");
+  // Production cookies are Secure; Chromium intentionally does not persist
+  // Secure Set-Cookie on this isolated plain-HTTP origin. Verify the server
+  // emitted the renewed cookie instead of weakening production cookie flags.
+  const setCookies=(await response.headersArray()).filter(h=>h.name.toLowerCase()==="set-cookie").map(h=>h.value);
+  assert.ok(setCookies.some(v=>v.startsWith("factory_access_token=")&&v.includes(FRESH_TOKEN)&&/;\s*secure/i.test(v)),
+    "middleware must emit the fresh Secure access cookie");
+  assert.deepEqual(errors,[]);
+ }finally{await context.close();}
+});
+
+test("B3: stale attention request cannot overwrite a newer successful operator snapshot",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ let calls=0;
+ let pending=null;
+ const violationsBefore=violations.length;
+ await context.route("**/*",async route=>{
+  const req=route.request(),url=new URL(req.url());
+  if(url.origin!==appOrigin||req.method()!=="GET"){
+   violations.push("browser_mutation_or_external_origin");
+   await route.abort("blockedbyclient");return;
+  }
+  if(url.pathname==="/api/human-attention"){
+   calls++;
+   if(calls===1){pending=route;return;}
+   await route.fulfill({status:200,contentType:"application/json",
+    body:JSON.stringify({status:"ok",count:2,projects:[]})});return;
+  }
+  await route.continue();
+ });
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",()=>errors.push("pageerror"));
+ try{
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
+  assert.equal(response?.status(),200);
+  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Configuração");
+  await page.waitForFunction(()=>document.querySelector("a.skipToMain")!==null);
+  // First request must be pending; the second event must commit newer data.
+  await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
+  for(let i=0;i<100&&calls<1;i++)await new Promise(r=>setTimeout(r,50));
+  assert.equal(calls,1,"initial snapshot should be pending");
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await page.waitForFunction(()=>document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",null,{timeout:15000});
+  await pending.fulfill({status:200,contentType:"application/json",
+   body:JSON.stringify({status:"ok",count:0,projects:[]})});
+  pending=null;
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").innerText(),"2");
+  assert.deepEqual(errors,[]);
+  assert.equal(violations.length,violationsBefore);
+ }finally{
+  if(pending)await pending.fulfill({status:200,contentType:"application/json",
+   body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+  await context.close();
+ }
+});
+
+test("B2: expired token without refresh stays denied, never accesses protected Console",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:EXPIRED_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const count=refreshCalls;
+ try{
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200,"safe login destination");
+  assert.equal(new URL(page.url()).pathname,"/login");
+  assert.equal(await page.locator("h1.title").innerText(),"Entrar na Factory");
+  assert.equal(await page.locator("#orcamento").count(),0);
+  assert.equal(refreshCalls,count,"no refresh credential means no refresh call");
+ }finally{await context.close();}
+});
+
+test("B2: public login prefix never bypasses authentication middleware",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ const page=await context.newPage();
+ try{
+  const response=await page.goto(appOrigin+"/login-unprotected-canary",{
+   waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  const u=new URL(page.url());
+  assert.equal(u.pathname,"/login");
+  assert.equal(u.searchParams.get("next"),"/login-unprotected-canary");
+  assert.equal(await page.locator("h1.title").innerText(),"Entrar na Factory");
+ }finally{await context.close();}
+});
+
+test("B2/B3: real authenticated intake advances to review without a server action or backend mutation",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const blocked=[];
+ await context.route("**/*",async route=>{
+  const request=route.request(),url=new URL(request.url());
+  if(url.origin!==appOrigin||request.method()!=="GET"){
+   blocked.push(request.method()+":"+url.pathname);
+   await route.abort("blockedbyclient");return;
+  }
+  if(url.pathname==="/api/human-attention"){
+   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})});return;
+  }
+  await route.continue();
+ });
+ try{
+  const response=await page.goto(appOrigin+"/projects/new",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  await page.locator('input[name="name"]').fill("Offline intake regression");
+  await page.locator('textarea[name="summary"]').fill("Verify review without privileged storage access");
+  await page.getByRole("button",{name:"Revisar e iniciar Descoberta"}).click();
+  await page.waitForURL(url=>url.pathname==="/projects/new/review"&&url.searchParams.has("intake"),{timeout:15000});
+  assert.ok(await page.getByText("Offline intake regression",{exact:true}).count());
+  assert.deepEqual(blocked,[],"review navigation must not POST or contact external services");
+  await page.getByRole("link",{name:"Editar"}).click();
+  await page.waitForURL(url=>url.pathname==="/projects/new"&&url.searchParams.has("intake"),{timeout:15000});
+  assert.equal(await page.locator('input[name="name"]').inputValue(),"Offline intake regression");
+ }finally{await context.close();}
 });
