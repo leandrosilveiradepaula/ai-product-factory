@@ -55,6 +55,8 @@ def assess(*, projects: object, journeys: object,
                 and bool(j["state"]),
                 "crm_journey_identity_invalid")
         ids.add(j["id"])
+        # Superseded rows are historical, not candidates for a completed
+        # lifecycle. Their identifiers and project binding were still checked.
         if j.get("state") == "superseded":
             continue
         require(j.get("request_source") in {"github-owner", "factory-console"},
@@ -64,11 +66,23 @@ def assess(*, projects: object, journeys: object,
                     and type(j.get("issue_number")) is int
                     and j["issue_number"] > 0,
                     "crm_owner_start_unverified")
+        if j.get("request_source") == "factory-console":
+            # Console Start is legitimate only with a persisted journey; its
+            # existence alone does not establish a human release decision.
+            require(j.get("issue_repository") in (None, "leandrosilveiradepaula/ai-product-factory"),
+                    "crm_console_start_repository_invalid")
         for sha_key in ("candidate_commit", "preview_merge_sha", "production_release_sha"):
             value = j.get(sha_key)
             require(value is None or (isinstance(value, str)
                     and SHA.fullmatch(value) is not None),
                     "crm_journey_sha_invalid")
+        if j.get("production_release_sha") is not None:
+            require(j.get("candidate_commit") is not None
+                    and j.get("preview_merge_sha") is not None,
+                    "crm_release_without_candidate_or_preview")
+        if j.get("preview_merge_sha") is not None:
+            require(j.get("candidate_commit") is not None,
+                    "crm_preview_without_candidate")
         actual.append(j)
     # Multiple active journeys are not a single complete end-to-end proof.
     require(len(actual) <= 1, "crm_parallel_journey_ambiguous")
