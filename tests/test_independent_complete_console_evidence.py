@@ -122,6 +122,27 @@ class CompleteConsoleEvidenceTests(unittest.TestCase):
             with self.subTest(key=key),self.assertRaises(ConsoleFullSurfaceEvidenceBlocked):
                 validate_surface_witness(x,run_id=RUN,source_sha=SHA)
 
+    def test_unchanged_console_reuses_complete_pinned_capture_across_new_main_sha(self):
+        data,registry,proof,_=fixture()
+        data=copy.deepcopy(data)
+        data[P+"/actions/runs/"+str(RUN)+"/artifacts?per_page=100"]["artifacts"][1]["workflow_run"]["head_sha"]=SERV
+        registry=[{**registry[0],"source_commit":SERV}]
+        proof=AuthenticatedConsoleEvidence(REPO,SHA,RUN,1,source_commit=SERV)
+        payload={**witness(),"sourceCommit":SERV,"targetCommit":SERV}
+        result=self.verify(data,registry,proof,payload)
+        self.assertEqual(result.assessed_commit,SHA)
+        self.assertEqual(result.receipt()["certifies"],["surface_inventory","responsive"])
+        for change in ("source_mismatch","tree_drift","no_ancestry","wrong_registry"):
+            candidate=copy.deepcopy(data)
+            rows=copy.deepcopy(registry)
+            evidence=copy.deepcopy(payload)
+            if change=="source_mismatch":evidence["sourceCommit"]=SHA
+            elif change=="tree_drift":candidate[P+"/git/trees/"+SHA+"?recursive=1"]["tree"][0]["sha"]="d"*40
+            elif change=="no_ancestry":candidate[P+"/compare/"+SERV+"..."+SHA]["merge_base_commit"]["sha"]="d"*40
+            else:rows[0]["source_commit"]=SHA
+            with self.subTest(change=change),self.assertRaises(ConsoleFullSurfaceEvidenceBlocked):
+                self.verify(candidate,rows,proof,evidence)
+
     def test_failed_capture_registry_or_artifact_never_promotes(self):
         data,rows,auth,artifact=fixture()
         cases=[]

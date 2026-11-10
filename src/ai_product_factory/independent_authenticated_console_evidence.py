@@ -18,8 +18,8 @@ WORKFLOW_PATH = ".github/workflows/authenticated-visual-evidence.yml"
 # The only historical capture that may be reused.  This is deliberately an
 # allowlist, rather than accepting a run id from a caller: reusing an arbitrary
 # completed workflow would turn a stale browser run into a new positive claim.
-HISTORICAL_WORKFLOW_RUN_ID = 42439592059
-HISTORICAL_SOURCE_SHA = "d83a7095e18244c2833d626430cb3f575eb35130"
+HISTORICAL_WORKFLOW_RUN_ID = 42915219196
+HISTORICAL_SOURCE_SHA = "38738ee02e6a3be776ebb2f9f7450739bf7c017a"
 
 
 class AuthenticatedConsoleEvidenceBlocked(RuntimeError):
@@ -32,6 +32,7 @@ class AuthenticatedConsoleEvidence:
     assessed_commit: str
     workflow_run_id: int
     artifact_id: int | None
+    source_commit: str | None = None
 
     @property
     def evidence(self) -> tuple[str, ...]:
@@ -134,7 +135,7 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
     run = github_get(prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID))
     if not isinstance(run, dict) or (
         run.get("id") != HISTORICAL_WORKFLOW_RUN_ID or run.get("name") != WORKFLOW
-        or run.get("path") != WORKFLOW_PATH or run.get("event") != "workflow_dispatch"
+        or run.get("path") != WORKFLOW_PATH or run.get("event") != "push"
         or run.get("head_branch") != branch or run.get("head_sha") != HISTORICAL_SOURCE_SHA
         or run.get("run_attempt") != 1 or run.get("status") != "completed"
         or run.get("conclusion") != "success"
@@ -150,12 +151,16 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
     # not certify browser interactions, RBAC or a complete UX review.
     rows = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
     count = artifacts.get("total_count") if isinstance(artifacts, dict) else None
-    if (type(count) is not int or count not in (0, 1)
+    if (type(count) is not int or not 0 <= count <= 100
             or not isinstance(rows, list) or len(rows) != count):
         raise AuthenticatedConsoleEvidenceBlocked("historical artifact inventory is ambiguous")
+    matching = [item for item in rows if isinstance(item, dict)
+                and item.get("name") == "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID)]
+    if len(matching) > 1:
+        raise AuthenticatedConsoleEvidenceBlocked("historical artifact duplicate")
     artifact_id = None
-    if count == 1:
-        artifact = rows[0]
+    if matching:
+        artifact = matching[0]
         provenance = artifact.get("workflow_run") if isinstance(artifact, dict) else None
         if (not isinstance(artifact, dict)
                 or artifact.get("name") != "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID)
@@ -196,6 +201,7 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
     return AuthenticatedConsoleEvidence(
         repository=repository, assessed_commit=assessed_commit,
         workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, artifact_id=artifact_id,
+        source_commit=HISTORICAL_SOURCE_SHA,
     )
 
 
@@ -218,7 +224,7 @@ def verify_authenticated_console_evidence(*, repository: str, assessed_commit: s
     run = github_get(prefix + "/actions/runs/" + str(workflow_run_id))
     if not isinstance(run, dict) or (
         run.get("id") != workflow_run_id or run.get("name") != WORKFLOW
-        or run.get("path") != WORKFLOW_PATH or run.get("event") != "workflow_dispatch"
+        or run.get("path") != WORKFLOW_PATH or run.get("event") not in ("workflow_dispatch", "push")
         or run.get("head_branch") != branch or run.get("head_sha") != assessed_commit
         or run.get("run_attempt") != 1 or run.get("status") != "completed"
         or run.get("conclusion") != "success"

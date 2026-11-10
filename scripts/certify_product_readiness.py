@@ -140,13 +140,13 @@ def main(argv: list[str] | None = None) -> int:
             row = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
             status = row.get("status") if isinstance(row, dict) else None
             allowed = ({"passed", "partial"} if args.verify_complete_console_surface
-                       and args.authenticated_console_run_id is not None
+                       and proof is not None
                        and criterion in ("surface_inventory", "responsive")
                        else {"partial"})
             if status not in allowed or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
     full_surface_proof = None
-    if args.verify_complete_console_surface and args.authenticated_console_run_id is not None:
+    if args.verify_complete_console_surface and proof is not None:
         if not args.require_verified_baseline:
             raise CertificationEvidenceError("complete Console proof requires verified baseline")
         if proof is None:
