@@ -95,8 +95,8 @@ test("a counted fixture resource 503 is transparent, bounded, and never certifie
 });
 test("source prevents silencing genuine hydration errors and enforces 503 allowance",()=>{
  const source=fs.readFileSync(new URL("./verify_block1_b3_live_console_states.mjs",import.meta.url),"utf8");
- assert.match(source,/page.on\\("pageerror",\\(\\)=>\\{observed.browserErrors\\+\\+;/);
+ assert.match(source,/page.on\("pageerror",\(\)=>\{observed.browserErrors\+\+;/);
  assert.match(source,/observed.expected503ResourceErrors<observed.hits.unavailable/);
- assert.match(source,/observed.browserErrors\\+\\+;/);
- assert.match(source,/isExpectedFixture503ResourceError\\(m,origin\\)/);
+ assert.match(source,/observed.browserErrors\+\+;/);
+ assert.match(source,/isExpectedFixture503ResourceError\(m,origin\)/);
 });
