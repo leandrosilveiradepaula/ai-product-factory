@@ -3,6 +3,15 @@
  * Console deployment. No model, write, admin API, or synthetic PASS.
  * Only status, route and boolean results are retained; never tokens/cookies.
  */
+import {CONSOLE_ROUTES} from "./console_surface_coverage_contract.mjs";
+
+// The same fourteen authenticated Console surfaces must reject anonymous users,
+// plus the privileged operator-admin route. Changes to the Console inventory
+// automatically expand this negative authorization audit.
+export const B2_PROTECTED_ROUTES=Object.freeze([
+  ...new Set([...CONSOLE_ROUTES.map(route=>route.path),"/admin/operators"]),
+]);
+
 export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,trustedOidc}) {
   const base=new URL(baseUrl);
   if(base.protocol!=="https:" || base.username || base.password || base.search || base.hash)
@@ -14,7 +23,7 @@ export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,t
   });
   try {
     const anonymous=await noAuth.newPage();
-    const protectedRoutes=["/projects","/gates","/admin/operators"];
+    const protectedRoutes=B2_PROTECTED_ROUTES;
     const anonymousDenials=[];
     for(const route of protectedRoutes) {
       const response=await anonymous.goto(origin+route,{waitUntil:"domcontentloaded",timeout:60000});
@@ -34,6 +43,26 @@ export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,t
       if(target.origin!==origin || target.pathname!=="/login")
         throw Error("b2_anonymous_api_redirect_not_login");
     }
+    // A tampered cookie must not be accepted as an authenticated operator.
+    // Never copy, decode, persist or log a real operator token for this check.
+    await noAuth.addCookies([{name:"factory_access_token",value:"invalid-unsigned-factory-session",url:origin}]);
+    const invalidSessionPage=await noAuth.newPage();
+    const invalidPageResponse=await invalidSessionPage.goto(origin+"/projects",{
+      waitUntil:"domcontentloaded",timeout:60000,
+    });
+    if(!invalidPageResponse || new URL(invalidSessionPage.url()).pathname!=="/login")
+      throw Error("b2_invalid_session_route_accepted");
+    const invalidApi=await noAuth.request.get(origin+"/api/human-attention",{
+      maxRedirects:0,timeout:30000,
+    });
+    if(![301,302,303,307,308,401,403].includes(invalidApi.status()))
+      throw Error("b2_invalid_session_api_accepted");
+    if([301,302,303,307,308].includes(invalidApi.status())){
+      const destination=new URL(invalidApi.headers()["location"]||"",origin);
+      if(destination.origin!==origin || destination.pathname!=="/login")
+        throw Error("b2_invalid_session_api_redirect_unsafe");
+    }
+    await invalidSessionPage.close();
     const operatorApi=await operatorContext.request.get(origin+"/api/human-attention",{
       maxRedirects:0,timeout:30000,
     });
@@ -58,6 +87,8 @@ export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,t
       anonymousApiDenied:true,
       operatorReadOnlyApiAllowed:true,
       operatorAdminPageDenied:true,
+      invalidSessionRouteDenied:true,
+      invalidSessionApiDenied:true,
       mutatingRequests:0,
       productionWrites:0,
       signedJwtClaimsIndependentlyVerified:false,
