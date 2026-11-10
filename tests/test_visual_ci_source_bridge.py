@@ -50,7 +50,7 @@ class ExactCIVisualBridgeTests(unittest.TestCase):
     def test_mutated_or_failed_visual_denied(self):
         visual,_=fixture()
         for changes in [{"conclusion":"failure"},{"run_attempt":2},{"head_sha":"b"*40},
-                        {"event":"push"},{"path":"fake"},{"id":-1}]:
+                        {"event":"issues"},{"path":"fake"},{"id":-1}]:
             with self.subTest(changes=changes),self.assertRaises(VisualCIBindingBlocked):
                 resolve({**visual,**changes})
     def test_untrusted_git_provenance_denied(self):
