@@ -1643,6 +1643,20 @@ jobs:
               --verify-requirements-inventory \
             "${visual_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
+      # Audit actual persisted assessment, never a manifest or expected score.
+      # A missing certificate or a lost prior PASS fails closed.
+      - uses: ./.github/actions/control-plane-oidc
+      - name: Detect persisted Block 1 criterion regression by exact SHA
+        run: |
+          set -euo pipefail
+          python scripts/check_block1_certification_delta.py \
+            --assessed-commit "${{ github.event.workflow_run.head_sha }}" \
+            --output "$RUNNER_TEMP/factory-block1-criterion-delta.json"
+      - name: Witness real CRM and greenfield blockers without writes
+        run: |
+          set -euo pipefail
+          python scripts/audit_block1_real_journeys_readonly.py \
+            --output "$RUNNER_TEMP/factory-block1-real-journey-witness.json"
       - name: Preserve bounded certifier receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -1651,6 +1665,8 @@ jobs:
           path: |
             ${{ runner.temp }}/factory-readiness-certified-baseline.json
             ${{ runner.temp }}/factory-readiness-persistence-receipt.json
+            ${{ runner.temp }}/factory-block1-criterion-delta.json
+            ${{ runner.temp }}/factory-block1-real-journey-witness.json
           if-no-files-found: warn
           retention-days: 14
 
