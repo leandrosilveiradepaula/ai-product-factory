@@ -27,7 +27,10 @@ export async function submitIntake(_prev:IntakeState,formData:FormData):Promise<
  const draftId=UUID_RE.test(existingDraft)?existingDraft:randomUUID();
  const files=formData.getAll("attachments").filter((x):x is File=>x instanceof File&&x.size>0);
  let existingCount=0;
- try{existingCount=await countProjectDraftFiles(draftId)}catch(error){return{errors:{attachments:error instanceof Error?error.message:"Não foi possível consultar os anexos."}}}
+ // A brand-new empty draft has no attachments to count; do not make an unnecessary privileged storage query.
+ if(existingDraft&&UUID_RE.test(existingDraft)||files.length>0){
+  try{existingCount=await countProjectDraftFiles(draftId)}catch(error){return{errors:{attachments:error instanceof Error?error.message:"Não foi possível consultar os anexos."}}}
+ }
  if(existingCount+files.length>10)return{errors:{attachments:"Envie no máximo 10 arquivos por projeto."}};
  try{for(const file of files)await uploadProjectDraftFile(draftId,file)}catch(error){return{errors:{attachments:error instanceof Error?error.message:"Não foi possível enviar os anexos."}}}
  const encoded=Buffer.from(JSON.stringify({...clean,draftId,attachmentCount:existingCount+files.length})).toString("base64url");
