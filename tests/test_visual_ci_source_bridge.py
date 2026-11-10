@@ -34,9 +34,22 @@ class ExactCIVisualBridgeTests(unittest.TestCase):
         result=resolve()
         self.assertEqual(result["workflow_run"]["id"],RID)
         self.assertEqual(result["workflow_run"]["name"],"validate")
-    def test_validate_event_never_substituted(self):
-        visual,_=fixture()
-        self.assertIsNone(resolve({**visual,"name":"validate"}))
+    def test_validate_event_bound_to_exact_real_run(self):
+        _,data=fixture()
+        ci=data[P+"/actions/runs/"+str(RID)]
+        result=resolve(ci)
+        self.assertEqual(result["workflow_run"]["id"],RID)
+    def test_validate_event_wrong_run_or_sha_denied(self):
+        _,data=fixture()
+        ci=data[P+"/actions/runs/"+str(RID)]
+        for change in ({"id":VID},{"head_sha":"b"*40},{"conclusion":"failure"},{"run_attempt":2}):
+            with self.subTest(change=change),self.assertRaises(VisualCIBindingBlocked):
+                resolve({**ci,**change})
+    def test_validate_event_api_mismatch_denied(self):
+        _,data=fixture()
+        ci=data[P+"/actions/runs/"+str(RID)]
+        changed={**data,P+"/actions/runs/"+str(RID):{**ci,"conclusion":"failure"}}
+        with self.assertRaises(VisualCIBindingBlocked):resolve(ci,changed)
     def test_mutated_or_failed_visual_denied(self):
         visual,_=fixture()
         for changes in [{"conclusion":"failure"},{"run_attempt":2},{"head_sha":"b"*40},

@@ -33,9 +33,30 @@ def bind_exact_ci_source(*, repository: str, assessed_commit: str,
     if not isinstance(upstream,dict):
         raise VisualCIBindingBlocked("ci_bridge_event_missing")
     if upstream.get("name")=="validate":
-        # The existing source verifiers consume the actual CI event and
-        # independently verify it. No substitution is needed or allowed.
-        return None
+        # Verify the actual triggering run independently before passing it to
+        # every downstream verifier. Never replace an untrusted CI event.
+        if not all((
+            upstream.get("id")==validation_run_id,
+            upstream.get("path")==VALIDATION_PATH,
+            upstream.get("event")=="push",
+            upstream.get("head_sha")==assessed_commit,
+            upstream.get("head_branch")=="main",
+            upstream.get("run_attempt")==1,
+            upstream.get("status")=="completed",
+            upstream.get("conclusion")=="success",
+            isinstance(upstream.get("repository"),dict),
+            upstream["repository"].get("full_name")==repository,
+        )):
+            raise VisualCIBindingBlocked("ci_bridge_actual_validate_unverified")
+        actual=github_get("/repos/"+repository+"/actions/runs/"+str(validation_run_id))
+        if not isinstance(actual,dict) or any(
+            actual.get(field)!=upstream.get(field) for field in (
+                "id","name","path","event","head_sha","head_branch",
+                "run_attempt","status","conclusion"
+            )
+        ) or (actual.get("repository") or {}).get("full_name")!=repository:
+            raise VisualCIBindingBlocked("ci_bridge_actual_validate_unbound")
+        return {"workflow_run":actual}
     if not all((
         upstream.get("name")==VISUAL,
         upstream.get("path")==VISUAL_PATH,
