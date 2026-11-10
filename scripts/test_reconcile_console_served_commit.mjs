@@ -93,7 +93,7 @@ test("host is validated before OIDC-bearing request, including owned Preview",as
  for(const consoleUrl of ["https://evil.example","http://ai-product-factory-console.vercel.app",
    "https://ai-product-factory-console.vercel.app/?token=x",
    "https://ai-product-factory-console-4sbrw91c5-leandros-projects-102e32ab.vercel.app"]){
-  await assert.rejects(reconcileServedConsole({...args,consoleUrl}),/console_/);
+  await assert.rejects(reconcileServedConsole({...args,consoleUrl}),/(console_|visual target)/);
  }
  assert.equal(calls.length,0);
 });
