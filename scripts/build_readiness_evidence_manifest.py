@@ -62,6 +62,7 @@ from trace_block1_requirements import (
 from inventory_block1_simulation_paths import inventory as scan_simulation_sources
 from audit_block1_mock_runtime_reachability import audit as audit_simulation_reachability
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
+from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
 
 # Checkout root is the script's location, never mutable working directory.
 # Evidence collection can run after other verifiers and OIDC actions.
@@ -83,10 +84,16 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             reuse_historical_authenticated_console_evidence: bool = False,
                             control_plane_get=None,
                             verify_complete_console_surface: bool = False,
-                            artifact_reader=None) -> dict:
+                            artifact_reader=None,
+                            source_event=None) -> dict:
     manifest = conservative_verified_manifest(
         repository=repository, assessed_commit=sha, github_get=github_get
     )
+    verified_ci_event = bind_exact_ci_source(
+        repository=repository, assessed_commit=sha, actual_event=source_event,
+        validation_run_id=manifest['source_snapshot']['validation_run_id'],
+        github_get=github_get,
+    ) if source_event is not None else None
     proof = None
     if verify_native_v2:
         try:
@@ -184,6 +191,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         try:
             regression_proof = verify_effective_regression_gates(
                 repository=repository, assessed_commit=sha, github_get=github_get,
+                event_payload=verified_ci_event,
             )
         except RegressionEvidenceBlocked as exc:
             # The verifier emits bounded internal error codes. Preserve only
@@ -208,6 +216,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         try:
             recovery_proof = verify_recovery_alerting_fn(
                 repository=repository, assessed_commit=sha, github_get=github_get,
+                event_payload=verified_ci_event,
             )
         except (RecoveryEvidenceBlocked, ValueError, RuntimeError, OSError,
                 KeyError, TypeError, UnicodeError):
@@ -222,6 +231,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         try:
             operations_proof = verify_operations_runbook_fn(
                 repository=repository, assessed_commit=sha, github_get=github_get,
+                event_payload=verified_ci_event,
             )
         except (OperationsEvidenceBlocked, ValueError, RuntimeError, OSError,
                 KeyError, TypeError, UnicodeError):
@@ -359,7 +369,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         try:
             requirements_proof = verify_requirements_inventory_fn(
                 repository=repository, assessed_commit=sha, github_get=github_get,
-                criteria=manifest["criteria"],
+                criteria=manifest["criteria"], event_payload=verified_ci_event,
             )
         except RequirementsInventoryBlocked as exc:
             code = str(exc)
@@ -483,6 +493,7 @@ def main(argv: list[str] | None = None) -> int:
         control_plane_get=control_plane_get,
         verify_complete_console_surface=args.verify_complete_console_surface,
         artifact_reader=artifact_reader,
+        source_event=event,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

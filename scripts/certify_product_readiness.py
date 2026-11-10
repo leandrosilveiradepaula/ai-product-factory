@@ -34,6 +34,7 @@ from ai_product_factory.independent_authenticated_console_evidence import (
 )
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
+from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
 
 
 def _github_get(token: str):
@@ -101,6 +102,17 @@ def main(argv: list[str] | None = None) -> int:
     manifest = (require_verified_baseline(
         evidence, repository=args.repository, assessed_commit=args.assessed_commit
     ) if args.require_verified_baseline else evidence)
+    github_get = _github_get(token)
+    event_path = os.environ.get('GITHUB_EVENT_PATH')
+    if not event_path:
+        raise CertificationEvidenceError('ci_bridge_event_path_missing')
+    event_payload = json.loads(Path(event_path).read_text(encoding='utf-8'))
+    verified_ci_event = bind_exact_ci_source(
+        repository=args.repository, assessed_commit=args.assessed_commit,
+        actual_event=event_payload,
+        validation_run_id=evidence['source_snapshot']['validation_run_id'],
+        github_get=github_get,
+    )
     if args.authenticated_console_run_id is not None:
         proof = verify_authenticated_console_evidence(
             repository=args.repository, assessed_commit=args.assessed_commit,
@@ -232,7 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(regression, dict) and regression.get("status") == "passed":
             regression_proof = verify_regression_gates(
                 repository=args.repository, assessed_commit=args.assessed_commit,
-                github_get=github_get,
+                github_get=github_get, event_payload=verified_ci_event,
             )
     recovery_proof = None
     if args.verify_recovery_alerting:
@@ -242,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(recovery, dict) and recovery.get("status") == "passed":
             recovery_proof = verify_recovery_alerting(
                 repository=args.repository, assessed_commit=args.assessed_commit,
-                github_get=github_get,
+                github_get=github_get, event_payload=verified_ci_event,
             )
     operations_proof = None
     if args.verify_operations_runbook:
@@ -252,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(operations, dict) and operations.get("status") == "passed":
             operations_proof = verify_operations_runbook(
                 repository=args.repository, assessed_commit=args.assessed_commit,
-                github_get=github_get,
+                github_get=github_get, event_payload=verified_ci_event,
             )
     requirements_proof = None
     if args.verify_requirements_inventory:
@@ -265,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
             requirements_proof = verify_requirements_inventory(
                 repository=args.repository, assessed_commit=args.assessed_commit,
                 github_get=github_get, criteria=manifest["criteria"],
+                event_payload=verified_ci_event,
             )
 
     simulation_proof = None
