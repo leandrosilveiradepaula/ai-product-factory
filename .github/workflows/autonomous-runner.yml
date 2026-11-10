@@ -1641,6 +1641,7 @@ jobs:
               --verify-recovery-alerting \
               --verify-operations-runbook \
               --verify-requirements-inventory \
+              --verify-executed-simulation-inventory \
             "${visual_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       # Audit actual persisted assessment, never a manifest or expected score.
