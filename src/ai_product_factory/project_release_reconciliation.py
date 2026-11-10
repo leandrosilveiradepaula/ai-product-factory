@@ -155,6 +155,16 @@ class SupabaseProjectReleaseReconciler:
                 if type(event_id) is not int or event_id<=inspected:
                     raise RuntimeError("invalid release keyset cursor")
                 inspected=event_id
+                # Reject a malformed identity anywhere in the page before the
+                # first reconciliation RPC can write an earlier event. This
+                # preserves all-or-nothing preflight for untrusted selectors.
+                project_id=row.get("project_id")
+                run_id=row.get("run_id")
+                merge_sha=row.get("merge_sha")
+                if (not isinstance(project_id,str) or not _UUID.fullmatch(project_id)
+                    or not isinstance(run_id,str) or not _UUID.fullmatch(run_id)
+                    or not isinstance(merge_sha,str) or not _SHA.fullmatch(merge_sha)):
+                    raise RuntimeError("invalid pending release identity")
             for row in rows:
                 event_id=row["event_id"]
                 cursor=event_id
