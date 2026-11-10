@@ -15,6 +15,10 @@ const consoleDir=path.join(root,"apps","console");
 const {chromium}=require(path.join(consoleDir,"node_modules","playwright"));
 const UUID="11111111-1111-4111-8111-111111111111";
 const AUTH_TOKEN="offline-fixture-auth-token";
+const FRESH_TOKEN="offline-fixture-renewed-access";
+const EXPIRED_TOKEN="offline-fixture-expired-access";
+const REFRESH_TOKEN="offline-fixture-refresh";
+let refreshCalls=0;
 const MOCK_KEY="sb_secret_offline_fixture_not_real";
 const PUB_KEY="offline-fixture-publishable";
 let mock,nextProcess,browser,appOrigin,mockOrigin;
@@ -33,7 +37,8 @@ function send(res,code,value){
 }
 function requireLocalAuth(req,route){
  if(route.pathname==="/auth/v1/user"){
-  return req.headers.apikey===PUB_KEY&&req.headers.authorization==="Bearer "+AUTH_TOKEN;
+  return req.headers.apikey===PUB_KEY&&(req.headers.authorization==="Bearer "+AUTH_TOKEN||
+   req.headers.authorization==="Bearer "+FRESH_TOKEN);
  }
  if(route.pathname==="/rest/v1/factory_console_operators"){
   return req.headers.apikey===PUB_KEY&&req.headers.authorization==="Bearer "+AUTH_TOKEN;
@@ -44,8 +49,31 @@ function localApi(req,res){
  let u;
  try{u=new URL(req.url,"http://127.0.0.1");}
  catch {violations.push("invalid_internal_route");send(res,400,{});return;}
+ // The only write-shaped fixture is Supabase Auth's local token-renewal
+ // handshake. It changes no data and rejects every other POST.
+ if(req.method==="POST"&&u.pathname==="/auth/v1/token"&&
+    u.searchParams.get("grant_type")==="refresh_token"){
+  if(req.headers.apikey!==PUB_KEY){violations.push("invalid_refresh_key");send(res,403,{});return;}
+  let raw="";
+  req.on("data",chunk=>{raw+=chunk.toString();if(raw.length>1024)req.destroy();});
+  req.on("end",()=>{
+   let payload;
+   try{payload=JSON.parse(raw);}catch{payload=null;}
+   if(payload?.refresh_token!==REFRESH_TOKEN){
+    violations.push("invalid_refresh_token");send(res,403,{});return;
+   }
+   refreshCalls++;
+   send(res,200,{access_token:FRESH_TOKEN,refresh_token:REFRESH_TOKEN,
+    expires_in:3600,user:{id:UUID,email:"browser-fixture@example.invalid"}});
+  });
+  return;
+ }
  if(req.method!=="GET"){
   violations.push("mutation_attempt");send(res,405,{});return;
+ }
+ if(u.pathname==="/auth/v1/user"&&
+    req.headers.authorization==="Bearer "+EXPIRED_TOKEN&&req.headers.apikey===PUB_KEY){
+  send(res,401,{message:"expired_fixture_token"});return;
  }
  if(!requireLocalAuth(req,u)){violations.push("unauthorized_internal_fetch");send(res,403,{});return;}
  if(u.pathname==="/auth/v1/user"){
@@ -190,4 +218,75 @@ test("real Next production SSR hydration of authenticated /configuration is clea
 });
 test("real Next production SSR hydration remains clean under streaming network throttling",async()=>{
  const n=await hydrationRound({throttled:true,repeats:4});assert.equal(n,4);
+});
+
+test("B2: expired token refresh reaches same-request Server Components without unauthorized redirect",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([
+  {name:"factory_access_token",value:EXPIRED_TOKEN,url:appOrigin},
+  {name:"factory_refresh_token",value:REFRESH_TOKEN,url:appOrigin},
+ ]);
+ // The refresh occurs server-side via the strict local auth fixture.
+ const beforeCount=refreshCalls;
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",()=>errors.push("pageerror"));
+ try{
+  const response=await page.goto(appOrigin+"/configuration",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(new URL(page.url()).pathname,"/configuration");
+  assert.equal(await page.locator("h1.title").innerText(),"Configuração");
+  assert.ok(refreshCalls>beforeCount,"middleware must renew expired access");
+  const cookies=await context.cookies(appOrigin);
+  assert.equal(cookies.find(x=>x.name==="factory_access_token")?.value,FRESH_TOKEN);
+  assert.deepEqual(errors,[]);
+ }finally{await context.close();}
+});
+
+test("B3: stale attention request cannot overwrite a newer successful operator snapshot",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ let calls=0;
+ let pending=null;
+ const violationsBefore=violations.length;
+ await context.route("**/*",async route=>{
+  const req=route.request(),url=new URL(req.url());
+  if(url.origin!==appOrigin||req.method()!=="GET"){
+   violations.push("browser_mutation_or_external_origin");
+   await route.abort("blockedbyclient");return;
+  }
+  if(url.pathname==="/api/human-attention"){
+   calls++;
+   if(calls===1){pending=route;return;}
+   await route.fulfill({status:200,contentType:"application/json",
+    body:JSON.stringify({status:"ok",count:2,projects:[]})});return;
+  }
+  await route.continue();
+ });
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",()=>errors.push("pageerror"));
+ try{
+  const response=await page.goto(appOrigin+"/",{waitUntil:"domcontentloaded",timeout:45000});
+  assert.equal(response?.status(),200);
+  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Visão geral");
+  await page.waitForFunction(()=>document.querySelector("a.skipToMain")!==null);
+  // First request must be pending; the second event must commit newer data.
+  await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
+  for(let i=0;i<100&&calls<1;i++)await new Promise(r=>setTimeout(r,50));
+  assert.equal(calls,1,"initial snapshot should be pending");
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await page.waitForFunction(()=>document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",null,{timeout:15000});
+  await pending.fulfill({status:200,contentType:"application/json",
+   body:JSON.stringify({status:"ok",count:0,projects:[]})});
+  pending=null;
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").innerText(),"2");
+  assert.deepEqual(errors,[]);
+  assert.equal(violations.length,violationsBefore);
+ }finally{
+  if(pending)await pending.fulfill({status:200,contentType:"application/json",
+   body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+  await context.close();
+ }
 });
