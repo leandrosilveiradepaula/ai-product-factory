@@ -119,19 +119,25 @@ def main(argv: list[str] | None = None) -> int:
             raise CertificationEvidenceError("authenticated Console receipt changed before persistence")
         for criterion in ("surface_inventory", "responsive", "accessibility"):
             row = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
-            expected_status = ("passed" if args.verify_complete_console_surface
-                               and args.authenticated_console_run_id is not None
-                               and criterion in ("surface_inventory", "responsive")
-                               else "partial")
-            if not isinstance(row, dict) or row.get("status") != expected_status or row.get("evidence") != list(proof.evidence):
+            status = row.get("status") if isinstance(row, dict) else None
+            allowed = ({"passed", "partial"} if args.verify_complete_console_surface
+                       and args.authenticated_console_run_id is not None
+                       and criterion in ("surface_inventory", "responsive")
+                       else {"partial"})
+            if status not in allowed or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
     full_surface_proof = None
     if args.verify_complete_console_surface and args.authenticated_console_run_id is not None:
         if not args.require_verified_baseline:
             raise CertificationEvidenceError("complete Console proof requires verified baseline")
-        if args.authenticated_console_run_id is None or proof is None:
+        if proof is None:
             raise CertificationEvidenceError("complete Console proof requires successful exact-run evidence")
-        full_surface_proof = verify_complete_console_surface(
+        claimed_complete = all(
+            manifest.get("criteria", {}).get("product_experience", {}).get(k, {}).get("status") == "passed"
+            for k in ("surface_inventory", "responsive")
+        )
+        if claimed_complete:
+            full_surface_proof = verify_complete_console_surface(
             repository=args.repository, assessed_commit=args.assessed_commit,
             authenticated_capture=proof, github_get=_github_get(token),
             control_plane_get=SupabaseAdmissionReader()._get,
@@ -139,11 +145,16 @@ def main(argv: list[str] | None = None) -> int:
                 repository=repository, artifact_id=artifact_id, token=token
             ),
         )
-        for criterion in ("surface_inventory", "responsive"):
-            item = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
-            verified = full_surface_proof.criterion(criterion)
-            if not isinstance(item, dict) or item.get("status") != "passed" or item.get("evidence") != list(verified.evidence):
-                raise CertificationEvidenceError("complete Console baseline proof inconsistent")
+            for criterion in ("surface_inventory", "responsive"):
+                item = manifest.get("criteria", {}).get("product_experience", {}).get(criterion)
+                verified = full_surface_proof.criterion(criterion)
+                if not isinstance(item, dict) or item.get("status") != "passed" or item.get("evidence") != list(verified.evidence):
+                    raise CertificationEvidenceError("complete Console baseline proof inconsistent")
+        elif any(
+            manifest.get("criteria", {}).get("product_experience", {}).get(k, {}).get("status") == "passed"
+            for k in ("surface_inventory", "responsive")
+        ):
+            raise CertificationEvidenceError("complete Console proof cannot be partial positive")
 
     if args.verify_native_v2_traceability and not args.require_verified_baseline:
         raise CertificationEvidenceError("native V2 proof requires independent conservative baseline")
