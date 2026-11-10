@@ -41,9 +41,19 @@ export function safeBrowserError(error,currentUrl){
   let route="unknown";
   try{
     const url=new URL(currentUrl);
-    if(url.protocol==="https:" && url.pathname.length<=256
-      && /^\/[a-zA-Z0-9_\/.-]*$/.test(url.pathname))
-      route=url.pathname;
+    const publicRoutes=new Set([
+      "/","/login","/unauthorized","/configuration","/projects",
+      "/gates","/runs","/queue","/agents","/orchestration",
+      "/evals","/deployments","/usage","/audit","/admin/operators",
+    ]);
+    if(url.protocol==="https:"){
+      if(publicRoutes.has(url.pathname))route=url.pathname;
+      else if(/^\/projects\/[^/]+(?:\/.*)?$/.test(url.pathname))
+        route="/projects/[key]";
+      else if(/^\/runs\/[^/]+(?:\/.*)?$/.test(url.pathname))
+        route="/runs/[id]";
+      else route="other";
+    }
   }catch{}
   const raw=String(error?.message||error||"");
   let code="browser_runtime_error";
