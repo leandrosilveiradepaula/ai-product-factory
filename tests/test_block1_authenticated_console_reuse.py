@@ -114,6 +114,32 @@ class AuthenticatedBrowserMetadataTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 mod.assess(candidate, *fixture())
 
+    def test_public_metadata_retry_requires_real_successful_response(self):
+        import io
+        import json
+        import urllib.error
+        from unittest.mock import patch
+        calls = []
+        def fake_urlopen(req, timeout):
+            calls.append(req)
+            if req.get_header("Authorization"):
+                raise urllib.error.HTTPError(req.full_url, 403, "throttled", None, None)
+            return io.BytesIO(json.dumps({"id": mod.VISUAL_RUN}).encode())
+        with patch.object(mod.urllib.request, "urlopen", side_effect=fake_urlopen):
+            result = mod.github("actions/runs/" + str(mod.VISUAL_RUN), "token")
+        self.assertEqual(result["id"], mod.VISUAL_RUN)
+        self.assertEqual(len(calls), 2)
+        self.assertIsNone(calls[1].get_header("Authorization"))
+
+    def test_public_metadata_retry_failure_remains_denied(self):
+        import urllib.error
+        from unittest.mock import patch
+        def denied(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 403, "denied", None, None)
+        with patch.object(mod.urllib.request, "urlopen", side_effect=denied):
+            with self.assertRaises(urllib.error.HTTPError):
+                mod.github("actions/runs/" + str(mod.VISUAL_RUN), "token")
+
 
 if __name__ == "__main__":
     unittest.main()
