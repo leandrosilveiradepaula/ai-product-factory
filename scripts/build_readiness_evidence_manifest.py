@@ -282,17 +282,17 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="authenticated Console metadata verifies a bounded browser capture; full criterion review remains required",
                 evidence=list(authenticated_console_proof.evidence),
             )
+    elif authenticated_console_blocker is not None:
+        # Explicitly retain a bounded blocker, never a positive evidence claim.
+        for criterion in ("surface_inventory", "responsive", "accessibility"):
+            manifest["criteria"]["product_experience"][criterion]["reason"] = authenticated_console_blocker
+
     if full_surface_proof is not None:
         for criterion in ("surface_inventory", "responsive"):
             item = manifest["criteria"]["product_experience"][criterion]
             item.update(status="passed", verification_state="observed",
                         reason="independent complete authenticated browser audit reverified",
                         evidence=list(full_surface_proof.criterion(criterion).evidence))
-
-    elif authenticated_console_blocker is not None:
-        # Explicitly retain a bounded blocker, never a positive evidence claim.
-        for criterion in ("surface_inventory", "responsive", "accessibility"):
-            manifest["criteria"]["product_experience"][criterion]["reason"] = authenticated_console_blocker
 
     # This is a BOUNDED static inventory only. It never certifies runtime
     # reachability, authorization, E2E or release. The exact-SHA CI check is
