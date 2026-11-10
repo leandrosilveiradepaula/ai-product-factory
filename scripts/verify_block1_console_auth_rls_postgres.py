@@ -191,6 +191,30 @@ def main() -> int:
                       params=(IDS[3],))
         cases += 2
 
+        # Both privileged RPCs must remain inaccessible to every untrusted
+        # database role, regardless of an injected JWT subject claim.
+        for role in ("anon", "authenticated"):
+            for sql, params in (
+                ("SELECT public.factory_upsert_console_operator(%s,%s,%s,%s)",
+                 (IDS[0], IDS[3], "admin", True)),
+                ("SELECT public.factory_bootstrap_console_admin(%s)", (IDS[0],)),
+            ):
+                expect_denied(conn, role=role, sql=sql, params=params)
+                cases += 1
+
+        # The policy must not let an authenticated user enumerate a different
+        # active operator, even after supplying a valid-looking JWT subject.
+        with conn.transaction():
+            conn.execute("SELECT set_config('request.jwt.claim.sub',%s,true)",
+                         (str(IDS[1]),))
+            conn.execute("SET LOCAL ROLE authenticated")
+            rows = conn.execute(
+                "SELECT user_id FROM public.factory_console_operators "
+                "WHERE user_id=%s", (IDS[0],)
+            ).fetchall()
+            require(rows == [], "b2_cross_operator_read_leaked")
+        cases += 1
+
     print(json.dumps({
         "schema": "factory-block1-b2-isolated-console-auth-v1",
         "scope": "isolated_sql_role_policy_not_production_jwt_or_full_tenant_auth",
