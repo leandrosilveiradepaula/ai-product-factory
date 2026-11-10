@@ -215,6 +215,18 @@ jobs:
         env:
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
         run: node scripts/capture_authenticated_console.mjs
+      # No credentials, user identifiers, HTML or screenshots: the only
+      # retained result is a fixed-schema negative/positive HTTP boundary
+      # observation. B3 capture remains failed if hydration or other errors
+      # occurred; the expired operator is never reclassified as captured.
+      - name: Retain sanitized B2 boundary witness even when B3 capture fails
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b2-live-boundary-${{ github.run_id }}
+          path: block1-b2-live-boundary-witness.json
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Reconfirm exact served SHA before accepting browser evidence
         if: steps.capture_console.outcome == 'success'
         shell: bash

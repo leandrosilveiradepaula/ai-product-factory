@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
+import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {validateProjectLifecycleReadOnly} from "./project_control_readonly_contract.mjs";
@@ -39,12 +40,12 @@ try {
   });
   const page = await context.newPage();
   page.on("console", msg => {
-    if (msg.type() === "error") consoleErrors.push({url:page.url(),text:msg.text()});
+    if (msg.type() === "error") consoleErrors.push(safeConsoleError(msg.text(),page.url()));
   });
-  page.on("pageerror", err => pageErrors.push({url:page.url(),text:String(err),stack:err?.stack||null}));
+  page.on("pageerror", err => pageErrors.push(safeBrowserError(err,page.url())));
   page.on("response", response => {
     if (response.status() >= 400) {
-      badResponses.push({pageUrl:page.url(),status:response.status(),url:response.url()});
+      badResponses.push(safeHttpFailure({status:response.status(),requestUrl:response.url(),pageUrl:page.url()}));
     }
   });
 
@@ -84,6 +85,20 @@ try {
   const b2AccessEvidence=await verifyLiveConsoleAccess({
     browser,operatorContext:context,baseUrl:consoleUrl,trustedOidc,
   });
+  // Persist only allowlisted route/status booleans before the independent B3
+  // visual gate. A later hydration error must still fail capture and expire
+  // the operator, but must not erase the bounded, non-certifying B2 witness.
+  const b2Witness=safeB2Witness({
+    observation:b2AccessEvidence,runId,sourceCommit:workflowSourceCommit,
+    targetCommit,
+  });
+  await fs.writeFile("block1-b2-live-boundary-witness.json",
+    JSON.stringify(b2Witness,null,2),{mode:0o600,flag:"wx"});
+  console.log(JSON.stringify({status:"b2_live_boundary_witness_recorded",
+    runId:b2Witness.runId,targetCommit:b2Witness.targetCommit,
+    scope:b2Witness.scope,authorizationBoundaryCertified:false,
+    visualAuditPassed:false}));
+
 
   // The visual quality gate covers the authenticated Console routes below.
   // Keep protection/login bootstrap diagnostics as evidence, but do not mix

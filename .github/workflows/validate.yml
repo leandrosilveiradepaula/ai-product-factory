@@ -101,6 +101,8 @@ jobs:
         run: node --test scripts/test_block1_b2_console_boundary.cjs
       - name: Verify B2 live Console access witness negative contracts
         run: node --test scripts/test_block1_b2_live_console_access.mjs
+      - name: Block 1 B2/B3 sanitized witness and hydration failure tests
+        run: node --test scripts/test_block1_b2_b3_sanitized_witness.mjs
       - name: Adversarial Console Auth response and operator role tests
         run: node --no-warnings --experimental-strip-types --test apps/console/tests/auth-api-boundaries.test.mjs
       - name: Signed GitHub App event authentication unit tests
