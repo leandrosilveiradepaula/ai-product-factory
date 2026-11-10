@@ -19,6 +19,11 @@ from ai_product_factory.independent_security_evidence import verify_existing_sec
 from ai_product_factory.independent_regression_evidence import verify_regression_gates
 from ai_product_factory.independent_recovery_evidence import verify_recovery_alerting
 from ai_product_factory.independent_operations_evidence import verify_operations_runbook
+from ai_product_factory.independent_simulation_runtime_evidence import (
+    verify_executed_simulation_inventory,
+)
+from inventory_block1_simulation_paths import inventory as simulation_inventory
+from audit_block1_mock_runtime_reachability import audit as simulation_reachability
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
@@ -78,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-recovery-alerting", action="store_true")
     parser.add_argument("--verify-operations-runbook", action="store_true")
     parser.add_argument("--verify-requirements-inventory", action="store_true")
+    parser.add_argument("--verify-executed-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
@@ -221,6 +227,19 @@ def main(argv: list[str] | None = None) -> int:
                 github_get=github_get, criteria=manifest["criteria"],
             )
 
+    simulation_proof = None
+    if args.verify_executed_simulation_inventory:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError("simulation evidence requires independent verified baseline")
+        row = manifest.get("criteria", {}).get("functional_completeness", {}).get("mock_noop_demo_inventory")
+        if isinstance(row, dict) and row.get("status") == "passed":
+            root = Path(__file__).resolve().parents[1]
+            simulation_proof = verify_executed_simulation_inventory(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                github_get=github_get, source_inventory=simulation_inventory(root),
+                runtime_reachability=simulation_reachability(root),
+            )
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -240,12 +259,14 @@ def main(argv: list[str] | None = None) -> int:
             return operations_proof
         if (domain, criterion) == ("functional_completeness", "requirements_inventory"):
             return requirements_proof
+        if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
+            return simulation_proof
         return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
