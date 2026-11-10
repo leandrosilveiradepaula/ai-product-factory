@@ -55,6 +55,18 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
         ])
         self.assertTrue(proof.receipt()["artifact_encrypted_not_read"])
 
+    def test_first_attempt_push_capture_is_verified_but_only_for_exact_main_sha(self):
+        data = fixture()
+        prefix = "/repos/" + REPO
+        data[prefix + "/actions/runs/" + str(RUN)]["event"] = "push"
+        proof = self.verify(data)
+        self.assertEqual(proof.workflow_run_id, RUN)
+        for change in ({"head_sha": "b" * 40}, {"run_attempt": 2}):
+            broken = fixture()
+            broken[prefix + "/actions/runs/" + str(RUN)].update({"event": "push", **change})
+            with self.subTest(change=change), self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
+                self.verify(broken)
+
     def test_wrong_identity_artifact_or_rerun_fails_closed(self):
         for path, update in (
             ("run", {"run_attempt": 2}), ("run", {"event": "push"}),
