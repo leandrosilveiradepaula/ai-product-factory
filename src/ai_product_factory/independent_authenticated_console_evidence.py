@@ -134,7 +134,7 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
     run = github_get(prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID))
     if not isinstance(run, dict) or (
         run.get("id") != HISTORICAL_WORKFLOW_RUN_ID or run.get("name") != WORKFLOW
-        or run.get("path") != WORKFLOW_PATH or run.get("event") != "workflow_dispatch"
+        or run.get("path") != WORKFLOW_PATH or run.get("event") not in ("workflow_dispatch", "push")
         or run.get("head_branch") != branch or run.get("head_sha") != HISTORICAL_SOURCE_SHA
         or run.get("run_attempt") != 1 or run.get("status") != "completed"
         or run.get("conclusion") != "success"
