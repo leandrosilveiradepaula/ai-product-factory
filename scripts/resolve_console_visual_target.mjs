@@ -25,7 +25,13 @@ function safeTarget(input,source){
 
 export function selectConsoleVisualTarget({eventName,headSha,dispatchUrl="",dispatchCommit="",consoleChanged=false,pinnedTarget=null}){
  if(eventName==="workflow_dispatch"){
-  return safeTarget({preview_url:dispatchUrl||PRODUCTION_URL,candidate_sha:dispatchCommit||headSha},"manual_exact");
+  const origin=consoleVisualOrigin(dispatchUrl||PRODUCTION_URL);
+  if(!dispatchCommit&&origin!==PRODUCTION_URL)
+    throw Error("manual Preview requires an explicit exact target SHA");
+  // Without explicit SHA the value is provisional, NOT a claim of deployment.
+  // The trusted live resolver overwrites it before the Vercel/browser gates.
+  return safeTarget({preview_url:origin,candidate_sha:dispatchCommit||headSha},
+    dispatchCommit?"manual_exact":"manual_served_revision_pending");
  }
  if(eventName!=="push")throw new Error("unsupported visual audit trigger");
  if(!SHA.test(String(headSha||"")))throw new Error("invalid source commit");
