@@ -1,3 +1,15 @@
+## 10/11/2026 — Correcao do recorrente descompasso SHA Factory x Console (candidato)
+
+Controles vigentes: [Release/rollback](RELEASE_AUTONOMY.md) e [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md). Nenhuma prova de equivalência autoriza merge automático ou release.
+
+**Causa comprovada:** entre o Console em producao READY (SHA 16ae1f28) e a main Factory 8e0ec577 houve 180 commits sem mudancas em apps/console. A arvore inteira apps/console (c6af68d156d71601851dcec59be412f1c2a7e745) e o blob de config/factory.release-policy.v1.json (14426c3acc51f1c52cb59e7bbe3732961409aee6) sao identicos. Vercel ignora corretamente builds da Factory sem alteracoes no Console; mesmo assim o GitHub pode ter Vercel status success para um deployment CANCELED. O SHA de main nao representa necessariamente o deploy efetivamente publicado.
+
+**Correcao candidata:** workflow manual com target_commit em branco resolve a versao efetivamente servida por /api/health do host canonico, amplia o prefixo SHA por fonte GitHub, valida ancestralidade e SHAs exatos, compara a arvore completa do Console e a politica de release e revalida a origem Vercel oficial. Um recibo sanitizado preserva sourceCommit e servedCommit. Tudo acontece antes de provisionar operador. Mudancas de app, policy, host, ancestry ou deploy fazem falhar fechado. Preview nao e inferido, e ainda requer SHA explicito.
+
+**Nao e certificacao UX/seguranca nem resolve por si a hidratacao React #418.** Sem deploy de producao, mudancas Supabase, gasto pago, Start ou auto-merge. Merge da Factory permanece humano; captura com credencial exige workflow_dispatch explicito apos merge.
+
+---
+
 ## 09/11/2026 — B2: testes reais de fronteiras de acesso e admissão (candidato)
 
 **Diagnóstico read-only real no Supabase Factory:** 58/58 tabelas `factory_*` com RLS; nenhuma com DML `anon`; somente `factory_console_operators` com SELECT de `authenticated` limitado a `auth.uid()` e `is_active`; 181 funções `factory_*` observadas, zero executáveis por `anon` ou `authenticated`; sujeitos desconhecidos e ausentes recebem zero linhas. Esses resultados não são certificado durável nem prova de JWT real.

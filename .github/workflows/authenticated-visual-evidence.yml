@@ -9,7 +9,7 @@ on:
         default: https://ai-product-factory-console.vercel.app
         type: string
       target_commit:
-        description: Exact repository commit represented by target_url (defaults to workflow SHA)
+        description: Optional; blank resolves the live deployed production SHA and proves identical Console bytes
         required: false
         type: string
   push:
@@ -100,6 +100,25 @@ jobs:
             const token = await core.getIDToken();
             core.setSecret(token);
             core.setOutput("token", token)
+      # Manual blank SHA: prove the actual production build against current HEAD.
+      # Health, ancestry, full Console subtree and release-policy blob must match.
+      # NO operator credentials are provisioned until this guard succeeds.
+      - name: Resolve served Console SHA from verified live deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.target_commit == '' }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
+        run: node scripts/reconcile_console_served_commit.mjs
+      # Durable, noncredentialed source-to-build receipt; not UX approval.
+      - name: Preserve Console source-to-deployment reconciliation receipt
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-console-reconciled-source-${{ github.run_id }}
+          path: block1-console-commit-reconciliation.json
+          retention-days: 14
+          if-no-files-found: ignore
       - name: Require Vercel success for the exact candidate SHA
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
