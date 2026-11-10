@@ -70,6 +70,8 @@ jobs:
         run: node --test scripts/test_console_visual_deployment.mjs
       - name: Cross-repo browser correlation unit tests
         run: node --test scripts/tests/browser_run_correlation.test.cjs
+      - name: Test complete authenticated Console desktop and mobile surface evidence contract
+        run: node --test scripts/tests/console_surface_coverage_contract.test.mjs
       - name: Read-only lifecycle browser contract tests
         run: node --test scripts/tests/project_control_readonly_contract.test.mjs
       - name: Preview visible text normalization tests
