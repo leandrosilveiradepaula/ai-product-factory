@@ -15,7 +15,7 @@ from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from ai_product_factory.product_readiness import REQUIRED_COVERAGE_BY_DOMAIN
 
 REPO = "leandrosilveiradepaula/ai-product-factory"
-SHA = re.compile(r"[0-9a-f]{40}\\Z")
+SHA = re.compile(r"[0-9a-f]{40}\Z")
 EXPECTED = {(domain, name) for domain, keys in REQUIRED_COVERAGE_BY_DOMAIN.items()
             for name in keys}
 STATUSES = frozenset({"passed", "partial", "missing", "failed", "external_gate"})
