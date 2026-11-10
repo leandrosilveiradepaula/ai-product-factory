@@ -103,6 +103,8 @@ jobs:
         run: node --test scripts/test_block1_b2_live_console_access.mjs
       - name: Block 1 B2/B3 sanitized witness and hydration failure tests
         run: node --test scripts/test_block1_b2_b3_sanitized_witness.mjs
+      - name: B3 authenticated states and failure-mode contracts
+        run: node --test scripts/test_block1_b3_live_console_states.mjs
       - name: Adversarial Console Auth response and operator role tests
         run: node --no-warnings --experimental-strip-types --test apps/console/tests/auth-api-boundaries.test.mjs
       - name: Signed GitHub App event authentication unit tests

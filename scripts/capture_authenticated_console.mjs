@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
+import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
 import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -99,6 +100,18 @@ try {
     scope:b2Witness.scope,authorizationBoundaryCertified:false,
     visualAuditPassed:false}));
 
+
+  // Authenticate real React UI. Only the GET attention endpoint is replaced
+  // with read-only failure-state fixtures. Do not certify real backend state.
+  const b3StateWitness=await verifyConsoleStatesReadOnly({
+    context,baseUrl:consoleUrl,runId,
+    sourceCommit:workflowSourceCommit,targetCommit,
+  });
+  await fs.writeFile("block1-b3-console-state-witness.json",
+    JSON.stringify(b3StateWitness,null,2),{mode:0o600,flag:"wx"});
+  console.log(JSON.stringify({status:"b3_bounded_state_witness_recorded",
+    runId:b3StateWitness.runId,targetCommit:b3StateWitness.targetCommit,
+    actualBackendStateCertified:false,visualAuditPassed:false}));
 
   // The visual quality gate covers the authenticated Console routes below.
   // Keep protection/login bootstrap diagnostics as evidence, but do not mix
