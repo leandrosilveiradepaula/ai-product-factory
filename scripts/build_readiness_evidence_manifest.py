@@ -63,6 +63,7 @@ from inventory_block1_simulation_paths import inventory as scan_simulation_sourc
 from audit_block1_mock_runtime_reachability import audit as audit_simulation_reachability
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
+from ai_product_factory.product_readiness_certification import _source_snapshot
 
 # Checkout root is the script's location, never mutable working directory.
 # Evidence collection can run after other verifiers and OIDC actions.
@@ -91,7 +92,9 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
     )
     verified_ci_event = bind_exact_ci_source(
         repository=repository, assessed_commit=sha, actual_event=source_event,
-        validation_run_id=manifest['source_snapshot']['validation_run_id'],
+        validation_run_id=_source_snapshot(
+            repository=repository, assessed_commit=sha, github_get=github_get
+        )['validation_run_id'],
         github_get=github_get,
     ) if source_event is not None else None
     proof = None
