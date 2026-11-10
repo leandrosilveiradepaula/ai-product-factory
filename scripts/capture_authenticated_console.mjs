@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {validateProjectLifecycleReadOnly} from "./project_control_readonly_contract.mjs";
 import {collectAccessibilitySnapshot,verifyAccessibilitySnapshot} from "./console_accessibility_contract.mjs";
+import {CONSOLE_ROUTES,verifyConsoleSurfaceCoverage} from "./console_surface_coverage_contract.mjs";
 
 const required = [
   "FACTORY_CONSOLE_URL",
@@ -91,22 +92,7 @@ try {
   pageErrors.length=0;
   badResponses.length=0;
 
-  const routes = [
-    {name:"overview",path:"/",width:1296},
-    {name:"projects",path:"/projects",width:1296},
-    {name:"runs",path:"/runs",width:1296},
-    {name:"new-project",path:"/projects/new",width:1296},
-    {name:"human-gates",path:"/gates",width:1980},
-    {name:"run-detail",path:"/runs/93fd8cdc-f000-4a01-978e-463798628e4e",width:1296},
-    {name:"work-queue",path:"/queue",width:1296},
-    {name:"agents",path:"/agents",width:1296},
-    {name:"orchestration",path:"/orchestration",width:1296},
-    {name:"evals",path:"/evals",width:1296},
-    {name:"deployments",path:"/deployments",width:1296},
-    {name:"models-usage",path:"/usage",width:1296},
-    {name:"audit-log",path:"/audit",width:1308},
-    {name:"configuration",path:"/configuration",width:1296},
-  ];
+  const routes = CONSOLE_ROUTES;
 
   const captured = [];
   const accessibilityRoutes = [];
@@ -265,11 +251,10 @@ try {
   if (restoredName !== auditName || restoredSummary !== auditSummary) throw new Error("intake edit did not restore values");
   interactionEvidence.intakeEdit = {reviewed:true, edited:true, valuesRestored:true};
 
-  for (const route of [
-    {name:"overview-mobile",path:"/"},
-    {name:"projects-mobile",path:"/projects"},
-    {name:"configuration-mobile",path:"/configuration"},
-  ]) {
+  // Exercise the same complete surface inventory on phones, not only the
+  // three easy landing pages. Any overflow or broken operator navigation
+  // fails the authenticated browser capture before evidence is accepted.
+  for (const route of routes.map(({name,path})=>({name:name+"-mobile",path}))) {
     await page.setViewportSize({width:390,height:844});
     const response = await page.goto(`${consoleUrl}${route.path}`, {waitUntil:"networkidle", timeout:60000});
     if (!response || response.status() >= 400) throw new Error(`mobile ${route.path} returned ${response?.status()}`);
@@ -389,6 +374,14 @@ try {
     readinessDomains,
     skipVisible,
     verifiedWithoutMutation:true,
+  });
+
+  // The pure, hostile-input-tested validator requires every real desktop,
+  // mobile, accessibility, keyboard and project-detail observation. This
+  // bounded receipt does not claim full error/loading/empty-state coverage.
+  interactionEvidence.surfaceCoverage=verifyConsoleSurfaceCoverage({
+    captured,accessibilityRoutes,mobile:interactionEvidence.mobile,
+    keyboardSkip:interactionEvidence.accessibility.keyboardSkip,
   });
 
   await fs.writeFile(path.join(outDir,"manifest.json"), JSON.stringify({
