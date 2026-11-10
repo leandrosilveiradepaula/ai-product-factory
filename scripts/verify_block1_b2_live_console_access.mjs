@@ -3,16 +3,14 @@
  * Console deployment. No model, write, admin API, or synthetic PASS.
  * Only status, route and boolean results are retained; never tokens/cookies.
  */
-export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl}) {
+export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,trustedOidc}) {
   const base=new URL(baseUrl);
   if(base.protocol!=="https:" || base.username || base.password || base.search || base.hash)
     throw Error("b2_invalid_console_origin");
   const origin=base.origin;
   const noAuth=await browser.newContext({
     viewport:{width:1280,height:800},
-    extraHTTPHeaders:operatorContext._options?.extraHTTPHeaders?.["x-vercel-trusted-oidc-idp-token"]
-      ? {"x-vercel-trusted-oidc-idp-token":operatorContext._options.extraHTTPHeaders["x-vercel-trusted-oidc-idp-token"]}
-      : {},
+    extraHTTPHeaders:trustedOidc?{"x-vercel-trusted-oidc-idp-token":trustedOidc}:{},
   });
   try {
     const anonymous=await noAuth.newPage();
