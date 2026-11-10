@@ -162,5 +162,122 @@ class DirectIssueBoundaryEvidence(unittest.TestCase):
                 self.assertEqual(materializer.calls, 0)
 
 
+class ReleaseObserverCannotAutoMerge(unittest.TestCase):
+    """Execute the real release entrypoint with fail-fast fake boundaries.
+
+    Neither a pending human gate nor a changed PR candidate may reach any
+    GitHub mutation, privileged Control Plane write, or production release.
+    This is bounded executable B2 evidence, not live end-to-end certification.
+    """
+
+    def test_candidate_drift_denied_before_reconciliation_or_mutation(self):
+        from types import SimpleNamespace
+        candidate = "a" * 40
+        observed = "b" * 40
+        item = SimpleNamespace(
+            repository="leandrosilveiradepaula/crm-infodive",
+            run_id="synthetic-release-run", pr_number=123,
+            candidate_commit=candidate, project_id="synthetic-project",
+        )
+        pr = SimpleNamespace(head_sha=observed)
+        queue = type("Queue", (), {"next_pending": lambda self: item})
+        github = type("Github", (), {"get_pull_request": lambda self, number: pr})
+        with patch.object(cli, "SupabaseReleaseFollowupQueue", queue), \
+             patch.object(cli, "_assert_project_followup"), \
+             patch.object(cli, "GitHubRestAdapter", return_value=github()), \
+             patch.object(cli, "SupabaseProjectReleaseReconciler",
+                          side_effect=AssertionError("reconciler contacted")), \
+             patch.object(cli, "SupabaseDeliveryStore",
+                          side_effect=AssertionError("delivery store contacted")), \
+             patch.object(cli, "SupabaseTraceabilityStore",
+                          side_effect=AssertionError("traceability write")), \
+             patch.object(cli, "SupabaseReleasePolicyStore",
+                          side_effect=AssertionError("release write")):
+            result = cli.run_release_once()
+        self.assertEqual(result["status"], "candidate_drift_blocked")
+        self.assertEqual(result["recorded_candidate_commit"], candidate)
+        self.assertEqual(result["observed_pr_head"], observed)
+
+    def test_unmerged_preview_never_observed_as_release(self):
+        from types import SimpleNamespace
+        sha = "c" * 40
+        item = SimpleNamespace(
+            repository="leandrosilveiradepaula/crm-infodive",
+            run_id="synthetic-release-run", pr_number=123,
+            candidate_commit=sha, merge_sha=None,
+            release_source="delivery",
+        )
+        pr = SimpleNamespace(
+            head_sha=sha, base_ref="preview/candidate",
+            merged=False,
+        )
+        queue = type("Queue", (), {"next_pending": lambda self: item})
+        github = type("Github", (), {"get_pull_request": lambda self, number: pr})
+        with patch.object(cli, "SupabaseReleaseFollowupQueue", queue), \
+             patch.object(cli, "_assert_project_followup"), \
+             patch.object(cli, "GitHubRestAdapter", return_value=github()), \
+             patch.object(cli, "SupabaseProjectReleaseReconciler",
+                          side_effect=AssertionError("reconciler contacted")), \
+             patch.object(cli, "SupabaseDeliveryStore",
+                          side_effect=AssertionError("delivery store contacted")), \
+             patch.object(cli, "SupabaseTraceabilityStore",
+                          side_effect=AssertionError("traceability write")):
+            result = cli.run_release_once()
+        self.assertEqual(result["status"], "awaiting_nonproduction_merge")
+        self.assertNotIn("merge_sha", result)
+
+    def test_unmerged_production_pr_requires_manual_merge(self):
+        from types import SimpleNamespace
+        sha = "d" * 40
+        item = SimpleNamespace(
+            repository="leandrosilveiradepaula/crm-infodive",
+            run_id="synthetic-release-run", pr_number=123,
+            candidate_commit=sha, merge_sha=None,
+            release_source="delivery", issue_number=123,
+            branch="factory/probe", project_id="synthetic-project",
+        )
+        pr = SimpleNamespace(
+            head_sha=sha, base_ref="main", merged=False,
+            number=123,
+        )
+        issue = SimpleNamespace(number=123)
+        class Github:
+            def get_pull_request(self, number):
+                return pr
+            def get_issue(self, number):
+                return issue
+            def close_issue(self, number):
+                raise AssertionError("issue closed before manual merge")
+            def merge_pull_request(self, *args, **kwargs):
+                raise AssertionError("automatic production merge")
+        class Reconciler:
+            def require_atomic_capability(self):
+                return None
+        class Store:
+            def update_run_status(self, run_id, status, **kwargs):
+                self.status = status
+                if status != "awaiting_release":
+                    raise AssertionError("false release status")
+            def record_tool_usage(self, **kwargs):
+                raise AssertionError("premature GitHub usage")
+            def record_audit_event(self, **kwargs):
+                raise AssertionError("premature release audit")
+        store = Store()
+        queue = type("Queue", (), {"next_pending": lambda self: item})
+        with patch.object(cli, "SupabaseReleaseFollowupQueue", queue), \
+             patch.object(cli, "_assert_project_followup"), \
+             patch.object(cli, "GitHubRestAdapter", return_value=Github()), \
+             patch.object(cli, "SupabaseProjectReleaseReconciler", Reconciler), \
+             patch.object(cli, "SupabaseDeliveryStore", return_value=store), \
+             patch.object(cli, "SupabaseTraceabilityStore",
+                          side_effect=AssertionError("traceability write")), \
+             patch.object(cli, "SupabaseReleasePolicyStore",
+                          side_effect=AssertionError("released without merge")):
+            result = cli.run_release_once()
+        self.assertEqual(result["status"], "awaiting_release")
+        self.assertEqual(store.status, "awaiting_release")
+        self.assertNotIn("merge_sha", result)
+
+
 if __name__ == "__main__":
     unittest.main()
