@@ -227,6 +227,16 @@ jobs:
           path: block1-b2-live-boundary-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # Only fixed-schema UI state observations; not real backend-state proof.
+      # Even if this artifact exists, a subsequent B3 failure fails the job.
+      - name: Retain bounded B3 state witness even on later hydration failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-ui-states-${{ github.run_id }}
+          path: block1-b3-console-state-witness.json
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Reconfirm exact served SHA before accepting browser evidence
         if: steps.capture_console.outcome == 'success'
         shell: bash
