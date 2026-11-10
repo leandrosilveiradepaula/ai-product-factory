@@ -28,6 +28,12 @@ export function selectConsoleVisualTarget({eventName,headSha,dispatchUrl="",disp
   const origin=consoleVisualOrigin(dispatchUrl||PRODUCTION_URL);
   if(!dispatchCommit&&origin!==PRODUCTION_URL)
     throw Error("manual Preview requires an explicit exact target SHA");
+  // A manual SHA from a different commit must never silently fall back to
+  // the production URL supplied as the dispatch default. That mismatch
+  // previously consumed two minutes of CI retries and could not succeed.
+  if(dispatchCommit&&dispatchCommit!==headSha&&origin===PRODUCTION_URL){
+    throw Error("Preview target URL required for a non-main target commit; production default cannot serve that SHA");
+  }
   // Without explicit SHA the value is provisional, NOT a claim of deployment.
   // The trusted live resolver overwrites it before the Vercel/browser gates.
   return safeTarget({preview_url:origin,candidate_sha:dispatchCommit||headSha},
