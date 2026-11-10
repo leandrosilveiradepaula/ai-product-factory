@@ -294,3 +294,14 @@ apos o commit de integracao e antes da gravacao no Control Plane, a retomada
 aceita apenas o commit com parent, proveniencia e conteudo integral exatos;
 movimento concorrente de branch continua bloqueado. Isso nunca autoriza merge
 automatico, migracao de producao ou chamada paga de modelo.
+
+
+## CONTROLE EXECUTÁVEL DE FOCO B1–B4 (10/11/2026)
+
+**Objetivo único:** finalizar e certificar os 19 critérios da AI Product Factory; trabalhar exclusivamente no repositório `leandrosilveiradepaula/ai-product-factory`. CRM, Service Desk, Agente SQL e outros projetos são, nesta frente, **somente fontes de evidência de leitura**. Não criar issues, branches, commits, PRs, migrations, releases ou Starts em outros repositórios sem autorização humana nova, explícita e específica.
+
+Antes de cada implementação reconciliar este arquivo, `PROJECT_PLAN.md`, `docs/STATUS.md`, `docs/OPERATIONS.md`, `docs/AUTH_ACTIVATION_READINESS.md`, `MEMORY.md`, `docs/PLANO_CERTIFICACAO_19_CRITERIOS.md`, SHA atual da `main`, CI e certificado durável no Supabase. Selecionar a **lacuna de prova independente** de um dos 19 critérios, não uma tarefa lateral de conveniência. Trabalhar em blocos substanciais, não PRs cosméticas ou uma pausa a cada pequeno teste.
+
+Cada PR deve cumprir [`docs/BLOCK1_FOCUS_CONTRACT.md`](docs/BLOCK1_FOCUS_CONTRACT.md): declarar bloco, critério exato, aceite baseado em Supabase/SHA, escopo Factory e cross-repo somente leitura. `validate/test` deve verificar o contrato com `scripts/check_block1_focus.py`. O guardião de escopo não promove um PASS, não concede credenciais, não autoriza merge, não relaxa RLS ou gates e não substitui revisão humana.
+
+**Aceite de progresso:** somente o certificado independente persistido no Control Plane no SHA do merge pode elevar o contador. Nenhum `passed` antigo pode cair silenciosamente, mesmo se outro subir; `CI verde`, mais linhas de código, testes negativos e PRs novas não são avanço por si. Produção = merge humano; sem auto-merge, compra/crédito, modelo pago sondado, Start sintético, migration ou acesso sensível sem gate real.
