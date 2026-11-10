@@ -123,8 +123,17 @@ def github(path: str, token: str) -> dict:
         "User-Agent": "factory-block1-console-metadata-reuse",
         **({"Authorization": "Bearer " + token} if token else {}),
     }
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=25) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=25) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (403, 429) or not token:
+            raise
+        # This repository is public. Retry only the identical read-only URL;
+        # do not infer success or bypass provenance checks if it is denied.
+        headers.pop("Authorization", None)
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=25) as response:
+            return json.load(response)
 
 
 def main() -> int:

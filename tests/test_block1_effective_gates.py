@@ -50,6 +50,36 @@ class EffectiveGatesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mod.assess({"rulesets": []})
 
+    def test_throttled_token_falls_back_to_real_public_ruleset(self):
+        import io
+        import json
+        import urllib.error
+        from unittest.mock import patch
+        requests = []
+        class Response:
+            def __init__(self, value): self.value = value
+            def __enter__(self): return io.BytesIO(json.dumps(self.value).encode())
+            def __exit__(self, *args): return False
+        def open_request(req, timeout):
+            requests.append(req)
+            if req.get_header("Authorization"):
+                raise urllib.error.HTTPError(req.full_url, 403, "rate limited", None, None)
+            return Response(policy(strict=True, approval=1, postgres=True)[0])
+        with patch.object(mod.urllib.request, "urlopen", side_effect=open_request):
+            result = mod._read_public_ruleset("https://api.github.com/repos/example/repo/rulesets/1", "token")
+        self.assertEqual(result["id"], 1)
+        self.assertEqual(len(requests), 2)
+        self.assertIsNone(requests[1].get_header("Authorization"))
+
+    def test_denied_public_ruleset_stays_unverified(self):
+        import urllib.error
+        from unittest.mock import patch
+        def denied(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 403, "denied", None, None)
+        with patch.object(mod.urllib.request, "urlopen", side_effect=denied):
+            with self.assertRaises(urllib.error.HTTPError):
+                mod._read_public_ruleset("https://api.github.com/repos/example/repo/rulesets/1", "token")
+
 
 if __name__ == "__main__":
     unittest.main()

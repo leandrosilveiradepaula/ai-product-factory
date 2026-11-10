@@ -11,6 +11,7 @@ import json
 import os
 import re
 import urllib.request
+import urllib.error
 
 REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 REQUIRED = frozenset({"test", "factory-acceptance"})
@@ -65,17 +66,35 @@ def assess(rulesets: object) -> dict:
             "regression_gates_certified": False, "writes": 0, "paid_calls": 0}
 
 
+def _read_public_ruleset(url: str, token: str) -> object:
+    """Retry public read anonymously only when installation token is throttled.
+
+    Never interpret a failed read as an empty/valid ruleset. The caller still
+    validates every active rule from the real GitHub response.
+    """
+    headers = {"Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28",
+               "User-Agent": "factory-block1-gates-audit"}
+    for auth in (True, False):
+        request_headers = dict(headers)
+        if auth:
+            request_headers["Authorization"] = "Bearer " + token
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=request_headers), timeout=15) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as exc:
+            if not auth or exc.code not in (403, 429):
+                raise
+    raise ValueError("public ruleset unavailable")
+
+
 def github_rulesets(repository: str, token: str) -> list:
     if not REPO.fullmatch(repository):
         raise ValueError("invalid repository")
     if not token:
         raise ValueError("read-only GitHub token required")
     url = "https://api.github.com/repos/" + repository + "/rulesets?includes_parents=true"
-    request = urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json", "Authorization": "Bearer " + token,
-        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "factory-block1-gates-audit"})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        summary = json.load(response)
+    summary = _read_public_ruleset(url, token)
     if not isinstance(summary, list):
         raise ValueError("invalid GitHub ruleset response")
     full = []
@@ -83,11 +102,7 @@ def github_rulesets(repository: str, token: str) -> list:
         if not isinstance(row, dict) or type(row.get("id")) is not int:
             raise ValueError("invalid ruleset summary")
         detail_url = "https://api.github.com/repos/" + repository + "/rulesets/" + str(row["id"])
-        request = urllib.request.Request(detail_url, headers={
-            "Accept": "application/vnd.github+json", "Authorization": "Bearer " + token,
-            "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "factory-block1-gates-audit"})
-        with urllib.request.urlopen(request, timeout=15) as response:
-            detail = json.load(response)
+        detail = _read_public_ruleset(detail_url, token)
         if not isinstance(detail, dict) or detail.get("id") != row["id"]:
             raise ValueError("ruleset detail identity mismatch")
         full.append(detail)

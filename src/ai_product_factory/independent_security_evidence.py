@@ -18,7 +18,7 @@ REVIEWED_FIXTURES = frozenset({
  ("tests/test_repair_runtime.py",12,"generic-api-key"),("tests/test_repository_snapshot_safety.py",97,"generic-api-key"),
  ("tests/test_specialist_traceability_atomicity.py",24,"generic-api-key"),("tests/test_followup_execution_epochs.py",178,"generic-api-key"),("tests/test_specialist_epoch_fence.py",71,"generic-api-key"),
 })
-TRUSTED_SCANNER_SHA = "29e14e48688f2f1130f23f1f8c25194a6b0cbb11"
+TRUSTED_SCANNER_SHA = "4c34860016405bfbfca818086ad6771b136fb0bc"
 TRUSTED_SCANNER_FILES = (
  "scripts/audit_block1_complete_tree.py", "scripts/audit_block1_supply_chain.py",
  "scripts/audit_block1_credential_exposure.py",
