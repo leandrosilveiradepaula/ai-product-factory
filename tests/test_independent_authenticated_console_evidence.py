@@ -134,7 +134,7 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
             prefix + "/git/ref/heads/main": {"object": {"sha": candidate}},
             prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID): {
                 "id": HISTORICAL_WORKFLOW_RUN_ID, "name": "Authenticated Console visual evidence",
-                "path": ".github/workflows/authenticated-visual-evidence.yml", "event": "workflow_dispatch",
+                "path": ".github/workflows/authenticated-visual-evidence.yml", "event": "push",
                 "head_branch": "main", "head_sha": HISTORICAL_SOURCE_SHA, "run_attempt": 1,
                 "status": "completed", "conclusion": "success", "repository": {"full_name": REPO},
             },
