@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {safeB3StateWitness,verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
+import {safeB3StateWitness,verifyConsoleStatesReadOnly,isExpectedFixture503ResourceError} from "./verify_block1_b3_live_console_states.mjs";
 const source="a".repeat(40),target="b".repeat(40);
-function sample(){return {blocked:false,browserErrors:0,mutatingRequests:0,
+function sample(){return {blocked:false,browserErrors:0,mutatingRequests:0,expected503ResourceErrors:0,
  pending:true,unavailable:true,cleared:true,malformed:true,
  hits:{pending:1,unavailable:1,cleared:1,malformed:1}};}
 function build(observed=sample(),changes={}){
@@ -58,4 +58,45 @@ test("capture preserves bounded B3 evidence before later hydration failure",()=>
  assert.ok(workflow.includes("path: block1-b3-console-state-witness.json"));
  assert.ok(workflow.includes("if: always()"));
  assert.ok(workflow.includes("Finalize registry and remove ephemeral operator"));
+});
+
+
+test("Chromium expected synthetic 503 is identified ONLY for exact API URL",()=>{
+ const origin="https://ai-product-factory-console.vercel.app";
+ const diagnostic="Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
+ const msg=(text,url,type="error")=>({
+   type:()=>type,text:()=>text,location:()=>({url,lineNumber:0,columnNumber:0}),
+ });
+ assert.equal(isExpectedFixture503ResourceError(msg(diagnostic,origin+"/api/human-attention"),origin),true);
+ assert.equal(isExpectedFixture503ResourceError(msg(diagnostic,origin+"/api/other"),origin),false);
+ assert.equal(isExpectedFixture503ResourceError(msg(diagnostic,origin+"/api/human-attention?token=private"),origin),false);
+ assert.equal(isExpectedFixture503ResourceError(msg(diagnostic,"https://evil.example/api/human-attention"),origin),false);
+ assert.equal(isExpectedFixture503ResourceError(msg("Minified React error #418",origin+"/api/human-attention"),origin),false);
+ assert.equal(isExpectedFixture503ResourceError(msg("Failed to load resource: the server responded with a status of 500 (Internal Server Error)",origin+"/api/human-attention"),origin),false);
+ assert.equal(isExpectedFixture503ResourceError(msg(diagnostic,origin+"/api/human-attention","warning"),origin),false);
+ assert.equal(isExpectedFixture503ResourceError({type:()=> "error",text:()=>diagnostic,location:()=>({url:"not-a-url"})},origin),false);
+});
+test("a counted fixture resource 503 is transparent, bounded, and never certifies B3",()=>{
+ const row={...sample(),expected503ResourceErrors:1};
+ const proof=build(row);
+ assert.equal(proof.expected503ResourceConsoleErrors,1);
+ assert.equal(proof.visualAuditPassed,false);
+ assert.equal(proof.independentCriterionCertified,false);
+ assert.equal(proof.actualBackendStateCertified,false);
+ for(const changes of [
+  {expected503ResourceErrors:2},
+  {expected503ResourceErrors:-1},
+  {expected503ResourceErrors:"1"},
+  {browserErrors:1},
+  {mutatingRequests:1},
+ ]){
+  assert.throws(()=>build({...row,...changes}),/b3_state_witness_incomplete/);
+ }
+});
+test("source prevents silencing genuine hydration errors and enforces 503 allowance",()=>{
+ const source=fs.readFileSync(new URL("./verify_block1_b3_live_console_states.mjs",import.meta.url),"utf8");
+ assert.match(source,/page.on\\("pageerror",\\(\\)=>\\{observed.browserErrors\\+\\+;/);
+ assert.match(source,/observed.expected503ResourceErrors<observed.hits.unavailable/);
+ assert.match(source,/observed.browserErrors\\+\\+;/);
+ assert.match(source,/isExpectedFixture503ResourceError\\(m,origin\\)/);
 });
