@@ -41,7 +41,8 @@ function requireLocalAuth(req,route){
    req.headers.authorization==="Bearer "+FRESH_TOKEN);
  }
  if(route.pathname==="/rest/v1/factory_console_operators"){
-  return req.headers.apikey===PUB_KEY&&req.headers.authorization==="Bearer "+AUTH_TOKEN;
+  return req.headers.apikey===PUB_KEY&&
+    (req.headers.authorization==="Bearer "+AUTH_TOKEN||req.headers.authorization==="Bearer "+FRESH_TOKEN);
  }
  return req.headers.apikey===MOCK_KEY;
 }
