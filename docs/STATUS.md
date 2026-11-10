@@ -1,5 +1,7 @@
 ## 10/11/2026 — Correcao do recorrente descompasso SHA Factory x Console (candidato)
 
+Controles vigentes: [Release/rollback](RELEASE_AUTONOMY.md) e [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md). Nenhuma prova de equivalência autoriza merge automático ou release.
+
 **Causa comprovada:** entre o Console em producao READY (SHA 16ae1f28) e a main Factory 8e0ec577 houve 180 commits sem mudancas em apps/console. A arvore inteira apps/console (c6af68d156d71601851dcec59be412f1c2a7e745) e o blob de config/factory.release-policy.v1.json (14426c3acc51f1c52cb59e7bbe3732961409aee6) sao identicos. Vercel ignora corretamente builds da Factory sem alteracoes no Console; mesmo assim o GitHub pode ter Vercel status success para um deployment CANCELED. O SHA de main nao representa necessariamente o deploy efetivamente publicado.
 
 **Correcao candidata:** workflow manual com target_commit em branco resolve a versao efetivamente servida por /api/health do host canonico, amplia o prefixo SHA por fonte GitHub, valida ancestralidade e SHAs exatos, compara a arvore completa do Console e a politica de release e revalida a origem Vercel oficial. Um recibo sanitizado preserva sourceCommit e servedCommit. Tudo acontece antes de provisionar operador. Mudancas de app, policy, host, ancestry ou deploy fazem falhar fechado. Preview nao e inferido, e ainda requer SHA explicito.
