@@ -1,6 +1,7 @@
 /** Conservative evidence and diagnostics: no cookies, tokens, IDs or page contents. */
 const SHA=/^[0-9a-f]{40}$/;
-const B2_ROUTES=["/projects","/gates","/admin/operators"];
+import {B2_PROTECTED_ROUTES} from "./verify_block1_b2_live_console_access.mjs";
+const B2_ROUTES=B2_PROTECTED_ROUTES;
 export function safeB2Witness({observation,runId,sourceCommit,targetCommit}){
   if(!observation||observation.schema!=="factory-b2-live-console-access-boundaries-v1"
     || !Number.isSafeInteger(Number(runId))||Number(runId)<1
@@ -11,6 +12,8 @@ export function safeB2Witness({observation,runId,sourceCommit,targetCommit}){
     || observation.anonymousApiDenied!==true
     || observation.operatorReadOnlyApiAllowed!==true
     || observation.operatorAdminPageDenied!==true
+    || observation.invalidSessionRouteDenied!==true
+    || observation.invalidSessionApiDenied!==true
     || observation.mutatingRequests!==0
     || observation.productionWrites!==0
     || observation.signedJwtClaimsIndependentlyVerified!==false
@@ -27,6 +30,8 @@ export function safeB2Witness({observation,runId,sourceCommit,targetCommit}){
       anonymousApiDenied:true,
       operatorReadOnlyApiAllowed:true,
       operatorAdminPageDenied:true,
+      invalidSessionRouteDenied:true,
+      invalidSessionApiDenied:true,
     },
     scope:"authenticated_http_route_witness_only",
     authorizationBoundaryCertified:false,

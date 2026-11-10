@@ -60,6 +60,13 @@ export function verifyConsoleSurfaceCoverage({captured, accessibilityRoutes,
         a11y.positiveTabOrder!==0) {
       throw new Error("console_surface_accessibility_unverified:"+reference.name);
     }
+    if (!phone.accessibility || phone.accessibility.checked!==true ||
+        phone.accessibility.unnamedCount!==0 ||
+        phone.accessibility.missingImageAlt!==0 ||
+        phone.accessibility.duplicateIds!==0 ||
+        phone.accessibility.positiveTabOrder!==0) {
+      throw new Error("console_surface_mobile_accessibility_unverified:"+reference.name);
+    }
     if (phone.path!==reference.path ||
         !Number.isInteger(phone.status) || phone.status<200 || phone.status>=300 ||
         !phone.layout || phone.layout.innerWidth!==390 ||

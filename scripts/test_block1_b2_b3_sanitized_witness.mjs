@@ -2,18 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
+import {B2_PROTECTED_ROUTES} from "./verify_block1_b2_live_console_access.mjs";
 
 const source="a".repeat(40),target="b".repeat(40);
 function allowedObservation() {
   return {
     schema:"factory-b2-live-console-access-boundaries-v1",
-    anonymousRouteDenials:[
-      {route:"/projects",denied:true},
-      {route:"/gates",denied:true},
-      {route:"/admin/operators",denied:true},
-    ],
+    anonymousRouteDenials:B2_PROTECTED_ROUTES.map(route=>({route,denied:true})),
     anonymousApiDenied:true,operatorReadOnlyApiAllowed:true,
-    operatorAdminPageDenied:true,mutatingRequests:0,productionWrites:0,
+    operatorAdminPageDenied:true,invalidSessionRouteDenied:true,
+    invalidSessionApiDenied:true,mutatingRequests:0,productionWrites:0,
     signedJwtClaimsIndependentlyVerified:false,
     crossTenantIsolationCertified:false,fullAuthnAuthzCertified:false,
     fullDataBoundariesCertified:false,
@@ -45,6 +43,8 @@ test("reject incomplete or unsafe B2 observations",()=>{
     {anonymousApiDenied:false},
     {operatorReadOnlyApiAllowed:false},
     {operatorAdminPageDenied:false},
+    {invalidSessionRouteDenied:false},
+    {invalidSessionApiDenied:false},
     {mutatingRequests:1},
     {productionWrites:1},
     {signedJwtClaimsIndependentlyVerified:true},
@@ -52,7 +52,7 @@ test("reject incomplete or unsafe B2 observations",()=>{
     {fullAuthnAuthzCertified:true},
     {fullDataBoundariesCertified:true},
     {anonymousRouteDenials:[{route:"/projects",denied:true}]},
-    {anonymousRouteDenials:[{route:"/projects",denied:true},{route:"/gates",denied:false},{route:"/admin/operators",denied:true}]},
+    {anonymousRouteDenials:B2_PROTECTED_ROUTES.map((route,i)=>({route,denied:i!==1}))},
     {schema:"unknown"},
   ]){
     assert.throws(()=>build({...allowedObservation(),...changed}),/b2_witness_incomplete/);

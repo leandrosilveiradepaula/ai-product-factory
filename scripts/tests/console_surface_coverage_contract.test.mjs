@@ -14,6 +14,7 @@ function fixture() {
     name:route.name+"-mobile",path:route.path,status:200,
     layout:{innerWidth:390,scrollWidth:390},
     readability:{mainLandmark:true,keyboardSkipPresent:true},
+    accessibility:{checked:true,unnamedCount:0,missingImageAlt:0,duplicateIds:0,positiveTabOrder:0},
     expandedLayout:{width:390,viewport:390},
     quickNavHrefs:["/","/projects","/gates"],
   }));
@@ -47,6 +48,21 @@ test("mobile overflow and missing access names fail closed",()=>{
   assert.throws(()=>verifyConsoleSurfaceCoverage(f),/mobile_unverified/);
   const f2=fixture();f2.accessibilityRoutes[3].unnamedCount=1;
   assert.throws(()=>verifyConsoleSurfaceCoverage(f2),/accessibility_unverified/);
+});
+
+test("every mobile route requires independently executed semantic accessibility checks",()=>{
+  for(const index of [0,3,7,13]) {
+    for(const mutation of [
+      null,{checked:false},{unnamedCount:1},
+      {missingImageAlt:1},{duplicateIds:1},{positiveTabOrder:1},
+    ]) {
+      const f=fixture();
+      f.mobile[index].accessibility=mutation===null?undefined:{
+        ...f.mobile[index].accessibility,...mutation,
+      };
+      assert.throws(()=>verifyConsoleSurfaceCoverage(f),/mobile_accessibility_unverified/);
+    }
+  }
 });
 
 test("wrong browser route, keyboard shortcut and failed HTTP fail closed",()=>{
