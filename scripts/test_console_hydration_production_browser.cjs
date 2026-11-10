@@ -331,3 +331,34 @@ test("B2: public login prefix never bypasses authentication middleware",async()=
   assert.equal(await page.locator("h1.title").innerText(),"Entrar na Factory");
  }finally{await context.close();}
 });
+
+test("B2/B3: real authenticated intake advances to review without a server action or backend mutation",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const blocked=[];
+ await context.route("**/*",async route=>{
+  const request=route.request(),url=new URL(request.url());
+  if(url.origin!==appOrigin||request.method()!=="GET"){
+   blocked.push(request.method()+":"+url.pathname);
+   await route.abort("blockedbyclient");return;
+  }
+  if(url.pathname==="/api/human-attention"){
+   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})});return;
+  }
+  await route.continue();
+ });
+ try{
+  const response=await page.goto(appOrigin+"/projects/new",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  await page.locator('input[name="name"]').fill("Offline intake regression");
+  await page.locator('textarea[name="summary"]').fill("Verify review without privileged storage access");
+  await page.getByRole("button",{name:"Revisar e iniciar Descoberta"}).click();
+  await page.waitForURL(url=>url.pathname==="/projects/new/review"&&url.searchParams.has("intake"),{timeout:15000});
+  assert.ok(await page.getByText("Offline intake regression",{exact:true}).count());
+  assert.deepEqual(blocked,[],"review navigation must not POST or contact external services");
+  await page.getByRole("link",{name:"Editar"}).click();
+  await page.waitForURL(url=>url.pathname==="/projects/new"&&url.searchParams.has("intake"),{timeout:15000});
+  assert.equal(await page.locator('input[name="name"]').inputValue(),"Offline intake regression");
+ }finally{await context.close();}
+});
