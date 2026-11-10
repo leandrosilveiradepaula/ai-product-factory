@@ -146,10 +146,17 @@ class SupabaseProjectReleaseReconciler:
             if not rows:
                 exhausted=True
                 break
+            # Preflight the WHOLE untrusted keyset page before any privileged
+            # release RPC. A duplicate or decreasing event id in a later row
+            # must not permit an earlier row to be reconciled first.
+            inspected=cursor
             for row in rows:
                 event_id=row.get("event_id")
-                if type(event_id) is not int or event_id<=cursor:
+                if type(event_id) is not int or event_id<=inspected:
                     raise RuntimeError("invalid release keyset cursor")
+                inspected=event_id
+            for row in rows:
+                event_id=row["event_id"]
                 cursor=event_id
                 scanned+=1
                 # This loop only completes already-observed releases. A broken
