@@ -49,6 +49,24 @@ node --test apps/console/tests/*.test.mjs
 $env:PYTHONPATH='src'; py -3.14 -m unittest tests.test_console_global_feedback tests.test_block1_b2_execution_and_access tests.test_block1_console_routes tests.test_block1_requirements_trace tests.test_independent_requirements_inventory_evidence
 ```
 
+## Causa-raiz observada no Preview candidato
+
+As capturas autenticadas oficiais dos runs
+[`42957904555`](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42957904555)
+e [`42958798005`](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/42958798005)
+alcançaram o Preview oficial e completaram o ciclo de criação e remoção do
+operador efêmero. Ambas falharam no gate B2 da rota administrativa antes de
+qualquer escrita de produto. O recibo do Control Plane para o segundo run foi
+consultado em modo leitura e está `expired`, portanto não restou conta de teste.
+
+O workflow autenticado deliberadamente executa o verificador que está em
+`main`, não um script mutável da PR. A melhoria deste ramo separa, no próximo
+workflow confiável, três causas que antes tinham a mesma mensagem: exposição de
+`/admin/operators`, perda de sessão do operador e redirecionamento inesperado.
+Ela só pode ser observada depois de merge humano e do Preview/produção exato
+correspondente. Não se deve despachar uma cópia da workflow em branch, trocar a
+origem confiável, ou promover este diagnóstico a evidência positiva.
+
 ## Bloqueios externos reais e verificação posterior
 
 1. `critical_e2e` e `critical_journeys`: um operador deve autorizar um Start
