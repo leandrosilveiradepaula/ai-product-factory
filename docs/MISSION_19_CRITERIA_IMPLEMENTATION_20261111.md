@@ -146,6 +146,11 @@ aceito se declarar zero escritas, zero chamadas pagas e ambos os critérios como
 não certificados. Assim, uma jornada forjada, um release isolado ou a mera
 existência de um greenfield não podem elevar a avaliação.
 
+O verificador também exige o esquema fechado do recibo e tipos estritos para
+identidade de jornada, SHA, contadores e flags. Campos adicionais ou valores
+ambíguos são recusados antes de serem retidos, evitando que uma resposta do
+Control Plane introduza dados não aprovados na evidência durável.
+
 ## Atualização técnica — negativas B2 em PostgreSQL isolado
 
 O envelope reaproveita somente uma execução PostgreSQL de CI cuja árvore é

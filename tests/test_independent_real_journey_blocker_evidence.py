@@ -38,6 +38,22 @@ class RealJourneyBlockerEvidenceTests(unittest.TestCase):
             with self.subTest(getter=getter), self.assertRaises(RealJourneyBlockerEvidenceBlocked):
                 verify_real_journey_blockers(control_plane_get=getter)
 
+    def test_receipt_shape_and_scalar_types_are_bounded_before_retention(self):
+        import ai_product_factory.independent_real_journey_blocker_evidence as evidence
+        valid = verify_real_journey_blockers(control_plane_get=source()).receipt()
+        original = evidence.collect
+        try:
+            for patch in (
+                {"operator_email": "private@example.invalid"},
+                {"other_active_greenfield_count": True},
+                {"crm_candidate_sha": "not-a-sha"},
+            ):
+                evidence.collect = lambda getter, patch=patch: {**valid, **patch}
+                with self.subTest(patch=patch), self.assertRaises(RealJourneyBlockerEvidenceBlocked):
+                    verify_real_journey_blockers(control_plane_get=source())
+        finally:
+            evidence.collect = original
+
     def test_pipeline_revalidates_blocker_before_persistence(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
