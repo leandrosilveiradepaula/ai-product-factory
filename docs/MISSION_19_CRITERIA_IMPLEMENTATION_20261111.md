@@ -141,3 +141,12 @@ que `critical_e2e` e `critical_journeys` permanecem bloqueados. O recibo só é
 aceito se declarar zero escritas, zero chamadas pagas e ambos os critérios como
 não certificados. Assim, uma jornada forjada, um release isolado ou a mera
 existência de um greenfield não podem elevar a avaliação.
+
+## Atualização técnica — negativas B2 em PostgreSQL isolado
+
+O envelope reaproveita somente uma execução PostgreSQL de CI cuja árvore é
+idêntica ao SHA avaliado. O recibo é revalidado antes da persistência e prova
+papéis `anon`/`authenticated`, RLS por sujeito, leitura cruzada negada e RPCs
+privilegiadas negadas em banco descartável. Ele torna B2 `partial` quando a
+captura autenticada nova não estiver disponível; nunca substitui JWT assinado,
+isolamento completo entre tenants nem a prova dinâmica do ambiente produtivo.

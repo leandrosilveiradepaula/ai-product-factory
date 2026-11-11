@@ -38,6 +38,9 @@ from ai_product_factory.independent_live_console_boundary_evidence import (
 from ai_product_factory.independent_real_journey_blocker_evidence import (
     RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers,
 )
+from ai_product_factory.independent_isolated_console_auth_evidence import (
+    IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
@@ -101,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
+    parser.add_argument("--verify-isolated-console-auth", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
@@ -301,6 +305,23 @@ def main(argv: list[str] | None = None) -> int:
                 repository=args.repository, assessed_commit=args.assessed_commit,
                 github_get=github_get, event_payload=verified_ci_event,
             )
+    if args.verify_isolated_console_auth:
+        if not args.require_verified_baseline or regression_proof is None:
+            raise CertificationEvidenceError("isolated Console Auth proof requires verified regression evidence")
+        try:
+            isolated_auth_proof = verify_isolated_console_auth(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                regression_proof=regression_proof)
+        except (IsolatedConsoleAuthEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError) as exc:
+            raise CertificationEvidenceError("isolated Console Auth evidence unavailable") from exc
+        if evidence.get("isolated_console_auth_evidence") != isolated_auth_proof.receipt():
+            raise CertificationEvidenceError("isolated Console Auth receipt changed before persistence")
+        if not args.verify_live_console_boundaries:
+            for criterion in ("authn_authz", "data_access_boundaries"):
+                row = manifest.get("criteria", {}).get("security", {}).get(criterion)
+                if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != isolated_auth_proof.evidence():
+                    raise CertificationEvidenceError("isolated Console Auth baseline inconsistent")
     recovery_proof = None
     if args.verify_recovery_alerting:
         if not args.require_verified_baseline:

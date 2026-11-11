@@ -61,6 +61,9 @@ from ai_product_factory.independent_live_console_boundary_evidence import (
 from ai_product_factory.independent_real_journey_blocker_evidence import (
     RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers as verify_real_journey_blockers_fn,
 )
+from ai_product_factory.independent_isolated_console_auth_evidence import (
+    IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth as verify_isolated_console_auth_fn,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import (
     RequirementsInventoryBlocked, verify_requirements_inventory as verify_requirements_inventory_fn,
@@ -93,6 +96,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_complete_console_surface: bool = False,
                             verify_live_console_boundaries: bool = False,
                             verify_real_journey_blockers: bool = False,
+                            verify_isolated_console_auth: bool = False,
                             artifact_reader=None,
                             source_event=None) -> dict:
     manifest = conservative_verified_manifest(
@@ -222,6 +226,20 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             entry = manifest["criteria"]["test_strategy"]["regression_gates"]
             entry.update(status="partial",
                          reason="independent regression gate evidence blocked: " + regression_blocker)
+    isolated_auth_proof = None
+    if verify_isolated_console_auth and regression_proof is not None:
+        try:
+            isolated_auth_proof = verify_isolated_console_auth_fn(
+                repository=repository, assessed_commit=sha, regression_proof=regression_proof)
+        except (IsolatedConsoleAuthEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            isolated_auth_proof = None
+    if isolated_auth_proof is not None:
+        for criterion in ("authn_authz", "data_access_boundaries"):
+            manifest["criteria"]["security"][criterion].update(
+                status="partial", verification_state="executed",
+                reason="independent isolated PostgreSQL role, RLS and privileged-RPC negatives reverified",
+                evidence=isolated_auth_proof.evidence())
     recovery_proof = None
     if verify_recovery_alerting:
         try:
@@ -503,6 +521,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if live_boundaries_proof is not None else {}),
         **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
            if journey_blocker_proof is not None else {}),
+        **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
+           if isolated_auth_proof is not None else {}),
     }
 
 
@@ -524,6 +544,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
+    parser.add_argument("--verify-isolated-console-auth", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -559,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_complete_console_surface=args.verify_complete_console_surface,
         verify_live_console_boundaries=args.verify_live_console_boundaries,
         verify_real_journey_blockers=args.verify_real_journey_blockers,
+        verify_isolated_console_auth=args.verify_isolated_console_auth,
         artifact_reader=artifact_reader,
         source_event=event,
     )

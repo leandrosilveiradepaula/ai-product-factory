@@ -1612,6 +1612,7 @@ jobs:
             --verify-isolated-rollback \
               --verify-secrets-dependencies \
               --verify-regression-gates \
+            --verify-isolated-console-auth \
               --verify-recovery-alerting \
               --verify-operations-runbook \
               --verify-requirements-inventory \
@@ -1644,6 +1645,7 @@ jobs:
             --verify-isolated-rollback \
               --verify-secrets-dependencies \
               --verify-regression-gates \
+              --verify-isolated-console-auth \
               --verify-recovery-alerting \
               --verify-operations-runbook \
               --verify-requirements-inventory \
