@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {verifyLiveConsoleAccess,B2_PROTECTED_ROUTES} from "./verify_block1_b2_live_console_access.mjs";
 
 const origin="https://console.example.invalid";
-function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenied=false,adminAllowed=false,
+function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenied=false,adminAllowed=false,adminSessionLost=false,
   invalidSessionAllowed=false,invalidSessionApiAllowed=false}={}) {
   const records={anonymousPages:[],operatorPages:[],anonymousApi:0,operatorApi:0,invalidApi:0,invalidPages:[]};
   let forgedCookie=false;
@@ -19,7 +19,7 @@ function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenie
           url=origin+((kind==="invalid"?invalidSessionAllowed:anonymousAllowed)?path:"/login");
         } else {
           records.operatorPages.push(path);
-          url=origin+(adminAllowed?path:"/unauthorized");
+          url=origin+(adminAllowed?path:adminSessionLost?"/login":"/unauthorized");
         }
         return {status:()=>200};
       },
@@ -70,6 +70,7 @@ for(const [label,change] of [
   ["anonymous API exposed",{anonymousApiAllowed:true}],
   ["operator API denied",{operatorDenied:true}],
   ["operator allowed admin page",{adminAllowed:true}],
+  ["operator session lost before admin denial",{adminSessionLost:true}],
   ["forged session allowed on page",{invalidSessionAllowed:true}],
   ["forged session allowed on API",{invalidSessionApiAllowed:true}],
 ]) {
@@ -81,6 +82,18 @@ for(const [label,change] of [
     );
   });
 }
+test("distinguishes an exposed admin page from a lost operator session",async()=>{
+  const exposed=fixture({adminAllowed:true});
+  await assert.rejects(
+    verifyLiveConsoleAccess({...exposed,baseUrl:origin,trustedOidc:"synthetic"}),
+    /b2_operator_admin_page_exposed/,
+  );
+  const sessionLost=fixture({adminSessionLost:true});
+  await assert.rejects(
+    verifyLiveConsoleAccess({...sessionLost,baseUrl:origin,trustedOidc:"synthetic"}),
+    /b2_operator_admin_session_lost/,
+  );
+});
 test("reject non-HTTPS origin before browser",async()=>{
   const f=fixture();
   await assert.rejects(
