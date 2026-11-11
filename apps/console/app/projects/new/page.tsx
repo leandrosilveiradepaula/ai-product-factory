@@ -1,5 +1,6 @@
 import {IntakeForm,type IntakeFormInitial} from "./intake-form";
 import {PageHeader} from "../../ui";
+import {requireConsoleOperator} from "../../../lib/auth-server";
 
 function decode(raw:string|undefined):IntakeFormInitial|undefined{
  if(!raw)return undefined;
@@ -7,6 +8,9 @@ function decode(raw:string|undefined):IntakeFormInitial|undefined{
 }
 
 export default async function NewProject({searchParams}:{searchParams:Promise<{intake?:string}>}){
+ // Middleware checks session validity; the allowlist must be verified on this
+ // page independently before any intake payload is rendered.
+ await requireConsoleOperator();
  const p=await searchParams;const initial=decode(p.intake);
  return <>
   <PageHeader eyebrow="Novo projeto" title="Iniciar ou importar projeto" subtitle="Comece uma ideia nova ou traga um projeto em andamento. A Factory inicia Descoberta ou reconcilia o estado real antes de continuar."/>
