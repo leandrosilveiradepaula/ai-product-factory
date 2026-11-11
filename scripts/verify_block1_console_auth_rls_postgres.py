@@ -191,6 +191,33 @@ def main() -> int:
                       params=(IDS[3],))
         cases += 2
 
+        # Direct calls to both privileged RPCs must be denied to untrusted
+        # roles even when a request JWT subject was supplied. This exercises
+        # the exact installed grants, rather than inferring them from the
+        # migration text or from the Console UI.
+        for role in ("anon", "authenticated"):
+            for sql, params in (
+                ("SELECT public.factory_upsert_console_operator(%s,%s,%s,%s)",
+                 (IDS[0], IDS[3], "admin", True)),
+                ("SELECT public.factory_bootstrap_console_admin(%s)", (IDS[0],)),
+            ):
+                expect_denied(conn, role=role, sql=sql, params=params)
+                cases += 1
+
+        # An authenticated identity may read only its own active operator
+        # record. A valid-looking JWT subject must not turn the table into an
+        # operator directory or allow cross-operator discovery.
+        with conn.transaction():
+            conn.execute("SELECT set_config('request.jwt.claim.sub',%s,true)",
+                         (str(IDS[1]),))
+            conn.execute("SET LOCAL ROLE authenticated")
+            rows = conn.execute(
+                "SELECT user_id FROM public.factory_console_operators "
+                "WHERE user_id=%s", (IDS[0],)
+            ).fetchall()
+            require(rows == [], "b2_cross_operator_read_leaked")
+        cases += 1
+
     print(json.dumps({
         "schema": "factory-block1-b2-isolated-console-auth-v1",
         "scope": "isolated_sql_role_policy_not_production_jwt_or_full_tenant_auth",

@@ -94,6 +94,9 @@ class IsolatedRoleEvidenceContract(unittest.TestCase):
         self.assertIn("policy_sql()", src)
         self.assertIn("def expect_denied(", src)
         self.assertIn('"42501"', src)
+        self.assertIn("factory_upsert_console_operator", src)
+        self.assertIn("b2_cross_operator_read_leaked", src)
+        self.assertIn("for role in (\"anon\", \"authenticated\")", src)
         self.assertIn("production_writes", src)
         self.assertIn("all_authn_authz_certified", src)
 
