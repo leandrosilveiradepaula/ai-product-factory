@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {verifyLiveConsoleAccess,B2_PROTECTED_ROUTES} from "./verify_block1_b2_live_console_access.mjs";
 
 const origin="https://console.example.invalid";
-function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenied=false,adminAllowed=false,adminSessionLost=false,
+function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenied=false,operatorRole="operator",adminAllowed=false,adminSessionLost=false,
   invalidSessionAllowed=false,invalidSessionApiAllowed=false}={}) {
   const records={anonymousPages:[],operatorPages:[],anonymousApi:0,operatorApi:0,invalidApi:0,invalidPages:[]};
   let forgedCookie=false;
@@ -40,10 +40,16 @@ function fixture({anonymousAllowed=false,anonymousApiAllowed=false,operatorDenie
     return noAuth;
   }};
   const operatorContext={
-    request:{async get(){records.operatorApi++;return {
-      status:()=>operatorDenied?403:200,
-      json:async()=>({status:"ok",count:0,projects:[]}),
-    };}},
+    request:{async get(url){
+      if(new URL(url).pathname==="/api/session")return {
+        status:()=>operatorDenied?403:200,
+        json:async()=>({status:"ok",role:operatorRole}),
+      };
+      records.operatorApi++;return {
+        status:()=>operatorDenied?403:200,
+        json:async()=>({status:"ok",count:0,projects:[]}),
+      };
+    }},
     async newPage(){return page("operator");},
   };
   return {browser,operatorContext,records};
@@ -56,6 +62,7 @@ test("read-only live boundary contract covers anonymous, operator and admin deni
   assert.equal(r.invalidSessionRouteDenied,true);
   assert.equal(r.invalidSessionApiDenied,true);
   assert.equal(r.operatorAdminPageDenied,true);
+  assert.equal(r.ephemeralOperatorRoleVerified,true);
   assert.equal(r.operatorReadOnlyApiAllowed,true);
   assert.equal(r.productionWrites,0);
   assert.equal(r.fullAuthnAuthzCertified,false);
@@ -69,6 +76,7 @@ for(const [label,change] of [
   ["anonymous route exposed",{anonymousAllowed:true}],
   ["anonymous API exposed",{anonymousApiAllowed:true}],
   ["operator API denied",{operatorDenied:true}],
+  ["ephemeral operator role elevated",{operatorRole:"admin"}],
   ["operator allowed admin page",{adminAllowed:true}],
   ["operator session lost before admin denial",{adminSessionLost:true}],
   ["forged session allowed on page",{invalidSessionAllowed:true}],

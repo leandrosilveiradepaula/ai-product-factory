@@ -71,6 +71,13 @@ export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,t
     if(operatorBody?.status!=="ok" || !Number.isSafeInteger(operatorBody.count)
       || !Array.isArray(operatorBody.projects))
       throw Error("b2_operator_api_schema_invalid");
+    const operatorSession=await operatorContext.request.get(origin+"/api/session",{
+      maxRedirects:0,timeout:30000,
+    });
+    if(operatorSession.status()!==200)throw Error("b2_operator_session_unavailable");
+    const sessionBody=await operatorSession.json();
+    if(sessionBody?.status!=="ok" || sessionBody.role!=="operator")
+      throw Error("b2_ephemeral_operator_role_elevated");
     const operatorAdmin=await operatorContext.newPage();
     const adminResponse=await operatorAdmin.goto(origin+"/admin/operators",{
       waitUntil:"domcontentloaded",timeout:60000,
@@ -95,6 +102,7 @@ export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,t
       anonymousRouteDenials:anonymousDenials,
       anonymousApiDenied:true,
       operatorReadOnlyApiAllowed:true,
+      ephemeralOperatorRoleVerified:true,
       operatorAdminPageDenied:true,
       invalidSessionRouteDenied:true,
       invalidSessionApiDenied:true,

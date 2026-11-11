@@ -21,6 +21,7 @@ const PUBLIC={
 const PROTECTED={
   "configuration/cost-policy/route.ts":{POST:"admin"},
   "human-attention/route.ts":{GET:"operator"},
+  "session/route.ts":{GET:"operator"},
   "integrations/github-app/install/route.ts":{GET:"admin"},
   "integrations/github-app/register/route.ts":{GET:"admin"},
   "integrations/github-app/verify/route.ts":{GET:"safe_405",POST:"admin"},

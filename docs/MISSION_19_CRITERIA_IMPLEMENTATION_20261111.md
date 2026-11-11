@@ -67,6 +67,14 @@ Ela só pode ser observada depois de merge humano e do Preview/produção exato
 correspondente. Não se deve despachar uma cópia da workflow em branch, trocar a
 origem confiável, ou promover este diagnóstico a evidência positiva.
 
+Após o merge `864e4c29`, o workflow confiável confirmou que a condição é
+`b2_operator_admin_page_exposed`, não perda de sessão. O ramo de reparo
+seguinte adiciona `GET /api/session`, uma leitura autenticada que devolve apenas
+o papel efetivo da própria sessão. A captura exige explicitamente
+`role=operator` antes de consultar a rota de administração; assim, uma elevação
+de papel é separada de um eventual defeito de proteção de rota, sem registrar
+token, e-mail, identificador de usuário ou conteúdo do Control Plane.
+
 ## Bloqueios externos reais e verificação posterior
 
 1. `critical_e2e` e `critical_journeys`: um operador deve autorizar um Start
