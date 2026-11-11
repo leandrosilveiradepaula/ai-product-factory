@@ -362,3 +362,22 @@ test("B2/B3: real authenticated intake advances to review without a server actio
   assert.equal(await page.locator('input[name="name"]').inputValue(),"Offline intake regression");
  }finally{await context.close();}
 });
+
+test("B3: login and unauthorized routes never poll privileged attention API",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ const page=await context.newPage();
+ const requests=[];
+ await context.route("**/api/human-attention",async route=>{
+  requests.push(route.request().url());
+  await route.fulfill({status:503,contentType:"application/json",body:'{"status":"unavailable"}'});
+ });
+ try{
+  for(const route of ["/login","/unauthorized"]){
+   const response=await page.goto(appOrigin+route,{waitUntil:"networkidle",timeout:45000});
+   assert.equal(response?.status(),200);
+   assert.equal(new URL(page.url()).pathname,route);
+   assert.equal(requests.length,0,"auth-only route must not fetch operator attention");
+   assert.equal(await page.locator(".topbarAttention").count(),0);
+  }
+ }finally{await context.close();}
+});
