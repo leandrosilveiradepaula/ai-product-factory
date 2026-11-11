@@ -35,6 +35,9 @@ from ai_product_factory.independent_authenticated_console_evidence import (
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries,
 )
+from ai_product_factory.independent_real_journey_blocker_evidence import (
+    RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
@@ -97,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
+    parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
@@ -178,6 +182,17 @@ def main(argv: list[str] | None = None) -> int:
                 and live_boundary_proof.b3_live_artifact_id is not None):
             if not isinstance(states, dict) or states.get("status") != "partial" or states.get("evidence") != expected:
                 raise CertificationEvidenceError("live Console state baseline inconsistent")
+    if args.verify_real_journey_blockers:
+        if not args.require_verified_baseline:
+            raise CertificationEvidenceError("real journey blocker proof requires verified baseline")
+        try:
+            journey_blocker_proof = verify_real_journey_blockers(
+                control_plane_get=SupabaseAdmissionReader()._get)
+        except (RealJourneyBlockerEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError) as exc:
+            raise CertificationEvidenceError("real journey blocker evidence unavailable") from exc
+        if evidence.get("real_journey_blocker_evidence") != journey_blocker_proof.receipt():
+            raise CertificationEvidenceError("real journey blocker receipt changed before persistence")
     full_surface_proof = None
     if args.verify_complete_console_surface and proof is not None:
         if not args.require_verified_baseline:

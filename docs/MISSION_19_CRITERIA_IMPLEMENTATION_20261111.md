@@ -131,3 +131,13 @@ As regressões adversariais cobrem conteúdo secreto, escrita/uso pago, flags de
 certificação indevida, artefato duplicado/expirado e proveniência incompatível.
 Este é avanço técnico de evidência limitada, não a certificação final nem uma
 mudança dos bloqueios humanos de B4.
+
+## Atualização técnica — B4 no envelope independente
+
+O mesmo envelope agora contém um recibo B4 read-only, reconsultado pelo
+certificador imediatamente antes de qualquer persistência. Ele fixa a
+identidade do CRM existente, exclui o Service Desk aposentado e registra por
+que `critical_e2e` e `critical_journeys` permanecem bloqueados. O recibo só é
+aceito se declarar zero escritas, zero chamadas pagas e ambos os critérios como
+não certificados. Assim, uma jornada forjada, um release isolado ou a mera
+existência de um greenfield não podem elevar a avaliação.

@@ -58,6 +58,9 @@ from ai_product_factory.independent_authenticated_console_evidence import (
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries as verify_live_console_boundaries_fn,
 )
+from ai_product_factory.independent_real_journey_blocker_evidence import (
+    RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers as verify_real_journey_blockers_fn,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import (
     RequirementsInventoryBlocked, verify_requirements_inventory as verify_requirements_inventory_fn,
@@ -89,6 +92,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             control_plane_get=None,
                             verify_complete_console_surface: bool = False,
                             verify_live_console_boundaries: bool = False,
+                            verify_real_journey_blockers: bool = False,
                             artifact_reader=None,
                             source_event=None) -> dict:
     manifest = conservative_verified_manifest(
@@ -347,6 +351,16 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 evidence=b2_evidence,
             )
 
+    journey_blocker_proof = None
+    if verify_real_journey_blockers:
+        try:
+            if control_plane_get is None:
+                raise RealJourneyBlockerEvidenceBlocked("real_journey_source_reader_unavailable")
+            journey_blocker_proof = verify_real_journey_blockers_fn(control_plane_get)
+        except (RealJourneyBlockerEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            journey_blocker_proof = None
+
     # This is a BOUNDED static inventory only. It never certifies runtime
     # reachability, authorization, E2E or release. The exact-SHA CI check is
     # retained while independent dynamic ingress proof remains missing.
@@ -487,6 +501,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if authenticated_console_proof is not None else {}),
         **({"live_console_boundary_evidence": live_boundaries_proof.receipt()}
            if live_boundaries_proof is not None else {}),
+        **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
+           if journey_blocker_proof is not None else {}),
     }
 
 
@@ -507,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
+    parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -518,7 +535,9 @@ def main(argv: list[str] | None = None) -> int:
     token = resolve_github_token(repo)
     github_get = lambda path: github_read(token, path)
     control_plane_get = (SupabaseAdmissionReader()._get
-                         if args.reuse_historical_authenticated_console_evidence or args.verify_complete_console_surface else None)
+                         if (args.reuse_historical_authenticated_console_evidence
+                             or args.verify_complete_console_surface
+                             or args.verify_real_journey_blockers) else None)
     artifact_reader = (lambda repository, artifact_id, **kwargs: read_verified_artifact_json(
         repository=repository, artifact_id=artifact_id, token=token, **kwargs
     )) if args.verify_complete_console_surface or args.verify_live_console_boundaries else None
@@ -539,6 +558,7 @@ def main(argv: list[str] | None = None) -> int:
         control_plane_get=control_plane_get,
         verify_complete_console_surface=args.verify_complete_console_surface,
         verify_live_console_boundaries=args.verify_live_console_boundaries,
+        verify_real_journey_blockers=args.verify_real_journey_blockers,
         artifact_reader=artifact_reader,
         source_event=event,
     )
