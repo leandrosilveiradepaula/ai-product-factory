@@ -29,7 +29,7 @@ def b2():
         "scope":"authenticated_http_route_witness_only",
         "authorizationBoundaryCertified":False,"crossTenantIsolationCertified":False,
         "signedJwtClaimsIndependentlyVerified":False,"visualAuditPassed":False,
-        "credentialOrUserDataRetained":False,"productionWrites":0,
+        "credentialOrUserDataRetained":False,"productionWrites":0,"paidCalls":0,
     }
 
 
@@ -78,6 +78,7 @@ class LiveConsoleBoundaryEvidenceTests(unittest.TestCase):
             {"crossTenantIsolationCertified":True},
             {"signedJwtClaimsIndependentlyVerified":True},
             {"productionWrites":1},
+            {"paidCalls":1},
             {"scope":"full_production_security_certification"},
             {"operator_email":"private@example.invalid"},
         ):

@@ -115,7 +115,8 @@ promover artificialmente segurança, isolamento de tenant ou estado de backend.
   inválida e operador em rota administrativa. Ele só permite estado `partial`
   para `authn_authz` e `data_access_boundaries`; JWT assinado independente,
   isolamento cross-tenant e cobertura integral continuam explicitamente
-  `false`.
+  `false`. O recibo também declara zero chamadas pagas, além de zero escritas,
+  de modo que a captura de navegador não possa ocultar consumo de modelo.
 - O witness B3 agora exige duas evidências distintas para alcançar no máximo
   `partial` em `states`: as transições da interface por fixture e uma leitura
   autenticada real de `/api/human-attention`. A leitura registra apenas a

@@ -45,7 +45,7 @@ B2_FIELDS = frozenset({
     "schema", "runId", "sourceCommit", "targetCommit", "checks", "scope",
     "authorizationBoundaryCertified", "crossTenantIsolationCertified",
     "signedJwtClaimsIndependentlyVerified", "visualAuditPassed",
-    "credentialOrUserDataRetained", "productionWrites",
+    "credentialOrUserDataRetained", "productionWrites", "paidCalls",
 })
 B3_FIELDS = frozenset({
     "schema", "runId", "sourceCommit", "targetCommit", "checks", "scope",
@@ -78,7 +78,7 @@ def validate_b2_witness(payload: object, *, run_id: int, source_sha: str) -> Non
         if row[key] is not False:
             raise LiveConsoleBoundaryEvidenceBlocked("live_b2_overclaim")
     if (row["credentialOrUserDataRetained"] is not False
-            or row["productionWrites"] != 0):
+            or row["productionWrites"] != 0 or row["paidCalls"] != 0):
         raise LiveConsoleBoundaryEvidenceBlocked("live_b2_safety_invalid")
 
 
