@@ -45,7 +45,7 @@ function transpile(file){
   const source=fs.readFileSync(path.join(root,file),"utf8");
   const emitted=ts.transpileModule(source,{fileName:file,reportDiagnostics:true,
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,
-      esModuleInterop:true}});
+      esModuleInterop:true,jsx:ts.JsxEmit.ReactJSX}});
   assert.deepEqual((emitted.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error),[],
     "TypeScript route must compile: "+file);
   return emitted.outputText;
