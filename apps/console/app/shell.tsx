@@ -1,19 +1,4 @@
- useEffect(()=>{
-  // Login and access-denied routes have no operator context. Never poll the
-  // privileged attention API there, and invalidate responses from a previous
-  // authenticated route before they can revive stale badges.
-  if(authOnly){
-   ++attentionEpoch.current;
-   setAttention(null);
-   setAttentionUnavailable(false);
-   return()=>{++attentionEpoch.current;};
-  }
-  void refreshAttention();
-  const tick=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshAttention();},60000);
-  const onFocus=()=>{void refreshAttention();};
-  window.addEventListener("focus",onFocus);
-  return()=>{++attentionEpoch.current;window.clearInterval(tick);window.removeEventListener("focus",onFocus);};
- },[refreshAttention,pathname,authOnly]);"use client";
+"use client";
 
 import Link from "next/link";
 import {usePathname} from "next/navigation";
@@ -67,7 +52,19 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    }
   }
  },[]);
- useEffect(()=>{void refreshAttention();const tick=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshAttention();},60000);const onFocus=()=>{void refreshAttention();};window.addEventListener("focus",onFocus);return()=>{++attentionEpoch.current;window.clearInterval(tick);window.removeEventListener("focus",onFocus);};},[refreshAttention,pathname]);
+ useEffect(()=>{
+  if(authOnly){
+   ++attentionEpoch.current;
+   setAttention(null);
+   setAttentionUnavailable(false);
+   return()=>{++attentionEpoch.current;};
+  }
+  void refreshAttention();
+  const tick=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshAttention();},60000);
+  const onFocus=()=>{void refreshAttention();};
+  window.addEventListener("focus",onFocus);
+  return()=>{++attentionEpoch.current;window.clearInterval(tick);window.removeEventListener("focus",onFocus);};
+ },[refreshAttention,pathname,authOnly]);
  if(authOnly){
   return <div className="authShell">
    <main className="authMain">{children}</main>
