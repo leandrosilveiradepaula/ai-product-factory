@@ -75,6 +75,18 @@ o papel efetivo da própria sessão. A captura exige explicitamente
 de papel é separada de um eventual defeito de proteção de rota, sem registrar
 token, e-mail, identificador de usuário ou conteúdo do Control Plane.
 
+Após o merge humano `6b2970fe39402f650dec0600722c75f18d19a677`, a captura
+oficial [`#43021529721`](https://github.com/leandrosilveiradepaula/ai-product-factory/actions/runs/43021529721)
+confirmou `role=operator` e ainda assim observou a permanência em
+`/admin/operators`. O ciclo de provisionamento e remoção do operador efêmero
+foi concluído; isso descarta a hipótese de sessão perdida e impede tratar a
+falha como aprovação de segurança. A correção candidata acrescenta uma barreira
+de middleware antes da renderização dessa única rota administrativa, mantendo
+as guardas existentes da página e da Server Action. Ela falha fechada para
+papel ausente, ambíguo, não-admin ou erro de consulta, e só poderá ser aceita
+como evidência após CI, Preview oficial e nova captura autenticada no SHA
+integrado.
+
 ## Bloqueios externos reais e verificação posterior
 
 1. `critical_e2e` e `critical_journeys`: um operador deve autorizar um Start
