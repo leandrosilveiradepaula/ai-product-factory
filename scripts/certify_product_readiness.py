@@ -221,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
                 verified = full_surface_proof.criterion(criterion)
                 if not isinstance(item, dict) or item.get("status") != "passed" or item.get("evidence") != list(verified.evidence):
                     raise CertificationEvidenceError("complete Console baseline proof inconsistent")
+            accessibility = manifest.get("criteria", {}).get("product_experience", {}).get("accessibility")
+            if (not isinstance(accessibility, dict) or accessibility.get("status") != "partial"
+                    or accessibility.get("evidence") != list(full_surface_proof.bounded_accessibility_evidence())):
+                raise CertificationEvidenceError("complete Console accessibility baseline inconsistent")
         elif any(
             manifest.get("criteria", {}).get("product_experience", {}).get(k, {}).get("status") == "passed"
             for k in ("surface_inventory", "responsive")

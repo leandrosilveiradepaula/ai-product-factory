@@ -87,6 +87,11 @@ class VerifiedConsoleSurface:
             retained_receipt={**self.receipt(), "criterion": name},
         )
 
+    def bounded_accessibility_evidence(self) -> tuple[str, ...]:
+        """Real browser keyboard/semantic checks, deliberately not WCAG PASS."""
+        return ("https://github.com/" + self.repository + "/actions/runs/"
+                + str(self.run_id) + "#sha=" + self.assessed_commit,)
+
 
 def validate_surface_witness(payload: object, *, run_id: int, source_sha: str) -> str:
     """Validate allowlisted, quantified output; never trust arbitrary JSON claims."""

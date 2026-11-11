@@ -150,3 +150,12 @@ papéis `anon`/`authenticated`, RLS por sujeito, leitura cruzada negada e RPCs
 privilegiadas negadas em banco descartável. Ele torna B2 `partial` quando a
 captura autenticada nova não estiver disponível; nunca substitui JWT assinado,
 isolamento completo entre tenants nem a prova dinâmica do ambiente produtivo.
+
+## Atualização técnica — acessibilidade B3 revalidada
+
+Quando o recibo completo do navegador autenticado é válido, o certificador
+revalida separadamente a evidência de teclado, foco, landmarks, nomes
+acessíveis, referências ARIA, IDs, ordem de tabulação e superfície mobile nas
+14 rotas. Isso permite apenas `accessibility=partial` no SHA exato; a própria
+prova continua declarando que não certifica WCAG completo, todos os fluxos
+dinâmicos, estados de backend ou `product_ready`.

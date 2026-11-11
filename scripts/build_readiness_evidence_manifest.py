@@ -331,6 +331,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             item.update(status="passed", verification_state="observed",
                         reason="independent complete authenticated browser audit reverified",
                         evidence=list(full_surface_proof.criterion(criterion).evidence))
+        manifest["criteria"]["product_experience"]["accessibility"].update(
+            status="partial", verification_state="observed",
+            reason="independent exact-SHA authenticated browser keyboard and semantic audit is bounded",
+            evidence=list(full_surface_proof.bounded_accessibility_evidence()))
 
     # B2 and fixture-driven B3 observations are independently authenticated,
     # but intentionally remain PARTIAL.  They prove real negative ingress
