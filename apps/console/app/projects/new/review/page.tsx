@@ -4,12 +4,16 @@ import {countProjectDraftFiles} from "../../../../lib/attachments";
 import {createProjectIntakeAndBootstrap} from "../../../../lib/control-plane";
 import {ActionLink,PageHeader} from "../../../ui";
 import {SubmitProjectButton} from "./submit-button";
+import {requireConsoleOperator} from "../../../../lib/auth-server";
 
 type ReviewIntake=ProjectIntake&{draftId?:string;attachmentCount?:number};
 function decode(raw:string|undefined):ReviewIntake|null{if(!raw)return null;try{return JSON.parse(Buffer.from(raw,"base64url").toString("utf8"))}catch{return null}}
 async function start(formData:FormData){"use server";const intake=decode(String(formData.get("intake")||""));if(!intake)throw new Error("Intake inválido");const clean=normalizeIntake({mode:intake.mode,name:intake.name,summary:intake.summary,repository:intake.repository,users:intake.users,mustHave:intake.mustHave,integrations:intake.integrations,references:intake.references,reportedStage:intake.reportedStage,knownPending:intake.knownPending,constraints:intake.constraints});const validation=validateIntake(clean);if(!validation.ok)throw new Error("Intake inválido");if(!intake.draftId)throw new Error("Identificador do rascunho ausente.");const expectedCount=await countProjectDraftFiles(intake.draftId);if(expectedCount>10)throw new Error("Excesso de anexos.");const result=await createProjectIntakeAndBootstrap(clean,intake.draftId,expectedCount);redirect("/projects/"+result.projectKey)}
 
 export default async function Review({searchParams}:{searchParams:Promise<{intake?:string}>}){
+ // Deny authenticated Supabase users who are not active Factory operators
+ // before displaying any review content from a supplied URL.
+ await requireConsoleOperator();
  const p=await searchParams;const intake=decode(p.intake);
  if(!intake)return <><PageHeader eyebrow="Novo projeto" title="Entrada inválida" subtitle="O conteúdo da entrada não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
  return <>
