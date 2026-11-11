@@ -39,6 +39,15 @@ def audit(root: Path) -> dict:
         mutation = bool(MUTATION.search(body))
         has_origin = "request.headers.get(\"origin\")" in body or "request.headers.get('origin')" in body
         has_content_type = "content-type" in body
+        compact = re.sub(r"\s+", "", body)
+        # A header lookup alone is not a CSRF boundary. Require the request
+        # origin to be compared to the parsed request URL before form data is
+        # read; this keeps this inventory conservative without executing a
+        # route or recording session data.
+        has_request_url = "newURL(request.url)" in compact
+        has_origin_comparison = "!==url.origin" in compact
+        form_data_offset = compact.find("request.formData()")
+        content_type_validation = compact.find("startsWith(\"application/x-www-form-urlencoded\")")
         flags = []
         if not handlers:
             flags.append("no_exported_http_handler")
@@ -48,6 +57,15 @@ def audit(root: Path) -> dict:
             flags.append("mutation_origin_guard_not_found")
         if category == "operator_required" and mutation and not has_content_type:
             flags.append("mutation_content_type_guard_not_found")
+        if category == "operator_required" and mutation and not has_request_url:
+            flags.append("mutation_request_url_not_parsed")
+        if category == "operator_required" and mutation and not has_origin_comparison:
+            flags.append("mutation_origin_comparison_not_found")
+        if category == "operator_required" and mutation and (
+            content_type_validation < 0 or
+            (form_data_offset >= 0 and content_type_validation > form_data_offset)
+        ):
+            flags.append("mutation_content_type_validation_not_found")
         if category == "hmac_and_feature_gate" and (
             "authenticateGitHubWebhook" not in body or
             "FACTORY_GITHUB_WEBHOOK_ENABLED" not in body

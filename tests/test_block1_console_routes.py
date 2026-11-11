@@ -35,6 +35,25 @@ class ConsoleRouteAuditTests(unittest.TestCase):
             self.assertIn("mutation_content_type_guard_not_found", flags)
             self.assertFalse(report["security_certified"])
 
+    def test_header_mentions_without_url_comparison_or_pre_form_validation_are_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            api = root / "apps" / "console" / "app" / "api"
+            path = api / "danger" / "route.ts"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "export async function POST(request:Request){"
+                "requireConsoleAdmin();request.headers.get('origin');"
+                "const data=await request.formData();"
+                "if((request.headers.get('content-type')||'').startsWith("
+                "'application/x-www-form-urlencoded'))return Response.json({ok:true})}",
+                encoding="utf-8",
+            )
+            flags = mod.audit(root)["blockers"][0]["flags"]
+            self.assertIn("mutation_request_url_not_parsed", flags)
+            self.assertIn("mutation_origin_comparison_not_found", flags)
+            self.assertIn("mutation_content_type_validation_not_found", flags)
+
     def test_public_exceptions_match_actual_api_relative_paths(self):
         report = mod.audit(ROOT)
         self.assertEqual(report["stale_public_exceptions"], [])
@@ -49,7 +68,12 @@ class ConsoleRouteAuditTests(unittest.TestCase):
             root = Path(tmp)
             api = root / "apps" / "console" / "app" / "api"
             api.mkdir(parents=True)
-            (api / "route.ts").symlink_to(ROOT / "apps" / "console" / "app" / "api" / "health" / "route.ts")
+            try:
+                (api / "route.ts").symlink_to(
+                    ROOT / "apps" / "console" / "app" / "api" / "health" / "route.ts"
+                )
+            except OSError as error:
+                self.skipTest(f"symlink creation unavailable: {error.winerror}")
             with self.assertRaises(ValueError):
                 mod.audit(root)
 

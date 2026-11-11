@@ -6,12 +6,14 @@ const good = Object.freeze({
   language:"pt-BR",hasTitle:true,mainCount:1,mainTarget:true,
   skipCount:1,skipHasName:true,h1Count:1,interactiveCount:7,
   unnamedCount:0,missingImageAlt:0,duplicateIds:0,positiveTabOrder:0,
+  invalidAriaReferences:0,focusableAriaHidden:0,
 });
 test("a complete accessibility snapshot emits only safe counts",()=>{
   const result=verifyAccessibilitySnapshot({...good,secret:"do-not-record"},"overview");
   assert.deepEqual(result,{
     checked:true,landmarkCount:1,headingCount:1,interactiveCount:7,
     unnamedCount:0,missingImageAlt:0,duplicateIds:0,positiveTabOrder:0,
+    invalidAriaReferences:0,focusableAriaHidden:0,
   });
   assert.equal(JSON.stringify(result).includes("do-not-record"),false);
 });
@@ -29,6 +31,8 @@ test("fail closed on missing structure, unnamed controls and invalid keyboard or
     missingImageAlt:[1,"image_alternatives"],
     duplicateIds:[2,"unique_ids"],
     positiveTabOrder:[1,"tab_order"],
+    invalidAriaReferences:[1,"aria_references"],
+    focusableAriaHidden:[1,"focusable_aria_hidden"],
   };
   for(const [field,[value,code]] of Object.entries(invalid)){
     assert.throws(()=>verifyAccessibilitySnapshot({...good,[field]:value},"projects"),

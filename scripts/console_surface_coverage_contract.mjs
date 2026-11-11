@@ -57,14 +57,17 @@ export function verifyConsoleSurfaceCoverage({captured, accessibilityRoutes,
     }
     if (a11y.checked!==true || a11y.unnamedCount!==0 ||
         a11y.duplicateIds!==0 || a11y.missingImageAlt!==0 ||
-        a11y.positiveTabOrder!==0) {
+        a11y.positiveTabOrder!==0 || a11y.invalidAriaReferences!==0 ||
+        a11y.focusableAriaHidden!==0) {
       throw new Error("console_surface_accessibility_unverified:"+reference.name);
     }
     if (!phone.accessibility || phone.accessibility.checked!==true ||
         phone.accessibility.unnamedCount!==0 ||
         phone.accessibility.missingImageAlt!==0 ||
         phone.accessibility.duplicateIds!==0 ||
-        phone.accessibility.positiveTabOrder!==0) {
+        phone.accessibility.positiveTabOrder!==0 ||
+        phone.accessibility.invalidAriaReferences!==0 ||
+        phone.accessibility.focusableAriaHidden!==0) {
       throw new Error("console_surface_mobile_accessibility_unverified:"+reference.name);
     }
     if (phone.path!==reference.path ||

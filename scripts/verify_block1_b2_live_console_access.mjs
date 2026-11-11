@@ -76,8 +76,17 @@ export async function verifyLiveConsoleAccess({browser,operatorContext,baseUrl,t
       waitUntil:"domcontentloaded",timeout:60000,
     });
     const adminLanded=new URL(operatorAdmin.url());
-    if(!adminResponse || adminLanded.origin!==origin || adminLanded.pathname!=="/unauthorized")
-      throw Error("b2_operator_admin_page_not_denied");
+    if(!adminResponse)throw Error("b2_operator_admin_page_response_missing");
+    if(adminLanded.origin!==origin)throw Error("b2_operator_admin_page_cross_origin_redirect");
+    // Keep these errors path-free except for fixed, allowlisted destinations.
+    // A lost session and an authorization escalation are different defects and
+    // must not be merged into one opaque browser-capture failure.
+    if(adminLanded.pathname==="/login")
+      throw Error("b2_operator_admin_session_lost");
+    if(adminLanded.pathname==="/admin/operators")
+      throw Error("b2_operator_admin_page_exposed");
+    if(adminLanded.pathname!=="/unauthorized")
+      throw Error("b2_operator_admin_redirect_unexpected");
     await operatorAdmin.close();
     await anonymous.close();
     return {
