@@ -60,8 +60,11 @@ class SupplyChainAuditTests(unittest.TestCase):
             (root / "apps" / "console" / "package-lock.json").unlink()
             with self.assertRaises(ValueError):
                 mod.audit(root)
-            (root / "apps" / "console" / "package-lock.json").symlink_to(
-                ROOT / "apps" / "console" / "package-lock.json")
+            try:
+                (root / "apps" / "console" / "package-lock.json").symlink_to(
+                    ROOT / "apps" / "console" / "package-lock.json")
+            except OSError as exc:
+                self.skipTest("symlink creation is not permitted by this Windows host: " + str(exc.winerror))
             with self.assertRaises(ValueError):
                 mod.audit(root)
 

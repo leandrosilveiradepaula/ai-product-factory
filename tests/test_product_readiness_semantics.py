@@ -295,7 +295,7 @@ class ProductReadinessSemanticsTests(unittest.TestCase):
         self.assertIn("security: missing assessment",out.report["product_readiness"]["blockers"])
 
     def test_governance_forbids_ambiguous_product_completion_claims(self):
-        agents = (ROOT / "AGENTS.md").read_text()
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         contract = (ROOT / "docs/PRODUCT_READINESS.md").read_text()
         for marker in ("work_item_complete", "release_candidate_ready", "release_completed", "product_ready"):
             self.assertIn(marker, agents)

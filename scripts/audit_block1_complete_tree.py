@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 
@@ -132,12 +133,23 @@ def _extract_committed_tree(archive: Path, target: Path) -> int:
     return count
 
 
+def _scanner_command(scanner: Path) -> list[str]:
+    """Permit the hermetic Python scanner fixture on Windows only."""
+    if os.name == "nt" and scanner.read_bytes()[:2] == b"#!":
+        return [sys.executable, str(scanner)]
+    return [str(scanner)]
+
+
 def audit(root: Path, scanner: Path) -> dict:
     root = root.resolve(strict=True)
     scanner = scanner.resolve(strict=True)
+    try:
+        git_root = Path(_git(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
+    except (OSError, ValueError):
+        raise ScanBlocked("scanner_or_repository_identity_invalid") from None
     if (not scanner.is_file() or
             root == scanner or root in scanner.parents or
-            _git(root, "rev-parse", "--show-toplevel") != str(root)):
+            git_root != root):
         raise ScanBlocked("scanner_or_repository_identity_invalid")
     if os.environ.get("GITHUB_ACTIONS") == "true" and scanner != CI_SCANNER:
         raise ScanBlocked("untrusted_ci_scanner_path")
@@ -145,7 +157,8 @@ def audit(root: Path, scanner: Path) -> dict:
     tree = _git(root, "rev-parse", "HEAD^{tree}")
     if not SHA.fullmatch(sha) or not SHA.fullmatch(tree):
         raise ScanBlocked("not_an_exact_git_commit")
-    version_result = subprocess.run([str(scanner), "--version"], capture_output=True,
+    scanner_command = _scanner_command(scanner)
+    version_result = subprocess.run([*scanner_command, "--version"], capture_output=True,
                                     text=True, timeout=10, check=False)
     version_text = version_result.stdout + version_result.stderr
     if version_result.returncode != 0 or not re.search(r"(?<!\d)8\.24\.3(?!\d)", version_text):
@@ -171,7 +184,7 @@ def audit(root: Path, scanner: Path) -> dict:
         ignore.write_text("", encoding="utf-8")
         report_file = temporary / "private-results.json"
         command = [
-            str(scanner), "dir", "--config", str(config),
+            *scanner_command, "dir", "--config", str(config),
             "--gitleaks-ignore-path", str(ignore),
             "--ignore-gitleaks-allow", "--redact", "--no-banner",
             "--report-format", "json", "--report-path", str(report_file),

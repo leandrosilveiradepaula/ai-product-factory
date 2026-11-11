@@ -5,16 +5,16 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 APP=ROOT/"apps/console/app"
-NAV=(APP/"nav.tsx").read_text()
-SHELL=(APP/"shell.tsx").read_text()
-HOME=(APP/"page.tsx").read_text()
-PROJECTS=(APP/"projects/page.tsx").read_text()
-PROJECT=(APP/"projects/[key]/page.tsx").read_text()
-CSS=(APP/"globals.css").read_text()
-BROWSER=(ROOT/"scripts/capture_authenticated_console.mjs").read_text()
-INTAKE=(APP/"projects/new/intake-form.tsx").read_text()
-NEW_PROJECT=(APP/"projects/new/page.tsx").read_text()
-REVIEW=(APP/"projects/new/review/page.tsx").read_text()
+NAV=(APP/"nav.tsx").read_text(encoding="utf-8")
+SHELL=(APP/"shell.tsx").read_text(encoding="utf-8")
+HOME=(APP/"page.tsx").read_text(encoding="utf-8")
+PROJECTS=(APP/"projects/page.tsx").read_text(encoding="utf-8")
+PROJECT=(APP/"projects/[key]/page.tsx").read_text(encoding="utf-8")
+CSS=(APP/"globals.css").read_text(encoding="utf-8")
+BROWSER=(ROOT/"scripts/capture_authenticated_console.mjs").read_text(encoding="utf-8")
+INTAKE=(APP/"projects/new/intake-form.tsx").read_text(encoding="utf-8")
+NEW_PROJECT=(APP/"projects/new/page.tsx").read_text(encoding="utf-8")
+REVIEW=(APP/"projects/new/review/page.tsx").read_text(encoding="utf-8")
 
 
 class ConsoleInformationArchitectureTests(unittest.TestCase):

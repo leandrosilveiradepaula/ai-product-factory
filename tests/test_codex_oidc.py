@@ -104,6 +104,8 @@ class CodexOidcTests(unittest.TestCase):
             path = pathlib.Path(tmp) / "wif" / "identity-token"
             write_token_atomically(path, "secret-token")
             self.assertEqual(path.read_text(), "secret-token")
+            if os.name == "nt":
+                self.skipTest("Windows mode bits do not model POSIX token-file permissions")
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
 

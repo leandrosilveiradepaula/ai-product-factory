@@ -11,7 +11,7 @@ GITHUB_ADAPTER=ROOT/"src"/"ai_product_factory"/"github_rest.py"
 
 class ConsoleMigrationApplyTests(unittest.TestCase):
     def test_migration_path_is_admin_production_and_server_secret_only(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         self.assertIn("requireConsoleAdmin()",text)
         self.assertIn('process.env.VERCEL_ENV!=="production"',text)
         self.assertIn("FACTORY_SUPABASE_MANAGEMENT_TOKEN",text)
@@ -19,7 +19,7 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertNotIn("NEXT_PUBLIC_FACTORY_SUPABASE",text)
 
     def test_migration_is_bound_to_explicit_gate_pr_sha_and_versioned_file(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         for marker in (
             'metadata.requested_action!=="apply_control_plane_migration"',
             "metadata.decision_only!==true",
@@ -39,7 +39,7 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
             self.assertIn(marker,text)
 
     def test_merged_pr_recovery_is_fail_closed_for_closed_unmerged_prs(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         self.assertIn('if(!prMerged||!String(pr.merge_commit_sha||"").match(SHA_RE))',text)
         self.assertIn('throw new Error("PR da migration foi fechado sem merge.")',text)
         self.assertIn('String(pr.head?.sha)!==candidate',text)
@@ -47,16 +47,16 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertIn('pr_merged:prMerged',text)
 
     def test_checks_are_revalidated_before_fetching_and_applying_sql(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         checks=text.index("/check-runs")
         contents=text.index("/contents/")
         apply_call=text.index("await applyMigration(configured.supabase_project_ref")
         self.assertLess(checks,contents)
         self.assertLess(contents,apply_call)
-        self.assertIn("required_checks",POLICY.read_text())
+        self.assertIn("required_checks",POLICY.read_text(encoding="utf-8"))
 
     def test_management_api_uses_read_scoped_migration_details_not_generic_query(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         self.assertIn("/database/migrations",text)
         self.assertNotIn("/database/query",text)
         self.assertIn("migrationVersionByName",text)
@@ -66,9 +66,9 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertNotIn("appliedNames.has(",text)
 
     def test_name_only_migration_history_never_completes_gate(self):
-        text=MODULE.read_text()
-        source=(ROOT/"apps/console/lib/migration-history-integrity.mjs").read_text()
-        tests=(ROOT/"apps/console/tests/migration-history-integrity.test.mjs").read_text()
+        text=MODULE.read_text(encoding="utf-8")
+        source=(ROOT/"apps/console/lib/migration-history-integrity.mjs").read_text(encoding="utf-8")
+        tests=(ROOT/"apps/console/tests/migration-history-integrity.test.mjs").read_text(encoding="utf-8")
         self.assertIn("existingVersion!==null",text)
         self.assertIn("await verifyMigrationInHistory",text)
         self.assertIn("source_integrity:",text)
@@ -80,7 +80,7 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertIn("same name/version with different SQL cannot resolve",tests)
 
     def test_applied_sql_is_verified_before_gate_resolution_on_both_paths(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         first=text.index("if(existingVersion!==null)")
         second=text.index('eventType:"human_migration.console_already_applied"')
         third=text.index("await resolveAppliedGate",first)
@@ -94,7 +94,7 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
 
 
     def test_preflight_is_audited_and_post_is_idempotent(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         self.assertIn("human_migration.console_preflight_succeeded",text)
         self.assertIn('"Idempotency-Key":idempotencyKey',text)
         self.assertIn('createHash("sha256")',text)
@@ -103,7 +103,7 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertLess(preflight,apply_call)
 
     def test_apply_is_audited_and_only_then_gate_is_resolved(self):
-        text=MODULE.read_text()
+        text=MODULE.read_text(encoding="utf-8")
         requested=text.index("human_migration.console_apply_requested")
         apply_call=text.index("await applyMigration(")
         succeeded=text.index("human_migration.console_apply_succeeded")
@@ -114,16 +114,16 @@ class ConsoleMigrationApplyTests(unittest.TestCase):
         self.assertIn("human_migration.console_apply_failed",text)
 
     def test_console_renders_explicit_apply_button_without_runtime_auto_apply(self):
-        page=PAGE.read_text()
+        page=PAGE.read_text(encoding="utf-8")
         self.assertIn("Aplicar migration em produção",page)
         self.assertIn("<form action={applyMigration}",page)
         self.assertIn("candidate_commit",page)
         self.assertNotIn("FACTORY_SUPABASE_MANAGEMENT_TOKEN",page)
-        self.assertNotIn("applyPendingMigrationFromConsole",RUNTIME.read_text())
-        self.assertNotIn("database/migrations",GITHUB_ADAPTER.read_text())
+        self.assertNotIn("applyPendingMigrationFromConsole",RUNTIME.read_text(encoding="utf-8"))
+        self.assertNotIn("database/migrations",GITHUB_ADAPTER.read_text(encoding="utf-8"))
 
     def test_policy_is_project_scoped_and_bounded(self):
-        text=POLICY.read_text()
+        text=POLICY.read_text(encoding="utf-8")
         self.assertIn('"ai-product-factory"',text)
         self.assertIn('"leandrosilveiradepaula/ai-product-factory"',text)
         self.assertIn('"fjplmxfcshhbmzgvyqlm"',text)

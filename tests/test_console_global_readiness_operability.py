@@ -5,11 +5,11 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 APP=ROOT/"apps/console/app"
-PROJECT=(APP/"projects/[key]/page.tsx").read_text()
-SHELL=(APP/"shell.tsx").read_text()
-CSS=(APP/"globals.css").read_text()
-THEME=(APP/"theme.css").read_text()
-BROWSER=(ROOT/"scripts/capture_authenticated_console.mjs").read_text()
+PROJECT=(APP/"projects/[key]/page.tsx").read_text(encoding="utf-8")
+SHELL=(APP/"shell.tsx").read_text(encoding="utf-8")
+CSS=(APP/"globals.css").read_text(encoding="utf-8")
+THEME=(APP/"theme.css").read_text(encoding="utf-8")
+BROWSER=(ROOT/"scripts/capture_authenticated_console.mjs").read_text(encoding="utf-8")
 
 DOMAINS=(
     "security","observability_operations","test_strategy",

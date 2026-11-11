@@ -111,7 +111,7 @@ class CodexCLIProducerTests(unittest.TestCase):
                 ).produce(item)
 
         self.assertEqual(invoked, [True])
-        self.assertEqual(artifact.files, {"src/feature.py": "VALUE = 1\n"})
+        self.assertEqual(artifact.files, {"src/feature.py": "VALUE = 1" + os.linesep})
         self.assertIn("Implement feature", artifact.pr_title)
 
     def test_change_set_base_requires_exact_sha_before_codex_invocation(self):

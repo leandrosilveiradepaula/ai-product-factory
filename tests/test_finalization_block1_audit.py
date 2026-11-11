@@ -44,7 +44,10 @@ class Block1AuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "src" / "ai_product_factory").mkdir(parents=True)
-            (root / "README.md").symlink_to(ROOT / "README.md")
+            try:
+                (root / "README.md").symlink_to(ROOT / "README.md")
+            except OSError as exc:
+                self.skipTest("symlink creation is not permitted by this Windows host: " + str(exc.winerror))
             report = module.audit(root, sha=SHA)
             self.assertEqual(report["criteria"]["documentation/setup_configuration"]["status"], "missing")
 

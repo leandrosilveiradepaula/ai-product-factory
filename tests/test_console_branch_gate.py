@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import unittest
 
@@ -19,6 +20,7 @@ def gate_script() -> str:
     return "\n".join(line[10:] for line in lines)
 
 
+@unittest.skipUnless(shutil.which("bash"), "bash is unavailable on this host")
 class ConsoleBranchGateTests(unittest.TestCase):
     def run_gate(self, branch, *, author="human", repository="leandrosilveiradepaula/ai-product-factory"):
         env = dict(os.environ)

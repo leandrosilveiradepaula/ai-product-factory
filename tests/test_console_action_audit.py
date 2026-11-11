@@ -14,7 +14,7 @@ def route_file(href:str)->Path:
 
 class ConsoleActionAuditTests(unittest.TestCase):
     def test_sidebar_static_links_have_real_routes(self):
-        text=(APP/"nav.tsx").read_text()
+        text=(APP/"nav.tsx").read_text(encoding="utf-8")
         hrefs=re.findall(r'href:"([^"]+)"',text)
         self.assertGreater(len(hrefs),5)
         missing=[href for href in hrefs if not route_file(href).exists()]
@@ -30,21 +30,21 @@ class ConsoleActionAuditTests(unittest.TestCase):
         ]
         hrefs=set()
         for path in files:
-            text=path.read_text()
+            text=path.read_text(encoding="utf-8")
             hrefs.update(re.findall(r'href="(/[^"#?{]*)"',text))
         missing=[href for href in sorted(hrefs) if not route_file(href).exists()]
         self.assertEqual(missing,[])
 
     def test_configuration_tabs_are_actionable_anchors(self):
-        text=(APP/"configuration"/"page.tsx").read_text()
+        text=(APP/"configuration"/"page.tsx").read_text(encoding="utf-8")
         for target in ("governanca","modelos","execucao","preview","seguranca"):
             self.assertIn(f'href="#{target}"',text)
             self.assertIn(f'id="{target}"',text)
         self.assertNotIn('<div className="configTabs"><span',text)
 
     def test_auth_pages_do_not_render_authenticated_console_shell(self):
-        layout=(APP/"layout.tsx").read_text()
-        shell=(APP/"shell.tsx").read_text()
+        layout=(APP/"layout.tsx").read_text(encoding="utf-8")
+        shell=(APP/"shell.tsx").read_text(encoding="utf-8")
         self.assertIn("<ConsoleShell environmentLabel={environmentLabel}>{children}</ConsoleShell>",layout)
         self.assertIn('pathname==="/login"',shell)
         self.assertIn('pathname==="/unauthorized"',shell)
@@ -56,8 +56,8 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertNotIn("<span>Online</span>",shell)
 
     def test_shell_environment_label_is_not_hardcoded_to_production(self):
-        layout=(APP/"layout.tsx").read_text()
-        shell=(APP/"shell.tsx").read_text()
+        layout=(APP/"layout.tsx").read_text(encoding="utf-8")
+        shell=(APP/"shell.tsx").read_text(encoding="utf-8")
         self.assertIn("process.env.VERCEL_ENV",layout)
         self.assertIn('?"Produção":',layout)
         self.assertIn('?"Preview":',layout)
@@ -65,9 +65,9 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertNotIn('<span className="envBadge">produção</span>',shell)
 
     def test_login_preserves_validated_next_destination(self):
-        login=(APP/"login"/"page.tsx").read_text()
-        actions=(APP/"auth-actions.ts").read_text()
-        middleware=(ROOT/"apps"/"console"/"middleware.ts").read_text()
+        login=(APP/"login"/"page.tsx").read_text(encoding="utf-8")
+        actions=(APP/"auth-actions.ts").read_text(encoding="utf-8")
+        middleware=(ROOT/"apps"/"console"/"middleware.ts").read_text(encoding="utf-8")
         self.assertIn('name="next"',login)
         self.assertIn("safeNext",login)
         self.assertIn("safeNext",actions)
@@ -77,17 +77,17 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn('value.includes("\\\\")',actions)
 
     def test_auth_redirect_preserves_oauth_callback_query(self):
-        middleware=(ROOT/"apps"/"console"/"middleware.ts").read_text()
+        middleware=(ROOT/"apps"/"console"/"middleware.ts").read_text(encoding="utf-8")
         self.assertIn("path+request.nextUrl.search",middleware)
-        callback=(APP/"api"/"integrations"/"supabase"/"callback"/"route.ts").read_text()
+        callback=(APP/"api"/"integrations"/"supabase"/"callback"/"route.ts").read_text(encoding="utf-8")
         self.assertIn('u.searchParams.get("code")',callback)
         self.assertIn('u.searchParams.get("state")',callback)
 
     def test_intake_edit_preserves_values_and_draft_attachments(self):
-        form=(APP/"projects"/"new"/"intake-form.tsx").read_text()
-        actions=(APP/"projects"/"new"/"actions.ts").read_text()
-        review=(APP/"projects"/"new"/"review"/"page.tsx").read_text()
-        attachments=(ROOT/"apps"/"console"/"lib"/"attachments.ts").read_text()
+        form=(APP/"projects"/"new"/"intake-form.tsx").read_text(encoding="utf-8")
+        actions=(APP/"projects"/"new"/"actions.ts").read_text(encoding="utf-8")
+        review=(APP/"projects"/"new"/"review"/"page.tsx").read_text(encoding="utf-8")
+        attachments=(ROOT/"apps"/"console"/"lib"/"attachments.ts").read_text(encoding="utf-8")
         self.assertIn('name="draft_id"',form)
         self.assertIn("defaultValue={initial?.summary",form)
         self.assertIn("defaultValue={initial?.name",form)
@@ -100,15 +100,15 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("countProjectDraftFiles",attachments)
 
     def test_dashboard_never_falls_back_to_demo_data(self):
-        text=(ROOT/"apps"/"console"/"lib"/"control-plane.ts").read_text()
+        text=(ROOT/"apps"/"console"/"lib"/"control-plane.ts").read_text(encoding="utf-8")
         self.assertNotIn("const demo:Dashboard",text)
         self.assertNotIn("return demo",text)
         self.assertIn('throw new Error("Control Plane não configurado.")',text)
 
     def test_mutating_controls_are_bound_to_server_actions(self):
-        gates=(APP/"gates"/"page.tsx").read_text()
-        operators=(APP/"admin"/"operators"/"page.tsx").read_text()
-        review=(APP/"projects"/"new"/"review"/"page.tsx").read_text()
+        gates=(APP/"gates"/"page.tsx").read_text(encoding="utf-8")
+        operators=(APP/"admin"/"operators"/"page.tsx").read_text(encoding="utf-8")
+        review=(APP/"projects"/"new"/"review"/"page.tsx").read_text(encoding="utf-8")
         self.assertIn("<form action={resolveGate}",gates)
         self.assertIn("<form action={mergeRelease}",gates)
         self.assertIn("<form action={applyMigration}",gates)
@@ -120,8 +120,8 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("<form action={start}",review)
 
     def test_existing_project_reconciliation_is_actionable_from_console(self):
-        detail=(APP/"projects"/"[key]"/"page.tsx").read_text()
-        control=(ROOT/"apps"/"console"/"lib"/"control-plane.ts").read_text()
+        detail=(APP/"projects"/"[key]"/"page.tsx").read_text(encoding="utf-8")
+        control=(ROOT/"apps"/"console"/"lib"/"control-plane.ts").read_text(encoding="utf-8")
         self.assertIn("<form action={reconcileProject}>",detail)
         self.assertIn('name="project_key"',detail)
         self.assertIn("Reconciliar projeto",detail)
@@ -132,13 +132,13 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("nenhuma duplicata foi criada",detail)
 
     def test_supabase_connect_visual_action_has_real_route_handlers(self):
-        detail=(APP/"projects"/"[key]"/"page.tsx").read_text()
+        detail=(APP/"projects"/"[key]"/"page.tsx").read_text(encoding="utf-8")
         self.assertIn("/api/integrations/supabase/connect",detail)
         self.assertIn('operator.role==="admin"',detail)
         self.assertIn("supabaseMessages",detail)
         self.assertIn("verification_failed",detail)
         self.assertIn("Administrador necessário",detail)
-        projects=(APP/"projects"/"page.tsx").read_text()
+        projects=(APP/"projects"/"page.tsx").read_text(encoding="utf-8")
         self.assertIn("oauth_invalid",projects)
         self.assertIn("project_missing",projects)
         self.assertTrue((APP/"api"/"integrations"/"supabase"/"connect"/"route.ts").exists())
@@ -146,7 +146,7 @@ class ConsoleActionAuditTests(unittest.TestCase):
 
 
     def test_authenticated_visual_audit_covers_navigation_rbac_intake_and_mobile(self):
-        script=(ROOT/"scripts"/"capture_authenticated_console.mjs").read_text()
+        script=(ROOT/"scripts"/"capture_authenticated_console.mjs").read_text(encoding="utf-8")
         self.assertIn('nav.sidebarNav a',script)
         self.assertIn('href === "/admin/operators"',script)
         self.assertIn('finalPath !== "/unauthorized"',script)
