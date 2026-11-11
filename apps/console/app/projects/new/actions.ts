@@ -3,11 +3,15 @@ import {randomUUID} from "node:crypto";
 import {redirect} from "next/navigation";
 import {normalizeIntake,parseReferenceLines,validateIntake,type ProjectIntake,type ReportedStage} from "../../../lib/intake";
 import {countProjectDraftFiles,uploadProjectDraftFile} from "../../../lib/attachments";
+import {requireConsoleOperator} from "../../../lib/auth-server";
 
 export type IntakeState={errors:Record<string,string>;message?:string};
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function submitIntake(_prev:IntakeState,formData:FormData):Promise<IntakeState>{
+ // Server actions are callable independently of the page that rendered them.
+ // Check the active operator allowlist even for a no-attachment draft.
+ await requireConsoleOperator();
  const mode=formData.get("mode")==="existing"?"existing":"greenfield";
  const input:ProjectIntake={
   mode,
