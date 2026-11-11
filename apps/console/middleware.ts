@@ -1,6 +1,18 @@
-import {NextRequest,NextResponse} from "next/server";import {getAuthUser,refreshAuthSession} from "./lib/auth-api";
+import {NextRequest,NextResponse} from "next/server";import {getAuthUser,getConsoleOperator,refreshAuthSession} from "./lib/auth-api";
 const ACCESS="factory_access_token",REFRESH="factory_refresh_token";const cookieBase={httpOnly:true,sameSite:"lax" as const,secure:process.env.NODE_ENV==="production",path:"/"};
-export async function middleware(request:NextRequest){const path=request.nextUrl.pathname;if(path==="/login"||path==="/unauthorized"||path==="/api/health"||path==="/api/integrations/github-app/webhook")return NextResponse.next();let access=request.cookies.get(ACCESS)?.value;const refresh=request.cookies.get(REFRESH)?.value;let user=access?await getAuthUser(access):null;let session=null;if(!user&&refresh){session=await refreshAuthSession(refresh);if(session){access=session.access_token;user=await getAuthUser(access);}}if(!user){const url=request.nextUrl.clone();url.pathname="/login";url.searchParams.set("next",path+request.nextUrl.search);return NextResponse.redirect(url);}// NextResponse cookies alone update the *next* browser request. Server
+export async function middleware(request:NextRequest){const path=request.nextUrl.pathname;if(path==="/login"||path==="/unauthorized"||path==="/api/health"||path==="/api/integrations/github-app/webhook")return NextResponse.next();let access=request.cookies.get(ACCESS)?.value;const refresh=request.cookies.get(REFRESH)?.value;let user=access?await getAuthUser(access):null;let session=null;if(!user&&refresh){session=await refreshAuthSession(refresh);if(session){access=session.access_token;user=await getAuthUser(access);}}if(!user){const url=request.nextUrl.clone();url.pathname="/login";url.searchParams.set("next",path+request.nextUrl.search);return NextResponse.redirect(url);}
+// Defense in depth for the only administrator-only page. The page and its
+// Server Action still verify the role independently; this pre-render fence
+// prevents an operator request from reaching that route if an App Router
+// redirect is ever delayed by streaming or client navigation.
+if(path==="/admin/operators"||path.startsWith("/admin/operators/")){
+ let operator=null;
+ try{operator=access?await getConsoleOperator(access):null;}catch{operator=null;}
+ if(!operator||operator.role!=="admin"){
+  const url=request.nextUrl.clone();url.pathname="/unauthorized";url.search="";
+  return NextResponse.redirect(url);
+ }
+}// NextResponse cookies alone update the *next* browser request. Server
 // Components rendered in THIS request otherwise see the expired access token
 // and may redirect an already refreshed session to /unauthorized. Forward only
 // the fresh Cookie header via Next's request override, without exposing tokens

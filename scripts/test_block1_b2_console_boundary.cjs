@@ -158,6 +158,35 @@ function authServerFixture({token,operator=null,user=null,bootstrapEmail="",boot
   },{timeout:5000});
   return{...exports,calls};
 }
+function middlewareFixture({operator=null,user={id:"11111111-1111-4111-8111-111111111111"}}={}){
+ const calls={user:0,operator:0,refresh:0};
+ const exports={};
+ const nextResponse={
+  next:opts=>({kind:"next",opts}),
+  redirect:url=>({kind:"redirect",pathname:url.pathname,search:url.search}),
+ };
+ vm.runInNewContext(transpile("apps/console/middleware.ts"),{
+  exports,require:name=>{
+   if(name==="next/server")return{NextResponse:nextResponse};
+   if(name==="./lib/auth-api")return{
+    getAuthUser:async()=>{calls.user++;return user;},
+    getConsoleOperator:async()=>{calls.operator++;return operator;},
+    refreshAuthSession:async()=>{calls.refresh++;return null;},
+   };
+   throw Error("unknown middleware dependency: "+name);
+  },Headers,URL,process:{env:{NODE_ENV:"test"}},
+ },{timeout:5000});
+ const request=pathname=>{
+  const nextUrl=new URL("https://console.example.invalid"+pathname);
+  nextUrl.clone=()=>new URL(nextUrl.toString());
+  return{
+  nextUrl,
+  cookies:{get:name=>name==="factory_access_token"?{value:"synthetic-token"}:undefined},
+  headers:new Headers(),
+  };
+ };
+ return{middleware:exports.middleware,calls,request};
+}
 test("missing cookie rejects before operator lookup or privileged RPC",async()=>{
   const f=authServerFixture({bootstrapEmail:"owner@example.invalid"});
   await assert.rejects(()=>f.requireConsoleOperator(),/B2_REDIRECT:\/login/);
@@ -188,6 +217,29 @@ test("operator cannot perform administrator action; valid administrator may",asy
   const admin=authServerFixture({token:"synthetic",operator:{...operator,role:"admin"}});
   assert.equal((await admin.requireConsoleAdmin()).role,"admin");
   assert.equal(admin.calls.rpc,0);
+});
+test("administrator route has a pre-render role fence in addition to page and action guards",()=>{
+ const source=fs.readFileSync(path.join(root,"apps/console/middleware.ts"),"utf8");
+ assert.match(source,/getConsoleOperator/,"middleware must resolve the effective role server-side");
+ assert.match(source,/path===\"\/admin\/operators\"\|\|path\.startsWith\(\"\/admin\/operators\/\"\)/,
+  "the administrator route and descendants must be covered");
+ assert.match(source,/operator\.role!==\"admin\"/,
+  "non-admin operators must fail closed before the administrator page renders");
+ assert.match(source,/url\.pathname=\"\/unauthorized\"/,
+  "the fence must use the fixed local denial destination");
+});
+test("middleware denies an authenticated operator before the administrator route can render",async()=>{
+ const operator=middlewareFixture({operator:{role:"operator"}});
+ const denied=await operator.middleware(operator.request("/admin/operators"));
+ assert.deepEqual(denied,{kind:"redirect",pathname:"/unauthorized",search:""});
+ assert.equal(operator.calls.user,1);
+ assert.equal(operator.calls.operator,1);
+ const admin=middlewareFixture({operator:{role:"admin"}});
+ assert.equal((await admin.middleware(admin.request("/admin/operators"))).kind,"next");
+ assert.equal(admin.calls.operator,1);
+ const ordinary=middlewareFixture({operator:{role:"operator"}});
+ assert.equal((await ordinary.middleware(ordinary.request("/projects"))).kind,"next");
+ assert.equal(ordinary.calls.operator,0,"role lookup is limited to the privileged route");
 });
 test("bootstrap path relies on existing privileged RPC, not a forged operator role",async()=>{
   const user={id:"11111111-1111-4111-8111-111111111111",email:"owner@example.invalid"};
