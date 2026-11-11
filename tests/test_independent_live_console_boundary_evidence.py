@@ -78,6 +78,7 @@ class LiveConsoleBoundaryEvidenceTests(unittest.TestCase):
             {"crossTenantIsolationCertified":True},
             {"signedJwtClaimsIndependentlyVerified":True},
             {"productionWrites":1},
+            {"scope":"full_production_security_certification"},
             {"operator_email":"private@example.invalid"},
         ):
             value={**b2(),**patch}
@@ -117,11 +118,26 @@ class LiveConsoleBoundaryEvidenceTests(unittest.TestCase):
             "critical_journeys","product_ready"])
         self.assertEqual(receipt["writes"],0)
 
-    def test_missing_or_invalid_b3_does_not_destroy_valid_b2_proof(self):
-        result=self.verify(reader=lambda repository,artifact_id,artifact_file:
-                           b2() if artifact_file==B2_FILE else {"bad":True})
+    def test_missing_optional_b3_does_not_destroy_valid_b2_proof(self):
+        data=copy.deepcopy(artifacts())
+        rows=data[P + "/actions/runs/" + str(RUN) + "/artifacts?per_page=100"]
+        rows["artifacts"]=rows["artifacts"][:1]
+        rows["total_count"]=1
+        result=self.verify(github=data)
         self.assertIsNone(result.b3_artifact_id)
         self.assertIsNone(result.b3_live_artifact_id)
+
+    def test_present_b3_artifact_must_be_valid_not_silently_downgraded(self):
+        for mutate in ("invalid_payload", "expired", "duplicate", "source"):
+            data=copy.deepcopy(artifacts())
+            rows=data[P + "/actions/runs/" + str(RUN) + "/artifacts?per_page=100"]
+            if mutate=="expired": rows["artifacts"][1]["expired"]=True
+            elif mutate=="duplicate": rows["artifacts"].append(copy.deepcopy(rows["artifacts"][1])); rows["total_count"]+=1
+            with self.subTest(mutate=mutate), self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+                self.verify(github=data,reader=lambda repository,artifact_id,artifact_file:
+                            ({"bad":True} if mutate=="invalid_payload" and artifact_file==B3_FILE
+                             else ({**b3(),"sourceCommit":"b"*40} if mutate=="source" and artifact_file==B3_FILE
+                                   else (b2() if artifact_file==B2_FILE else (b3() if artifact_file==B3_FILE else b3_live())))))
 
     def test_b2_artifact_drift_or_expiry_blocks_all_boundary_proof(self):
         for mutate in ("expired","duplicate","source"):

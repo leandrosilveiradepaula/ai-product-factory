@@ -126,6 +126,10 @@ promover artificialmente segurança, isolamento de tenant ou estado de backend.
   persistente. Reuso histórico não habilita esse caminho; uma captura velha não
   pode elevar o SHA atual. Nenhum passo cria Start, altera RLS, grava dados de
   produto, consome modelo pago, faz merge ou publica produção.
+- As testemunhas B3 são opcionais apenas quando o respectivo artefato não foi
+  produzido. Se o artefato estiver presente, qualquer duplicidade, expiração,
+  proveniência ou payload inválido bloqueia a prova inteira; o pipeline não o
+  rebaixa silenciosamente para esconder uma adulteração.
 
 As regressões adversariais cobrem conteúdo secreto, escrita/uso pago, flags de
 certificação indevida, artefato duplicado/expirado e proveniência incompatível.

@@ -66,7 +66,8 @@ def validate_b2_witness(payload: object, *, run_id: int, source_sha: str) -> Non
     row = _identity(payload, run_id=run_id, source_sha=source_sha,
                     schema="factory-b2-live-console-witness-sanitized-v1", fields=B2_FIELDS)
     checks = row["checks"]
-    if (not isinstance(checks, dict) or set(checks) != {
+    if (not isinstance(checks, dict) or row["scope"] != "authenticated_http_route_witness_only"
+            or set(checks) != {
         "anonymousRoutes", "anonymousApiDenied", "operatorReadOnlyApiAllowed",
         "operatorAdminPageDenied", "invalidSessionRouteDenied", "invalidSessionApiDenied",
     } or checks["anonymousRoutes"] != [{"route": route, "denied": True} for route in B2_ROUTES]
@@ -113,10 +114,13 @@ def validate_b3_live_witness(payload: object, *, run_id: int, source_sha: str) -
         raise LiveConsoleBoundaryEvidenceBlocked("live_b3_backend_invalid")
 
 
-def _artifact(github_get, *, repository: str, run_id: int, source_sha: str, name: str) -> int:
+def _artifact(github_get, *, repository: str, run_id: int, source_sha: str, name: str,
+              required: bool = True) -> int | None:
     rows = github_get("/repos/" + repository + "/actions/runs/" + str(run_id) + "/artifacts?per_page=100")
     artifacts = rows.get("artifacts") if isinstance(rows, dict) else None
     found = [row for row in artifacts or [] if isinstance(row, dict) and row.get("name") == name]
+    if not found and not required:
+        return None
     if len(found) != 1:
         raise LiveConsoleBoundaryEvidenceBlocked("live_artifact_absent")
     row = found[0]
@@ -171,22 +175,19 @@ def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
                         run_id=run_id, source_sha=assessed_commit)
     b3_id = None
     b3_live_id = None
-    try:
-        candidate = _artifact(github_get, repository=repository, run_id=run_id,
-                              source_sha=assessed_commit, name=B3_NAME + str(run_id))
+    candidate = _artifact(github_get, repository=repository, run_id=run_id,
+                          source_sha=assessed_commit, name=B3_NAME + str(run_id),
+                          required=False)
+    if candidate is not None:
         validate_b3_witness(artifact_reader(repository=repository, artifact_id=candidate, artifact_file=B3_FILE),
                             run_id=run_id, source_sha=assessed_commit)
         b3_id = candidate
-    except LiveConsoleBoundaryEvidenceBlocked:
-        # B2 remains independently useful if B3 fixture output is unavailable.
-        b3_id = None
-    try:
-        candidate = _artifact(github_get, repository=repository, run_id=run_id,
-                              source_sha=assessed_commit, name=B3_LIVE_NAME + str(run_id))
+    candidate = _artifact(github_get, repository=repository, run_id=run_id,
+                          source_sha=assessed_commit, name=B3_LIVE_NAME + str(run_id),
+                          required=False)
+    if candidate is not None:
         validate_b3_live_witness(artifact_reader(repository=repository, artifact_id=candidate,
                                                  artifact_file=B3_LIVE_FILE),
                                  run_id=run_id, source_sha=assessed_commit)
         b3_live_id = candidate
-    except LiveConsoleBoundaryEvidenceBlocked:
-        b3_live_id = None
     return VerifiedLiveConsoleBoundaries(repository, assessed_commit, run_id, b2_id, b3_id, b3_live_id)
