@@ -1,12 +1,20 @@
 """Bounded B2 evidence from an exact-tree isolated PostgreSQL execution."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from .product_readiness_certification import VerifiedCriterionEvidence
 
 
 class IsolatedConsoleAuthEvidenceBlocked(RuntimeError):
     pass
+
+
+SHA = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
+POSTGRES_RECEIPT_FIELDS = frozenset({
+    "run_id", "source_sha", "tree_oid", "source_tree_oid", "scope",
+    "non_document_tree_digest",
+})
 
 
 @dataclass(frozen=True)
@@ -37,9 +45,13 @@ def verify_isolated_console_auth(*, repository: str, assessed_commit: str,
     postgres = receipt.get("postgres_qa") if isinstance(receipt, dict) else None
     if (regression_proof.repository != repository or regression_proof.assessed_commit != assessed_commit
             or regression_proof.domain != "test_strategy" or regression_proof.criterion != "regression_gates"
-            or not isinstance(postgres, dict) or type(postgres.get("run_id")) is not int
-            or postgres["run_id"] < 1 or not isinstance(postgres.get("source_sha"), str)
-            or len(postgres["source_sha"]) != 40
-            or postgres.get("scope") not in {"identical_git_tree", "identical_non_markdown_git_blobs"}):
+            or not isinstance(postgres, dict) or set(postgres) != POSTGRES_RECEIPT_FIELDS
+            or type(postgres.get("run_id")) is not int or postgres["run_id"] < 1
+            or any(not isinstance(postgres.get(key), str) or SHA.fullmatch(postgres[key]) is None
+                   for key in ("source_sha", "tree_oid", "source_tree_oid", "non_document_tree_digest"))
+            or postgres.get("scope") not in {"identical_git_tree", "identical_non_markdown_git_blobs"}
+            or (postgres["scope"] == "identical_git_tree" and
+                (postgres["tree_oid"] != postgres["source_tree_oid"]
+                 or postgres["non_document_tree_digest"] != postgres["tree_oid"]))):
         raise IsolatedConsoleAuthEvidenceBlocked("b2_postgres_receipt_invalid")
     return IsolatedConsoleAuthEvidence(repository, assessed_commit, postgres["run_id"], postgres["source_sha"])

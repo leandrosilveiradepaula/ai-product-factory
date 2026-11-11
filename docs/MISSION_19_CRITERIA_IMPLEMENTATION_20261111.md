@@ -159,6 +159,10 @@ papéis `anon`/`authenticated`, RLS por sujeito, leitura cruzada negada e RPCs
 privilegiadas negadas em banco descartável. Ele torna B2 `partial` quando a
 captura autenticada nova não estiver disponível; nunca substitui JWT assinado,
 isolamento completo entre tenants nem a prova dinâmica do ambiente produtivo.
+O recibo PostgreSQL tem esquema fechado e amarra SHA da fonte, árvore avaliada,
+árvore da execução e digest; no escopo de árvore idêntica todos devem coincidir.
+Assim, uma prova parcial não pode ser reutilizada com identidade de árvore
+incompleta ou com metadados adicionais não aprovados.
 
 ## Atualização técnica — acessibilidade B3 revalidada
 

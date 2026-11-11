@@ -12,7 +12,9 @@ def regression(receipt=None):
     return VerifiedCriterionEvidence(
         domain="test_strategy",criterion="regression_gates",repository=REPO,
         assessed_commit=SHA,verification_state="executed",source="test",evidence=("https://x#sha="+SHA,),
-        retained_receipt=({"postgres_qa":{"run_id":42,"source_sha":"b"*40,"scope":"identical_git_tree"}}
+        retained_receipt=({"postgres_qa":{"run_id":42,"source_sha":"b"*40,
+                                            "tree_oid":"a"*40,"source_tree_oid":"a"*40,
+                                            "scope":"identical_git_tree","non_document_tree_digest":"a"*40}}
                           if receipt is None else receipt),
     )
 
@@ -25,7 +27,15 @@ class IsolatedConsoleAuthEvidenceTests(unittest.TestCase):
         self.assertEqual(proof.receipt()["writes"],0)
 
     def test_missing_or_unbound_postgres_receipt_fails_closed(self):
-        for value in (None, {}, {"postgres_qa":{"run_id":0}}, {"postgres_qa":{"run_id":1,"source_sha":"bad","scope":"wrong"}}):
+        for value in (None, {}, {"postgres_qa":{"run_id":0}},
+                      {"postgres_qa":{"run_id":1,"source_sha":"bad","scope":"wrong"}},
+                      {"postgres_qa":{"run_id":42,"source_sha":"b"*40,
+                                      "tree_oid":"a"*40,"source_tree_oid":"c"*40,
+                                      "scope":"identical_git_tree","non_document_tree_digest":"a"*40}},
+                      {"postgres_qa":{"run_id":42,"source_sha":"b"*40,
+                                      "tree_oid":"a"*40,"source_tree_oid":"a"*40,
+                                      "scope":"identical_git_tree","non_document_tree_digest":"a"*40,
+                                      "operator_email":"private@example.invalid"}}):
             with self.subTest(value=value), self.assertRaises(IsolatedConsoleAuthEvidenceBlocked):
                 verify_isolated_console_auth(repository=REPO,assessed_commit=SHA,
                     regression_proof=regression(value) if value is not None else object())
