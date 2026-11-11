@@ -121,10 +121,17 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def read_verified_artifact_json(*, repository: str, artifact_id: int, token: str) -> dict:
+def read_verified_artifact_json(*, repository: str, artifact_id: int, token: str,
+                                artifact_file: str = ARTIFACT_FILE) -> dict:
     if (not REPO.fullmatch(repository) or type(artifact_id) is not int
             or artifact_id < 1 or not isinstance(token, str) or not token):
         raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_request_invalid")
+    if artifact_file not in {
+        ARTIFACT_FILE,
+        "block1-b2-live-boundary-witness.json",
+        "block1-b3-console-state-witness.json",
+    }:
+        raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_file_unapproved")
     request = urllib.request.Request(
         "https://api.github.com/repos/" + repository + "/actions/artifacts/"
         + str(artifact_id) + "/zip",
@@ -160,12 +167,12 @@ def read_verified_artifact_json(*, repository: str, artifact_id: int, token: str
         if len(archive) > 65536:
             raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_too_large")
         with zipfile.ZipFile(io.BytesIO(archive)) as zf:
-            if zf.namelist() != [ARTIFACT_FILE]:
+            if zf.namelist() != [artifact_file]:
                 raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_files_unexpected")
-            info = zf.getinfo(ARTIFACT_FILE)
+            info = zf.getinfo(artifact_file)
             if info.file_size > 8192 or info.file_size < 100:
                 raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_file_invalid")
-            data = zf.read(ARTIFACT_FILE)
+            data = zf.read(artifact_file)
     except (OSError, ValueError, zipfile.BadZipFile, urllib.error.URLError) as exc:
         raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_read_unavailable") from None
     try:

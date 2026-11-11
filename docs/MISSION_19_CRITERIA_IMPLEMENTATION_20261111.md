@@ -101,3 +101,31 @@ integrado.
 3. Antes da certificação posterior: confirmar o SHA de `main`, CI e Preview
    quando `apps/console/**` mudar, então consultar o recibo persistido no
    Control Plane. `product_ready` deve permanecer calculado pelo certificador.
+
+## Atualização técnica — witness B2/B3 de fronteira dinâmica
+
+O pipeline de certificação agora reconhece um artefato adicional **somente**
+quando ele vem de uma captura autenticada nova, no mesmo SHA avaliado. O
+verificador independente baixa cada artefato pelo ID declarado no GitHub,
+rejeita redirecionamento autenticado, arquivo extra, expiração, identidade de
+run/branch/commit divergente, campos desconhecidos e qualquer fato que tente
+promover artificialmente segurança, isolamento de tenant ou estado de backend.
+
+- O witness B2 retém negativas reais de rotas privadas e API sem sessão, sessão
+  inválida e operador em rota administrativa. Ele só permite estado `partial`
+  para `authn_authz` e `data_access_boundaries`; JWT assinado independente,
+  isolamento cross-tenant e cobertura integral continuam explicitamente
+  `false`.
+- O witness B3 preserva a distinção necessária: confirma apenas transições de
+  interface autenticada alimentadas por fixture, portanto no máximo `partial`
+  em `states`. Ele rejeita alegação de backend real, acessibilidade completa ou
+  E2E independente.
+- O produtor e o certificador revalidam o mesmo recibo antes de qualquer RPC
+  persistente. Reuso histórico não habilita esse caminho; uma captura velha não
+  pode elevar o SHA atual. Nenhum passo cria Start, altera RLS, grava dados de
+  produto, consome modelo pago, faz merge ou publica produção.
+
+As regressões adversariais cobrem conteúdo secreto, escrita/uso pago, flags de
+certificação indevida, artefato duplicado/expirado e proveniência incompatível.
+Este é avanço técnico de evidência limitada, não a certificação final nem uma
+mudança dos bloqueios humanos de B4.

@@ -55,6 +55,9 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.independent_live_console_boundary_evidence import (
+    LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries as verify_live_console_boundaries_fn,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import (
     RequirementsInventoryBlocked, verify_requirements_inventory as verify_requirements_inventory_fn,
@@ -85,6 +88,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             reuse_historical_authenticated_console_evidence: bool = False,
                             control_plane_get=None,
                             verify_complete_console_surface: bool = False,
+                            verify_live_console_boundaries: bool = False,
                             artifact_reader=None,
                             source_event=None) -> dict:
     manifest = conservative_verified_manifest(
@@ -306,6 +310,39 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                         reason="independent complete authenticated browser audit reverified",
                         evidence=list(full_surface_proof.criterion(criterion).evidence))
 
+    # B2 and fixture-driven B3 observations are independently authenticated,
+    # but intentionally remain PARTIAL.  They prove real negative ingress
+    # behavior and bounded rendered transitions, never full JWT/tenant or
+    # backend-state coverage.
+    live_boundaries_proof = None
+    if verify_live_console_boundaries and authenticated_console_proof is not None:
+        try:
+            if artifact_reader is None:
+                raise LiveConsoleBoundaryEvidenceBlocked("live_source_reader_unavailable")
+            live_boundaries_proof = verify_live_console_boundaries_fn(
+                repository=repository, assessed_commit=sha,
+                authenticated_capture=authenticated_console_proof,
+                github_get=github_get, artifact_reader=artifact_reader,
+            )
+        except (LiveConsoleBoundaryEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            live_boundaries_proof = None
+    if live_boundaries_proof is not None:
+        b2_evidence = ["https://github.com/" + repository + "/actions/runs/"
+                       + str(live_boundaries_proof.run_id) + "#sha=" + sha]
+        for criterion in ("authn_authz", "data_access_boundaries"):
+            manifest["criteria"]["security"][criterion].update(
+                status="partial", verification_state="executed",
+                reason="independent exact-SHA live Console negative boundary witness is bounded",
+                evidence=b2_evidence,
+            )
+        if live_boundaries_proof.b3_artifact_id is not None:
+            manifest["criteria"]["product_experience"]["states"].update(
+                status="partial", verification_state="observed",
+                reason="independent exact-SHA authenticated UI fixture witness; real backend states remain required",
+                evidence=b2_evidence,
+            )
+
     # This is a BOUNDED static inventory only. It never certifies runtime
     # reachability, authorization, E2E or release. The exact-SHA CI check is
     # retained while independent dynamic ingress proof remains missing.
@@ -444,6 +481,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         "product_ready": certification.assessment.ready,
         **({"authenticated_console_evidence": authenticated_console_proof.receipt()}
            if authenticated_console_proof is not None else {}),
+        **({"live_console_boundary_evidence": live_boundaries_proof.receipt()}
+           if live_boundaries_proof is not None else {}),
     }
 
 
@@ -463,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-static-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
+    parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -475,9 +515,9 @@ def main(argv: list[str] | None = None) -> int:
     github_get = lambda path: github_read(token, path)
     control_plane_get = (SupabaseAdmissionReader()._get
                          if args.reuse_historical_authenticated_console_evidence or args.verify_complete_console_surface else None)
-    artifact_reader = (lambda repository, artifact_id: read_verified_artifact_json(
-        repository=repository, artifact_id=artifact_id, token=token
-    )) if args.verify_complete_console_surface else None
+    artifact_reader = (lambda repository, artifact_id, **kwargs: read_verified_artifact_json(
+        repository=repository, artifact_id=artifact_id, token=token, **kwargs
+    )) if args.verify_complete_console_surface or args.verify_live_console_boundaries else None
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
@@ -494,6 +534,7 @@ def main(argv: list[str] | None = None) -> int:
         reuse_historical_authenticated_console_evidence=args.reuse_historical_authenticated_console_evidence,
         control_plane_get=control_plane_get,
         verify_complete_console_surface=args.verify_complete_console_surface,
+        verify_live_console_boundaries=args.verify_live_console_boundaries,
         artifact_reader=artifact_reader,
         source_event=event,
     )

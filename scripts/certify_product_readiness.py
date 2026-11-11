@@ -32,6 +32,9 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.independent_live_console_boundary_evidence import (
+    LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
@@ -93,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-executed-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
+    parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
@@ -145,6 +149,34 @@ def main(argv: list[str] | None = None) -> int:
                        else {"partial"})
             if status not in allowed or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
+    live_boundary_proof = None
+    if args.verify_live_console_boundaries:
+        if not args.require_verified_baseline or proof is None:
+            raise CertificationEvidenceError("live Console boundaries require exact verified capture")
+        try:
+            live_boundary_proof = verify_live_console_boundaries(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                authenticated_capture=proof, github_get=github_get,
+                artifact_reader=lambda repository, artifact_id, artifact_file: read_verified_artifact_json(
+                    repository=repository, artifact_id=artifact_id, token=token,
+                    artifact_file=artifact_file),
+            )
+        except (LiveConsoleBoundaryEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError) as exc:
+            raise CertificationEvidenceError("live Console boundary evidence unavailable") from exc
+        if evidence.get("live_console_boundary_evidence") != live_boundary_proof.receipt():
+            raise CertificationEvidenceError("live Console boundary receipt changed before persistence")
+        expected = ["https://github.com/" + args.repository + "/actions/runs/"
+                    + str(live_boundary_proof.run_id) + "#sha=" + args.assessed_commit]
+        for domain, criterion in (("security", "authn_authz"),
+                                  ("security", "data_access_boundaries")):
+            row = manifest.get("criteria", {}).get(domain, {}).get(criterion)
+            if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != expected:
+                raise CertificationEvidenceError("live Console boundary baseline inconsistent")
+        states = manifest.get("criteria", {}).get("product_experience", {}).get("states")
+        if live_boundary_proof.b3_artifact_id is not None:
+            if not isinstance(states, dict) or states.get("status") != "partial" or states.get("evidence") != expected:
+                raise CertificationEvidenceError("live Console state baseline inconsistent")
     full_surface_proof = None
     if args.verify_complete_console_surface and proof is not None:
         if not args.require_verified_baseline:

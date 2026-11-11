@@ -1598,8 +1598,10 @@ jobs:
           # capture only if its Control Plane receipt and Console blobs still
           # match.  A new manual capture remains the stricter direct path.
           visual_args=(--reuse-historical-authenticated-console-evidence)
+          boundary_args=()
           if [ -n "$AUTHENTICATED_CONSOLE_RUN_ID" ]; then
             visual_args=(--authenticated-console-run-id "$AUTHENTICATED_CONSOLE_RUN_ID")
+            boundary_args=(--verify-live-console-boundaries)
           fi
           python scripts/build_readiness_evidence_manifest.py \
             --event-path "$GITHUB_EVENT_PATH" \
@@ -1615,7 +1617,7 @@ jobs:
               --verify-requirements-inventory \
             --verify-static-simulation-inventory \
             --verify-complete-console-surface \
-            "${visual_args[@]}"
+            "${visual_args[@]}" "${boundary_args[@]}"
       # Evidence collection can take several minutes. Mint a fresh, pinned
       # broker token only after it is complete and immediately before the
       # certifier's two atomic Control Plane RPCs.
@@ -1624,8 +1626,10 @@ jobs:
         run: |
           set -euo pipefail
           visual_args=(--reuse-historical-authenticated-console-evidence)
+          boundary_args=()
           if [ -n "$AUTHENTICATED_CONSOLE_RUN_ID" ]; then
             visual_args=(--authenticated-console-run-id "$AUTHENTICATED_CONSOLE_RUN_ID")
+            boundary_args=(--verify-live-console-boundaries)
           fi
           python scripts/certify_product_readiness.py \
             --project-key ai-product-factory \
@@ -1644,7 +1648,7 @@ jobs:
               --verify-requirements-inventory \
               --verify-executed-simulation-inventory \
             --verify-complete-console-surface \
-            "${visual_args[@]}" \
+            "${visual_args[@]}" "${boundary_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       # Audit actual persisted assessment, never a manifest or expected score.
       # A missing certificate or a lost prior PASS fails closed.
