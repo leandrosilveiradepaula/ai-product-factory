@@ -198,3 +198,43 @@ test("bootstrap path relies on existing privileged RPC, not a forged operator ro
   assert.equal((await allowed.requireConsoleAdmin()).role,"admin");
   assert.equal(allowed.calls.rpc,1);
 });
+
+test("B2 intake pages and server action deny a signed-in non-operator before rendering or processing input",async()=>{
+ const sources=[
+  {path:"apps/console/app/projects/new/page.tsx",exportName:"default"},
+  {path:"apps/console/app/projects/new/review/page.tsx",exportName:"default"},
+  {path:"apps/console/app/projects/new/actions.ts",exportName:"submitIntake"},
+ ];
+ for(const item of sources){
+  const calls={auth:0,effects:[]};
+  const modules={
+   "../../../lib/auth-server":{requireConsoleOperator:async()=>{calls.auth++;throw Error(denied);}},
+   "../../../../lib/auth-server":{requireConsoleOperator:async()=>{calls.auth++;throw Error(denied);}},
+   "next/navigation":{redirect:()=>{calls.effects.push("redirect");throw Error("UNEXPECTED_REDIRECT");}},
+   "node:crypto":{randomUUID:()=>{calls.effects.push("randomUUID");throw Error("UNEXPECTED_RANDOM");}},
+  };
+  const requireModule=name=>{
+   if(Object.hasOwn(modules,name))return modules[name];
+   return new Proxy(Object.create(null),{get(_object,key){
+    if(key==="__esModule")return true;
+    calls.effects.push(name+":"+String(key));
+    throw Error("B2_PRIVILEGED_DEPENDENCY_ACCESSED");
+   }});
+  };
+  const exports={};
+  vm.runInNewContext(transpile(item.path),{
+   exports,require:requireModule,URL,URLSearchParams,Request,Response,Headers,FormData,
+   process:{env:{}},
+   fetch:async()=>{calls.effects.push("fetch");throw Error("B2_PRIVILEGED_FETCH");},
+  },{timeout:5000,filename:item.path});
+  const handler=exports[item.exportName];
+  assert.equal(typeof handler,"function",item.path+" must export the guarded entrypoint");
+  const args=item.exportName==="submitIntake"
+   ?[{errors:{}},new FormData()]
+   :[{searchParams:Promise.resolve({intake:"private-user-data"})}];
+  await assert.rejects(()=>Promise.resolve(handler(...args)),error=>error?.message===denied,
+   item.path+" must deny non-operator before any data processing");
+  assert.equal(calls.auth,1,item.path+" must check allowlist exactly once");
+  assert.deepEqual(calls.effects,[],item.path+" must not access privileged dependencies");
+ }
+});
