@@ -38,6 +38,18 @@ class RequirementTraceabilityTests(unittest.TestCase):
             self.assertTrue(all(len(x["sha256"]) == 64 for x in row["candidate_sources"]))
             self.assertTrue(row["journey_stages"])
 
+    def test_product_experience_rows_bind_the_executable_browser_contracts(self):
+        rows = {row["criterion"]: row for row in matrix(ROOT)["requirements"]}
+        self.assertIn("scripts/console_surface_coverage_contract.mjs", {
+            ref["path"] for ref in rows["product_experience/surface_inventory"]["candidate_sources"]
+        })
+        self.assertIn("scripts/console_accessibility_contract.mjs", {
+            ref["path"] for ref in rows["product_experience/accessibility"]["candidate_sources"]
+        })
+        self.assertIn("scripts/verify_block1_b3_live_console_states.mjs", {
+            ref["path"] for ref in rows["product_experience/states"]["candidate_sources"]
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

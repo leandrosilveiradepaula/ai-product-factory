@@ -27,6 +27,17 @@ export function collectAccessibilitySnapshot() {
   )].filter(visible);
   const unnamed = controls.filter(element => !hasName(element));
   const ids = [...doc.querySelectorAll("[id]")].map(element => element.id);
+  const ariaReferenceAttributes = [
+    "aria-labelledby", "aria-describedby", "aria-controls", "aria-errormessage",
+  ];
+  const invalidAriaReferences = [...doc.querySelectorAll(
+    ariaReferenceAttributes.map(name => `[${name}]`).join(",")
+  )].filter(element => ariaReferenceAttributes.some(name => {
+    const value = (element.getAttribute(name) || "").trim();
+    return value && value.split(/\s+/).some(id => !doc.getElementById(id));
+  })).length;
+  const focusableAriaHidden = controls.filter(element =>
+    element.closest('[aria-hidden="true"]') !== null).length;
   const skip = doc.querySelector('a.skipToMain[href="#main-content"]');
   const main = doc.querySelector("main#main-content");
   return {
@@ -43,12 +54,15 @@ export function collectAccessibilitySnapshot() {
     duplicateIds: ids.length - new Set(ids).size,
     positiveTabOrder: [...doc.querySelectorAll("[tabindex]")].filter(
       element => element.tabIndex > 0 && visible(element)).length,
+    invalidAriaReferences,
+    focusableAriaHidden,
   };
 }
 
 const METRIC_FIELDS = [
   "mainCount", "skipCount", "h1Count", "interactiveCount", "unnamedCount",
-  "missingImageAlt", "duplicateIds", "positiveTabOrder",
+  "missingImageAlt", "duplicateIds", "positiveTabOrder", "invalidAriaReferences",
+  "focusableAriaHidden",
 ];
 export function verifyAccessibilitySnapshot(snapshot, routeName) {
   if (typeof routeName !== "string" || !/^[a-z0-9-]{1,36}$/.test(routeName))
@@ -72,6 +86,8 @@ export function verifyAccessibilitySnapshot(snapshot, routeName) {
   if (snapshot.missingImageAlt !== 0) failures.push("image_alternatives");
   if (snapshot.duplicateIds !== 0) failures.push("unique_ids");
   if (snapshot.positiveTabOrder !== 0) failures.push("tab_order");
+  if (snapshot.invalidAriaReferences !== 0) failures.push("aria_references");
+  if (snapshot.focusableAriaHidden !== 0) failures.push("focusable_aria_hidden");
   if (failures.length)
     throw new Error("accessibility:" + routeName + ":" + failures.join(","));
   // Whitelist only numeric/Boolean values. Never persist DOM text, URLs,
@@ -80,5 +96,6 @@ export function verifyAccessibilitySnapshot(snapshot, routeName) {
     checked:true, landmarkCount:snapshot.mainCount, headingCount:snapshot.h1Count,
     interactiveCount:snapshot.interactiveCount, unnamedCount:0,
     missingImageAlt:0, duplicateIds:0, positiveTabOrder:0,
+    invalidAriaReferences:0, focusableAriaHidden:0,
   };
 }

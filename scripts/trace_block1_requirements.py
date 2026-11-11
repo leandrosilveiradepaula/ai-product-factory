@@ -29,10 +29,22 @@ CANDIDATES = {
     "test_strategy/unit_integration": (".github/workflows/validate.yml", "tests/test_factory_acceptance.py"),
     "test_strategy/critical_e2e": ("docs/FINALIZATION_EXECUTION_CONTRACT.md",),
     "test_strategy/regression_gates": (".github/workflows/validate.yml", "scripts/audit_block1_effective_gates.py", "tests/test_block1_effective_gates.py"),
-    "product_experience/surface_inventory": ("apps/console/package.json",),
-    "product_experience/responsive": ("apps/console/package.json",),
-    "product_experience/accessibility": ("apps/console/package.json",),
-    "product_experience/states": ("apps/console/package.json",),
+    "product_experience/surface_inventory": (
+        "apps/console/package.json", "scripts/console_surface_coverage_contract.mjs",
+        "scripts/capture_authenticated_console.mjs",
+    ),
+    "product_experience/responsive": (
+        "apps/console/package.json", "scripts/console_surface_coverage_contract.mjs",
+        "scripts/capture_authenticated_console.mjs",
+    ),
+    "product_experience/accessibility": (
+        "apps/console/package.json", "scripts/console_accessibility_contract.mjs",
+        "scripts/capture_authenticated_console.mjs",
+    ),
+    "product_experience/states": (
+        "apps/console/package.json", "scripts/verify_block1_b3_live_console_states.mjs",
+        "scripts/capture_authenticated_console.mjs",
+    ),
     "documentation/setup_configuration": ("README.md", "config/factory.example.json"),
     "documentation/operations": ("docs/OPERATIONS.md", "scripts/audit_certification_operations_preflight.py", "tests/test_certification_operations_and_mock_boundaries.py"),
     "documentation/release_rollback": ("docs/RELEASE_AUTONOMY.md", "tests/test_block1_release_rollback_exercise.py"),

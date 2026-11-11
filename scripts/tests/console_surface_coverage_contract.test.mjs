@@ -9,12 +9,14 @@ function fixture() {
   const accessibilityRoutes=CONSOLE_ROUTES.map(route=>({
     route:route.name,checked:true,unnamedCount:0,
     duplicateIds:0,missingImageAlt:0,positiveTabOrder:0,
+    invalidAriaReferences:0,focusableAriaHidden:0,
   }));
   const mobile=CONSOLE_ROUTES.map(route=>({
     name:route.name+"-mobile",path:route.path,status:200,
     layout:{innerWidth:390,scrollWidth:390},
     readability:{mainLandmark:true,keyboardSkipPresent:true},
-    accessibility:{checked:true,unnamedCount:0,missingImageAlt:0,duplicateIds:0,positiveTabOrder:0},
+    accessibility:{checked:true,unnamedCount:0,missingImageAlt:0,duplicateIds:0,positiveTabOrder:0,
+      invalidAriaReferences:0,focusableAriaHidden:0},
     expandedLayout:{width:390,viewport:390},
     quickNavHrefs:["/","/projects","/gates"],
   }));
@@ -55,6 +57,7 @@ test("every mobile route requires independently executed semantic accessibility 
     for(const mutation of [
       null,{checked:false},{unnamedCount:1},
       {missingImageAlt:1},{duplicateIds:1},{positiveTabOrder:1},
+      {invalidAriaReferences:1},{focusableAriaHidden:1},
     ]) {
       const f=fixture();
       f.mobile[index].accessibility=mutation===null?undefined:{
