@@ -130,6 +130,7 @@ def read_verified_artifact_json(*, repository: str, artifact_id: int, token: str
         ARTIFACT_FILE,
         "block1-b2-live-boundary-witness.json",
         "block1-b3-console-state-witness.json",
+        "block1-b3-live-state-witness.json",
     }:
         raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_file_unapproved")
     request = urllib.request.Request(

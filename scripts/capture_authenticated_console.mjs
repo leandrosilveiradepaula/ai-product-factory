@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
+import {verifyLiveConsoleStateReadOnly} from "./verify_block1_b3_live_console_state.mjs";
 import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -100,6 +101,19 @@ try {
     scope:b2Witness.scope,authorizationBoundaryCertified:false,
     visualAuditPassed:false}));
 
+  // Preserve one real, authenticated state observation separately from the
+  // synthetic transition suite below.  The witness has no body, project key,
+  // cookie, or count; it cannot overstate complete backend-state coverage.
+  const b3LiveStateWitness=await verifyLiveConsoleStateReadOnly({
+    context,baseUrl:consoleUrl,runId,
+    sourceCommit:workflowSourceCommit,targetCommit,
+  });
+  await fs.writeFile("block1-b3-live-state-witness.json",
+    JSON.stringify(b3LiveStateWitness,null,2),{mode:0o600,flag:"wx"});
+  console.log(JSON.stringify({status:"b3_live_state_observed",
+    runId:b3LiveStateWitness.runId,targetCommit:b3LiveStateWitness.targetCommit,
+    state:b3LiveStateWitness.state,countClass:b3LiveStateWitness.countClass,
+    fullUserExperienceCertified:false}));
 
   // Authenticate real React UI. Only the GET attention endpoint is replaced
   // with read-only failure-state fixtures. Do not certify real backend state.

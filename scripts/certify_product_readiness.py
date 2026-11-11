@@ -174,7 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != expected:
                 raise CertificationEvidenceError("live Console boundary baseline inconsistent")
         states = manifest.get("criteria", {}).get("product_experience", {}).get("states")
-        if live_boundary_proof.b3_artifact_id is not None:
+        if (live_boundary_proof.b3_artifact_id is not None
+                and live_boundary_proof.b3_live_artifact_id is not None):
             if not isinstance(states, dict) or states.get("status") != "partial" or states.get("evidence") != expected:
                 raise CertificationEvidenceError("live Console state baseline inconsistent")
     full_surface_proof = None

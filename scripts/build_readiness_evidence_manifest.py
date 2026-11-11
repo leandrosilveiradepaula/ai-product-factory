@@ -336,7 +336,11 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="independent exact-SHA live Console negative boundary witness is bounded",
                 evidence=b2_evidence,
             )
-        if live_boundaries_proof.b3_artifact_id is not None:
+        # A real backend observation and fixture transition suite are both
+        # required for even bounded partial state evidence.  Either alone
+        # remains useful diagnostics, but cannot be presented as state proof.
+        if (live_boundaries_proof.b3_artifact_id is not None
+                and live_boundaries_proof.b3_live_artifact_id is not None):
             manifest["criteria"]["product_experience"]["states"].update(
                 status="partial", verification_state="observed",
                 reason="independent exact-SHA authenticated UI fixture witness; real backend states remain required",

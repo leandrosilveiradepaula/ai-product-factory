@@ -245,6 +245,16 @@ jobs:
           path: block1-b2-live-boundary-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # This is a single, authenticated read of the real backend endpoint.
+      # It retains no body, project key or count and cannot certify all states.
+      - name: Retain bounded B3 live backend-state observation
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-live-state-${{ github.run_id }}
+          path: block1-b3-live-state-witness.json
+          retention-days: 7
+          if-no-files-found: ignore
       # Only fixed-schema UI state observations; not real backend-state proof.
       # Even if this artifact exists, a subsequent B3 failure fails the job.
       - name: Retain bounded B3 state witness even on later hydration failure

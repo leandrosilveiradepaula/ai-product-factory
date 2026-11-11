@@ -116,10 +116,12 @@ promover artificialmente segurança, isolamento de tenant ou estado de backend.
   para `authn_authz` e `data_access_boundaries`; JWT assinado independente,
   isolamento cross-tenant e cobertura integral continuam explicitamente
   `false`.
-- O witness B3 preserva a distinção necessária: confirma apenas transições de
-  interface autenticada alimentadas por fixture, portanto no máximo `partial`
-  em `states`. Ele rejeita alegação de backend real, acessibilidade completa ou
-  E2E independente.
+- O witness B3 agora exige duas evidências distintas para alcançar no máximo
+  `partial` em `states`: as transições da interface por fixture e uma leitura
+  autenticada real de `/api/human-attention`. A leitura registra apenas a
+  classe disponível/indisponível e zero/positivo — jamais corpo, projeto,
+  contagem, cookie ou conteúdo do Control Plane. Ela continua sem certificar
+  todos os estados de backend, acessibilidade completa ou E2E independente.
 - O produtor e o certificador revalidam o mesmo recibo antes de qualquer RPC
   persistente. Reuso histórico não habilita esse caminho; uma captura velha não
   pode elevar o SHA atual. Nenhum passo cria Start, altera RLS, grava dados de
