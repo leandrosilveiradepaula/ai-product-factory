@@ -266,3 +266,24 @@ test("authenticated #76: exact incomplete text glyphs are graphical and accessib
       "Observed icon foreground must meet the baseline contrast against its true background");
   }
 });
+
+
+test("authenticated #77: metric cards paint without a large pseudo-element overlay",async()=>{
+  // Real browser #43245328791: runs|desktop had 13 inconclusive nodes.
+  // 12 were metricLabel/metric children in six card.metricCard containers.
+  // Axe's color-contrast evaluator returns incomplete/pseudoContent when
+  // an ancestor has a large, absolutely positioned background pseudo-element.
+  // Remove the decoration, not the WCAG check or the legitimate metric text.
+  const fs=await import("node:fs");
+  const path=await import("node:path");
+  const css=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/globals.css"),"utf8");
+  const ui=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/ui.tsx"),"utf8");
+  const runs=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/runs/page.tsx"),"utf8");
+  assert.doesNotMatch(css,/\.metricCard:(?::)?after\s*\{/,
+    "Metric cards must not have visually overlapping decorative ::after");
+  assert.match(css,/\.card\{[^}]*background:/);
+  assert.match(ui,/<span className="metricLabel">\{label\}<\/span>/);
+  assert.match(ui,/<div className="metric">\{value\}<\/div>/);
+  assert.equal((runs.match(/<MetricCard compact/g)||[]).length,6,
+    "All six real metric cards must remain in the runs page");
+});
