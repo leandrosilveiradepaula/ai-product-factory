@@ -148,5 +148,12 @@ export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceC
    },null,{timeout:20000});
    observed.malformed=true;
    return safeB3StateWitness({observed,runId,sourceCommit,targetCommit});
+ }catch(error){
+   // A timed-out simulated state never permits a real hydration/browser error,
+   // a blocked request or a write attempt to go unnoticed.
+   if(error instanceof B3SyntheticTransitionTimeout &&
+      (observed.browserErrors!==0||observed.mutatingRequests!==0||observed.blocked))
+     throw Error("b3_state_witness_incomplete:unexpected_browser_error_or_mutation");
+   throw error;
  }finally{await page.close();}
 }
