@@ -55,6 +55,9 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.independent_console_accessibility_evidence import (
+    verify_console_accessibility as verify_console_accessibility_fn, ConsoleAccessibilityBlocked,
+)
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries as verify_live_console_boundaries_fn,
 )
@@ -94,6 +97,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             reuse_historical_authenticated_console_evidence: bool = False,
                             control_plane_get=None,
                             verify_complete_console_surface: bool = False,
+                            verify_independent_accessibility: bool = False,
                             verify_live_console_boundaries: bool = False,
                             verify_real_journey_blockers: bool = False,
                             verify_isolated_console_auth: bool = False,
@@ -336,6 +340,25 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             reason="independent exact-SHA authenticated browser keyboard and semantic audit is bounded",
             evidence=list(full_surface_proof.bounded_accessibility_evidence()))
 
+    accessibility_proof = None
+    if verify_independent_accessibility and full_surface_proof is not None:
+        if artifact_reader is None:
+            raise ConsoleAccessibilityBlocked("b3_a11y_reader_unavailable")
+        # An absent historical witness remains PARTIAL. A present but malformed
+        # artifact fails closed instead of silently downgrading a forgery.
+        accessibility_proof = verify_console_accessibility_fn(
+            repository=repository, assessed_commit=sha,
+            surface=full_surface_proof, github_get=github_get,
+            artifact_reader=artifact_reader,
+        )
+        if accessibility_proof is not None:
+            claim = accessibility_proof.criterion()
+            manifest["criteria"]["product_experience"]["accessibility"].update(
+                status="passed", verification_state="observed",
+                reason="independent authenticated Chromium WCAG A/AA, contrast and keyboard audit",
+                evidence=list(claim.evidence),
+            )
+
     # B2 and fixture-driven B3 observations are independently authenticated,
     # but intentionally remain PARTIAL.  They prove real negative ingress
     # behavior and bounded rendered transitions, never full JWT/tenant or
@@ -488,6 +511,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return requirements_proof
         if domain == "product_experience" and criterion in ("surface_inventory", "responsive"):
             return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
+        if (domain, criterion) == ("product_experience", "accessibility"):
+            return accessibility_proof.criterion() if accessibility_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -495,7 +520,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -521,6 +546,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         "product_ready": certification.assessment.ready,
         **({"authenticated_console_evidence": authenticated_console_proof.receipt()}
            if authenticated_console_proof is not None else {}),
+        **({"independent_accessibility_evidence": accessibility_proof.receipt()}
+           if accessibility_proof is not None else {}),
         **({"live_console_boundary_evidence": live_boundaries_proof.receipt()}
            if live_boundaries_proof is not None else {}),
         **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
@@ -546,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-static-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
+    parser.add_argument("--verify-independent-accessibility", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
@@ -565,7 +593,8 @@ def main(argv: list[str] | None = None) -> int:
                              or args.verify_real_journey_blockers) else None)
     artifact_reader = (lambda repository, artifact_id, **kwargs: read_verified_artifact_json(
         repository=repository, artifact_id=artifact_id, token=token, **kwargs
-    )) if args.verify_complete_console_surface or args.verify_live_console_boundaries else None
+    )) if (args.verify_complete_console_surface or args.verify_live_console_boundaries
+           or args.verify_independent_accessibility) else None
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
@@ -582,6 +611,7 @@ def main(argv: list[str] | None = None) -> int:
         reuse_historical_authenticated_console_evidence=args.reuse_historical_authenticated_console_evidence,
         control_plane_get=control_plane_get,
         verify_complete_console_surface=args.verify_complete_console_surface,
+        verify_independent_accessibility=args.verify_independent_accessibility,
         verify_live_console_boundaries=args.verify_live_console_boundaries,
         verify_real_journey_blockers=args.verify_real_journey_blockers,
         verify_isolated_console_auth=args.verify_isolated_console_auth,
