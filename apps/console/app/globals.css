@@ -1145,3 +1145,14 @@ body{line-height:1.55}
 @media(prefers-reduced-motion:reduce){
  .skipToMain{transition:none}
 }
+
+/* B3 #78: Chromium/axe-core found /admin/operators partly obscured by the
+   nested .sidebarNav scroll port (709px of 855px navigation content).
+   Keep the sidebar sticky, but use ONE keyboard-scrollable container so
+   scrollIntoView and axe evaluate every advanced link as actually visible.
+   Validated in real Next/React Chromium against axe-core 4.14.0 with
+   zero color-contrast incomplete and zero violations on the sidebar. */
+@media(min-width:901px){
+ .sidebar{overflow-y:auto}
+ .sidebarNav{overflow-y:visible;flex-shrink:0}
+}

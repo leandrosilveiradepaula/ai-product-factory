@@ -433,32 +433,31 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
   });
   // Only fixed /runs, static nav routes, bounds and enum reason codes leave
   // the browser; HTML, selectors, text, private IDs and tokens never do.
-  const resetScroll=()=>page.evaluate(()=>{
-    document.querySelectorAll(".sidebar,.sidebarNav,.desktopSidebarContent")
-     .forEach(element=>{element.scrollTop=0;});
-    window.scrollTo(0,0);
+  // Regression from the trusted run #78 and the isolated axe reproduction.
+  // Actual product stylesheet (no runtime override) must paint all nav labels
+  // with a single scrollable sidebar instead of nested clipping.
+  const model=await page.evaluate(()=>{
+    const outer=document.querySelector(".sidebar");
+    const nav=document.querySelector(".desktopSidebarContent .sidebarNav");
+    return {outer:getComputedStyle(outer).overflowY,inner:getComputedStyle(nav).overflowY,
+      innerClient:nav.clientHeight,innerScroll:nav.scrollHeight};
   });
-  await resetScroll();
-  const baseline=await scan();
-  const probes=[];
-  // Isolated, ephemeral style experiments. Never shipped to product CSS.
-  // Compare known plausible scrolling models with the exact axe failure.
-  for(const [name,css] of [
-    ["single_sidebar_scroller",
-     ".sidebar{overflow-y:auto!important;} .sidebarNav{overflow-y:visible!important;flex-shrink:0!important;}"],
-    ["natural_document_scroller",
-     ".sidebar{position:relative!important;height:auto!important;min-height:100vh!important;} .sidebarNav{overflow-y:visible!important;flex-shrink:0!important;}"],
-    ["single_sidebar_scroller_with_sticky_footer",
-     ".sidebar{overflow-y:auto!important;} .sidebarNav{overflow-y:visible!important;flex-shrink:0!important;} .sidebarFooter{position:sticky!important;bottom:0!important;background:#181b25!important;}"],
-  ]){
-    const tag=await page.addStyleTag({content:css});
-    try{
-      await resetScroll();
-      probes.push({name,result:await scan()});
-    }finally{await tag.evaluate(node=>node.remove());}
-  }
-  assert.equal(baseline.violations,0,"Unexpected authentic UI contrast violation in offline fixture");
-  assert.equal(baseline.incomplete,0,
-    "Real axe baseline (no PII): "+JSON.stringify(baseline)+"; isolated non-shipping CSS probes: "+JSON.stringify(probes));
+  assert.equal(model.outer,"auto","Sidebar itself must scroll on desktop");
+  assert.equal(model.inner,"visible","Nested sidebarNav must not clip the operator link");
+  assert.equal(model.innerClient,model.innerScroll,"Navigation text must have no clipped internal overflow");
+  const result=await scan();
+  assert.equal(result.violations,0,
+    "Real isolated sidebar cannot have WCAG contrast violations: "+JSON.stringify(result));
+  assert.equal(result.incomplete,0,
+    "Real isolated sidebar must have zero axe inconclusive nodes: "+JSON.stringify(result));
+  const last=page.locator('.desktopSidebarContent a[href="/admin/operators"]');
+  await last.focus();
+  const visible=await page.evaluate(()=>{
+    const outer=document.querySelector(".sidebar").getBoundingClientRect();
+    const link=document.querySelector('.desktopSidebarContent a[href="/admin/operators"]').getBoundingClientRect();
+    return {inside:link.top>=outer.top&&link.bottom<=outer.bottom,linkHeight:link.height};
+  });
+  assert.ok(visible.inside,"Keyboard focus must scroll operator navigation link fully into view");
+  assert.ok(visible.linkHeight>=42,"Operator link must preserve minimum target height");
  }finally{await context.close();}
 });
