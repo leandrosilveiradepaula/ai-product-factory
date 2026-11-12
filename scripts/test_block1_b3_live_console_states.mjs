@@ -272,3 +272,26 @@ test("WCAG is independent of synthetic states while the actual browser gate rema
   assert.match(observer,/await requireSyntheticTransition\(page,"malformed"/);
   assert.match(observer,/if\(error\?\.name!=="TimeoutError"\)throw error;/);
 });
+
+test("synthetic transition timeout cannot mask real browser hydration or mutation failures",async()=>{
+  const origin="https://ai-product-factory-console.vercel.app";
+  const timeout=()=>Object.assign(new Error("Timeout 20000ms exceeded"),{name:"TimeoutError"});
+  for(const eventName of ["pageerror","request"]){
+    const page={
+      on(event,handler){
+        if(event!==eventName)return;
+        if(eventName==="pageerror")handler(new Error("hydration error"));
+        else handler({url:()=>origin+"/api/human-attention",method:()=>"POST"});
+      },
+      async route(){},
+      async goto(){return {status:()=>200};},
+      url:()=>origin+"/",
+      async waitForFunction(){throw timeout();},
+      async close(){},
+    };
+    await assert.rejects(verifyConsoleStatesReadOnly({
+      context:{async newPage(){return page;}},baseUrl:origin,
+      runId:123,sourceCommit:source,targetCommit:target,
+    }),/b3_state_witness_incomplete:unexpected_browser_error_or_mutation/);
+  }
+});
