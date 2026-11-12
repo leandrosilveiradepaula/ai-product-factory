@@ -14,7 +14,7 @@ export default async function NewProject({searchParams}:{searchParams:Promise<{i
  const p=await searchParams;const initial=decode(p.intake);
  return <>
   <PageHeader eyebrow="Novo projeto" title="Iniciar ou importar projeto" subtitle="Comece uma ideia nova ou traga um projeto em andamento. A Factory inicia Descoberta ou reconcilia o estado real antes de continuar."/>
-  <div className="intakeSteps" aria-label="Etapas para iniciar um projeto">
+  <div className="intakeSteps" role="group" aria-label="Etapas para iniciar um projeto">
    <span className="current" aria-current="step">1. Descrever</span>
    <span>2. Revisar</span>
    <span>3. Acompanhar</span>
