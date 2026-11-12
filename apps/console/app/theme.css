@@ -34,8 +34,8 @@
   --color-text:#dfe2ef;
   --color-text-soft:#c6cad8;
   --color-text-muted:#8d93a4;
-  --color-text-subtle:#686f81;
-  --color-text-faint:#555c6d;
+  --color-text-subtle:#a8b5c7;
+  --color-text-faint:#a8b5c7;
 
   --color-accent:#4d8eff;
   --color-accent-strong:#4d8eff;
@@ -55,7 +55,7 @@
   --color-table:#181b25;
   --color-table-header:#0a0e17;
   --color-control-muted:#8d93a4;
-  --color-control-subtle:#686f81;
+  --color-control-subtle:#a8b5c7;
   --color-nav:#c1c5d3;
   --color-nav-hover:#ffffff;
   --color-code-text:#adc6ff;
