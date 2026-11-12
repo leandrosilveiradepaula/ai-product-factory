@@ -35,6 +35,22 @@ const fixtureProjects=[{
   is_active:true,manifest:{preview:{mode:"github"}},
 }];
 
+const fixtureAgents=[
+  ["development","direct",null,"on_demand"],
+  ["operations","deterministic","primary","disabled"],
+  ["product","direct",null,"manual"],
+  ["qa","deterministic","primary","disabled"],
+  ["security","direct",null,"on_demand"],
+  ["ui","direct",null,"on_demand"],
+].map(([key,preferred,fallback,codex],i)=>({
+  id:"11111111-4444-4444-8444-"+String(i+1).padStart(12,"0"),
+  agent_key:key,name:"Synthetic specialist "+(i+1),role:key,
+  description:"Read-only browser fixture; no real operator or API data",
+  capabilities:["safe-analysis","test"],allowed_tools:["read-only"],
+  model_policy:{preferred,...(fallback?{fallback}:{}),codex},
+  max_concurrency:2,cost_budget_usd:0.5,is_active:true,health_status:"healthy",
+}));
+
 function send(res,code,value){
  res.writeHead(code,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"});
  res.end(JSON.stringify(value));
@@ -91,6 +107,8 @@ function localApi(req,res){
   send(res,200,[{role:"operator",is_active:true}]);
  }else if(u.pathname==="/rest/v1/factory_projects"){
   send(res,200,fixtureProjects);
+ }else if(u.pathname==="/rest/v1/factory_agents"){
+  send(res,200,fixtureAgents);
  }else if(u.pathname==="/rest/v1/factory_runs"){
   // All ordinary inventories are empty. Only the fixed, synthetic run detail
   // fixture is present, so the canonical run-detail route can render without
@@ -484,6 +502,42 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
  }finally{await context.close();}
 });
 
+
+test("B3 #79: full six-agent cards keep lengthy model policies nonoverlapping and WCAG contrast decidable",async()=>{
+ const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ try{
+  await context.route("**/api/human-attention",async route=>
+   route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+  const response=await page.goto(appOrigin+"/agents",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(await page.locator("h1.title").innerText(),"Agentes da Factory");
+  assert.equal(await page.locator("article.card .agentPolicyRow").count(),6,"Six synthetic agent cards must render");
+  const rows=await page.locator("article.card .agentPolicyRow").evaluateAll(items=>items.map(row=>{
+   const [label,value]=[...row.querySelectorAll(":scope > span")];
+   const a=label.getBoundingClientRect(),b=value.getBoundingClientRect();
+   const card=row.closest("article.card").getBoundingClientRect();
+   return {labelBottom:Math.round(a.bottom),valueTop:Math.round(b.top),
+     valueLeft:Math.round(b.left),valueRight:Math.round(b.right),
+     cardLeft:Math.round(card.left),cardRight:Math.round(card.right),
+     overflow:row.scrollWidth>row.clientWidth+1};
+  }));
+  for(const row of rows){
+   assert.ok(row.labelBottom<=row.valueTop+1,"Model-policy value must not paint over its label");
+   assert.ok(row.valueLeft>=row.cardLeft-1&&row.valueRight<=row.cardRight+1,"Model policy text must stay inside its card");
+   assert.equal(row.overflow,false,"No policy row horizontal overflow");
+  }
+  await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
+  const result=await page.evaluate(async()=>{
+   const report=await window.axe.run(document,{runOnly:{type:"rule",values:["color-contrast"]}});
+   return {violations:report.violations.map(r=>({id:r.id,nodes:r.nodes.length})),
+     incomplete:report.incomplete.map(r=>({id:r.id,nodes:r.nodes.length}))};
+  });
+  assert.deepEqual(result,{violations:[],incomplete:[]},
+   "Actual Chromium axe must determine all contrast with six populated cards");
+ }finally{await context.close();}
+});
 
 test("B3: sweep the complete Console surface inventory with actual axe on inert desktop/mobile DOM",async()=>{
   // This regression exercises real Next/React-rendered paths and backgrounds

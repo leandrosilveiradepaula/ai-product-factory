@@ -1182,3 +1182,9 @@ body{line-height:1.55}
  .configTabs{flex-wrap:wrap;overflow:visible;gap:2px}
  .configTabs a{display:inline-flex;align-items:center;min-height:44px;white-space:normal}
 }
+
+/* B3 #79: the two actual agent model-policy rows with fallback text exceeded
+   the intrinsic auto grid track in the three-column agent cards. Keep label
+   and value in normal vertical flow, with both available to axe and readers. */
+.agentPolicyRow{grid-template-columns:minmax(0,1fr);gap:4px;align-items:start}
+.agentPolicyRow>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
