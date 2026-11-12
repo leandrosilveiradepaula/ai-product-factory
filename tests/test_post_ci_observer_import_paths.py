@@ -27,8 +27,10 @@ class PostCiObserverImports(unittest.TestCase):
                 start = content.index("\n  " + job + ":")
                 # Stop at the next two-space YAML job declaration; do not
                 # accidentally match a sibling job's environment.
-                next_job = re.search(r"(?m)^  [a-z][a-z0-9-]+:$", content[start + 1:])
-                end = start + 1 + next_job.start() if next_job else len(content)
+                # Exclude this job's own header before seeking the next one.
+                header_end = content.index("\n", start + 1)
+                next_job = re.search(r"(?m)^  [a-z][a-z0-9-]+:$", content[header_end + 1:])
+                end = header_end + 1 + next_job.start() if next_job else len(content)
                 config = content[start:end]
                 self.assertIn("PYTHONPATH: src:.", config)
                 self.assertIn("actions/checkout@", config)
