@@ -105,6 +105,8 @@ jobs:
         run: node --test scripts/test_block1_b2_b3_sanitized_witness.mjs
       - name: B3 authenticated states and failure-mode contracts
         run: node --test scripts/test_block1_b3_live_console_states.mjs
+      - name: B3 WCAG mobile capture route identity and 44-scan fail-closed contracts
+        run: node --test scripts/test_console_accessibility_contract.mjs
       - name: Console served SHA reconcilation contract tests
         run: node --test scripts/test_reconcile_console_served_commit.mjs
       - name: Adversarial Console Auth response and operator role tests
