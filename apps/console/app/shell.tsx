@@ -79,7 +79,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <div className="brandText"><strong>AI Product Factory</strong><span>PAINEL DE CONTROLE</span></div>
     </Link>
    </div>
-   <div className="workspacePicker"><span className="workspaceGlyph">▦</span><span>Infodive</span></div>
+   <div className="workspacePicker"><svg className="workspaceGlyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="3.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/></svg><span>Infodive</span></div>
    <div className="desktopSidebarContent">
     <ConsoleNav attentionCount={attention?.count??null}/>
     <div className="sidebarFooter">
