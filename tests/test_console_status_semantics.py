@@ -26,9 +26,14 @@ class StatusSemanticsContract(unittest.TestCase):
             self.assertIn('"'+value+'"',RUNTIME)
 
     def test_accessible_custom_label_does_not_hide_raw_state(self):
-        self.assertIn("aria-label={spokenLabel}",UI)
+        # Accessible status text remains present without the prohibited
+        # aria-label on a generic span (real axe finding #73).
+        self.assertNotIn("aria-label={spokenLabel}",UI)
+        self.assertIn("visuallyHiddenStatus",UI)
+        self.assertIn('aria-hidden="true"',UI)
         self.assertIn("tone===\"success\"&&inferred!==\"success\"",UI)
-        self.assertIn("custom visible labels preserve underlying state",RUNTIME)
+        self.assertIn("custom visible labels keep real state accessible",RUNTIME)
+
 
 if __name__=="__main__":
     unittest.main()
