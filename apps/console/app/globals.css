@@ -223,7 +223,8 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .signOut{font-size:10px;color:#8d93a4}
 .workspace{background:var(--color-canvas)}
 .topbar{height:var(--topbar-height);padding:0 14px;background:var(--color-topbar);border-bottom:1px solid #202530}
-.topbarTrail{display:flex;align-items:center;gap:6px;color:#a8b5c7;font-family:var(--font-mono);font-size:10px}
+/* Keep the actual text-bearing surfaces opaque for deterministic computed contrast. */
+.topbarTrail{display:flex;align-items:center;gap:6px;background:var(--color-topbar);color:#a8b5c7;font-family:var(--font-mono);font-size:10px}
 .topbarTrail strong{color:#dfe2ef;font-size:10px}
 .topbarTrail b{font-weight:400;color:#a8b5c7}
 .topbarMeta{gap:9px;font-size:10px}
@@ -892,7 +893,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .sidebar .humanAttentionCount{flex:0 0 auto}
 .topbar{padding:0 22px}
 .topbarMeta{min-width:0}
-.topbarEnvironment{font-size:12px;color:#a9b2c4}
+.topbarEnvironment{font-size:12px;color:#a9b2c4;background:var(--color-topbar)}
 .main{width:100%;max-width:1480px;margin:0 auto;padding:28px 28px 64px}
 .main .pageHeader{align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:22px}
 .main .pageHeader .toolbar{align-items:center;gap:10px;flex-wrap:wrap}
