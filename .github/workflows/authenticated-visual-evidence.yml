@@ -168,7 +168,7 @@ jobs:
       - name: Install pinned Playwright browser
         shell: bash
         run: |
-          npm install --no-save --no-package-lock playwright@1.63.0
+          npm install --no-save --no-package-lock playwright@1.63.0 @axe-core/playwright@4.14.0
           npx playwright install --with-deps chromium
       - name: Verify pinned Chromium launches offline before provisioning an operator
         shell: bash
@@ -269,6 +269,14 @@ jobs:
       # This is never produced when hydration, route, keyboard or viewport
       # checks fail; final workflow success and CP captured registry are also
       # required by the independent certifier.
+      - name: Preserve executed WCAG and keyboard accessibility witness
+        if: steps.capture_console.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-wcag-accessibility-${{ github.run_id }}
+          path: block1-b3-wcag-accessibility-witness.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Preserve completed authenticated B3 surface proof
         if: steps.capture_console.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
