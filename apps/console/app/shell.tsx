@@ -100,7 +100,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
     <div className="topbarMeta">
      {attentionUnavailable?<Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active" aria-label={`${attention.count} aprovações humanas pendentes`}>{attention.count} decisão{attention.count===1?"":"ões"} pendente{attention.count===1?"":"s"}</Link>:null}
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} decisão{attention.count===1?"":"ões"} pendente{attention.count===1?"":"s"}</Link>:null}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
