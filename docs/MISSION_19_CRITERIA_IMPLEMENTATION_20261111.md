@@ -173,3 +173,30 @@ acessíveis, referências ARIA, IDs, ordem de tabulação e superfície mobile n
 14 rotas. Isso permite apenas `accessibility=partial` no SHA exato; a própria
 prova continua declarando que não certifica WCAG completo, todos os fluxos
 dinâmicos, estados de backend ou `product_ready`.
+
+## Alvo concreto: décimo quarto critério — B3 accessibility (11/11/2026)
+
+Critério alvo: `product_experience/accessibility`, hoje `partial`. A PR
+#1371 acrescenta auditoria axe-core/Playwright em Chromium autenticado para
+WCAG 2.0/2.1/2.2 A/AA, incluindo contraste, em 14 rotas, três estados de
+viewport/menu por rota e dois estados da tela de projeto real (44 análises).
+As verificações existentes de Tab/Enter, foco, landmarks e ARIA permanecem
+obrigatórias. Violação automática, contraste inconclusivo ou identidade ausente
+falham fechados; nenhum relatório contém HTML, screenshots, identidade do
+operador ou dados do Control Plane.
+
+**Gate de PASS:** somente captura original em `main` confiável, no SHA
+integrado, `success` e artefato não expirado vinculado ao run; o verificador
+independente deve conferir inventário de artefatos, fonte, identidade, escopo,
+valores e resultado. O persistidor revalida os mesmos fatos antes de emitir
+recibo durável. Captação histórica sem esse artefato mantém `partial`.
+O fluxo de autenticidade segue o broker existente, com cleanup obrigatório
+e sem ampliar acesso. O resultado não afirma WCAG integral para todos os
+papéis, nem certifica estados de backend ou jornadas E2E.
+
+Esta implementação cria um **caminho verificável de aprovação**, não uma
+prova já executada. Se a captura encontrar violação, corrigir o defeito real
+na aplicação e repetir no Preview/Console oficial; jamais marcar PASS por
+fixture, CI verde, declaração textual ou afrouxamento do certificador.
+Proibidos merge automático, operador provisório acionado por PR, alterações
+RLS produtivas, gastos pagos e Start fictício.
