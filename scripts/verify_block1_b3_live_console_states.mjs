@@ -95,9 +95,12 @@ export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceC
    if(!landing||landing.status()!==200||new URL(page.url()).pathname!=="/")
      throw Error("b3_authenticated_landing_unavailable");
    await page.waitForFunction(()=>{
-     const top=document.querySelector('a.topbarAttention[aria-label="2 aprovações humanas pendentes"]');
+     // The accessible name is provided by visible text, not the removed
+     // aria-label. Regression from real authenticated capture #43138746238.
+     const top=document.querySelector('a.topbarAttention.active[href="/gates"]');
      const nav=document.querySelector('.desktopSidebarContent .humanAttentionCount');
-     return top?.getAttribute("href")==="/gates"&&nav?.textContent?.trim()==="2";
+     return top?.textContent?.trim()==="2 decisões pendentes"&&
+       !top.hasAttribute("aria-label")&&nav?.textContent?.trim()==="2";
    },null,{timeout:20000});
    observed.pending=true;
    scenario="unavailable";
