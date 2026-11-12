@@ -1577,7 +1577,8 @@ jobs:
       checks: read
       id-token: write
     env:
-      PYTHONPATH: src
+      # Script entrypoints import ai_product_factory from src and scripts from the repository root.
+      PYTHONPATH: src:.
       GITHUB_TOKEN: ${{ github.token }}
       AUTHENTICATED_CONSOLE_RUN_ID: ${{ github.event.workflow_run.name == 'Authenticated Console visual evidence' && github.event.workflow_run.id || '' }}
     steps:
@@ -1698,7 +1699,8 @@ jobs:
       checks: read
       id-token: write
     env:
-      PYTHONPATH: src
+      # Script entrypoints import ai_product_factory from src and scripts from the repository root.
+      PYTHONPATH: src:.
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
