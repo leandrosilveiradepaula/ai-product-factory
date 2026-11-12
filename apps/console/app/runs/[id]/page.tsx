@@ -13,7 +13,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
  const units=r.toolUsage.reduce((sum,x)=>sum+(x.units||0),0);
  return <>
   <PageHeader eyebrow="Execução do pipeline" title={r.taskTitle} subtitle={r.projectName+" · "+r.id} actions={<><StatusPill status={r.route||"unrouted"}/><StatusPill status={r.status}/></>}/>
-  <div className="runStageRail" aria-label="Etapas da execução">
+  <div className="runStageRail" role="group" aria-label="Etapas da execução">
    {labels.map((label,index)=><div className={index<current?"runStage done":index===current?"runStage current":"runStage"} key={label}><span className="runStageDot">{index<current?"✓":index+1}</span><strong>{label}</strong><small>{index===current?"atual":index<current?"concluída":"aguardando"}</small></div>)}
   </div>
   <div className="runDetailGrid">
