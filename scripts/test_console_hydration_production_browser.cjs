@@ -21,10 +21,14 @@ const REFRESH_TOKEN="offline-fixture-refresh";
 let refreshCalls=0;
 const MOCK_KEY="sb_secret_offline_fixture_not_real";
 const PUB_KEY="offline-fixture-publishable";
+const B3_RUN_ID="93fd8cdc-f000-4a01-978e-463798628e4e";
+const B3_TASK_ID="11111111-2222-4333-8444-555555555555";
+const B3_PROJECT_ID="11111111-3333-4444-8555-666666666666";
 let mock,nextProcess,browser,appOrigin,mockOrigin;
 const violations=[];
 const driverErrors=[];
 const fixtureProjects=[{
+  id:B3_PROJECT_ID,updated_at:"2026-11-01T12:00:00Z",
   project_key:"ai-product-factory",name:"AI Product Factory",
   repository:"leandrosilveiradepaula/ai-product-factory",
   project_kind:"existing",lifecycle_stage:"validation",
@@ -88,8 +92,21 @@ function localApi(req,res){
  }else if(u.pathname==="/rest/v1/factory_projects"){
   send(res,200,fixtureProjects);
  }else if(u.pathname==="/rest/v1/factory_runs"){
-  // Inert, empty run inventory for credential-free B3 browser diagnostics.
-  send(res,200,[]);
+  // All ordinary inventories are empty. Only the fixed, synthetic run detail
+  // fixture is present, so the canonical run-detail route can render without
+  // contacting or copying any real Control Plane record.
+  if(u.searchParams.get("id")==="eq."+B3_RUN_ID)
+    send(res,200,[{id:B3_RUN_ID,task_id:B3_TASK_ID,status:"completed",
+      execution_route:"direct",candidate_commit:null,branch_name:null,
+      metadata:{},created_at:"2026-11-01T12:00:00Z",attempt_count:1,
+      lease_owner:null,lease_expires_at:null,last_error:null}]);
+  else send(res,200,[]);
+ }else if(u.pathname==="/rest/v1/factory_tasks"){
+  if(u.searchParams.get("id")==="eq."+B3_TASK_ID)
+    send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,
+      title:"Synthetic read-only regression task",status:"completed",
+      complexity:"low"}]);
+  else send(res,200,[]);
  }else if(u.pathname==="/rest/v1/factory_primary_cost_policy"){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
@@ -98,6 +115,11 @@ function localApi(req,res){
           u.pathname==="/rest/v1/factory_human_gates"||
           u.pathname==="/rest/v1/factory_release_reports"||
           u.pathname==="/rest/v1/factory_project_github_access"){
+  send(res,200,[]);
+ }else if(/^\/rest\/v1\/factory_[a-z_]+$/.test(u.pathname)){
+  // Completely empty, READ-ONLY fake Supabase inventory. Fixture only.
+  // Keeps strict rejection of mutation, arbitrary origins and non-factory
+  // routes while exercising real Next + React + CSS across all 14 surfaces.
   send(res,200,[]);
  }else{
   violations.push("unmocked_internal_route:"+req.method+":"+u.pathname);
@@ -460,4 +482,63 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
   assert.ok(visible.inside,"Keyboard focus must scroll operator navigation link fully into view");
   assert.ok(visible.linkHeight>=42,"Operator link must preserve minimum target height");
  }finally{await context.close();}
+});
+
+
+test("B3: sweep the complete Console surface inventory with actual axe on inert desktop/mobile DOM",async()=>{
+  // This regression exercises real Next/React-rendered paths and backgrounds
+  // BEFORE the costly, trusted 44-scan authenticated Preview run. All Supabase
+  // responses are local fake GET inventories; this is not certification.
+  const {CONSOLE_ROUTES}=await import(path.join(root,"scripts","console_surface_coverage_contract.mjs"));
+  assert.equal(CONSOLE_ROUTES.length,14,"Use exact production surface contract, not a cherry-picked subset");
+  const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
+  await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+  const page=await context.newPage();
+  const results=[];
+  const tags=["wcag2a","wcag2aa","wcag21a","wcag21aa","wcag22aa"];
+  const ruleSummaries=items=>items.map(item=>({rule:item.id,nodes:item.nodes.length}));
+  try{
+    await context.route("**/api/human-attention",async route=>
+      route.fulfill({status:200,contentType:"application/json",
+        body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+    const scan=async(name,mode)=>{
+      await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
+      const found=await page.evaluate(async tags=>{
+        const report=await window.axe.run(document,{runOnly:{type:"tag",values:tags}});
+        return {incomplete:report.incomplete.map(x=>({rule:x.id,nodes:x.nodes.length})),
+          violations:report.violations.map(x=>({rule:x.id,nodes:x.nodes.length}))};
+      },tags);
+      results.push({route:name,mode,...found});
+    };
+    for(const route of CONSOLE_ROUTES){
+      for(const width of [route.width,390]){
+        await page.setViewportSize({width,height:width===390?844:900});
+        const response=await page.goto(appOrigin+route.path,{waitUntil:"networkidle",timeout:45000});
+        assert.equal(response?.status(),200,"read-only fixture route unavailable: "+route.name+" width="+width);
+        assert.equal(new URL(page.url()).pathname,route.path,"unexpected public login redirect: "+route.name);
+        assert.equal(await page.locator("h1.title").count(),1,
+          "real protected screen must render a title: "+route.name);
+        await scan(route.name,width===390?"mobile":"desktop");
+        if(width===390){
+          const menu=page.locator(".mobileNav > summary");
+          assert.equal(await menu.count(),1,"mobile disclosure absent: "+route.name);
+          await menu.click();
+          assert.equal(await page.locator(".mobileNav[open]").count(),1);
+          await scan(route.name,"mobile-menu");
+        }
+      }
+    }
+    // The canonical project detail is a separate real route in the official
+    // authenticated coverage contract. This fixture uses the synthetic
+    // existing project record and does not perform a real mutation.
+    for(const width of [1296,390]){
+      await page.setViewportSize({width,height:width===390?844:900});
+      const response=await page.goto(appOrigin+"/projects/ai-product-factory",{waitUntil:"networkidle",timeout:45000});
+      assert.equal(response?.status(),200,"synthetic project detail unavailable");
+      await scan("project-detail",width===390?"detail-mobile":"detail-desktop");
+    }
+    assert.equal(results.length,44,"Must exercise the same 44 surface/viewport modes as trusted audit");
+    const problems=results.filter(x=>x.incomplete.length||x.violations.length);
+    assert.deepEqual(problems,[],"Real Chromium/axe WCAG issues on inert fixture: "+JSON.stringify(problems));
+  }finally{await context.close();}
 });
