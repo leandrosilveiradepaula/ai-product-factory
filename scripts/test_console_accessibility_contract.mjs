@@ -169,6 +169,7 @@ test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
     [".homeFocus{","#1b2740"],[".homeFocus.warning{","#2c2419"],
     [".gateContextHero{","#151a24"],[".planningDecisionItem{","#101722"],
     [".card{","var(--color-card-start)"],["body{","var(--color-canvas-top)"],
+    [".topbar{","var(--color-topbar)"],
   ]){
     const matching=lines.filter(line=>line.startsWith(selector));
     assert.ok(matching.length>0,"missing "+selector);
@@ -176,10 +177,26 @@ test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
     assert.ok(matching.every(line=>!/background:[^;}]*gradient|background-image:/.test(line)),
       "cannot automatically assess text over gradient at "+selector);
   }
+  // A solid parent can still leave the text-bearing children unresolved by axe.
+  // Guard the actual Overview breadcrumb and environment elements separately.
+  for(const selector of [".topbarTrail{",".topbarEnvironment{"]){
+    const matching=lines.filter(line=>line.startsWith(selector));
+    assert.equal(matching.length,1,"expected exactly one "+selector);
+    assert.ok(matching[0].includes("background:var(--color-topbar)"),
+      "text-bearing topbar surface must paint its own solid background: "+selector);
+    assert.ok(!/rgba\(|gradient\(|backdrop-filter/.test(matching[0]),
+      "text-bearing topbar surface cannot rely on a composited background: "+selector);
+  }
+  const topbar=lines.filter(line=>line.startsWith(".topbar{"));
+  assert.ok(topbar.every(line=>!line.includes("rgba(")&&!line.includes("backdrop-filter")),
+    "the overview trail and environment label require an opaque measurable topbar");
   const L=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255)
     .map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4)
     .reduce((a,c,i)=>a+c*[.2126,.7152,.0722][i],0);
   const contrast=(a,b)=>{const x=L(a),y=L(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+  for(const foreground of ["#a8b5c7","#a9b2c4","#dfe2ef"])
+    assert.ok(contrast(foreground,"#171a24")>=4.5,
+      "topbar text must meet WCAG AA on the painted solid background");
   for(const [fg,bg]of [["#b8c4d6","#1b2740"],["#adc6ff","#1b2740"],
     ["#ffdf8a","#2c2419"],["#f1f5fd","#2c2419"]])
     assert.ok(contrast(fg,bg)>=4.5,fg+" does not meet AA on "+bg);
