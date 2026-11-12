@@ -151,13 +151,17 @@ test("real #73 axe: named regions and no prohibited ARIA labels on generic eleme
   assert.doesNotMatch(home,/<div className="homeSummary" aria-label=/);
   assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
   assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
+  // Keep static stage lists grouped; focus is required for scrollable regions.
+  for(const file of [
+    "apps/console/app/projects/new/page.tsx",
+    "apps/console/app/projects/new/review/page.tsx",
+  ])assert.ok(read(file).includes('className="intakeSteps" role="group" aria-label='),
+    "static stage group lacks a permitted ARIA grouping role: "+file);
   for(const [file,selector] of [
     ["apps/console/app/projects/[key]/page.tsx","macroLifecycle"],
-    ["apps/console/app/projects/new/page.tsx","intakeSteps"],
-    ["apps/console/app/projects/new/review/page.tsx","intakeSteps"],
     ["apps/console/app/runs/[id]/page.tsx","runStageRail"],
-  ])assert.ok(read(file).includes('className="'+selector+'" role="group" aria-label='),
-    "generic element lacks a permitted ARIA grouping role: "+file);
+  ])assert.ok(read(file).includes('className="'+selector+'" role="region" tabIndex={0} aria-label='),
+    "scrollable region must be named and keyboard-focusable: "+file);
 });
 
 test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
