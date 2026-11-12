@@ -28,9 +28,20 @@ export function sanitizeAxeScan({results,route,viewport}){
     throw Error("wcag_violations:"+route+":"+viewport+":"+ids.join(",").slice(0,300));
   }
   if(results.incomplete.length){
-    const unresolved=[...new Set(results.incomplete.map(r=>String(r?.id||"unknown")
-      .replace(/[^a-z0-9-]/g,"").slice(0,50)))].sort();
-    throw Error("wcag_unresolved_rules:"+route+":"+viewport+":"+unresolved.join(",").slice(0,200));
+    // Public axe rule/check/reason IDs only. Never emit DOM targets, HTML,
+    // labels or text. An incomplete WCAG check is still a hard failure.
+    const token=value=>String(value||"unknown").toLowerCase()
+      .replace(/[^a-z0-9_-]/g,"").slice(0,45);
+    const unresolved=results.incomplete.map(rule=>{
+      const nodes=Array.isArray(rule?.nodes)?rule.nodes:[];
+      const checks=[...new Set(nodes.flatMap(node=>
+        ["any","all","none"].flatMap(key=>Array.isArray(node?.[key])?node[key]:[])
+          .map(check=>token(check?.id)+
+            (typeof check?.data?.reason==="string"?"/"+token(check.data.reason):""))
+      ))].sort().slice(0,5);
+      return token(rule?.id)+"("+nodes.length+(checks.length?":"+checks.join("+"):"")+")";
+    }).sort();
+    throw Error("wcag_unresolved_rules:"+route+":"+viewport+":"+unresolved.join(",").slice(0,290));
   }
   const contrasts=results.passes.filter(r=>r?.id==="color-contrast");
   const contrastNodes=contrasts.reduce((n,r)=>n+(Array.isArray(r.nodes)?r.nodes.length:0),0);
