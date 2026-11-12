@@ -82,7 +82,7 @@ export function ConsoleNav({attentionCount=null}:{attentionCount?:number|null}){
   </div>
   <details key={pathname} className="navAdvanced" open={advancedActive}>
    <summary className="navAdvancedToggle">
-    <span className="navAdvancedChevron" aria-hidden>⌄</span>
+    <svg className="navAdvancedChevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 9 7 7 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
     <span className="navAdvancedTitle">Ferramentas avançadas</span>
     {advancedActive?<span className="navAdvancedCurrent">Você está aqui</span>:null}
    </summary>

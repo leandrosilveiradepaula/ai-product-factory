@@ -59,7 +59,9 @@ code{font-family:var(--font-mono);font-size:12px;color:var(--color-code-text);ov
 .grid.compact{margin-top:0}
 .card{background:var(--color-card-start);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px;box-shadow:var(--shadow-card)}
 .metricCard{min-height:82px;position:relative;overflow:hidden}.metricCardCompact{min-height:68px}
-.metricCard:after{content:"";position:absolute;right:-28px;bottom:-40px;width:90px;height:90px;border-radius:50%;background:rgba(133,116,255,.05)}
+/* The prior 90x90 absolute ::after overlay was decorative only, but axe-core
+   flagged metric labels/values as inconclusive (pseudoContent) for its ancestor.
+   Keep a fully paintable, unoccluded solid card surface for actual text. */
 .metricLabel{color:var(--color-control-muted);font-size:11px}
 .metric{font-size:19px;font-weight:760;letter-spacing:-.025em;margin-top:6px}
 .metricNote{font-size:9px;color:#a8b5c7;margin-top:3px}
@@ -206,7 +208,7 @@ body{font-size:var(--font-size-body);background:var(--color-canvas);letter-spaci
 .brandBlock strong{font-size:13px;line-height:1.1;color:var(--color-text);font-weight:700}
 .brandBlock span{font-size:9px;line-height:1.1;color:#adc6ff;letter-spacing:.12em;font-family:var(--font-mono);font-weight:700}
 .workspacePicker{height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;margin:0 0 16px;border-top:1px solid #202530;border-bottom:1px solid #202530;color:#c1c5d3;font-size:10px}
-.workspaceGlyph{color:#8d93a4;font-size:11px}
+.workspaceGlyph{width:14px;height:14px;flex:0 0 14px;display:block;color:#8d93a4}
 .sidebarNav{gap:17px;margin-top:0}
 .navGroup{gap:7px}
 .navGroupLabel{padding:0 6px;color:#a8b5c7;font-size:9px;letter-spacing:.08em;font-family:var(--font-mono);font-weight:500}
@@ -880,7 +882,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .sidebar .navAdvancedToggle{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;list-style:none;color:#dfe2ef;padding:9px 10px;border:1px solid #303643;background:#202530;border-radius:8px;font-size:14px;font-weight:650}
 .sidebar .navAdvancedToggle::-webkit-details-marker{display: none}
 .sidebar .navAdvancedToggle:hover,.sidebar .navAdvancedToggle:focus-visible{border-color:#6ca2ff;background:#273148}
-.sidebar .navAdvancedChevron{font-size:20px;line-height:1;color:#adc6ff;transform:rotate(-90deg);transition:transform .18s ease}
+.sidebar .navAdvancedChevron{width:20px;height:20px;flex:0 0 20px;display:block;color:#adc6ff;transform:rotate(-90deg);transition:transform .18s ease}
 .sidebar .navAdvanced[open] .navAdvancedChevron{transform:rotate(0)}
 .sidebar .navAdvancedTitle{flex:1}
 .sidebar .navAdvancedCurrent{font-size:11px;color:#adc6ff;font-weight:600}
@@ -1143,3 +1145,46 @@ body{line-height:1.55}
 @media(prefers-reduced-motion:reduce){
  .skipToMain{transition:none}
 }
+
+/* B3 #78: Chromium/axe-core found /admin/operators partly obscured by the
+   nested .sidebarNav scroll port (709px of 855px navigation content).
+   Keep the sidebar sticky, but use ONE keyboard-scrollable container so
+   scrollIntoView and axe evaluate every advanced link as actually visible.
+   Validated in real Next/React Chromium against axe-core 4.14.0 with
+   zero color-contrast incomplete and zero violations on the sidebar. */
+@media(min-width:901px){
+ .sidebar{overflow-y:auto}
+ .sidebarNav{overflow-y:visible;flex-shrink:0}
+}
+
+
+/* B3: real Chromium 44-surface WCAG findings, no axe exemptions.
+   The menu is part of page flow while open: no visual overlay of main text
+   and no nested mobile menu clipping. Keep ordinary compact closed header. */
+@media(max-width:860px){
+ .mobileNav[open]{grid-column:1/-1;grid-row:2}
+ .mobileNavBody{position:static;inset:auto;max-height:none;overflow:visible;box-shadow:none}
+ .mobileQuickLink svg{display:block;flex:0 0 20px;width:20px;height:20px}
+}
+/* Real measured 4.02:1 hint on #20345a; use accessible foreground. */
+.intakePrompt .intakeHint{color:#d3dff3}
+/* Real measured 3.04:1 muted note on #93000a; preserve failure signal. */
+.envCard.danger .muted{color:#fff}
+/* Completed pipeline stages use decorative SVG rather than Unicode text. */
+.runStageDot svg{display:block}
+
+
+/* B3 real Chromium/axe: three configuration tab links were partially clipped
+   by an internal horizontal scroll port at 390px (elmPartiallyObscured).
+   Keep all six destinations in the flow on mobile, with touch-sized targets.
+   Never suppress axe or drop links to make the scan pass. */
+@media(max-width:860px){
+ .configTabs{flex-wrap:wrap;overflow:visible;gap:2px}
+ .configTabs a{display:inline-flex;align-items:center;min-height:44px;white-space:normal}
+}
+
+/* B3 #79: the two actual agent model-policy rows with fallback text exceeded
+   the intrinsic auto grid track in the three-column agent cards. Keep label
+   and value in normal vertical flow, with both available to axe and readers. */
+.agentPolicyRow{grid-template-columns:minmax(0,1fr);gap:4px;align-items:start}
+.agentPolicyRow>span{min-width:0;max-width:100%;overflow-wrap:anywhere}

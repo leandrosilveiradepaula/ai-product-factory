@@ -13,8 +13,8 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
  const units=r.toolUsage.reduce((sum,x)=>sum+(x.units||0),0);
  return <>
   <PageHeader eyebrow="Execução do pipeline" title={r.taskTitle} subtitle={r.projectName+" · "+r.id} actions={<><StatusPill status={r.route||"unrouted"}/><StatusPill status={r.status}/></>}/>
-  <div className="runStageRail" role="group" aria-label="Etapas da execução">
-   {labels.map((label,index)=><div className={index<current?"runStage done":index===current?"runStage current":"runStage"} key={label}><span className="runStageDot">{index<current?"✓":index+1}</span><strong>{label}</strong><small>{index===current?"atual":index<current?"concluída":"aguardando"}</small></div>)}
+  <div className="runStageRail" role="region" tabIndex={0} aria-label="Etapas da execução">
+   {labels.map((label,index)=><div className={index<current?"runStage done":index===current?"runStage current":"runStage"} key={label}><span className="runStageDot">{index<current?<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>:index+1}</span><strong>{label}</strong><small>{index===current?"atual":index<current?"concluída":"aguardando"}</small></div>)}
   </div>
   <div className="runDetailGrid">
    <section className="denseStack">

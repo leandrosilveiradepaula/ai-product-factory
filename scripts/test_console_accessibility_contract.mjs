@@ -151,13 +151,17 @@ test("real #73 axe: named regions and no prohibited ARIA labels on generic eleme
   assert.doesNotMatch(home,/<div className="homeSummary" aria-label=/);
   assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
   assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
+  // Keep static stage lists grouped; focus is required for scrollable regions.
+  for(const file of [
+    "apps/console/app/projects/new/page.tsx",
+    "apps/console/app/projects/new/review/page.tsx",
+  ])assert.ok(read(file).includes('className="intakeSteps" role="group" aria-label='),
+    "static stage group lacks a permitted ARIA grouping role: "+file);
   for(const [file,selector] of [
     ["apps/console/app/projects/[key]/page.tsx","macroLifecycle"],
-    ["apps/console/app/projects/new/page.tsx","intakeSteps"],
-    ["apps/console/app/projects/new/review/page.tsx","intakeSteps"],
     ["apps/console/app/runs/[id]/page.tsx","runStageRail"],
-  ])assert.ok(read(file).includes('className="'+selector+'" role="group" aria-label='),
-    "generic element lacks a permitted ARIA grouping role: "+file);
+  ])assert.ok(read(file).includes('className="'+selector+'" role="region" tabIndex={0} aria-label='),
+    "scrollable region must be named and keyboard-focusable: "+file);
 });
 
 test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
@@ -227,4 +231,63 @@ test("incomplete diagnostic keeps only an allowlisted rendering schema",()=>{
   assert.equal(JSON.stringify(diagnostic).includes("failureSummary"),false);
   assert.equal(diagnostic.visualAuditPassed,false);
   assert.throws(()=>sanitizeAxeScan({results:{...results,violations:[],passes:[{id:"color-contrast",nodes:[{}]}]},route:"overview",viewport:"desktop"}),/wcag_unresolved_rules/);
+});
+
+
+test("authenticated #76: exact incomplete text glyphs are graphical and accessible names remain",async()=>{
+  // The trusted run #43243280300 retained two safe Chrome/axe incomplete
+  // nodes: a muted span in workspacePicker > aside.sidebar and an accent
+  // span in navAdvancedToggle > details > nav. Both were Unicode icon glyphs
+  // while their adjacent textual labels already conveyed the controls.
+  // Replacing Unicode *text* with decorative SVG avoids presenting icons as
+  // textual WCAG color-contrast candidates. This is not an axe exemption:
+  // the full 44-scan authenticated Preview audit remains mandatory.
+  const fs=await import("node:fs");
+  const path=await import("node:path");
+  const read=file=>fs.readFileSync(path.resolve(import.meta.dirname,"..",file),"utf8");
+  const shell=read("apps/console/app/shell.tsx");
+  const nav=read("apps/console/app/nav.tsx");
+  const css=read("apps/console/app/globals.css");
+  assert.match(shell,/<svg className="workspaceGlyph"[^>]*aria-hidden="true"[^>]*focusable="false"/);
+  assert.match(nav,/<svg className="navAdvancedChevron"[^>]*aria-hidden="true"[^>]*focusable="false"/);
+  assert.doesNotMatch(shell,/<span className="workspaceGlyph">/);
+  assert.doesNotMatch(nav,/<span className="navAdvancedChevron"/);
+  assert.match(shell,/<span>Infodive<\/span>/);
+  assert.match(nav,/<span className="navAdvancedTitle">Ferramentas avançadas<\/span>/);
+  assert.match(nav,/<summary className="navAdvancedToggle">/);
+  assert.match(css,/\.workspaceGlyph\{width:14px;height:14px;flex:0 0 14px;display:block;color:#8d93a4\}/);
+  assert.match(css,/\.sidebar \.navAdvancedChevron\{width:20px;height:20px;flex:0 0 20px;display:block;color:#adc6ff/);
+  // Explicitly test measured foreground/background colours observed in the
+  // authenticated run, without relying on a guessed topbar ancestor.
+  const lum=rgb=>rgb.map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4)
+    .reduce((sum,n,i)=>sum+n*[.2126,.7152,.0722][i],0);
+  for(const [fg,bg] of [
+    [[141,147,164],[24,27,37]],
+    [[173,198,255],[32,37,48]],
+  ]){
+    const a=lum(fg),b=lum(bg);
+    assert.ok((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,
+      "Observed icon foreground must meet the baseline contrast against its true background");
+  }
+});
+
+
+test("authenticated #77: metric cards paint without a large pseudo-element overlay",async()=>{
+  // Real browser #43245328791: runs|desktop had 13 inconclusive nodes.
+  // 12 were metricLabel/metric children in six card.metricCard containers.
+  // Axe's color-contrast evaluator returns incomplete/pseudoContent when
+  // an ancestor has a large, absolutely positioned background pseudo-element.
+  // Remove the decoration, not the WCAG check or the legitimate metric text.
+  const fs=await import("node:fs");
+  const path=await import("node:path");
+  const css=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/globals.css"),"utf8");
+  const ui=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/ui.tsx"),"utf8");
+  const runs=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/runs/page.tsx"),"utf8");
+  assert.doesNotMatch(css,/\.metricCard:(?::)?after\s*\{/,
+    "Metric cards must not have visually overlapping decorative ::after");
+  assert.match(css,/\.card\{[^}]*background:/);
+  assert.match(ui,/<span className="metricLabel">\{label\}<\/span>/);
+  assert.match(ui,/<div className="metric">\{value\}<\/div>/);
+  assert.equal((runs.match(/<MetricCard compact/g)||[]).length,6,
+    "All six real metric cards must remain in the runs page");
 });

@@ -255,7 +255,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   </div>:null}
   <div className="projectOrientation">
    <div>
-    <div className="macroLifecycle" role="group" aria-label="Ciclo do produto em cinco macroetapas">
+    <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo do produto em cinco macroetapas">
      {macroStages.map((item,i)=><div className={"macroStage "+(i<currentMacro?"done":i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail}</small></div>)}
     </div>
     <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>

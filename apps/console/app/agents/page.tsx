@@ -55,7 +55,7 @@ export default async function Agents(){
       <div className="compactRow"><span>Capacidade</span><strong>{agent.activeSlots}/{agent.maxConcurrency} slots</strong></div>
       <div className="compactRow"><span>Budget</span><span className="muted">{agent.budgetUsd==null?"sem limite local":"US$ "+agent.budgetUsd.toFixed(2)}</span></div>
       <div className="compactRow"><span>Uso conhecido</span><span className="muted">US$ {agent.knownCostUsd.toFixed(4)}</span></div>
-      <div className="compactRow"><span>Política de modelo</span><span className="muted">{policyLabel(agent.modelPolicy)}</span></div>
+      <div className="compactRow agentPolicyRow"><span>Política de modelo</span><span className="muted">{policyLabel(agent.modelPolicy)}</span></div>
      </div>
      <div>
       <div className="eyebrow">Capacidades</div>
