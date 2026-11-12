@@ -8,6 +8,7 @@ This test executes the exact CLI bootstrap (only --help, no credentials/writes).
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -24,11 +25,14 @@ class PostCiObserverImports(unittest.TestCase):
         for job in ("product-readiness-certification-post-ci", "global-readiness-post-ci"):
             with self.subTest(job=job):
                 start = content.index("\n  " + job + ":")
-                following = content.find("\n  ", start + 4)
-                # Search only the job's initial, non-secret configuration.
-                config = content[start:start + 3000]
+                # Stop at the next two-space YAML job declaration; do not
+                # accidentally match a sibling job's environment.
+                next_job = re.search(r"(?m)^  [a-z][a-z0-9-]+:$", content[start + 1:])
+                end = start + 1 + next_job.start() if next_job else len(content)
+                config = content[start:end]
                 self.assertIn("PYTHONPATH: src:.", config)
                 self.assertIn("actions/checkout@", config)
+                self.assertIn("python scripts/build_readiness_evidence_manifest.py", config)
 
     def test_both_certifier_entrypoints_import_in_post_ci_environment(self):
         env = dict(os.environ)
