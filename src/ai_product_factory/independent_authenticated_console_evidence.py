@@ -18,8 +18,8 @@ WORKFLOW_PATH = ".github/workflows/authenticated-visual-evidence.yml"
 # The only historical capture that may be reused.  This is deliberately an
 # allowlist, rather than accepting a run id from a caller: reusing an arbitrary
 # completed workflow would turn a stale browser run into a new positive claim.
-HISTORICAL_WORKFLOW_RUN_ID = 42915219196
-HISTORICAL_SOURCE_SHA = "38738ee02e6a3be776ebb2f9f7450739bf7c017a"
+HISTORICAL_WORKFLOW_RUN_ID = 43289096088
+HISTORICAL_SOURCE_SHA = "4af001c0de6d42e686c4fb699b8095e6dd59edb8"
 
 
 class AuthenticatedConsoleEvidenceBlocked(RuntimeError):

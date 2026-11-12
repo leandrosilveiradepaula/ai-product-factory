@@ -145,6 +145,25 @@ class CompleteConsoleEvidenceTests(unittest.TestCase):
             with self.subTest(change=change),self.assertRaises(ConsoleFullSurfaceEvidenceBlocked):
                 self.verify(candidate,rows,proof,evidence)
 
+
+    def test_retired_encrypted_capture_reuses_only_live_bounded_surface_witness(self):
+        data, registry, proof, _ = fixture()
+        data = copy.deepcopy(data)
+        path = P+"/actions/runs/"+str(RUN)+"/artifacts?per_page=100"
+        data[path]["artifacts"][1]["workflow_run"]["head_sha"] = SERV
+        registry = [{**registry[0], "source_commit": SERV}]
+        payload = {**witness(), "sourceCommit": SERV, "targetCommit": SERV}
+        proof = AuthenticatedConsoleEvidence(REPO, SHA, RUN, None, source_commit=SERV)
+        verified = self.verify(data, registry, proof, payload)
+        self.assertEqual(verified.source_commit, SERV)
+        self.assertEqual(verified.target_commit, SERV)
+        self.assertEqual(verified.assessed_commit, SHA)
+        # Expiring the *full-surface* artifact still blocks. A registry
+        # receipt alone never substitutes the actual browser measurements.
+        data[path]["artifacts"][1]["expired"] = True
+        with self.assertRaises(ConsoleFullSurfaceEvidenceBlocked):
+            self.verify(data, registry, proof, payload)
+
     def test_failed_capture_registry_or_artifact_never_promotes(self):
         data,rows,auth,artifact=fixture()
         cases=[]
