@@ -51,12 +51,12 @@ export default async function Home(){
     </div>}
   </section>
 
-  <div className="homeSummary" aria-label="Resumo operacional">
+  <section className="homeSummary" aria-label="Resumo operacional">
    <Link href="/projects" className="homeSummaryItem"><span>Projetos no portfólio</span><strong>{d.projects.length}</strong></Link>
    <Link href="/runs" className="homeSummaryItem"><span>Execuções em andamento</span><strong>{d.activeRuns}</strong></Link>
    <Link href="/gates" className={d.pendingGates?"homeSummaryItem warning":"homeSummaryItem"}><span>Aprovações registradas como pendentes</span><strong>{d.pendingGates}</strong></Link>
    <Link href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Falhas / fila de erro</span><strong>{blocked}</strong></Link>
-  </div>
+  </section>
 
   <section className="section homeAttention">
    <SectionHeader title="Acompanhamento de atenção" action={<Link className="homeSectionLink" href="/gates">Abrir todas as aprovações →</Link>}/>
