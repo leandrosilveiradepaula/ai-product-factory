@@ -108,15 +108,27 @@ test("a forced green tone cannot hide failure, uncertainty or inactivity",()=>{
   assert.equal(StatusPill({status:"passed",tone:"success"}).props.className,"pill success");
 });
 
-test("custom visible labels preserve underlying state in accessible name",()=>{
+test("custom visible labels keep real state accessible without prohibited generic aria-label",()=>{
+  function expectScreenReaderStatus(pill,visible,spoken){
+    assert.equal(pill.props["aria-label"],undefined);
+    const fragment=pill.props.children;
+    assert.equal(fragment.type,"fragment");
+    const [visibleSpan,screenReaderSpan]=fragment.props.children;
+    assert.equal(visibleSpan.type,"span");
+    assert.equal(visibleSpan.props["aria-hidden"],"true");
+    assert.equal(visibleSpan.props.children,visible);
+    assert.equal(screenReaderSpan.type,"span");
+    assert.equal(screenReaderSpan.props.className,"visuallyHiddenStatus");
+    assert.equal(screenReaderSpan.props.children,spoken);
+  }
   const blocked=StatusPill({status:"not_ready",label:"Revisar evidências"});
   assert.equal(blocked.props.className,"pill warning");
-  assert.equal(blocked.props.children,"Revisar evidências");
-  assert.equal(blocked.props["aria-label"],"não pronto: Revisar evidências");
+  expectScreenReaderStatus(blocked,"Revisar evidências","não pronto: Revisar evidências");
   const healthy=StatusPill({status:"healthy",label:"nenhuma pendência"});
   assert.equal(healthy.props.className,"pill success");
-  assert.equal(healthy.props["aria-label"],"saudável: nenhuma pendência");
+  expectScreenReaderStatus(healthy,"nenhuma pendência","saudável: nenhuma pendência");
   const ordinary=StatusPill({status:"failed"});
+  assert.equal(ordinary.props.children,"falhou");
   assert.equal(ordinary.props["aria-label"],undefined);
   const richLabel=jsx("strong",{children:"Atenção"});
   assert.equal(StatusPill({status:"pending",label:richLabel}).props.children,richLabel);
