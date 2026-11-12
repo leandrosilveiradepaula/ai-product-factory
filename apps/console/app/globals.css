@@ -1172,3 +1172,13 @@ body{line-height:1.55}
 .envCard.danger .muted{color:#fff}
 /* Completed pipeline stages use decorative SVG rather than Unicode text. */
 .runStageDot svg{display:block}
+
+
+/* B3 real Chromium/axe: three configuration tab links were partially clipped
+   by an internal horizontal scroll port at 390px (elmPartiallyObscured).
+   Keep all six destinations in the flow on mobile, with touch-sized targets.
+   Never suppress axe or drop links to make the scan pass. */
+@media(max-width:860px){
+ .configTabs{flex-wrap:wrap;overflow:visible;gap:2px}
+ .configTabs a{display:inline-flex;align-items:center;min-height:44px;white-space:normal}
+}
