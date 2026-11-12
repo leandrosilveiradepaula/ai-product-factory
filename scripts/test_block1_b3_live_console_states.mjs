@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {safeB3StateWitness,verifyConsoleStatesReadOnly,isExpectedFixture503ResourceError} from "./verify_block1_b3_live_console_states.mjs";
+import {safeB3StateWitness,verifyConsoleStatesReadOnly,isExpectedFixture503ResourceError,B3SyntheticTransitionTimeout} from "./verify_block1_b3_live_console_states.mjs";
+import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs";
 const source="a".repeat(40),target="b".repeat(40);
 function sample(){return {blocked:false,browserErrors:0,mutatingRequests:0,expected503ResourceErrors:0,
  pending:true,unavailable:true,cleared:true,malformed:true,
@@ -168,4 +169,106 @@ test("actual authenticated decision-link DOM survives all four B3 state transiti
     if(savedDocument===undefined)delete globalThis.document;
     else globalThis.document=savedDocument;
   }
+});
+
+test("the real independent WCAG capture is not blocked by missing SYNTHETIC B3 state",async()=>{
+  const transitions=["pending","unavailable","cleared","malformed"];
+  for(const transition of transitions){
+    let writes=0;
+    const reports=[];
+    const result=await collectBoundedB3Fixture({
+      observe:async()=>{throw new B3SyntheticTransitionTimeout(transition);},
+      save:async()=>{writes++;},
+      report:message=>reports.push(message),
+    });
+    assert.equal(result,null);
+    assert.equal(writes,0,"no invented state witness can be persisted");
+    assert.deepEqual(reports,[{
+      status:"b3_synthetic_ui_transition_not_observed",transition,
+      actualBackendStateCertified:false,fullUserExperienceCertified:false,
+      independentCriterionCertified:false,visualAuditPassed:false,
+    }]);
+  }
+});
+
+test("valid bounded synthetic state remains durable but never grants accessibility PASS",async()=>{
+  const witness=build();
+  const persisted=[];
+  const result=await collectBoundedB3Fixture({
+    observe:async()=>witness,
+    save:async row=>persisted.push(row),
+    report:()=>{throw Error("unexpected partial report");},
+  });
+  assert.equal(result,witness);
+  assert.deepEqual(persisted,[witness]);
+  assert.equal(result.actualBackendStateCertified,false);
+  assert.equal(result.independentCriterionCertified,false);
+  assert.equal(result.visualAuditPassed,false);
+});
+
+test("real navigation, authorization, browser, malformed state and persistence errors remain fatal",async()=>{
+  const errors=[
+    new Error("b3_authenticated_landing_unavailable"),
+    Object.assign(new Error("navigation timeout"),{name:"TimeoutError"}),
+    new Error("b3_state_witness_incomplete:unexpected_browser_error"),
+    new Error("b3_state_witness_incomplete:unexpected_mutation"),
+    new TypeError("unexpected script failure"),
+  ];
+  for(const original of errors){
+    let reported=false, saved=false;
+    await assert.rejects(collectBoundedB3Fixture({
+      observe:async()=>{throw original;},
+      save:async()=>{saved=true;},
+      report:()=>{reported=true;},
+    }),error=>error===original);
+    assert.equal(reported,false);
+    assert.equal(saved,false);
+  }
+  const persistenceError=new Error("artifact storage failed");
+  await assert.rejects(collectBoundedB3Fixture({
+    observe:async()=>build(),
+    save:async()=>{throw persistenceError;},
+    report:()=>{},
+  }),error=>error===persistenceError);
+});
+
+test("only a synthetic DOM wait timeout gets the dedicated failure classification",async()=>{
+  const origin="https://ai-product-factory-console.vercel.app";
+  const timeout=()=>Object.assign(new Error("Timeout 20000ms exceeded"),{name:"TimeoutError"});
+  const failedPage={
+    on(){},
+    async route(){},
+    async goto(){return {status:()=>200};},
+    url:()=>origin+"/",
+    async waitForFunction(){throw timeout();},
+    async close(){},
+  };
+  await assert.rejects(verifyConsoleStatesReadOnly({
+    context:{async newPage(){return failedPage;}},baseUrl:origin,
+    runId:123,sourceCommit:source,targetCommit:target,
+  }),error=>error instanceof B3SyntheticTransitionTimeout &&
+    error.transition==="pending" && error.message==="b3_synthetic_transition_not_observed:pending");
+
+  const navigationTimeout=timeout();
+  const inaccessiblePage={...failedPage,async goto(){throw navigationTimeout;}};
+  await assert.rejects(verifyConsoleStatesReadOnly({
+    context:{async newPage(){return inaccessiblePage;}},baseUrl:origin,
+    runId:123,sourceCommit:source,targetCommit:target,
+  }),error=>error===navigationTimeout);
+});
+
+test("WCAG is independent of synthetic states while the actual browser gate remains strict",()=>{
+  const capture=fs.readFileSync(new URL("./capture_authenticated_console.mjs",import.meta.url),"utf8");
+  const observer=fs.readFileSync(new URL("./verify_block1_b3_live_console_states.mjs",import.meta.url),"utf8");
+  assert.ok(capture.includes('import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs"'));
+  assert.ok(capture.indexOf("collectBoundedB3Fixture({") <
+    capture.indexOf("const routes = CONSOLE_ROUTES;"));
+  assert.ok(capture.indexOf("const routes = CONSOLE_ROUTES;") <
+    capture.indexOf("const results=await new AxeBuilder({page})"));
+  assert.ok(capture.includes('await scanCurrentPage(route.name,"desktop")'));
+  assert.ok(capture.includes("await fs.writeFile(\"block1-b3-wcag-accessibility-witness.json\""));
+  assert.ok(capture.includes("const wcag=finishAxeAudit("));
+  assert.match(observer,/await requireSyntheticTransition\(page,"pending"/);
+  assert.match(observer,/await requireSyntheticTransition\(page,"malformed"/);
+  assert.match(observer,/if\(error\?\.name!=="TimeoutError"\)throw error;/);
 });
