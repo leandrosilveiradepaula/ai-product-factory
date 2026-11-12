@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .independent_authenticated_console_evidence import AuthenticatedConsoleEvidence
-from .independent_complete_console_evidence import REPO, SHA
+from .independent_complete_console_evidence import REPO, SHA, VerifiedConsoleSurface
 
 B2_FILE = "block1-b2-live-boundary-witness.json"
 B3_FILE = "block1-b3-console-state-witness.json"
@@ -31,12 +31,15 @@ class LiveConsoleBoundaryEvidenceBlocked(RuntimeError):
 
 
 def _identity(payload: object, *, run_id: int, source_sha: str, schema: str,
-              fields: frozenset[str]) -> dict:
+              fields: frozenset[str], served_sha: str | None = None) -> dict:
     if not isinstance(payload, dict) or set(payload) != fields:
         raise LiveConsoleBoundaryEvidenceBlocked("live_witness_shape_invalid")
+    target_sha = source_sha if served_sha is None else served_sha
+    if not isinstance(target_sha, str) or SHA.fullmatch(target_sha) is None:
+        raise LiveConsoleBoundaryEvidenceBlocked("live_served_sha_invalid")
     if (payload.get("schema") != schema or type(payload.get("runId")) is not int
             or payload["runId"] != run_id or payload.get("sourceCommit") != source_sha
-            or payload.get("targetCommit") != source_sha):
+            or payload.get("targetCommit") != target_sha):
         raise LiveConsoleBoundaryEvidenceBlocked("live_witness_identity_invalid")
     return payload
 
@@ -62,9 +65,11 @@ B3_LIVE_FIELDS = frozenset({
 })
 
 
-def validate_b2_witness(payload: object, *, run_id: int, source_sha: str) -> None:
+def validate_b2_witness(payload: object, *, run_id: int, source_sha: str,
+                         served_sha: str | None = None) -> None:
     row = _identity(payload, run_id=run_id, source_sha=source_sha,
-                    schema="factory-b2-live-console-witness-sanitized-v1", fields=B2_FIELDS)
+                    schema="factory-b2-live-console-witness-sanitized-v1", fields=B2_FIELDS,
+                    served_sha=served_sha)
     checks = row["checks"]
     if (not isinstance(checks, dict) or row["scope"] != "authenticated_http_route_witness_only"
             or set(checks) != {
@@ -82,9 +87,11 @@ def validate_b2_witness(payload: object, *, run_id: int, source_sha: str) -> Non
         raise LiveConsoleBoundaryEvidenceBlocked("live_b2_safety_invalid")
 
 
-def validate_b3_witness(payload: object, *, run_id: int, source_sha: str) -> None:
+def validate_b3_witness(payload: object, *, run_id: int, source_sha: str,
+                         served_sha: str | None = None) -> None:
     row = _identity(payload, run_id=run_id, source_sha=source_sha,
-                    schema="factory-b3-authenticated-ui-state-fixture-v1", fields=B3_FIELDS)
+                    schema="factory-b3-authenticated-ui-state-fixture-v1", fields=B3_FIELDS,
+                    served_sha=served_sha)
     if (row["checks"] != {"pending": True, "unavailable": True, "cleared": True, "malformed": True}
             or row["scope"] != "authenticated_browser_with_intercepted_get_responses_only"
             or any(row[key] is not False for key in (
@@ -97,9 +104,11 @@ def validate_b3_witness(payload: object, *, run_id: int, source_sha: str) -> Non
         raise LiveConsoleBoundaryEvidenceBlocked("live_b3_fixture_invalid")
 
 
-def validate_b3_live_witness(payload: object, *, run_id: int, source_sha: str) -> None:
+def validate_b3_live_witness(payload: object, *, run_id: int, source_sha: str,
+                         served_sha: str | None = None) -> None:
     row = _identity(payload, run_id=run_id, source_sha=source_sha,
-                    schema="factory-b3-live-console-state-observation-v1", fields=B3_LIVE_FIELDS)
+                    schema="factory-b3-live-console-state-observation-v1", fields=B3_LIVE_FIELDS,
+                    served_sha=served_sha)
     if (row["endpoint"] != "/api/human-attention" or row["httpStatus"] not in (200, 503)
             or row["state"] not in {"available", "unavailable"}
             or row["countClass"] not in {"zero", "positive", "unknown"}
@@ -159,7 +168,8 @@ class VerifiedLiveConsoleBoundaries:
 
 def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
                                    authenticated_capture: AuthenticatedConsoleEvidence,
-                                   github_get, artifact_reader) -> VerifiedLiveConsoleBoundaries:
+                                   github_get, artifact_reader,
+                                   surface: VerifiedConsoleSurface | None = None) -> VerifiedLiveConsoleBoundaries:
     if (not REPO.fullmatch(repository) or not SHA.fullmatch(assessed_commit)
             or not isinstance(authenticated_capture, AuthenticatedConsoleEvidence)
             or authenticated_capture.repository != repository
@@ -169,10 +179,24 @@ def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
     run_id = authenticated_capture.workflow_run_id
     if type(run_id) is not int or run_id < 1:
         raise LiveConsoleBoundaryEvidenceBlocked("live_capture_run_invalid")
+    # The verified browser may serve the last Console build when the merge
+    # changes only certifier scripts. An actual source-tree/ancestry witness
+    # from the independently executed B3 full-surface check is then mandatory.
+    served_sha = assessed_commit
+    if surface is not None:
+        if (type(surface) is not VerifiedConsoleSurface
+                or surface.repository != repository
+                or surface.assessed_commit != assessed_commit
+                or surface.run_id != run_id
+                or surface.source_commit not in (None, assessed_commit)
+                or not isinstance(surface.target_commit, str)
+                or SHA.fullmatch(surface.target_commit) is None):
+            raise LiveConsoleBoundaryEvidenceBlocked("live_verified_surface_mismatch")
+        served_sha = surface.target_commit
     b2_id = _artifact(github_get, repository=repository, run_id=run_id,
                       source_sha=assessed_commit, name=B2_NAME + str(run_id))
     validate_b2_witness(artifact_reader(repository=repository, artifact_id=b2_id, artifact_file=B2_FILE),
-                        run_id=run_id, source_sha=assessed_commit)
+                        run_id=run_id, source_sha=assessed_commit, served_sha=served_sha)
     b3_id = None
     b3_live_id = None
     candidate = _artifact(github_get, repository=repository, run_id=run_id,
@@ -180,7 +204,7 @@ def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
                           required=False)
     if candidate is not None:
         validate_b3_witness(artifact_reader(repository=repository, artifact_id=candidate, artifact_file=B3_FILE),
-                            run_id=run_id, source_sha=assessed_commit)
+                            run_id=run_id, source_sha=assessed_commit, served_sha=served_sha)
         b3_id = candidate
     candidate = _artifact(github_get, repository=repository, run_id=run_id,
                           source_sha=assessed_commit, name=B3_LIVE_NAME + str(run_id),
@@ -188,6 +212,6 @@ def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
     if candidate is not None:
         validate_b3_live_witness(artifact_reader(repository=repository, artifact_id=candidate,
                                                  artifact_file=B3_LIVE_FILE),
-                                 run_id=run_id, source_sha=assessed_commit)
+                                 run_id=run_id, source_sha=assessed_commit, served_sha=served_sha)
         b3_live_id = candidate
     return VerifiedLiveConsoleBoundaries(repository, assessed_commit, run_id, b2_id, b3_id, b3_live_id)

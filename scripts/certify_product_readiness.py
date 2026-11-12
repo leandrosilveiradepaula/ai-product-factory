@@ -44,6 +44,9 @@ from ai_product_factory.independent_real_journey_blocker_evidence import (
 from ai_product_factory.independent_isolated_console_auth_evidence import (
     IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth,
 )
+from ai_product_factory.independent_b2_signed_security_evidence import (
+    B2SignedSecurityBlocked, verify_independent_signed_b2,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
@@ -109,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
+    parser.add_argument("--verify-independent-b2-security", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     parser.add_argument("--require-verified-baseline", action="store_true",
                         help="only accept the independently verified conservative CI envelope")
@@ -161,35 +165,6 @@ def main(argv: list[str] | None = None) -> int:
                        else {"partial"})
             if status not in allowed or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
-    live_boundary_proof = None
-    if args.verify_live_console_boundaries:
-        if not args.require_verified_baseline or proof is None:
-            raise CertificationEvidenceError("live Console boundaries require exact verified capture")
-        try:
-            live_boundary_proof = verify_live_console_boundaries(
-                repository=args.repository, assessed_commit=args.assessed_commit,
-                authenticated_capture=proof, github_get=github_get,
-                artifact_reader=lambda repository, artifact_id, artifact_file: read_verified_artifact_json(
-                    repository=repository, artifact_id=artifact_id, token=token,
-                    artifact_file=artifact_file),
-            )
-        except (LiveConsoleBoundaryEvidenceBlocked, ValueError, RuntimeError,
-                OSError, KeyError, TypeError, UnicodeError) as exc:
-            raise CertificationEvidenceError("live Console boundary evidence unavailable") from exc
-        if evidence.get("live_console_boundary_evidence") != live_boundary_proof.receipt():
-            raise CertificationEvidenceError("live Console boundary receipt changed before persistence")
-        expected = ["https://github.com/" + args.repository + "/actions/runs/"
-                    + str(live_boundary_proof.run_id) + "#sha=" + args.assessed_commit]
-        for domain, criterion in (("security", "authn_authz"),
-                                  ("security", "data_access_boundaries")):
-            row = manifest.get("criteria", {}).get(domain, {}).get(criterion)
-            if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != expected:
-                raise CertificationEvidenceError("live Console boundary baseline inconsistent")
-        states = manifest.get("criteria", {}).get("product_experience", {}).get("states")
-        if (live_boundary_proof.b3_artifact_id is not None
-                and live_boundary_proof.b3_live_artifact_id is not None):
-            if not isinstance(states, dict) or states.get("status") != "partial" or states.get("evidence") != expected:
-                raise CertificationEvidenceError("live Console state baseline inconsistent")
     if args.verify_real_journey_blockers:
         if not args.require_verified_baseline:
             raise CertificationEvidenceError("real journey blocker proof requires verified baseline")
@@ -261,6 +236,37 @@ def main(argv: list[str] | None = None) -> int:
     elif manifest.get("criteria", {}).get("product_experience", {}).get("accessibility", {}).get("status") == "passed":
         raise CertificationEvidenceError("accessibility PASS without independent verification")
 
+    live_boundary_proof = None
+    if args.verify_live_console_boundaries:
+        if not args.require_verified_baseline or proof is None:
+            raise CertificationEvidenceError("live Console boundaries require exact verified capture")
+        try:
+            live_boundary_proof = verify_live_console_boundaries(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                authenticated_capture=proof, github_get=github_get,
+                surface=full_surface_proof,
+                artifact_reader=lambda repository, artifact_id, artifact_file: read_verified_artifact_json(
+                    repository=repository, artifact_id=artifact_id, token=token,
+                    artifact_file=artifact_file),
+            )
+        except (LiveConsoleBoundaryEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError) as exc:
+            raise CertificationEvidenceError("live Console boundary evidence unavailable") from exc
+        if evidence.get("live_console_boundary_evidence") != live_boundary_proof.receipt():
+            raise CertificationEvidenceError("live Console boundary receipt changed before persistence")
+        expected = ["https://github.com/" + args.repository + "/actions/runs/"
+                    + str(live_boundary_proof.run_id) + "#sha=" + args.assessed_commit]
+        for domain, criterion in (("security", "authn_authz"),
+                                  ("security", "data_access_boundaries")):
+            row = manifest.get("criteria", {}).get(domain, {}).get(criterion)
+            allowed = {"partial", "passed"} if args.verify_independent_b2_security else {"partial"}
+            if not isinstance(row, dict) or row.get("status") not in allowed or (row.get("status") == "partial" and row.get("evidence") != expected):
+                raise CertificationEvidenceError("live Console boundary baseline inconsistent")
+        states = manifest.get("criteria", {}).get("product_experience", {}).get("states")
+        if (live_boundary_proof.b3_artifact_id is not None
+                and live_boundary_proof.b3_live_artifact_id is not None):
+            if not isinstance(states, dict) or states.get("status") != "partial" or states.get("evidence") != expected:
+                raise CertificationEvidenceError("live Console state baseline inconsistent")
     if args.verify_native_v2_traceability and not args.require_verified_baseline:
         raise CertificationEvidenceError("native V2 proof requires independent conservative baseline")
     github_get = _github_get(token)
@@ -356,6 +362,38 @@ def main(argv: list[str] | None = None) -> int:
                 row = manifest.get("criteria", {}).get("security", {}).get(criterion)
                 if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != isolated_auth_proof.evidence():
                     raise CertificationEvidenceError("isolated Console Auth baseline inconsistent")
+    b2_security_proof = None
+    if args.verify_independent_b2_security:
+        if not (args.require_verified_baseline and args.verify_live_console_boundaries
+                and args.verify_isolated_console_auth and args.verify_secrets_dependencies
+                and proof is not None and live_boundary_proof is not None
+                and isolated_auth_proof is not None and security_proof is not None):
+            raise CertificationEvidenceError("B2 independent prerequisites unavailable")
+        try:
+            b2_security_proof = verify_independent_signed_b2(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                authenticated_capture=proof, live_routes=live_boundary_proof,
+                isolated_pg=isolated_auth_proof, secrets_proof=security_proof,
+                surface=full_surface_proof, github_get=github_get,
+                artifact_reader=lambda repository, artifact_id, artifact_file: read_verified_artifact_json(
+                    repository=repository, artifact_id=artifact_id, token=token,
+                    artifact_file=artifact_file),
+            )
+        except (B2SignedSecurityBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError) as exc:
+            raise CertificationEvidenceError("B2 independent signed source unverified") from exc
+        if b2_security_proof is None:
+            if "independent_b2_signed_security_evidence" in evidence:
+                raise CertificationEvidenceError("B2 baseline claims absent source")
+        else:
+            if evidence.get("independent_b2_signed_security_evidence") != b2_security_proof.receipt():
+                raise CertificationEvidenceError("B2 independent receipt changed before persistence")
+            for key in ("authn_authz", "data_access_boundaries"):
+                claim = b2_security_proof.criterion(key)
+                row = manifest.get("criteria", {}).get("security", {}).get(key)
+                if not isinstance(row, dict) or row.get("status") != "passed" or row.get("evidence") != list(claim.evidence):
+                    raise CertificationEvidenceError("B2 independently verified security baseline inconsistent")
+
     recovery_proof = None
     if args.verify_recovery_alerting:
         if not args.require_verified_baseline:
@@ -414,6 +452,8 @@ def main(argv: list[str] | None = None) -> int:
             return rollback_proof
         if (domain, criterion) == ("security", "secrets_dependencies"):
             return security_proof
+        if domain == "security" and criterion in ("authn_authz", "data_access_boundaries"):
+            return b2_security_proof.criterion(criterion) if b2_security_proof is not None else None
         if (domain, criterion) == ("test_strategy", "regression_gates"):
             return regression_proof
         if (domain, criterion) == ("observability_operations", "recovery_alerting"):

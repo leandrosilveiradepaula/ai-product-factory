@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from ai_product_factory.independent_authenticated_console_evidence import AuthenticatedConsoleEvidence
+from ai_product_factory.independent_complete_console_evidence import VerifiedConsoleSurface
 from ai_product_factory.independent_live_console_boundary_evidence import (
     B2_FILE, B2_NAME, B2_ROUTES, B3_FILE, B3_NAME, B3_LIVE_FILE, B3_LIVE_NAME,
     LiveConsoleBoundaryEvidenceBlocked, validate_b2_witness, validate_b3_witness,
@@ -150,13 +151,41 @@ class LiveConsoleBoundaryEvidenceTests(unittest.TestCase):
                 self.verify(github=data,reader=lambda repository,artifact_id,artifact_file:
                             {**b2(),"sourceCommit":"b"*40} if mutate=="source" and artifact_file==B2_FILE else (b2() if artifact_file==B2_FILE else (b3() if artifact_file==B3_FILE else b3_live())))
 
+    def test_ancestor_served_console_needs_independently_verified_identical_tree(self):
+        served = "b" * 40
+        payloads = {
+            11:{**b2(),"targetCommit":served},
+            12:{**b3(),"targetCommit":served},
+            13:{**b3_live(),"targetCommit":served},
+        }
+        trusted = VerifiedConsoleSurface(REPO,SHA,RUN,served,88,source_commit=SHA)
+        authenticated = AuthenticatedConsoleEvidence(REPO,SHA,RUN,1)
+        git = artifacts()
+        def verify(surface=None):
+            return verify_live_console_boundaries(
+                repository=REPO,assessed_commit=SHA,
+                authenticated_capture=authenticated,github_get=lambda path:git[path],
+                artifact_reader=lambda repository,artifact_id,artifact_file:payloads[artifact_id],
+                surface=surface,
+            )
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify()  # an arbitrary targetCommit cannot be trusted
+        proof = verify(trusted)
+        self.assertTrue(proof.receipt()["b2_dynamic_negative_routes_verified"])
+        foreign = VerifiedConsoleSurface(REPO,"c"*40,RUN,served,88,source_commit=SHA)
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify(foreign)
+        payloads[11]["targetCommit"] = SHA
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify(trusted)
+
     def test_pipeline_revalidates_only_a_fresh_authenticated_capture(self):
         root=Path(__file__).resolve().parents[1]
         workflow=(root/".github/workflows/autonomous-runner.yml").read_text()
         certifier=(root/"scripts/certify_product_readiness.py").read_text()
         builder=(root/"scripts/build_readiness_evidence_manifest.py").read_text()
         visual=(root/".github/workflows/authenticated-visual-evidence.yml").read_text()
-        self.assertIn('boundary_args=(--verify-live-console-boundaries)',workflow)
+        self.assertIn('boundary_args=(--verify-live-console-boundaries --verify-independent-b2-security)',workflow)
         self.assertIn('"${visual_args[@]}" "${boundary_args[@]}"',workflow)
         self.assertIn("live Console boundary receipt changed before persistence",certifier)
         self.assertIn("live Console boundaries require exact verified capture",certifier)

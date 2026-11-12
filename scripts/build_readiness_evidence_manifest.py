@@ -67,6 +67,9 @@ from ai_product_factory.independent_real_journey_blocker_evidence import (
 from ai_product_factory.independent_isolated_console_auth_evidence import (
     IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth as verify_isolated_console_auth_fn,
 )
+from ai_product_factory.independent_b2_signed_security_evidence import (
+    B2SignedSecurityBlocked, verify_independent_signed_b2,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import (
     RequirementsInventoryBlocked, verify_requirements_inventory as verify_requirements_inventory_fn,
@@ -101,6 +104,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_live_console_boundaries: bool = False,
                             verify_real_journey_blockers: bool = False,
                             verify_isolated_console_auth: bool = False,
+                            verify_independent_b2_security: bool = False,
                             artifact_reader=None,
                             source_event=None) -> dict:
     manifest = conservative_verified_manifest(
@@ -372,6 +376,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 repository=repository, assessed_commit=sha,
                 authenticated_capture=authenticated_console_proof,
                 github_get=github_get, artifact_reader=artifact_reader,
+                surface=full_surface_proof,
             )
         except (LiveConsoleBoundaryEvidenceBlocked, ValueError, RuntimeError,
                 OSError, KeyError, TypeError, UnicodeError):
@@ -395,6 +400,28 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 reason="independent exact-SHA authenticated UI fixture witness; real backend states remain required",
                 evidence=b2_evidence,
             )
+
+    # Complete B2 requires successful real Auth, PostgREST, PG and secrets
+    # source-bound proofs. Historical captures without this witness stay partial.
+    b2_security_proof = None
+    if verify_independent_b2_security and authenticated_console_proof is not None:
+        if (live_boundaries_proof is not None and isolated_auth_proof is not None
+                and security_proof is not None and artifact_reader is not None):
+            b2_security_proof = verify_independent_signed_b2(
+                repository=repository, assessed_commit=sha,
+                authenticated_capture=authenticated_console_proof,
+                live_routes=live_boundaries_proof, isolated_pg=isolated_auth_proof,
+                secrets_proof=security_proof, surface=full_surface_proof,
+                github_get=github_get, artifact_reader=artifact_reader,
+            )
+            if b2_security_proof is not None:
+                for criterion in ("authn_authz", "data_access_boundaries"):
+                    claim = b2_security_proof.criterion(criterion)
+                    manifest["criteria"]["security"][criterion].update(
+                        status="passed", verification_state="executed",
+                        reason="independent signed Supabase Auth and read-only PostgREST boundary audit",
+                        evidence=list(claim.evidence),
+                    )
 
     journey_blocker_proof = None
     if verify_real_journey_blockers:
@@ -501,6 +528,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return rollback_proof
         if (domain, criterion) == ("security", "secrets_dependencies"):
             return security_proof
+        if domain == "security" and criterion in ("authn_authz", "data_access_boundaries"):
+            return b2_security_proof.criterion(criterion) if b2_security_proof is not None else None
         if (domain, criterion) == ("test_strategy", "regression_gates"):
             return regression_proof
         if (domain, criterion) == ("observability_operations", "recovery_alerting"):
@@ -520,7 +549,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b2_security_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -554,6 +583,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if journey_blocker_proof is not None else {}),
         **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
            if isolated_auth_proof is not None else {}),
+        **({"independent_b2_signed_security_evidence": b2_security_proof.receipt()}
+           if b2_security_proof is not None else {}),
     }
 
 
@@ -577,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
+    parser.add_argument("--verify-independent-b2-security", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -594,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     artifact_reader = (lambda repository, artifact_id, **kwargs: read_verified_artifact_json(
         repository=repository, artifact_id=artifact_id, token=token, **kwargs
     )) if (args.verify_complete_console_surface or args.verify_live_console_boundaries
-           or args.verify_independent_accessibility) else None
+           or args.verify_independent_accessibility or args.verify_independent_b2_security) else None
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
@@ -615,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_live_console_boundaries=args.verify_live_console_boundaries,
         verify_real_journey_blockers=args.verify_real_journey_blockers,
         verify_isolated_console_auth=args.verify_isolated_console_auth,
+        verify_independent_b2_security=args.verify_independent_b2_security,
         artifact_reader=artifact_reader,
         source_event=event,
     )

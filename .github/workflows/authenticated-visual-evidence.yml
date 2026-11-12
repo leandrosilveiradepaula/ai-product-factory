@@ -36,6 +36,9 @@ jobs:
     timeout-minutes: 22
     env:
       FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
+      # Only a modern public, non-privileged Supabase publishable key.
+      # Operators, OIDC, secret and service-role credentials remain server-only.
+      FACTORY_B2_SUPABASE_PUBLISHABLE_KEY: ${{ vars.FACTORY_B2_SUPABASE_PUBLISHABLE_KEY }}
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -247,6 +250,16 @@ jobs:
           path: block1-b2-live-boundary-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # Real Supabase JWT signature/provider + unprivileged PostgREST probes.
+      # No user ID, JWT, publishable key, response body, or private project rows.
+      - name: Preserve B2 live provider and Control Plane boundary witness
+        if: steps.capture_console.outcome == 'success' && env.FACTORY_B2_SUPABASE_PUBLISHABLE_KEY != ''
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b2-supabase-security-${{ github.run_id }}
+          path: block1-b2-supabase-security.json
+          retention-days: 30
+          if-no-files-found: error
       # This is a single, authenticated read of the real backend endpoint.
       # It retains no body, project key or count and cannot certify all states.
       - name: Retain bounded B3 live backend-state observation
