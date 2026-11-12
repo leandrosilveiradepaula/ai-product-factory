@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {verifyAccessibilitySnapshot} from "./console_accessibility_contract.mjs";
-import {sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute} from "./console_wcag_audit.mjs";
+import {sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute,buildSafeAxeIncompleteDiagnostic} from "./console_wcag_audit.mjs";
 import {CONSOLE_ROUTES} from "./console_surface_coverage_contract.mjs";
 
 const good = Object.freeze({
@@ -212,4 +212,19 @@ test("axe unresolved checks stay strict and redact sensitive DOM content",()=>{
     error=>error.message.includes("color-contrast(1:color-contrast/bggradient)") &&
       !error.message.includes("sensitive@client.example") &&
       !error.message.includes("data-id"));
+});
+
+test("incomplete diagnostic keeps only an allowlisted rendering schema",()=>{
+  const secret="sensitive@client.example";
+  const results={incomplete:[{id:"color-contrast",nodes:[{target:[`[data-id=\"${secret}\"]`],html:`<span>${secret}</span>`,
+    failureSummary:secret,any:[{id:"color-contrast",data:{reason:"bgGradient"},message:secret}]}]}]};
+  const signal={resolved:true,tag:"span",classes:["topbarTrail",secret],style:{color:"rgb(168, 181, 199)",backgroundColor:"rgba(0, 0, 0, 0)",backgroundImage:"none",opacity:"1",filter:false,backdropFilter:false,mixBlendMode:"normal"},ancestors:[{tag:"div",classes:["topbar",secret],backgroundColor:"rgb(23, 26, 36)",backgroundImage:"none",opacity:"1"}],pseudo:{before:{present:true,backgroundColor:"rgba(0, 0, 0, 0)",backgroundImage:"none",contentPresent:false},after:{present:false,backgroundColor:secret,backgroundImage:secret,contentPresent:true}}};
+  const diagnostic=buildSafeAxeIncompleteDiagnostic({results,route:"overview",viewport:"desktop",nodeSignals:[signal]});
+  assert.deepEqual(diagnostic.unresolved[0].nodes[0].checks,["color-contrast/bggradient"]);
+  assert.equal(diagnostic.unresolved[0].nodes[0].signal.surface.classes.includes("topbarTrail"),true);
+  assert.equal(JSON.stringify(diagnostic).includes(secret),false);
+  assert.equal(JSON.stringify(diagnostic).includes("data-id"),false);
+  assert.equal(JSON.stringify(diagnostic).includes("failureSummary"),false);
+  assert.equal(diagnostic.visualAuditPassed,false);
+  assert.throws(()=>sanitizeAxeScan({results:{...results,violations:[],passes:[{id:"color-contrast",nodes:[{}]}]},route:"overview",viewport:"desktop"}),/wcag_unresolved_rules/);
 });

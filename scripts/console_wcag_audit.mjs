@@ -4,6 +4,71 @@ export const WCAG_TAGS=Object.freeze(["wcag2a","wcag2aa","wcag21a","wcag21aa","w
 export const ENGINE="@axe-core/playwright@4.14.0";
 const routes=new Set(CONSOLE_ROUTES.map(r=>r.name));
 const SHA=/^[0-9a-f]{40}$/;
+const SAFE_CLASS_NAMES=new Set([
+  "topbar","topbarTrail","topbarMeta","topbarAttention","topbarEnvironment",
+  "homeFocus","homeFocusContent","homeFocusEyebrow","homeProjects","homeSectionLink",
+  "homeProjectCard","homeProjectHeading","homeProjectStage","homeProjectFooter",
+  "homeSummary","homeSummaryItem","homeAttention","homeQuietStatus","attentionGrid",
+  "attentionCard","attentionBanner","attentionFooter","homeTechnicalDetails",
+  "overviewActivityDetails","overviewActivityBody","section","card","muted","mono",
+  "pageHeader","eyebrow","title","subtitle","metricCard","metricLabel","metric",
+  "metricNote","pill","linkButton","sectionHeader","emptyState","table","tableRow",
+  "tableHeader","timeline","timelineItem","timelineMeta","badgeLine","technicalDetails"
+]);
+const SAFE_TAG_NAMES=new Set(["a","article","b","button","details","div","h1","h2","h3",
+  "li","main","nav","p","section","small","span","strong","summary","table","td","th","tr"]);
+const token=value=>String(value||"unknown").toLowerCase()
+  .replace(/[^a-z0-9_-]/g,"").slice(0,45);
+
+function safeColor(value){
+  const text=String(value||"").trim().toLowerCase();
+  return /^(transparent|rgb\([0-9, ]+\)|rgba\([0-9, .]+\))$/.test(text)?text:"other";
+}
+function safeOpacity(value){
+  const number=Number(value);
+  return Number.isFinite(number)&&number>=0&&number<=1?number:null;
+}
+function safeNodeSignal(value){
+  if(!value||typeof value!=="object")return {resolved:false};
+  const classes=Array.isArray(value.classes)?value.classes.filter(name=>SAFE_CLASS_NAMES.has(name)).slice(0,4):[];
+  const tag=SAFE_TAG_NAMES.has(value.tag)?value.tag:"other";
+  const style=value.style&&typeof value.style==="object"?value.style:{};
+  const pseudo=value.pseudo&&typeof value.pseudo==="object"?value.pseudo:{};
+  const surface={tag,classes,color:safeColor(style.color),backgroundColor:safeColor(style.backgroundColor),
+    backgroundImage:style.backgroundImage==="none"?"none":"present",opacity:safeOpacity(style.opacity),
+    filter:style.filter===true,backdropFilter:style.backdropFilter===true,
+    mixBlendMode:style.mixBlendMode==="normal"?"normal":"non-normal"};
+  const ancestors=Array.isArray(value.ancestors)?value.ancestors.slice(0,4).map(ancestor=>{
+    const classes=Array.isArray(ancestor?.classes)?ancestor.classes.filter(name=>SAFE_CLASS_NAMES.has(name)).slice(0,4):[];
+    return {tag:SAFE_TAG_NAMES.has(ancestor?.tag)?ancestor.tag:"other",classes,
+      backgroundColor:safeColor(ancestor?.backgroundColor),
+      backgroundImage:ancestor?.backgroundImage==="none"?"none":"present",opacity:safeOpacity(ancestor?.opacity)};
+  }):[];
+  return {resolved:value.resolved===true,surface,ancestors,pseudo:{
+    before:{present:pseudo.before?.present===true,backgroundColor:safeColor(pseudo.before?.backgroundColor),backgroundImage:pseudo.before?.backgroundImage==="none"?"none":"present",contentPresent:pseudo.before?.contentPresent===true},
+    after:{present:pseudo.after?.present===true,backgroundColor:safeColor(pseudo.after?.backgroundColor),backgroundImage:pseudo.after?.backgroundImage==="none"?"none":"present",contentPresent:pseudo.after?.contentPresent===true},
+  }};
+}
+
+// This report is intentionally narrower than axe's result: raw targets, HTML,
+// accessible names, URLs, messages and rule help are never serialised.
+export function buildSafeAxeIncompleteDiagnostic({results,route,viewport,nodeSignals=[]}){
+  const routeOK=(routes.has(route)&&["desktop","mobile","mobile-menu"].includes(viewport))||
+    (route==="project-detail"&&["detail-desktop","detail-mobile"].includes(viewport));
+  if(!routeOK||!results||!Array.isArray(results.incomplete)||!Array.isArray(nodeSignals))
+    throw Error("wcag_incomplete_diagnostic_invalid");
+  let signalIndex=0;
+  const unresolved=results.incomplete.map(rule=>{
+    const nodes=Array.isArray(rule?.nodes)?rule.nodes:[];
+    return {rule:token(rule?.id),nodes:nodes.slice(0,8).map(node=>{
+      const checks=[...new Set(["any","all","none"].flatMap(key=>Array.isArray(node?.[key])?node[key]:[])
+        .map(check=>token(check?.id)+(typeof check?.data?.reason==="string"?"/"+token(check.data.reason):"")))].sort().slice(0,5);
+      return {checks,signal:safeNodeSignal(nodeSignals[signalIndex++])};
+    })};
+  }).slice(0,8);
+  return {schema:"factory-b3-axe-incomplete-diagnostic-v1",route,viewport,
+    unresolved,diagnosticOnly:true,visualAuditPassed:false,personalDataRetained:false};
+}
 
 // The browser screenshot contract intentionally labels mobile captures with
 // "-mobile". Axe evidence uses canonical route names, so normalize by *both*

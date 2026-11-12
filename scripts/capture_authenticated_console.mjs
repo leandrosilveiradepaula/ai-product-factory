@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
-import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute} from "./console_wcag_audit.mjs";
+import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute,buildSafeAxeIncompleteDiagnostic} from "./console_wcag_audit.mjs";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
 import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs";
@@ -156,6 +156,33 @@ try {
   const wcagScans=[];
   const scanCurrentPage=async (route,viewport)=>{
     const results=await new AxeBuilder({page}).withTags([...WCAG_TAGS]).analyze();
+    if(results.incomplete.length){
+      // Axe targets are resolved only inside the browser and are never returned.
+      // The page callback emits a fixed technical schema: no selectors, text,
+      // attributes, URLs, HTML, accessible names, screenshots or user data.
+      const targets=results.incomplete.slice(0,8).flatMap(rule=>(Array.isArray(rule?.nodes)?rule.nodes:[])
+        .slice(0,8).map(node=>node?.target));
+      const nodeSignals=await page.evaluate(rawTargets=>{
+        const allowedClasses=new Set(["topbar","topbarTrail","topbarMeta","topbarAttention","topbarEnvironment","homeFocus","homeFocusContent","homeFocusEyebrow","homeProjects","homeSectionLink","homeProjectCard","homeProjectHeading","homeProjectStage","homeProjectFooter","homeSummary","homeSummaryItem","homeAttention","homeQuietStatus","attentionGrid","attentionCard","attentionBanner","attentionFooter","homeTechnicalDetails","overviewActivityDetails","overviewActivityBody","section","card","muted","mono","pageHeader","eyebrow","title","subtitle","metricCard","metricLabel","metric","metricNote","pill","linkButton","sectionHeader","emptyState","table","tableRow","tableHeader","timeline","timelineItem","timelineMeta","badgeLine","technicalDetails"]);
+        const tags=new Set(["a","article","b","button","details","div","h1","h2","h3","li","main","nav","p","section","small","span","strong","summary","table","td","th","tr"]);
+        const classes=element=>[...element.classList].filter(name=>allowedClasses.has(name)).slice(0,4);
+        const tag=element=>tags.has(element.tagName.toLowerCase())?element.tagName.toLowerCase():"other";
+        const style=element=>{const s=getComputedStyle(element);return {color:s.color,backgroundColor:s.backgroundColor,backgroundImage:s.backgroundImage==="none"?"none":"present",opacity:s.opacity,filter:s.filter!=="none",backdropFilter:s.backdropFilter!=="none",mixBlendMode:s.mixBlendMode};};
+        const pseudo=(element,name)=>{const s=getComputedStyle(element,name);return {present:s.display!=="none",backgroundColor:s.backgroundColor,backgroundImage:s.backgroundImage==="none"?"none":"present",contentPresent:s.content!=="none"&&s.content!==""};};
+        return rawTargets.map(target=>{
+          let element=null;
+          for(const selector of Array.isArray(target)?target:[]){try{element=document.querySelector(selector);if(element)break;}catch{}}
+          if(!element)return {resolved:false};
+          const ancestors=[];
+          for(let parent=element.parentElement;parent&&ancestors.length<4;parent=parent.parentElement){const s=getComputedStyle(parent);ancestors.push({tag:tag(parent),classes:classes(parent),backgroundColor:s.backgroundColor,backgroundImage:s.backgroundImage==="none"?"none":"present",opacity:s.opacity});}
+          return {resolved:true,tag:tag(element),classes:classes(element),style:style(element),ancestors,pseudo:{before:pseudo(element,"::before"),after:pseudo(element,"::after")}};
+        });
+      },targets);
+      const diagnostic=buildSafeAxeIncompleteDiagnostic({results,route,viewport,nodeSignals});
+      await fs.writeFile("block1-b3-wcag-incomplete-diagnostic.json",JSON.stringify(diagnostic,null,2),{mode:0o600,flag:"wx"});
+      console.log(JSON.stringify({status:"b3_wcag_incomplete_diagnostic_recorded",route,viewport,
+        rules:diagnostic.unresolved.map(entry=>({rule:entry.rule,nodeCount:entry.nodes.length})),visualAuditPassed:false}));
+    }
     wcagScans.push(sanitizeAxeScan({results,route,viewport}));
   };
 
