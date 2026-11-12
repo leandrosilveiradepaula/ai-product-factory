@@ -169,6 +169,7 @@ test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
     [".homeFocus{","#1b2740"],[".homeFocus.warning{","#2c2419"],
     [".gateContextHero{","#151a24"],[".planningDecisionItem{","#101722"],
     [".card{","var(--color-card-start)"],["body{","var(--color-canvas-top)"],
+    [".topbar{","var(--color-topbar)"],
   ]){
     const matching=lines.filter(line=>line.startsWith(selector));
     assert.ok(matching.length>0,"missing "+selector);
@@ -176,6 +177,9 @@ test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
     assert.ok(matching.every(line=>!/background:[^;}]*gradient|background-image:/.test(line)),
       "cannot automatically assess text over gradient at "+selector);
   }
+  const topbar=lines.filter(line=>line.startsWith(".topbar{"));
+  assert.ok(topbar.every(line=>!line.includes("rgba(")&&!line.includes("backdrop-filter")),
+    "the overview trail and environment label require an opaque measurable topbar");
   const L=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255)
     .map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4)
     .reduce((a,c,i)=>a+c*[.2126,.7152,.0722][i],0);
