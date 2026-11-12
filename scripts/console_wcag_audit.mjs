@@ -5,6 +5,16 @@ export const ENGINE="@axe-core/playwright@4.14.0";
 const routes=new Set(CONSOLE_ROUTES.map(r=>r.name));
 const SHA=/^[0-9a-f]{40}$/;
 
+// The browser screenshot contract intentionally labels mobile captures with
+// "-mobile". Axe evidence uses canonical route names, so normalize by *both*
+// the exact source name and path. Unknown or mismatched routes fail closed.
+export function canonicalMobileWcagRoute(captureName, path){
+  const matches=CONSOLE_ROUTES.filter(r=>
+    captureName===r.name+"-mobile" && path===r.path);
+  if(matches.length!==1)throw Error("wcag_mobile_route_identity_invalid");
+  return matches[0].name;
+}
+
 export function sanitizeAxeScan({results,route,viewport}){
   const routeOK=(routes.has(route)&&["desktop","mobile","mobile-menu"].includes(viewport))||
     (route==="project-detail"&&["detail-desktop","detail-mobile"].includes(viewport));
