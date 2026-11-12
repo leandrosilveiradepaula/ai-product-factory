@@ -99,3 +99,45 @@ test("real mobile screenshot IDs normalize to canonical WCAG scan identities",()
   for(const alias of ["overview","overview-mobile-mobile","../overview-mobile","projects-mobile/"])
     assert.throws(()=>canonicalMobileWcagRoute(alias,"/"),/wcag_mobile_route_identity_invalid/);
 });
+
+test("real Overview WCAG contrast and decision accessible name regressions",async()=>{
+  // This guards code after the real authenticated axe finding #43132580946.
+  // It is not a replacement for a real WCAG browser run.
+  const fs=await import("node:fs");
+  const path=await import("node:path");
+  const root=path.resolve(import.meta.dirname,"..");
+  const theme=fs.readFileSync(path.join(root,"apps/console/app/theme.css"),"utf8");
+  const css=fs.readFileSync(path.join(root,"apps/console/app/globals.css"),"utf8");
+  const shell=fs.readFileSync(path.join(root,"apps/console/app/shell.tsx"),"utf8");
+  const token=(name)=>{
+    const match=theme.match(new RegExp(name+":\\s*(#[0-9a-f]{6});","i"));
+    assert.ok(match,"missing color token "+name);
+    return match[1];
+  };
+  const luminance=(color)=>{
+    const channels=[1,3,5].map(i=>Number.parseInt(color.slice(i,i+2),16)/255);
+    return channels.map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4))
+      .reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+  };
+  const contrast=(a,b)=>{
+    const x=luminance(a),y=luminance(b);
+    return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);
+  };
+  const backgrounds=["#0f131c","#181b25","#202530","#262a34","#273b5d"];
+  for(const key of ["--color-text-subtle","--color-text-faint","--color-control-subtle"]){
+    for(const bg of backgrounds){
+      assert.ok(contrast(token(key),bg)>=4.5,"insufficient contrast: "+key+" against "+bg);
+    }
+  }
+  const lowContrast=new Set([
+    "#6f7a89","#677384","#697484","#596577","#657082","#73798a",
+    "#555c6d","#747b8c","#7b8293","#767d8f","#697386",
+    "#687386","#737e90","#6f7a8b","#777e90","#656c7c"
+  ]);
+  for(const match of css.matchAll(/(?:[;{]\s*)color\s*:\s*(#[0-9a-f]{6})(?=\s*[;}])/gi))
+    assert.ok(!lowContrast.has(match[1].toLowerCase()),"low-contrast source foreground "+match[1]);
+  assert.ok(shell.includes('className="topbarAttention active">{attention.count}'),
+    "Attention link name must derive from its visible operator decision label");
+  assert.ok(!/topbarAttention active"\s+aria-label=/.test(shell),
+    "A contradictory aria-label must not override the visible label");
+});

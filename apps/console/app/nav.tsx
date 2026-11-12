@@ -65,7 +65,7 @@ function NavLink({href,label,icon,pathname,count}:{
   <span className="navIcon"><Icon name={icon}/></span>
   <span className="navItemLabel">{label}</span>
   {href==="/gates"&&count!==null&&count!==undefined&&count>0
-   ?<span className="humanAttentionCount" aria-label={`${count} aprovações pendentes`}>{count}</span>
+   ?<span className="humanAttentionCount">{count}</span>
    :null}
  </Link>;
 }
