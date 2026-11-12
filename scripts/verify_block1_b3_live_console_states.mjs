@@ -53,6 +53,27 @@ export function safeB3StateWitness({observed,runId,sourceCommit,targetCommit}){
    productionWrites:0,paidCalls:0,credentialOrUserDataRetained:false,
  };
 }
+// Synthetic GET transitions cannot be mistaken for a real WCAG audit.
+// Only the waitForFunction DOM timeout is classified as an absent bounded
+// state witness. Authentication, navigation, browser and mutation failures
+// keep their original fail-closed behavior.
+export class B3SyntheticTransitionTimeout extends Error {
+  constructor(transition){
+    if(!names.includes(transition))throw Error("b3_unknown_transition");
+    super("b3_synthetic_transition_not_observed:"+transition);
+    this.name="B3SyntheticTransitionTimeout";
+    this.transition=transition;
+  }
+}
+async function requireSyntheticTransition(page,transition,predicate,arg,options){
+  try{
+    await page.waitForFunction(predicate,arg,options);
+  }catch(error){
+    if(error?.name!=="TimeoutError")throw error;
+    throw new B3SyntheticTransitionTimeout(transition);
+  }
+}
+
 export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceCommit,targetCommit}){
  let origin;
  try{
@@ -94,7 +115,7 @@ export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceC
    const landing=await page.goto(origin+"/",{waitUntil:"networkidle",timeout:60000});
    if(!landing||landing.status()!==200||new URL(page.url()).pathname!=="/")
      throw Error("b3_authenticated_landing_unavailable");
-   await page.waitForFunction(()=>{
+   await requireSyntheticTransition(page,"pending",()=>{
      // The accessible name is provided by visible text, not the removed
      // aria-label. Regression from real authenticated capture #43138746238.
      const top=document.querySelector('a.topbarAttention.active[href="/gates"]');
@@ -105,7 +126,7 @@ export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceC
    observed.pending=true;
    scenario="unavailable";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
-   await page.waitForFunction(()=>{
+   await requireSyntheticTransition(page,"unavailable",()=>{
      const top=document.querySelector('.topbarAttention[role="status"]');
      return top?.textContent?.trim()==="Aprovações indisponíveis"&&
         !document.querySelector('.desktopSidebarContent .humanAttentionCount');
@@ -113,19 +134,26 @@ export async function verifyConsoleStatesReadOnly({context,baseUrl,runId,sourceC
    observed.unavailable=true;
    scenario="cleared";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
-   await page.waitForFunction(()=>
+   await requireSyntheticTransition(page,"cleared",()=>
      !document.querySelector(".topbarAttention")&&
      !document.querySelector(".desktopSidebarContent .humanAttentionCount"),
       null,{timeout:20000});
    observed.cleared=true;
    scenario="malformed";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
-   await page.waitForFunction(()=>{
+   await requireSyntheticTransition(page,"malformed",()=>{
      const top=document.querySelector('.topbarAttention[role="status"]');
      return top?.textContent?.trim()==="Aprovações indisponíveis"&&
         !document.querySelector('.desktopSidebarContent .humanAttentionCount');
    },null,{timeout:20000});
    observed.malformed=true;
    return safeB3StateWitness({observed,runId,sourceCommit,targetCommit});
+ }catch(error){
+   // A timed-out simulated state never permits a real hydration/browser error,
+   // a blocked request or a write attempt to go unnoticed.
+   if(error instanceof B3SyntheticTransitionTimeout &&
+      (observed.browserErrors!==0||observed.mutatingRequests!==0||observed.blocked))
+     throw Error("b3_state_witness_incomplete:unexpected_browser_error_or_mutation");
+   throw error;
  }finally{await page.close();}
 }

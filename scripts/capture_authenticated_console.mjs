@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute} from "./console_wcag_audit.mjs";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
+import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs";
 import {verifyLiveConsoleStateReadOnly} from "./verify_block1_b3_live_console_state.mjs";
 import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
@@ -117,17 +118,25 @@ try {
     state:b3LiveStateWitness.state,countClass:b3LiveStateWitness.countClass,
     fullUserExperienceCertified:false}));
 
-  // Authenticate real React UI. Only the GET attention endpoint is replaced
-  // with read-only failure-state fixtures. Do not certify real backend state.
-  const b3StateWitness=await verifyConsoleStatesReadOnly({
-    context,baseUrl:consoleUrl,runId,
-    sourceCommit:workflowSourceCommit,targetCommit,
+  // Bounded intercepted-GET state scenarios are a *separate* criterion.
+  // The live B2 and B3 observations above are mandatory; a synthetic DOM
+  // transition timeout must not prevent the real 44-scan WCAG/keyboard audit.
+  // Missing synthetic witness stays MISSING, never a PASS. Authentication,
+  // HTTP navigation, unexpected browser or persistence errors still abort.
+  const b3StateWitness=await collectBoundedB3Fixture({
+    observe:()=>verifyConsoleStatesReadOnly({
+      context,baseUrl:consoleUrl,runId,
+      sourceCommit:workflowSourceCommit,targetCommit,
+    }),
+    save:witness=>fs.writeFile("block1-b3-console-state-witness.json",
+      JSON.stringify(witness,null,2),{mode:0o600,flag:"wx"}),
+    report:message=>console.log(JSON.stringify({runId:Number(runId),...message})),
   });
-  await fs.writeFile("block1-b3-console-state-witness.json",
-    JSON.stringify(b3StateWitness,null,2),{mode:0o600,flag:"wx"});
-  console.log(JSON.stringify({status:"b3_bounded_state_witness_recorded",
-    runId:b3StateWitness.runId,targetCommit:b3StateWitness.targetCommit,
-    actualBackendStateCertified:false,visualAuditPassed:false}));
+  if(b3StateWitness){
+    console.log(JSON.stringify({status:"b3_bounded_state_witness_recorded",
+      runId:b3StateWitness.runId,targetCommit:b3StateWitness.targetCommit,
+      actualBackendStateCertified:false,visualAuditPassed:false}));
+  }
 
   // The visual quality gate covers the authenticated Console routes below.
   // Keep protection/login bootstrap diagnostics as evidence, but do not mix
