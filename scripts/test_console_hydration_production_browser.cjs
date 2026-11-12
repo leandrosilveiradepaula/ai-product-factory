@@ -503,11 +503,41 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
         body:JSON.stringify({status:"ok",count:0,projects:[]})}));
     const scan=async(name,mode)=>{
       await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
-      const found=await page.evaluate(async tags=>{
+      const diagnostic=["overview:mobile","overview:mobile-menu","new-project:desktop",
+        "runs:mobile-menu","run-detail:desktop","deployments:desktop",
+        "project-detail:detail-mobile"].includes(name+":"+mode);
+      const found=await page.evaluate(async ({tags,diagnostic})=>{
         const report=await window.axe.run(document,{runOnly:{type:"tag",values:tags}});
-        return {incomplete:report.incomplete.map(x=>({rule:x.id,nodes:x.nodes.length})),
-          violations:report.violations.map(x=>({rule:x.id,nodes:x.nodes.length}))};
-      },tags);
+        const getNodes=(rule)=>({rule:rule.id,nodes:rule.nodes.length,
+          samples:diagnostic?rule.nodes.slice(0,4).map(node=>{
+            let el=null;
+            for(const selector of Array.isArray(node.target)?node.target:[]){
+              try{el=document.querySelector(selector);if(el)break}catch{}
+            }
+            const elements=[];
+            for(let x=el;x&&elements.length<4;x=x.parentElement){
+              const style=getComputedStyle(x);
+              elements.push({
+                tag:x.tagName.toLowerCase(),
+                classes:[...x.classList].filter(c=>/^[a-zA-Z][a-zA-Z0-9_-]{0,50}$/.test(c)).slice(0,4),
+                color:style.color,background:style.backgroundColor,
+                overflowY:style.overflowY,
+                position:style.position,
+                top:Math.round(x.getBoundingClientRect().top),
+                bottom:Math.round(x.getBoundingClientRect().bottom)
+              });
+            }
+            return {tree:elements,checks:["any","all","none"].flatMap(key=>node[key]||[]).map(check=>({
+              id:check.id,
+              reason:typeof check.data?.messageKey==="string"&&
+                /^[a-zA-Z]+$/.test(check.data.messageKey)?check.data.messageKey:"unknown",
+              ratio:Number.isFinite(check.data?.contrastRatio)?
+                Math.round(check.data.contrastRatio*100)/100:null
+            }))};
+          }):[]});
+        return {incomplete:report.incomplete.map(getNodes),
+          violations:report.violations.map(getNodes)};
+      },{tags,diagnostic});
       results.push({route:name,mode,...found});
     };
     for(const route of CONSOLE_ROUTES){
