@@ -17,8 +17,11 @@ export function sanitizeAxeScan({results,route,viewport}){
       .replace(/[^a-z0-9-]/g,"").slice(0,50)))].sort();
     throw Error("wcag_violations:"+route+":"+viewport+":"+ids.join(",").slice(0,300));
   }
-  if(results.incomplete.some(r=>r?.id==="color-contrast"))
-    throw Error("wcag_unresolved_contrast:"+route+":"+viewport);
+  if(results.incomplete.length){
+    const unresolved=[...new Set(results.incomplete.map(r=>String(r?.id||"unknown")
+      .replace(/[^a-z0-9-]/g,"").slice(0,50)))].sort();
+    throw Error("wcag_unresolved_rules:"+route+":"+viewport+":"+unresolved.join(",").slice(0,200));
+  }
   const contrasts=results.passes.filter(r=>r?.id==="color-contrast");
   const contrastNodes=contrasts.reduce((n,r)=>n+(Array.isArray(r.nodes)?r.nodes.length:0),0);
   if(!results.passes.length||contrastNodes<1)
