@@ -87,6 +87,9 @@ function localApi(req,res){
   send(res,200,[{role:"operator",is_active:true}]);
  }else if(u.pathname==="/rest/v1/factory_projects"){
   send(res,200,fixtureProjects);
+ }else if(u.pathname==="/rest/v1/factory_runs"){
+  // Inert, empty run inventory for credential-free B3 browser diagnostics.
+  send(res,200,[]);
  }else if(u.pathname==="/rest/v1/factory_primary_cost_policy"){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
@@ -379,5 +382,59 @@ test("B3: login and unauthorized routes never poll privileged attention API",asy
    assert.equal(requests.length,0,"auth-only route must not fetch operator attention");
    assert.equal(await page.locator(".topbarAttention").count(),0);
   }
+ }finally{await context.close();}
+});
+
+
+test("B3: the real /runs sidebar color-contrast is determinable in an isolated Chromium + axe-core",async()=>{
+ // The browser executes actual Next/React CSS/layout and the same axe family,
+ // with only fabricated local backend records. NO operator or production data.
+ const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ try{
+  await context.route("**/api/human-attention",async route=>
+   route.fulfill({status:200,contentType:"application/json",
+    body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+  const response=await page.goto(appOrigin+"/runs",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200,"isolated real /runs must load");
+  assert.equal(new URL(page.url()).pathname,"/runs");
+  assert.equal(await page.locator("h1.title").innerText(),"Execuções");
+  assert.equal(await page.locator(".desktopSidebarContent .navAdvanced[open]").count(),1);
+  await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
+  const result=await page.evaluate(async()=>{
+    const root=document.querySelector(".desktopSidebarContent .sidebarNav");
+    if(!root)throw Error("sidebar_nav_missing");
+    const r=await window.axe.run(root,{runOnly:{type:"rule",values:["color-contrast"]}});
+    const known=new Set(["/","/projects","/gates","/runs","/queue","/agents","/orchestration",
+      "/evals","/deployments","/usage","/audit","/configuration","/admin/operators"]);
+    const reasonNames=new Set(["bgOverlap","elmPartiallyObscured","elmPartiallyObscuring",
+     "outsideViewport","pseudoContent","bgImage","bgGradient","shortTextContent","nonBmp","equalRatio"]);
+    const navRect=root.getBoundingClientRect();
+    const findings=r.incomplete.flatMap(rule=>(rule.nodes||[]).slice(0,15).map(node=>{
+      let element=null;
+      for(const selector of Array.isArray(node.target)?node.target:[]){
+        try{element=document.querySelector(selector);if(element)break}catch{}
+      }
+      const anchor=element?.closest("a"),href=anchor?.getAttribute("href")||"";
+      const rect=element?.getBoundingClientRect();
+      return {rule:rule.id,link:known.has(href)?href:"unclassified",
+       checks:["any","all","none"].flatMap(key=>node[key]||[]).map(check=>({
+        id:check.id,
+        reason:reasonNames.has(check.data?.messageKey)?check.data.messageKey:
+          reasonNames.has(check.data?.reason)?check.data.reason:"unknown"})),
+       elementRect:rect?{top:Math.round(rect.top),bottom:Math.round(rect.bottom)}:null};
+    }));
+    return {incomplete:r.incomplete.reduce((sum,rule)=>sum+rule.nodes.length,0),
+      violations:r.violations.reduce((sum,rule)=>sum+rule.nodes.length,0),
+      navRect:{top:Math.round(navRect.top),bottom:Math.round(navRect.bottom)},
+      navScroll:{height:root.clientHeight,content:root.scrollHeight},
+      findings};
+  });
+  // Only fixed /runs, static nav routes, bounds and enum reason codes leave
+  // the browser; HTML, selectors, text, private IDs and tokens never do.
+  assert.equal(result.violations,0,"Unexpected authentic UI contrast violation in offline fixture");
+  assert.equal(result.incomplete,0,
+    "Isolated real sidebar axe result (no PII): "+JSON.stringify(result));
  }finally{await context.close();}
 });
