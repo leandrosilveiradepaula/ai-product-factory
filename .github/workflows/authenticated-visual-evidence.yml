@@ -31,7 +31,9 @@ jobs:
     # Playwright --with-deps stalled in APT for the full 12-minute budget.
     runs-on: ubuntu-24.04
     environment: openai-api
-    timeout-minutes: 12
+    # 44 authenticated axe-core scans add work to the existing multi-route capture.
+    # Retain the broker's fixed two-hour expiry and mandatory cleanup.
+    timeout-minutes: 22
     env:
       FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
