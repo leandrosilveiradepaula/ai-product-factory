@@ -505,7 +505,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
       await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
       const diagnostic=["overview:mobile","overview:mobile-menu","new-project:desktop",
         "runs:mobile-menu","run-detail:desktop","deployments:desktop",
-        "project-detail:detail-mobile"].includes(name+":"+mode);
+        "project-detail:detail-mobile","configuration:mobile","configuration:mobile-menu"].includes(name+":"+mode);
       const found=await page.evaluate(async ({tags,diagnostic})=>{
         const report=await window.axe.run(document,{runOnly:{type:"tag",values:tags}});
         const getNodes=(rule)=>({rule:rule.id,nodes:rule.nodes.length,
