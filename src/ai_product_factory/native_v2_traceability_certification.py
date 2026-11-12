@@ -216,28 +216,7 @@ def _download_artifact(url: str, token: str) -> bytes:
     return content
 
 
-def _verify_archive(archive: bytes, *, digest: str) -> dict:
-    require(
-        isinstance(archive, bytes)
-        and 0 < len(archive) <= 131072
-        and digest == "sha256:" + hashlib.sha256(archive).hexdigest(),
-        "v2_artifact_digest_mismatch",
-    )
-    try:
-        with zipfile.ZipFile(io.BytesIO(archive), "r") as zf:
-            files = zf.infolist()
-            require(
-                len(files) == 1
-                and files[0].filename == "native-v2-journey-evidence.json"
-                and 0 < files[0].file_size <= 131072
-                and not files[0].is_dir(),
-                "v2_artifact_content_unbounded",
-            )
-            data = json.loads(zf.read(files[0]).decode("utf-8"))
-    except (zipfile.BadZipFile, UnicodeError, json.JSONDecodeError, OSError) as exc:
-        raise TraceabilityUnverified("v2_artifact_content_invalid") from exc
-    require(isinstance(data, dict), "v2_artifact_not_json_object")
-    expected = {
+EXPECTED_WITNESS = {
         "schema_version": 1,
         "project_key": "crm-infodive",
         "journey_id": JOURNEY_ID,
@@ -261,8 +240,104 @@ def _verify_archive(archive: bytes, *, digest: str) -> dict:
         "paid_calls": 0,
         "writes": 0,
     }
+
+
+def _verify_archive(archive: bytes, *, digest: str) -> dict:
+    require(
+        isinstance(archive, bytes)
+        and 0 < len(archive) <= 131072
+        and digest == "sha256:" + hashlib.sha256(archive).hexdigest(),
+        "v2_artifact_digest_mismatch",
+    )
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive), "r") as zf:
+            files = zf.infolist()
+            require(
+                len(files) == 1
+                and files[0].filename == "native-v2-journey-evidence.json"
+                and 0 < files[0].file_size <= 131072
+                and not files[0].is_dir(),
+                "v2_artifact_content_unbounded",
+            )
+            data = json.loads(zf.read(files[0]).decode("utf-8"))
+    except (zipfile.BadZipFile, UnicodeError, json.JSONDecodeError, OSError) as exc:
+        raise TraceabilityUnverified("v2_artifact_content_invalid") from exc
+    require(isinstance(data, dict), "v2_artifact_not_json_object")
+    expected = EXPECTED_WITNESS
     require(data == expected, "v2_artifact_scope_or_content_drift")
     return data
+
+
+
+# Artifact retention is finite. The successful, independently audited OWNER job
+# also emitted the entire exact bounded witness into its retained GitHub job log.
+# When the artifact is purged we may verify that independent *executed* log,
+# but only after original workflow, job, code and Control Plane fences hold.
+def _download_job_log(url: str, token: str) -> bytes:
+    prefix = "https://api.github.com/repos/" + FACTORY + "/actions/jobs/"
+    require(url.startswith(prefix) and url.endswith("/logs") and bool(token),
+            "v2_owner_job_log_source_invalid")
+    job_id = url[len(prefix):-len("/logs")]
+    require(job_id.isdecimal() and 0 < int(job_id) < 10**18,
+            "v2_owner_job_log_identity_invalid")
+    request = urllib.request.Request(url, headers={
+        "Accept": "application/vnd.github+json", "Authorization": "Bearer " + token,
+    }, method="GET")
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=25) as response:
+            content = response.read(262145)
+    except urllib.error.HTTPError as exc:
+        require(exc.code in (301, 302, 303, 307, 308),
+                "v2_owner_job_log_download_denied")
+        location = exc.headers.get("Location", "")
+        parsed = urllib.parse.urlsplit(location)
+        host = (parsed.hostname or "").lower()
+        require(parsed.scheme == "https" and not parsed.username and not parsed.password
+                and (host.endswith(".blob.core.windows.net")
+                     or host.endswith(".actions.githubusercontent.com")
+                     or host == "pipelines.actions.githubusercontent.com"),
+                "v2_owner_job_log_redirect_untrusted")
+        # Do not forward the GitHub bearer to the CDN: use its signed URL only.
+        with urllib.request.urlopen(urllib.request.Request(
+                location, headers={"Accept": "text/plain"}), timeout=25) as response:
+            content = response.read(262145)
+    require(0 < len(content) <= 262144, "v2_owner_job_log_unbounded")
+    return content
+
+
+def _verify_owner_job_log(content: bytes) -> str:
+    require(isinstance(content, bytes) and 0 < len(content) <= 262144,
+            "v2_owner_job_log_unbounded")
+    try:
+        lines = content.decode("utf-8").splitlines()
+    except UnicodeError as exc:
+        raise TraceabilityUnverified("v2_owner_job_log_invalid_encoding") from exc
+    matches = []
+    for line in lines:
+        if '"browser_verifier_run_id"' not in line or '"journey_id"' not in line:
+            continue
+        matched = re.fullmatch(
+            r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{1,9}Z (\{.*\})",
+            line,
+        )
+        require(matched is not None, "v2_owner_job_log_witness_format_invalid")
+        def unique_pairs(pairs):
+            result = {}
+            for key, value in pairs:
+                require(key not in result, "v2_owner_job_log_duplicate_key")
+                result[key] = value
+            return result
+        try:
+            witness = json.loads(matched.group(1), object_pairs_hook=unique_pairs)
+        except (ValueError, TypeError) as exc:
+            raise TraceabilityUnverified("v2_owner_job_log_invalid_json") from exc
+        matches.append(witness)
+    require(matches == [EXPECTED_WITNESS],
+            "v2_owner_job_log_witness_missing_or_mismatch")
+    canonical = json.dumps(EXPECTED_WITNESS, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=True, allow_nan=False).encode("ascii")
+    return "sha256:" + hashlib.sha256(canonical).hexdigest()
 
 
 def verify_existing_crm_v2_traceability(
@@ -270,6 +345,7 @@ def verify_existing_crm_v2_traceability(
     github_get: Callable[[str], object],
     reader: SupabaseJourneyReader | None = None,
     archive_fetch: Callable[[str, str], bytes] = _download_artifact,
+    log_fetch: Callable[[str, str], bytes] = _download_job_log,
     environment: dict[str, str] | None = None,
 ) -> VerifiedCriterionEvidence:
     """Verify source bytes, provenance and live terminal state before one PASS.
@@ -352,28 +428,47 @@ def verify_existing_crm_v2_traceability(
     artifacts = artifact_result.get("artifacts") if isinstance(artifact_result, dict) else None
     require(
         isinstance(artifacts, list)
-        and artifact_result.get("total_count") == len(artifacts)
-        and len(artifacts) == 1
-        and isinstance(artifacts[0], dict),
+        and type(artifact_result.get("total_count")) is int
+        and artifact_result["total_count"] == len(artifacts)
+        and len(artifacts) <= 1,
         "v2_artifact_inventory_invalid",
     )
-    artifact = artifacts[0]
-    binding = artifact.get("workflow_run")
-    require(
-        artifact.get("id") == ARTIFACT_ID
-        and artifact.get("name") == ARTIFACT_NAME
-        and artifact.get("expired") is False
-        and isinstance(artifact.get("digest"), str)
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"])
-        and isinstance(binding, dict)
-        and binding.get("id") == SOURCE_RUN_ID
-        and binding.get("head_sha") == SOURCE_SHA
-        and binding.get("head_repository_id") == 1387883686,
-        "v2_artifact_unbound_or_expired",
-    )
+    verified_job = [job for job in found if job.get("name") == VERIFIER_JOB][0]
+    job_id = verified_job.get("id")
+    require(type(job_id) is int and 0 < job_id < 10**18,
+            "v2_owner_job_identity_invalid")
     _verify_unchanged_verifier(github_get, assessed_commit)
-    raw = archive_fetch(artifact.get("archive_download_url", ""), env.get("GITHUB_TOKEN", ""))
-    _verify_archive(raw, digest=artifact["digest"])
+    artifact = artifacts[0] if artifacts else None
+    if artifact is not None:
+        require(isinstance(artifact, dict), "v2_artifact_inventory_invalid")
+        binding = artifact.get("workflow_run")
+        require(
+            artifact.get("id") == ARTIFACT_ID
+            and artifact.get("name") == ARTIFACT_NAME
+            and type(artifact.get("expired")) is bool
+            and isinstance(artifact.get("digest"), str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"])
+            and isinstance(binding, dict)
+            and binding.get("id") == SOURCE_RUN_ID
+            and binding.get("head_sha") == SOURCE_SHA
+            and binding.get("head_repository_id") == 1387883686,
+            "v2_artifact_unbound_or_expired",
+        )
+    if artifact is not None and artifact["expired"] is False:
+        raw = archive_fetch(artifact.get("archive_download_url", ""), env.get("GITHUB_TOKEN", ""))
+        _verify_archive(raw, digest=artifact["digest"])
+        source = ("source-verified-native-v2-existing-preview:"
+                  + str(SOURCE_RUN_ID) + "/" + str(ARTIFACT_ID) + ":"
+                  + artifact["digest"])
+    else:
+        # Expired or deleted ZIP cannot itself certify a PASS. Verify the
+        # original successfully executed OWNER job log against every expected
+        # field, plus all source/identity/current-lineage checks above/below.
+        url = ("https://api.github.com/repos/" + FACTORY
+               + "/actions/jobs/" + str(job_id) + "/logs")
+        digest = _verify_owner_job_log(log_fetch(url, env.get("GITHUB_TOKEN", "")))
+        source = ("source-verified-native-v2-owner-job-log:"
+                  + str(SOURCE_RUN_ID) + "/" + str(job_id) + ":" + digest)
     _verify_current_lineage(reader if reader is not None else SupabaseJourneyReader())
     return VerifiedCriterionEvidence(
         domain="observability_operations",
@@ -381,11 +476,7 @@ def verify_existing_crm_v2_traceability(
         repository=repository,
         assessed_commit=assessed_commit,
         verification_state="observed",
-        source=(
-            "source-verified-native-v2-existing-preview:"
-            + str(SOURCE_RUN_ID) + "/" + str(ARTIFACT_ID) + ":"
-            + artifact["digest"]
-        ),
+        source=source,
         evidence=(
             "https://github.com/" + repository + "/actions/runs/" + current_id
             + "#sha=" + assessed_commit,

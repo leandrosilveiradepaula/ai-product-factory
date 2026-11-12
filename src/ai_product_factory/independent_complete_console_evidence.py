@@ -49,6 +49,7 @@ class VerifiedConsoleSurface:
     run_id: int
     target_commit: str
     artifact_id: int
+    source_commit: str | None = None  # captured run SHA, not later identical Console source
 
     def receipt(self) -> dict:
         return {
@@ -198,7 +199,8 @@ def verify_complete_console_surface(*, repository: str, assessed_commit: str,
             or authenticated_capture.assessed_commit != assessed_commit
             or type(authenticated_capture.workflow_run_id) is not int
             or authenticated_capture.workflow_run_id < 1
-            or authenticated_capture.artifact_id is None):
+            or (authenticated_capture.artifact_id is None
+                and authenticated_capture.source_commit is None)):
         raise ConsoleFullSurfaceEvidenceBlocked("b3_original_capture_unverified")
     prefix = "/repos/" + repository
     run_id = authenticated_capture.workflow_run_id
@@ -249,5 +251,5 @@ def verify_complete_console_surface(*, repository: str, assessed_commit: str,
             raise ConsoleFullSurfaceEvidenceBlocked("b3_served_console_not_identical")
     return VerifiedConsoleSurface(
         repository=repository, assessed_commit=assessed_commit, run_id=run_id,
-        target_commit=served_sha, artifact_id=a["id"],
+        target_commit=served_sha, artifact_id=a["id"], source_commit=source_sha,
     )

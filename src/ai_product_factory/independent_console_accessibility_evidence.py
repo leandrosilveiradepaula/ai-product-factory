@@ -104,6 +104,12 @@ def verify_console_accessibility(*, repository: str, assessed_commit: str,
             or type(surface.run_id) is not int or surface.run_id < 1):
         raise ConsoleAccessibilityBlocked("b3_a11y_surface_unverified")
     run_id = surface.run_id
+    # Reused captures are admissible only after independently verified
+    # ancestry, immutable Console blobs, captured Control Plane receipt and
+    # the original executed run-bound full-surface witness.
+    source_sha = surface.source_commit or assessed_commit
+    if not SHA.fullmatch(source_sha):
+        raise ConsoleAccessibilityBlocked("b3_a11y_source_sha_invalid")
     rows = github_get("/repos/" + repository + "/actions/runs/" + str(run_id)
                       + "/artifacts?per_page=100")
     artifacts = rows.get("artifacts") if isinstance(rows, dict) else None
@@ -124,9 +130,9 @@ def verify_console_accessibility(*, repository: str, assessed_commit: str,
             or not isinstance(provenance, dict)
             or provenance.get("id") != run_id
             or provenance.get("head_branch") != "main"
-            or provenance.get("head_sha") != assessed_commit):
+            or provenance.get("head_sha") != source_sha):
         raise ConsoleAccessibilityBlocked("b3_a11y_provenance_invalid")
     payload = artifact_reader(repository=repository, artifact_id=artifact["id"], artifact_file=FILE)
-    validate_a11y_receipt(payload, run_id=run_id, source_sha=assessed_commit,
+    validate_a11y_receipt(payload, run_id=run_id, source_sha=source_sha,
                           served_sha=surface.target_commit)
     return VerifiedConsoleAccessibility(repository, assessed_commit, run_id, artifact["id"])
