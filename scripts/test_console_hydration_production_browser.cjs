@@ -402,7 +402,7 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
   assert.equal(await page.locator("h1.title").innerText(),"Execuções");
   assert.equal(await page.locator(".desktopSidebarContent .navAdvanced[open]").count(),1);
   await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
-  const result=await page.evaluate(async()=>{
+  const scan=()=>page.evaluate(async()=>{
     const root=document.querySelector(".desktopSidebarContent .sidebarNav");
     if(!root)throw Error("sidebar_nav_missing");
     const r=await window.axe.run(root,{runOnly:{type:"rule",values:["color-contrast"]}});
@@ -433,8 +433,32 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
   });
   // Only fixed /runs, static nav routes, bounds and enum reason codes leave
   // the browser; HTML, selectors, text, private IDs and tokens never do.
-  assert.equal(result.violations,0,"Unexpected authentic UI contrast violation in offline fixture");
-  assert.equal(result.incomplete,0,
-    "Isolated real sidebar axe result (no PII): "+JSON.stringify(result));
+  const resetScroll=()=>page.evaluate(()=>{
+    document.querySelectorAll(".sidebar,.sidebarNav,.desktopSidebarContent")
+     .forEach(element=>{element.scrollTop=0;});
+    window.scrollTo(0,0);
+  });
+  await resetScroll();
+  const baseline=await scan();
+  const probes=[];
+  // Isolated, ephemeral style experiments. Never shipped to product CSS.
+  // Compare known plausible scrolling models with the exact axe failure.
+  for(const [name,css] of [
+    ["single_sidebar_scroller",
+     ".sidebar{overflow-y:auto!important;} .sidebarNav{overflow-y:visible!important;flex-shrink:0!important;}"],
+    ["natural_document_scroller",
+     ".sidebar{position:relative!important;height:auto!important;min-height:100vh!important;} .sidebarNav{overflow-y:visible!important;flex-shrink:0!important;}"],
+    ["single_sidebar_scroller_with_sticky_footer",
+     ".sidebar{overflow-y:auto!important;} .sidebarNav{overflow-y:visible!important;flex-shrink:0!important;} .sidebarFooter{position:sticky!important;bottom:0!important;background:#181b25!important;}"],
+  ]){
+    const tag=await page.addStyleTag({content:css});
+    try{
+      await resetScroll();
+      probes.push({name,result:await scan()});
+    }finally{await tag.evaluate(node=>node.remove());}
+  }
+  assert.equal(baseline.violations,0,"Unexpected authentic UI contrast violation in offline fixture");
+  assert.equal(baseline.incomplete,0,
+    "Real axe baseline (no PII): "+JSON.stringify(baseline)+"; isolated non-shipping CSS probes: "+JSON.stringify(probes));
  }finally{await context.close();}
 });
