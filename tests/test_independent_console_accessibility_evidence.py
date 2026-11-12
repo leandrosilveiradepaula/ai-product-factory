@@ -55,6 +55,34 @@ class TestIndependentConsoleAccessibility(unittest.TestCase):
         self.assertEqual(result.criterion().verification_state, "observed")
         self.assertFalse(result.receipt()["full_wcag_conformance_claimed"])
 
+
+    def test_historical_wcag_source_must_match_authenticated_surface_source(self):
+        old = "b" * 40
+        surface = VerifiedConsoleSurface(REPO, SHA, RUN, old, 66, source_commit=old)
+        meta = artifacts()
+        meta["artifacts"][0]["workflow_run"]["head_sha"] = old
+        payload = {**receipt(), "sourceCommit": old, "targetCommit": old}
+        def verify(source=surface, artifact=meta, witness=payload):
+            return verify_console_accessibility(
+                repository=REPO, assessed_commit=SHA, surface=source,
+                github_get=lambda path: artifact,
+                artifact_reader=lambda **kwargs: witness,
+            )
+        self.assertEqual(verify().criterion().status if hasattr(verify().criterion(), "status")
+                         else verify().criterion().criterion, "accessibility")
+        for kind in ("wrong_witness_source", "wrong_artifact_source", "wrong_served_sha"):
+            with self.subTest(kind=kind):
+                bad_meta = copy.deepcopy(meta)
+                bad_payload = dict(payload)
+                if kind == "wrong_witness_source":
+                    bad_payload["sourceCommit"] = SHA
+                elif kind == "wrong_artifact_source":
+                    bad_meta["artifacts"][0]["workflow_run"]["head_sha"] = SHA
+                else:
+                    bad_payload["targetCommit"] = SHA
+                with self.assertRaises(ConsoleAccessibilityBlocked):
+                    verify(artifact=bad_meta, witness=bad_payload)
+
     def test_absent_artifact_is_not_a_pass(self):
         self.assertIsNone(self.verify(meta={"total_count": 0, "artifacts": []}))
 

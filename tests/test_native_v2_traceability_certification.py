@@ -15,6 +15,7 @@ from ai_product_factory.native_v2_traceability_certification import (
     CHANGE_SET_ID, ROOT_TASK_ID, RELEASE_RUN_ID, CANDIDATE_SHA,
     PREVIEW_MERGE_SHA, BROWSER_RUN_ID, VERIFIER_FILES, TRUSTED_WORKFLOW,
     _verify_archive, _verify_current_lineage, _verify_unchanged_verifier,
+    _verify_owner_job_log, _download_job_log, EXPECTED_WITNESS,
     _workflow_v2_job, verify_existing_crm_v2_traceability,
     TraceabilityUnverified,
 )
@@ -212,8 +213,105 @@ class ReusedNativeV2EvidenceTests(unittest.TestCase):
             verify_existing_crm_v2_traceability(
                 repository=FACTORY, assessed_commit=HEAD,
                 github_get=get, reader=Reader(),
-                archive_fetch=lambda url, token: archive, environment=env(),
+                archive_fetch=lambda url, token: archive,
+                log_fetch=lambda url, token: b"invalid-offline-log", environment=env(),
             )
+
+
+    def test_expired_or_purged_archive_uses_only_exact_executed_owner_log(self):
+        archive, github, current, owner, jobs, artifact, workflow = self.make_valid()
+        signed = ("2026-11-05T12:24:43.3168680Z "
+                  + json.dumps(EXPECTED_WITNESS, sort_keys=True) + "\n").encode("utf-8")
+        source = "/repos/" + FACTORY + "/actions/runs/" + str(SOURCE_RUN_ID) + "/artifacts?per_page=100"
+        url = ("https://api.github.com/repos/" + FACTORY
+               + "/actions/jobs/" + str(jobs[0]["id"]) + "/logs")
+        for kind in ("purged", "expired"):
+            with self.subTest(kind=kind):
+                artifact["expired"] = kind == "expired"
+                def get(path):
+                    return ({"total_count": 0, "artifacts": []}
+                            if kind == "purged" and path == source else github(path))
+                calls = []
+                def logs(actual, token):
+                    calls.append((actual, token))
+                    return signed
+                proof = verify_existing_crm_v2_traceability(
+                    repository=FACTORY, assessed_commit=HEAD,
+                    github_get=get, reader=Reader(), environment=env(),
+                    archive_fetch=lambda *_: self.fail("purged ZIP must not be downloaded"),
+                    log_fetch=logs,
+                )
+                self.assertEqual(calls, [(url, "offline-fixture")])
+                self.assertEqual(proof.criterion, "traceability")
+                self.assertEqual(proof.verification_state, "observed")
+                self.assertIn("source-verified-native-v2-owner-job-log:", proof.source)
+                self.assertIn(str(jobs[0]["id"]), proof.source)
+
+    def test_expired_source_fails_closed_on_missing_forged_ambiguous_logs(self):
+        archive, github, current, owner, jobs, artifact, workflow = self.make_valid()
+        artifact["expired"] = True
+        prefix = "2026-11-05T12:24:43.3168680Z "
+        good = prefix + json.dumps(EXPECTED_WITNESS, sort_keys=True) + "\n"
+        changed = dict(EXPECTED_WITNESS, production_released=True)
+        duplicates = (prefix + '{"journey_id":"a","journey_id":"b","browser_verifier_run_id":1}' + "\n")
+        examples = {
+            "missing": b"",
+            "changed_claim": (prefix + json.dumps(changed) + "\n").encode(),
+            "double": (good + good).encode(),
+            "duplicate_json_keys": duplicates.encode(),
+            "bare_json": json.dumps(EXPECTED_WITNESS).encode(),
+            "oversized": (good + "x" * 262145).encode(),
+        }
+        for label, log in examples.items():
+            with self.subTest(label=label), self.assertRaises(TraceabilityUnverified):
+                verify_existing_crm_v2_traceability(
+                    repository=FACTORY, assessed_commit=HEAD,
+                    github_get=github, reader=Reader(), environment=env(),
+                    archive_fetch=lambda *_: self.fail("expired ZIP read"),
+                    log_fetch=lambda *_: log,
+                )
+        # A purported new audit must never override the original OWNER identity.
+        owner["actor"] = {"id": 1, "login": "untrusted"}
+        with self.assertRaises(TraceabilityUnverified):
+            verify_existing_crm_v2_traceability(
+                repository=FACTORY, assessed_commit=HEAD,
+                github_get=github, reader=Reader(), environment=env(),
+                log_fetch=lambda *_: good.encode(),
+            )
+
+    def test_retained_owner_log_has_no_bearer_on_signed_cdn_redirect(self):
+        import urllib.error
+        import urllib.request
+        good = "https://job-logs.blob.core.windows.net/job?sig=fake"
+        url = ("https://api.github.com/repos/" + FACTORY
+               + "/actions/jobs/127242930132/logs")
+        calls = []
+        class FakeOpener:
+            def open(self, request, timeout):
+                calls.append(request)
+                raise urllib.error.HTTPError(request.full_url, 302, "redirect",
+                                             {"Location": good}, None)
+        def second(request, timeout):
+            calls.append(request)
+            return io.BytesIO(b"bounded-offline-job-log")
+        with patch("ai_product_factory.native_v2_traceability_certification.urllib.request.build_opener",
+                   return_value=FakeOpener()), patch(
+                   "ai_product_factory.native_v2_traceability_certification.urllib.request.urlopen",
+                   side_effect=second):
+            self.assertEqual(_download_job_log(url, "fake-token"), b"bounded-offline-job-log")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0].get_header("Authorization"), "Bearer fake-token")
+        self.assertIsNone(calls[1].get_header("Authorization"))
+        with patch("ai_product_factory.native_v2_traceability_certification.urllib.request.build_opener",
+                   return_value=type("FakeUnsafe", (), {
+                       "open": lambda self, req, timeout: (_ for _ in ()).throw(
+                           urllib.error.HTTPError(req.full_url, 302, "bad",
+                               {"Location": "https://untrusted.example/log?sig=fake"}, None))
+                   })()), patch(
+                   "ai_product_factory.native_v2_traceability_certification.urllib.request.urlopen",
+                   side_effect=AssertionError("must not contact untrusted CDN")):
+            with self.assertRaises(TraceabilityUnverified):
+                _download_job_log(url, "fake-token")
 
     def test_rejects_modified_archive_scope_and_file_integrity(self):
         archive, *_ = self.make_valid()
