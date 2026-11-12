@@ -100,3 +100,72 @@ test("source prevents silencing genuine hydration errors and enforces 503 allowa
  assert.match(source,/observed.browserErrors\+\+;/);
  assert.match(source,/isExpectedFixture503ResourceError\(m,origin\)/);
 });
+
+test("actual authenticated decision-link DOM survives all four B3 state transitions",async()=>{
+  // #43138746238 timed out because a stale aria-label selector disagreed
+  // with the accessible visible name delivered by PR #1380.
+  // Exercise the real production waitForFunction callbacks, not a duplicate.
+  const origin="https://ai-product-factory-console.vercel.app";
+  const savedDocument=globalThis.document;
+  let state=null, handler=null, phase=0;
+  const selectors=[];
+  const page={
+    on(){},
+    async route(_pattern,callback){handler=callback;},
+    async goto(url){
+      assert.equal(url,origin+"/");
+      await requestState();
+      return {status:()=>200};
+    },
+    url:()=>origin+"/",
+    async waitForFunction(callback){
+      const result=callback();
+      assert.equal(result,true,"rendered control did not match state "+JSON.stringify(state));
+      phase++;
+    },
+    async evaluate(callback){
+      assert.match(String(callback),/dispatchEvent/);
+      await requestState();
+    },
+    async close(){},
+  };
+  const context={async newPage(){return page;}};
+  async function requestState(){
+    assert.equal(typeof handler,"function");
+    await handler({
+      request:()=>({method:()=>"GET",url:()=>origin+"/api/human-attention"}),
+      fulfill:async({status,body})=>{
+        state={status,body:JSON.parse(body)};
+      },
+      abort:async()=>{throw Error("unexpected abort");},
+    });
+  }
+  globalThis.document={querySelector(selector){
+    selectors.push(selector);
+    const pending=state?.body?.status==="ok"&&state.body.count===2;
+    const unavailable=state?.status===503||
+      (state?.body?.status==="ok"&&state.body.count===-1);
+    if(selector==='a.topbarAttention.active[href="/gates"]'&&pending)
+      return {textContent:"2 decisões pendentes",hasAttribute:()=>false};
+    if(selector===".desktopSidebarContent .humanAttentionCount"&&pending)
+      return {textContent:"2"};
+    if(selector==='.topbarAttention[role="status"]'&&unavailable)
+      return {textContent:"Aprovações indisponíveis"};
+    return null;
+  }};
+  try{
+    const result=await verifyConsoleStatesReadOnly({
+      context,baseUrl:origin,runId:43138746238,
+      sourceCommit:source,targetCommit:target,
+    });
+    assert.deepEqual(result.checks,{pending:true,unavailable:true,cleared:true,malformed:true});
+    assert.equal(result.visualAuditPassed,false);
+    assert.equal(result.actualBackendStateCertified,false);
+    assert.equal(phase,4);
+    assert.ok(selectors.includes('a.topbarAttention.active[href="/gates"]'));
+    assert.ok(!selectors.some(s=>s.includes("aria-label=") && s.includes("aprovações humanas")));
+  }finally{
+    if(savedDocument===undefined)delete globalThis.document;
+    else globalThis.document=savedDocument;
+  }
+});
