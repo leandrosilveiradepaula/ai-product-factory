@@ -267,6 +267,17 @@ jobs:
           path: block1-b3-console-state-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # This diagnostic is created only for an axe incomplete result. It has a
+      # fixed allowlisted schema and retains technical rendering facts only;
+      # it never makes an incomplete audit pass.
+      - name: Retain sanitized WCAG incomplete diagnostic
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-wcag-incomplete-diagnostic-${{ github.run_id }}
+          path: block1-b3-wcag-incomplete-diagnostic.json
+          retention-days: 7
+          if-no-files-found: ignore
       # Complete source-verified B3 inventory/responsiveness receipt only.
       # This is never produced when hydration, route, keyboard or viewport
       # checks fail; final workflow success and CP captured registry are also
