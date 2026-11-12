@@ -32,6 +32,9 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.independent_console_accessibility_evidence import (
+    verify_console_accessibility, ConsoleAccessibilityBlocked,
+)
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries,
 )
@@ -102,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-executed-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
+    parser.add_argument("--verify-independent-accessibility", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
@@ -153,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             status = row.get("status") if isinstance(row, dict) else None
             allowed = ({"passed", "partial"} if args.verify_complete_console_surface
                        and proof is not None
-                       and criterion in ("surface_inventory", "responsive")
+                       and criterion in ("surface_inventory", "responsive", "accessibility")
                        else {"partial"})
             if status not in allowed or row.get("evidence") != list(proof.evidence):
                 raise CertificationEvidenceError("authenticated Console partial evidence is incomplete")
@@ -222,7 +226,8 @@ def main(argv: list[str] | None = None) -> int:
                 if not isinstance(item, dict) or item.get("status") != "passed" or item.get("evidence") != list(verified.evidence):
                     raise CertificationEvidenceError("complete Console baseline proof inconsistent")
             accessibility = manifest.get("criteria", {}).get("product_experience", {}).get("accessibility")
-            if (not isinstance(accessibility, dict) or accessibility.get("status") != "partial"
+            if (not isinstance(accessibility, dict)
+                    or accessibility.get("status") not in ("partial", "passed")
                     or accessibility.get("evidence") != list(full_surface_proof.bounded_accessibility_evidence())):
                 raise CertificationEvidenceError("complete Console accessibility baseline inconsistent")
         elif any(
@@ -230,6 +235,31 @@ def main(argv: list[str] | None = None) -> int:
             for k in ("surface_inventory", "responsive")
         ):
             raise CertificationEvidenceError("complete Console proof cannot be partial positive")
+
+    accessibility_proof = None
+    if args.verify_independent_accessibility:
+        if not args.require_verified_baseline or full_surface_proof is None:
+            raise CertificationEvidenceError("accessibility requires complete Console source proof")
+        accessibility_proof = verify_console_accessibility(
+            repository=args.repository, assessed_commit=args.assessed_commit,
+            surface=full_surface_proof, github_get=github_get,
+            artifact_reader=lambda repository, artifact_id, artifact_file: read_verified_artifact_json(
+                repository=repository, artifact_id=artifact_id,
+                artifact_file=artifact_file, token=token),
+        )
+        accessibility = manifest.get("criteria", {}).get("product_experience", {}).get("accessibility")
+        if accessibility_proof is None:
+            if not isinstance(accessibility, dict) or accessibility.get("status") != "partial" or "independent_accessibility_evidence" in evidence:
+                raise CertificationEvidenceError("unverified accessibility PASS attempted")
+        else:
+            criterion_proof = accessibility_proof.criterion()
+            if (not isinstance(accessibility, dict)
+                    or accessibility.get("status") != "passed"
+                    or accessibility.get("evidence") != list(criterion_proof.evidence)
+                    or evidence.get("independent_accessibility_evidence") != accessibility_proof.receipt()):
+                raise CertificationEvidenceError("accessibility proof changed before persistence")
+    elif manifest.get("criteria", {}).get("product_experience", {}).get("accessibility", {}).get("status") == "passed":
+        raise CertificationEvidenceError("accessibility PASS without independent verification")
 
     if args.verify_native_v2_traceability and not args.require_verified_baseline:
         raise CertificationEvidenceError("native V2 proof requires independent conservative baseline")
@@ -394,6 +424,8 @@ def main(argv: list[str] | None = None) -> int:
             return requirements_proof
         if domain == "product_experience" and criterion in ("surface_inventory", "responsive"):
             return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
+        if (domain, criterion) == ("product_experience", "accessibility"):
+            return accessibility_proof.criterion() if accessibility_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -401,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]
