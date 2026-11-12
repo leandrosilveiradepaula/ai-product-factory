@@ -3,10 +3,10 @@ from pathlib import Path
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
-CONTROL=(ROOT/"apps/console/lib/control-plane.ts").read_text()
-READER=(ROOT/"apps/console/lib/operational-health-inventory.ts").read_text()
-WORKFLOW=(ROOT/".github/workflows/console.yml").read_text()
-NODE_TEST=(ROOT/"scripts/test_console_operational_health.cjs").read_text()
+CONTROL=(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8")
+READER=(ROOT/"apps/console/lib/operational-health-inventory.ts").read_text(encoding="utf-8")
+WORKFLOW=(ROOT/".github/workflows/console.yml").read_text(encoding="utf-8")
+NODE_TEST=(ROOT/"scripts/test_console_operational_health.cjs").read_text(encoding="utf-8")
 
 class OperationalHealthConsoleContract(unittest.TestCase):
     def test_full_paginated_inventory_is_used_in_operator_ui(self):

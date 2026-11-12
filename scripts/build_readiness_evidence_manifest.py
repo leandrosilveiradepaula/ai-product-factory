@@ -55,6 +55,18 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
 )
+from ai_product_factory.independent_console_accessibility_evidence import (
+    verify_console_accessibility as verify_console_accessibility_fn, ConsoleAccessibilityBlocked,
+)
+from ai_product_factory.independent_live_console_boundary_evidence import (
+    LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries as verify_live_console_boundaries_fn,
+)
+from ai_product_factory.independent_real_journey_blocker_evidence import (
+    RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers as verify_real_journey_blockers_fn,
+)
+from ai_product_factory.independent_isolated_console_auth_evidence import (
+    IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth as verify_isolated_console_auth_fn,
+)
 from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import (
     RequirementsInventoryBlocked, verify_requirements_inventory as verify_requirements_inventory_fn,
@@ -85,6 +97,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             reuse_historical_authenticated_console_evidence: bool = False,
                             control_plane_get=None,
                             verify_complete_console_surface: bool = False,
+                            verify_independent_accessibility: bool = False,
+                            verify_live_console_boundaries: bool = False,
+                            verify_real_journey_blockers: bool = False,
+                            verify_isolated_console_auth: bool = False,
                             artifact_reader=None,
                             source_event=None) -> dict:
     manifest = conservative_verified_manifest(
@@ -214,6 +230,20 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             entry = manifest["criteria"]["test_strategy"]["regression_gates"]
             entry.update(status="partial",
                          reason="independent regression gate evidence blocked: " + regression_blocker)
+    isolated_auth_proof = None
+    if verify_isolated_console_auth and regression_proof is not None:
+        try:
+            isolated_auth_proof = verify_isolated_console_auth_fn(
+                repository=repository, assessed_commit=sha, regression_proof=regression_proof)
+        except (IsolatedConsoleAuthEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            isolated_auth_proof = None
+    if isolated_auth_proof is not None:
+        for criterion in ("authn_authz", "data_access_boundaries"):
+            manifest["criteria"]["security"][criterion].update(
+                status="partial", verification_state="executed",
+                reason="independent isolated PostgreSQL role, RLS and privileged-RPC negatives reverified",
+                evidence=isolated_auth_proof.evidence())
     recovery_proof = None
     if verify_recovery_alerting:
         try:
@@ -305,6 +335,76 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             item.update(status="passed", verification_state="observed",
                         reason="independent complete authenticated browser audit reverified",
                         evidence=list(full_surface_proof.criterion(criterion).evidence))
+        manifest["criteria"]["product_experience"]["accessibility"].update(
+            status="partial", verification_state="observed",
+            reason="independent exact-SHA authenticated browser keyboard and semantic audit is bounded",
+            evidence=list(full_surface_proof.bounded_accessibility_evidence()))
+
+    accessibility_proof = None
+    if verify_independent_accessibility and full_surface_proof is not None:
+        if artifact_reader is None:
+            raise ConsoleAccessibilityBlocked("b3_a11y_reader_unavailable")
+        # An absent historical witness remains PARTIAL. A present but malformed
+        # artifact fails closed instead of silently downgrading a forgery.
+        accessibility_proof = verify_console_accessibility_fn(
+            repository=repository, assessed_commit=sha,
+            surface=full_surface_proof, github_get=github_get,
+            artifact_reader=artifact_reader,
+        )
+        if accessibility_proof is not None:
+            claim = accessibility_proof.criterion()
+            manifest["criteria"]["product_experience"]["accessibility"].update(
+                status="passed", verification_state="observed",
+                reason="independent authenticated Chromium WCAG A/AA, contrast and keyboard audit",
+                evidence=list(claim.evidence),
+            )
+
+    # B2 and fixture-driven B3 observations are independently authenticated,
+    # but intentionally remain PARTIAL.  They prove real negative ingress
+    # behavior and bounded rendered transitions, never full JWT/tenant or
+    # backend-state coverage.
+    live_boundaries_proof = None
+    if verify_live_console_boundaries and authenticated_console_proof is not None:
+        try:
+            if artifact_reader is None:
+                raise LiveConsoleBoundaryEvidenceBlocked("live_source_reader_unavailable")
+            live_boundaries_proof = verify_live_console_boundaries_fn(
+                repository=repository, assessed_commit=sha,
+                authenticated_capture=authenticated_console_proof,
+                github_get=github_get, artifact_reader=artifact_reader,
+            )
+        except (LiveConsoleBoundaryEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            live_boundaries_proof = None
+    if live_boundaries_proof is not None:
+        b2_evidence = ["https://github.com/" + repository + "/actions/runs/"
+                       + str(live_boundaries_proof.run_id) + "#sha=" + sha]
+        for criterion in ("authn_authz", "data_access_boundaries"):
+            manifest["criteria"]["security"][criterion].update(
+                status="partial", verification_state="executed",
+                reason="independent exact-SHA live Console negative boundary witness is bounded",
+                evidence=b2_evidence,
+            )
+        # A real backend observation and fixture transition suite are both
+        # required for even bounded partial state evidence.  Either alone
+        # remains useful diagnostics, but cannot be presented as state proof.
+        if (live_boundaries_proof.b3_artifact_id is not None
+                and live_boundaries_proof.b3_live_artifact_id is not None):
+            manifest["criteria"]["product_experience"]["states"].update(
+                status="partial", verification_state="observed",
+                reason="independent exact-SHA authenticated UI fixture witness; real backend states remain required",
+                evidence=b2_evidence,
+            )
+
+    journey_blocker_proof = None
+    if verify_real_journey_blockers:
+        try:
+            if control_plane_get is None:
+                raise RealJourneyBlockerEvidenceBlocked("real_journey_source_reader_unavailable")
+            journey_blocker_proof = verify_real_journey_blockers_fn(control_plane_get)
+        except (RealJourneyBlockerEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            journey_blocker_proof = None
 
     # This is a BOUNDED static inventory only. It never certifies runtime
     # reachability, authorization, E2E or release. The exact-SHA CI check is
@@ -411,6 +511,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return requirements_proof
         if domain == "product_experience" and criterion in ("surface_inventory", "responsive"):
             return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
+        if (domain, criterion) == ("product_experience", "accessibility"):
+            return accessibility_proof.criterion() if accessibility_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -418,7 +520,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -444,6 +546,14 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         "product_ready": certification.assessment.ready,
         **({"authenticated_console_evidence": authenticated_console_proof.receipt()}
            if authenticated_console_proof is not None else {}),
+        **({"independent_accessibility_evidence": accessibility_proof.receipt()}
+           if accessibility_proof is not None else {}),
+        **({"live_console_boundary_evidence": live_boundaries_proof.receipt()}
+           if live_boundaries_proof is not None else {}),
+        **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
+           if journey_blocker_proof is not None else {}),
+        **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
+           if isolated_auth_proof is not None else {}),
     }
 
 
@@ -463,6 +573,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-static-simulation-inventory", action="store_true")
     parser.add_argument("--authenticated-console-run-id", type=int)
     parser.add_argument("--verify-complete-console-surface", action="store_true")
+    parser.add_argument("--verify-independent-accessibility", action="store_true")
+    parser.add_argument("--verify-live-console-boundaries", action="store_true")
+    parser.add_argument("--verify-real-journey-blockers", action="store_true")
+    parser.add_argument("--verify-isolated-console-auth", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -474,10 +588,13 @@ def main(argv: list[str] | None = None) -> int:
     token = resolve_github_token(repo)
     github_get = lambda path: github_read(token, path)
     control_plane_get = (SupabaseAdmissionReader()._get
-                         if args.reuse_historical_authenticated_console_evidence or args.verify_complete_console_surface else None)
-    artifact_reader = (lambda repository, artifact_id: read_verified_artifact_json(
-        repository=repository, artifact_id=artifact_id, token=token
-    )) if args.verify_complete_console_surface else None
+                         if (args.reuse_historical_authenticated_console_evidence
+                             or args.verify_complete_console_surface
+                             or args.verify_real_journey_blockers) else None)
+    artifact_reader = (lambda repository, artifact_id, **kwargs: read_verified_artifact_json(
+        repository=repository, artifact_id=artifact_id, token=token, **kwargs
+    )) if (args.verify_complete_console_surface or args.verify_live_console_boundaries
+           or args.verify_independent_accessibility) else None
     report = build_verified_baseline(
         repository=repo, sha=sha, github_get=github_get,
         verify_native_v2=args.verify_native_v2_traceability,
@@ -494,6 +611,10 @@ def main(argv: list[str] | None = None) -> int:
         reuse_historical_authenticated_console_evidence=args.reuse_historical_authenticated_console_evidence,
         control_plane_get=control_plane_get,
         verify_complete_console_surface=args.verify_complete_console_surface,
+        verify_independent_accessibility=args.verify_independent_accessibility,
+        verify_live_console_boundaries=args.verify_live_console_boundaries,
+        verify_real_journey_blockers=args.verify_real_journey_blockers,
+        verify_isolated_console_auth=args.verify_isolated_console_auth,
         artifact_reader=artifact_reader,
         source_event=event,
     )

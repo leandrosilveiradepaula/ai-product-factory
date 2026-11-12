@@ -3,8 +3,8 @@ from pathlib import Path
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
-CODE=(ROOT/"apps/console/lib/control-plane.ts").read_text()
-PAGE=(ROOT/"apps/console/app/queue/page.tsx").read_text()
+CODE=(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8")
+PAGE=(ROOT/"apps/console/app/queue/page.tsx").read_text(encoding="utf-8")
 QUEUE=CODE.split("export async function getWorkQueue",1)[1].split("export type EvaluationRow",1)[0]
 
 class QueueVisibilityTests(unittest.TestCase):

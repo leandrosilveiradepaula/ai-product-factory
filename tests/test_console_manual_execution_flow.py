@@ -7,11 +7,11 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROL = (ROOT / "apps/console/lib/control-plane.ts").read_text()
-PAGE = (ROOT / "apps/console/app/projects/[key]/page.tsx").read_text()
-CONFIRM = (ROOT / "apps/console/app/projects/[key]/control-confirm.tsx").read_text()
-WAKE = (ROOT / "apps/console/lib/intake-worker-wake.ts").read_text()
-RUNNER = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
+CONTROL = (ROOT / "apps/console/lib/control-plane.ts").read_text(encoding="utf-8")
+PAGE = (ROOT / "apps/console/app/projects/[key]/page.tsx").read_text(encoding="utf-8")
+CONFIRM = (ROOT / "apps/console/app/projects/[key]/control-confirm.tsx").read_text(encoding="utf-8")
+WAKE = (ROOT / "apps/console/lib/intake-worker-wake.ts").read_text(encoding="utf-8")
+RUNNER = (ROOT / ".github/workflows/autonomous-runner.yml").read_text(encoding="utf-8")
 
 
 class ManualProjectControlConsoleContract(unittest.TestCase):

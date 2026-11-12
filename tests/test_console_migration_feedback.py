@@ -2,13 +2,13 @@ from pathlib import Path
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
-PAGE=(ROOT/"apps/console/app/gates/page.tsx").read_text()
-PENDING=(ROOT/"apps/console/app/gates/gate-decision-form.tsx").read_text()
-OUTCOME=(ROOT/"apps/console/lib/migration-feedback.ts").read_text()
-BANNER=(ROOT/"apps/console/app/gates/gate-action-success-banner.tsx").read_text()
-CSS=(ROOT/"apps/console/app/globals.css").read_text()
-OPERATOR=(ROOT/"apps/console/lib/migration-operator.ts").read_text()
-CONSOLE_CI=(ROOT/".github/workflows/console.yml").read_text()
+PAGE=(ROOT/"apps/console/app/gates/page.tsx").read_text(encoding="utf-8")
+PENDING=(ROOT/"apps/console/app/gates/gate-decision-form.tsx").read_text(encoding="utf-8")
+OUTCOME=(ROOT/"apps/console/lib/migration-feedback.ts").read_text(encoding="utf-8")
+BANNER=(ROOT/"apps/console/app/gates/gate-action-success-banner.tsx").read_text(encoding="utf-8")
+CSS=(ROOT/"apps/console/app/globals.css").read_text(encoding="utf-8")
+OPERATOR=(ROOT/"apps/console/lib/migration-operator.ts").read_text(encoding="utf-8")
+CONSOLE_CI=(ROOT/".github/workflows/console.yml").read_text(encoding="utf-8")
 
 class VerifiedMigrationFeedbackTests(unittest.TestCase):
  def test_confirmation_is_not_derived_from_user_supplied_query(self):
@@ -55,8 +55,8 @@ class VerifiedMigrationFeedbackTests(unittest.TestCase):
   self.assertIn("catch{",OUTCOME)
   self.assertIn("node ../../scripts/test_console_migration_interaction.cjs",CONSOLE_CI)
   self.assertIn("node --test ../../scripts/test_console_migration_browser.cjs",CONSOLE_CI)
-  proof=(ROOT/"scripts/test_console_migration_browser.cjs").read_text()
-  component=(ROOT/"scripts/fixtures/migration-browser-entry.tsx").read_text()
+  proof=(ROOT/"scripts/test_console_migration_browser.cjs").read_text(encoding="utf-8")
+  component=(ROOT/"scripts/fixtures/migration-browser-entry.tsx").read_text(encoding="utf-8")
   self.assertIn('getByRole("button",{name:"Aplicar migration em produção"})',proof)
   self.assertIn('window.__factoryMigrationProof.complete("verified")',proof)
   self.assertIn('window.__factoryMigrationProof.complete("already_applied")',proof)

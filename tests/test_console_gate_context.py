@@ -9,7 +9,7 @@ ANSWER=ROOT/"apps"/"console"/"app"/"gates"/"planning-decision-answer.tsx"
 
 class ConsoleGateContextTests(unittest.TestCase):
     def test_structured_planning_reasons_are_rendered_as_decisions(self):
-        text=PAGE.read_text()
+        text=PAGE.read_text(encoding="utf-8")
         self.assertIn("function GateReasons",text)
         self.assertIn("reason.question",text)
         self.assertIn("reason.why_needed",text)
@@ -19,14 +19,14 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertIn("<GateReasons value={g.reasons}/>",text)
 
     def test_planning_answer_uses_one_guided_field_per_decision(self):
-        text=PAGE.read_text()
+        text=PAGE.read_text(encoding="utf-8")
         self.assertIn('name={`decision_response_${index}`}',text)
         self.assertIn('name={`decision_key_${index}`}',text)
         self.assertIn("O que você precisa decidir",text)
         self.assertIn("Por que isso é necessário",text)
         self.assertIn("Detalhes técnicos",text)
         self.assertIn("Registrar respostas e continuar",text)
-        answer=ANSWER.read_text()
+        answer=ANSWER.read_text(encoding="utf-8")
         self.assertIn("Sua resposta",answer)
         self.assertIn("Sugestão da Factory",answer)
         self.assertIn("Usar sugestão",answer)
@@ -34,38 +34,38 @@ class ConsoleGateContextTests(unittest.TestCase):
         self.assertIn("required",answer)
 
     def test_server_action_composes_all_planning_answers(self):
-        text=PAGE.read_text()
+        text=PAGE.read_text(encoding="utf-8")
         self.assertIn('formData.get(`decision_key_${index}`)',text)
         self.assertIn('formData.get(`decision_response_${index}`)',text)
         self.assertIn('responses.push(`${index+1}. ${key}',text)
         self.assertIn('responses.join("\\n\\n")',text)
 
     def test_only_live_awaiting_human_gate_is_actionable(self):
-        control=CONTROL.read_text()
+        control=CONTROL.read_text(encoding="utf-8")
         self.assertIn('runStatus==="awaiting_human"',control)
         self.assertIn('taskStatus==="awaiting_human"',control)
         self.assertIn("actionable:boolean",control)
-        page=PAGE.read_text()
+        page=PAGE.read_text(encoding="utf-8")
         self.assertIn('g.status==="pending"&&g.actionable',page)
         self.assertIn('history.map(g=><article className="gateHistoryItem"',page)
         self.assertIn('label={g.status==="pending"?"substituído":undefined}',page)
 
     def test_stale_pending_gates_do_not_count_as_pending(self):
-        text=PAGE.read_text()
+        text=PAGE.read_text(encoding="utf-8")
         self.assertIn('const pending=gates.filter(g=>g.status==="pending"&&g.actionable)',text)
         self.assertIn("const history=gates.filter",text)
         self.assertIn("pending.map(g=><article",text)
         self.assertIn('details className="gateHistory"',text)
 
     def test_gate_inbox_separates_actionable_work_from_history(self):
-        text=PAGE.read_text()
+        text=PAGE.read_text(encoding="utf-8")
         self.assertIn("pending.map(g=><article",text)
         self.assertIn('details className="gateHistory"',text)
         self.assertIn("gates resolvidos ou substituídos",text)
         self.assertNotIn("orderedGates.map",text)
 
     def test_gate_cards_show_human_context_before_technical_ids(self):
-        text=PAGE.read_text()
+        text=PAGE.read_text(encoding="utf-8")
         self.assertIn('className="gateContextHero"',text)
         self.assertIn("Abrir projeto",text)
         self.assertIn("Ver execução",text)

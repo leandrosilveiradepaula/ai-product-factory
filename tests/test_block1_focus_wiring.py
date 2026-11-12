@@ -29,7 +29,7 @@ class FocusGateWiring(unittest.TestCase):
         self.assertNotIn("POST /repos", body)
 
     def test_agent_instructions_and_pr_template_carry_same_boundary(self):
-        agents = (ROOT / "AGENTS.md").read_text()
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         template = (ROOT / ".github/PULL_REQUEST_TEMPLATE.md").read_text()
         contract = (ROOT / "docs/BLOCK1_FOCUS_CONTRACT.md").read_text()
         self.assertIn("CONTROLE EXECUTÁVEL DE FOCO B1–B4", agents)

@@ -198,7 +198,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
     def test_cross_repo_github_app_runtime_is_repository_scoped_and_fail_closed(self):
         auth=(ROOT/"src/ai_product_factory/github_auth.py").read_text()
         app=(ROOT/"src/ai_product_factory/github_app_runtime.py").read_text()
-        operations=(ROOT/"docs/OPERATIONS.md").read_text()
+        operations=(ROOT/"docs/OPERATIONS.md").read_text(encoding="utf-8")
         edge=(ROOT/"supabase/functions/factory-runtime-control-plane/index.ts").read_text()
         self.assertIn("resolve_github_app_installation_token",auth)
         self.assertIn('cfg.url.rstrip("/") + "/github-app/token"',app)
@@ -503,7 +503,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertIn("requireConsoleOperator()", control_plane)
 
         client_surface = "\n".join(
-            path.read_text()
+            path.read_text(encoding="utf-8")
             for path in (ROOT / "apps/console/app").rglob("*.tsx")
             if path.name not in {"auth-actions.tsx"}
         )
@@ -511,7 +511,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", client_surface)
         self.assertNotIn("OPENAI_API_KEY", client_surface)
         self.assertNotIn("FACTORY_GITHUB_TOKEN", client_surface)
-        project_page = (ROOT / "apps/console/app/projects/[key]/page.tsx").read_text()
+        project_page = (ROOT / "apps/console/app/projects/[key]/page.tsx").read_text(encoding="utf-8")
         self.assertIn("Estado reconciliado", project_page)
         self.assertIn("Lacunas restantes", project_page)
         self.assertIn("Evidências confirmadas", project_page)
@@ -733,8 +733,8 @@ class FactoryAcceptanceTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", workflow)
 
     def test_console_exposes_database_readiness_without_secret_references(self):
-        detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
-        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
+        detail=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text(encoding="utf-8")
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8")
         self.assertIn("getProjectDatabases",detail)
         self.assertIn("Aguardando conexão",detail)
         self.assertIn("Somente leitura",detail)
@@ -807,7 +807,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
         vercel = (ROOT / "apps/console/vercel.json").read_text()
         workflow = (ROOT / ".github/workflows/console.yml").read_text()
         promote = (ROOT / ".github/workflows/promote-preview-candidate.yml").read_text()
-        operations = (ROOT / "docs/OPERATIONS.md").read_text()
+        operations = (ROOT / "docs/OPERATIONS.md").read_text(encoding="utf-8")
 
         self.assertIn('"**": false', vercel)
         self.assertIn('"main": true', vercel)
@@ -1268,9 +1268,9 @@ if __name__ == "__main__":
 
 class OrchestrationConsoleAcceptanceTests(unittest.TestCase):
     def test_console_orchestration_surface_is_observational_and_factual(self):
-        page=(ROOT/"apps/console/app/orchestration/page.tsx").read_text()
-        control=(ROOT/"apps/console/lib/control-plane.ts").read_text()
-        nav=(ROOT/"apps/console/app/nav.tsx").read_text()
+        page=(ROOT/"apps/console/app/orchestration/page.tsx").read_text(encoding="utf-8")
+        control=(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8")
+        nav=(ROOT/"apps/console/app/nav.tsx").read_text(encoding="utf-8")
         self.assertIn("Orquestração",nav)
         self.assertIn("getOrchestrationOverview",control)
         for table in (

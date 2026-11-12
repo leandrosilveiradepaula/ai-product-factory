@@ -55,7 +55,7 @@ class AtomicProjectStartTests(unittest.TestCase):
   self.assertNotIn("VERCEL_GIT_PREVIOUS_SHA-",candidate)
 
  def test_production_migration_gate_is_explicit(self):
-  ops=(ROOT/"docs/OPERATIONS.md").read_text()
+  ops=(ROOT/"docs/OPERATIONS.md").read_text(encoding="utf-8")
   self.assertIn("before merging or deploying the Console change",ops)
   self.assertIn("human gate",ops.lower())
 

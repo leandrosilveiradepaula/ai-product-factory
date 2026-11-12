@@ -3,9 +3,9 @@ from pathlib import Path
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
-PROJECT=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
-CONTROL=(ROOT/"apps/console/lib/control-plane.ts").read_text()
-ATTENTION=(ROOT/"apps/console/app/api/human-attention/route.ts").read_text()
+PROJECT=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text(encoding="utf-8")
+CONTROL=(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8")
+ATTENTION=(ROOT/"apps/console/app/api/human-attention/route.ts").read_text(encoding="utf-8")
 
 class OperatorBlockerVisibilityTests(unittest.TestCase):
  def test_budget_exhausted_has_a_project_specific_next_action(self):

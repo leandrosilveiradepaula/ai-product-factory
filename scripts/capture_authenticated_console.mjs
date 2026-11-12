@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
+import AxeBuilder from "@axe-core/playwright";
+import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit} from "./console_wcag_audit.mjs";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
+import {verifyLiveConsoleStateReadOnly} from "./verify_block1_b3_live_console_state.mjs";
 import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -100,6 +103,19 @@ try {
     scope:b2Witness.scope,authorizationBoundaryCertified:false,
     visualAuditPassed:false}));
 
+  // Preserve one real, authenticated state observation separately from the
+  // synthetic transition suite below.  The witness has no body, project key,
+  // cookie, or count; it cannot overstate complete backend-state coverage.
+  const b3LiveStateWitness=await verifyLiveConsoleStateReadOnly({
+    context,baseUrl:consoleUrl,runId,
+    sourceCommit:workflowSourceCommit,targetCommit,
+  });
+  await fs.writeFile("block1-b3-live-state-witness.json",
+    JSON.stringify(b3LiveStateWitness,null,2),{mode:0o600,flag:"wx"});
+  console.log(JSON.stringify({status:"b3_live_state_observed",
+    runId:b3LiveStateWitness.runId,targetCommit:b3LiveStateWitness.targetCommit,
+    state:b3LiveStateWitness.state,countClass:b3LiveStateWitness.countClass,
+    fullUserExperienceCertified:false}));
 
   // Authenticate real React UI. Only the GET attention endpoint is replaced
   // with read-only failure-state fixtures. Do not certify real backend state.
@@ -128,6 +144,11 @@ try {
   badResponses.length=0;
 
   const routes = CONSOLE_ROUTES;
+  const wcagScans=[];
+  const scanCurrentPage=async (route,viewport)=>{
+    const results=await new AxeBuilder({page}).withTags([...WCAG_TAGS]).analyze();
+    wcagScans.push(sanitizeAxeScan({results,route,viewport}));
+  };
 
   const captured = [];
   const accessibilityRoutes = [];
@@ -147,6 +168,7 @@ try {
     const metrics=await page.evaluate(collectAccessibilitySnapshot);
     accessibilityRoutes.push({route:route.name,
       ...verifyAccessibilitySnapshot(metrics,route.name)});
+    await scanCurrentPage(route.name,"desktop");
 
   }
 
@@ -263,6 +285,7 @@ try {
   const detailResponse = await page.goto(detailUrl.toString(), {waitUntil:"networkidle",timeout:60000});
   if (!detailResponse || detailResponse.status() >= 400) throw new Error("lifecycle detail unavailable");
   const lifecycleDesktop = await readProjectControl();
+  await scanCurrentPage("project-detail","detail-desktop");
   await page.unroute(mutationGuardPattern,projectMutationGuard);
   if (blockedProjectMutations.length) throw new Error("blocked project mutation request in read-only audit");
   interactionEvidence.projectLifecycleReadOnly = {
@@ -339,6 +362,7 @@ try {
     // change the accessibility tree. No text or operator data are retained.
     const mobileAccessibility=verifyAccessibilitySnapshot(
       await page.evaluate(collectAccessibilitySnapshot),route.name);
+    await scanCurrentPage(route.name,"mobile");
     // Executed layout and touch readability, not screenshots alone. Record
     // metrics only: never include operator content, cookie or form fields.
     const readability = await page.evaluate(() => {
@@ -387,6 +411,7 @@ try {
     if (route.path === "/") {
       await page.screenshot({path:path.join(outDir,"overview-mobile-menu.png"),fullPage:true});
     }
+    await scanCurrentPage(route.name,"mobile-menu");
     await menuSummary.click();
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
     interactionEvidence.mobile.push({...route,status:response.status(),layout,readability,quickNavHrefs,expandedLayout,accessibility:mobileAccessibility});
@@ -400,6 +425,7 @@ try {
     throw new Error("mobile project detail unavailable");
   }
   const lifecycleMobile = await readProjectControl();
+  await scanCurrentPage("project-detail","detail-mobile");
   const mobileDetailLayout = await page.evaluate(() => ({
     innerWidth:window.innerWidth,
     scrollWidth:document.documentElement.scrollWidth,
@@ -471,6 +497,12 @@ try {
     }));
     throw new Error(`browser errors: console=${consoleErrors.length} page=${pageErrors.length} failedResources=${badResponses.length}`);
   }
+
+  const wcag=finishAxeAudit({scans:wcagScans,runId,
+    sourceCommit:workflowSourceCommit,targetCommit,
+    keyboardSkip:interactionEvidence.accessibility.keyboardSkip});
+  await fs.writeFile("block1-b3-wcag-accessibility-witness.json",
+    JSON.stringify(wcag,null,2),{mode:0o600,flag:"wx"});
 
   // Only after a complete, error-free authenticated browser audit. The
   // artifact is a fixed, nonpersonal route/viewport receipt; screenshots

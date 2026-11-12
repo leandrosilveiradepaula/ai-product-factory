@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {verifyAccessibilitySnapshot} from "./console_accessibility_contract.mjs";
+import {sanitizeAxeScan,finishAxeAudit} from "./console_wcag_audit.mjs";
+import {CONSOLE_ROUTES} from "./console_surface_coverage_contract.mjs";
 
 const good = Object.freeze({
   language:"pt-BR",hasTitle:true,mainCount:1,mainTarget:true,
@@ -45,4 +47,26 @@ test("reject malformed or ambiguous browser data",()=>{
     assert.throws(()=>verifyAccessibilitySnapshot(snapshot,"overview"),/accessibility:/);
   }
   assert.throws(()=>verifyAccessibilitySnapshot(good,"../../secret"),/invalid_route/);
+});
+
+test("WCAG result must come from complete 44 live scans with contrast",()=>{
+  const result={violations:[],incomplete:[],
+    passes:[{id:"color-contrast",nodes:[{}]},{id:"label",nodes:[{}]}]};
+  const scan=(route,viewport)=>sanitizeAxeScan({results:result,route,viewport});
+  const names=CONSOLE_ROUTES.map(r=>r.name);
+  const scans=[...names.map(n=>scan(n,"desktop")),
+    ...names.map(n=>scan(n,"mobile")),...names.map(n=>scan(n,"mobile-menu")),
+    scan("project-detail","detail-desktop"),scan("project-detail","detail-mobile")];
+  const opts={scans,runId:99,sourceCommit:"a".repeat(40),targetCommit:"b".repeat(40),
+    keyboardSkip:{reachedWithTab:true,visibleOnFocus:true,landedOnMain:true}};
+  const audited=finishAxeAudit(opts);
+  assert.equal(audited.contrastNodes,44);
+  assert.equal(audited.fullWcagCertified,false);
+  assert.deepEqual(audited.routeNames,names);
+  assert.throws(()=>finishAxeAudit({...opts,scans:scans.slice(1)}),/coverage_incomplete/);
+  for(const bad of [
+    {...result,violations:[{id:"color-contrast",nodes:[{html:"private"}]}]},
+    {...result,incomplete:[{id:"color-contrast"}]},
+    {...result,passes:[{id:"label",nodes:[{}]}]},
+  ])assert.throws(()=>sanitizeAxeScan({results:bad,route:"overview",viewport:"desktop"}),/wcag_/);
 });

@@ -89,6 +89,8 @@ class CompleteConsoleEvidenceTests(unittest.TestCase):
     def test_complete_receipt_approves_only_surface_inventory_and_responsive(self):
         result=self.verify()
         self.assertEqual(result.receipt()["certifies"],["surface_inventory","responsive"])
+        self.assertIn(SHA,result.bounded_accessibility_evidence()[0])
+        self.assertIn("accessibility",result.receipt()["does_not_certify"])
         for criterion in ("surface_inventory","responsive"):
             v=result.criterion(criterion)
             self.assertEqual(v.criterion,criterion)

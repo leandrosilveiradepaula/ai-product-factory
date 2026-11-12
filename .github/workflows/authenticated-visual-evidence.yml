@@ -31,7 +31,9 @@ jobs:
     # Playwright --with-deps stalled in APT for the full 12-minute budget.
     runs-on: ubuntu-24.04
     environment: openai-api
-    timeout-minutes: 12
+    # 44 authenticated axe-core scans add work to the existing multi-route capture.
+    # Retain the broker's fixed two-hour expiry and mandatory cleanup.
+    timeout-minutes: 22
     env:
       FACTORY_VISUAL_BROKER_URL: "https://fjplmxfcshhbmzgvyqlm.supabase.co/functions/v1/factory-visual-evidence-broker"
       FACTORY_VISUAL_EVIDENCE_DIR: visual-evidence
@@ -168,7 +170,7 @@ jobs:
       - name: Install pinned Playwright browser
         shell: bash
         run: |
-          npm install --no-save --no-package-lock playwright@1.63.0
+          npm install --no-save --no-package-lock playwright@1.63.0 @axe-core/playwright@4.14.0
           npx playwright install --with-deps chromium
       - name: Verify pinned Chromium launches offline before provisioning an operator
         shell: bash
@@ -245,6 +247,16 @@ jobs:
           path: block1-b2-live-boundary-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # This is a single, authenticated read of the real backend endpoint.
+      # It retains no body, project key or count and cannot certify all states.
+      - name: Retain bounded B3 live backend-state observation
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-live-state-${{ github.run_id }}
+          path: block1-b3-live-state-witness.json
+          retention-days: 7
+          if-no-files-found: ignore
       # Only fixed-schema UI state observations; not real backend-state proof.
       # Even if this artifact exists, a subsequent B3 failure fails the job.
       - name: Retain bounded B3 state witness even on later hydration failure
@@ -259,6 +271,14 @@ jobs:
       # This is never produced when hydration, route, keyboard or viewport
       # checks fail; final workflow success and CP captured registry are also
       # required by the independent certifier.
+      - name: Preserve executed WCAG and keyboard accessibility witness
+        if: steps.capture_console.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-wcag-accessibility-${{ github.run_id }}
+          path: block1-b3-wcag-accessibility-witness.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Preserve completed authenticated B3 surface proof
         if: steps.capture_console.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

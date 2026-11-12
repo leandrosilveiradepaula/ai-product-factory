@@ -37,6 +37,7 @@ test("retain only strict B2 facts, not secrets, browser content or fake B3 succe
   assert.equal(receipt.authorizationBoundaryCertified,false);
   assert.equal(receipt.credentialOrUserDataRetained,false);
   assert.equal(receipt.productionWrites,0);
+  assert.equal(receipt.paidCalls,0);
 });
 test("reject incomplete or unsafe B2 observations",()=>{
   for(const changed of [

@@ -40,6 +40,7 @@ export function safeB2Witness({observation,runId,sourceCommit,targetCommit}){
     visualAuditPassed:false,
     credentialOrUserDataRetained:false,
     productionWrites:0,
+    paidCalls:0,
   };
 }
 // Console messages and HTTP URLs may contain private text or query strings.

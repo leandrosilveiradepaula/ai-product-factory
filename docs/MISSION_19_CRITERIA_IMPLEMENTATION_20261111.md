@@ -101,3 +101,102 @@ integrado.
 3. Antes da certificação posterior: confirmar o SHA de `main`, CI e Preview
    quando `apps/console/**` mudar, então consultar o recibo persistido no
    Control Plane. `product_ready` deve permanecer calculado pelo certificador.
+
+## Atualização técnica — witness B2/B3 de fronteira dinâmica
+
+O pipeline de certificação agora reconhece um artefato adicional **somente**
+quando ele vem de uma captura autenticada nova, no mesmo SHA avaliado. O
+verificador independente baixa cada artefato pelo ID declarado no GitHub,
+rejeita redirecionamento autenticado, arquivo extra, expiração, identidade de
+run/branch/commit divergente, campos desconhecidos e qualquer fato que tente
+promover artificialmente segurança, isolamento de tenant ou estado de backend.
+
+- O witness B2 retém negativas reais de rotas privadas e API sem sessão, sessão
+  inválida e operador em rota administrativa. Ele só permite estado `partial`
+  para `authn_authz` e `data_access_boundaries`; JWT assinado independente,
+  isolamento cross-tenant e cobertura integral continuam explicitamente
+  `false`. O recibo também declara zero chamadas pagas, além de zero escritas,
+  de modo que a captura de navegador não possa ocultar consumo de modelo.
+- O witness B3 agora exige duas evidências distintas para alcançar no máximo
+  `partial` em `states`: as transições da interface por fixture e uma leitura
+  autenticada real de `/api/human-attention`. A leitura registra apenas a
+  classe disponível/indisponível e zero/positivo — jamais corpo, projeto,
+  contagem, cookie ou conteúdo do Control Plane. Ela continua sem certificar
+  todos os estados de backend, acessibilidade completa ou E2E independente.
+- O produtor e o certificador revalidam o mesmo recibo antes de qualquer RPC
+  persistente. Reuso histórico não habilita esse caminho; uma captura velha não
+  pode elevar o SHA atual. Nenhum passo cria Start, altera RLS, grava dados de
+  produto, consome modelo pago, faz merge ou publica produção.
+- As testemunhas B3 são opcionais apenas quando o respectivo artefato não foi
+  produzido. Se o artefato estiver presente, qualquer duplicidade, expiração,
+  proveniência ou payload inválido bloqueia a prova inteira; o pipeline não o
+  rebaixa silenciosamente para esconder uma adulteração.
+
+As regressões adversariais cobrem conteúdo secreto, escrita/uso pago, flags de
+certificação indevida, artefato duplicado/expirado e proveniência incompatível.
+Este é avanço técnico de evidência limitada, não a certificação final nem uma
+mudança dos bloqueios humanos de B4.
+
+## Atualização técnica — B4 no envelope independente
+
+O mesmo envelope agora contém um recibo B4 read-only, reconsultado pelo
+certificador imediatamente antes de qualquer persistência. Ele fixa a
+identidade do CRM existente, exclui o Service Desk aposentado e registra por
+que `critical_e2e` e `critical_journeys` permanecem bloqueados. O recibo só é
+aceito se declarar zero escritas, zero chamadas pagas e ambos os critérios como
+não certificados. Assim, uma jornada forjada, um release isolado ou a mera
+existência de um greenfield não podem elevar a avaliação.
+
+O verificador também exige o esquema fechado do recibo e tipos estritos para
+identidade de jornada, SHA, contadores e flags. Campos adicionais ou valores
+ambíguos são recusados antes de serem retidos, evitando que uma resposta do
+Control Plane introduza dados não aprovados na evidência durável.
+
+## Atualização técnica — negativas B2 em PostgreSQL isolado
+
+O envelope reaproveita somente uma execução PostgreSQL de CI cuja árvore é
+idêntica ao SHA avaliado. O recibo é revalidado antes da persistência e prova
+papéis `anon`/`authenticated`, RLS por sujeito, leitura cruzada negada e RPCs
+privilegiadas negadas em banco descartável. Ele torna B2 `partial` quando a
+captura autenticada nova não estiver disponível; nunca substitui JWT assinado,
+isolamento completo entre tenants nem a prova dinâmica do ambiente produtivo.
+O recibo PostgreSQL tem esquema fechado e amarra SHA da fonte, árvore avaliada,
+árvore da execução e digest; no escopo de árvore idêntica todos devem coincidir.
+Assim, uma prova parcial não pode ser reutilizada com identidade de árvore
+incompleta ou com metadados adicionais não aprovados.
+
+## Atualização técnica — acessibilidade B3 revalidada
+
+Quando o recibo completo do navegador autenticado é válido, o certificador
+revalida separadamente a evidência de teclado, foco, landmarks, nomes
+acessíveis, referências ARIA, IDs, ordem de tabulação e superfície mobile nas
+14 rotas. Isso permite apenas `accessibility=partial` no SHA exato; a própria
+prova continua declarando que não certifica WCAG completo, todos os fluxos
+dinâmicos, estados de backend ou `product_ready`.
+
+## Alvo concreto: décimo quarto critério — B3 accessibility (11/11/2026)
+
+Critério alvo: `product_experience/accessibility`, hoje `partial`. A PR
+#1371 acrescenta auditoria axe-core/Playwright em Chromium autenticado para
+WCAG 2.0/2.1/2.2 A/AA, incluindo contraste, em 14 rotas, três estados de
+viewport/menu por rota e dois estados da tela de projeto real (44 análises).
+As verificações existentes de Tab/Enter, foco, landmarks e ARIA permanecem
+obrigatórias. Violação automática, contraste inconclusivo ou identidade ausente
+falham fechados; nenhum relatório contém HTML, screenshots, identidade do
+operador ou dados do Control Plane.
+
+**Gate de PASS:** somente captura original em `main` confiável, no SHA
+integrado, `success` e artefato não expirado vinculado ao run; o verificador
+independente deve conferir inventário de artefatos, fonte, identidade, escopo,
+valores e resultado. O persistidor revalida os mesmos fatos antes de emitir
+recibo durável. Captação histórica sem esse artefato mantém `partial`.
+O fluxo de autenticidade segue o broker existente, com cleanup obrigatório
+e sem ampliar acesso. O resultado não afirma WCAG integral para todos os
+papéis, nem certifica estados de backend ou jornadas E2E.
+
+Esta implementação cria um **caminho verificável de aprovação**, não uma
+prova já executada. Se a captura encontrar violação, corrigir o defeito real
+na aplicação e repetir no Preview/Console oficial; jamais marcar PASS por
+fixture, CI verde, declaração textual ou afrouxamento do certificador.
+Proibidos merge automático, operador provisório acionado por PR, alterações
+RLS produtivas, gastos pagos e Start fictício.
