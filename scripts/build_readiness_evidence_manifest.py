@@ -401,7 +401,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         try:
             if control_plane_get is None:
                 raise RealJourneyBlockerEvidenceBlocked("real_journey_source_reader_unavailable")
-            journey_blocker_proof = verify_real_journey_blockers_fn(control_plane_get)
+            journey_blocker_proof = verify_real_journey_blockers_fn(control_plane_get=control_plane_get)
         except (RealJourneyBlockerEvidenceBlocked, ValueError, RuntimeError,
                 OSError, KeyError, TypeError, UnicodeError):
             journey_blocker_proof = None

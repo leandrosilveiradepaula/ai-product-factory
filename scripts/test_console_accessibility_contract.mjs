@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {verifyAccessibilitySnapshot} from "./console_accessibility_contract.mjs";
-import {sanitizeAxeScan,finishAxeAudit} from "./console_wcag_audit.mjs";
+import {sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute} from "./console_wcag_audit.mjs";
 import {CONSOLE_ROUTES} from "./console_surface_coverage_contract.mjs";
 
 const good = Object.freeze({
@@ -69,4 +69,33 @@ test("WCAG result must come from complete 44 live scans with contrast",()=>{
     {...result,incomplete:[{id:"color-contrast"}]},
     {...result,passes:[{id:"label",nodes:[{}]}]},
   ])assert.throws(()=>sanitizeAxeScan({results:bad,route:"overview",viewport:"desktop"}),/wcag_/);
+});
+
+test("real mobile screenshot IDs normalize to canonical WCAG scan identities",()=>{
+  const results={violations:[],incomplete:[],
+    passes:[{id:"color-contrast",nodes:[{}]},{id:"label",nodes:[{}]}]};
+  const desktop=CONSOLE_ROUTES.map(r=>sanitizeAxeScan({
+    results,route:r.name,viewport:"desktop",
+  }));
+  const mobileCaptures=CONSOLE_ROUTES.map(r=>({name:r.name+"-mobile",path:r.path}));
+  const scans=[...desktop];
+  for(const capture of mobileCaptures){
+    const canonical=canonicalMobileWcagRoute(capture.name,capture.path);
+    scans.push(sanitizeAxeScan({results,route:canonical,viewport:"mobile"}));
+    scans.push(sanitizeAxeScan({results,route:canonical,viewport:"mobile-menu"}));
+    assert.throws(()=>sanitizeAxeScan({results,route:capture.name,viewport:"mobile"}),/wcag_scan_unknown_surface/);
+    assert.throws(()=>canonicalMobileWcagRoute(capture.name,capture.path+"/mismatch"),/wcag_mobile_route_identity_invalid/);
+  }
+  scans.push(sanitizeAxeScan({results,route:"project-detail",viewport:"detail-desktop"}));
+  scans.push(sanitizeAxeScan({results,route:"project-detail",viewport:"detail-mobile"}));
+  const witness=finishAxeAudit({
+    scans,runId:1374,sourceCommit:"a".repeat(40),targetCommit:"b".repeat(40),
+    keyboardSkip:{reachedWithTab:true,visibleOnFocus:true,landedOnMain:true},
+  });
+  assert.equal(scans.length,CONSOLE_ROUTES.length*3+2);
+  assert.equal(witness.mobileScans,CONSOLE_ROUTES.length);
+  assert.equal(witness.mobileMenuScans,CONSOLE_ROUTES.length);
+  assert.equal(witness.contrastNodes,scans.length);
+  for(const alias of ["overview","overview-mobile-mobile","../overview-mobile","projects-mobile/"])
+    assert.throws(()=>canonicalMobileWcagRoute(alias,"/"),/wcag_mobile_route_identity_invalid/);
 });

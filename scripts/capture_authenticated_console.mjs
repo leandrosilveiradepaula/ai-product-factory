@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
-import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit} from "./console_wcag_audit.mjs";
+import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute} from "./console_wcag_audit.mjs";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
 import {verifyLiveConsoleStateReadOnly} from "./verify_block1_b3_live_console_state.mjs";
@@ -362,7 +362,7 @@ try {
     // change the accessibility tree. No text or operator data are retained.
     const mobileAccessibility=verifyAccessibilitySnapshot(
       await page.evaluate(collectAccessibilitySnapshot),route.name);
-    await scanCurrentPage(route.name,"mobile");
+    await scanCurrentPage(canonicalMobileWcagRoute(route.name,route.path),"mobile");
     // Executed layout and touch readability, not screenshots alone. Record
     // metrics only: never include operator content, cookie or form fields.
     const readability = await page.evaluate(() => {
@@ -411,7 +411,7 @@ try {
     if (route.path === "/") {
       await page.screenshot({path:path.join(outDir,"overview-mobile-menu.png"),fullPage:true});
     }
-    await scanCurrentPage(route.name,"mobile-menu");
+    await scanCurrentPage(canonicalMobileWcagRoute(route.name,route.path),"mobile-menu");
     await menuSummary.click();
     await page.screenshot({path:path.join(outDir,`${route.name}.png`), fullPage:true});
     interactionEvidence.mobile.push({...route,status:response.status(),layout,readability,quickNavHrefs,expandedLayout,accessibility:mobileAccessibility});

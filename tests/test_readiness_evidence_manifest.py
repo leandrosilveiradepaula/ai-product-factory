@@ -258,6 +258,37 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertEqual(row["status"], "missing")
         self.assertIn("requirements_source_tree_incomplete", row["reason"])
 
+    def test_real_journey_blocker_producer_and_persister_share_same_receipt(self):
+        # Regression for live post-CI run #43130173914: producer mistakenly
+        # called a keyword-only verifier positionally, swallowed TypeError,
+        # and the independent persister correctly rejected the absent receipt.
+        from tests.test_independent_real_journey_blocker_evidence import source
+        from ai_product_factory.independent_real_journey_blocker_evidence import (
+            verify_real_journey_blockers,
+        )
+        getter = source()
+        report = build_verified_baseline(
+            repository=REPO, sha=SHA,
+            github_get=lambda path: github()[path],
+            verify_real_journey_blockers=True, control_plane_get=getter,
+        )
+        receipt = report.get("real_journey_blocker_evidence")
+        self.assertIsInstance(receipt, dict)
+        self.assertEqual(receipt, verify_real_journey_blockers(
+            control_plane_get=getter).receipt())
+        self.assertFalse(receipt["critical_journeys_certified"])
+        self.assertFalse(receipt["critical_e2e_certified"])
+        self.assertFalse(report["product_ready"])
+
+    def test_real_journey_source_failure_never_grants_b4_pass(self):
+        report = build_verified_baseline(
+            repository=REPO, sha=SHA,
+            github_get=lambda path: github()[path],
+            verify_real_journey_blockers=True, control_plane_get=lambda _: [],
+        )
+        self.assertNotIn("real_journey_blocker_evidence", report)
+        self.assertEqual(report["manifest"]["criteria"]["functional_completeness"]["critical_journeys"]["status"], "missing")
+
     def test_observer_identity_remains_read_only_and_preserves_both_receipts(self):
         yaml = (ROOT / ".github/workflows/autonomous-runner.yml").read_text()
         job = yaml.split("\n  global-readiness-post-ci:", 1)[1].split("\n  owner-start:", 1)[0]
