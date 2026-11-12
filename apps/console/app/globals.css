@@ -1156,3 +1156,19 @@ body{line-height:1.55}
  .sidebar{overflow-y:auto}
  .sidebarNav{overflow-y:visible;flex-shrink:0}
 }
+
+
+/* B3: real Chromium 44-surface WCAG findings, no axe exemptions.
+   The menu is part of page flow while open: no visual overlay of main text
+   and no nested mobile menu clipping. Keep ordinary compact closed header. */
+@media(max-width:860px){
+ .mobileNav[open]{grid-column:1/-1;grid-row:2}
+ .mobileNavBody{position:static;inset:auto;max-height:none;overflow:visible;box-shadow:none}
+ .mobileQuickLink svg{display:block;flex:0 0 20px;width:20px;height:20px}
+}
+/* Real measured 4.02:1 hint on #20345a; use accessible foreground. */
+.intakePrompt .intakeHint{color:#d3dff3}
+/* Real measured 3.04:1 muted note on #93000a; preserve failure signal. */
+.envCard.danger .muted{color:#fff}
+/* Completed pipeline stages use decorative SVG rather than Unicode text. */
+.runStageDot svg{display:block}
