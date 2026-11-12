@@ -112,8 +112,12 @@ export function StatusPill({status,label,tone}:{status:string;label?:ReactNode;t
   // screen readers. Preserve that state in the accessible name.
   const spokenLabel=(typeof label==="string"||typeof label==="number")&&String(label)!==stateLabel
     ? stateLabel+": "+String(label) : undefined;
-  return <span className={resolved?"pill "+resolved:"pill"} aria-label={spokenLabel}>
-    {label??stateLabel}
+  // Generic spans cannot use aria-label; retain the state in a
+  // visually clipped descendant for assistive technology.
+  return <span className={resolved?"pill "+resolved:"pill"}>
+    {spokenLabel
+      ? <><span aria-hidden="true">{label}</span><span className="visuallyHiddenStatus">{spokenLabel}</span></>
+      : label??stateLabel}
   </span>;
 }
 

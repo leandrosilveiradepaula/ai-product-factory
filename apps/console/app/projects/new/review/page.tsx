@@ -18,7 +18,7 @@ export default async function Review({searchParams}:{searchParams:Promise<{intak
  if(!intake)return <><PageHeader eyebrow="Novo projeto" title="Entrada inválida" subtitle="O conteúdo da entrada não pôde ser validado."/><ActionLink href="/projects/new">Voltar</ActionLink></>;
  return <>
   <PageHeader eyebrow="Revisar entrada" title={intake.name} subtitle={intake.mode==="existing"?"A Factory registra o briefing como rascunho e aguarda seu comando Iniciar.":"Ao cadastrar, a Factory salva o projeto sem iniciar a execução. Você decide quando começar."}/>
-  <div className="intakeSteps" aria-label="Etapas para iniciar um projeto">
+  <div className="intakeSteps" role="group" aria-label="Etapas para iniciar um projeto">
    <span className="done">1. Descrever</span>
    <span className="current" aria-current="step">2. Revisar</span>
    <span>3. Acompanhar</span>

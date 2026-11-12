@@ -141,3 +141,58 @@ test("real Overview WCAG contrast and decision accessible name regressions",asyn
   assert.ok(!/topbarAttention active"\s+aria-label=/.test(shell),
     "A contradictory aria-label must not override the visible label");
 });
+
+test("real #73 axe: named regions and no prohibited ARIA labels on generic elements",async()=>{
+  const fs=await import("node:fs");
+  const path=await import("node:path");
+  const read=file=>fs.readFileSync(path.resolve(import.meta.dirname,"..",file),"utf8");
+  const home=read("apps/console/app/page.tsx"),ui=read("apps/console/app/ui.tsx");
+  assert.match(home,/<section className="homeSummary" aria-label="Resumo operacional">/);
+  assert.doesNotMatch(home,/<div className="homeSummary" aria-label=/);
+  assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
+  assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
+  for(const [file,selector] of [
+    ["apps/console/app/projects/[key]/page.tsx","macroLifecycle"],
+    ["apps/console/app/projects/new/page.tsx","intakeSteps"],
+    ["apps/console/app/projects/new/review/page.tsx","intakeSteps"],
+    ["apps/console/app/runs/[id]/page.tsx","runStageRail"],
+  ])assert.ok(read(file).includes('className="'+selector+'" role="group" aria-label='),
+    "generic element lacks a permitted ARIA grouping role: "+file);
+});
+
+test("real #73 axe: textual surfaces have solid measurable contrast",async()=>{
+  const fs=await import("node:fs");
+  const path=await import("node:path");
+  const css=fs.readFileSync(path.resolve(import.meta.dirname,"../apps/console/app/globals.css"),"utf8");
+  const lines=css.split("\n");
+  for(const [selector,bg] of [
+    [".homeFocus{","#1b2740"],[".homeFocus.warning{","#2c2419"],
+    [".gateContextHero{","#151a24"],[".planningDecisionItem{","#101722"],
+    [".card{","var(--color-card-start)"],["body{","var(--color-canvas-top)"],
+  ]){
+    const matching=lines.filter(line=>line.startsWith(selector));
+    assert.ok(matching.length>0,"missing "+selector);
+    assert.ok(matching.some(line=>line.includes("background:"+bg)),"missing solid "+selector);
+    assert.ok(matching.every(line=>!/background:[^;}]*gradient|background-image:/.test(line)),
+      "cannot automatically assess text over gradient at "+selector);
+  }
+  const L=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255)
+    .map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4)
+    .reduce((a,c,i)=>a+c*[.2126,.7152,.0722][i],0);
+  const contrast=(a,b)=>{const x=L(a),y=L(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+  for(const [fg,bg]of [["#b8c4d6","#1b2740"],["#adc6ff","#1b2740"],
+    ["#ffdf8a","#2c2419"],["#f1f5fd","#2c2419"]])
+    assert.ok(contrast(fg,bg)>=4.5,fg+" does not meet AA on "+bg);
+  assert.match(css,/\.visuallyHiddenStatus\{[^}]*clip-path:inset\(50%\)/);
+});
+
+test("axe unresolved checks stay strict and redact sensitive DOM content",()=>{
+  const incomplete={violations:[],passes:[{id:"color-contrast",nodes:[{}]}],
+    incomplete:[{id:"color-contrast",nodes:[{target:['[data-id="sensitive@client.example"]'],
+      html:"sensitive@client.example",any:[{id:"color-contrast",
+        data:{reason:"bgGradient"},message:"sensitive@client.example"}]}]}]};
+  assert.throws(()=>sanitizeAxeScan({results:incomplete,route:"overview",viewport:"desktop"}),
+    error=>error.message.includes("color-contrast(1:color-contrast/bggradient)") &&
+      !error.message.includes("sensitive@client.example") &&
+      !error.message.includes("data-id"));
+});
