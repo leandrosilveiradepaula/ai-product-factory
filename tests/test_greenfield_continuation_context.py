@@ -167,6 +167,28 @@ class GreenfieldContinuationScopeTests(unittest.TestCase):
                 with self.assertRaises(PermissionError):
                     enforce_write_scopes((denied,),scopes)
 
+    def test_new_components_exact_file_requires_explicit_ui_capability(self):
+        existing=("README.md","package.json","src/domain/contracts.ts")
+        exact="src/components/ProjectWorkspace.test.tsx"
+        self.assertIsNone(ChangeSetBuilderWorker._bounded_file_scope(exact,existing))
+        self.assertEqual(
+            ChangeSetBuilderWorker._bounded_file_scope(
+                exact,existing,allow_new_ui_root=True),(exact,None))
+        for denied in ("src/secrets/keys.ts","src/components/.env",
+                       "src/components/deploy.yml","src/components/nested/Widget.tsx",
+                       "src/components/../../secrets.ts"):
+            with self.subTest(denied=denied):
+                self.assertIsNone(ChangeSetBuilderWorker._bounded_file_scope(
+                    denied,existing,allow_new_ui_root=True))
+        data=source(["workspace-navigation","project-authoring-ui",
+                     "editorial-review-ui",exact])
+        enriched,_=resolved(data,paths=existing)
+        self.assertIn(exact,enriched["assignment"]["scope_keys"])
+        enforce_write_scopes((exact,),enriched["assignment"]["scope_keys"])
+        for denied in ("src/components/OtherWidget.tsx","src/security/secrets.ts"):
+            with self.assertRaises(PermissionError):
+                enforce_write_scopes((denied,),enriched["assignment"]["scope_keys"])
+
     def test_unknown_and_unsafe_scopes_fail_closed(self):
         for invalid in ("unrestricted-access","../secrets",".github","billing-admin-root","."):
             with self.subTest(invalid=invalid):
