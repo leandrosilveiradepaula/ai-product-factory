@@ -833,6 +833,78 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         }
         return {**context, "current_state_facts": facts}
 
+    def _approved_greenfield_planning_context(
+        self, project_id: str, context: dict,
+    ) -> dict:
+        """Hydrate the genuine registration brief before a *new* paid plan.
+
+        The claim RPC deliberately returns only task + project manifest.
+        On greenfield planning after a resolved human decision, that excludes
+        the initial, human-submitted product intake in factory_product_specs.
+        The 13 Nov Dark Channel Studio worker therefore interpreted a fresh
+        README-only app as unspecified scope and returned zero tasks.
+
+        Use exact project identity, the original version-one draft, and
+        approved human decisions. This is GET-only source enrichment: it
+        never invents repository inspection, authorizes spend, or retries
+        a failed run.
+        """
+        manifest = context.get("manifest")
+        if not (isinstance(manifest, dict)
+                and manifest.get("source") == "factory-console"
+                and manifest.get("onboarding_mode") == "greenfield"):
+            return context
+        decisions = manifest.get("human_decisions")
+        if not isinstance(decisions, list) or not decisions:
+            return context
+        from uuid import UUID
+        try:
+            UUID(project_id)
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise PermissionError("approved greenfield project identity invalid") from exc
+        for decision in decisions:
+            if (not isinstance(decision, dict)
+                    or not isinstance(decision.get("gate_id"), str)
+                    or not isinstance(decision.get("response"), str)
+                    or not decision["response"].strip()):
+                raise PermissionError("approved greenfield decision invalid")
+            try:
+                UUID(decision["gate_id"])
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise PermissionError("approved greenfield decision identity invalid") from exc
+
+        project_rows = self._get(
+            "factory_projects?select=id,project_kind,manifest&id=eq."
+            + quote(project_id, safe="") + "&limit=2"
+        )
+        if (not isinstance(project_rows, list) or len(project_rows) != 1
+                or project_rows[0].get("id") != project_id
+                or project_rows[0].get("project_kind") != "greenfield"
+                or project_rows[0].get("manifest") != manifest):
+            raise PermissionError("greenfield manifest provenance changed")
+        specs = self._get(
+            "factory_product_specs?select=project_id,version,status,spec"
+            "&project_id=eq." + quote(project_id, safe="")
+            + "&version=eq.1&limit=2"
+        )
+        if not isinstance(specs, list) or len(specs) != 1:
+            raise PermissionError("approved original intake unavailable")
+        spec_row = specs[0]
+        original = spec_row.get("spec")
+        if (spec_row.get("project_id") != project_id
+                or spec_row.get("version") != 1
+                or spec_row.get("status") != "draft"
+                or not isinstance(original, dict)
+                or any(not isinstance(original.get(key), str)
+                       or not original[key].strip()
+                       for key in ("summary", "users", "must_have"))
+                or original.get("references") != manifest.get("references")):
+            raise PermissionError("original greenfield intake provenance invalid")
+        existing = context.get("intake_spec")
+        if existing is not None and existing != original:
+            raise PermissionError("greenfield intake context conflict")
+        return {**context, "intake_spec": original}
+
     def claim_next(self, worker_id: str) -> WorkItem | None:
         if not isinstance(worker_id,str) or not worker_id.strip():
             raise ValueError("worker id is required")
@@ -917,6 +989,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 raise
         if stages==["planning"]:
             try:
+                context=self._approved_greenfield_planning_context(
+                    data["project_id"],context,
+                )
                 context=self._planning_resume_context(
                     data["run_id"],data["task_id"],data["project_id"],
                     data["execution_generation"],context,
