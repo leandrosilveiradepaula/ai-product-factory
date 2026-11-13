@@ -284,7 +284,8 @@ with psycopg.connect(DSN,autocommit=True) as db:
             receipt={"merge_sha":merge4,"candidate_commit":candidate4,
                 "base_ref":b4["preview_base_ref"],"head_ref":b4["integration_branch"],
                 "repository":b4["repository"],"pr_number":str(pr4),
-                "preview_url":preview_url,
+                # Deliberately omitted URL: a valid merge cannot certify
+                # this recovery without browser/deployment provenance.
                 "environment":"preview","merged":True,
                 "merge_is_ancestor":True,"vercel_state":"success",
                 "production_released":False,
@@ -316,7 +317,7 @@ with psycopg.connect(DSN,autocommit=True) as db:
           where run_id=%s and eval_type='browser_e2e'""",(r4,))
         cur.execute("""update factory_audit_events set payload=%s
           where run_id=%s and event_type='change_set.nonproduction_merge.observed'""",
-          (Jsonb(receipt),r4))
+          (Jsonb({**receipt,"preview_url":preview_url}),r4))
         assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
         cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
           values(%s,'browser_e2e','success',%s,'{}')""",(r4,preview_url))
