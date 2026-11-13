@@ -267,6 +267,44 @@ class ProductStageExecutor:
         order=("discovery","specification","reconciliation","gap_analysis")
         prior={s:self.outputs[(item.run_id,s)] for s in order if (item.run_id,s) in self.outputs}
         objective=getattr(self.prompts,stage)
+        # This is the *first* implementation of a real, operator-registered
+        # greenfield, not an imported project's defect-repair continuation.
+        # The canonical version-one intake was just retrieved using the exact
+        # approved project identity, alongside the durable human gate answer.
+        # A README-only repository is an actual, unimplemented product: do not
+        # demand an existing source-code defect before creating its foundation.
+        if stage == "planning":
+            manifest = item.context.get("manifest")
+            original = item.context.get("intake_spec")
+            if (isinstance(manifest, dict)
+                    and manifest.get("source") == "factory-console"
+                    and manifest.get("onboarding_mode") == "greenfield"
+                    and isinstance(manifest.get("human_decisions"), list)
+                    and manifest["human_decisions"]
+                    and isinstance(original, dict)
+                    and all(isinstance(original.get(k), str)
+                            and original[k].strip()
+                            for k in ("summary", "users", "must_have"))):
+                objective += (
+                    " GREENFIELD IMPLEMENTATION INSTRUCTION: This is a "
+                    "new, genuinely authorized product, not a repair of an "
+                    "existing application. The original version-one intake "
+                    "and manifest.human_decisions provide the operator's "
+                    "approved product scope. Plan concrete, implementable "
+                    "builder tasks to create the FIRST code, domain model, "
+                    "interfaces, exports and verifiable tests in a README-only "
+                    "repository. Never require a pre-existing source-code "
+                    "defect to justify real greenfield implementation. Keep "
+                    "the scope within the approved user requirements, use "
+                    "semantic scope_keys where paths do not yet exist, and "
+                    "assign actual active builder capabilities. Respect all "
+                    "other fail-closed source, QA, human release, preview and "
+                    "paid-run gates. Do not claim source files, tests, "
+                    "completeness or external executions that have not been "
+                    "verified. If and only if a true unresolved material "
+                    "product decision remains, request that decision; never "
+                    "invent work or approvals."
+                )
         if verified_greenfield:
             objective = (
                 "Reconcile this already-created Console greenfield using only "

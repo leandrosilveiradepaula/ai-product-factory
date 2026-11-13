@@ -1,5 +1,6 @@
 import {createHash} from "crypto";import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
 import {requestIntakeWorkerWake} from "./intake-worker-wake";
+import {wakeApprovedPlanningDecision} from "./planning-decision-wake";
 import {readCompleteOperationalRows,summarizeOperationalHealth} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
@@ -574,7 +575,15 @@ export async function resolveHumanGate(gateId:string,resolution:"approved"|"reje
   cache:"no-store",
  });
  if(!response.ok)throw new Error("Unable to resolve human gate");
- return response.json();
+ const receipt=await response.json();
+ if(gate.gate_type==="planning_decision"&&resolution==="approved"){
+  // The RPC commits the human answer and queues a new planning run.
+  // Wake that same durable queue immediately, as a human Start already does.
+  // The worker retains independent cost, project-state and release gates.
+  const wakeStatus=await wakeApprovedPlanningDecision(gateId,receipt);
+  return {...receipt,wakeStatus};
+ }
+ return receipt;
 }
 
 
