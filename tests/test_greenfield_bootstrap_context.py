@@ -142,7 +142,7 @@ class GreenfieldContextTests(unittest.TestCase):
         result=worker.execute(item)
         self.assertEqual(result.output_commit,"artifact-commit")
         packet=prod.produce.call_args.args[0].context_packet
-        self.assertEqual(packet["repository_snapshot"],{"README.md":"# new-support-product\\n"})
+        self.assertEqual(packet["repository_snapshot"],{"README.md":"# new-support-product\n"})
         scopes=packet["repository"]["write_scopes"]
         for path in ("package.json","src/domain/contracts.ts","tests/contracts.test.ts"):
             with self.subTest(path=path):
