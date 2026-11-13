@@ -116,6 +116,44 @@ class B2SignedSourcesTests(unittest.TestCase):
         with self.assertRaises(B2SignedSecurityBlocked):
             self.verify(surface=trusted) # artifact source reports wrong target SHA
 
+    def test_signed_provider_receipt_reuses_only_immutable_original_source(self):
+        # Both stages reverify the *same* signed Auth/denial receipt. The
+        # assessment SHA changes, but the capture and browser bytes do not.
+        current = "d" * 40
+        capture = AuthenticatedConsoleEvidence(REPO,current,RUN,11,source_commit=SHA)
+        live = VerifiedLiveConsoleBoundaries(REPO,current,RUN,12,None,None)
+        isolated = IsolatedConsoleAuthEvidence(REPO,current,PG_RUN,"b"*40)
+        security = VerifiedCriterionEvidence(
+            "security","secrets_dependencies",REPO,current,"executed",
+            "independent current SHA secrets verification",
+            ("https://github.com/"+REPO+"/actions/runs/1#sha="+current,),
+        )
+        original_surface = VerifiedConsoleSurface(
+            REPO,current,RUN,SHA,13,source_commit=SHA)
+        def verify(surface=original_surface,metadata=None,payload=None):
+            return verify_independent_signed_b2(
+                repository=REPO,assessed_commit=current,
+                authenticated_capture=capture,live_routes=live,
+                isolated_pg=isolated,secrets_proof=security,surface=surface,
+                github_get=lambda _:{"total_count":1,"artifacts":[
+                    artifact() if metadata is None else metadata]},
+                artifact_reader=lambda **_:receipt() if payload is None else payload,
+            )
+        passed=verify()
+        self.assertEqual(passed.criterion("authn_authz").assessed_commit,current)
+        self.assertEqual(passed.criterion("data_access_boundaries").assessed_commit,current)
+        self.assertEqual(passed.receipt()["workflow_run_id"],RUN)
+        with self.assertRaises(B2SignedSecurityBlocked):
+            verify(surface=VerifiedConsoleSurface(REPO,current,RUN,SHA,13,source_commit=current))
+        with self.assertRaises(B2SignedSecurityBlocked):
+            verify(metadata={**artifact(),"workflow_run":{
+                "id":RUN,"head_sha":current,"head_branch":"main"}})
+        with self.assertRaises(B2SignedSecurityBlocked):
+            verify(payload={**receipt(),"sourceCommit":current})
+        with self.assertRaises(B2SignedSecurityBlocked):
+            verify(payload={**receipt(),"checks":{
+                **receipt()["checks"],"forgedSignatureRejected":False}})
+
     def test_missing_source_cannot_promote_partial_to_pass(self):
         au,lv,pg,secret=sources()
         p=verify_independent_signed_b2(

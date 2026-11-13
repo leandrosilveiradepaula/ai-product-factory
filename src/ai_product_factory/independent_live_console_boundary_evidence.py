@@ -174,8 +174,10 @@ def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
             or not isinstance(authenticated_capture, AuthenticatedConsoleEvidence)
             or authenticated_capture.repository != repository
             or authenticated_capture.assessed_commit != assessed_commit
-            or authenticated_capture.source_commit not in (None, assessed_commit)):
+            or (authenticated_capture.source_commit is not None
+                and SHA.fullmatch(authenticated_capture.source_commit) is None)):
         raise LiveConsoleBoundaryEvidenceBlocked("live_capture_identity_invalid")
+    source_sha = authenticated_capture.source_commit or assessed_commit
     run_id = authenticated_capture.workflow_run_id
     if type(run_id) is not int or run_id < 1:
         raise LiveConsoleBoundaryEvidenceBlocked("live_capture_run_invalid")
@@ -188,30 +190,31 @@ def verify_live_console_boundaries(*, repository: str, assessed_commit: str,
                 or surface.repository != repository
                 or surface.assessed_commit != assessed_commit
                 or surface.run_id != run_id
-                or surface.source_commit not in (None, assessed_commit)
+                or surface.source_commit not in (None, source_sha)
+                or (source_sha != assessed_commit and surface.source_commit != source_sha)
                 or not isinstance(surface.target_commit, str)
                 or SHA.fullmatch(surface.target_commit) is None):
             raise LiveConsoleBoundaryEvidenceBlocked("live_verified_surface_mismatch")
         served_sha = surface.target_commit
     b2_id = _artifact(github_get, repository=repository, run_id=run_id,
-                      source_sha=assessed_commit, name=B2_NAME + str(run_id))
+                      source_sha=source_sha, name=B2_NAME + str(run_id))
     validate_b2_witness(artifact_reader(repository=repository, artifact_id=b2_id, artifact_file=B2_FILE),
-                        run_id=run_id, source_sha=assessed_commit, served_sha=served_sha)
+                        run_id=run_id, source_sha=source_sha, served_sha=served_sha)
     b3_id = None
     b3_live_id = None
     candidate = _artifact(github_get, repository=repository, run_id=run_id,
-                          source_sha=assessed_commit, name=B3_NAME + str(run_id),
+                          source_sha=source_sha, name=B3_NAME + str(run_id),
                           required=False)
     if candidate is not None:
         validate_b3_witness(artifact_reader(repository=repository, artifact_id=candidate, artifact_file=B3_FILE),
-                            run_id=run_id, source_sha=assessed_commit, served_sha=served_sha)
+                            run_id=run_id, source_sha=source_sha, served_sha=served_sha)
         b3_id = candidate
     candidate = _artifact(github_get, repository=repository, run_id=run_id,
-                          source_sha=assessed_commit, name=B3_LIVE_NAME + str(run_id),
+                          source_sha=source_sha, name=B3_LIVE_NAME + str(run_id),
                           required=False)
     if candidate is not None:
         validate_b3_live_witness(artifact_reader(repository=repository, artifact_id=candidate,
                                                  artifact_file=B3_LIVE_FILE),
-                                 run_id=run_id, source_sha=assessed_commit, served_sha=served_sha)
+                                 run_id=run_id, source_sha=source_sha, served_sha=served_sha)
         b3_live_id = candidate
     return VerifiedLiveConsoleBoundaries(repository, assessed_commit, run_id, b2_id, b3_id, b3_live_id)

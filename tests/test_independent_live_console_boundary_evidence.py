@@ -179,6 +179,43 @@ class LiveConsoleBoundaryEvidenceTests(unittest.TestCase):
         with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
             verify(trusted)
 
+    def test_unchanged_console_code_only_merge_reverifies_original_capture(self):
+        # New assessed SHA, but the original browser B2/B3 proof belongs to
+        # the verified captured source. Only a reverified full Console surface
+        # and an authenticated source-bound capture permit provenance reuse.
+        current = "d" * 40
+        auth = AuthenticatedConsoleEvidence(REPO,current,RUN,1,source_commit=SHA)
+        surface = VerifiedConsoleSurface(REPO,current,RUN,SHA,88,source_commit=SHA)
+        payloads = {11:b2(),12:b3(),13:b3_live()}
+        data = artifacts()
+        def verify(auth_capture=auth, proven_surface=surface, rows=data):
+            return verify_live_console_boundaries(
+                repository=REPO,assessed_commit=current,
+                authenticated_capture=auth_capture, surface=proven_surface,
+                github_get=lambda path: rows[path],
+                artifact_reader=lambda repository,artifact_id,artifact_file:payloads[artifact_id],
+            )
+        proof=verify()
+        self.assertEqual((proof.assessed_commit,proof.run_id),(current,RUN))
+        self.assertTrue(proof.receipt()["b2_dynamic_negative_routes_verified"])
+        self.assertTrue(proof.receipt()["b3_fixture_transitions_verified"])
+        self.assertTrue(proof.receipt()["b3_live_backend_state_observed"])
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify(proven_surface=None)  # source/served ancestry not proved
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify(proven_surface=VerifiedConsoleSurface(
+                REPO,current,RUN,SHA,88,source_commit="c"*40))
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify(auth_capture=AuthenticatedConsoleEvidence(
+                REPO,current,RUN,1,source_commit="c"*40))
+        drift=copy.deepcopy(data)
+        drift[P+"/actions/runs/"+str(RUN)+"/artifacts?per_page=100"]["artifacts"][0]["workflow_run"]["head_sha"]=current
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify(rows=drift)
+        payloads[11]["targetCommit"]=current
+        with self.assertRaises(LiveConsoleBoundaryEvidenceBlocked):
+            verify()
+
     def test_pipeline_revalidates_only_a_fresh_authenticated_capture(self):
         root=Path(__file__).resolve().parents[1]
         workflow=(root/".github/workflows/autonomous-runner.yml").read_text()
