@@ -37,10 +37,12 @@ class B2PostVisualSecurityAdmissionTests(unittest.TestCase):
 
     def test_forged_positive_without_complete_source_fails_closed(self):
         for cell in ("authn_authz","data_access_boundaries"):
+            claim=baseline()
+            claim["criteria"]["security"][cell]["status"]="passed"
             with self.subTest(cell=cell), self.assertRaises(CertificationEvidenceError):
-                self.check(ready=False,manifest=baseline(**{cell:"passed"}))
+                self.check(ready=False,manifest=claim)
             with self.subTest(cell=cell+" disabled"), self.assertRaises(CertificationEvidenceError):
-                self.check(enabled=False,ready=True,manifest=baseline(**{cell:"passed"}))
+                self.check(enabled=False,ready=True,manifest=claim)
         for enabled, ready in ((True,False),(False,True),(False,False)):
             with self.subTest(enabled=enabled,ready=ready), self.assertRaises(CertificationEvidenceError):
                 self.check(enabled=enabled,ready=ready,
