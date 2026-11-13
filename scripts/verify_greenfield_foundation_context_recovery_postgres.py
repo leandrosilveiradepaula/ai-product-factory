@@ -127,6 +127,24 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         (unit, change_set, task, run, sha),
     )
 
+    # Actual Dark Channel Studio plan: nine sequential work units, with
+    # wave 1 blocked and all eight subsequent waves pending/unclaimed.
+    downstream = []
+    for wave in range(2, 10):
+        future_task, future_unit = uuid4(), uuid4()
+        downstream.append((future_task, future_unit))
+        conn.execute(
+            "insert into public.factory_tasks (id,project_id,title,status,scope_keys)"
+            " values (%s,%s,%s,'queued','[]'::jsonb)",
+            (future_task, project, f"later-wave-{wave}"),
+        )
+        conn.execute(
+            "insert into public.factory_change_set_work_units "
+            "(id,change_set_id,task_id,run_id,status,wave,plan_task_key,base_commit)"
+            " values (%s,%s,%s,null,'pending',%s,%s,null)",
+            (future_unit, change_set, future_task, wave, f"later-wave-{wave}"),
+        )
+
     # Adversarial changes are rolled back individually, preserving a clean
     # first-wave source; rejection must not generate an audit event.
     mutations = [
@@ -139,6 +157,11 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         ("update public.factory_runs set lease_owner='other-worker' where id=%s", (run,)),
         ("update public.factory_change_sets set metadata='{}'::jsonb where id=%s", (change_set,)),
         ("update public.factory_change_set_work_units set output_commit=%s where id=%s", ("e" * 40,unit)),
+        ("update public.factory_change_set_work_units set status='running' where id=%s", (downstream[0][1],)),
+        ("update public.factory_change_set_work_units set wave=1 where id=%s", (downstream[0][1],)),
+        ("update public.factory_change_set_work_units set run_id=%s where id=%s", (uuid4(), downstream[0][1])),
+        ("update public.factory_change_set_work_units set base_commit=%s where id=%s", (sha, downstream[0][1])),
+        ("update public.factory_change_set_work_units set output_commit=%s where id=%s", ("e" * 40, downstream[0][1])),
     ]
     for statement, params in mutations:
         conn.execute("begin")
@@ -175,6 +198,12 @@ with psycopg.connect(dsn, autocommit=True) as conn:
         (run, task, unit, change_set),
     ).fetchone()
     assert result == ("queued", "queued_execution", "queued", "building"), result
+    assert conn.execute(
+        "select count(*) from public.factory_change_set_work_units "
+        "where change_set_id=%s and wave>1 and status='pending' "
+        "and run_id is null and base_commit is null and output_commit is null",
+        (change_set,),
+    ).fetchone()[0] == 8
     repeat = conn.execute(call, args).fetchone()[0]
     assert repeat["requeued"] is False
     assert conn.execute(
