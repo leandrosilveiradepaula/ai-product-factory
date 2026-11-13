@@ -94,7 +94,9 @@ begin
        or v_unit.output_commit is not null
        or v_run.status is distinct from 'blocked'
        or v_run.execution_route is distinct from 'direct'
-       or v_run.source_commit is distinct from p_expected_source_sha
+       -- First-wave Direct runs bind their source in the Change Set; the
+       -- run.source_commit column is still null before a candidate exists.
+       or v_run.source_commit is not null
        or v_run.candidate_commit is not null
        or v_run.attempt_count is distinct from 1
        or v_run.lease_owner is not null or v_run.lease_expires_at is not null
