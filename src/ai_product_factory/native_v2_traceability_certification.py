@@ -73,16 +73,23 @@ def exactly_one(reader: SupabaseJourneyReader, table: str, select: str, where: s
 def _verify_current_lineage(reader: SupabaseJourneyReader) -> None:
     journey = exactly_one(
         reader, "factory_journeys",
-        "id,project_id,state,execution_generation,production_release_sha,candidate_commit",
+        "id,project_id,state,execution_generation,production_release_sha,"
+        "candidate_commit,preview_merge_sha",
         "id=eq." + JOURNEY_ID,
     )
     pid = journey.get("project_id")
     require(
         journey.get("id") == JOURNEY_ID
         and isinstance(pid, str)
-        and journey.get("state") == "preview_verified"
+        and journey.get("state") in ("preview_verified", "closed")
         and journey.get("candidate_commit") == CANDIDATE_SHA
-        and journey.get("production_release_sha") is None,
+        and journey.get("production_release_sha") is None
+        and (
+            (journey["state"] == "preview_verified"
+             and journey.get("preview_merge_sha") is None)
+            or (journey["state"] == "closed"
+                and journey.get("preview_merge_sha") == PREVIEW_MERGE_SHA)
+        ),
         "v2_live_journey_not_preview_only",
     )
     cs = exactly_one(
@@ -127,6 +134,33 @@ def _verify_current_lineage(reader: SupabaseJourneyReader) -> None:
         and control.get("generation") == journey.get("execution_generation"),
         "v2_live_execution_epoch_revoked",
     )
+    # #1406 recovery is a legitimate terminal Preview-only state. Source proof
+    # for the original OWNER journey must remain immutable, but never infer a
+    # production release or accept a forged "closed" flag without the exact
+    # audited nonproduction human merge and reconciler's durable event.
+    if journey["state"] == "closed":
+        closure = exactly_one(
+            reader, "factory_audit_events",
+            "id,project_id,task_id,run_id,event_type,actor_type,actor_ref,payload",
+            "run_id=eq." + RELEASE_RUN_ID + "&event_type=eq.journey.closed",
+        )
+        require(
+            closure.get("project_id") == pid
+            and closure.get("task_id") is None
+            and closure.get("run_id") == RELEASE_RUN_ID
+            and closure.get("event_type") == "journey.closed"
+            and closure.get("actor_type") == "system"
+            and closure.get("actor_ref") == "journey-v2-reconciler"
+            and closure.get("payload") == {
+                "journey_id": JOURNEY_ID,
+                "closure_reason": "observed_nonproduction_merge",
+                "automatic_merge": False,
+                "candidate_commit": CANDIDATE_SHA,
+                "preview_merge_sha": PREVIEW_MERGE_SHA,
+                "production_released": False,
+            },
+            "v2_closed_preview_without_exact_reconciler_event",
+        )
 
 
 def _workflow_v2_job(encoded: dict) -> bytes:
