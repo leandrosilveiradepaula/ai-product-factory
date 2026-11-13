@@ -225,6 +225,85 @@ class CompleteConsoleEvidenceTests(unittest.TestCase):
         self.assertIsNone(self_request[1].get_header("Authorization"))
         self.assertTrue(self_request[1].full_url.startswith("https://capture.blob.core.windows.net/"))
 
+    def test_signed_b2_json_zip_reads_only_approved_exact_filename(self):
+        import urllib.error
+
+        name = "block1-b2-supabase-security.json"
+        payload = {
+            "schema": "factory-b2-live-supabase-auth-data-v1",
+            "checks": {"forgedSignatureRejected": True},
+            "scope": "signed_supabase_auth_operator_and_unprivileged_control_plane_boundary",
+            "signed": "non-secret-synthetic-test-only",
+        }
+        signed_url = "https://capture.blob.core.windows.net/archive?sig=synthetic"
+        called = []
+        class FakeOpener:
+            def open(self, request, timeout):
+                called.append(("github", request))
+                raise urllib.error.HTTPError(request.full_url, 302, "redirect",
+                                             {"Location": signed_url}, None)
+        def fake_signed(request, timeout):
+            called.append(("cdn", request))
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr(name, json.dumps(payload))
+            return io.BytesIO(archive.getvalue())
+        with patch("ai_product_factory.independent_complete_console_evidence.urllib.request.build_opener",
+                   return_value=FakeOpener()), patch(
+                   "ai_product_factory.independent_complete_console_evidence.urllib.request.urlopen",
+                   side_effect=fake_signed):
+            read = read_verified_artifact_json(
+                repository=REPO, artifact_id=14009942733,
+                artifact_file=name, token="offline-fake-bearer",
+            )
+        self.assertEqual(read, payload)
+        self.assertEqual(len(called), 2)
+        self.assertIn("Bearer", called[0][1].get_header("Authorization"))
+        self.assertIsNone(called[1][1].get_header("Authorization"))
+
+    def test_signed_b2_artifact_reader_denies_any_other_file_or_extra_zip_member(self):
+        import urllib.error
+
+        b2_name = "block1-b2-supabase-security.json"
+        names_to_reject = (
+            "block1-b2-supabase-security.json.bak",
+            "../block1-b2-supabase-security.json",
+            "block1-b2-supabase-security.json/..",
+            "block1-b2-supabase-security.json\\0",
+            "user.jwt", "factory-credentials.json",
+        )
+        for name in names_to_reject:
+            with self.subTest(name=name), self.assertRaises(ConsoleFullSurfaceEvidenceBlocked):
+                read_verified_artifact_json(
+                    repository=REPO, artifact_id=14009942733,
+                    artifact_file=name, token="offline-fake-bearer",
+                )
+        class FakeOpener:
+            def open(self, request, timeout):
+                raise urllib.error.HTTPError(
+                    request.full_url, 302, "redirect",
+                    {"Location": "https://capture.blob.core.windows.net/zip?sig=synthetic"}, None,
+                )
+        def forged_zip(request, timeout):
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr(b2_name, json.dumps({
+                    "schema": "factory-b2-live-supabase-auth-data-v1",
+                    "checks": {"forgedSignatureRejected": True},
+                    "padding": "x"*105,
+                }))
+                z.writestr("extra-unapproved.json", "{}")
+            return io.BytesIO(archive.getvalue())
+        with patch("ai_product_factory.independent_complete_console_evidence.urllib.request.build_opener",
+                   return_value=FakeOpener()), patch(
+                   "ai_product_factory.independent_complete_console_evidence.urllib.request.urlopen",
+                   side_effect=forged_zip):
+            with self.assertRaises(ConsoleFullSurfaceEvidenceBlocked):
+                read_verified_artifact_json(
+                    repository=REPO, artifact_id=14009942733,
+                    artifact_file=b2_name, token="offline-fake-bearer",
+                )
+
     def test_unsafe_signed_redirect_fails_before_request(self):
         import urllib.error
         class FakeOpener:
