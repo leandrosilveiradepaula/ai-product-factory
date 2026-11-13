@@ -96,10 +96,16 @@ async function resolveGate(formData:FormData){
     &&resolution==="approved"&&note.length<8)
   throw new Error("Uma mudança material exige uma decisão humana explícita.");
  if(gateType==="planning_decision"&&resolution==="approved"&&!note)throw new Error("Responda as decisões de planejamento antes de continuar.");
+ let planningWakeStatus:string|null=null;
  try{
-  await resolveHumanGate(gateId,resolution as "approved"|"rejected",note||undefined);
+  const receipt=await resolveHumanGate(gateId,resolution as "approved"|"rejected",note||undefined);
+  if(gateType==="planning_decision"&&resolution==="approved"){
+   const status=String(receipt?.wakeStatus||"failed");
+   planningWakeStatus=["requested","failed","unconfigured","not_needed"].includes(status)?status:"failed";
+  }
  }catch(error){redirectGateError(error);}
  revalidatePath("/gates");revalidatePath("/runs");revalidatePath("/queue");
+ if(planningWakeStatus)redirect("/gates?planning_wake="+encodeURIComponent(planningWakeStatus));
 }
 async function mergeRelease(formData:FormData){
  "use server";
@@ -130,14 +136,22 @@ const githubAppNotices:Record<string,{status:string;message:string}>={
  not_registered:{status:"failed",message:"A GitHub App precisa estar registrada antes da instalação em um projeto."},
 };
 
-export default async function Gates({searchParams}:{searchParams:Promise<{error?:string;github_app?:string;migration_result?:string}>}){
+export default async function Gates({searchParams}:{searchParams:Promise<{error?:string;github_app?:string;migration_result?:string;planning_wake?:string}>}){
  const params=await searchParams;
  const actionError=typeof params.error==="string"?params.error.slice(0,360):null;
+ const planningWakeMessages:Record<string,string>={
+  requested:"Decisão registrada. O GitHub aceitou o acionamento imediato da fila. Isso ainda não comprova que o worker iniciou.",
+  failed:"Decisão registrada, mas o acionamento imediato falhou. O run permanece na fila para recuperação automática.",
+  unconfigured:"Decisão registrada, mas o acionamento imediato está indisponível. A fila permanece preservada.",
+  not_needed:"Decisão registrada. O projeto não está em execução; nenhum worker foi acionado automaticamente.",
+ };
+ const planningWakeNotice=typeof params.planning_wake==="string"?planningWakeMessages[params.planning_wake]:undefined;
  const githubNotice=typeof params.github_app==="string"?githubAppNotices[params.github_app]:undefined;
  const migrationResult=typeof params.migration_result==="string"?await getVerifiedMigrationOutcome(params.migration_result):null;
  const [gates,githubApp,githubInstallActions]=await Promise.all([getHumanGates(),getGitHubAppStatus(),getGitHubAppInstallActions()]);const pending=gates.filter(g=>g.status==="pending"&&g.actionable);const history=gates.filter(g=>g.status!=="pending"||!g.actionable);const githubAppActionPending=!githubApp.configured;const installActions=githubApp.configured?githubInstallActions:[];const pendingCount=pending.length+(githubAppActionPending?1:0)+installActions.length;const resolved=history.length;
  return <>
   {actionError?<GateActionErrorBanner message={actionError}/>:null}
+  {planningWakeNotice?<div className="card noticeCard" role="status">{planningWakeNotice}</div>:null}
   {migrationResult?<GateActionSuccessBanner migrationName={migrationResult.migrationName} alreadyApplied={migrationResult.alreadyApplied}/>:null}
   {githubNotice?<div className={"card noticeCard "+(githubNotice.status==="success"?"success":"danger")} role="status"><StatusPill status={githubNotice.status}/><span>{githubNotice.message}</span></div>:null}
   <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" críticas pendentes":"nenhuma pendência"}/>}/>
