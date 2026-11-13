@@ -131,7 +131,14 @@ class GreenfieldContextTests(unittest.TestCase):
             key="app-foundation",
             scopes=["application-foundation","domain-contracts","test-harness"],
         )
-        worker,item,gh,store,prod=fixture(source_value=candidate)
+        worker,item,gh,store,prod=fixture(
+            source_value=candidate,
+            artifact_files={
+                "package.json": '{"type":"module"}\\n',
+                "src/domain/contracts.ts": "export type Scene = { id: string };\\n",
+                "tests/contracts.test.ts": "// deterministic tests\\n",
+            },
+        )
         result=worker.execute(item)
         self.assertEqual(result.output_commit,"artifact-commit")
         packet=prod.produce.call_args.args[0].context_packet
