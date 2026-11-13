@@ -32,11 +32,14 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const context=routeContext(pathname);
  const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
+ const [attentionLoading,setAttentionLoading]=useState(true);
+ const attentionSettled=useRef(false);
  // A slower stale response (including 503) must never replace a newer
  // snapshot after focus, route change or a new poll.
  const attentionEpoch=useRef(0);
  const refreshAttention=useCallback(async()=>{
   const epoch=++attentionEpoch.current;
+  if(!attentionSettled.current)setAttentionLoading(true);
   try{
    const response=await fetch("/api/human-attention",{cache:"no-store"});
    if(!response.ok)throw new Error("attention unavailable");
@@ -45,18 +48,29 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    if(epoch===attentionEpoch.current){
     setAttention({count:Number(snapshot.count),projects:snapshot.projects});
     setAttentionUnavailable(false);
+    setAttentionLoading(false);
+    attentionSettled.current=true;
    }
   }catch{
    if(epoch===attentionEpoch.current){
     setAttention(null);setAttentionUnavailable(true);
+    setAttentionLoading(false);
+    attentionSettled.current=true;
    }
   }
  },[]);
+ const retryAttention=()=>{
+  attentionSettled.current=false;
+  setAttentionLoading(true);
+  void refreshAttention();
+ };
  useEffect(()=>{
   if(authOnly){
    ++attentionEpoch.current;
    setAttention(null);
    setAttentionUnavailable(false);
+   setAttentionLoading(false);
+   attentionSettled.current=false;
    return()=>{++attentionEpoch.current;};
   }
   void refreshAttention();
@@ -96,11 +110,16 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    </details>
   </aside>
   <div className="workspace">
-   <header className={attentionUnavailable||(attention&&attention.count>0)?"topbar hasAttention":"topbar"}>
+   <header className={attentionLoading||attentionUnavailable||(attention&&attention.count>0)?"topbar hasAttention":"topbar"}>
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
     <div className="topbarMeta">
-     {attentionUnavailable?<Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} decisão{attention.count===1?"":"ões"} pendente{attention.count===1?"":"s"}</Link>:null}
+     {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Carregando aprovações…</span>
+      :attentionUnavailable?<div className="topbarAttentionRecovery">
+       <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
+       <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
+      </div>
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"decisão pendente":"decisões pendentes"}</Link>
+      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
