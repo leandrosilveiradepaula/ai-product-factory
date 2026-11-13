@@ -217,13 +217,45 @@ begin
             and report.candidate_commit=j.candidate_commit
             and report.report->'blockers'=jsonb_build_array(
               'production requires a separate verified main-target release candidate')
+            -- A stored tool receipt alone does NOT prove an authentic
+            -- Preview. Require the same source-bound deployed URL, exact
+            -- candidate browser evaluation and journey-scoped promotion.
             and exists (
               select 1 from public.factory_tool_usage u
+              join public.factory_deployments d
+                on d.run_id=completed_run.id
+                and d.environment='preview' and d.status='success'
+                and d.metadata->>'candidate_commit'=j.candidate_commit
+                and d.metadata->>'preview_url'=u.metadata->>'preview_url'
+              join public.factory_evaluations browser
+                on browser.run_id=completed_run.id
+                and browser.eval_type='browser_e2e'
+                and browser.status='success'
+                and browser.baseline_ref=d.metadata->>'preview_url'
               where u.run_id=completed_run.id
                 and u.operation='verified_preview_awaiting_human_merge'
                 and u.metadata->>'head_sha'=j.candidate_commit
                 and u.metadata->>'pr'=cs.metadata->'integration_release_request'->>'pr_number'
-                and nullif(u.metadata->>'preview_url','') is not null)
+                and nullif(u.metadata->>'preview_url','') is not null
+                and exists (
+                  select 1 from public.factory_audit_events promoted
+                  where promoted.run_id=completed_run.id
+                    and promoted.event_type='preview.promotion_completed'
+                    and promoted.payload->>'candidate_commit'=j.candidate_commit
+                    and promoted.payload->>'pr_number'=cs.metadata->'integration_release_request'->>'pr_number'
+                    and promoted.payload->>'branch'=
+                      (j.binding->>'preview_branch_prefix'||'-'||cs.id::text)))
+            and exists (
+              select 1 from public.factory_evaluations ci
+              where ci.run_id=completed_run.id
+                and ci.eval_type='github_ci' and ci.status='success'
+                and ci.baseline_ref=j.candidate_commit)
+            and exists (
+              select 1 from public.factory_evaluations quality
+              where quality.run_id=completed_run.id
+                and quality.eval_type='quality_gate' and quality.status='success'
+                and quality.baseline_ref=j.candidate_commit
+                and quality.result->>'passed'='true')
             and exists (
               select 1 from public.factory_audit_events a
               where a.run_id=completed_run.id
@@ -252,6 +284,18 @@ begin
       and a.payload->>'vercel_state'='success'
       and a.payload->>'production_released'='false'
       and a.payload->>'evidence_source'='github_exact_pr_and_merge_commit_status'
+      -- Tighten only the post-hoc recovered path; keep the existing
+      -- awaiting_release observer contract unchanged.
+      and (j.state<>'preview_verified' or exists (
+        select 1 from public.factory_deployments d
+        join public.factory_evaluations browser
+          on browser.run_id=d.run_id and browser.eval_type='browser_e2e'
+          and browser.status='success'
+          and browser.baseline_ref=d.metadata->>'preview_url'
+        where d.run_id=cs.release_run_id
+          and d.environment='preview' and d.status='success'
+          and d.metadata->>'candidate_commit'=j.candidate_commit
+          and d.metadata->>'preview_url'=a.payload->>'preview_url'))
     order by a.id desc limit 1;
     if v_preview_merge is not null then
       if j.preview_merge_sha is not null and j.preview_merge_sha is distinct from v_preview_merge then
