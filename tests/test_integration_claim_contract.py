@@ -49,6 +49,26 @@ class IntegrationClaimContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,message):
                     self.store.claim_integration("worker")
 
+    def test_exact_root_gitignore_is_allowed_for_greenfield_integration(self):
+        unit=self.base["work_units"][0]
+        self.store._rpc=MagicMock(return_value={
+            **self.base,"work_units":[{**unit,"changed_files":[".gitignore","src/a.py"]}],
+        })
+        item=self.store.claim_integration("worker")
+        self.assertEqual(item.work_units[0]["changed_files"],[".gitignore","src/a.py"])
+
+    def test_git_metadata_and_nested_gitignore_remain_fail_closed(self):
+        unit=self.base["work_units"][0]
+        for path in (".git", ".git/config", ".gitmodules", ".gitattributes",
+                     "src/.gitignore", ".GITIGNORE", ".gitignore/child",
+                     "src/.Git/config", "src/.gitmodules"):
+            with self.subTest(path=path):
+                self.store._rpc=MagicMock(return_value={
+                    **self.base,"work_units":[{**unit,"changed_files":[path]}],
+                })
+                with self.assertRaises(RuntimeError):
+                    self.store.claim_integration("worker")
+
     def test_ten_more_path_ambiguity_classes(self):
         unit=self.base["work_units"][0]
         cases=[
