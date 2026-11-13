@@ -336,10 +336,26 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    await firstRoute.fulfill({status:200,contentType:"application/json",
      body:JSON.stringify({status:"ok",count:2,projects:[]})});
    firstRoute=null;
-   await page.waitForFunction(()=>
-     document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 decisões pendentes"&&
-     document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",
-     null,{timeout:20000});
+   try{
+     await page.waitForFunction(()=>
+       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 decisões pendentes"&&
+       document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",
+       null,{timeout:10000});
+   }catch{
+     // Fixed enums only. Never retain page HTML, response bodies, selectors,
+     // credentials, identifiers, text or URLs from real authenticated runs.
+     const rendered=await page.evaluate(()=>{
+       const loading=!!document.querySelector(".topbarAttention.loading");
+       const unavailable=!!document.querySelector(".topbarAttentionRecovery");
+       const pending=!!document.querySelector('a.topbarAttention.active[href="/gates"]');
+       const count=!!document.querySelector(".desktopSidebarContent .humanAttentionCount");
+       return {loading,unavailable,pending,count};
+     });
+     throw Error("B3_REAL_UI_PENDING_MISMATCH:"+JSON.stringify({
+       ...rendered,apiRequestClass:observations===1?"single":"multiple",
+       pageErrors:pageErrors.length,
+     }));
+   }
    mode="unavailable";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
