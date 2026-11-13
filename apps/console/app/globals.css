@@ -1188,3 +1188,16 @@ body{line-height:1.55}
    and value in normal vertical flow, with both available to axe and readers. */
 .agentPolicyRow{grid-template-columns:minmax(0,1fr);gap:4px;align-items:start}
 .agentPolicyRow>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
+
+/* Real attention lifecycle: loading, failure/retry and accessible empty state. */
+.topbarAttention.loading{background:#1b2535;border-color:#576780;color:#e4edfa}
+.topbarAttentionRecovery{display:inline-flex;gap:8px;align-items:center;min-width:0}
+.topbarAttentionRetry{display:inline-flex;justify-content:center;align-items:center;
+ min-height:36px;padding:5px 12px;background:#27374c;color:#f0f6ff;
+ border:1px solid #8da9cc;border-radius:4px;font:inherit;font-weight:650;cursor:pointer}
+.topbarAttentionRetry:hover{background:#3a5271}
+.topbarAttentionRetry:focus-visible{outline:2px solid #b5d4ff;outline-offset:2px}
+@media(max-width:860px){
+ .topbarAttentionRecovery{width:100%;flex-wrap:wrap;justify-content:center}
+ .topbarAttentionRetry{min-height:44px}
+}

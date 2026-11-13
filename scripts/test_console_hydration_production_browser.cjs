@@ -298,6 +298,72 @@ test("B2: expired token refresh reaches same-request Server Components without u
  }finally{await context.close();}
 });
 
+test("B3: actual React shell exposes loading, pending, unavailable, retry, cleared and malformed states",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ let firstRoute=null,mode="pending",observations=0,mutations=0;
+ const pageErrors=[];
+ await context.route("**/*",async route=>{
+   const req=route.request(),u=new URL(req.url());
+   if(u.origin!==appOrigin || req.method()!=="GET"){
+     mutations++;violations.push("b3_state_mutation_or_external_origin");
+     await route.abort("blockedbyclient");return;
+   }
+   if(u.pathname!=="/api/human-attention"){await route.continue();return;}
+   observations++;
+   if(firstRoute===null&&observations===1){firstRoute=route;return;}
+   const cases={
+     pending:{status:200,body:{status:"ok",count:2,projects:[]}},
+     unavailable:{status:503,body:{status:"unavailable"}},
+     cleared:{status:200,body:{status:"ok",count:0,projects:[]}},
+     malformed:{status:200,body:{status:"ok",count:-1,projects:[]}},
+   };
+   const res=cases[mode];
+   assert.ok(res,"unexpected B3 control state");
+   await route.fulfill({status:res.status,contentType:"application/json",
+     headers:{"Cache-Control":"no-store"},body:JSON.stringify(res.body)});
+ });
+ const page=await context.newPage();
+ page.on("pageerror",()=>pageErrors.push("pageerror"));
+ try{
+   const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
+   assert.equal(response?.status(),200);
+   await page.locator(".topbarAttention.loading").waitFor({state:"visible",timeout:15000});
+   assert.equal(await page.locator(".topbarAttention.loading").innerText(),"Carregando aprovações…");
+   await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
+   for(let i=0;i<60&&!firstRoute;i++)await new Promise(res=>setTimeout(res,50));
+   assert.ok(firstRoute,"one real browser GET must be pending during loading");
+   await firstRoute.fulfill({status:200,contentType:"application/json",
+     body:JSON.stringify({status:"ok",count:2,projects:[]})});
+   firstRoute=null;
+   await page.waitForFunction(()=>
+     document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 decisões pendentes"&&
+     document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",
+     null,{timeout:20000});
+   mode="unavailable";
+   await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+   await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
+   assert.equal(await page.locator(".topbarAttentionRecovery [role=status]").innerText(),
+     "Aprovações indisponíveis");
+   assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").count(),0);
+   mode="cleared";
+   await page.getByRole("button",{name:"Tentar novamente"}).click();
+   await page.waitForFunction(()=>
+     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma aprovação pendente" &&
+     !document.querySelector(".desktopSidebarContent .humanAttentionCount"),null,{timeout:20000});
+   mode="malformed";
+   await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+   await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
+   assert.equal(pageErrors.length,0,"all state transitions must preserve genuine React integrity");
+   assert.equal(mutations,0,"all B3 controls must remain GET-only");
+   assert.ok(observations>=4);
+ }finally{
+   if(firstRoute)await firstRoute.fulfill({status:200,contentType:"application/json",
+     body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+   await context.close();
+ }
+});
+
 test("B3: stale attention request cannot overwrite a newer successful operator snapshot",async()=>{
  const context=await browser.newContext({viewport:{width:1280,height:900}});
  await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
