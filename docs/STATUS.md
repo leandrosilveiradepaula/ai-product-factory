@@ -1,3 +1,16 @@
+## 13/11/2026 — B2: falha real pós-captura e recuperação de certificação (candidato)
+
+Controles vinculantes mantidos: [RELEASE_AUTONOMY.md](RELEASE_AUTONOMY.md) e [FINALIZATION_EXECUTION_CONTRACT.md](FINALIZATION_EXECUTION_CONTRACT.md). Nenhuma evidência cria autorização de merge ou release.
+
+- **Main confirmada:** `d0f834a00cd4e083bf67e5319ffdcc571bd3a87d`, merge humano #1396. `validate` push #43333589612 SUCCESS. Captura autenticada real #43333655776 SUCCESS no SHA correto, operador efêmero limpo, Control Plane `status=captured`, WCAG/Console auditados. **Success não é B2 PASS.**
+- **Causa B2:** a variável pública de repositório `FACTORY_B2_SUPABASE_PUBLISHABLE_KEY` estava vazia na execução #43333655776; a captura registrou `b2_signed_provider_source_unavailable`, não emitiu artefato `block1-b2-supabase-security-*` e corretamente não apresentou prova assinada de JWT/RLS. Não copiar chave pública no código, não alargar RLS, não tocar em usuários permanentes.
+- **Falha de orquestração reprodutível:** os certifiers pós-CI #43333686308 e pós-captura #43334373783 falharam em `B2 independent prerequisites unavailable`; a variável local genérica `proof` do Console foi sobrescrita pelo atestado de traceabilidade V2 antes da checagem B2. Sem artefato opcional B2, nenhuma das 14 células previamente PASS pode sofrer regressão por erro de fluxo.
+- **Regressão independente de segurança:** baseline intermediário exato do #43334373783 tinha 13/19, sem `secrets_dependencies`, por dois escaneamentos npm de PR com o mesmo Git tree (`74c9487` e `15497fd`). O seletor original exigia fonte única. Candidato restringe duplicidade à **fonte exata do segundo pai do merge GitHub** e refaz TODA a validação de jobs, digests e scanners; falta de ancestralidade única falha fechado.
+- **Correção candidata:** separar identidades Console/V2, aceitar ausência de prova B2 somente como PARTIAL sem falsa certificação, rejeitar claims PASS sem fonte independente, selecionar scanner realmente mergeado, adicionar negativos contra duplicidade/identidade e aviso GitHub quando o B2 não executar.
+- **Gate:** CI/QA/Gitleaks verdes no candidato; merge de produção humano; configurar apenas a variável GitHub Actions pública oficial `sb_publishable_...` do projeto Factory; disparar novo `Authenticated Console visual evidence` na `main` sem `target_commit` para host canônico, verificar bytes e SHA/Console na prova e certificado durável no Supabase. Somente aí considerar ambos `security/authn_authz` e `security/data_access_boundaries` como PASSED. Nenhuma migration, gasto ou auto-merge.
+
+---
+
 ## 10/11/2026 — Correcao do recorrente descompasso SHA Factory x Console (candidato)
 
 Controles vigentes: [Release/rollback](RELEASE_AUTONOMY.md) e [Contrato de finalização](FINALIZATION_EXECUTION_CONTRACT.md). Nenhuma prova de equivalência autoriza merge automático ou release.

@@ -90,6 +90,25 @@ def require_verified_baseline(value: object, *, repository: str, assessed_commit
     return value["manifest"]
 
 
+def require_b2_source_readiness(*, enabled: bool, prerequisites_ready: bool,
+                                manifest: dict, evidence: dict) -> bool:
+    """Only opt into B2 source revalidation when its real prerequisites exist.
+
+    A missing optional provider witness never promotes partial to passed and
+    never prevents preserving previously proven unrelated criteria. A forged
+    B2 PASS or retained receipt without source prerequisites fails closed.
+    """
+    sec = manifest.get("criteria", {}).get("security", {})
+    positives = any(
+        isinstance(sec.get(k), dict) and sec[k].get("status") == "passed"
+        for k in ("authn_authz", "data_access_boundaries")
+    )
+    positives = positives or "independent_b2_signed_security_evidence" in evidence
+    if positives and (not enabled or not prerequisites_ready):
+        raise CertificationEvidenceError("B2 positive claim lacks independently verified sources")
+    return enabled and prerequisites_ready
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Independent deterministic product-readiness certification")
     parser.add_argument("--project-key", required=True)
@@ -153,6 +172,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         proof = None
+    # Do not reuse this identity for native-V2 traceability later in the
+    # certifier: it is the exact-run, immutable Console capture source.
+    authenticated_console_proof = proof
     if proof is not None:
         if evidence.get("authenticated_console_evidence") != proof.receipt():
             raise CertificationEvidenceError("authenticated Console receipt changed before persistence")
@@ -363,18 +385,25 @@ def main(argv: list[str] | None = None) -> int:
                 if not isinstance(row, dict) or row.get("status") != "partial" or row.get("evidence") != isolated_auth_proof.evidence():
                     raise CertificationEvidenceError("isolated Console Auth baseline inconsistent")
     b2_security_proof = None
-    if args.verify_independent_b2_security:
-        if not (args.require_verified_baseline and args.verify_live_console_boundaries
-                and args.verify_isolated_console_auth and args.verify_secrets_dependencies
-                and proof is not None and live_boundary_proof is not None
-                and isolated_auth_proof is not None and security_proof is not None):
-            raise CertificationEvidenceError("B2 independent prerequisites unavailable")
+    b2_sources_ready = (
+        args.require_verified_baseline and args.verify_live_console_boundaries
+        and args.verify_isolated_console_auth and args.verify_secrets_dependencies
+        and authenticated_console_proof is not None
+        and live_boundary_proof is not None
+        and isolated_auth_proof is not None and security_proof is not None
+        and full_surface_proof is not None
+    )
+    if require_b2_source_readiness(
+        enabled=args.verify_independent_b2_security,
+        prerequisites_ready=b2_sources_ready, manifest=manifest, evidence=evidence,
+    ):
         try:
             b2_security_proof = verify_independent_signed_b2(
                 repository=args.repository, assessed_commit=args.assessed_commit,
-                authenticated_capture=proof, live_routes=live_boundary_proof,
-                isolated_pg=isolated_auth_proof, secrets_proof=security_proof,
-                surface=full_surface_proof, github_get=github_get,
+                authenticated_capture=authenticated_console_proof,
+                live_routes=live_boundary_proof, isolated_pg=isolated_auth_proof,
+                secrets_proof=security_proof, surface=full_surface_proof,
+                github_get=github_get,
                 artifact_reader=lambda repository, artifact_id, artifact_file: read_verified_artifact_json(
                     repository=repository, artifact_id=artifact_id, token=token,
                     artifact_file=artifact_file),
@@ -383,8 +412,12 @@ def main(argv: list[str] | None = None) -> int:
                 KeyError, TypeError, UnicodeError) as exc:
             raise CertificationEvidenceError("B2 independent signed source unverified") from exc
         if b2_security_proof is None:
-            if "independent_b2_signed_security_evidence" in evidence:
-                raise CertificationEvidenceError("B2 baseline claims absent source")
+            # An old capture can be successful yet lack the new B2 witness.
+            # Only a positive B2 claim is an error; status stays partial.
+            require_b2_source_readiness(
+                enabled=True, prerequisites_ready=False,
+                manifest=manifest, evidence=evidence,
+            )
         else:
             if evidence.get("independent_b2_signed_security_evidence") != b2_security_proof.receipt():
                 raise CertificationEvidenceError("B2 independent receipt changed before persistence")

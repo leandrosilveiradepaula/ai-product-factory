@@ -73,12 +73,26 @@ def _tree(github_get: Callable[[str],object],prefix: str,sha: str)->tuple[str,in
  listing=github_get(prefix+"/git/trees/"+tree+"?recursive=1"); rows=listing.get("tree") if isinstance(listing,dict) else None; require(isinstance(rows,list) and listing.get("truncated") is False,"security_tree_listing_incomplete")
  blobs=[x for x in rows if isinstance(x,dict) and x.get("type")=="blob"]; require(len(blobs)>=100 and all(isinstance(x.get("path"),str) and isinstance(x.get("sha"),str) and SHA.fullmatch(x["sha"]) for x in blobs),"security_tree_entries_invalid"); return tree,len(blobs)
 
-def _scan_run(github_get: Callable[[str],object],prefix: str,kind: str,tree: str)->tuple[dict,int]:
+def _scan_run(github_get: Callable[[str],object],prefix: str,kind: str,tree: str,assessed_commit: str)->tuple[dict,int]:
  workflow_id,workflow_name,job_name,_,_,steps=WORKFLOWS[kind]; listing=github_get(prefix+f"/actions/workflows/{workflow_id}/runs?event=pull_request&status=success&per_page=100"); rows=listing.get("workflow_runs") if isinstance(listing,dict) else None; require(isinstance(rows,list) and 0<len(rows)<=100,"security_scan_run_inventory_invalid")
  matches=[]
  for run in rows:
   if not isinstance(run,dict) or run.get("name")!=workflow_name or run.get("event")!="pull_request" or run.get("status")!="completed" or run.get("conclusion")!="success" or run.get("run_attempt")!=1 or not isinstance(run.get("head_sha"),str) or not SHA.fullmatch(run["head_sha"]): continue
   if _tree(github_get,prefix,run["head_sha"])[0]==tree: matches.append(run)
+ # A PR branch may be force-rebased without changing the scanned code tree.
+ # Two successful scans of that exact tree are not interchangeable: accept
+ # only one first-attempt source whose SHA is the merged second parent of the
+ # assessed main commit. A squash, missing merge-parent, duplicate source or
+ # unmatched code tree remains fail-closed.
+ if len(matches)>1:
+  merged=github_get(prefix+"/git/commits/"+assessed_commit)
+  parents=merged.get("parents") if isinstance(merged,dict) else None
+  require(isinstance(parents,list) and len(parents)==2
+          and all(isinstance(p,dict) and isinstance(p.get("sha"),str) and SHA.fullmatch(p["sha"]) for p in parents)
+          and parents[0]["sha"]!=parents[1]["sha"],
+          "security_duplicate_scan_parent_unverified")
+  merged_candidate=parents[1]["sha"]
+  matches=[candidate for candidate in matches if candidate.get("head_sha")==merged_candidate]
  require(len(matches)==1,"security_scan_tree_not_unique"); run=matches[0]; run_id=run.get("id"); require(type(run_id)is int and run_id>0,"security_source_run_invalid")
  jobs=github_get(prefix+"/actions/runs/"+str(run_id)+"/jobs?per_page=100"); rows=jobs.get("jobs") if isinstance(jobs,dict) else None
  require(isinstance(rows,list) and jobs.get("total_count")==1 and len(rows)==1 and isinstance(rows[0],dict) and rows[0].get("name")==job_name and rows[0].get("run_id")==run_id and rows[0].get("head_sha")==run["head_sha"] and rows[0].get("status")=="completed" and rows[0].get("conclusion")=="success" and all(any(isinstance(x,dict) and x.get("name")==step and x.get("status")=="completed" and x.get("conclusion")=="success" for x in rows[0].get("steps",[])) for step in steps),"security_source_job_invalid"); return run,run_id
@@ -94,7 +108,7 @@ def verify_existing_secrets_dependencies(*,repository: str,assessed_commit: str,
  require(isinstance(current,dict) and current.get("id")==int(current_id) and current.get("name")=="Factory autonomous runner" and current.get("path")==OWNER_WORKFLOW and current.get("event")=="workflow_run" and current.get("head_sha")==assessed_commit and current.get("head_branch")=="main" and current.get("run_attempt")==1,"security_current_runner_unbound")
  main=github_get(prefix+"/git/ref/heads/main"); require(isinstance(main,dict) and (main.get("object") or {}).get("sha")==assessed_commit,"security_main_drift"); tree,tracked=_tree(github_get,prefix,assessed_commit); receipts={}; runs={}
  for kind in WORKFLOWS:
-  run,run_id=_scan_run(github_get,prefix,kind,tree); _trusted_scanner_source(github_get,prefix,run["head_sha"]); runs[kind]=run_id; _,_,_,artifact_name,member,_=WORKFLOWS[kind]; inventory=github_get(prefix+"/actions/runs/"+str(run_id)+"/artifacts?per_page=100"); artifacts=inventory.get("artifacts") if isinstance(inventory,dict) else None
+  run,run_id=_scan_run(github_get,prefix,kind,tree,assessed_commit); _trusted_scanner_source(github_get,prefix,run["head_sha"]); runs[kind]=run_id; _,_,_,artifact_name,member,_=WORKFLOWS[kind]; inventory=github_get(prefix+"/actions/runs/"+str(run_id)+"/artifacts?per_page=100"); artifacts=inventory.get("artifacts") if isinstance(inventory,dict) else None
   require(isinstance(artifacts,list) and inventory.get("total_count")==1 and len(artifacts)==1 and isinstance(artifacts[0],dict),"security_artifact_inventory_invalid"); artifact=artifacts[0]; binding=artifact.get("workflow_run") or {}
   require(artifact.get("name")==artifact_name and artifact.get("expired") is False and type(artifact.get("id")) is int and artifact["id"]>0 and isinstance(artifact.get("digest"),str) and DIGEST.fullmatch(artifact["digest"]) and type(artifact.get("size_in_bytes")) is int and 0<artifact["size_in_bytes"]<=32768 and binding.get("id")==run_id and binding.get("head_sha")==run["head_sha"] and binding.get("head_repository_id")==1387883686,"security_artifact_provenance_invalid")
   raw=archive_fetch(artifact.get("archive_download_url",""),env.get("GITHUB_TOKEN",""),artifact["id"]); receipts[kind]=_receipt(raw,artifact["digest"],kind,member,run["head_sha"],tree,tracked)

@@ -232,6 +232,11 @@ jobs:
             "FACTORY_VISUAL_EVIDENCE_KEY="+data.encryptionKey+"\n"+
             "FACTORY_VISUAL_ARTIFACT="+data.artifactName+"\n");
           NODE
+      - name: Report missing public B2 provider key without falsifying B3
+        if: ${{ env.FACTORY_B2_SUPABASE_PUBLISHABLE_KEY == '' }}
+        shell: bash
+        run: |
+          echo "::warning title=B2 source missing::Signed JWT/RLS B2 proof was not configured. The authenticated B3 visual capture may pass, but B2 remains unverified. Set the repository variable FACTORY_B2_SUPABASE_PUBLISHABLE_KEY and start a new workflow_dispatch."
       - name: Capture authenticated Console
         id: capture_console
         shell: bash
