@@ -36,26 +36,35 @@ export async function wakeApprovedPlanningDecision(
 
   const cfg=getSupabaseServerConfig();
   if(!cfg)return "failed";
-  const lookup=await fetch(cfg.url+"/rest/v1/factory_tasks?select=id,project_id"+
-    "&id=eq."+encodeURIComponent(receipt.resume_task_id!)+"&limit=2",{
-    headers:cfg.headers,cache:"no-store",
-  });
-  if(!lookup.ok)return "failed";
-  const rows=await lookup.json();
-  if(!Array.isArray(rows)||rows.length!==1||rows[0]?.id!==receipt.resume_task_id||
-     !UUID.test(String(rows[0]?.project_id||"")))return "failed";
-  const projectId=String(rows[0].project_id);
+  let projectId:string;
+  try{
+    const lookup=await fetch(cfg.url+"/rest/v1/factory_tasks?select=id,project_id"+
+      "&id=eq."+encodeURIComponent(receipt.resume_task_id!)+"&limit=2",{
+      headers:cfg.headers,cache:"no-store",
+    });
+    if(!lookup.ok)return "failed";
+    const rows=await lookup.json();
+    if(!Array.isArray(rows)||rows.length!==1||rows[0]?.id!==receipt.resume_task_id||
+       !UUID.test(String(rows[0]?.project_id||"")))return "failed";
+    projectId=String(rows[0].project_id);
 
-  // The gate is a product decision, not permission to resume paused projects.
-  const control=await fetch(cfg.url+"/rest/v1/factory_project_execution_controls"+
-    "?select=project_id,state&project_id=eq."+encodeURIComponent(projectId)+"&limit=2",{
-    headers:cfg.headers,cache:"no-store",
-  });
-  if(!control.ok)return "failed";
-  const controls=await control.json();
-  if(!Array.isArray(controls)||controls.length!==1||
-     controls[0]?.project_id!==projectId)return "failed";
-  if(controls[0]?.state!=="running")return "not_needed";
+    // The gate is a product decision, not permission to resume paused projects.
+    const control=await fetch(cfg.url+"/rest/v1/factory_project_execution_controls"+
+      "?select=project_id,state&project_id=eq."+encodeURIComponent(projectId)+"&limit=2",{
+      headers:cfg.headers,cache:"no-store",
+    });
+    if(!control.ok)return "failed";
+    const controls=await control.json();
+    if(!Array.isArray(controls)||controls.length!==1||
+       controls[0]?.project_id!==projectId)return "failed";
+    if(controls[0]?.state!=="running")return "not_needed";
+
+  }catch{
+    // A broken read must not make the already-resolved gate appear pending.
+    // No dispatch is attempted until the project is verified as running.
+    console.warn("planning_decision_wake_preflight_unavailable");
+    return "failed";
+  }
 
   let status:Exclude<PlanningWakeStatus,"not_needed">="failed";
   try{
