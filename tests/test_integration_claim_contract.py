@@ -72,7 +72,7 @@ class IntegrationClaimContractTests(unittest.TestCase):
     def test_ten_more_path_ambiguity_classes(self):
         unit=self.base["work_units"][0]
         cases=[
-            ("src/.gitignore","protected git metadata"),
+            ("src/.gitignore","hidden segment"),
             ("src/name:stream","colon"),
             ("src/file?.py","wildcard"),
             ("src/file*.py","wildcard"),
