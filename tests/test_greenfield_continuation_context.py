@@ -121,6 +121,52 @@ class GreenfieldContinuationScopeTests(unittest.TestCase):
                     self.assertNotIn("src/**",scoped)
                     self.assertNotIn(".github/**",scoped)
 
+    def test_generic_capability_vocabulary_covers_real_nine_wave_plan(self):
+        # The vocabulary is architectural, not keyed by repository or project.
+        groups=(
+            ("identity-and-rbac","tenant-persistence","audit-history"),
+            ("research-and-sources","script-versioning","narration-and-srt","seo-and-thumbnail-brief"),
+            ("scene-map","consistency-references","skill-rule-validation"),
+            ("prompt-generation","export-artifacts","provider-adapters"),
+            ("editorial-review","quality-gates","error-recovery"),
+            ("workspace-navigation","project-authoring-ui","editorial-review-ui"),
+            ("storyboard-ui","prompt-review-ui","export-ui"),
+            ("end-to-end-workflow",),
+        )
+        for group in groups:
+            for key in group:
+                with self.subTest(key=key):
+                    scoped=ChangeSetBuilderWorker._continuation_semantic_scopes(key,FOUNDATION_PATHS)
+                    self.assertTrue(scoped)
+                    self.assertNotIn(".",scoped)
+                    self.assertNotIn("src/**",scoped)
+                    self.assertNotIn(".github/**",scoped)
+                    for dangerous in (".env",".github/workflows/deploy.yml","src/billing/payment.ts"):
+                        with self.assertRaises(PermissionError):
+                            enforce_write_scopes((dangerous,),scoped)
+
+    def test_real_wave_two_semantics_are_bounded_and_do_not_grant_unrelated_code(self):
+        paths=("README.md","package.json","tsconfig.json",
+               "src/domain/contracts.ts","src/domain/contracts.test.ts",
+               "src/domain/project-input.ts","src/domain/validation.ts",
+               "app/server.js")
+        data=source(["identity-and-rbac","tenant-persistence","audit-history",
+                     "src/domain/access-control.test.ts"])
+        enriched,context=resolved(data,paths=paths)
+        scopes=enriched["assignment"]["scope_keys"]
+        self.assertIn("src/domain/contracts.ts",context)
+        enforce_write_scopes((
+            "src/domain/access-control.test.ts",
+            "src/security/rbac/roles.ts",
+            "src/persistence/tenancy/store.ts",
+            "src/domain/audit/events.ts",
+        ),scopes)
+        for denied in ("src/domain/contracts.ts",".github/workflows/ci.yml",
+                       "src/finance/billing.ts","src/security/secrets.ts"):
+            with self.subTest(denied=denied):
+                with self.assertRaises(PermissionError):
+                    enforce_write_scopes((denied,),scopes)
+
     def test_unknown_and_unsafe_scopes_fail_closed(self):
         for invalid in ("unrestricted-access","../secrets",".github","billing-admin-root","."):
             with self.subTest(invalid=invalid):

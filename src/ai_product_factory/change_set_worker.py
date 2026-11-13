@@ -124,6 +124,34 @@ class ChangeSetBuilderWorker:
                           "tests/data-lifecycle"),
         "analytics-queries":("src/analytics","src/reporting/queries","tests/analytics"),
     }
+    # Generic product capabilities are resolved to bounded architectural
+    # namespaces. Unknown keys remain fail-closed; no repo-wide write grant.
+    # This vocabulary is independent of any product/repository identifier.
+    _GREENFIELD_CAPABILITY_ROOTS={
+        "identity-and-rbac":("src/security/identity","src/security/rbac","src/domain/access-control","tests/security"),
+        "tenant-persistence":("src/persistence/tenancy","src/domain/tenancy","tests/tenancy"),
+        "audit-history":("src/domain/audit","src/persistence/audit","tests/audit"),
+        "research-and-sources":("src/domain/research","src/domain/sources","tests/research"),
+        "script-versioning":("src/domain/scripts","src/domain/versions","tests/scripts"),
+        "narration-and-srt":("src/domain/narration","src/domain/subtitles","tests/narration"),
+        "seo-and-thumbnail-brief":("src/domain/seo","src/domain/thumbnails","tests/seo"),
+        "scene-map":("src/domain/scenes","src/domain/scene-map","tests/scenes"),
+        "consistency-references":("src/domain/continuity","src/domain/references","tests/continuity"),
+        "skill-rule-validation":("src/domain/rules","src/domain/validation","tests/rules"),
+        "prompt-generation":("src/domain/prompts","src/application/prompts","tests/prompts"),
+        "export-artifacts":("src/domain/exports","src/application/exports","tests/exports"),
+        "provider-adapters":("src/integrations/providers","src/domain/providers","tests/providers"),
+        "editorial-review":("src/domain/reviews","src/application/reviews","tests/reviews"),
+        "quality-gates":("src/domain/quality","src/application/quality","tests/quality"),
+        "error-recovery":("src/domain/recovery","src/application/recovery","tests/recovery"),
+        "workspace-navigation":("src/ui/navigation","src/components/navigation","tests/ui/navigation"),
+        "project-authoring-ui":("src/ui/projects","src/components/projects","tests/ui/projects"),
+        "editorial-review-ui":("src/ui/reviews","src/components/reviews","tests/ui/reviews"),
+        "storyboard-ui":("src/ui/storyboards","src/components/storyboards","tests/ui/storyboards"),
+        "prompt-review-ui":("src/ui/prompts","src/components/prompts","tests/ui/prompts"),
+        "export-ui":("src/ui/exports","src/components/exports","tests/ui/exports"),
+        "end-to-end-workflow":("src/e2e","tests/e2e","src/application/workflows"),
+    }
     _GREENFIELD_CONTINUATION_MIGRATIONS=("supabase/migrations","db/migrations","migrations")
 
     @staticmethod
@@ -163,6 +191,8 @@ class ChangeSetBuilderWorker:
                     else "tests/storage-policies.test.ts")
         if scope in cls._GREENFIELD_CONTINUATION_ROOTS:
             return cls._structural_scopes(*cls._GREENFIELD_CONTINUATION_ROOTS[scope])
+        if scope in cls._GREENFIELD_CAPABILITY_ROOTS:
+            return cls._structural_scopes(*cls._GREENFIELD_CAPABILITY_ROOTS[scope])
         for suffix,roots in (
             ("-domain",("src/domain","src/application","src/persistence","tests")),
             ("-ui",("src/ui","src/components","app","tests/ui")),
