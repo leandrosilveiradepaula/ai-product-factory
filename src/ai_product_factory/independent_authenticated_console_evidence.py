@@ -108,9 +108,10 @@ def _console_blobs(tree: object) -> dict[str, tuple[str, str]]:
     return blobs
 
 
-def verify_reusable_historical_authenticated_console_evidence(*, repository: str,
+def _verify_reusable_source(*, repository: str,
                                                                assessed_commit: str,
                                                                github_get, control_plane_get,
+                                                               workflow_run_id: int, source_commit: str,
                                                                require_default_head: bool = True) -> AuthenticatedConsoleEvidence:
     """Reuse a single durable capture only when its rendered Console is unchanged.
 
@@ -121,7 +122,9 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
     """
     if (not isinstance(repository, str) or REPO.fullmatch(repository) is None
             or not isinstance(assessed_commit, str) or SHA.fullmatch(assessed_commit) is None
-            or not isinstance(require_default_head, bool)):
+            or not isinstance(require_default_head, bool)
+            or type(workflow_run_id) is not int or workflow_run_id < 1
+            or not isinstance(source_commit, str) or SHA.fullmatch(source_commit) is None):
         raise AuthenticatedConsoleEvidenceBlocked("invalid historical evidence request")
     prefix = "/repos/" + repository
     repo = github_get(prefix)
@@ -132,19 +135,19 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
         head = github_get(prefix + "/git/ref/heads/" + branch)
         if not isinstance(head, dict) or (head.get("object") or {}).get("sha") != assessed_commit:
             raise AuthenticatedConsoleEvidenceBlocked("main no longer matches evidence SHA")
-    run = github_get(prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID))
+    run = github_get(prefix + "/actions/runs/" + str(workflow_run_id))
     if not isinstance(run, dict) or (
-        run.get("id") != HISTORICAL_WORKFLOW_RUN_ID or run.get("name") != WORKFLOW
+        run.get("id") != workflow_run_id or run.get("name") != WORKFLOW
         or run.get("path") != WORKFLOW_PATH or run.get("event") != "push"
-        or run.get("head_branch") != branch or run.get("head_sha") != HISTORICAL_SOURCE_SHA
+        or run.get("head_branch") != branch or run.get("head_sha") != source_commit
         or run.get("run_attempt") != 1 or run.get("status") != "completed"
         or run.get("conclusion") != "success"
         or (run.get("repository") or {}).get("full_name") != repository
     ):
         raise AuthenticatedConsoleEvidenceBlocked("historical visual workflow provenance mismatch")
     _capture_job(github_get=github_get, prefix=prefix,
-                 workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, sha=HISTORICAL_SOURCE_SHA)
-    artifacts = github_get(prefix + "/actions/runs/" + str(HISTORICAL_WORKFLOW_RUN_ID) + "/artifacts?per_page=100")
+                 workflow_run_id=workflow_run_id, sha=source_commit)
+    artifacts = github_get(prefix + "/actions/runs/" + str(workflow_run_id) + "/artifacts?per_page=100")
     # GitHub may retain an expired artifact in its inventory before purging
     # it. Either a deleted artifact or one with exact, non-ambiguous source
     # metadata is safe to pair with the durable capture registry; this does
@@ -155,7 +158,7 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
             or not isinstance(rows, list) or len(rows) != count):
         raise AuthenticatedConsoleEvidenceBlocked("historical artifact inventory is ambiguous")
     matching = [item for item in rows if isinstance(item, dict)
-                and item.get("name") == "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID)]
+                and item.get("name") == "authenticated-console-" + str(workflow_run_id)]
     if len(matching) > 1:
         raise AuthenticatedConsoleEvidenceBlocked("historical artifact duplicate")
     artifact_id = None
@@ -163,45 +166,95 @@ def verify_reusable_historical_authenticated_console_evidence(*, repository: str
         artifact = matching[0]
         provenance = artifact.get("workflow_run") if isinstance(artifact, dict) else None
         if (not isinstance(artifact, dict)
-                or artifact.get("name") != "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID)
+                or artifact.get("name") != "authenticated-console-" + str(workflow_run_id)
                 or type(artifact.get("id")) is not int or artifact["id"] < 1
                 or type(artifact.get("size_in_bytes")) is not int or artifact["size_in_bytes"] < 1
                 or type(artifact.get("expired")) is not bool
                 or not isinstance(provenance, dict)
-                or provenance.get("id") != HISTORICAL_WORKFLOW_RUN_ID
-                or provenance.get("head_sha") != HISTORICAL_SOURCE_SHA
+                or provenance.get("id") != workflow_run_id
+                or provenance.get("head_sha") != source_commit
                 or provenance.get("head_branch") != branch):
             raise AuthenticatedConsoleEvidenceBlocked("historical artifact provenance mismatch")
         if artifact["expired"] is False:
             artifact_id = artifact["id"]
     rows = control_plane_get(
         "factory_visual_evidence_runs?select=workflow_run_id,source_commit,artifact_name,status"
-        "&workflow_run_id=eq." + str(HISTORICAL_WORKFLOW_RUN_ID) + "&limit=2"
+        "&workflow_run_id=eq." + str(workflow_run_id) + "&limit=2"
     )
     if not isinstance(rows, list) or len(rows) != 1:
         raise AuthenticatedConsoleEvidenceBlocked("historical visual registry is unavailable or ambiguous")
     registry = rows[0]
     if not isinstance(registry, dict) or registry != {
-        "workflow_run_id": HISTORICAL_WORKFLOW_RUN_ID,
-        "source_commit": HISTORICAL_SOURCE_SHA,
-        "artifact_name": "authenticated-console-" + str(HISTORICAL_WORKFLOW_RUN_ID),
+        "workflow_run_id": workflow_run_id,
+        "source_commit": source_commit,
+        "artifact_name": "authenticated-console-" + str(workflow_run_id),
         "status": "captured",
     }:
         raise AuthenticatedConsoleEvidenceBlocked("historical visual registry provenance mismatch")
-    comparison = github_get(prefix + "/compare/" + HISTORICAL_SOURCE_SHA + "..." + assessed_commit)
+    comparison = github_get(prefix + "/compare/" + source_commit + "..." + assessed_commit)
     if not isinstance(comparison, dict) or comparison.get("status") not in ("ahead", "identical") or comparison.get("behind_by") != 0:
         raise AuthenticatedConsoleEvidenceBlocked("historical evidence is not an ancestor of candidate")
-    if ((comparison.get("base_commit") or {}).get("sha") != HISTORICAL_SOURCE_SHA
-            or (comparison.get("merge_base_commit") or {}).get("sha") != HISTORICAL_SOURCE_SHA):
+    if ((comparison.get("base_commit") or {}).get("sha") != source_commit
+            or (comparison.get("merge_base_commit") or {}).get("sha") != source_commit):
         raise AuthenticatedConsoleEvidenceBlocked("historical evidence merge base mismatch")
-    source = _console_blobs(github_get(prefix + "/git/trees/" + HISTORICAL_SOURCE_SHA + "?recursive=1"))
+    source = _console_blobs(github_get(prefix + "/git/trees/" + source_commit + "?recursive=1"))
     candidate = _console_blobs(github_get(prefix + "/git/trees/" + assessed_commit + "?recursive=1"))
     if source != candidate:
         raise AuthenticatedConsoleEvidenceBlocked("Console changed after historical browser capture")
     return AuthenticatedConsoleEvidence(
         repository=repository, assessed_commit=assessed_commit,
-        workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, artifact_id=artifact_id,
-        source_commit=HISTORICAL_SOURCE_SHA,
+        workflow_run_id=workflow_run_id, artifact_id=artifact_id,
+        source_commit=source_commit,
+    )
+
+
+def verify_reusable_historical_authenticated_console_evidence(*, repository: str,
+                                                               assessed_commit: str,
+                                                               github_get, control_plane_get,
+                                                               require_default_head: bool = True) -> AuthenticatedConsoleEvidence:
+    """Legacy fixed-source verification, preserving historical test provenance."""
+    return _verify_reusable_source(
+        repository=repository, assessed_commit=assessed_commit,
+        github_get=github_get, control_plane_get=control_plane_get,
+        workflow_run_id=HISTORICAL_WORKFLOW_RUN_ID, source_commit=HISTORICAL_SOURCE_SHA,
+        require_default_head=require_default_head,
+    )
+
+
+def verify_reusable_latest_authenticated_console_evidence(*, repository: str,
+                                                           assessed_commit: str,
+                                                           github_get, control_plane_get,
+                                                           require_default_head: bool = True) -> AuthenticatedConsoleEvidence:
+    """Re-verify only the latest independently broker-captured official run.
+
+    An unrelated main merge may reuse exact source evidence only with the
+    official successful GitHub capture, registry, immutable ancestry and an
+    identical complete Console subtree. Never accept caller-selected run IDs.
+    """
+    if (not isinstance(repository, str) or REPO.fullmatch(repository) is None
+            or not isinstance(assessed_commit, str)
+            or SHA.fullmatch(assessed_commit) is None
+            or type(require_default_head) is not bool):
+        raise AuthenticatedConsoleEvidenceBlocked("invalid latest evidence request")
+    rows = control_plane_get(
+        "factory_visual_evidence_runs?select=workflow_run_id,source_commit,artifact_name,status"
+        "&status=eq.captured&order=created_at.desc&limit=1"
+    )
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        raise AuthenticatedConsoleEvidenceBlocked("latest visual registry unavailable")
+    row = rows[0]
+    run_id, source_sha = row.get("workflow_run_id"), row.get("source_commit")
+    if (set(row) != {"workflow_run_id", "source_commit", "artifact_name", "status"}
+            or type(run_id) is not int or run_id < 1
+            or not isinstance(source_sha, str) or SHA.fullmatch(source_sha) is None
+            or row.get("artifact_name") != "authenticated-console-" + str(run_id)
+            or row.get("status") != "captured"):
+        raise AuthenticatedConsoleEvidenceBlocked("latest visual registry identity invalid")
+    return _verify_reusable_source(
+        repository=repository, assessed_commit=assessed_commit,
+        github_get=github_get, control_plane_get=control_plane_get,
+        workflow_run_id=run_id, source_commit=source_sha,
+        require_default_head=require_default_head,
     )
 
 

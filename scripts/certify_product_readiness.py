@@ -30,7 +30,7 @@ from ai_product_factory.independent_complete_console_evidence import (
 )
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
-    verify_reusable_historical_authenticated_console_evidence,
+    verify_reusable_latest_authenticated_console_evidence,
 )
 from ai_product_factory.independent_console_accessibility_evidence import (
     verify_console_accessibility, ConsoleAccessibilityBlocked,
@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             github_get=_github_get(token),
         )
     elif args.reuse_historical_authenticated_console_evidence and "authenticated_console_evidence" in evidence:
-        proof = verify_reusable_historical_authenticated_console_evidence(
+        proof = verify_reusable_latest_authenticated_console_evidence(
             repository=args.repository, assessed_commit=args.assessed_commit,
             github_get=_github_get(token), control_plane_get=SupabaseAdmissionReader()._get,
         )

@@ -89,7 +89,7 @@ class VerifiedBaselineTests(unittest.TestCase):
         from ai_product_factory.independent_authenticated_console_evidence import (
             AuthenticatedConsoleEvidenceBlocked,
         )
-        with patch("build_readiness_evidence_manifest.verify_reusable_historical_authenticated_console_evidence",
+        with patch("build_readiness_evidence_manifest.verify_reusable_latest_authenticated_console_evidence",
                    side_effect=AuthenticatedConsoleEvidenceBlocked("historical artifact provenance mismatch")):
             report = build_verified_baseline(
                 repository=REPO, sha=SHA, github_get=lambda path: github()[path],
@@ -104,7 +104,7 @@ class VerifiedBaselineTests(unittest.TestCase):
         self.assertFalse(report["product_ready"])
 
     def test_historical_capture_provider_errors_are_sanitized(self):
-        with patch("build_readiness_evidence_manifest.verify_reusable_historical_authenticated_console_evidence",
+        with patch("build_readiness_evidence_manifest.verify_reusable_latest_authenticated_console_evidence",
                    side_effect=OSError("secret=DO_NOT_LEAK")):
             report = build_verified_baseline(
                 repository=REPO, sha=SHA, github_get=lambda path: github()[path],
