@@ -123,6 +123,49 @@ class GreenfieldContextTests(unittest.TestCase):
                 enforce_write_scopes([forbidden],scopes)
         store.complete_work_unit.assert_called_once()
 
+    def test_real_dark_channel_foundation_plan_scopes(self):
+        # Regresses the actual first-wave failure of the authorized
+        # dark-channel-studio project: its planner emits semantic scopes
+        # application-foundation, domain-contracts and test-harness.
+        candidate=source(
+            key="app-foundation",
+            scopes=["application-foundation","domain-contracts","test-harness"],
+        )
+        worker,item,gh,store,prod=fixture(
+            source_value=candidate,
+            artifact_files={
+                "package.json": '{"type":"module"}\\n',
+                "src/domain/contracts.ts": "export type Scene = { id: string };\\n",
+                "tests/contracts.test.ts": "// deterministic tests\\n",
+            },
+        )
+        result=worker.execute(item)
+        self.assertEqual(result.output_commit,"artifact-commit")
+        packet=prod.produce.call_args.args[0].context_packet
+        self.assertEqual(packet["repository_snapshot"],{"README.md":"# new-support-product\n"})
+        scopes=packet["repository"]["write_scopes"]
+        for path in ("package.json","src/domain/contracts.ts","tests/contracts.test.ts"):
+            with self.subTest(path=path):
+                enforce_write_scopes([path],scopes)
+        self.assertNotIn(".",scopes)
+        self.assertNotIn("README.md",scopes)
+        for path in (".github/workflows/deploy.yml",".env","apps/console/page.tsx"):
+            with self.subTest(path=path),self.assertRaises(PermissionError):
+                enforce_write_scopes([path],scopes)
+
+    def test_real_foundation_plan_stays_fail_closed_for_extra_scopes(self):
+        for extra in ("identity-and-rbac","database-migrations-unapproved","deploy-production"):
+            candidate=source(
+                key="app-foundation",
+                scopes=["application-foundation","domain-contracts","test-harness",extra],
+            )
+            with self.subTest(extra=extra):
+                worker,item,gh,store,prod=fixture(source_value=candidate)
+                with self.assertRaises(RuntimeError):
+                    worker.execute(item)
+                prod.produce.assert_not_called()
+                gh.commit_files.assert_not_called()
+
     def test_governance_read_before_greenfield_scaffold(self):
         worker,item,gh,store,prod=fixture(
             repository_paths=("README.md","AGENTS.md"),

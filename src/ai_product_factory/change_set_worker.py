@@ -49,6 +49,11 @@ class ChangeSetBuilderWorker:
         "database-migrations":("supabase/migrations/**","db/migrations/**","migrations/**"),
         "environment-template":("src/config/**","config/**"),
         "domain-shared":("src/domain/**","src/shared/**","src/lib/**"),
+        # First-wave planning can describe these two narrower intents rather
+        # than "domain-shared". They never grant paths beyond the existing
+        # application-foundation allowlist, and remain bootstrap-only.
+        "domain-contracts":("src/domain/**","src/shared/**"),
+        "test-harness":("tests/**","test/**"),
     }
 
     @classmethod
