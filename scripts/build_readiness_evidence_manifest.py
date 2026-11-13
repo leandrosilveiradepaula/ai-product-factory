@@ -53,7 +53,7 @@ from ai_product_factory.independent_complete_console_evidence import (
 )
 from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, verify_authenticated_console_evidence,
-    verify_reusable_historical_authenticated_console_evidence,
+    verify_reusable_latest_authenticated_console_evidence,
 )
 from ai_product_factory.independent_console_accessibility_evidence import (
     verify_console_accessibility as verify_console_accessibility_fn, ConsoleAccessibilityBlocked,
@@ -295,7 +295,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         try:
             if control_plane_get is None:
                 raise AuthenticatedConsoleEvidenceBlocked("Control Plane reader unavailable")
-            authenticated_console_proof = verify_reusable_historical_authenticated_console_evidence(
+            authenticated_console_proof = verify_reusable_latest_authenticated_console_evidence(
                 repository=repository, assessed_commit=sha, github_get=github_get,
                 control_plane_get=control_plane_get,
             )
