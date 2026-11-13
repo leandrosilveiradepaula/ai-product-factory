@@ -118,7 +118,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
        <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
        <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
       </div>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} decisão{attention.count===1?"":"ões"} pendente{attention.count===1?"":"s"}</Link>
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"decisão pendente":"decisões pendentes"}</Link>
       :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
