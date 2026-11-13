@@ -147,6 +147,8 @@ class GreenfieldContextTests(unittest.TestCase):
         for path in ("package.json","src/domain/contracts.ts","tests/contracts.test.ts"):
             with self.subTest(path=path):
                 enforce_write_scopes([path],scopes)
+        self.assertNotIn(".",scopes)
+        self.assertNotIn("README.md",scopes)
         for path in (".github/workflows/deploy.yml",".env","apps/console/page.tsx"):
             with self.subTest(path=path),self.assertRaises(PermissionError):
                 enforce_write_scopes([path],scopes)
