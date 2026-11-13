@@ -445,6 +445,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261105043000_v2_preview_root_terminal_reconciliation.sql",
             "20261108020832_harden_trigger_function_acls.sql",
             "20261113061500_v2_postpreview_observed_merge_recovery.sql",
+            "20261113173000_greenfield_first_wave_context_recovery.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
