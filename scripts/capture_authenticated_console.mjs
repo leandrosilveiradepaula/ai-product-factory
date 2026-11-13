@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 import {WCAG_TAGS,sanitizeAxeScan,finishAxeAudit,canonicalMobileWcagRoute,buildSafeAxeIncompleteDiagnostic} from "./console_wcag_audit.mjs";
 import {verifyLiveConsoleAccess} from "./verify_block1_b2_live_console_access.mjs";
+import {verifyLiveSupabaseBoundaries} from "./verify_block1_b2_live_supabase.mjs";
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
 import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs";
 import {verifyLiveConsoleStateReadOnly} from "./verify_block1_b3_live_console_state.mjs";
@@ -103,6 +104,29 @@ try {
     runId:b2Witness.runId,targetCommit:b2Witness.targetCommit,
     scope:b2Witness.scope,authorizationBoundaryCertified:false,
     visualAuditPassed:false}));
+
+  // Real signed JWT, self-only RLS and anonymous/user data-plane denials.
+  // The modern sb_publishable_ key is deliberately PUBLIC; service and
+  // Github/OIDC tokens are never passed to this browser probe.
+  if (process.env.FACTORY_B2_SUPABASE_PUBLISHABLE_KEY?.trim()) {
+    const b2Live=await verifyLiveSupabaseBoundaries({
+      operatorContext:context,consoleOrigin:consoleUrl+"/",
+      brokerUrl:process.env.FACTORY_VISUAL_BROKER_URL,
+      publishableKey:process.env.FACTORY_B2_SUPABASE_PUBLISHABLE_KEY,
+      expectedUserId:process.env.FACTORY_VISUAL_USER_ID,
+      runId,sourceCommit:workflowSourceCommit,targetCommit,
+    });
+    await fs.writeFile("block1-b2-supabase-security.json",
+      JSON.stringify(b2Live,null,2),{mode:0o600,flag:"wx"});
+    console.log(JSON.stringify({status:"b2_signed_jwt_rls_boundary_verified",
+      runId:b2Live.runId,tableCount:b2Live.checkedTables.length,
+      dataRetained:false,productionWrites:0}));
+
+  } else {
+    // B3 remains independent of optional B2 provisioning. No forged PASS.
+    console.log(JSON.stringify({status:"b2_signed_provider_source_unavailable",
+      independentlyCertified:false,productionWrites:0,personalDataRetained:false}));
+  }
 
   // Preserve one real, authenticated state observation separately from the
   // synthetic transition suite below.  The witness has no body, project key,

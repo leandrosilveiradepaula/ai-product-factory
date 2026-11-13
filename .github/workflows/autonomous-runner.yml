@@ -1602,7 +1602,7 @@ jobs:
           boundary_args=()
           if [ -n "$AUTHENTICATED_CONSOLE_RUN_ID" ]; then
             visual_args=(--authenticated-console-run-id "$AUTHENTICATED_CONSOLE_RUN_ID")
-            boundary_args=(--verify-live-console-boundaries)
+            boundary_args=(--verify-live-console-boundaries --verify-independent-b2-security)
           fi
           python scripts/build_readiness_evidence_manifest.py \
             --event-path "$GITHUB_EVENT_PATH" \
@@ -1633,7 +1633,7 @@ jobs:
           boundary_args=()
           if [ -n "$AUTHENTICATED_CONSOLE_RUN_ID" ]; then
             visual_args=(--authenticated-console-run-id "$AUTHENTICATED_CONSOLE_RUN_ID")
-            boundary_args=(--verify-live-console-boundaries)
+            boundary_args=(--verify-live-console-boundaries --verify-independent-b2-security)
           fi
           python scripts/certify_product_readiness.py \
             --project-key ai-product-factory \
