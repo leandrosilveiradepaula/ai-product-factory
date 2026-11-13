@@ -200,7 +200,9 @@ def verify_independent_signed_b2(*, repository: str, assessed_commit: str,
         isinstance(authenticated_capture, AuthenticatedConsoleEvidence)
         and authenticated_capture.repository == repository
         and authenticated_capture.assessed_commit == assessed_commit
-        and authenticated_capture.source_commit in (None, assessed_commit)
+        and (authenticated_capture.source_commit is None
+             or (isinstance(authenticated_capture.source_commit, str)
+                 and SHA.fullmatch(authenticated_capture.source_commit) is not None))
         and type(authenticated_capture.artifact_id) is int
         and authenticated_capture.artifact_id > 0
         and isinstance(live_routes, VerifiedLiveConsoleBoundaries)
@@ -225,11 +227,13 @@ def verify_independent_signed_b2(*, repository: str, assessed_commit: str,
         "b2_isolated_sql_or_secret_exposure_not_verified",
     )
     run_id = authenticated_capture.workflow_run_id
+    source_sha = authenticated_capture.source_commit or assessed_commit
     require(type(surface) is VerifiedConsoleSurface
             and surface.repository == repository
             and surface.assessed_commit == assessed_commit
             and surface.run_id == run_id
-            and surface.source_commit in (None, assessed_commit)
+            and surface.source_commit in (None, source_sha)
+            and (source_sha == assessed_commit or surface.source_commit == source_sha)
             and isinstance(surface.target_commit, str)
             and SHA.fullmatch(surface.target_commit) is not None,
             "b2_verified_served_console_mismatch")
@@ -256,7 +260,7 @@ def verify_independent_signed_b2(*, repository: str, assessed_commit: str,
         and isinstance(binding, dict)
         and binding.get("id") == run_id
         and binding.get("head_branch") == "main"
-        and binding.get("head_sha") == assessed_commit,
+        and binding.get("head_sha") == source_sha,
         "b2_artifact_provenance_invalid",
     )
     try:
@@ -265,7 +269,12 @@ def verify_independent_signed_b2(*, repository: str, assessed_commit: str,
         )
     except (OSError, ValueError, RuntimeError, UnicodeError, KeyError, TypeError) as exc:
         raise B2SignedSecurityBlocked("b2_artifact_read_unavailable") from exc
-    validate_real_b2_receipt(payload, run_id=run_id, source_sha=assessed_commit,
+    # The originally signed provider/denial receipt is immutable and belongs
+    # to the source capture. A later *code-only* assessment may reuse it only
+    # through independently verified source ancestry and identical complete
+    # Console tree (AuthenticatedConsoleEvidence + VerifiedConsoleSurface).
+    # Validate original source/served SHA; report the new assessment separately.
+    validate_real_b2_receipt(payload, run_id=run_id, source_sha=source_sha,
                              served_sha=surface.target_commit)
     return VerifiedSignedB2(
         repository=repository, assessed_commit=assessed_commit,
