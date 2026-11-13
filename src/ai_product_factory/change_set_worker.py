@@ -246,7 +246,7 @@ class ChangeSetBuilderWorker:
         return bool(tokens & {"test","tests","teste","testes","testing","spec","specs","regression"})
 
     @classmethod
-    def _bounded_file_scope(cls, raw:str, all_paths:tuple[str,...])->tuple[str,str|None]|None:
+    def _bounded_file_scope(cls, raw:str, all_paths:tuple[str,...], *, allow_new_ui_root:bool=False)->tuple[str,str|None]|None:
         """Recognize an exact file plus optional conditional prose, never a prose path.
 
         A new file is allowed only in an already populated code directory. Neither
@@ -279,8 +279,12 @@ class ChangeSetBuilderWorker:
                 # already contains real files in the pinned commit. This
                 # never expands an exact scope to a prefix or a sibling file.
                 if len(parent.split("/")) < 3 and parent not in ("test","tests"):
-                    # Never create a new immediate child of src/ or app/.
-                    return None
+                    # Only a declared UI capability may authorize an exact
+                    # file in a new src/components root. No prefix grant.
+                    if not (allow_new_ui_root and parent=="src/components"
+                            and path.endswith((".tsx",".ts"))
+                            and any(p.startswith("src/") for p in all_paths)):
+                        return None
                 existing_ancestor=parent.rsplit("/",1)[0]+"/"
                 if not any(existing.startswith(existing_ancestor) for existing in all_paths):
                     return None
@@ -399,7 +403,12 @@ class ChangeSetBuilderWorker:
             scope=self._normalize_path(raw)
             if not scope:
                 continue
-            exact=self._bounded_file_scope(scope,all_paths)
+            exact=self._bounded_file_scope(
+                scope,all_paths,allow_new_ui_root=(continuation and
+                any(key in raw_scopes for key in (
+                    "project-authoring-ui","workspace-navigation",
+                    "editorial-review-ui","storyboard-ui","prompt-review-ui",
+                    "export-ui"))))
             if exact:
                 scope,condition=exact
                 precise_scopes.append(scope)
