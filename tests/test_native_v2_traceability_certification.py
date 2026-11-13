@@ -336,6 +336,85 @@ class ReusedNativeV2EvidenceTests(unittest.TestCase):
             with self.subTest(table=table, key=key), self.assertRaises(TraceabilityUnverified):
                 _verify_current_lineage(r)
 
+    def test_closed_preview_reuses_only_exact_observed_human_merge(self):
+        # A legitimate #209 closure after the authorized B4 recovery is
+        # nonproduction-only: it must preserve the earlier OWNER traceability
+        # PASS while refusing fabricated release or closure claims.
+        reader = Reader()
+        reader.tables["factory_journeys"][0].update(
+            state="closed", preview_merge_sha=PREVIEW_MERGE_SHA)
+        reader.tables["factory_audit_events"] = [{
+            "id": 8614, "project_id": PROJECT_ID, "task_id": None,
+            "run_id": RELEASE_RUN_ID, "event_type": "journey.closed",
+            "actor_type": "system", "actor_ref": "journey-v2-reconciler",
+            "payload": {
+                "journey_id": JOURNEY_ID,
+                "closure_reason": "observed_nonproduction_merge",
+                "automatic_merge": False,
+                "candidate_commit": CANDIDATE_SHA,
+                "preview_merge_sha": PREVIEW_MERGE_SHA,
+                "production_released": False,
+            },
+        }]
+        _verify_current_lineage(reader)
+        archive, get, *_ = self.make_valid()
+        claim = verify_existing_crm_v2_traceability(
+            repository=FACTORY, assessed_commit=HEAD,
+            github_get=get, reader=reader, environment=env(),
+            archive_fetch=lambda url, token: archive,
+        )
+        self.assertEqual(claim.criterion, "traceability")
+        self.assertEqual(claim.verification_state, "observed")
+        self.assertNotIn("critical_journeys", claim.criterion)
+        self.assertTrue(any("event_type=eq.journey.closed" in x for x in reader.read_paths))
+        self.assertNotIn("src/ai_product_factory/native_v2_traceability_certification.py", VERIFIER_FILES)
+
+        # Reject all unverified closures, without falling back to a stale
+        # previously positive static receipt or waiving the caller's status.
+        for label, change in (
+            ("no_event", lambda r: r.tables["factory_audit_events"].clear()),
+            ("ambiguous", lambda r: r.tables["factory_audit_events"].append(
+                dict(r.tables["factory_audit_events"][0]))),
+            ("wrong_preview_sha", lambda r: r.tables["factory_journeys"][0].update(
+                preview_merge_sha="a"*40)),
+            ("missing_preview_sha", lambda r: r.tables["factory_journeys"][0].update(
+                preview_merge_sha=None)),
+            ("released_main", lambda r: r.tables["factory_journeys"][0].update(
+                production_release_sha=PREVIEW_MERGE_SHA)),
+            ("wrong_actor", lambda r: r.tables["factory_audit_events"][0].update(
+                actor_ref="caller")),
+            ("wrong_project", lambda r: r.tables["factory_audit_events"][0].update(
+                project_id="00000000-0000-4000-8000-000000000099")),
+            ("wrong_run", lambda r: r.tables["factory_audit_events"][0].update(
+                run_id=ROOT_TASK_ID)),
+            ("forged_merge", lambda r: r.tables["factory_audit_events"][0]["payload"].update(
+                preview_merge_sha="a"*40)),
+            ("automated_merge", lambda r: r.tables["factory_audit_events"][0]["payload"].update(
+                automatic_merge=True)),
+            ("fake_release", lambda r: r.tables["factory_audit_events"][0]["payload"].update(
+                production_released=True)),
+            ("wrong_reason", lambda r: r.tables["factory_audit_events"][0]["payload"].update(
+                closure_reason="operator_override")),
+            ("wrong_candidate", lambda r: r.tables["factory_audit_events"][0]["payload"].update(
+                candidate_commit="a"*40)),
+            ("secret", lambda r: r.tables["factory_audit_events"][0]["payload"].update(
+                bearer_token="should-never-appear")),
+        ):
+            other = Reader()
+            other.tables["factory_journeys"][0].update(
+                state="closed", preview_merge_sha=PREVIEW_MERGE_SHA)
+            other.tables["factory_audit_events"] = json.loads(
+                json.dumps(reader.tables["factory_audit_events"]))
+            change(other)
+            with self.subTest(label=label), self.assertRaises(TraceabilityUnverified):
+                _verify_current_lineage(other)
+
+    def test_preview_verified_rejects_premature_merge_sha(self):
+        r = Reader()
+        r.tables["factory_journeys"][0]["preview_merge_sha"] = PREVIEW_MERGE_SHA
+        with self.assertRaises(TraceabilityUnverified):
+            _verify_current_lineage(r)
+
     def test_code_or_workflow_drift_denied(self):
         archive, gh, current, original, jobs, artifact, workflow = self.make_valid()
         _verify_unchanged_verifier(gh, HEAD)
