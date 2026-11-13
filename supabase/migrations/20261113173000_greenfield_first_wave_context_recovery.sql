@@ -105,8 +105,21 @@ begin
        or v_task.status is distinct from 'blocked'
        or v_task.scope_keys is distinct from
           '["application-foundation","domain-contracts","test-harness"]'::jsonb
+       -- The approved engineering plan contains nine sequential waves.
+       -- Exactly one unit may exist in the current first wave, while later
+       -- waves must remain untouched, unclaimed, and pending.
        or (select count(*) from public.factory_change_set_work_units
-           where change_set_id=p_change_set_id) <> 1
+           where change_set_id=p_change_set_id and wave=1) <> 1
+       or exists(
+           select 1 from public.factory_change_set_work_units downstream
+           where downstream.change_set_id=p_change_set_id
+             and (downstream.wave <= 1
+                  or downstream.status is distinct from 'pending'
+                  or downstream.run_id is not null
+                  or downstream.base_commit is not null
+                  or downstream.output_commit is not null)
+             and downstream.id <> p_work_unit_id
+       )
        or (select count(*) from public.factory_runs
            where task_id=v_task.id and status in
            ('queued','queued_execution','running','implementing')) <> 0
