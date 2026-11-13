@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 DSN=os.environ["FACTORY_JOURNEY_BINDING_TEST_DSN"]
 ROOT=Path(__file__).resolve().parents[1]
 MIGRATION=(ROOT/"supabase/migrations/20261030150000_journey_delivery_binding_v2.sql").read_text()
+RECOVERY=(ROOT/"supabase/migrations/20261113061500_v2_postpreview_observed_merge_recovery.sql").read_text()
 PROJECT="e2ea3201-e9a3-489f-bf14-916aecc7de09"
 REQUEST="d49060c4-69a0-c58d-4254-54a40003f607"
 SHA="a"*40
@@ -36,6 +37,7 @@ with psycopg.connect(DSN,autocommit=True) as db:
     with db.cursor() as cur:
         cur.execute(BASE)
         cur.execute(MIGRATION)
+        cur.execute(RECOVERY)
         policy={"enabled":True,"version":2,"digest":POLICY,"source_mode":"main_snapshot","preview_base_ref":"main","release_base_ref":"main"}
         cur.execute("insert into factory_projects values(%s,'crm-infodive','leandrosilveiradepaula/crm-infodive',%s,true,'existing')",(PROJECT,Jsonb({"journey_delivery_binding_v2":policy})))
         cur.execute("insert into factory_project_execution_controls values(%s,'running',17,1)",(PROJECT,))
@@ -222,6 +224,114 @@ with psycopg.connect(DSN,autocommit=True) as db:
         assert call(cur,"factory_reconcile_journey_v2",(r3,))["state"]=="closed"
         cur.execute("select count(*) from factory_audit_events where event_type='journey.released_observed' and run_id=%s",(r3,))
         assert cur.fetchone()[0]==0
+        # B4 historical real failure: the external human Preview observer
+        # committed its run as "integrated" BEFORE a pending journey trigger
+        # could consume awaiting_release. Restore only observed nonprod
+        # closure, never a production release or a synthetic main merge.
+        request4="d49060c4-69a0-c58d-4254-54a40003f610"
+        intake4=call(cur,"factory_enqueue_journey_intake_v2",
+            ("crm-infodive","CRM V2 observed Preview recovery",request4,
+             "github-owner","github-owner","126",
+             __import__("hashlib").sha256(b"CRM V2 observed Preview recovery").hexdigest(),
+             "leandrosilveiradepaula/ai-product-factory",1055))
+        j4=intake4["journey_id"]
+        call(cur,"factory_record_journey_source_evidence_v2",
+             (j4,"leandrosilveiradepaula/crm-infodive","main",SHA,POLICY,PROOF,17))
+        b4={**binding,"journey_id":j4,"request_id":request4,
+            "integration_branch":"factory/journey-"+j4,
+            "preview_branch_prefix":"preview/journey-"+j4[:8],
+            "preview_base_ref":policy3["preview_base_ref"]}
+        bound4=call(cur,"factory_bind_journey_source_v2",
+                    ("crm-infodive",request4,17,2,Jsonb(b4)))
+        r4=bound4["run_id"];candidate4="4"*40;pr4=219;merge4="5"*40
+        cur.execute("update factory_runs set status='preview_ready',candidate_commit=%s where id=%s",
+                    (candidate4,r4))
+        cur.execute("""insert into factory_change_sets(project_id,root_task_id,source_commit,integration_branch,
+          candidate_commit,release_run_id,status,metadata)
+          values(%s,%s,%s,%s,%s,%s,'ci_pending',%s) returning id""",
+          (PROJECT,bound4["task_id"],SHA,b4["integration_branch"],candidate4,r4,
+           Jsonb({"integration_release_request":{"branch":b4["integration_branch"],
+                   "candidate_commit":candidate4,"pr_number":pr4}})))
+        cs4=cur.fetchone()[0]
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'github_ci','success',%s,'{}'),
+                (%s,'quality_gate','success',%s,'{"passed":true}')""",
+          (r4,candidate4,r4,candidate4))
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','preview.promotion_completed',%s)""",
+          (PROJECT,r4,Jsonb({"branch":b4["preview_branch_prefix"]+"-"+str(cs4),
+                             "candidate_commit":candidate4,"pr_number":pr4})))
+        cur.execute("""insert into factory_deployments(run_id,environment,status,metadata)
+          values(%s,'preview','success',%s)""",
+          (r4,Jsonb({"candidate_commit":candidate4,"preview_url":preview_url})))
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'browser_e2e','success',%s,'{}')""",(r4,preview_url))
+        cur.execute("select state from factory_journeys where id=%s",(j4,))
+        assert cur.fetchone()[0]=="preview_verified"
+        # Isolated PostgreSQL only: suppress change triggers while replaying
+        # the exact ordering of the real already-committed observer.
+        cur.execute("set session_replication_role=replica")
+        try:
+            cur.execute("""insert into factory_release_reports(project_id,run_id,status,candidate_commit,report)
+              values(%s,%s,'blocked',%s,%s)""",
+              (PROJECT,r4,candidate4,Jsonb({"blockers":[
+                "production requires a separate verified main-target release candidate"]})))
+            cur.execute("update factory_runs set status='integrated' where id=%s",(r4,))
+            cur.execute("update factory_change_sets set status='completed' where id=%s",(cs4,))
+            cur.execute("""insert into factory_tool_usage(run_id,operation,metadata)
+              values(%s,'verified_preview_awaiting_human_merge',%s)""",
+              (r4,Jsonb({"head_sha":candidate4,"pr":pr4,"preview_url":preview_url})))
+            receipt={"merge_sha":merge4,"candidate_commit":candidate4,
+                "base_ref":b4["preview_base_ref"],"head_ref":b4["integration_branch"],
+                "repository":b4["repository"],"pr_number":str(pr4),
+                # Deliberately omitted URL: a valid merge cannot certify
+                # this recovery without browser/deployment provenance.
+                "environment":"preview","merged":True,
+                "merge_is_ancestor":True,"vercel_state":"success",
+                "production_released":False,
+                "evidence_source":"github_exact_pr_and_merge_commit_status"}
+            cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+              values(%s,%s,'system','nonproduction-observer','change_set.nonproduction_merge.observed',%s)""",
+              (PROJECT,r4,Jsonb(receipt)))
+        finally:
+            cur.execute("set session_replication_role=origin")
+        # The merge alone must NOT authorize a terminal state.
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','release.awaiting_human_merge',%s)""",
+          (PROJECT,r4,Jsonb({"head_sha":"6"*40,"pr":pr4})))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        # Correct approval alone cannot close a journey if the independent
+        # human merge receipt omits or forges the deployed/browser-verified URL.
+        cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
+          values(%s,%s,'system','preview-followup','release.awaiting_human_merge',%s)""",
+          (PROJECT,r4,Jsonb({"head_sha":candidate4,"pr":pr4})))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        cur.execute("""update factory_audit_events set payload=%s
+          where run_id=%s and event_type='change_set.nonproduction_merge.observed'""",
+          (Jsonb({**receipt,"preview_url":"https://not-the-verified-preview.invalid"}),r4))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        # Even a correctly attributed merge cannot be recovered when its
+        # bound browser-e2e evaluation is absent.
+        cur.execute("""delete from factory_evaluations
+          where run_id=%s and eval_type='browser_e2e'""",(r4,))
+        cur.execute("""update factory_audit_events set payload=%s
+          where run_id=%s and event_type='change_set.nonproduction_merge.observed'""",
+          (Jsonb({**receipt,"preview_url":preview_url}),r4))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'browser_e2e','success',%s,'{}')""",(r4,preview_url))
+        result=call(cur,"factory_reconcile_journey_v2",(r4,))
+        assert result["state"]=="closed" and result["preview_merge_sha"]==merge4
+        assert result["production_release_sha"] is None
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="closed"
+        cur.execute("""select count(*) from factory_audit_events
+          where run_id=%s and event_type='journey.closed'""",(r4,))
+        assert cur.fetchone()[0]==1
+        cur.execute("""select count(*) from factory_audit_events
+          where run_id=%s and event_type='journey.released_observed'""",(r4,))
+        assert cur.fetchone()[0]==0
+
         try:
             cur.execute("update factory_projects set manifest='{}'::jsonb where id=%s",(PROJECT,))
         except psycopg.Error: pass
