@@ -407,7 +407,7 @@ class SupabaseChangeSetStore:
                     raise RuntimeError("integration work unit has unsafe path")
                 # Reject special filesystem names and Git path ambiguity before any remote read/write.
                 segments=path.split("/")
-                if any(part.casefold() in (".git", ".gitmodules", ".gitattributes", ".gitignore") for part in segments):
+                if any(part.casefold() in (".git", ".gitmodules", ".gitattributes") for part in segments):
                     raise RuntimeError("integration path targets protected git metadata")
                 if any(":" in part for part in segments):
                     raise RuntimeError("integration path contains colon")
@@ -428,7 +428,7 @@ class SupabaseChangeSetStore:
                     raise RuntimeError("integration path contains lock file")
                 if any("\\u202e" in part or "\\u202d" in part for part in segments):
                     raise RuntimeError("integration path contains bidi override")
-                if any(part.startswith(".") and part not in (".github",) for part in segments):
+                if any(part.startswith(".") and part not in (".github",) and not (path == ".gitignore" and part == ".gitignore") for part in segments):
                     raise RuntimeError("integration path contains hidden segment")
                 if path in seen_paths:
                     raise RuntimeError("integration claim has conflicting file owners")
