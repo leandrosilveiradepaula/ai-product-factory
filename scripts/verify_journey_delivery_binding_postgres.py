@@ -284,6 +284,7 @@ with psycopg.connect(DSN,autocommit=True) as db:
             receipt={"merge_sha":merge4,"candidate_commit":candidate4,
                 "base_ref":b4["preview_base_ref"],"head_ref":b4["integration_branch"],
                 "repository":b4["repository"],"pr_number":str(pr4),
+                "preview_url":preview_url,
                 "environment":"preview","merged":True,
                 "merge_is_ancestor":True,"vercel_state":"success",
                 "production_released":False,
@@ -299,9 +300,26 @@ with psycopg.connect(DSN,autocommit=True) as db:
           values(%s,%s,'system','preview-followup','release.awaiting_human_merge',%s)""",
           (PROJECT,r4,Jsonb({"head_sha":"6"*40,"pr":pr4})))
         assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        # Correct approval alone cannot close a journey if the independent
+        # human merge receipt omits or forges the deployed/browser-verified URL.
         cur.execute("""insert into factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload)
           values(%s,%s,'system','preview-followup','release.awaiting_human_merge',%s)""",
           (PROJECT,r4,Jsonb({"head_sha":candidate4,"pr":pr4})))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        cur.execute("""update factory_audit_events set payload=%s
+          where run_id=%s and event_type='change_set.nonproduction_merge.observed'""",
+          (Jsonb({**receipt,"preview_url":"https://not-the-verified-preview.invalid"}),r4))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        # Even a correctly attributed merge cannot be recovered when its
+        # bound browser-e2e evaluation is absent.
+        cur.execute("""delete from factory_evaluations
+          where run_id=%s and eval_type='browser_e2e'""",(r4,))
+        cur.execute("""update factory_audit_events set payload=%s
+          where run_id=%s and event_type='change_set.nonproduction_merge.observed'""",
+          (Jsonb(receipt),r4))
+        assert call(cur,"factory_reconcile_journey_v2",(r4,))["state"]=="preview_verified"
+        cur.execute("""insert into factory_evaluations(run_id,eval_type,status,baseline_ref,result)
+          values(%s,'browser_e2e','success',%s,'{}')""",(r4,preview_url))
         result=call(cur,"factory_reconcile_journey_v2",(r4,))
         assert result["state"]=="closed" and result["preview_merge_sha"]==merge4
         assert result["production_release_sha"] is None
