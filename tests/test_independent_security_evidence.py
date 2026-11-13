@@ -1,5 +1,5 @@
 import hashlib, io, json, unittest, zipfile
-from ai_product_factory.independent_security_evidence import REPO, OWNER_WORKFLOW, REVIEWED_FIXTURES, WORKFLOWS, TRUSTED_SCANNER_FILES, TRUSTED_SCANNER_SHA, SecurityEvidenceBlocked, verify_existing_secrets_dependencies
+from ai_product_factory.independent_security_evidence import REPO, OWNER_WORKFLOW, REVIEWED_FIXTURES, WORKFLOWS, TRUSTED_SCANNER_FILES, TRUSTED_SCANNER_SHA, SecurityEvidenceBlocked, verify_existing_secrets_dependencies, _scan_run
 SHA="a"*40; TREE="b"*40; ROOT="/repos/"+REPO
 def env(): return {"GITHUB_ACTIONS":"true","GITHUB_REPOSITORY":REPO,"GITHUB_EVENT_NAME":"workflow_run","GITHUB_REF":"refs/heads/main","GITHUB_WORKFLOW_REF":REPO+"/"+OWNER_WORKFLOW+"@refs/heads/main","GITHUB_RUN_ID":"7","GITHUB_TOKEN":"x"}
 def receipt(k):
@@ -45,3 +45,52 @@ class TestSecurityEvidence(unittest.TestCase):
    a.writestr(WORKFLOWS["gitleaks"][4],json.dumps(b));a.writestr("block1-credential-exposure-receipt.json",json.dumps({"schema":"factory-block1-credential-exposure-v4","scope":"static-import-reachability-for-client-public-health-and-per-http-handler-guards-not-runtime-authentication","console_files_scanned":1,"client_entrypoints_scanned":1,"route_handlers_scanned":1,"public_surface_roots":["apps/console/app/api/health/route.ts"],"credential_exposure_detected":True,"privileged_values_read":False,"security_certified":False,"writes":0,"paid_calls":0,"findings":[{"path":"x"}]}))
   r[rid]=o.getvalue();artifact=v[ROOT+f"/actions/runs/{rid}/artifacts?per_page=100"]["artifacts"][0];artifact["digest"]="sha256:"+hashlib.sha256(r[rid]).hexdigest();artifact["size_in_bytes"]=len(r[rid])
   with self.assertRaises(SecurityEvidenceBlocked):self.proof(v,r)
+
+ def test_merge_parent_restricts_scanner_to_human_merged_candidate(self):
+   from ai_product_factory.independent_security_evidence import _scan_run
+   v,raw=fixture()
+   candidate="c"*40
+   v[ROOT+"/git/commits/"+SHA]["parents"]=[
+     {"sha":"d"*40},{"sha":candidate}]
+   v[ROOT+"/git/commits/"+candidate]={"tree":{"sha":TREE}}
+   for kind,(wid,name,job,art,member,steps) in WORKFLOWS.items():
+     runlist=v[ROOT+f"/actions/workflows/{wid}/runs?event=pull_request&status=success&per_page=100"]["workflow_runs"]
+     original=runlist[0]
+     original["head_sha"]=candidate
+     v[ROOT+f"/actions/runs/{original['id']}/jobs?per_page=100"]["jobs"][0]["head_sha"]=candidate
+     # An unrelated successful scan, even of an identical Git tree, must
+     # never be promoted to merge-provenance. The endpoint for its SHA is
+     # deliberately absent; querying it indicates the old 100-tree scan.
+     runlist.insert(0,{**original,"id":987654321,"head_sha":"e"*40})
+     seen=[]
+     def get(path):
+       seen.append(path)
+       return v[path]
+     row,rid=_scan_run(get,ROOT,kind,TREE,SHA)
+     self.assertEqual(row["head_sha"],candidate)
+     self.assertEqual(rid,original["id"])
+     self.assertEqual([p for p in seen if "/git/trees/" in p],
+                      [ROOT+"/git/trees/"+TREE+"?recursive=1"])
+     self.assertFalse(any("/git/commits/"+("e"*40) in p for p in seen))
+     # Candidate source and exact tree must both be verified.
+     runlist[:]=[runlist[0]]
+     with self.assertRaises(SecurityEvidenceBlocked):
+       _scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
+     runlist[:]=[original]
+     v[ROOT+"/git/commits/"+candidate]={"tree":{"sha":"f"*40}}
+     v[ROOT+"/git/trees/"+("f"*40)+"?recursive=1"]=v[ROOT+"/git/trees/"+TREE+"?recursive=1"]
+     with self.assertRaises(SecurityEvidenceBlocked):
+       _scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
+     v[ROOT+"/git/commits/"+candidate]={"tree":{"sha":TREE}}
+     runlist.append(dict(original,id=77777777))
+     with self.assertRaises(SecurityEvidenceBlocked):
+       _scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
+
+ def test_invalid_merge_parent_never_falls_back_to_same_tree(self):
+   from ai_product_factory.independent_security_evidence import _scan_run
+   for parents in ([],[{"sha":"not-a-sha"}],[{"sha":"c"*40},{"sha":"c"*40}],
+                   [{"sha":"a"*40},{"sha":"d"*40},{"sha":"e"*40}],"invalid"):
+     v,_=fixture()
+     v[ROOT+"/git/commits/"+SHA]["parents"]=parents
+     with self.subTest(parents=parents), self.assertRaises(SecurityEvidenceBlocked):
+       _scan_run(lambda path:v[path],ROOT,"gitleaks",TREE,SHA)

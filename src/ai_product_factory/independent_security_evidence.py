@@ -73,29 +73,84 @@ def _tree(github_get: Callable[[str],object],prefix: str,sha: str)->tuple[str,in
  listing=github_get(prefix+"/git/trees/"+tree+"?recursive=1"); rows=listing.get("tree") if isinstance(listing,dict) else None; require(isinstance(rows,list) and listing.get("truncated") is False,"security_tree_listing_incomplete")
  blobs=[x for x in rows if isinstance(x,dict) and x.get("type")=="blob"]; require(len(blobs)>=100 and all(isinstance(x.get("path"),str) and isinstance(x.get("sha"),str) and SHA.fullmatch(x["sha"]) for x in blobs),"security_tree_entries_invalid"); return tree,len(blobs)
 
-def _scan_run(github_get: Callable[[str],object],prefix: str,kind: str,tree: str,assessed_commit: str)->tuple[dict,int]:
- workflow_id,workflow_name,job_name,_,_,steps=WORKFLOWS[kind]; listing=github_get(prefix+f"/actions/workflows/{workflow_id}/runs?event=pull_request&status=success&per_page=100"); rows=listing.get("workflow_runs") if isinstance(listing,dict) else None; require(isinstance(rows,list) and 0<len(rows)<=100,"security_scan_run_inventory_invalid")
- matches=[]
- for run in rows:
-  if not isinstance(run,dict) or run.get("name")!=workflow_name or run.get("event")!="pull_request" or run.get("status")!="completed" or run.get("conclusion")!="success" or run.get("run_attempt")!=1 or not isinstance(run.get("head_sha"),str) or not SHA.fullmatch(run["head_sha"]): continue
-  if _tree(github_get,prefix,run["head_sha"])[0]==tree: matches.append(run)
- # A PR branch may be force-rebased without changing the scanned code tree.
- # Two successful scans of that exact tree are not interchangeable: accept
- # only one first-attempt source whose SHA is the merged second parent of the
- # assessed main commit. A squash, missing merge-parent, duplicate source or
- # unmatched code tree remains fail-closed.
- if len(matches)>1:
-  merged=github_get(prefix+"/git/commits/"+assessed_commit)
-  parents=merged.get("parents") if isinstance(merged,dict) else None
-  require(isinstance(parents,list) and len(parents)==2
-          and all(isinstance(p,dict) and isinstance(p.get("sha"),str) and SHA.fullmatch(p["sha"]) for p in parents)
-          and parents[0]["sha"]!=parents[1]["sha"],
-          "security_duplicate_scan_parent_unverified")
-  merged_candidate=parents[1]["sha"]
-  matches=[candidate for candidate in matches if candidate.get("head_sha")==merged_candidate]
- require(len(matches)==1,"security_scan_tree_not_unique"); run=matches[0]; run_id=run.get("id"); require(type(run_id)is int and run_id>0,"security_source_run_invalid")
- jobs=github_get(prefix+"/actions/runs/"+str(run_id)+"/jobs?per_page=100"); rows=jobs.get("jobs") if isinstance(jobs,dict) else None
- require(isinstance(rows,list) and jobs.get("total_count")==1 and len(rows)==1 and isinstance(rows[0],dict) and rows[0].get("name")==job_name and rows[0].get("run_id")==run_id and rows[0].get("head_sha")==run["head_sha"] and rows[0].get("status")=="completed" and rows[0].get("conclusion")=="success" and all(any(isinstance(x,dict) and x.get("name")==step and x.get("status")=="completed" and x.get("conclusion")=="success" for x in rows[0].get("steps",[])) for step in steps),"security_source_job_invalid"); return run,run_id
+def _scan_run(github_get: Callable[[str], object], prefix: str, kind: str,
+              tree: str, assessed_commit: str) -> tuple[dict, int]:
+  workflow_id, workflow_name, job_name, _, _, steps = WORKFLOWS[kind]
+  listing = github_get(prefix + f"/actions/workflows/{workflow_id}/runs"
+                       "?event=pull_request&status=success&per_page=100")
+  rows = listing.get("workflow_runs") if isinstance(listing, dict) else None
+  require(isinstance(rows, list) and 0 < len(rows) <= 100,
+          "security_scan_run_inventory_invalid")
+
+  def valid(run: object) -> bool:
+    return (
+      isinstance(run, dict)
+      and run.get("name") == workflow_name
+      and run.get("event") == "pull_request"
+      and run.get("status") == "completed"
+      and run.get("conclusion") == "success"
+      and run.get("run_attempt") == 1
+      and isinstance(run.get("head_sha"), str)
+      and SHA.fullmatch(run["head_sha"]) is not None
+    )
+
+  # The human GitHub merge has an exact second-parent PR candidate. Start
+  # from THAT immutable identity, not a 100-run scan with a recursive Git
+  # tree download for every unrelated PR. This both removes provider overload
+  # (HTTP 502 in real post-CI #43434137012) and rejects a scanner from an
+  # unrelated same-tree branch. Keep legacy single-source support only for a
+  # valid non-merge commit / older offline fixtures.
+  merged = github_get(prefix + "/git/commits/" + assessed_commit)
+  parents = merged.get("parents") if isinstance(merged, dict) else None
+  exact_parent = None
+  if parents is not None:
+    require(isinstance(parents, list) and len(parents) in (1, 2)
+            and all(isinstance(p, dict)
+                    and isinstance(p.get("sha"), str)
+                    and SHA.fullmatch(p["sha"]) is not None for p in parents)
+            and len({p["sha"] for p in parents}) == len(parents),
+            "security_merge_parent_provenance_invalid")
+    if len(parents) == 2:
+      exact_parent = parents[1]["sha"]
+  if exact_parent is not None:
+    matches = [run for run in rows if valid(run) and
+               run["head_sha"] == exact_parent]
+    require(len(matches) == 1, "security_scan_parent_not_unique")
+    # The candidate's complete committed tree must still equal the assessed
+    # merge tree. No inference from matching commit labels alone.
+    require(_tree(github_get, prefix, exact_parent)[0] == tree,
+            "security_scan_parent_tree_mismatch")
+  else:
+    # Non-merge histories retain the previous conservative selection. This
+    # path cannot accept duplicate same-tree scans without a verified second
+    # parent, exactly as before.
+    matches = [run for run in rows if valid(run) and
+               _tree(github_get, prefix, run["head_sha"])[0] == tree]
+    require(len(matches) == 1, "security_scan_tree_not_unique")
+
+  run = matches[0]
+  run_id = run.get("id")
+  require(type(run_id) is int and run_id > 0, "security_source_run_invalid")
+  jobs = github_get(prefix + "/actions/runs/" + str(run_id)
+                    + "/jobs?per_page=100")
+  job_rows = jobs.get("jobs") if isinstance(jobs, dict) else None
+  require(isinstance(job_rows, list)
+          and jobs.get("total_count") == 1
+          and len(job_rows) == 1 and isinstance(job_rows[0], dict)
+          and job_rows[0].get("name") == job_name
+          and job_rows[0].get("run_id") == run_id
+          and job_rows[0].get("head_sha") == run["head_sha"]
+          and job_rows[0].get("status") == "completed"
+          and job_rows[0].get("conclusion") == "success"
+          and all(any(isinstance(step, dict)
+                      and step.get("name") == expected
+                      and step.get("status") == "completed"
+                      and step.get("conclusion") == "success"
+                      for step in job_rows[0].get("steps", []))
+                  for expected in steps),
+          "security_source_job_invalid")
+  return run, run_id
+
 
 def _trusted_scanner_source(github_get: Callable[[str],object],prefix: str,sha: str)->None:
  for path in TRUSTED_SCANNER_FILES:

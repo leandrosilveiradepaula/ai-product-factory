@@ -51,6 +51,7 @@ from ai_product_factory.admission_diagnostics import SupabaseAdmissionReader
 from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
 from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
+from ai_product_factory.bounded_github_evidence_read import bounded_github_evidence_read
 from ai_product_factory.product_readiness_certification import _source_snapshot
 
 
@@ -61,7 +62,7 @@ def _github_get(token: str):
                      "X-GitHub-Api-Version": "2022-11-28"})
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode())
-    return get
+    return bounded_github_evidence_read(get)
 
 
 

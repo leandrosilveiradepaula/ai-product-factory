@@ -78,6 +78,7 @@ from inventory_block1_simulation_paths import inventory as scan_simulation_sourc
 from audit_block1_mock_runtime_reachability import audit as audit_simulation_reachability
 from audit_global_readiness import resolve_observer_event, MAX_EVENT_BYTES
 from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
+from ai_product_factory.bounded_github_evidence_read import bounded_github_evidence_read
 from ai_product_factory.product_readiness_certification import _source_snapshot
 
 # Checkout root is the script's location, never mutable working directory.
@@ -618,7 +619,7 @@ def main(argv: list[str] | None = None) -> int:
     event = json.loads(args.event_path.read_text(encoding="utf-8"))
     sha, _, _ = resolve_observer_event(event, repo)
     token = resolve_github_token(repo)
-    github_get = lambda path: github_read(token, path)
+    github_get = bounded_github_evidence_read(lambda path: github_read(token, path))
     control_plane_get = (SupabaseAdmissionReader()._get
                          if (args.reuse_historical_authenticated_console_evidence
                              or args.verify_complete_console_surface
