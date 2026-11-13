@@ -1,5 +1,7 @@
 ## 13/11/2026 — B2: falha real pós-captura e recuperação de certificação (candidato)
 
+Controles vinculantes mantidos: [RELEASE_AUTONOMY.md](RELEASE_AUTONOMY.md) e [FINALIZATION_EXECUTION_CONTRACT.md](FINALIZATION_EXECUTION_CONTRACT.md). Nenhuma evidência cria autorização de merge ou release.
+
 - **Main confirmada:** `d0f834a00cd4e083bf67e5319ffdcc571bd3a87d`, merge humano #1396. `validate` push #43333589612 SUCCESS. Captura autenticada real #43333655776 SUCCESS no SHA correto, operador efêmero limpo, Control Plane `status=captured`, WCAG/Console auditados. **Success não é B2 PASS.**
 - **Causa B2:** a variável pública de repositório `FACTORY_B2_SUPABASE_PUBLISHABLE_KEY` estava vazia na execução #43333655776; a captura registrou `b2_signed_provider_source_unavailable`, não emitiu artefato `block1-b2-supabase-security-*` e corretamente não apresentou prova assinada de JWT/RLS. Não copiar chave pública no código, não alargar RLS, não tocar em usuários permanentes.
 - **Falha de orquestração reprodutível:** os certifiers pós-CI #43333686308 e pós-captura #43334373783 falharam em `B2 independent prerequisites unavailable`; a variável local genérica `proof` do Console foi sobrescrita pelo atestado de traceabilidade V2 antes da checagem B2. Sem artefato opcional B2, nenhuma das 14 células previamente PASS pode sofrer regressão por erro de fluxo.

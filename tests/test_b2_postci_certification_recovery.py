@@ -6,11 +6,12 @@ positive security criterion. Never re-run the protected operator workflow here.
 from __future__ import annotations
 
 import unittest
+import sys
 from pathlib import Path
-from scripts.certify_product_readiness import require_b2_source_readiness
-from ai_product_factory.product_readiness_certification import CertificationEvidenceError
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from certify_product_readiness import require_b2_source_readiness
+from ai_product_factory.product_readiness_certification import CertificationEvidenceError
 
 
 def baseline(auth="partial", boundary="partial"):
