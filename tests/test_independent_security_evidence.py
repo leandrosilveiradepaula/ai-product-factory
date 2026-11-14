@@ -89,7 +89,7 @@ class TestSecurityEvidence(unittest.TestCase):
      # Two successful scans of the SAME immutable second parent are genuine
      # duplicate executions, not two ambiguous source revisions.
      chosen,rid=_scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
-     self.assertEqual(rid,77777777)
+     self.assertEqual(rid,max(original["id"],77777777))
      self.assertEqual(chosen["head_sha"],candidate)
      v[ROOT+"/actions/runs/77777777/jobs?per_page=100"]["jobs"][0]["conclusion"]="failure"
      with self.assertRaises(SecurityEvidenceBlocked):
