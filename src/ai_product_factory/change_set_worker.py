@@ -279,7 +279,7 @@ class ChangeSetBuilderWorker:
                 # already contains real files in the pinned commit. This
                 # never expands an exact scope to a prefix or a sibling file.
                 if len(parent.split("/")) < 3 and parent not in ("test","tests"):
-                    # Only a declared UI capability may authorize an exact
+                    # Only declared UI or E2E capability may authorize an exact
                     # file in a new src/components root. No prefix grant.
                     if not (allow_new_ui_root and parent=="src/components"
                             and path.endswith((".tsx",".ts"))
