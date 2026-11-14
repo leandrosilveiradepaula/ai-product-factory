@@ -189,6 +189,24 @@ class GreenfieldContinuationScopeTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 enforce_write_scopes((denied,),enriched["assignment"]["scope_keys"])
 
+
+    def test_exact_e2e_new_root_requires_declared_workflow_capability(self):
+        existing=("README.md","package.json","src/domain/contracts.ts")
+        exact="src/e2e/project-production-flow.test.ts"
+        self.assertIsNone(ChangeSetBuilderWorker._bounded_file_scope(exact,existing))
+        self.assertEqual(ChangeSetBuilderWorker._bounded_file_scope(
+            exact,existing,allow_new_e2e_root=True),(exact,None))
+        for denied in ("src/e2e/secret.ts","src/e2e/nested/test.test.ts",
+                       "src/e2e/../../deploy.test.ts","src/secrets/token.test.ts"):
+            self.assertIsNone(ChangeSetBuilderWorker._bounded_file_scope(
+                denied,existing,allow_new_e2e_root=True))
+        data=source(["end-to-end-workflow",exact])
+        enriched,_=resolved(data,paths=existing)
+        self.assertIn(exact,enriched["assignment"]["scope_keys"])
+        enforce_write_scopes((exact,),enriched["assignment"]["scope_keys"])
+        with self.assertRaises(PermissionError):
+            enforce_write_scopes(("src/e2e/unrelated.test.ts",),enriched["assignment"]["scope_keys"])
+
     def test_unknown_and_unsafe_scopes_fail_closed(self):
         for invalid in ("unrestricted-access","../secrets",".github","billing-admin-root","."):
             with self.subTest(invalid=invalid):
