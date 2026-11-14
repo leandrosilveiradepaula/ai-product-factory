@@ -205,7 +205,7 @@ class GreenfieldContinuationScopeTests(unittest.TestCase):
         self.assertIn(exact,enriched["assignment"]["scope_keys"])
         enforce_write_scopes((exact,),enriched["assignment"]["scope_keys"])
         with self.assertRaises(PermissionError):
-            enforce_write_scopes(("src/e2e/unrelated.test.ts",),enriched["assignment"]["scope_keys"])
+            enforce_write_scopes(("src/secrets/unrelated.test.ts",),enriched["assignment"]["scope_keys"])
 
     def test_unknown_and_unsafe_scopes_fail_closed(self):
         for invalid in ("unrestricted-access","../secrets",".github","billing-admin-root","."):
