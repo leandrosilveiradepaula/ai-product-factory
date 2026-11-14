@@ -61,6 +61,9 @@ from ai_product_factory.independent_console_accessibility_evidence import (
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries as verify_live_console_boundaries_fn,
 )
+from ai_product_factory.independent_console_states_evidence import (
+    ConsoleStatesEvidenceBlocked, verify_console_states as verify_console_states_fn,
+)
 from ai_product_factory.independent_real_journey_blocker_evidence import (
     RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers as verify_real_journey_blockers_fn,
 )
@@ -103,6 +106,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_complete_console_surface: bool = False,
                             verify_independent_accessibility: bool = False,
                             verify_live_console_boundaries: bool = False,
+                            verify_independent_console_states: bool = False,
                             verify_real_journey_blockers: bool = False,
                             verify_isolated_console_auth: bool = False,
                             verify_independent_b2_security: bool = False,
@@ -424,6 +428,34 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                         evidence=list(claim.evidence),
                     )
 
+    # B3 PASS requires complementary, independently verified LIVE Auth/CP,
+    # full WCAG/browser, real gate transitions AND executed real Next/React
+    # failure/empty/loading tests. A fixture-only witness never suffices.
+    states_proof = None
+    if (verify_independent_console_states
+            and full_surface_proof is not None
+            and accessibility_proof is not None
+            and live_boundaries_proof is not None
+            and b2_security_proof is not None
+            and control_plane_get is not None):
+        try:
+            states_proof = verify_console_states_fn(
+                repository=repository, assessed_commit=sha,
+                surface=full_surface_proof, accessibility=accessibility_proof,
+                live_boundaries=live_boundaries_proof, signed_b2=b2_security_proof,
+                github_get=github_get, control_plane_get=control_plane_get,
+            )
+        except (ConsoleStatesEvidenceBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            states_proof = None
+    if states_proof is not None:
+        claim = states_proof.criterion()
+        manifest["criteria"]["product_experience"]["states"].update(
+            status="passed", verification_state="observed",
+            reason="independent live authenticated and executed Next/React state matrix",
+            evidence=list(claim.evidence),
+        )
+
     journey_blocker_proof = None
     if verify_real_journey_blockers:
         try:
@@ -543,6 +575,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
         if (domain, criterion) == ("product_experience", "accessibility"):
             return accessibility_proof.criterion() if accessibility_proof is not None else None
+        if (domain, criterion) == ("product_experience", "states"):
+            return states_proof.criterion() if states_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -550,7 +584,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b2_security_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b2_security_proof, states_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -580,6 +614,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if accessibility_proof is not None else {}),
         **({"live_console_boundary_evidence": live_boundaries_proof.receipt()}
            if live_boundaries_proof is not None else {}),
+        **({"independent_console_states_evidence": states_proof.receipt()}
+           if states_proof is not None else {}),
         **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
            if journey_blocker_proof is not None else {}),
         **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
@@ -607,6 +643,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--verify-independent-accessibility", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
+    parser.add_argument("--verify-independent-console-states", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
     parser.add_argument("--verify-independent-b2-security", action="store_true")
@@ -646,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_complete_console_surface=args.verify_complete_console_surface,
         verify_independent_accessibility=args.verify_independent_accessibility,
         verify_live_console_boundaries=args.verify_live_console_boundaries,
+        verify_independent_console_states=args.verify_independent_console_states,
         verify_real_journey_blockers=args.verify_real_journey_blockers,
         verify_isolated_console_auth=args.verify_isolated_console_auth,
         verify_independent_b2_security=args.verify_independent_b2_security,
