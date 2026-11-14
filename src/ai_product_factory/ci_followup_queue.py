@@ -139,7 +139,8 @@ class SupabaseCIFollowupQueue:
                 receipt=(reconciliations[0].get("metadata") or {}) if reconciliations else {}
                 if (receipt.get("previous_commit") != head_sha
                     or receipt.get("candidate_commit") != candidate
-                    or receipt.get("pr_number") != str(pr_number)
+                    or type(receipt.get("pr_number")) not in (int, str)
+                    or str(receipt.get("pr_number")) != str(pr_number)
                     or receipt.get("change_set_id") != metadata.get("change_set_id")):
                     raise RuntimeError("durable PR evidence does not match run candidate commit")
         elif str(metadata.get("source") or "")=="operator_reconciled_dogfood":

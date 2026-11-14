@@ -71,6 +71,27 @@ class Tests(unittest.TestCase):
         self.assertEqual(item.candidate_commit,"new")
         self.assertEqual(item.pr_number,9)
 
+    def test_reconciled_candidate_accepts_numeric_pr_number_from_real_receipt(self):
+        run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"new","metadata":{"source":"change-set","change_set_id":"cs","github_issue":{"number":7}}}]
+        task=[{"project_id":"p"}]
+        project=[{"project_key":"crm","repository":"owner/crm"}]
+        original=[{"metadata":{"pr":9,"head_sha":"old"}}]
+        receipt=[{"metadata":{"pr_number":9,"previous_commit":"old","candidate_commit":"new","change_set_id":"cs"}}]
+        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(original),Response(receipt)]):
+            item=SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x").next_pending()
+        self.assertEqual(item.pr_number,9)
+        self.assertEqual(item.candidate_commit,"new")
+
+    def test_reconciled_candidate_rejects_boolean_pr_number(self):
+        run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"new","metadata":{"source":"change-set","change_set_id":"cs","github_issue":{"number":7}}}]
+        task=[{"project_id":"p"}]
+        project=[{"project_key":"crm","repository":"owner/crm"}]
+        original=[{"metadata":{"pr":9,"head_sha":"old"}}]
+        receipt=[{"metadata":{"pr_number":True,"previous_commit":"old","candidate_commit":"new","change_set_id":"cs"}}]
+        with patch("urllib.request.urlopen",side_effect=[Response(run),Response(task),Response(project),Response(original),Response(receipt)]):
+            with self.assertRaisesRegex(RuntimeError,"durable PR evidence"):
+                SupabaseCIFollowupQueue(url="https://x.supabase.co",secret_key="sb_secret_x").next_pending()
+
     def test_reconciled_candidate_rejects_wrong_receipt(self):
         run=[{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"new","metadata":{"source":"change-set","change_set_id":"cs","github_issue":{"number":7}}}]
         task=[{"project_id":"p"}]
