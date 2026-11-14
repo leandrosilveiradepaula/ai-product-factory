@@ -246,7 +246,7 @@ class ChangeSetBuilderWorker:
         return bool(tokens & {"test","tests","teste","testes","testing","spec","specs","regression"})
 
     @classmethod
-    def _bounded_file_scope(cls, raw:str, all_paths:tuple[str,...], *, allow_new_ui_root:bool=False)->tuple[str,str|None]|None:
+    def _bounded_file_scope(cls, raw:str, all_paths:tuple[str,...], *, allow_new_ui_root:bool=False, allow_new_e2e_root:bool=False)->tuple[str,str|None]|None:
         """Recognize an exact file plus optional conditional prose, never a prose path.
 
         A new file is allowed only in an already populated code directory. Neither
@@ -283,6 +283,9 @@ class ChangeSetBuilderWorker:
                     # file in a new src/components root. No prefix grant.
                     if not (allow_new_ui_root and parent=="src/components"
                             and path.endswith((".tsx",".ts"))
+                            and any(p.startswith("src/") for p in all_paths)
+                            or allow_new_e2e_root and parent=="src/e2e"
+                            and path.endswith((".test.ts",".spec.ts",".test.tsx",".spec.tsx"))
                             and any(p.startswith("src/") for p in all_paths)):
                         return None
                 existing_ancestor=parent.rsplit("/",1)[0]+"/"
@@ -408,7 +411,8 @@ class ChangeSetBuilderWorker:
                 any(key in raw_scopes for key in (
                     "project-authoring-ui","workspace-navigation",
                     "editorial-review-ui","storyboard-ui","prompt-review-ui",
-                    "export-ui"))))
+                    "export-ui"))),allow_new_e2e_root=(continuation and
+                "end-to-end-workflow" in raw_scopes))
             if exact:
                 scope,condition=exact
                 precise_scopes.append(scope)
