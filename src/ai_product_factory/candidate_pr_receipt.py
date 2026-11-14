@@ -27,7 +27,8 @@ def validate_create_pr_candidate(*,read,run_id:str,pr_number:int,original_head:s
     if (not isinstance(meta,dict) or meta.get("previous_commit")!=original_head
         or meta.get("candidate_commit")!=candidate_commit
         or meta.get("change_set_id")!=change_set_id
-        or meta.get("pr_number")!=str(pr_number)
+        or type(meta.get("pr_number")) not in (int, str)
+        or str(meta.get("pr_number"))!=str(pr_number)
         or meta.get("old_sha")!=original_head
         or meta.get("new_sha")!=candidate_commit
         or meta.get("compare_status")!="ahead"):
