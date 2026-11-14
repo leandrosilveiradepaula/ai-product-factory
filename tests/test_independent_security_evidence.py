@@ -1,4 +1,4 @@
-import hashlib, io, json, unittest, zipfile
+import copy, hashlib, io, json, unittest, zipfile
 from ai_product_factory.independent_security_evidence import REPO, OWNER_WORKFLOW, REVIEWED_FIXTURES, WORKFLOWS, TRUSTED_SCANNER_FILES, TRUSTED_SCANNER_SHA, SecurityEvidenceBlocked, verify_existing_secrets_dependencies, _scan_run
 SHA="a"*40; TREE="b"*40; ROOT="/repos/"+REPO
 def env(): return {"GITHUB_ACTIONS":"true","GITHUB_REPOSITORY":REPO,"GITHUB_EVENT_NAME":"workflow_run","GITHUB_REF":"refs/heads/main","GITHUB_WORKFLOW_REF":REPO+"/"+OWNER_WORKFLOW+"@refs/heads/main","GITHUB_RUN_ID":"7","GITHUB_TOKEN":"x"}
@@ -82,6 +82,19 @@ class TestSecurityEvidence(unittest.TestCase):
      with self.assertRaises(SecurityEvidenceBlocked):
        _scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
      v[ROOT+"/git/commits/"+candidate]={"tree":{"sha":TREE}}
+     runlist.append(dict(original,id=77777777))
+     duplicate_job=copy.deepcopy(v[ROOT+f"/actions/runs/{original['id']}/jobs?per_page=100"])
+     duplicate_job["jobs"][0]["run_id"]=77777777
+     v[ROOT+"/actions/runs/77777777/jobs?per_page=100"]=duplicate_job
+     # Two successful scans of the SAME immutable second parent are genuine
+     # duplicate executions, not two ambiguous source revisions.
+     chosen,rid=_scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
+     self.assertEqual(rid,max(original["id"],77777777))
+     self.assertEqual(chosen["head_sha"],candidate)
+     v[ROOT+"/actions/runs/77777777/jobs?per_page=100"]["jobs"][0]["conclusion"]="failure"
+     with self.assertRaises(SecurityEvidenceBlocked):
+       _scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
+     v[ROOT+"/actions/runs/77777777/jobs?per_page=100"]["jobs"][0]["conclusion"]="success"
      runlist.append(dict(original,id=77777777))
      with self.assertRaises(SecurityEvidenceBlocked):
        _scan_run(lambda path:v[path],ROOT,kind,TREE,SHA)
