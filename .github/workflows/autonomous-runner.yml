@@ -1622,6 +1622,7 @@ jobs:
             --verify-static-simulation-inventory \
             --verify-complete-console-surface \
             --verify-independent-accessibility \
+            --verify-independent-console-states \
             --verify-real-journey-blockers \
             "${visual_args[@]}" "${boundary_args[@]}"
       # Evidence collection can take several minutes. Mint a fresh, pinned
@@ -1658,6 +1659,7 @@ jobs:
               --verify-executed-simulation-inventory \
             --verify-complete-console-surface \
             --verify-independent-accessibility \
+            --verify-independent-console-states \
             --verify-real-journey-blockers \
             "${visual_args[@]}" "${boundary_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
