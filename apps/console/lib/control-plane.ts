@@ -805,6 +805,24 @@ export async function getAuditEvents(limit=150):Promise<AuditRow[]>{
 }
 
 export type RunDetail=RunSummary&{projectKey:string;projectName:string;projectStage:string;taskStatus:string;taskComplexity:string;branchName:string|null;metadata:unknown;evaluations:EvaluationRow[];deployments:DeploymentRow[];gates:GateSummary[];audit:AuditRow[];toolUsage:{id:string;family:string;operation:string|null;units:number|null;cost:number|null;createdAt:string}[];codex:{id:string;level:number;invocations:number;createdAt:string}[]};
+/**
+ * Canonical authenticated run-existence read, not a synthetic 404 fixture.
+ * A connection error or malformed Control Plane response must NEVER be
+ * mistaken for an absent run. No run contents or project IDs are returned.
+ */
+export async function getRunExistenceForOperator(runId:string):Promise<boolean>{
+ await requireConsoleOperator();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(runId))
+  throw new Error("Invalid canonical run ID");
+ const cfg=serverHeaders();if(!cfg)throw new Error("Control Plane unavailable");
+ const response=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id&id=eq.${encodeURIComponent(runId)}&limit=1`,{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)throw new Error("Run existence lookup unavailable");
+ const rows:unknown=await response.json();
+ if(!Array.isArray(rows)||rows.length>1||rows.some(item=>!item||typeof item!=="object"||item.id!==runId))
+  throw new Error("Invalid run existence response");
+ return rows.length===1;
+}
+
 export async function getRunDetail(runId:string):Promise<RunDetail|null>{
  await requireConsoleOperator();const cfg=serverHeaders();if(!cfg)return null;
  const runResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,task_id,status,execution_route,candidate_commit,branch_name,metadata,created_at,attempt_count,lease_owner,lease_expires_at,last_error&id=eq.${encodeURIComponent(runId)}&limit=1`,{headers:cfg.headers,cache:"no-store"});

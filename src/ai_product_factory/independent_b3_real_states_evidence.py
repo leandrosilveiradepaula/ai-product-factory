@@ -21,16 +21,16 @@ ARTIFACT_NAME="block1-b3-real-states-"
 CHECKS=("success","empty","loading","denied","notFound","connectionError","recovered")
 SOURCES={
     "success":"authenticated_first_party_overview",
-    "empty":"first_party_human_attention_zero",
+    "empty":"authenticated_first_party_empty_human_decision_inbox",
     "loading":"real_network_throttled_next_route_fallback",
     "denied":"authenticated_first_party_role_denial",
-    "notFound":"first_party_nonexistent_run_404",
+    "notFound":"first_party_run_existence_api_404_plus_not_found_ui",
     "connectionError":"actual_chromium_transport_disconnection",
     "recovered":"first_party_route_retry_after_reconnection",
 }
 FIELDS=frozenset({
     "schema","runId","sourceCommit","targetCommit","checks","sources",
-    "backendStatus","mutatingRequests","interceptions","unexpectedPageErrors",
+    "backendStatus","pendingHumanGateCount","mutatingRequests","interceptions","unexpectedPageErrors",
     "productionWrites","paidCalls","personalDataRetained","responsesFabricated",
     "backendOutageClaimed","fullUserExperienceCertified","independentCriterionCertified",
 })
@@ -58,6 +58,7 @@ def validate_real_states(payload: object, *, run_id: int, source_sha: str,
         raise B3RealStatesBlocked("b3_real_states_coverage_not_live")
     if (type(payload["backendStatus"]) is not int or payload["backendStatus"]!=200
         or any(type(payload[key]) is not int or payload[key]!=0 for key in (
+            "pendingHumanGateCount",
             "mutatingRequests","interceptions","unexpectedPageErrors",
             "productionWrites","paidCalls"))
         or any(payload[key] is not False for key in (
