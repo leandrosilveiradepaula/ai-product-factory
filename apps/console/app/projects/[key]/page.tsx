@@ -210,7 +210,6 @@ export default async function Project({params,searchParams}:{params:Promise<{key
        <input type="hidden" name="project_key" value={p.key}/>
        <input type="hidden" name="command" value={command}/>
        <input type="hidden" name="version" value={executionControl.version}/>
-       <input type="hidden" name="command_id" value={crypto.randomUUID()}/>
        <ProjectControlSubmit command={command} label={label}/>
       </form>
     )}</div>
