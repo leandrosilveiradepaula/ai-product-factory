@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from .independent_authenticated_console_evidence import AuthenticatedConsoleEvidence
 from .independent_complete_console_evidence import VerifiedConsoleSurface, REPO, SHA
 from .independent_live_console_boundary_evidence import (
-    VerifiedLiveConsoleBoundaries, _artifact,
+    VerifiedLiveConsoleBoundaries, LiveConsoleBoundaryEvidenceBlocked, _artifact,
 )
 from .product_readiness_certification import VerifiedCriterionEvidence
 
@@ -123,11 +123,14 @@ def verify_b3_real_states(*,repository:str,assessed_commit:str,
     source_sha=capture.source_commit or assessed_commit
     if surface.source_commit not in (None,source_sha):
         raise B3RealStatesBlocked("b3_real_states_auth_source_changed")
-    artifact_id=_artifact(
-        github_get,repository=repository,run_id=capture.workflow_run_id,
-        source_sha=source_sha,
-        name=ARTIFACT_NAME+str(capture.workflow_run_id),
-    )
+    try:
+        artifact_id=_artifact(
+            github_get,repository=repository,run_id=capture.workflow_run_id,
+            source_sha=source_sha,
+            name=ARTIFACT_NAME+str(capture.workflow_run_id),
+        )
+    except LiveConsoleBoundaryEvidenceBlocked as exc:
+        raise B3RealStatesBlocked("b3_real_states_artifact_provenance_missing") from exc
     payload=artifact_reader(repository=repository,artifact_id=artifact_id,
                             artifact_file=ARTIFACT_FILE)
     validate_real_states(payload,run_id=capture.workflow_run_id,
