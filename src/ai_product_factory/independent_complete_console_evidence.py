@@ -138,6 +138,7 @@ def read_verified_artifact_json(*, repository: str, artifact_id: int, token: str
         "block1-b2-supabase-security.json",
         "block1-b3-console-state-witness.json",
         "block1-b3-live-state-witness.json",
+        "block1-b3-real-states-witness.json",
         "block1-b3-wcag-accessibility-witness.json",
     }:
         raise ConsoleFullSurfaceEvidenceBlocked("b3_artifact_file_unapproved")
