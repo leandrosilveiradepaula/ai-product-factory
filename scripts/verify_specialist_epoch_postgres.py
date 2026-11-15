@@ -521,7 +521,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
         checked=complete(item["job_id"],item["claim_token"],"passed")
         assert checked["status"]=="passed",checked
     assert one("SELECT status FROM public.factory_runs WHERE id=%s",(infra_run,))=="preview_ready"
-    assert one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s AND eval_type LIKE 'specialist_%' AND status='passed'",(infra_run,))==3
+    assert one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s AND left(eval_type,11)='specialist_' AND status='passed'",(infra_run,))==3
     assert one("SELECT count(*) FROM public.factory_audit_events WHERE run_id=%s AND event_type='specialist.lanes.infrastructure_requeued'",(infra_run,))==1
     # Repeated same-source command does not reopen a successfully reviewed run.
     same=replay(infra_run)
