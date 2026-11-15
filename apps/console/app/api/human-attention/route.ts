@@ -13,7 +13,7 @@ export async function GET(){
   const projects=[...new Set(pending.map(g=>g.projectKey).filter((key):key is string=>Boolean(key)))];
   // Match the /gates inbox, including the registration action when no App is configured.
   const count=pending.length+installActions.length+(githubApp.configured?0:1);
-  return NextResponse.json({status:"ok",count,projects},{headers:{"Cache-Control":"no-store"}});
+  return NextResponse.json({status:"ok",count,pendingHumanGateCount:pending.length,projects},{headers:{"Cache-Control":"no-store"}});
  }catch{
   return NextResponse.json({status:"unavailable"},{status:503,headers:{"Cache-Control":"no-store"}});
  }

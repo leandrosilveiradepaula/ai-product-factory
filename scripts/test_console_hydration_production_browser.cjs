@@ -125,6 +125,12 @@ function localApi(req,res){
       title:"Synthetic read-only regression task",status:"completed",
       complexity:"low"}]);
   else send(res,200,[]);
+ }else if(u.pathname==="/rest/v1/factory_project_execution_controls"){
+  // Isolated fixture must actually render the project control submit form.
+  // Otherwise a project-detail "hydration PASS" misses the former
+  // non-deterministic random command_id on that route entirely.
+  send(res,200,u.searchParams.get("project_id")==="eq."+B3_PROJECT_ID
+    ?[{state:"running",version:1,generation:1}]:[]);
  }else if(u.pathname==="/rest/v1/factory_primary_cost_policy"){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
@@ -269,6 +275,54 @@ test("real Next production SSR hydration of authenticated /configuration is clea
 });
 test("real Next production SSR hydration remains clean under streaming network throttling",async()=>{
  const n=await hydrationRound({throttled:true,repeats:4});assert.equal(n,4);
+});
+
+test("B3: real Next project detail hydration and command identity are stable across reloads",async()=>{
+ const context=await browser.newContext({
+  viewport:{width:1280,height:900},locale:"pt-BR",timezoneId:"America/Sao_Paulo",
+ });
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",err=>errors.push(/#418/.test(String(err))?"react_418":"runtime_page_error"));
+ page.on("console",msg=>{
+  if(msg.type()==="error")errors.push(/#418|hydration/i.test(msg.text())?"react_418":"runtime_console_error");
+ });
+ try{
+  await context.route("**/api/human-attention",async route=>
+    route.fulfill({status:200,contentType:"application/json",
+      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,projects:[]})}));
+  for(let index=0;index<4;index++){
+   const response=await page.goto(appOrigin+"/projects/ai-product-factory",{
+    waitUntil:"networkidle",timeout:45000});
+   assert.equal(response?.status(),200);
+   assert.equal(await page.locator("h1.title").innerText(),"AI Product Factory");
+   const pause=page.getByRole("button",{name:"Pausar",exact:true});
+   assert.equal(await pause.count(),1,"real running control must render submit form");
+   const control=pause.locator("xpath=ancestor::form");
+   const commandId=control.locator('input[name="command_id"]');
+   assert.equal(await commandId.count(),1);
+   assert.equal(await commandId.inputValue(),"","SSR must never emit a random key");
+   assert.deepEqual(errors,[],"project detail hydration should not produce page errors");
+  }
+  // Prevent every server-action POST before the React submit dispatcher.
+  // Only the browser's id generation is exercised, not the API or real DB.
+  await page.evaluate(()=>{
+   const button=[...document.querySelectorAll("button")].find(b=>b.textContent?.trim()==="Pausar");
+   if(!button)throw Error("fixture_pause_control_missing");
+   const form=button.closest("form");
+   if(!form)throw Error("fixture_form_missing");
+   form.addEventListener("submit",event=>event.preventDefault(),true);
+  });
+  const pause=page.getByRole("button",{name:"Pausar",exact:true});
+  const field=pause.locator("xpath=ancestor::form").locator('input[name="command_id"]');
+  await pause.click();
+  const first=await field.inputValue();
+  assert.match(first,/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i);
+  await pause.click();
+  assert.equal(await field.inputValue(),first,"same submission intent reuses idempotency key");
+  assert.deepEqual(errors,[],"no project-detail browser errors after actual client clicks");
+ }finally{await context.close();}
 });
 
 test("B2: expired token refresh reaches same-request Server Components without unauthorized redirect",async()=>{
