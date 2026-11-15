@@ -35,7 +35,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertNotIn('className="topbarWork"',SHELL)
         self.assertNotIn('className="mobileNewProject"',SHELL)
         self.assertEqual(SHELL.count('<ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>'),2)
-         self.assertIn('onNavigate?.(href)',NAV)
+        self.assertIn('onNavigate?.(href)',NAV)
         self.assertIn('className="mobileNav" key={pathname}',SHELL)
         self.assertIn('<nav className="mobileQuickNav" aria-label="Navegação rápida">',SHELL)
         for route in ('href="/"','href="/projects"','href="/gates"'):
