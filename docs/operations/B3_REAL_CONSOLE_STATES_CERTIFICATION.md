@@ -108,3 +108,16 @@ sem fabricar 404 nem expor conteúdo de projeto.
 Também foi alinhado o contrato emitido pelo produtor JS com o verificador
 independente Python, incluindo `pendingHumanGateCount=0`. Até novo recibo
 completo e certificação persistida, o critério continua não aprovado.
+
+## Certificação pós-merge: preservação de PASS anterior
+
+O run #43734829661 (trigger visual após #1455) não persistiu o certificado,
+por proteção correta do `readiness_prewrite_guard`: o coletor B1/B4 perdeu
+`observability_operations/recovery_alerting` após alteração em
+`supabase_operational_health.py`, mas o recibo anterior já tinha PASS. A
+referência imutável do verificador foi reconciliada com o run **agendado**
+#43707075595 (main `2bdbcb5c…`), que concluiu SUCCESS, com
+`schedule-probe` e `alerts` SUCCESS e os sete blobs operacionais iguais
+aos do SHA `06d02f72…`. Testes negativos de SHA, run/evento e drift
+continuam exigidos. **Não** foi desligado o gate de monotonicidade.
+Novo PASS para states depende do novo browser real e do certificado persistido.

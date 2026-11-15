@@ -16,8 +16,11 @@ from .product_readiness_certification import VerifiedCriterionEvidence
 
 REPOSITORY = "leandrosilveiradepaula/ai-product-factory"
 OWNER_WORKFLOW = ".github/workflows/autonomous-runner.yml"
-SOURCE_RUN = 42392345319
-SOURCE_SHA = "c62297b7538ba9479aabd8f870ffd9eb142187ca"
+# Latest independently checked official schedule with both required successful
+# jobs and all seven operational source blobs identical to the assessed main.
+# 2026-11-15 run 43707075595; immutable GitHub run and blob checks remain mandatory.
+SOURCE_RUN = 43707075595
+SOURCE_SHA = "2bdbcb5cbf9b653c9eeba59e45d541257e2c656c"
 REQUIRED_JOBS = frozenset({"schedule-probe", "alerts"})
 SOURCE_FILES = frozenset({
     "src/ai_product_factory/runtime_cli.py",

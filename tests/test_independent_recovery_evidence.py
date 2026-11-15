@@ -53,6 +53,18 @@ class RecoveryEvidenceTests(unittest.TestCase):
         self.assertEqual(proof.criterion, "recovery_alerting")
         self.assertEqual(proof.retained_receipt["source_run_id"], SOURCE_RUN)
 
+    def test_source_pin_is_real_official_schedule_not_arbitrary_status(self):
+        # Production source source SHA is pinned only after verifying live
+        # schedule-probe + alerts jobs and exact seven-blob ancestry.
+        self.assertEqual(SOURCE_RUN, 43707075595)
+        self.assertEqual(SOURCE_SHA, "2bdbcb5cbf9b653c9eeba59e45d541257e2c656c")
+        rows=fixture()
+        proof=self.prove(rows)
+        self.assertEqual(proof.retained_receipt["source_sha"],SOURCE_SHA)
+        rows[ROOT + "/actions/runs/" + str(SOURCE_RUN)]["event"]="workflow_dispatch"
+        with self.assertRaises(RecoveryEvidenceBlocked):
+            self.prove(rows)
+
     def test_job_sha_ancestry_or_operational_blob_drift_blocks(self):
         for mutation in ("job", "sha", "ancestor", "blob"):
             rows = fixture()
