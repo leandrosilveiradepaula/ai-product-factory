@@ -11,9 +11,11 @@ test("project detail has no random SSR input and control sends stable confirmed 
  const page=await source("apps/console/app/projects/[key]/page.tsx");
  const control=await source("apps/console/app/projects/[key]/control-confirm.tsx");
  assert.ok(!page.includes("crypto.randomUUID()"),"Server component must not generate random render values");
- assert.ok(!page.includes('name="command_id"'),"ID is owned by browser submit control");
+ assert.ok(!page.includes('name="command_id"'),"ID is owned by client form");
  assert.match(control,/name="command_id" defaultValue=""/);
  assert.match(control,/useRef<HTMLInputElement>\(null\)/);
+ assert.match(control,/onSubmit=\{event=>/);
+ assert.ok(!control.includes("onClick={event=>"));
  assert.match(control,/commandId\.current\.value=crypto\.randomUUID\(\)/);
  assert.match(control,/!commandId\.current\.value/);
  const confirmation=control.indexOf("window.confirm(");
@@ -21,6 +23,9 @@ test("project detail has no random SSR input and control sends stable confirmed 
  const generate=control.indexOf("commandId.current.value=crypto.randomUUID()");
  assert.ok(confirmation>=0&&cancellation>confirmation&&generate>cancellation);
  assert.match(page,/String\(formData\.get\("command_id"\)\|\|""\)/);
+ assert.match(page,/ProjectControlForm/);
+ const audit=await source("scripts/project_control_readonly_contract.mjs");
+ assert.match(audit,/form.commandId !== ""/);
 });
 test("empty human decision state is independent of real GitHub integration actions",async()=>{
  const api=await source("apps/console/app/api/human-attention/route.ts");

@@ -9,7 +9,6 @@ export const LIFECYCLE_COMMANDS = Object.freeze({
   "Aguardando ativação segura": [],
 });
 
-const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const LABELS = {
   start: "Iniciar projeto",
   pause: "Pausar",
@@ -35,17 +34,14 @@ export function validateProjectLifecycleReadOnly({heading, forms, expectedProjec
     throw new Error("lifecycle command/state mismatch: " + stateLabel + " => " + JSON.stringify(actual));
   }
   const versions = new Set();
-  const identities = new Set();
   for (const form of forms) {
     if (form?.projectKey !== expectedProjectKey || !Object.hasOwn(LABELS, form?.command) ||
         typeof form?.label !== "string" || form.label.trim() !== LABELS[form.command] ||
         typeof form?.version !== "string" || !/^(0|[1-9][0-9]*)$/.test(form.version) ||
         !Number.isSafeInteger(Number(form.version)) ||
-        typeof form?.commandId !== "string" || !UUID.test(form.commandId) ||
-        identities.has(form.commandId.toLowerCase())) {
+        typeof form?.commandId !== "string" || form.commandId !== "") {
       throw new Error("invalid project/version/command/idempotency identity");
     }
-    identities.add(form.commandId.toLowerCase());
     versions.add(form.version);
   }
   if (versions.size > 1) throw new Error("inconsistent lifecycle control versions");
@@ -54,5 +50,6 @@ export function validateProjectLifecycleReadOnly({heading, forms, expectedProjec
     availableCommands: [...actual].sort(),
     version: forms[0]?.version ?? null,
     verifiedWithoutMutation: true,
+    commandIdAllocatedBeforeSubmit: false,
   };
 }

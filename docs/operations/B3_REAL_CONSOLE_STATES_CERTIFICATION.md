@@ -75,3 +75,19 @@ NOT_READY até 19/19.
 Este pacote **não toca** Supabase migration/RLS, release, merges,
 habilitação de modelo, custos ou o produto piloto. Gate de merge da Factory
 continua humano.
+
+## Evidência de 15/11/2026 — pós-merge #1453
+
+O run autenticado #43731168060 preservou B2 assinado e 57 denials, mas falhou
+antes de concluir: o contrato de leitura exigia UUID de idempotência antes de
+qualquer submissão, enquanto o controle de projeto corretamente inicia vazio.
+Agora o formulário é uma fronteira cliente única para clique, teclado e
+requestSubmit; o auditor read-only exige UUID ainda **não** alocado.
+A matriz real também reportou `b3_real_states_route_status_mismatch`: a
+próxima execução identifica qual rota falhou sem persistir URL/conta/dados.
+Nenhuma ausência de prova será classificada como PASS.
+
+O verificador do Preview greenfield envia os cabeçalhos suportados pela
+Vercel somente para requisições do host exato, sem interceptar/mocar respostas,
+sem suprimir erros reais de app e sem encaminhar OIDC a domínios terceiros.
+A conclusão depende de nova captura real, CI verde e gate humano de merge.
