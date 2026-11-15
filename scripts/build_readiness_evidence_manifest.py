@@ -61,6 +61,9 @@ from ai_product_factory.independent_console_accessibility_evidence import (
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries as verify_live_console_boundaries_fn,
 )
+from ai_product_factory.independent_b3_real_states_evidence import (
+    B3RealStatesBlocked, verify_b3_real_states as verify_b3_real_states_fn,
+)
 from ai_product_factory.independent_real_journey_blocker_evidence import (
     RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers as verify_real_journey_blockers_fn,
 )
@@ -402,6 +405,34 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 evidence=b2_evidence,
             )
 
+    # A real B3 matrix requires the actual authenticated Console, full
+    # source-to-served Console reconciliation, bounded live source validation,
+    # and a separate artifact with first-party HTTP and offline/recovery UX.
+    # Absence, synthetic fixtures or a failed browser NEVER count as PASS.
+    b3_real_states_proof = None
+    if (live_boundaries_proof is not None
+            and full_surface_proof is not None
+            and authenticated_console_proof is not None
+            and artifact_reader is not None):
+        try:
+            b3_real_states_proof = verify_b3_real_states_fn(
+                repository=repository, assessed_commit=sha,
+                capture=authenticated_console_proof,
+                surface=full_surface_proof,
+                live_boundaries=live_boundaries_proof,
+                github_get=github_get, artifact_reader=artifact_reader,
+            )
+        except (B3RealStatesBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError):
+            b3_real_states_proof = None
+    if b3_real_states_proof is not None:
+        claim = b3_real_states_proof.criterion()
+        manifest["criteria"]["product_experience"]["states"].update(
+            status="passed", verification_state="observed",
+            reason="independently reverified first-party authenticated real state matrix on exact served Console SHA",
+            evidence=list(claim.evidence),
+        )
+
     # Complete B2 requires successful real Auth, PostgREST, PG and secrets
     # source-bound proofs. Historical captures without this witness stay partial.
     b2_security_proof = None
@@ -541,6 +572,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return requirements_proof
         if domain == "product_experience" and criterion in ("surface_inventory", "responsive"):
             return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
+        if (domain, criterion) == ("product_experience", "states"):
+            return b3_real_states_proof.criterion() if b3_real_states_proof is not None else None
         if (domain, criterion) == ("product_experience", "accessibility"):
             return accessibility_proof.criterion() if accessibility_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
@@ -550,7 +583,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
         repository=repository, assessed_commit=sha,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b2_security_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b2_security_proof, b3_real_states_proof)) else None,
     )
     statuses = [
         {"domain": domain, "criterion": key, "status": evidence["status"],
@@ -580,6 +613,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if accessibility_proof is not None else {}),
         **({"live_console_boundary_evidence": live_boundaries_proof.receipt()}
            if live_boundaries_proof is not None else {}),
+        **({"independent_b3_real_states_evidence": b3_real_states_proof.receipt()}
+           if b3_real_states_proof is not None else {}),
         **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
            if journey_blocker_proof is not None else {}),
         **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
