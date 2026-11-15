@@ -13,7 +13,7 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn("preview_application_identity_unverified",text)
         self.assertIn("preview_application_marker_required",text)
         self.assertIn("preview_application_origin_mismatch",text)
-        self.assertIn("normalizeVisibleText(bodyText)",text)
+        self.assertIn("normalizeVisibleText(appMain)",text)
         self.assertIn('emit("success"',text)
         self.assertIn('emit("failure"',text)
 
