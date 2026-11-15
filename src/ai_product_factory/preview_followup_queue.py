@@ -33,6 +33,7 @@ class PreviewFollowupItem:
     change_set_id: str | None = None
     journey_binding: dict | None = None
     request_id: str | None = None
+    project_name: str | None = None
 
 
 class SupabasePreviewFollowupQueue:
@@ -110,7 +111,7 @@ class SupabasePreviewFollowupQueue:
         if not tasks:
             raise RuntimeError("preview_ready run task was not found")
         project_id=str(tasks[0]["project_id"])
-        projects=self._get(f"factory_projects?select=project_key,repository,manifest&id=eq.{quote(project_id)}&limit=1")
+        projects=self._get(f"factory_projects?select=project_key,name,repository,manifest&id=eq.{quote(project_id)}&limit=1")
         if not projects or not projects[0].get("repository"):
             raise RuntimeError("preview_ready run project repository is not configured")
 
@@ -150,6 +151,7 @@ class SupabasePreviewFollowupQueue:
         return PreviewFollowupItem(
             run_id=run_id,project_id=project_id,project_key=str(project["project_key"]),repository=str(project["repository"]),
             manifest=project.get("manifest") or {},issue_number=issue_number,branch=branch,pr_number=pr_number,candidate_commit=candidate,
+            project_name=project.get("name"),
             risk=tasks[0].get("risk") or {},
             execution_generation=execution_generation,
             require_execution_generation=require_execution_generation,

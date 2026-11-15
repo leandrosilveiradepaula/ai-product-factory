@@ -834,7 +834,17 @@ def run_preview_once(*,expected_run_id:str|None=None,expected_candidate_sha:str|
   vercel_cfg=VercelPreviewConfig(token=os.environ["VERCEL_TOKEN"],team_id=project_cfg.team_id or "",project_name=project_cfg.project_name or "",github_org=project_cfg.github_org,github_repo=project_cfg.github_repo)
   provider=VercelPreviewAdapter(vercel_cfg)
  deployment=DurablePreviewAdapter(provider,SupabaseDeploymentEvidenceStore(),run_id=item.run_id)
- browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env())
+ preview_policy=item.manifest.get("preview") if isinstance(item.manifest,dict) else None
+ preview_policy=preview_policy if isinstance(preview_policy,dict) else {}
+ expected_text=preview_policy.get("expected_text")
+ if expected_text is None:
+  expected_text=getattr(item,"project_name",None) or str(item.project_key).replace("-"," ").title()
+ # A Vercel SSO page is not the app: require its actual project-owned marker.
+ if (type(expected_text) is not str or not 1<=len(expected_text.strip())<=120
+     or "\n" in expected_text or "\r" in expected_text):
+  raise RuntimeError("preview requires a bounded first-party application marker")
+ browser=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig.from_env(),
+  expected_text=expected_text.strip())
  request=DeploymentRequest(item.project_key,ReleaseEnvironment.PREVIEW,item.candidate_commit,EvidenceBundle(item.candidate_commit,item.candidate_commit,"success",metadata={"quality_gate_passed":True,"source":"durable_quality_gate"}))
  try:
   try:_assert_project_followup(item)

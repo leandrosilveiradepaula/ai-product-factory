@@ -65,15 +65,24 @@ class CommandBrowserEvidenceConfig:
 class CommandBrowserEvidenceAdapter:
     name="command-browser-evidence"
 
-    def __init__(self,config:CommandBrowserEvidenceConfig,*,runner:Runner|None=None)->None:
+    def __init__(self,config:CommandBrowserEvidenceConfig,*,runner:Runner|None=None,
+                 expected_text:str|None=None)->None:
         config.validate()
         self.config=config
+        if expected_text is not None and (
+            type(expected_text) is not str or not 1 <= len(expected_text.strip()) <= 120
+            or "\n" in expected_text or "\r" in expected_text
+        ):
+            raise ValueError("invalid first-party Preview application marker")
+        self.expected_text=expected_text.strip() if expected_text is not None else None
         self.runner=runner or _default_runner
 
     def verify(self,preview_url:str)->BrowserEvidence:
         if not preview_url.startswith(("https://","http://localhost","http://127.0.0.1")):
             return BrowserEvidence("failure",preview_url,(),"invalid preview URL")
         env=_browser_env(preview_url)
+        if self.expected_text is not None:
+            env["FACTORY_PREVIEW_EXPECTED_TEXT"]=self.expected_text
         try:
             code,stdout,stderr=self.runner(self.config.argv,env,self.config.timeout_seconds)
         except subprocess.TimeoutExpired:
