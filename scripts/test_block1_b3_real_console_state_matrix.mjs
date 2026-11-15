@@ -50,6 +50,13 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   const fs=await import("node:fs/promises");
   const script=await fs.readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
   assert.ok(script.includes("Network.emulateNetworkConditions"));
+  assert.ok(script.includes("loadingLink.click("),"loading must be verified on a real client transition");
+  assert.ok(script.includes('url.pathname==="/runs"'),"real route GET must be observed");
+  assert.ok(script.includes("loadingRouteRequests===0"),"cached fixture must not certify loading");
+  assert.ok(script.includes("await openRealRunsLink(page)"),"advanced navigation must be genuinely opened");
+  assert.ok(!script.includes('await page.goto(origin+"/",{waitUntil:"domcontentloaded"'));
+  const nav=await fs.readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8");
+  assert.ok(nav.includes("<Link prefetch={false}"),"authenticated dynamic nav must not prefetch");
   assert.ok(script.includes("context.setOffline(true)"));
   assert.ok(script.includes("context.setOffline(false)"));
   assert.ok(script.includes("/api/human-attention"));

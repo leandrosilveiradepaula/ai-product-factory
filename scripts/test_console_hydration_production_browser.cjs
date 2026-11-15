@@ -297,6 +297,75 @@ test("B3: actual local Next app verifies missing run via authenticated HTTP 404 
  }finally{await context.close();}
 });
 
+test("B3: real Next client navigation renders loading then true offline error and recovery",async()=>{
+ const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const pageErrors=[];
+ const mutating=[];
+ let loadingRouteGets=0;
+ let offline=false,cdp=null;
+ page.on("pageerror",()=>pageErrors.push("browser_page_error"));
+ page.on("request",request=>{
+  const url=new URL(request.url());
+  if(url.origin!==appOrigin)return;
+  if(!["GET","HEAD","OPTIONS"].includes(request.method()))mutating.push("mutation");
+  if(url.pathname==="/runs"&&request.method()==="GET")loadingRouteGets++;
+ });
+ const openRuns=async()=>{
+  const drawer=page.locator(".desktopSidebarContent details.navAdvanced");
+  if(await drawer.getAttribute("open")===null)
+   await drawer.locator("summary").click();
+  const link=page.locator('.desktopSidebarContent a[href="/runs"]');
+  await link.waitFor({state:"visible",timeout:10000});
+  return link;
+ };
+ try{
+  await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
+  const loadingLink=await openRuns();
+  cdp=await context.newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.setCacheDisabled",{cacheDisabled:true});
+  await cdp.send("Network.emulateNetworkConditions",{
+   offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
+  });
+  await Promise.all([
+   page.locator(".consoleRouteLoading[role='status']").waitFor({state:"visible",timeout:15000}),
+   loadingLink.click({timeout:15000}),
+  ]);
+  await page.getByRole("heading",{name:"Execuções",exact:true})
+   .waitFor({state:"visible",timeout:30000});
+  assert.equal(new URL(page.url()).pathname,"/runs");
+  assert.ok(loadingRouteGets>0,"a real first-party /runs GET must occur during client navigation");
+  await cdp.send("Network.emulateNetworkConditions",{
+   offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1,
+  });
+
+  // New page document clears client-side router cache; the menu's Link has
+  // prefetch=false. A genuine offline transition must render app/error.tsx,
+  // not Chrome's own network error or a synthetic intercepted response.
+  await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
+  const offlineLink=await openRuns();
+  await context.setOffline(true);offline=true;
+  await offlineLink.click({timeout:10000});
+  await page.locator(".consoleRouteError[role='alert']")
+   .waitFor({state:"visible",timeout:20000});
+  await page.getByRole("button",{name:"Tentar novamente",exact:true})
+   .waitFor({state:"visible",timeout:10000});
+  await context.setOffline(false);offline=false;
+  await page.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+  await page.getByRole("heading",{name:"Execuções",exact:true})
+   .waitFor({state:"visible",timeout:30000});
+  assert.equal(new URL(page.url()).pathname,"/runs");
+  assert.deepEqual(mutating,[],"B3 client loading/offline check must not mutate first-party state");
+  assert.deepEqual(pageErrors,[],"B3 real client loading/offline/recovery must have no page errors");
+ }finally{
+  if(offline)await context.setOffline(false).catch(()=>{});
+  if(cdp)await cdp.detach().catch(()=>{});
+  await context.close();
+ }
+});
+
 test("B3: real Next project detail hydration and command identity are stable across reloads",async()=>{
  const context=await browser.newContext({
   viewport:{width:1280,height:900},locale:"pt-BR",timezoneId:"America/Sao_Paulo",

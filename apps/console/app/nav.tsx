@@ -61,7 +61,9 @@ function NavLink({href,label,icon,pathname,count}:{
  href:string;label:string;icon:IconName;pathname:string;count?:number|null;
 }){
  const isActive=active(pathname,href);
- return <Link className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
+ // Dynamic authenticated Control Plane pages must not be speculatively fetched.
+ // This also guarantees a user-initiated client transition observes genuine loading.
+ return <Link prefetch={false} className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
   <span className="navIcon"><Icon name={icon}/></span>
   <span className="navItemLabel">{label}</span>
   {href==="/gates"&&count!==null&&count!==undefined&&count>0
