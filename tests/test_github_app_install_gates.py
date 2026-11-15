@@ -54,7 +54,12 @@ class GitHubAppInstallGateTests(unittest.TestCase):
         self.assertIn("githubAppNotices", gates)
         self.assertIn("GitHub App verificada para o projeto", gates)
         self.assertIn("verification_failed", gates)
-        self.assertIn("!githubAppActionPending&&installActions.length===0", gates)
+        # Pending human decisions are separate from GitHub App registration or
+        # installation, which must remain visible even when gates are empty.
+        self.assertIn('pending.length===0?<div className="humanGateEmpty"', gates)
+        self.assertIn("githubAppActionPending?<article", gates)
+        self.assertIn("installActions.map(action=>", gates)
+        self.assertIn("Ações de integração são apresentadas separadamente.", gates)
 
 
 if __name__ == "__main__":
