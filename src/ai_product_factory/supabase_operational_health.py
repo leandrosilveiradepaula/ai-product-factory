@@ -23,7 +23,7 @@ KNOWN_RUN_STATUSES = frozenset({
     "created", "queued", "pending", "running", "implementing",
     "preparing_codex_manual", "awaiting_codex_manual", "awaiting_release",
     "awaiting_gate", "awaiting_human", "awaiting_ci", "ci_pending",
-    "review_ready", "specialist_review_pending", "repair_pending",
+    "review_ready", "specialist_review_pending", "specialist_review_failed", "repair_pending",
     "preview_ready", "completed", "integrated", "merged",
     "failed", "failed_gate", "cancelled", "blocked", "planning", "routing",
 })
