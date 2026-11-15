@@ -9,7 +9,10 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         text=(ROOT/"scripts/verify_preview.mjs").read_text()
         self.assertIn("process.env.FACTORY_PREVIEW_URL",text)
         self.assertIn("page.goto(previewUrl",text)
-        self.assertIn("containsExpectedText(bodyText, expectedText)",text)
+        self.assertIn("containsExpectedText(normalizeVisibleText(appMain), expectedText)",text)
+        self.assertIn("preview_application_identity_unverified",text)
+        self.assertIn("preview_application_marker_required",text)
+        self.assertIn("preview_application_origin_mismatch",text)
         self.assertIn("normalizeVisibleText(bodyText)",text)
         self.assertIn('emit("success"',text)
         self.assertIn('emit("failure"',text)
@@ -30,6 +33,8 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn("scripts/verify_preview.mjs",preview)
         self.assertNotIn("contents: write",preview)
         self.assertNotIn("pull-requests: write",preview)
+        self.assertIn("core.getIDToken()",preview)
+        self.assertIn("FACTORY_VERCEL_TRUSTED_OIDC_TOKEN:",preview)
 
     def test_exact_preview_push_is_scoped_to_console_changes(self):
         text=(ROOT/".github/workflows/exact-preview-browser-evidence.yml").read_text()
@@ -70,6 +75,9 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('url.pathname.slice(0, 160)',script)
         self.assertIn('const resourceDetails = failedResources.map',script)
         self.assertIn('if (errors.length || failedResources.length)',script)
+        self.assertIn('ignoredTelemetryPings.add(response.url())',script)
+        self.assertIn('isCorrelatedVercelPingConsoleError',script)
+        self.assertIn('observed.bodySample = null',script)
         self.assertIn('"console_clean"',script)
 
     def test_console_registers_application_icon_to_avoid_missing_favicon(self):

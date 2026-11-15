@@ -110,7 +110,7 @@ jobs:
       - name: B3 actual authenticated state matrix source-only tests
         run: node --test scripts/test_block1_b3_real_console_state_matrix.mjs scripts/test_block1_b3_real_console_state_regressions.mjs
       - name: Preview first-party Vercel toolbar and credential scope regression
-        run: node --test scripts/tests/preview_first_party_headers.test.mjs
+        run: node --test scripts/tests/preview_first_party_headers.test.mjs scripts/tests/preview_browser_integrity.test.mjs
       - name: B3 WCAG mobile capture route identity and 44-scan fail-closed contracts
         run: node --test scripts/test_console_accessibility_contract.mjs
       - name: Console served SHA reconcilation contract tests
