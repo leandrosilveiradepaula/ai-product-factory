@@ -38,6 +38,9 @@ from ai_product_factory.independent_console_accessibility_evidence import (
 from ai_product_factory.independent_live_console_boundary_evidence import (
     LiveConsoleBoundaryEvidenceBlocked, verify_live_console_boundaries,
 )
+from ai_product_factory.independent_console_states_evidence import (
+    ConsoleStatesEvidenceBlocked, verify_console_states,
+)
 from ai_product_factory.independent_real_journey_blocker_evidence import (
     RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers,
 )
@@ -130,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-complete-console-surface", action="store_true")
     parser.add_argument("--verify-independent-accessibility", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
+    parser.add_argument("--verify-independent-console-states", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
     parser.add_argument("--verify-independent-b2-security", action="store_true")
@@ -428,6 +432,34 @@ def main(argv: list[str] | None = None) -> int:
                 if not isinstance(row, dict) or row.get("status") != "passed" or row.get("evidence") != list(claim.evidence):
                     raise CertificationEvidenceError("B2 independently verified security baseline inconsistent")
 
+    states_proof = None
+    states = manifest.get("criteria", {}).get("product_experience", {}).get("states", {})
+    state_status = states.get("status") if isinstance(states, dict) else None
+    if state_status == "passed":
+        if (not args.require_verified_baseline
+                or not args.verify_independent_console_states
+                or full_surface_proof is None
+                or accessibility_proof is None
+                or live_boundary_proof is None
+                or b2_security_proof is None):
+            raise CertificationEvidenceError("B3 positive states require all independent sources")
+        try:
+            states_proof = verify_console_states(
+                repository=args.repository, assessed_commit=args.assessed_commit,
+                surface=full_surface_proof, accessibility=accessibility_proof,
+                live_boundaries=live_boundary_proof, signed_b2=b2_security_proof,
+                github_get=github_get, control_plane_get=SupabaseAdmissionReader()._get,
+            )
+        except (ConsoleStatesEvidenceBlocked, ValueError, RuntimeError, OSError,
+                KeyError, TypeError, UnicodeError) as exc:
+            raise CertificationEvidenceError("B3 independent state proof invalid") from exc
+        claim = states_proof.criterion()
+        if (states.get("evidence") != list(claim.evidence)
+                or evidence.get("independent_console_states_evidence") != states_proof.receipt()):
+            raise CertificationEvidenceError("B3 state evidence changed before persistence")
+    elif "independent_console_states_evidence" in evidence:
+        raise CertificationEvidenceError("B3 states receipt without independently passed criterion")
+
     recovery_proof = None
     if args.verify_recovery_alerting:
         if not args.require_verified_baseline:
@@ -500,6 +532,8 @@ def main(argv: list[str] | None = None) -> int:
             return full_surface_proof.criterion(criterion) if full_surface_proof is not None else None
         if (domain, criterion) == ("product_experience", "accessibility"):
             return accessibility_proof.criterion() if accessibility_proof is not None else None
+        if (domain, criterion) == ("product_experience", "states"):
+            return states_proof.criterion() if states_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
         return None
@@ -507,7 +541,7 @@ def main(argv: list[str] | None = None) -> int:
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, states_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]

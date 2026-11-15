@@ -117,6 +117,12 @@ def verify_probes(
             "queued_tasks", "queued_execution_tasks", "eligible_product_tasks",
             "stale_integration_change_sets",
             "queued_execution_without_queued_run",
+            # Authoritative RPC classifies queued tasks with no runnable
+            # product run. Non-dispatchable tasks are not scheduler work.
+            "queued_without_product_run",
+            "queued_without_product_run_but_portfolio_eligible",
+            "queued_without_product_run_and_not_portfolio_eligible",
+            "portfolio_dispatch_candidate_count",
         )
         require(
             all(type(diag.get(field)) is int and diag[field] >= 0
@@ -125,13 +131,25 @@ def verify_probes(
         )
         require(
             diag["stale_integration_change_sets"] == 0
-            and diag["queued_execution_without_queued_run"] == 0,
+            and diag["queued_execution_without_queued_run"] == 0
+            and diag["queued_without_product_run"]
+                == diag["queued_without_product_run_but_portfolio_eligible"]
+                + diag["queued_without_product_run_and_not_portfolio_eligible"]
+            and diag["queued_tasks"] >= diag["queued_without_product_run"],
             "health_scheduler_inconsistent_lineage",
         )
         if details["work_detected"] is False:
+            # A blocked/non-eligible queue is allowed to be nonempty. The
+            # false-idle witness is valid ONLY when every such queued task is
+            # independently classified non-dispatchable by the RPC, and all
+            # eligible/active execution lanes are empty.
             require(
-                diag["queued_tasks"] == 0 and diag["eligible_product_tasks"] == 0
-                and diag["queued_execution_tasks"] == 0,
+                diag["eligible_product_tasks"] == 0
+                and diag["queued_execution_tasks"] == 0
+                and diag["portfolio_dispatch_candidate_count"] == 0
+                and diag["queued_without_product_run_but_portfolio_eligible"] == 0
+                and diag["queued_tasks"]
+                    == diag["queued_without_product_run_and_not_portfolio_eligible"],
                 "health_scheduler_false_idle",
             )
         observed = timestamp(event.get("created_at"))

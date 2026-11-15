@@ -53,6 +53,10 @@ def data():
                 "eligible_product_tasks": 0,
                 "stale_integration_change_sets": 0,
                 "queued_execution_without_queued_run": 0,
+                "queued_without_product_run": 0,
+                "queued_without_product_run_but_portfolio_eligible": 0,
+                "queued_without_product_run_and_not_portfolio_eligible": 0,
+                "portfolio_dispatch_candidate_count": 0,
             }}}
             for m in (4, 19, 34)
         ],
@@ -183,6 +187,39 @@ class IndependentHealthTests(unittest.TestCase):
                 altered["events"][2]["created_at"] = (NOW - timedelta(minutes=60)).isoformat()
             with self.subTest(mutation=mutation), self.assertRaises(HealthEvidenceBlocked):
                 Sources(altered).verify()
+
+    def test_authoritative_non_dispatchable_queue_is_not_false_idle(self):
+        d = data()
+        for event in d["events"]:
+            diag = event["payload"]["queue_diagnostics"]
+            diag.update(queued_tasks=2, queued_without_product_run=2,
+                        queued_without_product_run_and_not_portfolio_eligible=2)
+            event["payload"]["work_detected"] = False
+        self.assertEqual(Sources(d).verify().active_projects, 2)
+
+    def test_actual_dispatchable_work_must_never_be_false_idle(self):
+        baseline = data()
+        for event in baseline["events"]:
+            event["payload"]["queue_diagnostics"].update(
+                queued_tasks=2, queued_without_product_run=2,
+                queued_without_product_run_and_not_portfolio_eligible=2)
+        for mutation in (
+            lambda d: d.update(eligible_product_tasks=1),
+            lambda d: d.update(queued_execution_tasks=1),
+            lambda d: d.update(portfolio_dispatch_candidate_count=1),
+            lambda d: d.update(
+                queued_without_product_run_but_portfolio_eligible=1,
+                queued_without_product_run_and_not_portfolio_eligible=1),
+            lambda d: d.update(queued_tasks=3),
+            lambda d: d.update(queued_without_product_run=1),
+            lambda d: d.update(
+                queued_without_product_run_and_not_portfolio_eligible=-1),
+            lambda d: d.update(portfolio_dispatch_candidate_count="0"),
+        ):
+            d = copy.deepcopy(baseline)
+            mutation(d["events"][0]["payload"]["queue_diagnostics"])
+            with self.subTest(mutation=repr(mutation)), self.assertRaises(HealthEvidenceBlocked):
+                Sources(d).verify()
 
     def test_two_latest_scheduler_events_not_old_selected_success(self):
         for mutation in (

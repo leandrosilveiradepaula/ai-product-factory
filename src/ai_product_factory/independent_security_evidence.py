@@ -115,7 +115,15 @@ def _scan_run(github_get: Callable[[str], object], prefix: str, kind: str,
   if exact_parent is not None:
     matches = [run for run in rows if valid(run) and
                run["head_sha"] == exact_parent]
-    require(len(matches) == 1, "security_scan_parent_not_unique")
+    # GitHub can execute multiple PR checks for the very same immutable head
+    # (for example after a branch rename). No other SHA may be admitted.
+    # Audit EVERY successful exact-head job; only then choose the latest
+    # immutable run as the artifact source. Invalid/duplicate IDs fail closed.
+    require(0 < len(matches) <= 8
+            and all(type(row.get("id")) is int and row["id"] > 0
+                    and row.get("head_sha") == exact_parent for row in matches)
+            and len({row["id"] for row in matches}) == len(matches),
+            "security_scan_parent_sources_invalid")
     # The candidate's complete committed tree must still equal the assessed
     # merge tree. No inference from matching commit labels alone.
     require(_tree(github_get, prefix, exact_parent)[0] == tree,
@@ -128,28 +136,36 @@ def _scan_run(github_get: Callable[[str], object], prefix: str, kind: str,
                _tree(github_get, prefix, run["head_sha"])[0] == tree]
     require(len(matches) == 1, "security_scan_tree_not_unique")
 
-  run = matches[0]
-  run_id = run.get("id")
-  require(type(run_id) is int and run_id > 0, "security_source_run_invalid")
-  jobs = github_get(prefix + "/actions/runs/" + str(run_id)
-                    + "/jobs?per_page=100")
-  job_rows = jobs.get("jobs") if isinstance(jobs, dict) else None
-  require(isinstance(job_rows, list)
-          and jobs.get("total_count") == 1
-          and len(job_rows) == 1 and isinstance(job_rows[0], dict)
-          and job_rows[0].get("name") == job_name
-          and job_rows[0].get("run_id") == run_id
-          and job_rows[0].get("head_sha") == run["head_sha"]
-          and job_rows[0].get("status") == "completed"
-          and job_rows[0].get("conclusion") == "success"
-          and all(any(isinstance(step, dict)
-                      and step.get("name") == expected
-                      and step.get("status") == "completed"
-                      and step.get("conclusion") == "success"
-                      for step in job_rows[0].get("steps", []))
-                  for expected in steps),
-          "security_source_job_invalid")
-  return run, run_id
+  # An exact-head duplicate is NOT a second source revision. Both real
+  # workflows must have executed the approved scan steps successfully;
+  # selecting one without checking its siblings would hide contradictory
+  # or counterfeit source jobs.
+  for source in matches:
+    rid = source.get("id")
+    require(type(rid) is int and rid > 0, "security_source_run_invalid")
+    try:
+      jobs = github_get(prefix + "/actions/runs/" + str(rid)
+                        + "/jobs?per_page=100")
+    except (KeyError, ValueError, OSError, urllib.error.HTTPError) as exc:
+      raise SecurityEvidenceBlocked("security_source_job_unavailable") from exc
+    job_rows = jobs.get("jobs") if isinstance(jobs, dict) else None
+    require(isinstance(job_rows, list)
+            and jobs.get("total_count") == 1
+            and len(job_rows) == 1 and isinstance(job_rows[0], dict)
+            and job_rows[0].get("name") == job_name
+            and job_rows[0].get("run_id") == rid
+            and job_rows[0].get("head_sha") == source["head_sha"]
+            and job_rows[0].get("status") == "completed"
+            and job_rows[0].get("conclusion") == "success"
+            and all(any(isinstance(step, dict)
+                        and step.get("name") == expected
+                        and step.get("status") == "completed"
+                        and step.get("conclusion") == "success"
+                        for step in job_rows[0].get("steps", []))
+                    for expected in steps),
+            "security_source_job_invalid")
+  run = max(matches, key=lambda source: source["id"])
+  return run, run["id"]
 
 
 def _trusted_scanner_source(github_get: Callable[[str],object],prefix: str,sha: str)->None:
