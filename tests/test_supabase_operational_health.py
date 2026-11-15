@@ -43,6 +43,22 @@ class Tests(unittest.TestCase):
             ).read(now=datetime(2026,11,4,tzinfo=timezone.utc))
         self.assertEqual(health.failed_runs,0)
 
+    def test_durable_specialist_review_failed_status_is_observable(self):
+        # The real Control Plane emits this terminal status. Operational
+        # alerts must recognize it without treating it as an active failed
+        # task or hiding genuinely unknown future statuses.
+        runs=[{"id":"specialist-failure","task_id":"task",
+               "status":"specialist_review_failed","created_at":"2026-11-15T00:00:00Z",
+               "lease_expires_at":None,"last_error":"review_failed"}]
+        with patch("urllib.request.urlopen",side_effect=[
+            Response(runs),Response([]),Response([])
+        ]):
+            health=SupabaseOperationalHealthReader(
+                url="https://x.supabase.co",secret_key="sb_secret_x"
+            ).read(now=datetime(2026,11,15,tzinfo=timezone.utc))
+        self.assertEqual(health.failed_runs,0)
+        self.assertEqual(health.dead_letter_runs,0)
+
     def test_unrecognized_run_status_still_fails_closed(self):
         with patch("urllib.request.urlopen",side_effect=[
             Response([{"id":"unexpected","status":"unrecognized_future_state"}])
