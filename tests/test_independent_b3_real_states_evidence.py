@@ -1,5 +1,6 @@
 """Adversarial B3 real-state provenance tests; fixtures are NOT live proof."""
 import copy
+from pathlib import Path
 import unittest
 
 from ai_product_factory.independent_authenticated_console_evidence import AuthenticatedConsoleEvidence
@@ -21,7 +22,7 @@ def payload():
         "runId":RUN,"sourceCommit":SHA,"targetCommit":SERVED,
         "checks":dict.fromkeys(CHECKS,True),
         "sources":dict(SOURCES),
-        "backendStatus":200,"mutatingRequests":0,
+        "backendStatus":200,"pendingHumanGateCount":0,"mutatingRequests":0,
         "interceptions":0,"unexpectedPageErrors":0,
         "productionWrites":0,"paidCalls":0,
         "personalDataRetained":False,"responsesFabricated":False,
@@ -87,6 +88,11 @@ class B3RealStateTests(unittest.TestCase):
             lambda p:p["sources"].update(empty="intercepted_backend_get_fixture"),
             lambda p:p.update(schema="factory-b3-authenticated-ui-state-fixture-v1"),
             lambda p:p.update(backendStatus=503),
+            lambda p:p.update(pendingHumanGateCount=1),
+            lambda p:p.update(pendingHumanGateCount=-1),
+            lambda p:p.update(pendingHumanGateCount=True),
+            lambda p:p.update(pendingHumanGateCount="0"),
+            lambda p:p.pop("pendingHumanGateCount"),
             lambda p:p.update(responsesFabricated=True),
             lambda p:p.update(interceptions=1),
             lambda p:p.update(mutatingRequests=1),
@@ -107,6 +113,18 @@ class B3RealStateTests(unittest.TestCase):
                 mutation(item)
                 with self.assertRaises(B3RealStatesBlocked):
                     validate_real_states(item,run_id=RUN,source_sha=SHA,served_sha=SERVED)
+
+    def test_the_browser_producer_schema_matches_independent_verifier(self):
+        # Contracts must agree on the real artifact, not just separate fixtures.
+        producer=(Path(__file__).resolve().parents[1]
+                  /"scripts/verify_block1_b3_real_console_state_matrix.mjs").read_text()
+        self.assertIn('empty:"authenticated_first_party_empty_human_decision_inbox"',producer)
+        self.assertIn("backendStatus,pendingHumanGateCount,mutatingRequests",producer)
+        self.assertIn("pendingHumanGateCount!==0",producer)
+        self.assertEqual(payload()["sources"]["empty"],
+                         "authenticated_first_party_empty_human_decision_inbox")
+        self.assertEqual(payload()["pendingHumanGateCount"],0)
+        validate_real_states(payload(),run_id=RUN,source_sha=SHA,served_sha=SERVED)
 
     def test_current_sha_and_artifact_provenance_are_mandatory(self):
         bad_artifact={"artifacts":[{
