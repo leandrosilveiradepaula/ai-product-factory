@@ -12,6 +12,24 @@ on:
         required: false
         default: false
         type: boolean
+      specialist_recovery:
+        description: "B4 only: audit an exhausted infrastructure specialist review (no scheduler)"
+        required: false
+        default: false
+        type: boolean
+      specialist_run_id:
+        description: "Original exhausted release-run UUID"
+        required: false
+        type: string
+      specialist_candidate_sha:
+        description: "Exact original candidate SHA; no source change"
+        required: false
+        type: string
+      specialist_execute:
+        description: "Explicitly requeue the original three lanes after source verification"
+        required: false
+        default: false
+        type: boolean
       project_key:
         description: Optional project key for backlog dispatch
         required: false
@@ -105,9 +123,109 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  specialist-infrastructure-recovery:
+    # Keep this job in the existing OIDC-trusted main workflow: the broker
+    # deliberately does NOT allow a new standalone workflow to use its proxy.
+    # This source-checked, once-only recovery is neither a scheduler wake
+    # nor a reviewer PASS, Preview verification, production release or merge.
+    needs: schedule-probe
+    if: >-
+      ${{
+        always() &&
+        (github.event_name == 'workflow_dispatch'
+         && inputs.specialist_recovery == true
+         && github.actor == github.repository_owner
+         && inputs.run_journey_audit != true
+         && inputs.run_offline_preflight != true
+         && inputs.run_admission_diagnosis != true
+         && inputs.run_direct != true
+         && inputs.run_codex != true
+         && inputs.run_preview != true
+         && inputs.vps_wake != true)
+        ||
+        (github.event_name == 'issue_comment'
+         && github.event.action == 'created'
+         && github.event.issue.number == 713
+         && !github.event.issue.pull_request
+         && github.event.comment.author_association == 'OWNER'
+         && github.actor == github.event.comment.user.login
+         && startsWith(github.event.comment.body, '/factory-specialist-infra-recover '))
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+      GITHUB_ACTIONS: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Validate exact recovery command before acquiring credentials
+        id: recovery
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          OWNER_COMMAND: ${{ github.event.comment.body }}
+          INPUT_RUN_ID: ${{ inputs.specialist_run_id }}
+          INPUT_CANDIDATE: ${{ inputs.specialist_candidate_sha }}
+          INPUT_EXECUTE: ${{ inputs.specialist_execute }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,re
+          event=os.environ["EVENT_NAME"]
+          if event=="issue_comment":
+              match=re.fullmatch(
+                  r"/factory-specialist-infra-recover ([0-9a-f-]{36}) ([0-9a-f]{40})",
+                  os.environ.get("OWNER_COMMAND","").strip(),
+              )
+              if not match:
+                  raise SystemExit("INVALID_OWNER_RECOVERY_COMMAND")
+              run_id,candidate=match.groups()
+              execute="true"
+          elif event=="workflow_dispatch":
+              run_id=os.environ.get("INPUT_RUN_ID","")
+              candidate=os.environ.get("INPUT_CANDIDATE","")
+              execute=os.environ.get("INPUT_EXECUTE","false").lower()
+              if execute not in ("true","false"):
+                  raise SystemExit("INVALID_MANUAL_RECOVERY_EXECUTE")
+          else:
+              raise SystemExit("INVALID_RECOVERY_EVENT")
+          if not re.fullmatch(
+                  r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",run_id):
+              raise SystemExit("INVALID_RECOVERY_RUN_ID")
+          if not re.fullmatch(r"[0-9a-f]{40}",candidate):
+              raise SystemExit("INVALID_RECOVERY_CANDIDATE")
+          with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf-8") as out:
+              out.write(f"run_id={run_id}\ncandidate={candidate}\nexecute={execute}\n")
+          print("Specialist recovery identity accepted; release remains human-gated.")
+          PY
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Verify original GitHub candidate and recover only if expressly requested
+        env:
+          RECOVERY_RUN_ID: ${{ steps.recovery.outputs.run_id }}
+          RECOVERY_CANDIDATE: ${{ steps.recovery.outputs.candidate }}
+          FACTORY_SPECIALIST_INFRA_EXECUTE: ${{ steps.recovery.outputs.execute }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$FACTORY_SPECIALIST_INFRA_EXECUTE" = "true" ]; then
+            python scripts/recover_specialist_infrastructure_once.py \
+              --run-id "$RECOVERY_RUN_ID" --candidate-sha "$RECOVERY_CANDIDATE" --execute
+          else
+            python scripts/recover_specialist_infrastructure_once.py \
+              --run-id "$RECOVERY_RUN_ID" --candidate-sha "$RECOVERY_CANDIDATE"
+          fi
+
   schedule-probe:
     # In audit-only mode skip the scheduler probe and ALL dependent workers.
-    if: ${{ (github.event_name != 'workflow_dispatch' || (inputs.run_journey_audit != true && inputs.run_offline_preflight != true && inputs.run_admission_diagnosis != true)) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (inputs.run_journey_audit != true && inputs.run_offline_preflight != true && inputs.run_admission_diagnosis != true && inputs.specialist_recovery != true)) && (github.event_name != 'issue_comment' || (github.event.comment.body == '/factory-wake' && github.event.comment.author_association == 'OWNER')) && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.repository.full_name == github.repository)) && (github.event_name != 'repository_dispatch' || (github.actor == 'infodive-ai-product-factory[bot]' && github.event.action == 'factory-intake-wake' && github.event.client_payload.source == 'console-intake')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

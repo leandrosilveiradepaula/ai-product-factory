@@ -21,6 +21,7 @@ root=Path(__file__).resolve().parents[1]
 migration=(root/"supabase/migrations/20261021030000_fence_specialist_epoch_and_lease_token.sql").read_text()
 repair_migration=(root/"supabase/migrations/20261021040500_atomic_specialist_repair_handoff.sql").read_text()
 trace_migration=(root/"supabase/migrations/20261021041000_atomic_specialist_traceability_evidence.sql").read_text()
+infra_recovery_migration=(root/"supabase/migrations/20261115114000_recover_specialist_infrastructure_exhaustion_once.sql").read_text()
 trace_source=(root/"supabase/migrations/20260929034912_factory_requirement_traceability.sql").read_text()
 trace_fn="create or replace function public.factory_record_delivery_evidence("+trace_source.split(
     "create or replace function public.factory_record_delivery_evidence(",1)[1].split(
@@ -58,6 +59,7 @@ CREATE TABLE public.factory_change_sets(
  project_id uuid NOT NULL REFERENCES public.factory_projects(id),
  root_task_id uuid REFERENCES public.factory_tasks(id),
  status text NOT NULL DEFAULT 'integrating',
+ candidate_commit text,
  current_wave integer NOT NULL DEFAULT 1,
  attempt_count integer NOT NULL DEFAULT 0,
  release_run_id uuid REFERENCES public.factory_runs(id),
@@ -158,6 +160,7 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     conn.execute(repair_migration)
     conn.execute(trace_fn)
     conn.execute(trace_migration)
+    conn.execute(infra_recovery_migration)
     actual=conn.execute("""
       select has_function_privilege('anon',
                'public.factory_complete_specialist_lane_atomic(uuid,text,jsonb,jsonb)','EXECUTE'),
@@ -443,4 +446,106 @@ with psycopg.connect(dsn,autocommit=True) as conn:
     assert one("SELECT count(*) FROM public.factory_definition_of_done_evidence WHERE run_id=%s",(bad_run,))==1
     assert one("""SELECT count(*) FROM public.factory_audit_events
                   WHERE run_id=%s AND event_type='delivery.evidence.recorded'""",(bad_run,))==1
+
+    # B4: the original three specialist lanes can be replayed ONCE after an
+    # independently source-checked infrastructure fix. The normal three-claim
+    # limit is untouched. The actual PostgreSQL RPC, not a Python mock, must
+    # protect stopped projects, epoch drift, stale claims and source changes.
+    signature="public.factory_resume_specialist_infrastructure_once_v1(uuid,text,bigint,text,text,text)"
+    acl=conn.execute("""
+      SELECT has_function_privilege('anon',%s,'EXECUTE'),
+             has_function_privilege('authenticated',%s,'EXECUTE'),
+             has_function_privilege('service_role',%s,'EXECUTE')
+    """,(signature,signature,signature)).fetchone()
+    assert acl==(False,False,True),acl
+
+    def exhausted_original(name):
+        pid=project(name)
+        conn.execute("""UPDATE public.factory_execution_team_plans
+                        SET plan='{"selected_agents":[{"role":"qa"},{"role":"security"},{"role":"operations"}]}'::jsonb
+                        WHERE project_id=%s""",(pid,))
+        rid=run(pid)
+        cs=changeset(pid,rid)
+        conn.execute("""UPDATE public.factory_change_sets
+                        SET status='ci_pending',candidate_commit=%s,release_run_id=%s
+                        WHERE id=%s""",("a"*40,rid,cs))
+        conn.execute("""UPDATE public.factory_runs SET metadata=metadata ||
+                       '{"source":"change-set"}'::jsonb WHERE id=%s""",(rid,))
+        enqueued=enqueue(rid)
+        assert enqueued["created_jobs"]==3,enqueued
+        conn.execute("""UPDATE public.factory_specialist_lane_jobs SET
+                       status='blocked',attempt_count=3,completed_at=now(),
+                       findings='[{"code":"specialist_retry_exhausted","severity":"critical"}]'::jsonb,
+                       evidence=evidence||'{"_factory_claim_token":"previous-stale-token"}'::jsonb
+                       WHERE run_id=%s""",(rid,))
+        conn.execute("UPDATE public.factory_runs SET status='specialist_review_failed' WHERE id=%s",(rid,))
+        return pid,rid,cs
+
+    fix_sha="b"*40
+    source_digest="c"*64
+    def replay(rid,sha="a"*40,gen=1,fix=fix_sha,digest=source_digest,
+               reason="candidate_reconciliation_fix"):
+        return one("SELECT public.factory_resume_specialist_infrastructure_once_v1(%s,%s,%s,%s,%s,%s)",
+                   (rid,sha,gen,fix,digest,reason))
+
+    infra,infra_run,infra_set=exhausted_original("specialist-infra-replay-positive")
+    assert_rejected(lambda: replay(infra_run,sha="e"*40))
+    assert_rejected(lambda: replay(infra_run,gen=2))
+    assert_rejected(lambda: replay(infra_run,digest="x"*64),"PT400")
+    assert_rejected(lambda: replay(infra_run,reason="contains unsafe text"),"PT400")
+    assert one("SELECT count(*) FROM public.factory_specialist_lane_jobs WHERE run_id=%s AND status='blocked'",(infra_run,))==3
+    restored=replay(infra_run)
+    assert restored["requeued"] is True and restored["roles"]==3,restored
+    assert restored["release_authorized"] is False
+    assert one("SELECT status FROM public.factory_runs WHERE id=%s",(infra_run,))=="specialist_review_pending"
+    assert one("SELECT count(*) FROM public.factory_specialist_lane_jobs WHERE run_id=%s AND status='queued' AND attempt_count=0",(infra_run,))==3
+    assert one("SELECT count(*) FROM public.factory_specialist_lane_jobs WHERE run_id=%s AND evidence ? '_factory_claim_token'",(infra_run,))==0
+    assert one("SELECT count(*) FROM public.factory_audit_events WHERE run_id=%s AND event_type='specialist.lanes.infrastructure_requeued'",(infra_run,))==1
+    audit=one("SELECT payload FROM public.factory_audit_events WHERE run_id=%s AND event_type='specialist.lanes.infrastructure_requeued'",(infra_run,))
+    assert {r["role"] for r in audit["old_jobs"]}=={"qa","security","operations"}
+    assert {r["previous_attempts"] for r in audit["old_jobs"]}=={3}
+    assert audit["factory_sha"]==fix_sha and audit["paid_calls"]==0
+    assert one("SELECT status FROM public.factory_change_sets WHERE id=%s",(infra_set,))=="ci_pending"
+    assert_rejected(lambda: replay(infra_run,fix="f"*40))
+    assert_rejected(lambda: replay(infra_run,digest="d"*64))
+
+    # Stale workers cannot finish claims issued before infrastructure replay.
+    for role in ("qa","security","operations"):
+        item=one("SELECT public.factory_claim_specialist_lane(%s,%s,600)",
+                 (role,"recovered-"+role))
+        assert item["run_id"]==str(infra_run),item
+        assert item["claim_token"]!="previous-stale-token"
+        assert_rejected(lambda: one(
+            "SELECT public.factory_complete_specialist_lane_with_trace(%s,'passed','[]'::jsonb,%s::jsonb)",
+            (item["job_id"],json.dumps({"_factory_claim_token":"previous-stale-token"}))))
+        checked=complete(item["job_id"],item["claim_token"],"passed")
+        assert checked["status"]=="passed",checked
+    assert one("SELECT status FROM public.factory_runs WHERE id=%s",(infra_run,))=="preview_ready"
+    assert one("SELECT count(*) FROM public.factory_evaluations WHERE run_id=%s AND left(eval_type,11)='specialist_' AND status='passed'",(infra_run,))==3
+    assert one("SELECT count(*) FROM public.factory_audit_events WHERE run_id=%s AND event_type='specialist.lanes.infrastructure_requeued'",(infra_run,))==1
+    # Repeated same-source command does not reopen a successfully reviewed run.
+    same=replay(infra_run)
+    assert same["idempotent"] is True and same["requeued"] is False
+    assert same["release_authorized"] is False
+
+    paused,paused_run,_=exhausted_original("specialist-infra-replay-paused")
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='paused' WHERE project_id=%s",(paused,))
+    assert_rejected(lambda: replay(paused_run))
+    conn.execute("UPDATE public.factory_project_execution_controls SET state='running',generation=2 WHERE project_id=%s",(paused,))
+    assert_rejected(lambda: replay(paused_run))
+    assert one("SELECT count(*) FROM public.factory_audit_events WHERE run_id=%s AND event_type='specialist.lanes.infrastructure_requeued'",(paused_run,))==0
+
+    changed,changed_run,changed_set=exhausted_original("specialist-infra-replay-changed")
+    conn.execute("UPDATE public.factory_change_sets SET candidate_commit=%s WHERE id=%s",("e"*40,changed_set))
+    assert_rejected(lambda: replay(changed_run))
+    assert one("SELECT count(*) FROM public.factory_specialist_lane_jobs WHERE run_id=%s AND status='blocked'",(changed_run,))==3
+
+    real_findings,findings_run,_=exhausted_original("specialist-infra-replay-real-finding")
+    conn.execute("""UPDATE public.factory_specialist_lane_jobs SET
+                   findings='[{"code":"unsafe_endpoint","severity":"critical"}]'::jsonb
+                   WHERE run_id=%s AND role='security'""",(findings_run,))
+    assert_rejected(lambda: replay(findings_run))
+    assert one("SELECT count(*) FROM public.factory_specialist_lane_jobs WHERE run_id=%s AND status='blocked'",(findings_run,))==3
+    print("SPECIALIST_INFRA_RECOVERY_POSTGRES_PASS=1")
+
     print("SPECIALIST_EPOCH_POSTGRES_PASS=1")
