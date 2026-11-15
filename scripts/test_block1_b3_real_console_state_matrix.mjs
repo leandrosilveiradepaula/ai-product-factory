@@ -8,7 +8,7 @@ const checks={success:true,empty:true,loading:true,denied:true,notFound:true,
               connectionError:true,recovered:true};
 function params(){
   return {runId:987654,sourceCommit:SHA,targetCommit:SERVED,
-          checks:{...checks},backendStatus:200,mutatingRequests:0,
+          checks:{...checks},backendStatus:200,pendingHumanGateCount:0,mutatingRequests:0,
           interceptions:0,unexpectedPageErrors:0};
 }
 test("full real state matrix retains only bounded SHA-bound telemetry",()=>{
@@ -16,6 +16,8 @@ test("full real state matrix retains only bounded SHA-bound telemetry",()=>{
   assert.equal(result.schema,"factory-b3-authenticated-live-state-matrix-v1");
   assert.deepEqual(result.checks,checks);
   assert.equal(result.fullUserExperienceCertified,true);
+  assert.equal(result.pendingHumanGateCount,0);
+  assert.equal(result.sources.empty,"authenticated_first_party_empty_human_decision_inbox");
   assert.equal(result.independentCriterionCertified,false);
   assert.equal(result.responsesFabricated,false);
   assert.equal(result.backendOutageClaimed,false);
@@ -33,6 +35,8 @@ test("partial simulated or mutating scenarios cannot issue a real-state receipt"
     x=>{x.interceptions=1;},
     x=>{x.unexpectedPageErrors=1;},
     x=>{x.backendStatus=503;},
+    x=>{x.pendingHumanGateCount=1;},
+    x=>{delete x.pendingHumanGateCount;},
     x=>{x.sourceCommit="wrong";},
     x=>{x.targetCommit="wrong";},
     x=>{x.runId="not-an-int";},
@@ -49,6 +53,9 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   assert.ok(script.includes("context.setOffline(true)"));
   assert.ok(script.includes("context.setOffline(false)"));
   assert.ok(script.includes("/api/human-attention"));
+  assert.ok(script.includes('".humanGateEmpty[role=\'status\']"'));
+  assert.ok(script.includes('origin+"/gates"'));
+  assert.ok(!script.includes("payload.count!==0"));
   assert.ok(script.includes('status:404'));
   assert.ok(script.includes("Usuário sem permissão"));
   assert.ok(!/\.route\s*\(|\.fulfill\s*\(|\.intercept\s*\(/.test(script));
