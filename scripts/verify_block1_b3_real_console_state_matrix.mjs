@@ -187,12 +187,12 @@ export async function verifyRealConsoleStateMatrix({
     const error=page.locator(".consoleRouteError[role='alert']");
     try{await error.waitFor({state:"visible",timeout:20000});}
     catch{throw Error("b3_real_states_connection_error_not_rendered");}
-    await page.getByRole("button",{name:"Tentar novamente",exact:true})
+    await error.getByRole("button",{name:"Tentar novamente",exact:true})
       .waitFor({state:"visible",timeout:10000});
     checks.connectionError=true;
     await context.setOffline(false);
     offline=false;
-    await page.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+    await error.getByRole("button",{name:"Tentar novamente",exact:true}).click();
     await page.getByRole("heading",{name:"Execuções",exact:true})
       .waitFor({state:"visible",timeout:30000});
     checks.recovered=true;

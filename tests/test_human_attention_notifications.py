@@ -26,7 +26,8 @@ class HumanAttentionNotificationTests(unittest.TestCase):
   self.assertIn('className="mobileQuickNav"',SHELL)
   self.assertIn('attention&&attention.count>0?',SHELL)
   self.assertIn("humanAttentionCount",NAV)
-  self.assertIn('<ConsoleNav attentionCount={attention?.count??null}/>',SHELL)
+  self.assertEqual(SHELL.count('<ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>'),2)
+   self.assertIn('onNavigate?.(href)',NAV)
   self.assertIn('className="mobileNav"',SHELL)
   self.assertIn("topbarAttention",SHELL)
 

@@ -75,6 +75,7 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   assert.ok(script.includes('missingPage.status()'));
   assert.ok(script.includes('missingBody.status!=="not_found"'));
   assert.ok(script.includes("Usuário sem permissão"));
+  assert.ok(script.includes('error.getByRole("button"'),"transport retry must be scoped to its actual error alert");
   assert.ok(!/\.route\s*\(|\.fulfill\s*\(|\.intercept\s*\(/.test(script));
   assert.ok(!script.includes("credentials:"));
   const api=await fs.readFile(new URL("../apps/console/app/api/runs/[id]/route.ts",import.meta.url),"utf8");

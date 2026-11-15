@@ -348,12 +348,12 @@ test("B3: real Next client navigation renders loading then true offline error an
   const offlineLink=await openRuns();
   await context.setOffline(true);offline=true;
   await offlineLink.click({timeout:10000});
-  await page.locator(".consoleRouteError[role='alert']")
-   .waitFor({state:"visible",timeout:20000});
-  await page.getByRole("button",{name:"Tentar novamente",exact:true})
+  const transportError=page.locator(".consoleRouteError[role='alert']");
+  await transportError.waitFor({state:"visible",timeout:20000});
+  await transportError.getByRole("button",{name:"Tentar novamente",exact:true})
    .waitFor({state:"visible",timeout:10000});
   await context.setOffline(false);offline=false;
-  await page.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+  await transportError.getByRole("button",{name:"Tentar novamente",exact:true}).click();
   await page.getByRole("heading",{name:"Execuções",exact:true})
    .waitFor({state:"visible",timeout:30000});
   assert.equal(new URL(page.url()).pathname,"/runs");
