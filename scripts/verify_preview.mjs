@@ -58,7 +58,7 @@ try {
     }),
   }));
   const page = await context.newPage();
-  page.on("pageerror", error => errors.push(`pageerror: ${error.message}`));
+  page.on("pageerror", () => errors.push("browser_pageerror"));
   page.on("response", response => {
     if(response.status() >= 400){
       if(isVercelExternalTelemetryPing403({
@@ -89,7 +89,9 @@ try {
 
   const status = response.status();
   observed.statusCode = status;
-  observed.finalUrl = page.url();
+  // Never disclose provider SSO query tokens, OAuth state or customer fragments.
+  const finalPageUrl = new URL(page.url());
+  observed.finalUrl = finalPageUrl.origin + finalPageUrl.pathname;
   observed.title = await page.title();
   if (status >= 400) throw new Error(`preview returned HTTP ${status}`);
   if (new URL(page.url()).origin !== previewOrigin)
@@ -119,7 +121,7 @@ try {
   for(const entry of consoleErrors){
     if(!isCorrelatedVercelPingConsoleError({
       ...entry,previewOrigin,ignoredPingUrls:ignoredTelemetryPings,
-    }))errors.push("console: "+entry.text);
+    }))errors.push("browser_console_error_unignored");
   }
   if (errors.length || failedResources.length) {
     const resourceDetails = failedResources.map(item => `http_${item.status}: ${item.type} ${item.path}`);
