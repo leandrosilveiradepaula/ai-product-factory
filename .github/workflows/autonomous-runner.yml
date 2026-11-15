@@ -128,8 +128,10 @@ jobs:
     # deliberately does NOT allow a new standalone workflow to use its proxy.
     # This source-checked, once-only recovery is neither a scheduler wake
     # nor a reviewer PASS, Preview verification, production release or merge.
+    needs: schedule-probe
     if: >-
       ${{
+        always() &&
         (github.event_name == 'workflow_dispatch'
          && inputs.specialist_recovery == true
          && inputs.run_journey_audit != true
