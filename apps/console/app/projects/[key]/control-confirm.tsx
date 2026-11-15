@@ -9,9 +9,10 @@ export function ProjectControlForm({command,label,version,projectKey,action}:{
   action:(formData:FormData)=>void|Promise<void>;
 }){
   const commandId=useRef<HTMLInputElement>(null);
-  const confirm=["start","stop","restart"].includes(command);
+  const destructive=command==="stop";
+  const needsConfirmation=command==="start"||destructive||command==="restart";
   return <form action={action} onSubmit={event=>{
-    if(confirm&&!window.confirm(command==="start"
+    if(needsConfirmation&&!window.confirm(command==="start"
       ?"Iniciar o desenvolvimento deste projeto? A Factory poderá enfileirar tarefas e executar ações autorizadas pelos gates existentes."
       :command==="stop"
       ?"Parar este projeto? Nenhuma tarefa nova será assumida. Trabalhos já assumidos poderão concluir com segurança; a fila e o histórico serão preservados."
