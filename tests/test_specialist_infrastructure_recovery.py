@@ -7,7 +7,12 @@ fetches live GitHub and Control Plane sources before requesting the SQL RPC.
 from __future__ import annotations
 
 import copy
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from ai_product_factory.specialist_infrastructure_recovery import (
     SpecialistInfrastructureRecoveryBlocked, verify_recovery_sources,
@@ -248,6 +253,95 @@ class Tests(unittest.TestCase):
                 read=read, github_get=github_get,
                 run_id=RUN, candidate_sha="invalid", factory_sha=FACTORY,
             )
+
+
+class TrustedOperatorCommandTests(unittest.TestCase):
+    """No untrusted owner command may invoke the privileged control-plane RPC."""
+
+    def _event(self, body, *, owner="leandrosilveiradepaula",
+               author_association="OWNER", issue_number=713, pr=False):
+        event = {
+            "action": "created",
+            "issue": {"number": issue_number},
+            "comment": {
+                "author_association": author_association,
+                "user": {"login": owner},
+                "body": body,
+            },
+        }
+        if pr:
+            event["issue"]["pull_request"] = {"url": "https://github.com/example/pull/1"}
+        return event
+
+    def _run(self, event, *, actor="leandrosilveiradepaula",
+             event_name="issue_comment", execute=True):
+        from scripts import recover_specialist_infrastructure_once as command
+        with tempfile.TemporaryDirectory() as directory:
+            event_path = Path(directory) / "event.json"
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            environ = {
+                "GITHUB_ACTIONS": "true",
+                "GITHUB_REPOSITORY": "leandrosilveiradepaula/ai-product-factory",
+                "GITHUB_REF": "refs/heads/main",
+                "GITHUB_EVENT_NAME": event_name,
+                "GITHUB_ACTOR": actor,
+                "GITHUB_REPOSITORY_OWNER": "leandrosilveiradepaula",
+                "GITHUB_SHA": FACTORY,
+                "GITHUB_EVENT_PATH": str(event_path),
+                "FACTORY_SPECIALIST_INFRA_EXECUTE": "true" if execute else "false",
+            }
+            args = ["--run-id", RUN, "--candidate-sha", CANDIDATE]
+            if execute:
+                args.append("--execute")
+            with patch.dict(os.environ, environ, clear=True):
+                with patch.object(command, "SupabaseSpecialistLaneQueue") as queue:
+                    with patch.object(command, "verify_recovery_sources") as verify_source:
+                        if execute:
+                            queue.return_value._rpc.return_value = {
+                                "run_id": RUN, "requeued": True,
+                                "release_authorized": False,
+                            }
+                            queue.return_value._get.return_value = [
+                                {"role": role, "status": "queued", "attempt_count": 0}
+                                for role in ("qa", "security", "operations")
+                            ]
+                        from ai_product_factory.specialist_infrastructure_recovery import RecoverySources
+                        verify_source.return_value = RecoverySources(
+                            run_id=RUN, candidate_sha=CANDIDATE, factory_sha=FACTORY,
+                            execution_generation=1, repository=REPOSITORY,
+                            project_key="dark-channel-studio", pr_number=2,
+                            ci_run_id=333, evidence_digest="f"*64,
+                        )
+                        try:
+                            result = command.main(args)
+                        except SystemExit as exc:
+                            result = exc
+                        return result, queue.return_value._rpc.call_count, verify_source.call_count
+
+    def test_exact_owner_issue_comment_authorizes_only_bounded_original_requeue(self):
+        event = self._event(
+            "/factory-specialist-infra-recover " + RUN + " " + CANDIDATE)
+        result, writes, source_checks = self._run(event)
+        self.assertEqual(result, 0)
+        self.assertEqual(writes, 1)
+        self.assertEqual(source_checks, 1)
+
+    def test_owner_command_identity_denies_forged_or_wrong_source(self):
+        valid = "/factory-specialist-infra-recover " + RUN + " " + CANDIDATE
+        cases = (
+            (self._event(valid + " extra"), "leandrosilveiradepaula"),
+            (self._event(valid, author_association="MEMBER"), "leandrosilveiradepaula"),
+            (self._event(valid, owner="untrusted"), "leandrosilveiradepaula"),
+            (self._event(valid, issue_number=712), "leandrosilveiradepaula"),
+            (self._event(valid, pr=True), "leandrosilveiradepaula"),
+            (self._event(valid), "untrusted"),
+        )
+        for event, actor in cases:
+            with self.subTest(event=event, actor=actor):
+                result, writes, source_checks = self._run(event, actor=actor)
+                self.assertIsInstance(result, SystemExit)
+                self.assertEqual(writes, 0)
+                self.assertEqual(source_checks, 0)
 
 
 if __name__ == "__main__":
