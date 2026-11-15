@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import matcher from "./preview_text_match.cjs";
+import {firstPartyPreviewHeaders} from "./preview_first_party_headers.mjs";
 const { normalizeVisibleText, containsExpectedText } = matcher;
 
 const previewUrl = process.env.FACTORY_PREVIEW_URL;
@@ -39,11 +40,15 @@ try {
     headless: true,
     ...(browserExecutablePath ? { executablePath: browserExecutablePath } : {}),
   });
-  const context = await browser.newContext({
-    extraHTTPHeaders: trustedOidcToken
-      ? { "x-vercel-trusted-oidc-idp-token": trustedOidcToken }
-      : {},
-  });
+  const context = await browser.newContext();
+  // Exact-origin request headers suppress Vercel's injected toolbar.
+  // Never forward OIDC to third-party resources, and never mock responses.
+  await context.route(previewOrigin + "/**", route => route.continue({
+    headers:firstPartyPreviewHeaders({
+      requestUrl:route.request().url(),previewOrigin,trustedOidcToken,
+      currentHeaders:route.request().headers(),
+    }),
+  }));
   const page = await context.newPage();
   page.on("pageerror", error => errors.push(`pageerror: ${error.message}`));
   page.on("response", response => {

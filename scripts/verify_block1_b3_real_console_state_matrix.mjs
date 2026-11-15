@@ -48,9 +48,10 @@ export function safeRealConsoleStateMatrix({runId,sourceCommit,targetCommit,chec
   };
 }
 
-async function navigate(page,url,{status=200,heading}={}){
+async function navigate(page,url,{status=200,heading,stage="unknown"}={}){
   const response=await page.goto(url,{waitUntil:"domcontentloaded",timeout:60000});
-  if(!response||response.status()!==status)throw Error("b3_real_states_route_status_mismatch");
+  if(!response||response.status()!==status)
+    throw Error("b3_real_states_route_status_mismatch_"+stage);
   if(heading)await page.getByRole("heading",{name:heading,exact:true}).first()
     .waitFor({state:"visible",timeout:20000});
   return response;
@@ -76,7 +77,7 @@ export async function verifyRealConsoleStateMatrix({
     page=await context.newPage();
     page.on("request",handleRequest);
     page.on("pageerror",handleError);
-    await navigate(page,origin+"/",{heading:"Visão geral"});
+    await navigate(page,origin+"/",{heading:"Visão geral",stage:"overview"});
     checks.success=true;
 
     // Not a mock: the signed ephemeral operator reads the real server.
@@ -95,7 +96,7 @@ export async function verifyRealConsoleStateMatrix({
        payload.count<0||!Array.isArray(payload.projects)||
        !payload.projects.every(key=>typeof key==="string"))
       throw Error("b3_real_states_actual_empty_state_unavailable");
-    await navigate(page,origin+"/gates",{heading:"Decisões que precisam de você"});
+    await navigate(page,origin+"/gates",{heading:"Decisões que precisam de você",stage:"gates"});
     try{
       await page.locator(".humanGateEmpty[role='status']").waitFor({state:"visible",timeout:15000});
     }catch{
@@ -103,13 +104,13 @@ export async function verifyRealConsoleStateMatrix({
     }
     checks.empty=true;
 
-    await navigate(page,origin+"/admin/operators",{heading:"Usuário sem permissão"});
+    await navigate(page,origin+"/admin/operators",{heading:"Usuário sem permissão",stage:"denied"});
     if(new URL(page.url()).pathname!=="/unauthorized")
       throw Error("b3_real_states_role_denial_not_rendered");
     checks.denied=true;
 
     await navigate(page,origin+"/runs/"+EMPTY_UUID,{status:404,
-      heading:"Não encontramos esta página"});
+      heading:"Não encontramos esta página",stage:"missing_run"});
     checks.notFound=true;
 
     // Chrome applies latency to real HTTP traffic; responses still come from

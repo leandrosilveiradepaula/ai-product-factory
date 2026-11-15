@@ -321,7 +321,17 @@ test("B3: real Next project detail hydration and command identity are stable acr
   assert.match(first,/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i);
   await pause.click();
   assert.equal(await field.inputValue(),first,"same submission intent reuses idempotency key");
-  assert.deepEqual(errors,[],"no project-detail browser errors after actual client clicks");
+  // The local fixture intercepts every form submit before any real mutation.
+  await field.evaluate(el=>{el.value="";});
+  await pause.focus();
+  await pause.press("Enter");
+  assert.match(await field.inputValue(),/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i,
+    "keyboard submits require an idempotency key");
+  await field.evaluate(el=>{el.value="";});
+  await field.evaluate(el=>el.closest("form").requestSubmit());
+  assert.match(await field.inputValue(),/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i,
+    "requestSubmit must create an idempotency key");
+  assert.deepEqual(errors,[],"no project-detail browser errors after real client submits");
  }finally{await context.close();}
 });
 
