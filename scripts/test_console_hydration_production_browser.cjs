@@ -277,6 +277,26 @@ test("real Next production SSR hydration remains clean under streaming network t
  const n=await hydrationRound({throttled:true,repeats:4});assert.equal(n,4);
 });
 
+test("B3: actual local Next app verifies missing run via authenticated HTTP 404 and UI",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900}});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const missing="00000000-0000-4000-8000-000000000000";
+ try{
+  const notFound=await context.request.get(appOrigin+"/api/runs/"+missing,{maxRedirects:0});
+  assert.equal(notFound.status(),404,"real first-party API must distinguish missing resource");
+  assert.deepEqual(await notFound.json(),{status:"not_found"});
+  const known=await context.request.get(appOrigin+"/api/runs/"+B3_RUN_ID,{maxRedirects:0});
+  assert.equal(known.status(),200,"actual fixture row must be found");
+  assert.deepEqual(await known.json(),{status:"ok"});
+  const page=await context.newPage();
+  const response=await page.goto(appOrigin+"/runs/"+missing,{waitUntil:"networkidle",timeout:45000});
+  assert.ok(response&&[200,404].includes(response.status()),"streamed notFound may be HTTP 200");
+  await page.getByRole("heading",{name:"Não encontramos esta página",exact:true})
+    .waitFor({state:"visible",timeout:10000});
+  assert.equal(await page.getByRole("link",{name:"Voltar para a visão geral"}).count(),1);
+ }finally{await context.close();}
+});
+
 test("B3: real Next project detail hydration and command identity are stable across reloads",async()=>{
  const context=await browser.newContext({
   viewport:{width:1280,height:900},locale:"pt-BR",timezoneId:"America/Sao_Paulo",

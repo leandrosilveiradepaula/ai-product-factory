@@ -56,8 +56,17 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   assert.ok(script.includes('".humanGateEmpty[role=\'status\']"'));
   assert.ok(script.includes('origin+"/gates"'));
   assert.ok(!script.includes("payload.count!==0"));
-  assert.ok(script.includes('status:404'));
+  assert.ok(script.includes('origin+"/api/runs/"+EMPTY_UUID'));
+  assert.ok(script.includes('missingApi.status()!==404'));
+  assert.ok(script.includes('missingPage.status()'));
+  assert.ok(script.includes('missingBody.status!=="not_found"'));
   assert.ok(script.includes("Usuário sem permissão"));
   assert.ok(!/\.route\s*\(|\.fulfill\s*\(|\.intercept\s*\(/.test(script));
   assert.ok(!script.includes("credentials:"));
+  const api=await fs.readFile(new URL("../apps/console/app/api/runs/[id]/route.ts",import.meta.url),"utf8");
+  assert.ok(api.includes("requireConsoleOperator()"));
+  assert.ok(api.includes("getRunExistenceForOperator(id)"));
+  assert.ok(api.includes('status:exists?200:404'));
+  assert.ok(api.includes('status:503'));
+  assert.ok(!api.includes("route.fulfill"));
 });

@@ -17,8 +17,10 @@ observações abaixo no **mesmo** run autenticado, no Console realmente servido:
   Chromium real**; o script não intercepta nem substitui respostas de API.
 - Acesso negado: operador de visualização alcança a tela real /unauthorized,
   sem ganhar privilégios administrativos.
-- Não encontrado: GET real de UUID de run inexistente retorna 404 e mostra
-  a tela amigável de recuperação.
+- Não encontrado: a tela de execução inexistente mostra a recuperação real;
+  a API autenticada de existência desse **mesmo UUID** responde HTTP 404.
+  O documento HTML pode ter HTTP 200 se o Next.js já iniciou streaming;
+  o endpoint retorna 503, e nunca 404, se o Control Plane falhar.
 - Erro de conexão: offline real do Chrome durante navegação, mostrando a
   superfície acessível de erro/retry do Console. Não é um HTTP 503 simulado.
 - Recuperação: conexão restaurada e clique real em Tentar novamente alcança
@@ -91,3 +93,18 @@ O verificador do Preview greenfield envia os cabeçalhos suportados pela
 Vercel somente para requisições do host exato, sem interceptar/mocar respostas,
 sem suprimir erros reais de app e sem encaminhar OIDC a domínios terceiros.
 A conclusão depende de nova captura real, CI verde e gate humano de merge.
+
+## 15/11/2026 — Diagnóstico após #1455
+
+O run protegido #43734306960 concluiu SUCCESS, WCAG/surface e limpeza do
+operador, mas **não** emitiu o artefato de sete estados: a falha isolada foi
+`b3_real_states_route_status_mismatch_missing_run`. O Next.js pode retornar
+HTTP 200 para uma página de `notFound()` emitida após streaming da shell;
+isso não transforma o recurso inexistente em válido. A prova atual exige
+dois sinais reais do **mesmo UUID**: UI com página inacessível e API de
+existência com HTTP 404. A API é protegida por operador autenticado, lê
+somente a existência do run e retorna 503 quando o Control Plane falha,
+sem fabricar 404 nem expor conteúdo de projeto.
+Também foi alinhado o contrato emitido pelo produtor JS com o verificador
+independente Python, incluindo `pendingHumanGateCount=0`. Até novo recibo
+completo e certificação persistida, o critério continua não aprovado.

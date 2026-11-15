@@ -124,6 +124,7 @@ class B3RealStateTests(unittest.TestCase):
         self.assertEqual(payload()["sources"]["empty"],
                          "authenticated_first_party_empty_human_decision_inbox")
         self.assertEqual(payload()["pendingHumanGateCount"],0)
+        self.assertIn('notFound:"first_party_run_existence_api_404_plus_not_found_ui"',producer)
         validate_real_states(payload(),run_id=RUN,source_sha=SHA,served_sha=SERVED)
 
     def test_current_sha_and_artifact_provenance_are_mandatory(self):

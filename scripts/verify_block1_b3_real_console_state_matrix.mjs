@@ -36,7 +36,7 @@ export function safeRealConsoleStateMatrix({runId,sourceCommit,targetCommit,chec
       empty:"authenticated_first_party_empty_human_decision_inbox",
       loading:"real_network_throttled_next_route_fallback",
       denied:"authenticated_first_party_role_denial",
-      notFound:"first_party_nonexistent_run_404",
+      notFound:"first_party_run_existence_api_404_plus_not_found_ui",
       connectionError:"actual_chromium_transport_disconnection",
       recovered:"first_party_route_retry_after_reconnection",
     },
@@ -109,8 +109,28 @@ export async function verifyRealConsoleStateMatrix({
       throw Error("b3_real_states_role_denial_not_rendered");
     checks.denied=true;
 
-    await navigate(page,origin+"/runs/"+EMPTY_UUID,{status:404,
-      heading:"Não encontramos esta página",stage:"missing_run"});
+    // Next.js may stream the notFound() UI with HTTP 200 if the shell was
+    // already sent. The HTML still must show its real missing-run recovery UI.
+    const missingPage=await page.goto(origin+"/runs/"+EMPTY_UUID,{
+      waitUntil:"domcontentloaded",timeout:60000,
+    });
+    if(!missingPage||![200,404].includes(missingPage.status()))
+      throw Error("b3_real_states_missing_run_ui_status_mismatch");
+    await page.getByRole("heading",{name:"Não encontramos esta página",exact:true})
+      .waitFor({state:"visible",timeout:20000});
+    // Check a separate real authenticated first-party API for canonical HTTP
+    // 404, not a fabricated browser response and not a different missing URL.
+    const missingApi=await context.request.get(origin+"/api/runs/"+EMPTY_UUID,{
+      maxRedirects:0,timeout:30000,
+    });
+    if(missingApi.status()!==404)
+      throw Error("b3_real_states_missing_run_api_status_mismatch");
+    let missingBody;
+    try{missingBody=await missingApi.json();}
+    catch{throw Error("b3_real_states_missing_run_api_not_json");}
+    if(!missingBody||typeof missingBody!=="object"||Object.keys(missingBody).length!==1||
+       missingBody.status!=="not_found")
+      throw Error("b3_real_states_missing_run_api_payload_invalid");
     checks.notFound=true;
 
     // Chrome applies latency to real HTTP traffic; responses still come from
