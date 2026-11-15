@@ -10,8 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
+import re
 import urllib.request
+from pathlib import Path
 
 from ai_product_factory.github_auth import resolve_github_token
 from ai_product_factory.specialist_infrastructure_recovery import (
@@ -50,8 +51,35 @@ def main(argv: list[str] | None = None) -> int:
     # replay a terminal run with a service-role key.
     if (os.environ.get("GITHUB_ACTIONS") != "true"
         or os.environ.get("GITHUB_REPOSITORY") != FACTORY_REPOSITORY
-        or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
-        or os.environ.get("GITHUB_REF") != "refs/heads/main"):
+        or os.environ.get("GITHUB_REF") != "refs/heads/main"
+        or os.environ.get("GITHUB_ACTOR") != os.environ.get("GITHUB_REPOSITORY_OWNER")
+        or not os.environ.get("GITHUB_REPOSITORY_OWNER")):
+        raise SystemExit("SPECIALIST_RECOVERY_WORKFLOW_IDENTITY_DENIED")
+    event_name = os.environ.get("GITHUB_EVENT_NAME")
+    if event_name == "issue_comment":
+        # Unlike manual workflow_dispatch, an OWNER comment must be checked
+        # directly against the signed GitHub event, not only the YAML guard.
+        try:
+            event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+            comment = event["comment"]
+            issue = event["issue"]
+            exact_body = (
+                "/factory-specialist-infra-recover "
+                + args.run_id + " " + args.candidate_sha
+            )
+            valid = (
+                event.get("action") == "created"
+                and issue.get("number") == 713
+                and "pull_request" not in issue
+                and comment.get("author_association") == "OWNER"
+                and (comment.get("user") or {}).get("login") == os.environ["GITHUB_ACTOR"]
+                and comment.get("body") == exact_body
+            )
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            valid = False
+        if not valid or not args.execute:
+            raise SystemExit("SPECIALIST_RECOVERY_OWNER_COMMENT_DENIED")
+    elif event_name != "workflow_dispatch":
         raise SystemExit("SPECIALIST_RECOVERY_WORKFLOW_IDENTITY_DENIED")
     if args.execute and os.environ.get("FACTORY_SPECIALIST_INFRA_EXECUTE") != "true":
         raise SystemExit("SPECIALIST_RECOVERY_EXECUTE_NOT_AUTHORIZED")
