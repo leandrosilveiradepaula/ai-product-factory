@@ -108,6 +108,12 @@ try {
   const appMain = await page.locator("main").first().innerText({timeout:10000});
   if (!containsExpectedText(normalizeVisibleText(appMain), expectedText))
     throw new Error("preview_application_identity_unverified");
+  // Vercel SSO may contain a project label but cannot substitute the app's
+  // document title and its own accessible top-level heading.
+  const heading=await page.getByRole("heading",{level:1}).first().innerText({timeout:10000});
+  if (!containsExpectedText(normalizeVisibleText(observed.title || ""), expectedText)
+      || !containsExpectedText(normalizeVisibleText(heading), expectedText))
+    throw new Error("preview_application_heading_or_title_unverified");
   checks.push("expected_text");
 
   for(const entry of consoleErrors){
