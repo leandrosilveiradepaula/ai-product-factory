@@ -140,3 +140,17 @@ verificados sem interceptação/HTTP artificial. A suíte de integração execut
 o **Next/React de produção com servidor local inert** para reproduzir
 loading/offline/retry; essa fixture não é por si um PASS de certificação.
 Nenhum critério é promovido antes de nova captura autenticada em produção.
+
+## 15/11/2026 — Falha isolada de desconexão reproduzida na PR #1457
+
+O teste Chromium real no Next.js compilado passou pela nova transição
+cliente de loading, mas reproduziu o erro: navegação com
+`context.setOffline(true)` nem sempre aciona `app/error.tsx`, deixando
+`.consoleRouteError` ausente. Corrigido no produto com escuta do evento
+**offline real do navegador** em `ConsoleShell`, alerta acessível,
+memória da rota legítima selecionada na navegação e retry humano usando
+`router.push` ou `router.refresh` após restabelecer a rede. A superfície
+não falsifica erro HTTP nem resposta de backend. O teste isolado e a
+captura real devem observar a UI, a navegação e a recuperação sem mock.
+A certificação segue bloqueada até sete estados autenticados e recibo
+persistido no Control Plane.
