@@ -17,14 +17,14 @@ function validOrigin(value){
 }
 
 export function safeRealConsoleStateMatrix({runId,sourceCommit,targetCommit,checks,
-  backendStatus,mutatingRequests,interceptions,unexpectedPageErrors}){
+  backendStatus,pendingHumanGateCount,mutatingRequests,interceptions,unexpectedPageErrors}){
   if(!Number.isSafeInteger(Number(runId))||Number(runId)<1||
      !SHA.test(String(sourceCommit))||!SHA.test(String(targetCommit)))
     throw Error("b3_real_states_identity_invalid");
   if(!checks||typeof checks!=="object"||
       Object.keys(checks).length!==REQUIRED.length||
       REQUIRED.some(x=>checks[x]!==true) ||
-      ![200].includes(backendStatus)||
+      ![200].includes(backendStatus)||pendingHumanGateCount!==0||
       mutatingRequests!==0||interceptions!==0||unexpectedPageErrors!==0)
     throw Error("b3_real_states_full_live_matrix_incomplete");
   return {
@@ -33,14 +33,14 @@ export function safeRealConsoleStateMatrix({runId,sourceCommit,targetCommit,chec
     checks:Object.fromEntries(REQUIRED.map(k=>[k,true])),
     sources:{
       success:"authenticated_first_party_overview",
-      empty:"first_party_human_attention_zero",
+      empty:"authenticated_first_party_empty_human_decision_inbox",
       loading:"real_network_throttled_next_route_fallback",
       denied:"authenticated_first_party_role_denial",
       notFound:"first_party_nonexistent_run_404",
       connectionError:"actual_chromium_transport_disconnection",
       recovered:"first_party_route_retry_after_reconnection",
     },
-    backendStatus,mutatingRequests,interceptions,unexpectedPageErrors,
+    backendStatus,pendingHumanGateCount,mutatingRequests,interceptions,unexpectedPageErrors,
     productionWrites:0,paidCalls:0,personalDataRetained:false,
     responsesFabricated:false,backendOutageClaimed:false,
     fullUserExperienceCertified:true,
@@ -86,12 +86,21 @@ export async function verifyRealConsoleStateMatrix({
     if(attention.status()!==200)throw Error("b3_real_states_backend_unavailable");
     let payload;
     try{payload=await attention.json();}catch{throw Error("b3_real_states_backend_not_json");}
-    if(payload?.status!=="ok"||payload.count!==0||
-       !Array.isArray(payload.projects)||payload.projects.length!==0)
+    // Do not assert the whole attention inbox is empty: a real GitHub App
+    // installation action is independent from human release/data gates.
+    // The backend must report zero ACTUAL human gates; the separate /gates
+    // page must render its real, first-party empty decision state.
+    if(payload?.status!=="ok"||!Number.isSafeInteger(payload.pendingHumanGateCount)||
+       payload.pendingHumanGateCount!==0||!Number.isSafeInteger(payload.count)||
+       payload.count<0||!Array.isArray(payload.projects)||
+       !payload.projects.every(key=>typeof key==="string"))
       throw Error("b3_real_states_actual_empty_state_unavailable");
-    await navigate(page,origin+"/",{heading:"Visão geral"});
-    if(await page.locator(".desktopSidebarContent .humanAttentionCount").count()!==0)
+    await navigate(page,origin+"/gates",{heading:"Decisões que precisam de você"});
+    try{
+      await page.locator(".humanGateEmpty[role='status']").waitFor({state:"visible",timeout:15000});
+    }catch{
       throw Error("b3_real_states_empty_indicator_incorrect");
+    }
     checks.empty=true;
 
     await navigate(page,origin+"/admin/operators",{heading:"Usuário sem permissão"});
@@ -141,7 +150,8 @@ export async function verifyRealConsoleStateMatrix({
       .waitFor({state:"visible",timeout:30000});
     checks.recovered=true;
     return safeRealConsoleStateMatrix({runId,sourceCommit,targetCommit,checks,
-      backendStatus:200,mutatingRequests,interceptions:0,unexpectedPageErrors});
+      backendStatus:200,pendingHumanGateCount:0,
+      mutatingRequests,interceptions:0,unexpectedPageErrors});
   }finally{
     if(offline)await context.setOffline(false).catch(()=>{});
     if(browserClient)await browserClient.detach().catch(()=>{});
