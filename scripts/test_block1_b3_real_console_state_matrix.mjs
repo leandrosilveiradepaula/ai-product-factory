@@ -42,7 +42,7 @@ test("partial simulated or mutating scenarios cannot issue a real-state receipt"
     assert.throws(()=>safeRealConsoleStateMatrix(request),/b3_real_states_/);
   }
 });
-test("browser source cannot intercept or fulfill real responses",()=>{
+test("browser source cannot intercept or fulfill real responses",async()=>{
   const fs=await import("node:fs/promises");
   const script=await fs.readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
   assert.ok(script.includes("Network.emulateNetworkConditions"));
