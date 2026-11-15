@@ -121,3 +121,36 @@ referência imutável do verificador foi reconciliada com o run **agendado**
 aos do SHA `06d02f72…`. Testes negativos de SHA, run/evento e drift
 continuam exigidos. **Não** foi desligado o gate de monotonicidade.
 Novo PASS para states depende do novo browser real e do certificado persistido.
+
+## 15/11/2026 — Execução pós-merge #1456, loading real
+
+A captura #43747033345 foi concluída SUCCESS (superfície, WCAG, prova
+B2 assinada, limpeza de operador), mas o artefato de sete estados não foi
+emitido. Código de falha sanitizado: `b3_real_states_loading_not_rendered`.
+A prova utilizava `page.goto('/')`, uma navegação de documento inteiro;
+esta ação não provoca necessariamente o fallback `app/loading.tsx` do
+App Router durante transições clientes. A correção usa **clique em Link
+real visível para /runs** com Chromium limitado a transporte HTTP real,
+cache desabilitado e prefetch de páginas autenticadas desativado.
+Exige ainda GET primeiro-partido de /runs, fallback acessível visível,
+conteúdo final renderizado e transição sem mutação. A prova de erro offline
+é feita a partir de um novo documento, menu avançado realmente aberto e
+novo clique não-prefetched; conexão restaurada e botão de retry são
+verificados sem interceptação/HTTP artificial. A suíte de integração executa
+o **Next/React de produção com servidor local inert** para reproduzir
+loading/offline/retry; essa fixture não é por si um PASS de certificação.
+Nenhum critério é promovido antes de nova captura autenticada em produção.
+
+## 15/11/2026 — Falha isolada de desconexão reproduzida na PR #1457
+
+O teste Chromium real no Next.js compilado passou pela nova transição
+cliente de loading, mas reproduziu o erro: navegação com
+`context.setOffline(true)` nem sempre aciona `app/error.tsx`, deixando
+`.consoleRouteError` ausente. Corrigido no produto com escuta do evento
+**offline real do navegador** em `ConsoleShell`, alerta acessível,
+memória da rota legítima selecionada na navegação e retry humano usando
+`router.push` ou `router.refresh` após restabelecer a rede. A superfície
+não falsifica erro HTTP nem resposta de backend. O teste isolado e a
+captura real devem observar a UI, a navegação e a recuperação sem mock.
+A certificação segue bloqueada até sete estados autenticados e recibo
+persistido no Control Plane.

@@ -50,6 +50,20 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   const fs=await import("node:fs/promises");
   const script=await fs.readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
   assert.ok(script.includes("Network.emulateNetworkConditions"));
+  assert.ok(script.includes("loadingLink.click("),"loading must be verified on a real client transition");
+  assert.ok(script.includes('url.pathname==="/runs"'),"real route GET must be observed");
+  assert.ok(script.includes("loadingRouteRequests===0"),"cached fixture must not certify loading");
+  assert.ok(script.includes("await openRealRunsLink(page)"),"advanced navigation must be genuinely opened");
+  assert.ok(!script.includes('await page.goto(origin+"/",{waitUntil:"domcontentloaded"'));
+  const nav=await fs.readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8");
+  assert.ok(nav.includes("<Link prefetch={false}"),"authenticated dynamic nav must not prefetch");
+  assert.ok(nav.includes("onNavigate?.(href)"),"real offline nav intent must be kept");
+  const shell=await fs.readFile(new URL("../apps/console/app/shell.tsx",import.meta.url),"utf8");
+  assert.ok(shell.includes('window.addEventListener("offline",handleOffline)'));
+  assert.ok(shell.includes('pendingTransportRoute.current=href'));
+  assert.ok(shell.includes('router.push(requested)'));
+  assert.ok(shell.includes('className="card consoleRouteError" role="alert"'));
+  assert.ok(shell.includes("onClick={retryTransport}"));
   assert.ok(script.includes("context.setOffline(true)"));
   assert.ok(script.includes("context.setOffline(false)"));
   assert.ok(script.includes("/api/human-attention"));
@@ -61,6 +75,7 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   assert.ok(script.includes('missingPage.status()'));
   assert.ok(script.includes('missingBody.status!=="not_found"'));
   assert.ok(script.includes("Usuário sem permissão"));
+  assert.ok(script.includes('error.getByRole("button"'),"transport retry must be scoped to its actual error alert");
   assert.ok(!/\.route\s*\(|\.fulfill\s*\(|\.intercept\s*\(/.test(script));
   assert.ok(!script.includes("credentials:"));
   const api=await fs.readFile(new URL("../apps/console/app/api/runs/[id]/route.ts",import.meta.url),"utf8");

@@ -34,7 +34,8 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
     def test_shell_keeps_decisions_visible_but_removes_global_duplicate_ctas(self):
         self.assertNotIn('className="topbarWork"',SHELL)
         self.assertNotIn('className="mobileNewProject"',SHELL)
-        self.assertIn('<ConsoleNav attentionCount={attention?.count??null}/>',SHELL)
+        self.assertEqual(SHELL.count('<ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>'),2)
+        self.assertIn('onNavigate?.(href)',NAV)
         self.assertIn('className="mobileNav" key={pathname}',SHELL)
         self.assertIn('<nav className="mobileQuickNav" aria-label="Navegação rápida">',SHELL)
         for route in ('href="/"','href="/projects"','href="/gates"'):

@@ -57,11 +57,14 @@ function active(pathname:string,href:string){
  if(href==="/")return pathname==="/";
  return pathname===href||pathname.startsWith(href+"/");
 }
-function NavLink({href,label,icon,pathname,count}:{
+function NavLink({href,label,icon,pathname,count,onNavigate}:{
  href:string;label:string;icon:IconName;pathname:string;count?:number|null;
+ onNavigate?:(href:string)=>void;
 }){
  const isActive=active(pathname,href);
- return <Link className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
+ // Dynamic authenticated Control Plane pages must not be speculatively fetched.
+ // This also guarantees a user-initiated client transition observes genuine loading.
+ return <Link prefetch={false} onClick={()=>onNavigate?.(href)} className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
   <span className="navIcon"><Icon name={icon}/></span>
   <span className="navItemLabel">{label}</span>
   {href==="/gates"&&count!==null&&count!==undefined&&count>0
@@ -70,14 +73,14 @@ function NavLink({href,label,icon,pathname,count}:{
  </Link>;
 }
 
-export function ConsoleNav({attentionCount=null}:{attentionCount?:number|null}){
+export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:number|null;onNavigate?:(href:string)=>void}){
  const pathname=usePathname();
  const advancedActive=advancedGroups.some(group=>group.items.some(item=>active(pathname,item.href)));
  return <nav className="sidebarNav" aria-label="Navegação da Factory">
   <div className="navGroup">
    <div className="navGroupLabel">Seu trabalho</div>
    <div className="navGroupItems">
-    {primaryItems.map(item=><NavLink key={item.href} {...item} pathname={pathname} count={attentionCount}/>)}
+    {primaryItems.map(item=><NavLink key={item.href} {...item} pathname={pathname} count={attentionCount} onNavigate={onNavigate}/>)}
    </div>
   </div>
   <details key={pathname} className="navAdvanced" open={advancedActive}>
@@ -90,7 +93,7 @@ export function ConsoleNav({attentionCount=null}:{attentionCount?:number|null}){
     {advancedGroups.map(group=><div className="navGroup" key={group.label}>
      <div className="navGroupLabel">{group.label}</div>
      <div className="navGroupItems">
-      {group.items.map(item=><NavLink key={item.href} {...item} pathname={pathname}/>)}
+      {group.items.map(item=><NavLink key={item.href} {...item} pathname={pathname} onNavigate={onNavigate}/>)}
      </div>
     </div>)}
    </div>

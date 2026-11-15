@@ -48,6 +48,17 @@ export function safeRealConsoleStateMatrix({runId,sourceCommit,targetCommit,chec
   };
 }
 
+async function openRealRunsLink(page){
+  // The advanced drawer is closed on Overview: a hidden link is not a
+  // reproducible user interaction. Open the actual visible navigation first.
+  const drawer=page.locator(".desktopSidebarContent details.navAdvanced");
+  if(await drawer.getAttribute("open")===null)
+    await drawer.locator("summary").click({timeout:10000});
+  const link=page.locator('.desktopSidebarContent a[href="/runs"]');
+  await link.waitFor({state:"visible",timeout:10000});
+  return link;
+}
+
 async function navigate(page,url,{status=200,heading,stage="unknown"}={}){
   const response=await page.goto(url,{waitUntil:"domcontentloaded",timeout:60000});
   if(!response||response.status()!==status)
@@ -64,12 +75,16 @@ export async function verifyRealConsoleStateMatrix({
   let browserClient=null;
   let offline=false;
   let mutatingRequests=0;
+  let loadingRouteRequests=0;
   let unexpectedPageErrors=0;
   const checks={};
   const handleRequest=request=>{
     try{
-      if(new URL(request.url()).origin===origin&&
-         !["GET","HEAD","OPTIONS"].includes(request.method()))mutatingRequests++;
+      const url=new URL(request.url());
+      if(url.origin===origin){
+        if(!["GET","HEAD","OPTIONS"].includes(request.method()))mutatingRequests++;
+        if(url.pathname==="/runs"&&request.method()==="GET")loadingRouteRequests++;
+      }
     }catch{unexpectedPageErrors++;}
   };
   const handleError=()=>{unexpectedPageErrors++;};
@@ -133,40 +148,51 @@ export async function verifyRealConsoleStateMatrix({
       throw Error("b3_real_states_missing_run_api_payload_invalid");
     checks.notFound=true;
 
-    // Chrome applies latency to real HTTP traffic; responses still come from
-    // the actual Console backend and cannot be replaced by this script.
+    // A hard page.goto() does not prove Next's *client-side* loading fallback.
+    // Exercise a real visible user Link to a dynamic route. Disable browser
+    // cache, throttle only genuine Chrome HTTP transport, never intercept or
+    // fabricate server responses. No prefetch is allowed by the real nav.
+    await navigate(page,origin+"/",{heading:"Visão geral",stage:"loading_origin"});
+    const loadingLink=await openRealRunsLink(page);
     browserClient=await context.newCDPSession(page);
     await browserClient.send("Network.enable");
     await browserClient.send("Network.setCacheDisabled",{cacheDisabled:true});
     await browserClient.send("Network.emulateNetworkConditions",{
-      offline:false,latency:1000,downloadThroughput:51200,uploadThroughput:51200,
+      offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
     });
-    await page.goto(origin+"/",{waitUntil:"domcontentloaded",timeout:60000});
     const status=page.locator(".consoleRouteLoading[role='status']");
-    try{await status.waitFor({state:"visible",timeout:3000});}
-    catch{throw Error("b3_real_states_loading_not_rendered");}
-    await page.getByRole("heading",{name:"Visão geral",exact:true})
+    try{
+      await Promise.all([
+        status.waitFor({state:"visible",timeout:15000}),
+        loadingLink.click({timeout:15000}),
+      ]);
+    }catch{throw Error("b3_real_states_loading_not_rendered");}
+    await page.getByRole("heading",{name:"Execuções",exact:true})
       .waitFor({state:"visible",timeout:30000});
+    if(new URL(page.url()).pathname!=="/runs"||loadingRouteRequests===0)
+      throw Error("b3_real_states_loading_without_live_route_request");
     checks.loading=true;
     await browserClient.send("Network.emulateNetworkConditions",{
       offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1,
     });
 
-    // Genuine transport outage, not synthetic HTTP 503 or a fake backend.
-    // The application must show its own accessible error/retry surface.
+    // Genuine Chrome transport outage after a *fresh full document* resets
+    // in-memory RSC state. Navigation uses a real non-prefetched visible Link.
+    // Neither navigation nor the retry may be supplied by a cached fixture.
     await page.goto(origin+"/",{waitUntil:"networkidle",timeout:60000});
+    const offlineLink=await openRealRunsLink(page);
     await context.setOffline(true);
     offline=true;
-    await page.locator('a[href="/runs"]').first().click({timeout:10000});
+    await offlineLink.click({timeout:10000});
     const error=page.locator(".consoleRouteError[role='alert']");
     try{await error.waitFor({state:"visible",timeout:20000});}
     catch{throw Error("b3_real_states_connection_error_not_rendered");}
-    await page.getByRole("button",{name:"Tentar novamente",exact:true})
+    await error.getByRole("button",{name:"Tentar novamente",exact:true})
       .waitFor({state:"visible",timeout:10000});
     checks.connectionError=true;
     await context.setOffline(false);
     offline=false;
-    await page.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+    await error.getByRole("button",{name:"Tentar novamente",exact:true}).click();
     await page.getByRole("heading",{name:"Execuções",exact:true})
       .waitFor({state:"visible",timeout:30000});
     checks.recovered=true;

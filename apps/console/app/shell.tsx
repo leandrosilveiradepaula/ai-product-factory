@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {usePathname} from "next/navigation";
+import {usePathname,useRouter} from "next/navigation";
 import {useCallback,useEffect,useRef,useState} from "react";
 import type {ReactNode} from "react";
 import {signOutAction} from "./auth-actions";
@@ -28,12 +28,37 @@ function routeContext(pathname:string):RouteContext{
 }
 export function ConsoleShell({children,environmentLabel}:{children:ReactNode;environmentLabel:string}){
  const pathname=usePathname();
+ const router=useRouter();
  const authOnly=pathname==="/login"||pathname==="/unauthorized";
  const context=routeContext(pathname);
  const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
+ const [transportDisconnected,setTransportDisconnected]=useState(false);
+ const pendingTransportRoute=useRef<string|null>(null);
  const attentionSettled=useRef(false);
+ // No synthetic server error. A genuine browser offline event is the source.
+ // Keep the alert actionable after 'online' until the human retries.
+ useEffect(()=>{
+  const handleOffline=()=>setTransportDisconnected(true);
+  if(!navigator.onLine)handleOffline();
+  window.addEventListener("offline",handleOffline);
+  return()=>window.removeEventListener("offline",handleOffline);
+ },[]);
+ const rememberNavigation=useCallback((href:string)=>{
+  if(!navigator.onLine){
+   pendingTransportRoute.current=href;
+   setTransportDisconnected(true);
+  }
+ },[]);
+ const retryTransport=()=>{
+  if(!navigator.onLine)return;
+  const requested=pendingTransportRoute.current;
+  pendingTransportRoute.current=null;
+  setTransportDisconnected(false);
+  if(requested&&requested!==pathname)router.push(requested);
+  else router.refresh();
+ };
  // A slower stale response (including 503) must never replace a newer
  // snapshot after focus, route change or a new poll.
  const attentionEpoch=useRef(0);
@@ -95,7 +120,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    </div>
    <div className="workspacePicker"><svg className="workspaceGlyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="3.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/></svg><span>Infodive</span></div>
    <div className="desktopSidebarContent">
-    <ConsoleNav attentionCount={attention?.count??null}/>
+    <ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>
     <div className="sidebarFooter">
      <div className="sidebarHealth"><span>Ambiente de trabalho</span></div>
      <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
@@ -104,7 +129,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <details className="mobileNav" key={pathname}>
     <summary><span>Menu completo</span><span className="mobileNavHint">{context.screen}</span></summary>
     <div className="mobileNavBody">
-     <ConsoleNav attentionCount={attention?.count??null}/>
+     <ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>
      <div className="mobileNavFooter"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
     </div>
    </details>
@@ -130,13 +155,17 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
     </details>:null}
     {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
-    {children}
+    {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
+     <h1>Conexão interrompida</h1>
+     <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>
+     <button type="button" className="primary" onClick={retryTransport}>Tentar novamente</button>
+    </div>:children}
    </main>
   </div>
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
-   <Link href="/" aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
-   <Link href="/projects" aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
-   <Link href="/gates" aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
+   <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
+   <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
+   <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
   </nav>
  </div>;
 }
