@@ -275,6 +275,17 @@ jobs:
           path: block1-b3-live-state-witness.json
           retention-days: 7
           if-no-files-found: ignore
+      # B3 positive proof requires a COMPLETE actual authenticated browser
+      # state matrix. Synthetic intercepted GET witnesses stay separate and
+      # cannot be promoted; absence of this artifact remains NOT VERIFIED.
+      - name: Retain real B3 authenticated state matrix if fully verified
+        if: steps.capture_console.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: block1-b3-real-states-${{ github.run_id }}
+          path: block1-b3-real-states-witness.json
+          retention-days: 30
+          if-no-files-found: ignore
       # Only fixed-schema UI state observations; not real backend-state proof.
       # Even if this artifact exists, a subsequent B3 failure fails the job.
       - name: Retain bounded B3 state witness even on later hydration failure
