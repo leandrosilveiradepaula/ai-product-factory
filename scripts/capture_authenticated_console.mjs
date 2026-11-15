@@ -6,6 +6,7 @@ import {verifyLiveSupabaseBoundaries} from "./verify_block1_b2_live_supabase.mjs
 import {verifyConsoleStatesReadOnly} from "./verify_block1_b3_live_console_states.mjs";
 import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs";
 import {verifyLiveConsoleStateReadOnly} from "./verify_block1_b3_live_console_state.mjs";
+import {verifyRealConsoleStateMatrix} from "./verify_block1_b3_real_console_state_matrix.mjs";
 import {safeB2Witness,safeBrowserError,safeConsoleError,safeHttpFailure} from "./block1_b2_b3_sanitized_witness.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -160,6 +161,31 @@ try {
     console.log(JSON.stringify({status:"b3_bounded_state_witness_recorded",
       runId:b3StateWitness.runId,targetCommit:b3StateWitness.targetCommit,
       actualBackendStateCertified:false,visualAuditPassed:false}));
+  }
+
+  // B3 full-states proof is separate from bounded fixtures and is optional
+  // for other certified criteria. Only ACTUAL authenticated backend traffic,
+  // real first-party 404/denial and Chrome transport changes are allowed.
+  // Absence is a blocker for states, NEVER silently a PASS or a reason to
+  // corrupt the independent existing WCAG/surface capture.
+  try {
+    const realStateProof=await verifyRealConsoleStateMatrix({
+      context,baseUrl:consoleUrl+"/",runId,sourceCommit:workflowSourceCommit,
+      targetCommit,
+    });
+    await fs.writeFile("block1-b3-real-states-witness.json",
+      JSON.stringify(realStateProof,null,2),{mode:0o600,flag:"wx"});
+    console.log(JSON.stringify({status:"b3_full_real_state_matrix_observed",
+      runId:Number(runId),targetCommit,checks:Object.keys(realStateProof.checks),
+      source:"actual_chromium_and_first_party_backend",
+      certificationGranted:false,productionWrites:0}));
+  }catch(error){
+    const reason=typeof error?.message==="string"&&
+      /^b3_real_states_[a-z_]+$/.test(error.message)
+        ?error.message:"b3_real_states_unexpected_browser_failure";
+    console.log(JSON.stringify({status:"b3_real_state_matrix_not_complete",
+      reason,independentCriterionCertified:false,productionWrites:0,
+      paidCalls:0,credentialsRetained:false}));
   }
 
   // The visual quality gate covers the authenticated Console routes below.
