@@ -1751,6 +1751,7 @@ jobs:
             --verify-complete-console-surface \
             --verify-independent-accessibility \
             --verify-real-journey-blockers \
+            --verify-independent-greenfield-e2e \
             "${visual_args[@]}" "${boundary_args[@]}"
       # Evidence collection can take several minutes. Mint a fresh, pinned
       # broker token only after it is complete and immediately before the
@@ -1787,6 +1788,7 @@ jobs:
             --verify-complete-console-surface \
             --verify-independent-accessibility \
             --verify-real-journey-blockers \
+            --verify-independent-greenfield-e2e \
             "${visual_args[@]}" "${boundary_args[@]}" \
             | tee "$RUNNER_TEMP/factory-readiness-persistence-receipt.json"
       # Audit actual persisted assessment, never a manifest or expected score.

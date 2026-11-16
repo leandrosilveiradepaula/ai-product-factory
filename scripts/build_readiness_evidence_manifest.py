@@ -67,6 +67,10 @@ from ai_product_factory.independent_b3_real_states_evidence import (
 from ai_product_factory.independent_real_journey_blocker_evidence import (
     RealJourneyBlockerEvidenceBlocked, verify_real_journey_blockers as verify_real_journey_blockers_fn,
 )
+from ai_product_factory.independent_b4_greenfield_e2e import (
+    B4GreenfieldE2EBlocked, verify_b4_greenfield_e2e,
+    verify_b4_critical_journeys,
+)
 from ai_product_factory.independent_isolated_console_auth_evidence import (
     IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth as verify_isolated_console_auth_fn,
 )
@@ -107,6 +111,7 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                             verify_independent_accessibility: bool = False,
                             verify_live_console_boundaries: bool = False,
                             verify_real_journey_blockers: bool = False,
+                            verify_independent_greenfield_e2e: bool = False,
                             verify_isolated_console_auth: bool = False,
                             verify_independent_b2_security: bool = False,
                             artifact_reader=None,
@@ -549,6 +554,47 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                         reason="independently mapped 19 acceptance criteria, lifecycle stages and current gaps on exact Git tree",
                         evidence=list(requirements_proof.evidence))
 
+    # Independent delivery-to-Preview E2E; NO inference of greenfield product
+    # completeness, human merge, release, or critical_journeys certification.
+    greenfield_e2e_proof = None
+    if verify_independent_greenfield_e2e:
+        try:
+            if control_plane_get is None:
+                raise B4GreenfieldE2EBlocked("b4_control_plane_reader_missing")
+            greenfield_e2e_proof = verify_b4_greenfield_e2e(
+                repository=repository, assessed_commit=sha,
+                github_get=github_get, control_plane_get=control_plane_get,
+            )
+        except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            greenfield_e2e_proof = None
+        if greenfield_e2e_proof is not None:
+            manifest["criteria"]["test_strategy"]["critical_e2e"].update(
+                status="passed", verification_state="executed",
+                reason="independent exact-SHA Factory delivery E2E to verified Preview",
+                evidence=list(greenfield_e2e_proof.criterion().evidence),
+            )
+
+    # Full critical_journeys is a separate source-bound release criterion.
+    # Do not promote until a real human merge and operations snapshot exist.
+    greenfield_journeys_proof = None
+    if greenfield_e2e_proof is not None and proof is not None:
+        try:
+            greenfield_journeys_proof = verify_b4_critical_journeys(
+                e2e=greenfield_e2e_proof,
+                crm_traceability=proof,
+                control_plane_get=control_plane_get,
+            )
+        except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            greenfield_journeys_proof = None
+        if greenfield_journeys_proof is not None:
+            manifest["criteria"]["functional_completeness"]["critical_journeys"].update(
+                status="passed", verification_state="reviewed",
+                reason="independent existing CRM and real greenfield human release observed",
+                evidence=list(greenfield_journeys_proof.evidence),
+            )
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -578,6 +624,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return accessibility_proof.criterion() if accessibility_proof is not None else None
         if (domain, criterion) == ("functional_completeness", "mock_noop_demo_inventory"):
             return simulation_proof
+        if (domain, criterion) == ("test_strategy", "critical_e2e"):
+            return greenfield_e2e_proof.criterion() if greenfield_e2e_proof is not None else None
+        if (domain, criterion) == ("functional_completeness", "critical_journeys"):
+            return greenfield_journeys_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
@@ -617,6 +667,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if b3_real_states_proof is not None else {}),
         **({"real_journey_blocker_evidence": journey_blocker_proof.receipt()}
            if journey_blocker_proof is not None else {}),
+        **({"independent_greenfield_e2e_evidence": greenfield_e2e_proof.receipt()}
+           if greenfield_e2e_proof is not None else {}),
+        **({"independent_greenfield_critical_journeys_evidence": greenfield_journeys_proof.retained_receipt}
+           if greenfield_journeys_proof is not None else {}),
         **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
            if isolated_auth_proof is not None else {}),
         **({"independent_b2_signed_security_evidence": b2_security_proof.receipt()}
@@ -643,6 +697,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-independent-accessibility", action="store_true")
     parser.add_argument("--verify-live-console-boundaries", action="store_true")
     parser.add_argument("--verify-real-journey-blockers", action="store_true")
+    parser.add_argument("--verify-independent-greenfield-e2e", action="store_true")
     parser.add_argument("--verify-isolated-console-auth", action="store_true")
     parser.add_argument("--verify-independent-b2-security", action="store_true")
     parser.add_argument("--reuse-historical-authenticated-console-evidence", action="store_true")
@@ -658,7 +713,8 @@ def main(argv: list[str] | None = None) -> int:
     control_plane_get = (SupabaseAdmissionReader()._get
                          if (args.reuse_historical_authenticated_console_evidence
                              or args.verify_complete_console_surface
-                             or args.verify_real_journey_blockers) else None)
+                             or args.verify_real_journey_blockers
+                             or args.verify_independent_greenfield_e2e) else None)
     artifact_reader = (lambda repository, artifact_id, **kwargs: read_verified_artifact_json(
         repository=repository, artifact_id=artifact_id, token=token, **kwargs
     )) if (args.verify_complete_console_surface or args.verify_live_console_boundaries
@@ -682,6 +738,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_independent_accessibility=args.verify_independent_accessibility,
         verify_live_console_boundaries=args.verify_live_console_boundaries,
         verify_real_journey_blockers=args.verify_real_journey_blockers,
+        verify_independent_greenfield_e2e=args.verify_independent_greenfield_e2e,
         verify_isolated_console_auth=args.verify_isolated_console_auth,
         verify_independent_b2_security=args.verify_independent_b2_security,
         artifact_reader=artifact_reader,
