@@ -13,14 +13,15 @@ import re
 from collections.abc import Callable, Mapping
 
 from .product_readiness_certification import VerifiedCriterionEvidence
+from .independent_native_schedule_proof import (
+    NativeScheduleProofBlocked, select_native_schedule_proof,
+)
 
 REPOSITORY = "leandrosilveiradepaula/ai-product-factory"
 OWNER_WORKFLOW = ".github/workflows/autonomous-runner.yml"
 # Latest independently checked official schedule with both required successful
 # jobs and all seven operational source blobs identical to the assessed main.
 # 2026-11-15 run 43707075595; immutable GitHub run and blob checks remain mandatory.
-SOURCE_RUN = 43707075595
-SOURCE_SHA = "2bdbcb5cbf9b653c9eeba59e45d541257e2c656c"
 REQUIRED_JOBS = frozenset({"schedule-probe", "alerts"})
 SOURCE_FILES = frozenset({
     "src/ai_product_factory/runtime_cli.py",
@@ -121,39 +122,19 @@ def verify_recovery_alerting(*, repository: str, assessed_commit: str,
              and (current.get("status") != "completed"
                   or current.get("conclusion") == "success"),
              "recovery_certifier_run_unbound")
-    source = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN))
-    _require(isinstance(source, dict) and source.get("id") == SOURCE_RUN
-             and source.get("name") == "Factory autonomous runner"
-             and source.get("path") == OWNER_WORKFLOW
-             and source.get("event") == "schedule"
-             and source.get("head_sha") == SOURCE_SHA
-             and source.get("head_branch") == "main"
-             and source.get("status") == "completed"
-             and source.get("conclusion") == "success"
-             and source.get("run_attempt") == 1
-             and isinstance(source.get("repository"), dict)
-             and source["repository"].get("full_name") == REPOSITORY,
-             "recovery_source_run_invalid")
-    jobs = github_get(prefix + "/actions/runs/" + str(SOURCE_RUN) + "/jobs?per_page=100")
-    rows = jobs.get("jobs") if isinstance(jobs, dict) else None
-    _require(isinstance(rows, list) and 0 < len(rows) <= 100,
-             "recovery_source_jobs_invalid")
-    successful = {row.get("name") for row in rows if isinstance(row, dict)
-                  and row.get("run_id") == SOURCE_RUN
-                  and row.get("head_sha") == SOURCE_SHA
-                  and row.get("status") == "completed"
-                  and row.get("conclusion") == "success"}
-    _require(REQUIRED_JOBS.issubset(successful), "recovery_source_jobs_missing")
-    compare = github_get(prefix + "/compare/" + SOURCE_SHA + "..." + assessed_commit)
-    _require(isinstance(compare, dict)
-             and compare.get("status") in {"ahead", "identical"}
-             and compare.get("behind_by") == 0
-             and isinstance(compare.get("merge_base_commit"), dict)
-             and compare["merge_base_commit"].get("sha") == SOURCE_SHA,
-             "recovery_source_not_ancestor")
-    source_blobs = _blobs(github_get(prefix + "/git/trees/" + SOURCE_SHA + "?recursive=1"))
-    assessed_blobs = _blobs(github_get(prefix + "/git/trees/" + assessed_commit + "?recursive=1"))
-    _require(source_blobs == assessed_blobs, "recovery_operational_source_drift")
+    try:
+        source_proof = select_native_schedule_proof(
+            repository=repository,
+            assessed_commit=assessed_commit,
+            github_get=github_get,
+            source_files=SOURCE_FILES,
+            required_jobs=REQUIRED_JOBS,
+        )
+    except NativeScheduleProofBlocked as exc:
+        raise RecoveryEvidenceBlocked(str(exc)) from exc
+    source_run_id = source_proof.run_id
+    source_sha = source_proof.source_sha
+    source_blobs = source_proof.source_blobs
     latest = github_get(prefix + "/git/ref/heads/main")
     _require(isinstance(latest, dict)
              and isinstance(latest.get("object"), dict)
@@ -163,11 +144,11 @@ def verify_recovery_alerting(*, repository: str, assessed_commit: str,
         domain="observability_operations", criterion="recovery_alerting",
         repository=repository, assessed_commit=assessed_commit,
         verification_state="executed",
-        source="github-native-schedule-recovery-alerts:" + str(SOURCE_RUN),
+        source="github-native-schedule-recovery-alerts:" + str(source_run_id),
         evidence=("https://github.com/" + repository + "/actions/runs/"
                   + str(current_id) + "#sha=" + assessed_commit,),
-        retained_receipt={"source_run_id": SOURCE_RUN,
-                          "source_sha": SOURCE_SHA,
+        retained_receipt={"source_run_id": source_run_id,
+                          "source_sha": source_sha,
                           "source_jobs": sorted(REQUIRED_JOBS),
                           "upstream_validate_run_id": upstream_id,
                           "source_blobs": {key: list(value)

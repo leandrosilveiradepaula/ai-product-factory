@@ -1,11 +1,13 @@
 import unittest
 
 from ai_product_factory.independent_operations_evidence import (
-    REPOSITORY, REQUIRED_JOBS, SOURCE_FILES, SOURCE_RUN, SOURCE_SHA,
+    REPOSITORY, REQUIRED_JOBS, SOURCE_FILES,
     OperationsEvidenceBlocked, verify_operations_runbook,
 )
 
 SHA = "b" * 40
+SOURCE_RUN = 42392345319
+SOURCE_SHA = "c62297b7538ba9479aabd8f870ffd9eb142187ca"
 ROOT = "/repos/" + REPOSITORY
 
 
@@ -31,6 +33,13 @@ def fixture():
     jobs = [{"name": name, "run_id": SOURCE_RUN, "head_sha": SOURCE_SHA,
              "status": "completed", "conclusion": "success"} for name in REQUIRED_JOBS]
     return {
+        ROOT + "/actions/workflows/autonomous-runner.yml/runs?event=schedule&status=success&branch=main&per_page=50": {
+            "workflow_runs": [{"id": SOURCE_RUN, "name": "Factory autonomous runner",
+                "path": ".github/workflows/autonomous-runner.yml", "event": "schedule",
+                "head_sha": SOURCE_SHA, "head_branch": "main", "run_attempt": 1,
+                "status": "completed", "conclusion": "success",
+                "repository": {"full_name": REPOSITORY}}],
+        },
         ROOT + "/actions/runs/9": {"id": 9, "name": "Factory autonomous runner", "path": ".github/workflows/autonomous-runner.yml", "event": "workflow_run", "head_sha": SHA, "head_branch": "main", "run_attempt": 1, "status": "in_progress"},
         ROOT + "/actions/runs/" + str(SOURCE_RUN): {"id": SOURCE_RUN, "name": "Factory autonomous runner", "path": ".github/workflows/autonomous-runner.yml", "event": "schedule", "head_sha": SOURCE_SHA, "head_branch": "main", "run_attempt": 1, "status": "completed", "conclusion": "success", "repository": {"full_name": REPOSITORY}},
         ROOT + "/actions/runs/" + str(SOURCE_RUN) + "/jobs?per_page=100": {"jobs": jobs},

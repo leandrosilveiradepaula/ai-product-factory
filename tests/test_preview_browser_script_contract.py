@@ -98,6 +98,15 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('process.env.FACTORY_BROWSER_EXECUTABLE_PATH',script)
         self.assertIn('executablePath: browserExecutablePath',script)
 
+    def test_trusted_sources_claims_are_bounded_and_token_never_logged(self):
+        text=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+        self.assertIn('core.getIDToken()',text)
+        self.assertIn('core.setSecret(token)',text)
+        self.assertIn('core.info("Trusted Sources public claim identity: "',text)
+        self.assertIn('["iss","aud","sub","repository","ref","workflow_ref"]',text)
+        self.assertNotIn('core.info(token)',text)
+        self.assertNotIn('console.log(token)',text)
+
     def test_browser_gate_stays_fail_closed_when_system_chrome_is_missing(self):
         workflow=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
         autonomous=(ROOT/".github/workflows/autonomous-runner.yml").read_text()

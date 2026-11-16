@@ -47,6 +47,18 @@ jobs:
             const token = await core.getIDToken();
             core.setSecret(token);
             core.setOutput("token", token);
+            // Only non-secret issuer/claim identifiers needed for a narrowly
+            // scoped Vercel Trusted Sources rule; never print the signed JWT.
+            const parts=token.split(".");
+            if(parts.length!==3)throw new Error("oidc_jwt_structure_invalid");
+            const claims=JSON.parse(Buffer.from(parts[1],"base64url").toString("utf8"));
+            const allowed={};
+            for(const key of ["iss","aud","sub","repository","ref","workflow_ref"]){
+              const value=claims[key];
+              if(typeof value==="string" && value.length<=512)allowed[key]=value;
+            }
+            if(!allowed.iss||!allowed.sub||!allowed.aud)throw new Error("oidc_claims_incomplete");
+            core.info("Trusted Sources public claim identity: "+JSON.stringify(allowed));
       - name: Resolve exact Preview target
         id: target
         env:
