@@ -73,9 +73,16 @@ insert into public.factory_tool_usage(
   'candidate_commit',repeat('c',40),
   'release_authorized',false,'target_pr_ci_still_required',true
  ));
-create temporary table history_evidence as
-select jsonb_set(proof,'{old_sha}',to_jsonb(repeat('c',40)),false) as proof
-from fixture;
+-- Each psql step is a separate session; the former fixture TEMP table
+-- deliberately does not persist. Recreate the independently checked proof.
+create temporary table history_evidence(proof jsonb);
+insert into history_evidence values(jsonb_build_object(
+ 'old_sha',repeat('c',40),'new_sha',repeat('b',40),
+ 'pr_number','2','compare_status','ahead','behind_by','0',
+ 'ahead_by','1','ci_conclusion','success','security_secret_scan','clean',
+ 'changed_files_count','1','changed_files',jsonb_build_array('src/a.test.ts'),
+ 'branch','factory/change-set-33333333',
+ 'repository','owner/studio','release_authorized',false));
 do $history$
 declare e jsonb; r jsonb; saved jsonb;
 begin
