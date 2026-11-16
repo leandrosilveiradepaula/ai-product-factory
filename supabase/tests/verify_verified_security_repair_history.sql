@@ -99,6 +99,23 @@ select id, metadata->>'source' as source,
 from public.factory_tool_usage
 where operation='reconcile_pr_candidate'
 order by created_at,id;
+select id,
+ (metadata->>'change_set_id' is distinct from '33333333-3333-3333-3333-333333333333') as bad_cs,
+ (metadata->>'repository' is distinct from 'owner/studio') as bad_repo,
+ (metadata->>'branch' is distinct from 'factory/change-set-33333333') as bad_branch,
+ (metadata->>'pr_number' is distinct from '2') as bad_pr,
+ (metadata->>'compare_status' is distinct from 'ahead') as bad_status,
+ (metadata->>'behind_by' is distinct from '0') as bad_behind,
+ (coalesce((metadata->>'ahead_by') ~ '^[1-9][0-9]*$',false) is false) as bad_ahead,
+ ((metadata->>'new_sha') !~ '^[a-f0-9]{40}$') as bad_sha,
+ (metadata->>'candidate_commit' is distinct from metadata->>'new_sha') as bad_commit,
+ (metadata->>'new_sha' is not distinct from
+   (case when metadata->>'new_sha'=repeat('d',40) then repeat('a',40)
+    else repeat('d',40) end)) as bad_loop,
+ jsonb_typeof(metadata) as metadata_type
+from public.factory_tool_usage
+where operation='reconcile_pr_candidate'
+order by created_at,id;
 do $history$
 declare e jsonb; r jsonb; saved jsonb;
 begin
