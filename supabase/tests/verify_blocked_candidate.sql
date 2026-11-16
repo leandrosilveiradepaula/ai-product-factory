@@ -138,5 +138,80 @@ begin
  end;
 end
 $success$;
+-- A real run has original PR (A), already reconciled CI candidate (B),
+-- and a second source correction (C). Requiring create_pr SHA==B is WRONG.
+-- Keep the original issuance and prior CI receipt independently checked.
+update public.factory_runs
+set status='release_policy_blocked'
+where id='44444444-4444-4444-4444-444444444444'
+  and status='ci_pending' and candidate_commit=repeat('b',40);
+update public.factory_release_reports
+set candidate_commit=repeat('b',40),
+    report=jsonb_set(report,'{candidate_commit}',to_jsonb(repeat('b',40)),false)
+where run_id='44444444-4444-4444-4444-444444444444'
+  and status='blocked' and candidate_commit=repeat('a',40);
+-- Previous initial recovery record (A->B) deliberately lacks historical
+-- CI metadata in this synthetic fixture; it must fail closed.
+do $prior_missing$
+declare proof jsonb;
+begin
+ select e into proof from candidate_test_evidence;
+ proof=jsonb_set(jsonb_set(proof,'{old_sha}',to_jsonb(repeat('b',40)),false),
+                '{new_sha}',to_jsonb(repeat('c',40)),false);
+ begin
+  perform public.factory_reconcile_policy_blocked_candidate_v1(
+    '33333333-3333-3333-3333-333333333333',
+    '44444444-4444-4444-4444-444444444444',42,
+    repeat('b',40),repeat('c',40),proof);
+  raise exception 'unverified intermediate candidate was accepted';
+ exception when sqlstate 'PT409' then null;
+ end;
+end
+$prior_missing$;
+-- Synthetic immutable, independent historical GitHub CI reconciliation
+-- issuance A -> B, equivalent to the actual existing Control Plane trail.
+insert into public.factory_tool_usage(
+  run_id,tool_family,operation,usage_units,estimated_cost,metadata
+) values(
+  '44444444-4444-4444-4444-444444444444',
+  'github','reconcile_pr_candidate',1,0,
+  jsonb_build_object(
+    'change_set_id','33333333-3333-3333-3333-333333333333',
+    'pr_number',42,'previous_commit',repeat('a',40),
+    'old_sha',repeat('a',40),'new_sha',repeat('b',40),
+    'candidate_commit',repeat('b',40),
+    'compare_status','ahead','behind_by',0,
+    'ci_conclusion','success','repository','owner/product',
+    'branch','factory/change-set-33333333'
+  )
+);
+do $prior_verified$
+declare proof jsonb;result jsonb;
+begin
+ select e into proof from candidate_test_evidence;
+ proof=jsonb_set(jsonb_set(proof,'{old_sha}',to_jsonb(repeat('b',40)),false),
+                '{new_sha}',to_jsonb(repeat('c',40)),false);
+ result=public.factory_reconcile_policy_blocked_candidate_v1(
+    '33333333-3333-3333-3333-333333333333',
+    '44444444-4444-4444-4444-444444444444',42,
+    repeat('b',40),repeat('c',40),proof);
+ if result->>'status' <> 'ci_pending'
+   or result->>'candidate_commit' <> repeat('c',40)
+   or result->'release_authorized' <> 'false'::jsonb
+ then raise exception 'two-step recovery receipt malformed'; end if;
+ if not exists(select 1 from public.factory_tool_usage
+   where operation='reconcile_pr_candidate'
+     and metadata->>'previous_commit'=repeat('a',40)
+     and metadata->>'prior_candidate_commit'=repeat('b',40)
+     and metadata->>'candidate_commit'=repeat('c',40)
+     and metadata->>'original_head_sha'=repeat('a',40))
+ then raise exception 'latest recovery broke durable CI followup lineage'; end if;
+ if not exists(select 1 from public.factory_release_reports
+    where run_id='44444444-4444-4444-4444-444444444444'
+    and status='blocked' and candidate_commit=repeat('b',40))
+ then raise exception 'historical denied release report was overwritten'; end if;
+end
+$prior_verified$;
+
 reset role;
 select 'BLOCKED_CANDIDATE_RECOVERY_PG17=PASS' as result;

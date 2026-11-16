@@ -20,6 +20,9 @@ declare
  v_files jsonb;
  v_path jsonb;
  v_nonhuman integer;
+ v_original_commit text;
+ v_origin_count integer;
+ v_prior_receipt jsonb;
 begin
  if p_change_set_id is null or p_run_id is null or p_pr_number is null
     or p_pr_number < 1
@@ -117,13 +120,37 @@ begin
  where jsonb_typeof(x)='object' and x->'human_only'='false'::jsonb;
  if v_nonhuman<1 then
   raise exception 'human-only release blocker cannot requeue CI' using errcode='PT409'; end if;
- if not exists (
-   select 1 from public.factory_tool_usage u
-   where u.run_id=p_run_id and u.operation='create_pr'
-     and u.metadata->>'pr'=p_pr_number::text
-     and u.metadata->>'head_sha'=p_previous_commit
-     and u.metadata->>'change_set_id'=p_change_set_id::text
- ) then raise exception 'immutable original PR receipt missing' using errcode='PT409'; end if;
+ -- Verify original PR issuance and the FULL independently audited
+ -- reconciliation chain; do not conflate original SHA with latest candidate.
+ select count(*),max(u.metadata->>'head_sha')
+ into v_origin_count,v_original_commit
+ from public.factory_tool_usage u
+ where u.run_id=p_run_id and u.operation='create_pr'
+   and u.metadata->>'pr'=p_pr_number::text
+   and u.metadata->>'change_set_id'=p_change_set_id::text;
+ if v_origin_count<>1 or v_original_commit !~ '^[0-9a-f]{40}$'
+ then raise exception 'immutable original PR receipt missing or ambiguous'
+      using errcode='PT409'; end if;
+ if v_original_commit is distinct from p_previous_commit then
+   select u.metadata into v_prior_receipt
+   from public.factory_tool_usage u
+   where u.run_id=p_run_id and u.operation='reconcile_pr_candidate'
+   order by u.created_at desc,u.id desc limit 1;
+   if v_prior_receipt is null
+     or v_prior_receipt->>'change_set_id' is distinct from p_change_set_id::text
+     or v_prior_receipt->>'pr_number' is distinct from p_pr_number::text
+     or v_prior_receipt->>'previous_commit' is distinct from v_original_commit
+     or v_prior_receipt->>'old_sha' is distinct from v_original_commit
+     or v_prior_receipt->>'new_sha' is distinct from p_previous_commit
+     or v_prior_receipt->>'candidate_commit' is distinct from p_previous_commit
+     or v_prior_receipt->>'compare_status' is distinct from 'ahead'
+     or v_prior_receipt->>'behind_by' is distinct from '0'
+     or v_prior_receipt->>'ci_conclusion' is distinct from 'success'
+     or v_prior_receipt->>'repository' is distinct from v_project.repository
+     or v_prior_receipt->>'branch' is distinct from v_set.integration_branch
+   then raise exception 'previous candidate reconciliation chain invalid'
+        using errcode='PT409'; end if;
+ end if;
 
  -- Retain the blocked release report and every original evaluation and
  -- specialist review as historical evidence. New jobs MUST use the new SHA.
@@ -154,7 +181,10 @@ begin
  ) values(p_run_id,'github','reconcile_pr_candidate',1,0,
     p_verified_evidence||jsonb_build_object(
       'change_set_id',p_change_set_id,
-      'previous_commit',p_previous_commit,'candidate_commit',p_new_commit,
+      'previous_commit',v_original_commit,
+      'old_sha',v_original_commit,'original_head_sha',v_original_commit,
+      'prior_candidate_commit',p_previous_commit,
+      'candidate_commit',p_new_commit,
       'recovery_source','blocked_release_policy','release_authorized',false));
  insert into public.factory_audit_events(
   project_id,task_id,run_id,actor_type,actor_ref,event_type,payload
