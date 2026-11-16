@@ -95,6 +95,26 @@ def prepare_recovery(*, repository: str, candidate_sha: str, preview_url: str,
     }
 
 
+
+
+def select_recovery_rpc(browser_result: object) -> str:
+    """Select a narrowly bounded recovery by the latest actual browser failure.
+
+    Both SQL functions independently check current PR/commit/epoch/quality,
+    latest failure and a *newer* independent first-party browser success.
+    """
+    if not isinstance(browser_result, dict):
+        raise RecoveryBlocked("missing_browser_failure_result")
+    detail = browser_result.get("detail")
+    checks = browser_result.get("checks")
+    if (detail == "console: Failed to load resource: the server responded with a status of 403 () | http_403: ping [external]"
+        and checks == ["page_load", "http_status", "body_visible"]):
+        return "factory_resume_preview_external_feedback_once_v1"
+    if detail == "preview_application_origin_mismatch" and checks == ["page_load"]:
+        return "factory_resume_preview_oidc_origin_mismatch_once_v1"
+    raise RecoveryBlocked("unrecognized_browser_failure_for_recovery")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", required=True)
@@ -107,7 +127,7 @@ def main() -> int:
         cfg = resolve_supabase_server_config()
 
         def cp_get(table, params):
-            if table not in ("factory_projects", "factory_change_sets", "factory_runs"):
+            if table not in ("factory_projects", "factory_change_sets", "factory_runs", "factory_evaluations"):
                 raise RecoveryBlocked("untrusted_table")
             path = "/rest/v1/"+table+"?"+parse.urlencode(params)
             req = request.Request(cfg.url.rstrip("/")+path,headers=cfg.headers,method="GET")
@@ -137,8 +157,19 @@ def main() -> int:
             print(json.dumps({"status":"eligible_pending_independent_snapshot",
                               "browser_verified":False,"release_authorized":False}))
             return 0
+        latest = cp_get("factory_evaluations", {
+            "select": "id,status,baseline_ref,result,created_at",
+            "run_id": "eq."+payload["p_run_id"],
+            "eval_type": "eq.browser_e2e",
+            "order": "created_at.desc,id.desc", "limit": "1",
+        })
+        if (not isinstance(latest, list) or len(latest) != 1
+            or latest[0].get("status") != "failure"
+            or latest[0].get("baseline_ref") != args.preview_url):
+            raise RecoveryBlocked("latest_browser_failure_identity_invalid")
+        rpc = select_recovery_rpc(latest[0].get("result"))
         req = request.Request(cfg.url.rstrip("/")+
-            "/rest/v1/rpc/factory_resume_preview_external_feedback_once_v1",
+            "/rest/v1/rpc/"+rpc,
             data=json.dumps(payload,separators=(",",":")).encode(),
             headers={**cfg.headers,"Content-Type":"application/json"},method="POST")
         with request.urlopen(req,timeout=30) as response:
