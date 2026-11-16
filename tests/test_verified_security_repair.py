@@ -111,9 +111,9 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(name,"factory_settle_verified_blocked_security_repair_v1")
         self.assertEqual(data["p_old_sha"],OLD)
         self.assertEqual(data["p_new_sha"],NEW)
-        self.assertEqual(data["p_verified_evidence"]["changed_files"],[PATH])
-        self.assertEqual(data["p_verified_evidence"]["security_secret_scan"],"clean")
-        self.assertFalse(data["p_verified_evidence"]["release_authorized"])
+        self.assertEqual(data["p_evidence"]["changed_files"],[PATH])
+        self.assertEqual(data["p_evidence"]["security_secret_scan"],"clean")
+        self.assertFalse(data["p_evidence"]["release_authorized"])
 
     def test_bad_run_or_pr_is_denied_before_network(self):
         for run,pr in (("",2),("not-uuid",2),(RUN,0),(RUN,True),(RUN,"2")):
