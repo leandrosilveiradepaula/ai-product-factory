@@ -122,6 +122,19 @@ def verify_recovery_alerting(*, repository: str, assessed_commit: str,
              and (current.get("status") != "completed"
                   or current.get("conclusion") == "success"),
              "recovery_certifier_run_unbound")
+    try:
+        source_proof = select_native_schedule_proof(
+            repository=repository,
+            assessed_commit=assessed_commit,
+            github_get=github_get,
+            source_files=SOURCE_FILES,
+            required_jobs=REQUIRED_JOBS,
+        )
+    except NativeScheduleProofBlocked as exc:
+        raise RecoveryEvidenceBlocked(str(exc)) from exc
+    source_run_id = source_proof.run_id
+    source_sha = source_proof.source_sha
+    source_blobs = source_proof.source_blobs
     latest = github_get(prefix + "/git/ref/heads/main")
     _require(isinstance(latest, dict)
              and isinstance(latest.get("object"), dict)

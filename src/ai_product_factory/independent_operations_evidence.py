@@ -111,6 +111,19 @@ def verify_operations_runbook(*, repository: str, assessed_commit: str,
              and current.get("run_attempt") == 1 and current.get("status") in {"queued", "in_progress", "completed"}
              and (current.get("status") != "completed" or current.get("conclusion") == "success"),
              "operations_certifier_run_unbound")
+    try:
+        source_proof = select_native_schedule_proof(
+            repository=repository,
+            assessed_commit=assessed_commit,
+            github_get=github_get,
+            source_files=SOURCE_FILES,
+            required_jobs=REQUIRED_JOBS,
+        )
+    except NativeScheduleProofBlocked as exc:
+        raise OperationsEvidenceBlocked(str(exc)) from exc
+    source_run_id = source_proof.run_id
+    source_sha = source_proof.source_sha
+    source_blobs = source_proof.source_blobs
     latest = github_get(prefix + "/git/ref/heads/main")
     _require(isinstance(latest, dict) and isinstance(latest.get("object"), dict)
              and latest["object"].get("sha") == assessed_commit, "operations_main_drift")
