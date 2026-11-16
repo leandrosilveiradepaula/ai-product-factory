@@ -43,3 +43,7 @@ Ao responder ao proprietário ou iniciar novo chat: apresentar **SHA**, certific
 **Regra de saída:** somente afirmar 19/19 quando as 19 células e os seis domínios estiverem `passed` e `product_ready=true` estiver comprovado por certificação atual, independente e durável no Control Plane. Caso contrário: `not_ready` com motivo explícito.
 
 **Nota de nomenclatura:** este `MEMORY.md` descreve a continuidade **da Factory**. [docs/PROJECT_MEMORY.md](docs/PROJECT_MEMORY.md) descreve a memória versionada de **cada produto gerenciado** pela Factory (arquivos `.factory/`); não confundir as duas coisas.
+
+## 15/11/2026 — B4, estado reconciliado
+
+Fonte viva em Supabase: `17/19` persistido no SHA Factory `fc24a8571af851a9326bc0b88bb2ba6d906bd5a3`. Faltam `critical_journeys` e `critical_e2e`. Greenfield autêntico `dark-channel-studio` possui Start humano e PR #2, SHA `d3f91850`, CI/QA/especialistas e Vercel READY; navegador E2E falhou com ping externo Vercel 403 sob SSO, run terminal failed, Change Set ci_pending. Fix B4 deve exigir identidade da aplicação real e nunca aceitar SSO como PASS. Não reabrir run terminal nem alterar banco arbitrariamente: correção de runtime, verificação independente e eventual recuperação controlada/autorizada; gate humano para merge de produção. CRM #213 draft não é release da jornada e não pode ser mergeada sem vínculo `awaiting_release`. Não prometer 18/19 nem 19/19 sem certificado no SHA final.

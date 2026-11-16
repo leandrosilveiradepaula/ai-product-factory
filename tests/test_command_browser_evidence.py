@@ -57,6 +57,29 @@ class Tests(unittest.TestCase):
         for forbidden in sensitive:
             self.assertNotIn(forbidden,seen)
 
+    def test_exact_project_marker_overrides_ambient_preview_text(self):
+        seen={}
+        def runner(argv,env,timeout):
+            seen.update(env)
+            return 0,json.dumps({"status":"success","checks":["page_load","expected_text"]}),""
+        with patch.dict(os.environ,{"FACTORY_PREVIEW_EXPECTED_TEXT":"untrusted ambient value"},clear=True):
+            adapter=CommandBrowserEvidenceAdapter(
+                CommandBrowserEvidenceConfig(("node","verify.mjs"),15),
+                runner=runner,expected_text="Dark Channel Studio",
+            )
+            result=adapter.verify("https://candidate.vercel.app")
+        self.assertEqual(result.status,"success")
+        self.assertEqual(seen["FACTORY_PREVIEW_EXPECTED_TEXT"],"Dark Channel Studio")
+        self.assertEqual(seen["FACTORY_PREVIEW_URL"],"https://candidate.vercel.app")
+
+    def test_invalid_project_marker_fails_before_launch(self):
+        for label in ("","   ","bad\nsource","bad\rsource","x"*121):
+            with self.subTest(label=label),self.assertRaises(ValueError):
+                CommandBrowserEvidenceAdapter(
+                    CommandBrowserEvidenceConfig(("node","verify.mjs")),
+                    expected_text=label,
+                )
+
     def test_nonzero_exit_becomes_failure_evidence(self):
         adapter=CommandBrowserEvidenceAdapter(CommandBrowserEvidenceConfig(("verify",)),runner=lambda a,e,t:(2,"","browser failed"))
         out=adapter.verify("https://preview.example")

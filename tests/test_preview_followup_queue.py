@@ -22,7 +22,7 @@ class Tests(unittest.TestCase):
         rows=[
             [{"id":"r","task_id":"t","branch_name":"factory/t","candidate_commit":"abc","metadata":{"github_issue":{"number":7}}}],
             [{"project_id":"p"}],
-            [{"project_key":"demo","repository":"owner/repo","manifest":{"preview":{"provider":"vercel","team_id":"team","project_name":"web"}}}],
+            [{"project_key":"demo","name":"Real Project Name","repository":"owner/repo","manifest":{"preview":{"provider":"vercel","team_id":"team","project_name":"web"}}}],
             [{"metadata":{"pr":9,"head_sha":"abc"}}],
             [{"status":"success","baseline_ref":"abc","result":{"passed":True}}],
         ]
@@ -32,6 +32,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(item.run_id,"r")
         self.assertEqual(item.pr_number,9)
         self.assertEqual(item.manifest["preview"]["project_name"],"web")
+        self.assertEqual(item.project_name,"Real Project Name")
 
     def test_quality_gate_must_match_candidate(self):
         rows=[

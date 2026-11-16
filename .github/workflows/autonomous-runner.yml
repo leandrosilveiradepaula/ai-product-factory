@@ -1256,12 +1256,22 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.63.0
           test -x "$FACTORY_BROWSER_EXECUTABLE_PATH"
           "$FACTORY_BROWSER_EXECUTABLE_PATH" --version
+      - name: Mint scoped short-lived Preview browser OIDC
+        if: ${{ steps.preview_probe.outputs.browser == 'true' }}
+        id: preview_oidc
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const token=await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token",token);
       - name: Run at most one verified Preview
         if: ${{ steps.preview_probe.outputs.work == 'true' }}
         shell: bash
         env:
           FACTORY_PREVIEW_EXPECTED_RUN_ID: ${{ steps.preview_probe.outputs.run_id }}
           FACTORY_PREVIEW_EXPECTED_SHA: ${{ steps.preview_probe.outputs.candidate_sha }}
+          FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.preview_oidc.outputs.token }}
         run: python -m ai_product_factory.runtime_cli --mode preview --run-id "$FACTORY_PREVIEW_EXPECTED_RUN_ID" --expected-preview-sha "$FACTORY_PREVIEW_EXPECTED_SHA"
 
   alerts:
