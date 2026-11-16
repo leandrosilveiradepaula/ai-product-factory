@@ -46,6 +46,7 @@ from ai_product_factory.independent_real_journey_blocker_evidence import (
 )
 from ai_product_factory.independent_b4_greenfield_e2e import (
     B4GreenfieldE2EBlocked, verify_b4_greenfield_e2e,
+    verify_b4_critical_journeys,
 )
 from ai_product_factory.independent_isolated_console_auth_evidence import (
     IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth,
@@ -543,6 +544,36 @@ def main(argv: list[str] | None = None) -> int:
                     != greenfield_e2e_proof.receipt()):
                 raise CertificationEvidenceError("B4 positive claim changed before persistence")
 
+    greenfield_journeys_proof = None
+    if args.verify_independent_greenfield_e2e:
+        if greenfield_e2e_proof is not None and proof is not None:
+            try:
+                greenfield_journeys_proof = verify_b4_critical_journeys(
+                    e2e=greenfield_e2e_proof,
+                    crm_traceability=proof,
+                    control_plane_get=SupabaseAdmissionReader()._get,
+                )
+            except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
+                    OSError, KeyError, TypeError, UnicodeError):
+                greenfield_journeys_proof = None
+        claim = manifest.get("criteria", {}).get(
+            "functional_completeness", {}).get("critical_journeys")
+        if greenfield_journeys_proof is None:
+            if isinstance(claim, dict) and claim.get("status") == "passed":
+                raise CertificationEvidenceError(
+                    "B4 full-journey positive claim lacks observed human release")
+            if evidence.get("independent_greenfield_critical_journeys_evidence") is not None:
+                raise CertificationEvidenceError("B4 full-journey source lost")
+        else:
+            if (not isinstance(claim, dict)
+                or claim.get("status") != "passed"
+                or claim.get("evidence") != list(greenfield_journeys_proof.evidence)
+                or claim.get("verification_state") != "reviewed"
+                or evidence.get("independent_greenfield_critical_journeys_evidence")
+                    != greenfield_journeys_proof.retained_receipt):
+                raise CertificationEvidenceError(
+                    "B4 full-journey human release evidence changed before persistence")
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -574,12 +605,14 @@ def main(argv: list[str] | None = None) -> int:
             return simulation_proof
         if (domain, criterion) == ("test_strategy", "critical_e2e"):
             return greenfield_e2e_proof.criterion() if greenfield_e2e_proof is not None else None
+        if (domain, criterion) == ("functional_completeness", "critical_journeys"):
+            return greenfield_journeys_proof
         return None
     certification = certify_product_readiness(
         repository=args.repository, assessed_commit=args.assessed_commit,
         manifest=manifest, github_get=github_get,
         trusted_verifier=trusted if any(x is not None for x in
-            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b3_real_states_proof, greenfield_e2e_proof)) else None,
+            (proof, health_proof, setup_proof, rollback_proof, security_proof, regression_proof, recovery_proof, operations_proof, requirements_proof, simulation_proof, full_surface_proof, accessibility_proof, b3_real_states_proof, greenfield_e2e_proof, greenfield_journeys_proof)) else None,
     )
     if args.require_verified_baseline:
         if (certification.report["source_snapshot"] != evidence["source_snapshot"]

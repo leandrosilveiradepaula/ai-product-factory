@@ -23,7 +23,7 @@ SPECIALISTS = frozenset({"specialist_security", "specialist_qa", "specialist_ope
 # This is a deliberately limited evidence contract for a *real* delivered
 # greenfield workflow. It must not reinterpret a CI job as an app E2E test.
 PREVIEW_COMPLETE_STATES = frozenset({
-    "release_policy_blocked", "awaiting_release", "released", "completed",
+    "release_policy_blocked", "awaiting_release", "released", "completed", "merged",
 })
 SOURCE_WORKFLOW = ".github/workflows/console-browser-evidence.yml"
 ALLOWED_CROSS_REPO_PREFIX = "https://github.com/"
@@ -283,7 +283,6 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
     runmeta = run.get("metadata")
     require(run.get("id") == rid
             and run.get("task_id") == cs["root_task_id"]
-            and run.get("candidate_commit") == sha
             and run.get("branch_name") == branch
             and run.get("status") in PREVIEW_COMPLETE_STATES
             and isinstance(runmeta, dict)
@@ -291,6 +290,33 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
             and runmeta.get("change_set_id") == csid
             and runmeta.get("execution_generation") == epoch["generation"],
             "b4_run_not_at_verified_preview")
+    # The original candidate is immutable. After a human merge the run's
+    # current candidate is the real merge SHA, not the original PR HEAD.
+    # Retain the original E2E PASS only when a released report proves both.
+    merged_sha = None
+    if run["status"] == "merged":
+        require(cs.get("status") == "completed"
+                and _sha(run.get("candidate_commit")),
+                "b4_merged_run_missing_release_epoch")
+        reports = _rows(cp, "factory_release_reports",
+            "id,project_id,run_id,status,candidate_commit,report"
+            "&run_id=eq." + quote(rid, safe="")
+            + "&order=created_at.desc&limit=3", max_rows=3)
+        require(len(reports) == 1, "b4_release_report_missing_or_ambiguous")
+        report = reports[0]
+        evidence = report.get("report")
+        merged_sha = run["candidate_commit"]
+        require(report.get("project_id") == project_id
+                and report.get("run_id") == rid
+                and report.get("candidate_commit") == sha
+                and report.get("status") == "released"
+                and isinstance(evidence, dict)
+                and evidence.get("merge_sha") == merged_sha
+                and evidence.get("released_by") == "observed_manual_merge",
+                "b4_human_release_report_unverified")
+    else:
+        require(run.get("candidate_commit") == sha,
+                "b4_preview_run_candidate_drift")
     # These privileged writes were issued by independent existing Factory
     # workers; never accept a raw uploaded manifest in their place.
     evals = _rows(cp, "factory_evaluations",
@@ -393,6 +419,11 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
                 and a["payload"].get("release_authorized") is False
                 and a["payload"].get("original_browser_failure_preserved") is True
                 for a in audit), "b4_independent_recovery_audit_missing")
+    if merged_sha is not None:
+        require(any(a.get("event_type") == "release.human_merge_observed"
+                    and isinstance(a.get("payload"), dict)
+                    and a["payload"].get("merge_sha") == merged_sha
+                    for a in audit), "b4_human_merge_audit_missing")
     return VerifiedGreenfieldE2E(
         repository=repository, assessed_commit=assessed_commit,
         project_id=project_id, delivery_run_id=rid, candidate_commit=sha,
@@ -400,4 +431,113 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
         browser_run_id=witness_run, visual_witness_id=snapshot["id"],
         preview_url=url, source_factory_sha=witness_sha,
         checks=tuple(sorted(REQUIRED_PREVIEW_CHECKS)),
+    )
+
+
+def verify_b4_critical_journeys(*, e2e: VerifiedGreenfieldE2E,
+                                crm_traceability: VerifiedCriterionEvidence,
+                                control_plane_get) -> VerifiedCriterionEvidence:
+    """Full-source B4 release proof, deliberately unavailable before a human merge.
+
+    A successful Preview or greenfield domain test NEVER suffices. This checks
+    independently observed release, merged run, completed Change Set,
+    operations snapshot, the original CRM V2 source verifier, and human audit.
+    Product-specific functionality remains governed by its separate DoD.
+    """
+    require(type(e2e) is VerifiedGreenfieldE2E
+            and type(crm_traceability) is VerifiedCriterionEvidence
+            and crm_traceability.domain == "observability_operations"
+            and crm_traceability.criterion == "traceability"
+            and crm_traceability.repository == e2e.repository
+            and crm_traceability.assessed_commit == e2e.assessed_commit
+            and callable(control_plane_get),
+            "b4_existing_and_greenfield_source_not_joined")
+    rid = e2e.delivery_run_id
+    pid = e2e.project_id
+    orig = e2e.candidate_commit
+    run = _one(control_plane_get, "factory_runs",
+        "id,status,candidate_commit,task_id"
+        "&id=eq." + quote(rid, safe="") + "&limit=2")
+    merge_sha = run.get("candidate_commit")
+    require(run.get("id") == rid and run.get("status") == "merged"
+            and _sha(merge_sha) and merge_sha != orig,
+            "b4_human_merge_not_observed")
+    report = _one(control_plane_get, "factory_release_reports",
+        "id,project_id,run_id,status,candidate_commit,report"
+        "&run_id=eq." + quote(rid, safe="") + "&limit=2")
+    facts = report.get("report")
+    require(report.get("project_id") == pid
+            and report.get("run_id") == rid
+            and report.get("status") == "released"
+            and report.get("candidate_commit") == orig
+            and isinstance(facts, dict)
+            and facts.get("merge_sha") == merge_sha
+            and facts.get("released_by") == "observed_manual_merge",
+            "b4_released_report_not_verified")
+    cs = _one(control_plane_get, "factory_change_sets",
+        "id,project_id,release_run_id,status,metadata"
+        "&release_run_id=eq." + quote(rid, safe="") + "&limit=2")
+    receipt = (cs.get("metadata") or {}).get("release")
+    require(cs.get("project_id") == pid and cs.get("status") == "completed"
+            and cs.get("release_run_id") == rid
+            and isinstance(receipt, dict) and receipt.get("observed") is True
+            and receipt.get("merge_sha") == merge_sha
+            and receipt.get("run_id") == rid,
+            "b4_change_set_not_completed_by_release")
+    project = _one(control_plane_get, "factory_projects",
+        "id,project_key,project_kind,repository,is_active,manifest"
+        "&id=eq." + quote(pid, safe="") + "&limit=2")
+    manifest = project.get("manifest")
+    release = manifest.get("last_release") if isinstance(manifest, dict) else None
+    require(project.get("is_active") is True
+            and project.get("project_kind") == "greenfield"
+            and project.get("repository") == e2e.candidate_repository
+            and isinstance(release, dict)
+            and manifest.get("reported_stage") == "operations"
+            and release.get("run_id") == rid
+            and release.get("merge_sha") == merge_sha
+            and release.get("source") == "observed_human_merge",
+            "b4_operations_project_observation_missing")
+    audit = _rows(control_plane_get, "factory_audit_events",
+        "id,event_type,payload"
+        "&run_id=eq." + quote(rid, safe="")
+        + "&order=created_at.desc&limit=70", max_rows=70)
+    require(any(a.get("event_type") == "release.human_merge_observed"
+                and isinstance(a.get("payload"), dict)
+                and a["payload"].get("merge_sha") == merge_sha
+                for a in audit), "b4_release_human_audit_missing")
+    operations = _rows(control_plane_get, "factory_project_state_snapshots",
+        "id,project_id,run_id,observed_stage,evidence,source_status"
+        "&project_id=eq." + quote(pid, safe="")
+        + "&run_id=eq." + quote(rid, safe="")
+        + "&observed_stage=eq.operations&order=created_at.desc&limit=25", max_rows=25)
+    require(any(s.get("project_id") == pid
+                and s.get("run_id") == rid
+                and s.get("observed_stage") == "operations"
+                and isinstance(s.get("evidence"), list)
+                and {"type": "human_release", "merge_sha": merge_sha} in s["evidence"]
+                and isinstance(s.get("source_status"), dict)
+                and s["source_status"].get("release") == "merged"
+                for s in operations), "b4_independent_operations_snapshot_missing")
+    return VerifiedCriterionEvidence(
+        domain="functional_completeness", criterion="critical_journeys",
+        repository=e2e.repository, assessed_commit=e2e.assessed_commit,
+        verification_state="reviewed",
+        source="independent_existing_crm_plus_greenfield_observed_human_release",
+        evidence=(
+            "https://github.com/" + e2e.repository + "/actions/runs/"
+            + str(e2e.browser_run_id) + "#sha=" + e2e.assessed_commit,
+            "https://github.com/" + e2e.candidate_repository
+            + "/pull/" + str(e2e.original_pr) + "#sha=" + e2e.assessed_commit,
+        ),
+        retained_receipt={
+            "schema": "factory-b4-independent-completed-critical-journeys-v1",
+            "assessed_commit": e2e.assessed_commit,
+            "greenfield_project_id": pid, "greenfield_run_id": rid,
+            "greenfield_candidate_commit": orig, "human_merge_sha": merge_sha,
+            "original_crm_traceability_source": crm_traceability.source,
+            "critical_e2e_verified": True,
+            "human_release_observed": True, "operations_observed": True,
+            "model_calls": 0, "writes": 0, "automatic_merge": False,
+        },
     )

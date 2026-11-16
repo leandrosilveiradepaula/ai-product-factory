@@ -4,6 +4,7 @@ import unittest
 
 from ai_product_factory.independent_b4_greenfield_e2e import (
     B4GreenfieldE2EBlocked, verify_b4_greenfield_e2e,
+    verify_b4_critical_journeys,
 )
 from ai_product_factory.product_readiness_certification import VerifiedCriterionEvidence
 
@@ -206,6 +207,114 @@ class IndependentB4E2E(unittest.TestCase):
         ):
             self.assertNotIn(forbidden,src)
         self.assertIn("production_merge_observed",src)
+
+
+MERGE="d"*40
+
+def released_fixture():
+    fixture=Fixture()
+    fixture.tables["factory_runs"][0].update(status="merged",candidate_commit=MERGE)
+    change_set=fixture.tables["factory_change_sets"][0]
+    change_set["status"]="completed"
+    change_set["metadata"]["release"]={"run_id":RUN,"merge_sha":MERGE,"observed":True}
+    fixture.tables["factory_release_reports"]=[{
+        "id":"77777777-7777-7777-7777-777777777777",
+        "project_id":PID,"run_id":RUN,"status":"released",
+        "candidate_commit":CANDIDATE,
+        "report":{"merge_sha":MERGE,"released_by":"observed_manual_merge"},
+    }]
+    fixture.tables["factory_audit_events"].append({
+        "id":4,"event_type":"release.human_merge_observed","payload":{"merge_sha":MERGE},
+    })
+    fixture.tables["factory_projects"][0]["manifest"].update(
+        reported_stage="operations",
+        last_release={"run_id":RUN,"merge_sha":MERGE,"source":"observed_human_merge"},
+    )
+    fixture.tables["factory_project_state_snapshots"].append({
+        "id":"88888888-8888-8888-8888-888888888888",
+        "project_id":PID,"run_id":RUN,"observed_stage":"operations",
+        "evidence":[{"type":"human_release","merge_sha":MERGE}],
+        "source_status":{"release":"merged"},
+    })
+    return fixture
+
+def verified_crm():
+    return VerifiedCriterionEvidence(
+        domain="observability_operations",criterion="traceability",
+        repository=FACTORY,assessed_commit=SHA,verification_state="observed",
+        source="independent_real_crm_v2",
+        evidence=("https://github.com/"+FACTORY+"/actions/runs/1#sha="+SHA,),
+    )
+
+class B4FullJourneyReleaseGate(unittest.TestCase):
+    def test_released_candidate_preserves_original_e2e_and_enables_new_criterion(self):
+        fixture=released_fixture()
+        proof=fixture.verify()
+        self.assertEqual(proof.candidate_commit,CANDIDATE)
+        result=verify_b4_critical_journeys(
+            e2e=proof,crm_traceability=verified_crm(),
+            control_plane_get=fixture.cp,
+        )
+        self.assertIs(type(result),VerifiedCriterionEvidence)
+        self.assertEqual((result.domain,result.criterion),
+                         ("functional_completeness","critical_journeys"))
+        self.assertTrue(result.retained_receipt["human_release_observed"])
+        self.assertEqual(result.retained_receipt["human_merge_sha"],MERGE)
+        self.assertFalse(result.retained_receipt["automatic_merge"])
+
+    def test_pre_release_gate_stays_closed_even_after_critical_e2e_pass(self):
+        fixture=Fixture()
+        proof=fixture.verify()
+        with self.assertRaises(B4GreenfieldE2EBlocked):
+            verify_b4_critical_journeys(
+                e2e=proof,crm_traceability=verified_crm(),
+                control_plane_get=fixture.cp,
+            )
+
+    def test_fake_release_and_missing_ops_evidence_never_passes(self):
+        mutations=[
+            lambda f:f.tables["factory_release_reports"][0].update(status="ready_for_human_release"),
+            lambda f:f.tables["factory_release_reports"][0]["report"].update(released_by="automatic_merge"),
+            lambda f:f.tables["factory_release_reports"][0]["report"].update(merge_sha=CANDIDATE),
+            lambda f:f.tables["factory_audit_events"].pop(),
+            lambda f:f.tables["factory_project_state_snapshots"].pop(),
+            lambda f:f.tables["factory_projects"][0]["manifest"]["last_release"].update(
+                source="automated_observation"),
+            lambda f:f.tables["factory_change_sets"][0]["metadata"]["release"].update(observed=False),
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                fixture=released_fixture()
+                mutation(fixture)
+                try:
+                    proof=fixture.verify()
+                except B4GreenfieldE2EBlocked:
+                    continue
+                with self.assertRaises(B4GreenfieldE2EBlocked):
+                    verify_b4_critical_journeys(
+                        e2e=proof,crm_traceability=verified_crm(),
+                        control_plane_get=fixture.cp,
+                    )
+
+    def test_crm_source_must_be_exact_trusted_criterion(self):
+        fixture=released_fixture()
+        proof=fixture.verify()
+        for fake in (
+            None,True,{"verified":True},
+            VerifiedCriterionEvidence(
+                domain="observability_operations",criterion="traceability",
+                repository=FACTORY,assessed_commit=CANDIDATE,
+                verification_state="observed",source="wrong_sha",
+                evidence=("https://example.test",)
+            ),
+        ):
+            with self.subTest(fake=fake):
+                with self.assertRaises(B4GreenfieldE2EBlocked):
+                    verify_b4_critical_journeys(
+                        e2e=proof,crm_traceability=fake,
+                        control_plane_get=fixture.cp,
+                    )
+
 
 if __name__=="__main__":
     unittest.main()

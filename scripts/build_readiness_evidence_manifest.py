@@ -69,6 +69,7 @@ from ai_product_factory.independent_real_journey_blocker_evidence import (
 )
 from ai_product_factory.independent_b4_greenfield_e2e import (
     B4GreenfieldE2EBlocked, verify_b4_greenfield_e2e,
+    verify_b4_critical_journeys,
 )
 from ai_product_factory.independent_isolated_console_auth_evidence import (
     IsolatedConsoleAuthEvidenceBlocked, verify_isolated_console_auth as verify_isolated_console_auth_fn,
@@ -574,6 +575,26 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 evidence=list(greenfield_e2e_proof.criterion().evidence),
             )
 
+    # Full critical_journeys is a separate source-bound release criterion.
+    # Do not promote until a real human merge and operations snapshot exist.
+    greenfield_journeys_proof = None
+    if greenfield_e2e_proof is not None and proof is not None:
+        try:
+            greenfield_journeys_proof = verify_b4_critical_journeys(
+                e2e=greenfield_e2e_proof,
+                crm_traceability=proof,
+                control_plane_get=control_plane_get,
+            )
+        except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
+                OSError, KeyError, TypeError, UnicodeError):
+            greenfield_journeys_proof = None
+        if greenfield_journeys_proof is not None:
+            manifest["criteria"]["functional_completeness"]["critical_journeys"].update(
+                status="passed", verification_state="reviewed",
+                reason="independent existing CRM and real greenfield human release observed",
+                evidence=list(greenfield_journeys_proof.evidence),
+            )
+
     def trusted(domain, criterion, snapshot):
         if (domain, criterion) == ("observability_operations", "traceability"):
             return proof
@@ -605,6 +626,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             return simulation_proof
         if (domain, criterion) == ("test_strategy", "critical_e2e"):
             return greenfield_e2e_proof.criterion() if greenfield_e2e_proof is not None else None
+        if (domain, criterion) == ("functional_completeness", "critical_journeys"):
+            return greenfield_journeys_proof
         return None
     certification = certify_product_readiness(
         repository=repository, assessed_commit=sha,
@@ -646,6 +669,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
            if journey_blocker_proof is not None else {}),
         **({"independent_greenfield_e2e_evidence": greenfield_e2e_proof.receipt()}
            if greenfield_e2e_proof is not None else {}),
+        **({"independent_greenfield_critical_journeys_evidence": greenfield_journeys_proof.retained_receipt}
+           if greenfield_journeys_proof is not None else {}),
         **({"isolated_console_auth_evidence": isolated_auth_proof.receipt()}
            if isolated_auth_proof is not None else {}),
         **({"independent_b2_signed_security_evidence": b2_security_proof.receipt()}
