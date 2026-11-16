@@ -450,6 +450,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261113061500_v2_postpreview_observed_merge_recovery.sql",
             "20261113173000_greenfield_first_wave_context_recovery.sql",
             "20261115114000_recover_specialist_infrastructure_exhaustion_once.sql",
+            "20261116032000_resume_preview_external_feedback_once.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
