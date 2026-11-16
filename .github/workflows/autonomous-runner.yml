@@ -714,8 +714,9 @@ jobs:
   # Integration may persist a ci_pending run/PR before the job fails.
   # CI is re-claimed by its own durable eligibility checks, not upstream exit codes.
   blocked-candidate-reconciliation:
-    # Only an authenticated OWNER issue comment; never schedule, PR or model.
-    if: ${{ github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-reconcile-blocked run=') }}
+    # Owner-only, existing-OIDC workflow; schedule-probe may legitimately skip.
+    needs: schedule-probe
+    if: ${{ always() && github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.number == 1414 && github.event.comment.author_association == 'OWNER' && github.actor == github.event.comment.user.login && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-reconcile-blocked run=') }}
     environment: openai-api
     runs-on: ubuntu-24.04
     timeout-minutes: 7
