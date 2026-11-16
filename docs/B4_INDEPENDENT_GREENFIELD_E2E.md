@@ -1,0 +1,11 @@
+# B4 — E2E da Factory, sem banco do piloto
+
+O objetivo é certificar a orquestração **da Factory**, não usar a certificação como justificativa para contratar um Supabase para o Dark Channel Studio. O projeto greenfield foi iniciado por operador real; suas exigências de produção continuam pendentes.
+
+O verificador `independent_b4_greenfield_e2e.py` pode promover somente `test_strategy/critical_e2e`. Ele reconsulta fontes privilegiadas e independentes: projeto criado pelo Console, decisão humana, Change Set multiwave, run raiz, SHA/PR originais, avaliações de CI e quality gate, três especialistas, falha real de navegador seguida de recuperação auditada, avaliação real `browser_e2e` com cinco checks e snapshot visual independente. Reconsulta GitHub da Factory para verificar que o workflow Playwright, job e etapa de navegador terminaram com **SUCCESS** no commit ancestral comprovado do certificado. Nenhuma fonte pode vir de JSON fornecido pelo usuário.
+
+**Proibições:** nunca interpretar somente deploy READY, página estática, PASS de teste unitário ou testemunho parcial como produto concluído; não usar a PR #4 para atestar a árvore da PR #2; não criar banco, migrar dados, comprar crédito, lançar produção, emitir merge automático ou alterar estados do Control Plane. Toda falha ou incongruência impede um PASS.
+
+O recibo informa explicitamente `critical_journeys_certified=false`, `greenfield_product_ready_inferred=false`, `production_merge_observed=false`, `production_release_authorized=false`, `writes=0`, `paid_calls=0`. A segunda lacuna, `functional_completeness/critical_journeys`, continua exigindo jornada até gate humano, merge humano, release observado e operação. Em particular, o run original do Studio continua `release_policy_blocked` por `migration_validation` e `rollback_analysis`; este verificador não contorna o DoD.
+
+O workflow pós-CI produz o manifesto de fontes e, imediatamente antes da persistência, reexecuta o mesmo verificador. Se a prova sumir, mudar ou falhar, não há aprovação. Testes negativos cobrem falsificação e deriva de SHA, ausência de fonte, falta de gate humano, recuperação, especialistas e navegador real. O contador correto só pode vir do certificado persistido na `main`.
