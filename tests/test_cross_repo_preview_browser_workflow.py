@@ -32,6 +32,15 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
         self.assertIn("--execute",text)
         self.assertNotIn("createWorkflowDispatch({",text.split("Resume eligible failed Preview after real first-party browser proof",1)[1])
 
+    def test_cross_repo_browser_marker_is_authoritative_not_owner_sso_text(self):
+        workflow=(ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
+        self.assertIn("require_exact_project_marker(rows,repository,expected_text)",workflow)
+        self.assertIn("preview_project_marker",workflow)
+        self.assertIn("select=name,repository,is_active,manifest",workflow)
+        self.assertIn("is_active=eq.true&limit=2",workflow)
+        self.assertLess(workflow.index("Require target application's authoritative Preview identity"),
+                        workflow.index("Dispatch trusted Factory browser verifier"))
+
     def test_workflow_reuses_trusted_browser_and_records_target_status(self):
         text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
 

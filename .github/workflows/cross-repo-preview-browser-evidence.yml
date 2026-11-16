@@ -95,6 +95,34 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Require target application's authoritative Preview identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from urllib import parse,request
+          from ai_product_factory.supabase_server import resolve_supabase_server_config
+          from ai_product_factory.preview_project_marker import require_exact_project_marker
+
+          repository=os.environ["TARGET_REPOSITORY"]
+          expected_text=os.environ["EXPECTED_TEXT"]
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",repository):
+              raise SystemExit("invalid target repository")
+          cfg=resolve_supabase_server_config()
+          path=(cfg.url.rstrip("/")+"/rest/v1/factory_projects"
+                "?select=name,repository,is_active,manifest"
+                "&repository=eq."+parse.quote(repository,safe="")
+                +"&is_active=eq.true&limit=2")
+          req=request.Request(path,headers=cfg.headers,method="GET")
+          with request.urlopen(req,timeout=20) as response:
+              rows=json.load(response)
+          require_exact_project_marker(rows,repository,expected_text)
+          print("first-party application identity is bound to the active Control Plane project")
+          PY
+
       - name: Resolve exact target Vercel Preview
         id: preview
         shell: bash
