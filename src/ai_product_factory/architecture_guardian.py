@@ -13,15 +13,14 @@ class GuardianReport:
 
 _SECRET_PATTERNS=(
     ("openai_key",re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}"),"critical"),
-    ("supabase_secret",re.compile(r"\bsb_secret_[A-Za-z0-9_-]{12,}"),"critical"),
+    ("supabase_secret",re.compile(r"\bsb_secret_[A-Za-z0-9_-]{20,}"),"critical"),
     ("github_token",re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}"),"critical"),
     ("private_key",re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),"critical"),
 )
 _SQL_BLOCKERS=(
     ("security_definer",re.compile(r"\bsecurity\s+definer\b",re.I),"error"),
     ("disable_rls",re.compile(r"\bdisable\s+row\s+level\s+security\b",re.I),"critical"),
-    ("permissive_public_grant",re.compile(r"\bgrant\s+(?:all|select|insert|update|delete|execute).*\bto\s+(?:public|anon|authenticated)\b",re.I),"error"),
-    ("public_rls_policy",re.compile(r"\bcreate\s+policy\b[\s\S]{0,300}\bto\s+(?:public|anon|authenticated)\b",re.I),"error"),
+    # Policy/grant handling is contextual; blanket TO authenticated is wrong.
 )
 _WORKFLOW_BLOCKERS=(
     ("pull_request_target",re.compile(r"^\+\s*pull_request_target\s*:",re.I|re.M),"critical"),
@@ -46,6 +45,70 @@ def _finding(code:str,severity:str,message:str,path:str,*,scope_keys:Iterable[st
         "code":code,"severity":severity,"message":message,"path":path,
         "scope_keys":list(scope_keys or (path,)),"kind":kind,"source":"architecture_guardian_v1",
     }
+
+
+
+def _sql_security_findings(path:str,added:str)->list[dict]:
+    """Block broad SQL access, allow only reviewable tenant-scoped authenticated RLS.
+
+    This remains a static guard, *not* proof that RLS was executed. PostgreSQL
+    QA and release review remain separately mandatory.
+    """
+    found=[]
+    # Distinct complete statements avoid matching role names in unrelated
+    # comments or through a later semicolon. Missing statement tail = block.
+    statements=[re.sub(r"--[^\n]*","",s).strip()
+        for s in added.split(";")[:-1]]
+    trailing=added.rsplit(";",1)[-1]
+    if re.search(r"\b(?:create\s+policy|grant\s+)\b",trailing,re.I):
+        found.append(_finding("unreviewable_sql_permission","error",
+            "truncated SQL permission change",path,kind="database_security"))
+    for stmt in statements:
+        policy=re.search(r"\bcreate\s+policy\b[\s\S]*?\bto\s+(public|anon|authenticated)\b",stmt,re.I)
+        if policy:
+            role=policy.group(1).lower()
+            verb=re.search(r"\bfor\s+(select|insert|update|delete|all)\b",stmt,re.I)
+            verb=verb.group(1).lower() if verb else "all"
+            has_using=bool(re.search(r"\busing\s*\(",stmt,re.I))
+            has_check=bool(re.search(r"\bwith\s+check\s*\(",stmt,re.I))
+            # A membership/owner predicate is required; merely being signed in
+            # is not a tenant boundary.
+            auth=bool(re.search(r"\bauth\.uid\s*\(",stmt,re.I))
+            membership=bool(re.search(r"\b(?:from|join)\s+(?:public\.)?[a-z_][a-z0-9_]*",stmt,re.I))
+            owner=bool(re.search(r"(?:owner_id|user_id|actor_id|created_by)\s*=\s*\(?\s*(?:select\s+)?auth\.uid\s*\(",stmt,re.I))
+            bounded=role=="authenticated" and auth and (membership or owner)
+            bounded=bounded and (
+                (verb=="insert" and has_check)
+                or (verb in ("select","delete") and has_using)
+                or (verb=="update" and has_using and has_check)
+            ) and not bool(re.search(r"\b(?:using|with\s+check)\s*\(\s*true\s*\)",stmt,re.I))
+            if not bounded:
+                found.append(_finding("public_rls_policy","error",
+                    "unbounded or unreviewable RLS policy",path,kind="database_security"))
+        grant=re.search(r"\bgrant\s+(.+?)\s+on\s+(.+?)\s+to\s+(public|anon|authenticated)\s*$",stmt,re.I|re.S)
+        if grant:
+            rights=grant.group(1).lower()
+            if not re.search(r"\b(all|select|insert|update|delete|execute)\b",rights):
+                continue
+            target=grant.group(2).strip().lower()
+            role=grant.group(3).lower()
+            safe=False
+            if role=="authenticated" and not re.search(r"\ball\b",rights):
+                if target=="function auth.uid()":
+                    safe=True
+                else:
+                    tables=re.findall(r"\bpublic\.([a-z_][a-z0-9_]*)\b",target,re.I)
+                    safe=bool(tables) and "function" not in target
+                    for table in tables:
+                        if not re.search(
+                            r"\balter\s+table\s+public\."+re.escape(table)+r"\s+enable\s+row\s+level\s+security\b",
+                            added,re.I,
+                        ):
+                            safe=False
+            if not safe:
+                found.append(_finding("permissive_public_grant","error",
+                    "unscoped SQL permission grant",path,kind="database_security"))
+    return found
 
 
 def _sql_lineage(path:str,text:str)->dict:
@@ -118,6 +181,7 @@ def scan_pull_request_files(rows:Iterable[dict])->GuardianReport:
             for code,pattern,severity in _SQL_BLOCKERS:
                 if pattern.search(added):
                     findings.append(_finding(code,severity,f"database security invariant matched: {code}",path,kind="database_security"))
+            findings.extend(_sql_security_findings(path,added))
             if re.search(r"\bdrop\s+(?:table|column|view|function)\b",added,re.I):
                 findings.append(_finding(
                     "destructive_schema_change","warning",
