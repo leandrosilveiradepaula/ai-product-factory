@@ -28,6 +28,7 @@ create table public.factory_release_reports (
  status text, candidate_commit text, report jsonb
 );
 create table public.factory_tool_usage (
+ id bigserial primary key, created_at timestamptz not null default now(),
  run_id uuid, tool_family text, operation text, usage_units int,
  estimated_cost numeric, metadata jsonb
 );
