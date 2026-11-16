@@ -38,6 +38,7 @@ create table public.factory_audit_events (
 );
 grant usage on schema public to service_role;
 grant select,insert,update,delete on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
 insert into public.factory_projects(id,project_kind,repository,is_active) values
  ('11111111-1111-1111-1111-111111111111','greenfield','owner/product',true);
 insert into public.factory_project_execution_controls(project_id,state,generation) values
