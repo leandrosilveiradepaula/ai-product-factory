@@ -453,6 +453,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261116032000_resume_preview_external_feedback_once.sql",
             "20261116123000_resume_preview_oidc_origin_mismatch_once.sql",
             "20261116154500_reconcile_policy_blocked_candidate.sql",
+            "20261116171500_settle_verified_security_repair.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
