@@ -1,0 +1,48 @@
+name: Exact security repair settlement PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261116171500_settle_verified_security_repair.sql'
+      - 'supabase/tests/bootstrap_verified_security_repair.sql'
+      - 'supabase/tests/verify_verified_security_repair.sql'
+      - '.github/workflows/verified-security-repair-postgres.yml'
+permissions:
+  contents: read
+jobs:
+  pg17-secure-settlement:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-no-credential
+          POSTGRES_DB: disposable_repair
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d disposable_repair"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-no-credential
+      PGDATABASE: disposable_repair
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Deny any non-local database
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "disposable_repair"
+          pg_isready -h "$PGHOST" -d "$PGDATABASE" -U "$PGUSER"
+      - name: Bootstrap synthetic Factory database
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap_verified_security_repair.sql
+      - name: Apply exact versioned migration
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261116171500_settle_verified_security_repair.sql
+      - name: Verify ACL, negative cases, idempotency and preserved audit
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_verified_security_repair.sql
