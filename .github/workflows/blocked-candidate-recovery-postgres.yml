@@ -1,0 +1,49 @@
+name: Blocked candidate recovery PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261116154500_reconcile_policy_blocked_candidate.sql'
+      - 'supabase/tests/bootstrap_blocked_candidate.sql'
+      - 'supabase/tests/verify_blocked_candidate.sql'
+      - '.github/workflows/blocked-candidate-recovery-postgres.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only-not-a-credential
+          POSTGRES_DB: factory_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d factory_disposable"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only-not-a-credential
+      PGDATABASE: factory_disposable
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Enforce synthetic localhost database
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "factory_disposable"
+          test "$PGUSER" = "postgres"
+          pg_isready -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE"
+      - name: Create minimal synthetic Factory tables and roles
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap_blocked_candidate.sql
+      - name: Apply exact versioned migration in disposable PostgreSQL
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261116154500_reconcile_policy_blocked_candidate.sql
+      - name: Verify role isolation, stale candidate denials and transactional requeue
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_blocked_candidate.sql

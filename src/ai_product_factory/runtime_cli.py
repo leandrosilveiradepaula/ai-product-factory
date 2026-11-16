@@ -33,6 +33,7 @@ from .github_scheduler_health import GithubNativeScheduledRunReader,evaluate_nat
 from .supabase_backlog_inventory import SupabaseBacklogInventoryReader
 from .github_alert_adapter import GitHubIssueAlertAdapter
 from .ci_followup_queue import SupabaseCIFollowupQueue
+from .blocked_release_candidate import reconcile_blocked_release_candidate
 from .ci_repair_queue import DurableCIFailure,SupabaseCIRepairQueue
 from .github_loop import GitHubLoopAction
 from .release_followup_queue import SupabaseReleaseFollowupQueue
@@ -1264,12 +1265,16 @@ from .project_control_wake_outbox import ControlWakeOutbox
 from .nonproduction_candidate_repin import repin_existing_projects,repin_one
 
 def main()->int:
- p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","release-state-settle","legacy-release-readiness-repair","project-control-wake","journey-source-resolve","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--expected-preview-sha");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
+ p=argparse.ArgumentParser(prog="factory-runtime");p.add_argument("--worker-id",default=f"worker-{socket.gethostname()}");p.add_argument("--agent-key");p.add_argument("--run-id");p.add_argument("--mode",choices=("product","product-readiness-evidence","dispatch","agent-matrix","direct","codex","change-set-integration","recovery","project-control-settle","release-state-settle","legacy-release-readiness-repair","project-control-wake","journey-source-resolve","health","alerts","ci","specialist","release","preview","preview-probe","schedule-probe","backlog-audit","github-preflight","delivery-metrics","replay","replan","retry","reconcile-ci-candidate","reconcile-blocked-release-candidate","candidate-repin","admission-diagnose"),default="product");p.add_argument("--project-key");p.add_argument("--source-run-id");p.add_argument("--pr-number",type=int);p.add_argument("--expected-preview-sha");p.add_argument("--retry-reason");p.add_argument("--replay-mode",choices=("offline","shadow"),default="offline");p.add_argument("--specialist-role",choices=("security","qa","operations"));p.add_argument("--max-items",type=int,default=6);p.add_argument("--batch-items",type=int,default=1);p.add_argument("--max-attempts",type=int,default=3)
  args=p.parse_args()
  if args.mode=="journey-source-resolve":out=resolve_journey_sources(args.max_items)
  elif args.mode=="reconcile-ci-candidate":
   if not args.source_run_id or not args.pr_number:raise ValueError("--source-run-id and --pr-number required")
   out=reconcile_ci_candidate_once(expected_run_id=args.source_run_id,expected_pr_number=args.pr_number)
+ elif args.mode=="reconcile-blocked-release-candidate":
+  if not args.source_run_id or not args.pr_number:
+   raise ValueError("--source-run-id and --pr-number required for blocked release reconciliation")
+  out=reconcile_blocked_release_candidate(run_id=args.source_run_id,pr_number=args.pr_number)
  elif args.mode=="candidate-repin":out=(repin_one(args.project_key) if args.project_key else repin_existing_projects(max_projects=min(args.max_items,5)))
  elif args.mode=="health":out=run_health_once()
  elif args.mode=="admission-diagnose":
