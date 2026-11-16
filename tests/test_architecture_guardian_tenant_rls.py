@@ -86,7 +86,7 @@ grant usage on schema public to authenticated;
         ]:
             # If policies don't have a relational tenant/owner identity, fail closed;
             # the last case exercises *positive* direct owner filtering instead.
-            expected_clean=fragment.endswith("using (user_id=auth.uid());")
+            expected_clean=(fragment == "create policy p on public.x for select to authenticated using (user_id=auth.uid());")
             with self.subTest(fragment=fragment):
                 out=scan("supabase/migrations/x.sql",fragment)
                 codes={x["code"] for x in out.findings}
