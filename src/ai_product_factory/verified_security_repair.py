@@ -23,6 +23,24 @@ from .work_unit_context import redact_repository_text
 _SHA=re.compile(r"[a-f0-9]{40}\Z")
 _UUID=re.compile(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\Z")
 
+# A test assertion that compares a header to a clearly synthetic, well-known
+# fake JWT is not itself an authorization header, and cannot authorize an API
+# call. Permit *only* the asserted fixture shape. Never ignore actual Bearer
+# values in source, assignments, requests or non-test files.
+_SYNTHETIC_BEARER_EXPECT=re.compile(
+    r'''(?m)(?P<before>\bexpect\([^()\r\n]{1,128}\)\.toBe\(\s*["'])'''
+    r'''Bearer synthetic\.user\.jwt(?P<after>["']\s*\)\s*;)'''
+)
+
+
+def safe_test_assertions_for_secret_scan(value:str,path:str)->str:
+    if not re.search(r"\.(?:test|spec)\.(?:ts|tsx|js|jsx)$",path):
+        return value
+    return _SYNTHETIC_BEARER_EXPECT.sub(
+        lambda m: m.group("before")+"Bearer <asserted-fixture>"+m.group("after"),
+        value,
+    )
+
 
 def settle_verified_security_repair(
     *,run_id:str,pr_number:int,read=None,github_factory=None,store=None,
@@ -119,8 +137,10 @@ def settle_verified_security_repair(
             and cmp.get("behind_by")==0 and changed==scopes,
             "security_repair_not_exact_one_file")
     content=github.get_file_text(scopes[0],ref=new)
-    require(isinstance(content,str) and content.strip()
-            and redact_repository_text(content)==content
+    require(isinstance(content,str) and bool(content.strip()),
+            "candidate_source_missing")
+    scan_content=safe_test_assertions_for_secret_scan(content,scopes[0])
+    require(redact_repository_text(scan_content)==scan_content
             and "sb_"+"secret_" not in content
             and "-----BEGIN " not in content,
             "candidate_contains_secret_like_source")
