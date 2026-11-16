@@ -161,7 +161,8 @@ begin
            count(*) filter(where j.required),
            count(*) filter(where j.required and j.status='passed'
                 and j.completed_at is not null
-                and j.lease_owner is null and j.lease_expires_at is null
+                and j.lease_expires_at is null
+                and j.evidence->>'_factory_claim_token' is null
                 and j.evidence->>'_factory_epoch'=v_generation::text),
            count(distinct j.role) filter(where j.required and j.status='passed'
                 and j.role in ('security','qa','operations'))
