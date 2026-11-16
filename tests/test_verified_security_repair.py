@@ -169,6 +169,45 @@ class SettlementTests(unittest.TestCase):
                     f.run()
                 self.assertEqual(f.store.calls,[])
 
+    def test_real_studio_synthetic_bearer_assertion_is_not_a_credential(self):
+        # Same fixture shape that caused live owner workflow to refuse the
+        # exact SHA, not a blanket bearer exemption.
+        f=Fixture()
+        f.github.file='expect(h.Authorization).toBe("Bearer '+"synthetic.user.jwt"+'");'
+        got=f.run()
+        self.assertEqual(got["status"],"ci_pending")
+        self.assertEqual(len(f.store.calls),1)
+
+    def test_realistic_bearer_even_in_assertion_is_denied(self):
+        f=Fixture()
+        f.github.file='expect(h.Authorization).toBe("Bearer '+("A"*40)+'");'
+        with self.assertRaises(BlockedCandidateRecoveryDenied):
+            f.run()
+        self.assertEqual(f.store.calls,[])
+
+    def test_fake_bearer_outside_assertion_is_denied(self):
+        f=Fixture()
+        f.github.file='const authorization="Bearer '+"synthetic.user.jwt"+'";'
+        with self.assertRaises(BlockedCandidateRecoveryDenied):
+            f.run()
+        self.assertEqual(f.store.calls,[])
+
+    def test_fake_bearer_in_non_test_path_is_never_exempt(self):
+        from ai_product_factory.verified_security_repair import safe_test_assertions_for_secret_scan
+        snippet='expect(h.Authorization).toBe("Bearer '+"synthetic.user.jwt"+'");'
+        self.assertEqual(safe_test_assertions_for_secret_scan(snippet,"src/app/server.ts"),snippet)
+        self.assertNotEqual(safe_test_assertions_for_secret_scan(snippet,"src/a.test.ts"),snippet)
+
+    def test_actual_studio_fixture_redaction_shape(self):
+        from ai_product_factory.verified_security_repair import safe_test_assertions_for_secret_scan
+        from ai_product_factory.work_unit_context import redact_repository_text
+        source='expect(h.Authorization).toBe("Bearer '+"synthetic.user.jwt"+'");\n' + (
+            'const config={publishableKey:"sb_"+"secret_unacceptable"};'
+        )
+        normalized=safe_test_assertions_for_secret_scan(source,"src/persistence/supabase-tenancy.test.ts")
+        self.assertEqual(redact_repository_text(normalized),normalized)
+        self.assertNotEqual(redact_repository_text(source),source)
+
     def test_pr_drift_during_review_is_denied(self):
         f=Fixture()
         original=f.github.get_pull_request
