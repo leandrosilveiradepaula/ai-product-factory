@@ -83,6 +83,126 @@ insert into history_evidence values(jsonb_build_object(
  'changed_files_count','1','changed_files',jsonb_build_array('src/a.test.ts'),
  'branch','factory/change-set-33333333',
  'repository','owner/studio','release_authorized',false));
+-- Deterministic fault-localization: only synthetic SHA and boolean guards.
+select id,
+ metadata->>'new_sha' as candidate,
+ metadata->>'pr_number' as pr,
+ metadata->>'change_set_id' as change_set,
+ metadata->>'branch' as branch,
+ metadata->>'repository' as repository,
+ metadata->>'compare_status' as comparison,
+ metadata->>'behind_by' as behind,
+ metadata->>'ahead_by' as ahead,
+ (metadata->>'ahead_by') ~ '^[1-9][0-9]*
+begin
+ select proof into e from history_evidence;
+ -- Fail-closed: even one broken intermediate handoff must be rejected.
+ select metadata into saved from public.factory_tool_usage
+  where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('d',40);
+ update public.factory_tool_usage
+  set metadata=jsonb_set(metadata,'{ci_conclusion}','"failure"'::jsonb)
+  where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('d',40);
+ begin
+  perform public.factory_settle_verified_blocked_security_repair_v1(
+   '33333333-3333-3333-3333-333333333333',
+   '44444444-4444-4444-4444-444444444444',
+   '88888888-8888-8888-8888-888888888888',
+   repeat('c',40),repeat('b',40),2,e);
+  raise exception 'unverified original CI accepted';
+ exception when sqlstate 'PT409' then null;
+ end;
+ update public.factory_tool_usage set metadata=saved
+ where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('d',40);
+ -- Fail-closed: a forged policy predecessor cannot bridge A->D->C.
+ update public.factory_tool_usage
+ set metadata=jsonb_set(metadata,'{prior_candidate_commit}',to_jsonb(repeat('a',40)),false)
+ where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('c',40);
+ begin
+  perform public.factory_settle_verified_blocked_security_repair_v1(
+   '33333333-3333-3333-3333-333333333333',
+   '44444444-4444-4444-4444-444444444444',
+   '88888888-8888-8888-8888-888888888888',
+   repeat('c',40),repeat('b',40),2,e);
+  raise exception 'forged policy predecessor accepted';
+ exception when sqlstate 'PT409' then null;
+ end;
+ update public.factory_tool_usage
+ set metadata=jsonb_set(metadata,'{prior_candidate_commit}',to_jsonb(repeat('d',40)),false)
+ where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('c',40);
+ r:=public.factory_settle_verified_blocked_security_repair_v1(
+   '33333333-3333-3333-3333-333333333333',
+   '44444444-4444-4444-4444-444444444444',
+   '88888888-8888-8888-8888-888888888888',
+   repeat('c',40),repeat('b',40),2,e);
+ if r->>'status'<>'ci_pending' or r->>'candidate_commit'<>repeat('b',40)
+    or r->>'release_authorized'<>'false'
+ then raise exception 'three-stage historical recovery failed'; end if;
+ if (select count(*) from public.factory_audit_events
+    where event_type='change_set.security_repair.exact_sha_integrated'
+    and payload->>'previous_commit'=repeat('c',40))<>1
+ then raise exception 'historical settlement audit not bound to blocked SHA'; end if;
+end
+$history$;
+reset role;
+select 'SECURITY_REPAIR_HISTORICAL_CHAIN=PASS' as result;
+ as positive_ahead,
+ (metadata->>'new_sha') ~ '^[a-f0-9]{40}
+begin
+ select proof into e from history_evidence;
+ -- Fail-closed: even one broken intermediate handoff must be rejected.
+ select metadata into saved from public.factory_tool_usage
+  where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('d',40);
+ update public.factory_tool_usage
+  set metadata=jsonb_set(metadata,'{ci_conclusion}','"failure"'::jsonb)
+  where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('d',40);
+ begin
+  perform public.factory_settle_verified_blocked_security_repair_v1(
+   '33333333-3333-3333-3333-333333333333',
+   '44444444-4444-4444-4444-444444444444',
+   '88888888-8888-8888-8888-888888888888',
+   repeat('c',40),repeat('b',40),2,e);
+  raise exception 'unverified original CI accepted';
+ exception when sqlstate 'PT409' then null;
+ end;
+ update public.factory_tool_usage set metadata=saved
+ where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('d',40);
+ -- Fail-closed: a forged policy predecessor cannot bridge A->D->C.
+ update public.factory_tool_usage
+ set metadata=jsonb_set(metadata,'{prior_candidate_commit}',to_jsonb(repeat('a',40)),false)
+ where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('c',40);
+ begin
+  perform public.factory_settle_verified_blocked_security_repair_v1(
+   '33333333-3333-3333-3333-333333333333',
+   '44444444-4444-4444-4444-444444444444',
+   '88888888-8888-8888-8888-888888888888',
+   repeat('c',40),repeat('b',40),2,e);
+  raise exception 'forged policy predecessor accepted';
+ exception when sqlstate 'PT409' then null;
+ end;
+ update public.factory_tool_usage
+ set metadata=jsonb_set(metadata,'{prior_candidate_commit}',to_jsonb(repeat('d',40)),false)
+ where operation='reconcile_pr_candidate' and metadata->>'new_sha'=repeat('c',40);
+ r:=public.factory_settle_verified_blocked_security_repair_v1(
+   '33333333-3333-3333-3333-333333333333',
+   '44444444-4444-4444-4444-444444444444',
+   '88888888-8888-8888-8888-888888888888',
+   repeat('c',40),repeat('b',40),2,e);
+ if r->>'status'<>'ci_pending' or r->>'candidate_commit'<>repeat('b',40)
+    or r->>'release_authorized'<>'false'
+ then raise exception 'three-stage historical recovery failed'; end if;
+ if (select count(*) from public.factory_audit_events
+    where event_type='change_set.security_repair.exact_sha_integrated'
+    and payload->>'previous_commit'=repeat('c',40))<>1
+ then raise exception 'historical settlement audit not bound to blocked SHA'; end if;
+end
+$history$;
+reset role;
+select 'SECURITY_REPAIR_HISTORICAL_CHAIN=PASS' as result;
+ as valid_sha,
+ metadata->>'candidate_commit'=metadata->>'new_sha' as matched_sha
+from public.factory_tool_usage
+where operation='reconcile_pr_candidate'
+order by created_at,id;
 do $history$
 declare e jsonb; r jsonb; saved jsonb;
 begin
