@@ -63,7 +63,7 @@ insert into public.factory_tool_usage(
   'branch','factory/change-set-33333333',
   'recovery_source','blocked_release_policy',
   'new_sha',repeat('c',40),'old_sha',repeat('a',40),
-  'ahead_by','5','ci_state','success','behind_by','0',
+  'ahead_by','5','compare_status','ahead','ci_state','success','behind_by','0',
   'ci_source','github_actions_checks','pr_number','2',
   'repository','owner/studio','native_checks',2,'native_workflows',1,
   'change_set_id','33333333-3333-3333-3333-333333333333',
@@ -83,39 +83,6 @@ insert into history_evidence values(jsonb_build_object(
  'changed_files_count','1','changed_files',jsonb_build_array('src/a.test.ts'),
  'branch','factory/change-set-33333333',
  'repository','owner/studio','release_authorized',false));
--- Guard diagnostics for synthetic reconciled rows, no user data or credentials.
-select id, metadata->>'source' as source,
- metadata->>'recovery_source' as recovery_source,
- metadata->>'pr_number' as pr,
- metadata->>'repository' as repo,
- metadata->>'branch' as branch,
- metadata->>'change_set_id' as change_set_id,
- metadata->>'new_sha' as new_sha,
- metadata->>'candidate_commit' as candidate_commit,
- metadata->>'ahead_by' as ahead,
- metadata->>'behind_by' as behind,
- ((metadata->>'ahead_by') ~ '^[1-9][0-9]*$') as ahead_valid,
- ((metadata->>'new_sha') ~ '^[a-f0-9]{40}$') as sha_valid
-from public.factory_tool_usage
-where operation='reconcile_pr_candidate'
-order by created_at,id;
-select id,
- (metadata->>'change_set_id' is distinct from '33333333-3333-3333-3333-333333333333') as bad_cs,
- (metadata->>'repository' is distinct from 'owner/studio') as bad_repo,
- (metadata->>'branch' is distinct from 'factory/change-set-33333333') as bad_branch,
- (metadata->>'pr_number' is distinct from '2') as bad_pr,
- (metadata->>'compare_status' is distinct from 'ahead') as bad_status,
- (metadata->>'behind_by' is distinct from '0') as bad_behind,
- (coalesce((metadata->>'ahead_by') ~ '^[1-9][0-9]*$',false) is false) as bad_ahead,
- ((metadata->>'new_sha') !~ '^[a-f0-9]{40}$') as bad_sha,
- (metadata->>'candidate_commit' is distinct from metadata->>'new_sha') as bad_commit,
- (metadata->>'new_sha' is not distinct from
-   (case when metadata->>'new_sha'=repeat('d',40) then repeat('a',40)
-    else repeat('d',40) end)) as bad_loop,
- jsonb_typeof(metadata) as metadata_type
-from public.factory_tool_usage
-where operation='reconcile_pr_candidate'
-order by created_at,id;
 do $history$
 declare e jsonb; r jsonb; saved jsonb;
 begin
