@@ -222,6 +222,7 @@ jobs:
             core.setFailed("Timed out waiting for exactly correlated browser verification");
 
       - name: Persist cross-repo browser evidence in Control Plane
+        id: persistence
         if: ${{ always() }}
         shell: bash
         env:
@@ -326,3 +327,17 @@ jobs:
               "snapshot_id":rows[0].get("id"),
           }))
           PY
+      - name: Resume eligible failed Preview after real first-party browser proof
+        if: ${{ steps.verifier.outcome == 'success' && steps.persistence.outcome == 'success' }}
+        shell: bash
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          VERIFIER_FACTORY_SHA: ${{ steps.verifier.outputs.factory_sha }}
+        run: |
+          set -euo pipefail
+          python scripts/resume_preview_external_feedback.py \
+            --repository "$TARGET_REPOSITORY" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --preview-url "$PREVIEW_URL" \
+            --verifier-factory-sha "$VERIFIER_FACTORY_SHA" \
+            --execute

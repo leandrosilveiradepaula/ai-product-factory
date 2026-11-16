@@ -22,6 +22,16 @@ class CrossRepoPreviewBrowserWorkflowTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", text)
         self.assertNotIn("contents: write", text)
 
+    def test_failed_preview_recovery_is_real_browser_only_and_no_release(self):
+        text=(ROOT/".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
+        self.assertIn("id: persistence",text)
+        self.assertIn("steps.verifier.outcome == 'success'",text)
+        self.assertIn("steps.persistence.outcome == 'success'",text)
+        self.assertIn("scripts/resume_preview_external_feedback.py",text)
+        self.assertIn("--verifier-factory-sha",text)
+        self.assertIn("--execute",text)
+        self.assertNotIn("createWorkflowDispatch({",text.split("Resume eligible failed Preview after real first-party browser proof",1)[1])
+
     def test_workflow_reuses_trusted_browser_and_records_target_status(self):
         text = (ROOT / ".github/workflows/cross-repo-preview-browser-evidence.yml").read_text()
 
