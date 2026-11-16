@@ -5,6 +5,7 @@ on:
       - 'supabase/migrations/20261116171500_settle_verified_security_repair.sql'
       - 'supabase/tests/bootstrap_verified_security_repair.sql'
       - 'supabase/tests/verify_verified_security_repair.sql'
+      - 'supabase/tests/verify_verified_security_repair_history.sql'
       - '.github/workflows/verified-security-repair-postgres.yml'
 permissions:
   contents: read
@@ -46,3 +47,5 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261116171500_settle_verified_security_repair.sql
       - name: Verify ACL, negative cases, idempotency and preserved audit
         run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_verified_security_repair.sql
+      - name: Verify two historical GitHub candidate hops and tamper denials
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_verified_security_repair_history.sql

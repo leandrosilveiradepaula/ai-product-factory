@@ -17,7 +17,9 @@ declare
  unit public.factory_change_set_work_units%rowtype;
  blocked_run public.factory_runs%rowtype;
  task_row public.factory_tasks%rowtype;
- prev_receipt jsonb;
+ v_link record;
+ v_cursor text;
+ v_link_count integer:=0;
  source_receipt record;
  expected_path text;
  v_rows integer;
@@ -136,18 +138,63 @@ begin
    and metadata->>'pr'=p_pr_number::text and metadata->>'change_set_id'=c.id::text;
  if source_receipt.n<>1 or source_receipt.sha !~ '^[0-9a-f]{40}$'
  then raise exception 'original issued PR receipt is ambiguous' using errcode='PT409'; end if;
- if source_receipt.sha is distinct from p_old_sha then
-  select metadata into prev_receipt from public.factory_tool_usage
-  where run_id=root_run.id and operation='reconcile_pr_candidate'
-  order by created_at desc,id desc limit 1;
-  if prev_receipt is null
-     or prev_receipt->>'new_sha' is distinct from p_old_sha
-     or prev_receipt->>'old_sha' is distinct from source_receipt.sha
-     or prev_receipt->>'ci_conclusion' is distinct from 'success'
-     or prev_receipt->>'repository' is distinct from p.repository
-     or prev_receipt->>'branch' is distinct from c.integration_branch
-  then raise exception 'candidate ancestry not independently reconciled' using errcode='PT409'; end if;
- end if;
+ -- Full immutable ancestry: original issued PR -> one or more exact-SHA
+ -- independently verified CI reconciliations -> currently blocked candidate.
+ -- Do not confuse latest recovery's original SHA with its actual predecessor.
+ v_cursor:=source_receipt.sha;
+ for v_link in
+   select u.id,u.metadata from public.factory_tool_usage u
+   where u.run_id=root_run.id and u.operation='reconcile_pr_candidate'
+   order by u.created_at,u.id
+ loop
+   v_link_count:=v_link_count+1;
+   if v_link_count>12
+      or jsonb_typeof(v_link.metadata) is distinct from 'object'
+      or v_link.metadata->>'change_set_id' is distinct from c.id::text
+      or v_link.metadata->>'repository' is distinct from p.repository
+      or v_link.metadata->>'branch' is distinct from c.integration_branch
+      or v_link.metadata->>'pr_number' is distinct from p_pr_number::text
+      or v_link.metadata->>'compare_status' is distinct from 'ahead'
+      or v_link.metadata->>'behind_by' is distinct from '0'
+      or coalesce((v_link.metadata->>'ahead_by') ~ '^[1-9][0-9]*$',false) is false
+      or (v_link.metadata->>'new_sha') !~ '^[a-f0-9]{40}$'
+      or v_link.metadata->>'candidate_commit' is distinct from v_link.metadata->>'new_sha'
+      or v_link.metadata->>'new_sha' is not distinct from v_cursor
+   then raise exception 'invalid candidate reconciliation history'
+        using errcode='PT409'; end if;
+
+   if v_link.metadata->>'source' = 'independent_github_api' then
+     if v_link.metadata->>'old_sha' is distinct from v_cursor
+        or v_link.metadata->>'ci_conclusion' is distinct from 'success'
+        or v_link.metadata->>'ci_sha' is distinct from v_link.metadata->>'new_sha'
+        or v_link.metadata->>'pr_head_sha' is distinct from v_link.metadata->>'new_sha'
+        or v_link.metadata->>'branch_head_sha' is distinct from v_link.metadata->>'new_sha'
+        or v_link.metadata->>'pr_state' is distinct from 'open'
+        or v_link.metadata->>'pr_base' is distinct from 'main'
+     then raise exception 'original native CI reconciliation invalid'
+          using errcode='PT409'; end if;
+   elsif v_link.metadata->>'recovery_source' = 'blocked_release_policy' then
+     if v_link.metadata->>'old_sha' is distinct from source_receipt.sha
+        or v_link.metadata->>'previous_commit' is distinct from source_receipt.sha
+        or v_link.metadata->>'prior_candidate_commit' is distinct from v_cursor
+        or v_link.metadata->>'original_head_sha' is distinct from source_receipt.sha
+        or v_link.metadata->>'ci_state' is distinct from 'success'
+        or v_link.metadata->>'ci_source' is distinct from 'github_actions_checks'
+        or coalesce((v_link.metadata->>'native_checks') ~ '^[1-9][0-9]*$',false) is false
+        or coalesce((v_link.metadata->>'native_workflows') ~ '^[1-9][0-9]*$',false) is false
+        or v_link.metadata->>'release_authorized' is distinct from 'false'
+        or v_link.metadata->>'target_pr_ci_still_required' is distinct from 'true'
+     then raise exception 'policy blocked CI recovery chain invalid'
+          using errcode='PT409'; end if;
+   else
+     raise exception 'unverified candidate reconciliation origin'
+          using errcode='PT409';
+   end if;
+   v_cursor:=v_link.metadata->>'new_sha';
+ end loop;
+ if v_cursor is distinct from p_old_sha then
+   raise exception 'candidate SHA not reachable from issued PR receipt'
+        using errcode='PT409'; end if;
 
  -- This integrates ONLY the externally committed fix verified on GitHub.
  -- Blocked implementation run remains immutable; fresh CI, QA, Security,
