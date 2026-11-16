@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import re
 from collections.abc import Callable
 
-_SHA = re.compile(r"[0-9a-f]{40}\\Z")
+_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _WORKFLOW = ".github/workflows/autonomous-runner.yml"
 _QUERY = "/actions/workflows/autonomous-runner.yml/runs?event=schedule&status=success&branch=main&per_page=50"
 
