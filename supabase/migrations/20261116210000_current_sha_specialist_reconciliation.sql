@@ -90,7 +90,7 @@ begin
    'job_id',p_job_id,'status',p_status,'run_status',v_run_status,
    'post_review_applied',true,'repair',v_repair,'repair_recheck',v_recheck);
 end;
-$function$
+$function$;
 
 
 -- Explicit reconciliation for previously completed, immutable current-SHA
