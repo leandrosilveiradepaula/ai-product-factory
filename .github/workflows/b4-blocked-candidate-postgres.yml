@@ -2,6 +2,7 @@ name: B4 blocked-release candidate PostgreSQL QA
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize, edited]
     branches: [main]
     paths:
       - "supabase/migrations/*reconcile_blocked_release_candidate_once.sql"
