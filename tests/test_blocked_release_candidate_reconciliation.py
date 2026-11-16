@@ -287,6 +287,45 @@ class BlockedReleaseCandidateTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             f.verify()
 
+    def test_pr_head_move_during_ci_is_rejected(self):
+        f = Fixture()
+        original = f.gh.get_pull_request
+        calls = {"count": 0}
+        def moved(number):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                f.gh.pr_sha = PRIOR
+            return original(number)
+        f.gh.get_pull_request = moved
+        with self.assertRaises(PermissionError):
+            f.verify()
+        self.assertEqual(calls["count"], 2)
+
+    def test_non_native_status_cannot_replace_github_actions_ci(self):
+        f = Fixture()
+        original = f.gh._call
+        def only_external(method, path, *, query):
+            data = original(method, path, query=query)
+            if path.endswith("/check-runs"):
+                for check in data["check_runs"]:
+                    check["app"]["slug"] = "external-provider"
+            return data
+        f.gh._call = only_external
+        with self.assertRaises(PermissionError):
+            f.verify()
+
+    def test_native_workflow_must_be_at_exact_integrated_branch(self):
+        f = Fixture()
+        original = f.gh._call
+        def stale_branch(method, path, *, query):
+            data = original(method, path, query=query)
+            if path.endswith("/actions/runs"):
+                data["workflow_runs"][0]["head_branch"] = "factory/other"
+            return data
+        f.gh._call = stale_branch
+        with self.assertRaises(PermissionError):
+            f.verify()
+
     def test_invalid_ids_never_reach_read_or_write(self):
         f = Fixture()
         store = FakeStore(f)
