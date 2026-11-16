@@ -1,0 +1,48 @@
+name: Current SHA specialist reconciliation PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261116210000_current_sha_specialist_reconciliation.sql'
+      - 'supabase/tests/bootstrap_current_sha_specialist_reconciliation.sql'
+      - 'supabase/tests/verify_current_sha_specialist_reconciliation.sql'
+      - '.github/workflows/current-sha-specialist-pg17.yml'
+permissions:
+  contents: read
+jobs:
+  postgres17-exact-sha-specialists:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-no-credential
+          POSTGRES_DB: disposable_reviews
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d disposable_reviews"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-no-credential
+      PGDATABASE: disposable_reviews
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Constrain all SQL to isolated PostgreSQL fixture
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "disposable_reviews"
+          pg_isready -h "$PGHOST" -d "$PGDATABASE" -U "$PGUSER"
+      - name: Create synthetic history with stale failed SHA
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap_current_sha_specialist_reconciliation.sql
+      - name: Install reviewed SQL migration in disposable PG17
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261116210000_current_sha_specialist_reconciliation.sql
+      - name: Verify positive and adversarial exact SHA state transitions
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_current_sha_specialist_reconciliation.sql
