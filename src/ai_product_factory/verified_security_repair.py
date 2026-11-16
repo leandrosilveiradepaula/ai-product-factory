@@ -137,7 +137,7 @@ def settle_verified_security_repair(
             and cmp.get("behind_by")==0 and changed==scopes,
             "security_repair_not_exact_one_file")
     content=github.get_file_text(scopes[0],ref=new)
-    require(isinstance(content,str) and content.strip(),
+    require(isinstance(content,str) and bool(content.strip()),
             "candidate_source_missing")
     scan_content=safe_test_assertions_for_secret_scan(content,scopes[0])
     require(redact_repository_text(scan_content)==scan_content
