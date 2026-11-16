@@ -713,6 +713,57 @@ jobs:
 
   # Integration may persist a ci_pending run/PR before the job fails.
   # CI is re-claimed by its own durable eligibility checks, not upstream exit codes.
+  blocked-candidate-reconciliation:
+    # Only an authenticated OWNER issue comment; never schedule, PR or model.
+    if: ${{ github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.author_association == 'OWNER' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-reconcile-blocked run=') }}
+    environment: openai-api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+      checks: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Reconcile one explicitly selected blocked nonproduction candidate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os,re,subprocess
+          from pathlib import Path
+          event=json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          comment=event.get("comment") or {}
+          issue=event.get("issue") or {}
+          repository=event.get("repository") or {}
+          assert comment.get("author_association")=="OWNER"
+          assert issue.get("pull_request") is None
+          assert repository.get("full_name")==os.environ["GITHUB_REPOSITORY"]
+          command=comment.get("body") or ""
+          match=re.fullmatch(
+              r"/factory-reconcile-blocked run=([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) pr=([1-9][0-9]{0,8})",
+              command.strip(),
+          )
+          if match is None:raise SystemExit("invalid exact owner recovery command")
+          subprocess.run(["python","-m","ai_product_factory.runtime_cli",
+              "--mode","reconcile-blocked-release-candidate",
+              "--source-run-id",match.group(1),"--pr-number",match.group(2)],
+              check=True)
+          PY
+      - name: Re-evaluate exact new candidate without model or release
+        shell: bash
+        run: python -m ai_product_factory.runtime_cli --mode ci --batch-items 1
+
   ci-followup:
     environment: openai-api
     if: ${{ (github.event_name != 'workflow_dispatch' || inputs.run_alerts != true) && always() && needs.schedule-probe.result == 'success'  && (github.event_name == 'workflow_dispatch' || needs.schedule-probe.outputs.ci_work == 'true' || needs.change-set-integration.result == 'success' || needs.change-set-integration.result == 'failure') }}
