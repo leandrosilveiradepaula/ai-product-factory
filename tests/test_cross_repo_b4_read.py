@@ -2,6 +2,7 @@
 import unittest
 
 from ai_product_factory.cross_repo_b4_read import cross_repo_b4_reader
+from ai_product_factory.bounded_github_evidence_read import GitHubEvidenceTransportBlocked
 
 FACTORY = "leandrosilveiradepaula/ai-product-factory"
 STUDIO = "leandrosilveiradepaula/dark-channel-studio"
@@ -47,7 +48,7 @@ class CrossRepoB4ReadTests(unittest.TestCase):
             None,
         ):
             with self.subTest(path=repr(path)):
-                with self.assertRaises(PermissionError):
+                with self.assertRaises((PermissionError, GitHubEvidenceTransportBlocked)):
                     get(path)
         self.assertEqual(calls, [])
 
