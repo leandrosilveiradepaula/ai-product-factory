@@ -84,8 +84,8 @@ def reconcile_failed_preview_candidate(
             and type(pr_number) is int and 1<=pr_number<=2_147_483_647,
             "recovery_identity_invalid")
     read=read or SupabaseAdmissionReader()._get
-    github_factory=github_factory or (lambda repository:GithubRestAdapter(repository=repository))
-    factory_github=factory_github or GithubRestAdapter(repository=FACTORY)
+    github_factory=github_factory or (lambda repository:GitHubRestAdapter(repository=repository))
+    factory_github=factory_github or GitHubRestAdapter(repository=FACTORY)
     ci_verifier=ci_verifier or exact_sha_ci_state
     run=one(read,"factory_runs",
         "id,task_id,status,branch_name,candidate_commit,metadata,lease_owner,lease_expires_at"
