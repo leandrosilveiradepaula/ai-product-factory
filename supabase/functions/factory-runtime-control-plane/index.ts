@@ -25,6 +25,10 @@ const APP_PERMISSIONS = {
   pull_requests: "write",
   statuses: "read",
 };
+// The B4 certifier cannot mint a GitHub App token from workflow_run.
+// A separate, bound read-only comparison runs inside the broker, and never
+// returns even this downgraded installation token to GitHub Actions.
+const B4_COMPARE_PERMISSIONS = {contents:"read"};
 
 function json(status:number, body:unknown) {
   return new Response(JSON.stringify(body), {status, headers:{"content-type":"application/json","cache-control":"no-store"}});
@@ -170,7 +174,7 @@ async function readJson(response:Response, label:string) {
   return body;
 }
 
-async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:string) {
+async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:string, readOnlyCompare=false) {
   if(req.method!=="POST") return json(405,{error:"method_not_allowed"});
   const body=await req.json().catch(()=>null) as {repository?:unknown}|null;
   const repository=String(body?.repository||"").trim();
@@ -239,7 +243,7 @@ async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:
         "Content-Type":"application/json",
         "X-GitHub-Api-Version":GITHUB_API_VERSION,
       },
-      body:JSON.stringify({repositories:[repository.split("/")[1]],permissions:APP_PERMISSIONS}),
+      body:JSON.stringify({repositories:[repository.split("/")[1]],permissions:readOnlyCompare?B4_COMPARE_PERMISSIONS:APP_PERMISSIONS}),
     },
   );
   const tokenBody=await readJson(githubResponse,"GitHub installation token mint") as Record<string,unknown>|null;
@@ -270,6 +274,154 @@ async function mintGithubInstallationToken(req:Request, supabaseUrl:string, key:
   });
 }
 
+
+const B4_SHA=/^[0-9a-f]{40}$/;
+const B4_REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const B4_NAME=/^[A-Za-z0-9_.\-/]+$/;
+
+async function b4ReadOnlyComparedSource(
+  req:Request, identity:Record<string,unknown>,
+  supabaseUrl:string, key:string,
+) {
+  // This is NOT the token-mint endpoint: it returns only a tiny derived
+  // comparison receipt for the already human-released Factory journey.
+  if(req.method!=="POST") return json(405,{error:"method_not_allowed"});
+  if(String(identity.event_name||"")!=="workflow_run" ||
+     String(identity.workflow_ref||"")!==TRUSTED_BACKUP_WORKFLOW_REF ||
+     String(identity.run_attempt||"")!=="1") {
+    return json(403,{error:"b4_readonly_identity_denied"});
+  }
+  const input=await req.json().catch(()=>null) as Record<string,unknown>|null;
+  if(!input || typeof input!=="object" || Array.isArray(input) ||
+     Object.keys(input).sort().join(",")!=="current,predecessor,repository") {
+    return json(400,{error:"b4_source_request_invalid"});
+  }
+  const repository=input.repository,predecessor=input.predecessor,current=input.current;
+  if(typeof repository!=="string" || !B4_REPO.test(repository) ||
+     repository.toLowerCase()===EXPECTED.repository.toLowerCase() ||
+     typeof predecessor!=="string" || !B4_SHA.test(predecessor) ||
+     typeof current!=="string" || !B4_SHA.test(current) || predecessor===current) {
+    return json(400,{error:"b4_source_request_invalid"});
+  }
+  // A privileged Control Plane SELECT checks the actual project plus the
+  // exact completed Change Set, separately witnessed original browser run
+  // and an independently observed human release. No arbitrary repo/commit
+  // oracle is available to a workflow_run caller.
+  const projects=await readJson(await fetch(
+    supabaseUrl+"/rest/v1/factory_projects?select=id,repository,project_kind,lifecycle_stage"+
+      "&repository=eq."+encodeURIComponent(repository)+"&is_active=eq.true&limit=2",
+    {headers:supabaseHeaders(key)}
+  ),"B4 project binding") as Array<Record<string,unknown>>|null;
+  if(!projects || projects.length!==1 ||
+     projects[0].project_kind!=="greenfield" ||
+     projects[0].lifecycle_stage!=="operations" ||
+     String(projects[0].repository||"")!==repository) {
+    return json(409,{error:"b4_source_not_released"});
+  }
+  const projectId=String(projects[0].id||"");
+  const changes=await readJson(await fetch(
+    supabaseUrl+"/rest/v1/factory_change_sets?select=id,release_run_id,status,candidate_commit,metadata"+
+      "&project_id=eq."+encodeURIComponent(projectId)+
+      "&candidate_commit=eq."+current+"&status=eq.completed&limit=2",
+    {headers:supabaseHeaders(key)}
+  ),"B4 Change Set binding") as Array<Record<string,unknown>>|null;
+  if(!changes || changes.length!==1 ||
+     !B4_SHA.test(String(changes[0].candidate_commit||""))) {
+    return json(409,{error:"b4_source_not_released"});
+  }
+  const cs=changes[0], metadata=cs.metadata as Record<string,unknown>|null;
+  const request=metadata?.integration_release_request as Record<string,unknown>|null;
+  if(request?.candidate_commit!==current ||
+     typeof cs.release_run_id!=="string") {
+    return json(409,{error:"b4_source_not_released"});
+  }
+  const reports=await readJson(await fetch(
+    supabaseUrl+"/rest/v1/factory_release_reports?select=id,project_id,run_id,status,candidate_commit,report"+
+      "&run_id=eq."+encodeURIComponent(cs.release_run_id)+
+      "&candidate_commit=eq."+current+"&status=eq.released&limit=2",
+    {headers:supabaseHeaders(key)}
+  ),"B4 observed release lookup") as Array<Record<string,unknown>>|null;
+  const report=reports?.[0],release=report?.report as Record<string,unknown>|null;
+  if(!reports || reports.length!==1 || report?.project_id!==projectId ||
+     report?.run_id!==cs.release_run_id ||
+     release?.released_by!=="observed_manual_merge" ||
+     !B4_SHA.test(String(release?.merge_sha||""))) {
+    return json(409,{error:"b4_source_not_released"});
+  }
+  const snapshots=await readJson(await fetch(
+    supabaseUrl+"/rest/v1/factory_project_state_snapshots?select=id,project_id,run_id,evidence,source_status,constraints"+
+      "&project_id=eq."+encodeURIComponent(projectId)+
+      "&observed_stage=eq.verification&order=created_at.desc&limit=30",
+    {headers:supabaseHeaders(key)}
+  ),"B4 independent visual witness lookup") as Array<Record<string,unknown>>|null;
+  if(!snapshots?.some(row=>{
+    const witness=row.evidence as Record<string,unknown>|null;
+    const preview=witness?.preview as Record<string,unknown>|null;
+    const source=row.source_status as Record<string,unknown>|null;
+    const limits=row.constraints as Record<string,unknown>|null;
+    return row.project_id===projectId && row.run_id===null &&
+      witness?.candidate_commit===predecessor &&
+      witness?.target_repository===repository &&
+      preview?.status==="browser_verified" &&
+      preview?.provider==="vercel" &&
+      source?.github_target==="verified" &&
+      source?.browser_visual_validation==="success" &&
+      limits?.product_ready_inferred===false &&
+      limits?.production_merge_authorized===false;
+  })) return json(409,{error:"b4_source_not_released"});
+
+  // Reuse existing verified App installation binding, but request only
+  // CONTENTS:READ. The ephemeral token is used in this Edge invocation;
+  // it is not returned, logged, persisted or passed to a CI runner.
+  const credentials=await mintGithubInstallationToken(
+    new Request(req.url,{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({repository}),
+    }),supabaseUrl,key,true,
+  );
+  if(!credentials.ok) return json(409,{error:"b4_readonly_app_unavailable"});
+  const granted=await credentials.json() as Record<string,unknown>;
+  const accessToken=String(granted.token||"");
+  if(!accessToken || granted.token_persisted!==false) {
+    return json(409,{error:"b4_readonly_app_unavailable"});
+  }
+  const compared=await readJson(await fetch(
+    "https://api.github.com/repos/"+repository+"/compare/"+predecessor+"..."+current,
+    {headers:{
+      Accept:"application/vnd.github+json",
+      Authorization:"Bearer "+accessToken,
+      "X-GitHub-Api-Version":GITHUB_API_VERSION,
+    }}
+  ),"B4 GitHub compare") as Record<string,unknown>|null;
+  const files=compared?.files;
+  const ahead=compared?.ahead_by;
+  if(compared?.status!=="ahead" || compared.behind_by!==0 ||
+     !Number.isInteger(ahead) || (ahead as number)<1 || (ahead as number)>25 ||
+     compared.total_commits!==ahead || compared.truncated===true ||
+     !Array.isArray(files) || files.length<1 || files.length>50 ||
+     !files.every((item:unknown)=>{
+       if(!item || typeof item!=="object") return false;
+       const f=item as Record<string,unknown>,name=f.filename,status=f.status;
+       return typeof name==="string" && B4_NAME.test(name) &&
+         !name.startsWith("/") && !name.split("/").some(x=>!x||x==="."||x==="..") &&
+         ["added","modified","removed","renamed"].includes(String(status||"")) &&
+         (status!=="renamed" || (
+           typeof f.previous_filename==="string" &&
+           B4_NAME.test(f.previous_filename) &&
+           !f.previous_filename.startsWith("/") &&
+           !f.previous_filename.split("/").some(x=>!x||x==="."||x==="..")
+         ));
+     })) return json(409,{error:"b4_comparison_not_verified"});
+  const safeFiles=(files as Array<Record<string,unknown>>).map(f=>({
+    filename:f.filename,status:f.status,
+    ...(f.status==="renamed"?{previous_filename:f.previous_filename}:{}),
+  }));
+  return json(200,{
+    status:"ahead",behind_by:0,ahead_by:ahead,total_commits:ahead,
+    truncated:false,files:safeFiles,
+  });
+}
+
 Deno.serve(async(req:Request)=>{
   try {
     const identity=await verifyGithub(req);
@@ -277,6 +429,10 @@ Deno.serve(async(req:Request)=>{
     const supabaseUrl=(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"");
     if(!supabaseUrl) throw new Error("SUPABASE_URL unavailable");
     const key=getSecretKey();
+
+    if(requestUrl.pathname.endsWith("/github-app/read-only-compare")) {
+      return await b4ReadOnlyComparedSource(req,identity,supabaseUrl,key);
+    }
 
     if(requestUrl.pathname.endsWith("/github-app/token")) {
       const workflowRef=String(identity.workflow_ref||"");
