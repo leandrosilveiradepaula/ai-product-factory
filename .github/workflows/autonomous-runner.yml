@@ -764,6 +764,58 @@ jobs:
       - name: Re-evaluate only exact SHA CI, never release
         run: python -m ai_product_factory.runtime_cli --mode ci --batch-items 1
 
+  scoped-invoker-security-recheck:
+    # Current SHA, full GitHub PR patch and a fresh native CI are verified
+    # by the OWNER-triggered runner. This only REQUEUES a real Security
+    # scanner; it never declares a formerly failed lane passed.
+    needs: schedule-probe
+    if: ${{ always() && github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.issue.number == 1414 && github.event.comment.author_association == 'OWNER' && github.actor == github.event.comment.user.login && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/factory-recheck-invoker-security run=') }}
+    environment: openai-api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+      checks: read
+      actions: read
+      statuses: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/control-plane-oidc
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Verify signed OWNER comment and independent current-SHA scanner
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os,re,subprocess
+          from pathlib import Path
+          e=json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          comment=e.get("comment") or {}
+          issue=e.get("issue") or {}
+          if (comment.get("author_association")!="OWNER"
+            or comment.get("user",{}).get("login")!=os.environ["GITHUB_ACTOR"]
+            or issue.get("number")!=1414 or issue.get("pull_request") is not None
+            or e.get("repository",{}).get("full_name")!=os.environ["GITHUB_REPOSITORY"]):
+              raise SystemExit("untrusted_invoker_recheck_event")
+          match=re.fullmatch(
+            r"/factory-recheck-invoker-security run=([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) pr=([1-9][0-9]{0,8})",
+            (comment.get("body") or "").strip())
+          if match is None:raise SystemExit("invalid_invoker_recheck_command")
+          subprocess.run(["python","-m","ai_product_factory.scoped_invoker_security_recheck",
+            "--run-id",match.group(1),"--pr-number",match.group(2)],check=True)
+          PY
+      - name: Execute the independent Security specialist on the requeued SHA
+        run: python -m ai_product_factory.runtime_cli --mode specialist --specialist-role security --batch-items 1 --worker-id "security-recheck-${{ github.run_id }}"
+
   failed-preview-candidate-reconciliation:
     # One already existing Start/Change Set. The new candidate must have a
     # signed real browser proof. Never create another Start, merge or release.

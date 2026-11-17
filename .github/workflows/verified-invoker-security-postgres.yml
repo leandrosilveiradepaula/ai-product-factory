@@ -1,0 +1,49 @@
+name: Verified scoped invoker Security recheck PostgreSQL QA
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261117154000_verified_invoker_security_recheck.sql"
+      - "supabase/tests/verified_invoker_security_recheck_pg.sql"
+      - ".github/workflows/failed-preview-recovery-postgres.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20261117154000_verified_invoker_security_recheck.sql"
+      - "supabase/tests/verified_invoker_security_recheck_pg.sql"
+      - ".github/workflows/failed-preview-recovery-postgres.yml"
+permissions:
+  contents: read
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: temporary-ci-postgres-only
+          POSTGRES_DB: factory_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d factory_disposable"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: temporary-ci-postgres-only
+      PGDATABASE: factory_disposable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify disposable PostgreSQL environment
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "factory_disposable"
+          pg_isready -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE"
+      - name: Execute real SQL function and adversarial one-shot tests
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verified_invoker_security_recheck_pg.sql
