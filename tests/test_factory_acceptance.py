@@ -456,6 +456,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261116171500_settle_verified_security_repair.sql",
             "20261116210000_current_sha_specialist_reconciliation.sql",
             "20261117133000_failed_preview_candidate_recovery.sql",
+            "20261117154000_verified_invoker_security_recheck.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
