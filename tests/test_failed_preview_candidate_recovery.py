@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 from ai_product_factory.failed_preview_candidate import (
     reconcile_failed_preview_candidate,
@@ -105,6 +106,33 @@ class FailedPreviewCandidateTests(unittest.TestCase):
                   "source":"github_actions_checks","workflows":1,
                   "completed_native_checks":2}}
         return store,args
+
+    def test_real_default_github_wiring_uses_both_repo_scoped_adapters(self):
+        """Exercise production defaults instead of only injecting fake GitHub objects.
+
+        The first protected owner workflow invocation reached this code and
+        failed with NameError before validating the original run. Mock only
+        network transport, not the factory function names or parameters.
+        """
+        store,args=self.run_case()
+        args.pop("github_factory")
+        args.pop("factory_github")
+        repositories=[]
+        def make_adapter(*,repository):
+            repositories.append(repository)
+            self.assertIn(repository,(REPO,"leandrosilveiradepaula/ai-product-factory"))
+            return MockGithub(target=repository==REPO)
+        with mock.patch(
+            "ai_product_factory.failed_preview_candidate.GitHubRestAdapter",
+            side_effect=make_adapter,
+        ):
+            result=reconcile_failed_preview_candidate(**args)
+        self.assertEqual(result["status"],"ci_pending")
+        self.assertEqual(repositories,[
+            "leandrosilveiradepaula/ai-product-factory",REPO,
+        ])
+        self.assertEqual(len(store.calls),1)
+        self.assertFalse(store.calls[0][1]["p_verified_evidence"]["release_authorized"])
 
     def test_exact_failed_preview_recovers_without_waiving_release(self):
         store,args=self.run_case()
