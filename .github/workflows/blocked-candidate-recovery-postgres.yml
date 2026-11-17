@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'supabase/migrations/20261116154500_reconcile_policy_blocked_candidate.sql'
+      - 'supabase/migrations/20261117160500_verified_blocked_ci_state_alias.sql'
+      - 'supabase/tests/verify_blocked_ci_state_alias.sql'
       - 'supabase/tests/bootstrap_blocked_candidate.sql'
       - 'supabase/tests/verify_blocked_candidate.sql'
       - '.github/workflows/blocked-candidate-recovery-postgres.yml'
@@ -45,5 +47,9 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap_blocked_candidate.sql
       - name: Apply exact versioned migration in disposable PostgreSQL
         run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261116154500_reconcile_policy_blocked_candidate.sql
+      - name: Apply strictly scoped failed-preview CI-state provenance compatibility
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261117160500_verified_blocked_ci_state_alias.sql
       - name: Verify role isolation, stale candidate denials and transactional requeue
         run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_blocked_candidate.sql
+      - name: Reject forged CI-state aliases and prove exact historical run recovery
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/verify_blocked_ci_state_alias.sql
