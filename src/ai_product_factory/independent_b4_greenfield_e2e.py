@@ -67,6 +67,33 @@ def _gh(get, path: str) -> dict:
     return value
 
 
+def _b4_fixed_reason(exc: Exception) -> str:
+    """Return only stable, predeclared B4 reason codes. Never echo API details."""
+    if type(exc) is B4GreenfieldE2EBlocked:
+        code = str(exc)
+        if re.fullmatch(r"b4_[a-z0-9_]{1,96}", code):
+            return code
+    return "b4_independent_source_unavailable"
+
+
+def _b4_best_reason(reasons: list[str]) -> str:
+    """Prefer the farthest authenticated candidate, not an unrelated project."""
+    for code in reasons:
+        if code.startswith("b4_cross_repo_"):
+            return code
+    for code in reasons:
+        if code not in (
+            "b4_real_change_set_e2e_missing_or_ambiguous",
+            "b4_not_human_originated_greenfield",
+            "b4_preview_policy_not_required",
+            "b4_candidate_lifecycle_invalid",
+            "b4_human_product_decision_missing",
+            "b4_independent_source_unavailable",
+        ):
+            return code
+    return "b4_greenfield_verified_candidate_missing_or_ambiguous"
+
+
 @dataclass(frozen=True)
 class VerifiedGreenfieldE2E:
     repository: str
@@ -219,8 +246,26 @@ def _verify_non_runtime_ancestor(*, cross_repo_get, target_repo: str,
     # not silently fall back to the single-repo GitHub Actions token.
     require(callable(cross_repo_get) and REPO.fullmatch(target_repo) is not None,
             "b4_explicit_cross_repo_reader_required")
-    comparison = _gh(cross_repo_get, "/repos/" + target_repo + "/compare/"
-                     + predecessor + "..." + current)
+    comparison_path = ("/repos/" + target_repo + "/compare/"
+                       + predecessor + "..." + current)
+    # This is a cross-tenant private source. Transport errors must stay
+    # fail-closed, but classification must not disappear into the generic
+    # missing-criteria outcome: otherwise a real credential problem leads to
+    # endless no-op certification attempts.
+    try:
+        comparison = _gh(cross_repo_get, comparison_path)
+    except PermissionError as exc:
+        code = str(exc)
+        reason = (
+            "b4_cross_repo_explicit_credential_missing"
+            if code == "b4_explicit_cross_repo_credential_required"
+            else "b4_cross_repo_access_denied"
+        )
+        raise B4GreenfieldE2EBlocked(reason) from None
+    except (OSError, ValueError, RuntimeError):
+        raise B4GreenfieldE2EBlocked(
+            "b4_cross_repo_read_unavailable"
+        ) from None
     files = comparison.get("files")
     ahead = comparison.get("ahead_by")
     require(comparison.get("status") == "ahead"
@@ -291,7 +336,7 @@ def verify_b4_greenfield_e2e(*, repository: str, assessed_commit: str,
         "&project_kind=eq.greenfield&is_active=eq.true&limit=15", max_rows=15)
     # The Factory may host many products; a candidate cannot be selected by a
     # hardcoded business name. Only exact operational witnesses qualify.
-    reasons = []
+    reasons: list[str] = []
     valid = []
     for project in projects:
         try:
@@ -301,8 +346,13 @@ def verify_b4_greenfield_e2e(*, repository: str, assessed_commit: str,
                 cross_repo_get=cross_repo_get,
             ))
         except (B4GreenfieldE2EBlocked, KeyError, TypeError, ValueError) as exc:
-            reasons.append(type(exc).__name__)
-    require(len(valid) == 1, "b4_greenfield_verified_candidate_missing_or_ambiguous")
+            reasons.append(_b4_fixed_reason(exc))
+    if len(valid) != 1:
+        if not valid:
+            raise B4GreenfieldE2EBlocked(_b4_best_reason(reasons))
+        raise B4GreenfieldE2EBlocked(
+            "b4_greenfield_verified_candidate_missing_or_ambiguous"
+        )
     return valid[0]
 
 
@@ -341,6 +391,7 @@ def _verify_project(project: dict, *, repository: str, assessed_commit: str,
         "&project_id=eq." + quote(pid, safe="")
         + "&order=created_at.desc&limit=25", max_rows=25)
     verified = []
+    failures: list[str] = []
     for cs in changes:
         try:
             verified.append(_verify_changeset(
@@ -348,9 +399,14 @@ def _verify_project(project: dict, *, repository: str, assessed_commit: str,
                 repository=repository, assessed_commit=assessed_commit,
                 github_get=github_get, cross_repo_get=cross_repo_get,
             ))
-        except (B4GreenfieldE2EBlocked, KeyError, ValueError, TypeError):
-            continue
-    require(len(verified) == 1, "b4_real_change_set_e2e_missing_or_ambiguous")
+        except (B4GreenfieldE2EBlocked, KeyError, ValueError, TypeError) as exc:
+            failures.append(_b4_fixed_reason(exc))
+    if len(verified) != 1:
+        if not verified:
+            raise B4GreenfieldE2EBlocked(_b4_best_reason(failures))
+        raise B4GreenfieldE2EBlocked(
+            "b4_real_change_set_e2e_missing_or_ambiguous"
+        )
     return verified[0]
 
 
