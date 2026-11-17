@@ -26,12 +26,14 @@ O certifier `workflow_run` passa a chamar essa rota com seu próprio JWT OIDC, s
 
 **Sensível — deploy humano obrigatório:** a alteração em GitHub é apenas candidato. **Merge da PR não publica a Edge Function.** A rota acrescenta um canal de leitura privada de comparação limitado a projetos já publicados, embora não amplie permissões da instalação da App. O proprietário deve autorizar expressamente o deploy da revisão do broker Supabase em produção, após revisar CI e threat model. Não executar deploy com autorização genérica de merge.
 
-Ordem de ativação:
-1. CI de PR, testes de contrato, regressões Python e verificações negativas de endpoint, token e runtime.
-2. Merge humano da PR Factory.
-3. Autorização humana **específica** para deploy do broker Edge em Supabase projeto `fjplmxfcshhbmzgvyqlm`.
-4. Deploy exato, inspecionar status ativo e verificar que a rota de emissão `/github-app/token` continua negando `workflow_run`; a rota de comparação deve recusar sem OIDC.
-5. Nova certificação somente via **primeira tentativa `workflow_run` vinculada a um `validate push` do SHA atual** (nunca re-run do job), ou acionar o caminho oficial de certificação fresh ao próximo push humano. Não manipular Control Plane nem gravar certificado manualmente.
+Ordem de ativação **sem exigir segundo PR apenas para recertificar**:
+1. CI da PR e revisão humana do código exato, incluindo testes de contrato, negatividade de OIDC/token e scanner de segredos.
+2. **Autorização humana explícita** para publicar antecipadamente apenas o broker candidato da PR já revisada, cujo arquivo tem hash Git verificável, no Supabase projeto `fjplmxfcshhbmzgvyqlm`. A implantação Edge é uma ação de produção e não é autorizada por um simples "mergeado".
+3. Deploy do broker **antes do merge da PR**, verificação do código implantado, da nova rota negando requisições sem OIDC e da rota `/github-app/token` mantendo a proibição de `workflow_run`. Em falha, restaurar o broker anterior; não solicitar merge.
+4. **Merge humano da mesma PR** somente depois do deploy autorizado e verificado. O merge gera `validate push` fresh no SHA final da `main`; o `workflow_run` pós-CI first-attempt tem então a rota já ativa e pode registrar os 19 critérios sem outra PR/merge.
+5. Conferir no Supabase certificado durável `assessed_commit` igual ao commit da `main`, `ready=true` e 19/19; não alegar sucesso antes dessa consulta.
+
+O verificador de regressão atual exige que o upstream `validate` seja evento **`push` em `main`**, primeira tentativa. Um `workflow_dispatch` manual do `validate.yml` **não substitui** essa condição e não deve ser usado para contorná-la.
 
 Rollback: redeploy Edge Function anterior sem rota `read-only-compare`; os trabalhos de certificação B4 ficarão fail-closed em `missing`, e o certificado 18/19 ficará preservado. O runtime normal da Factory, repositórios dos clientes e as tabelas de controle não sofrem mudanças. Nenhuma migration, token persistido, custo de modelo ou benchmark.
 
