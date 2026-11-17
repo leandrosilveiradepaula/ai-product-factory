@@ -164,6 +164,8 @@ class FailedPreviewCandidateTests(unittest.TestCase):
         self.assertIn("from public,anon,authenticated",text)
         self.assertIn("old_evidence_preserved",text)
         self.assertIn("new_specialist_approval_required",text)
+        self.assertIn("finished_at=null",text)
+        self.assertIn("status=\'integrated\'",text)
         self.assertNotIn("status='merged'",text)
         self.assertNotIn("set status='released'",text)
 

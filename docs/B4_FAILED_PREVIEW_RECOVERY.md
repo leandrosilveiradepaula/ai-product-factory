@@ -18,7 +18,7 @@ The code in \`failed_preview_candidate.py\` and the versioned migration \`202611
 /factory-reconcile-failed-preview run=3e747d9d-2440-4e78-8db0-55461753954e pr=2
 \`\`\`
 
-4. A successful receipt may only restore the original failed run to \`ci_pending\`, rebind its Change Set SHA and restore the already-integrated task to \`completed\`. Historical browser FAIL, release DoD blocker and prior specialist reviews remain immutable, and new SHA reviews/gates are required.
+4. A successful receipt may only restore the original failed run to \`ci_pending\`, rebind its Change Set SHA and restore the already-integrated task to \`integrated\`. Historical browser FAIL, prior terminal timestamp (preserved in recovery metadata), release DoD blocker and prior specialist reviews remain preserved. The active run clears finished_at for CI requeue, and new SHA reviews/gates are required.
 5. Let the existing deterministic \`runtime_cli --mode ci\`, specialist workers and Preview observer re-run. A new browser witness and verified DoD must precede \`awaiting_release\`; no human release gate is bypassed.
 6. After Preview, QA, migration-validation and rollback-analysis pass on the latest SHA, request a **human** merge of Studio PR #2. The Factory release observer alone registers that merge and subsequent operation. Run the readiness certifier only after the full current-SHA chain is present.
 

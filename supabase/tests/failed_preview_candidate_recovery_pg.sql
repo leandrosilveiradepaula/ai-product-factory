@@ -38,6 +38,10 @@ insert into public.factory_runs values(
 '41e26b1fbaa80d44ff0e43f4d019af8ce2226ea6',
 'factory/change-set-0bccb423',null,null,null,
 '{"source":"change-set","change_set_id":"0bccb423-cacb-49fa-b238-c8baba27e372","execution_generation":"1"}');
+-- Terminal timestamp must be preserved as evidence, then cleared for live CI requeue.
+alter table public.factory_runs add column finished_at timestamptz;
+update public.factory_runs set finished_at='2026-11-17T03:02:12+00'
+ where id='3e747d9d-2440-4e78-8db0-55461753954e';
 insert into public.factory_release_reports(run_id,project_id,status,report) values(
 '3e747d9d-2440-4e78-8db0-55461753954e',
 '19f0f200-3777-46c6-969a-acf0d3426ff1','blocked',
@@ -122,8 +126,15 @@ begin
     or result->>'old_evidence_preserved'<>'true'
  then raise exception 'invalid atomic recovery receipt';end if;
  if (select status from public.factory_tasks where id=
-   '62fa220a-565e-4932-a05a-8c318add316d')<>'completed'
+   '62fa220a-565e-4932-a05a-8c318add316d')<>'integrated'
  then raise exception 'original integration task not restored';end if;
+ if (select finished_at from public.factory_runs where id=
+   '3e747d9d-2440-4e78-8db0-55461753954e') is not null
+ then raise exception 'terminal timestamp not cleared for CI requeue';end if;
+ if (select metadata #>> '{failed_preview_recovery_v1,previous_finished_at}' from public.factory_runs
+    where id='3e747d9d-2440-4e78-8db0-55461753954e')
+    not like '2026-11-17%'
+ then raise exception 'terminal timestamp provenance missing';end if;
  if (select candidate_commit from public.factory_change_sets where id=
    '0bccb423-cacb-49fa-b238-c8baba27e372')<>'9290634e647a381712b4b1b5bbd1ba0159969ff1'
  then raise exception 'change set SHA not reconciled';end if;

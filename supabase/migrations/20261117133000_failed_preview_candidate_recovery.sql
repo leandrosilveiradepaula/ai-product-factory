@@ -187,11 +187,12 @@ begin
  end if;
 
  update public.factory_runs
- set status='ci_pending',candidate_commit=p_new_commit,last_error=null,
+ set status='ci_pending',candidate_commit=p_new_commit,finished_at=null,last_error=null,
      metadata=metadata||jsonb_build_object('failed_preview_recovery_v1',
        jsonb_build_object('previous_commit',p_previous_commit,
          'candidate_commit',p_new_commit,
          'original_failure_preserved',true,
+         'previous_finished_at',v_run.finished_at,
          'browser_snapshot_id',v_browser.id,
          'new_specialists_required',true,
          'release_authorized',false,'recovery_at',now()))
@@ -210,7 +211,7 @@ begin
  if not found then raise exception 'Change Set changed during recovery' using errcode='PT409';end if;
  -- The code was integrated successfully before the PREVIEW failed; do not
  -- re-run Product/Start. Only the CI+specialist+Preview delivery stage resumes.
- update public.factory_tasks set status='completed',updated_at=now()
+ update public.factory_tasks set status='integrated',updated_at=now()
  where id=v_set.root_task_id and status='failed';
  if not found then raise exception 'root task changed during recovery' using errcode='PT409';end if;
 
