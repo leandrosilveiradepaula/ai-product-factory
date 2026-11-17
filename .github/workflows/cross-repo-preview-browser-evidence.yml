@@ -192,6 +192,23 @@ jobs:
                       if match:
                           preview_url="https://"+match.group(1)
                           break
+              # Vercel's Git integration can publish only an exact-SHA commit
+              # status plus its authenticated bot PR comment, with NO check run.
+              # Resolve the Preview only when both provider-owned records bind
+              # the same deployment/PR and the candidate SHA is still current.
+              if ready and not preview_url:
+                  from ai_product_factory.verified_vercel_bot_preview import (
+                      resolve_verified_vercel_bot_preview,
+                  )
+                  pulls=get(f"/repos/{repository}/commits/{sha}/pulls")
+                  if not isinstance(pulls,list) or len(pulls)>10:
+                      raise SystemExit("candidate PR inventory unbounded or malformed")
+                  if len(pulls)==1 and type(pulls[0].get("number")) is int:
+                      comments=get(f"/repos/{repository}/issues/{pulls[0]['number']}/comments?per_page=100")
+                      preview_url=resolve_verified_vercel_bot_preview(
+                          repository=repository,candidate_sha=sha,
+                          pulls=pulls,statuses=statuses,comments=comments,
+                      )
               if preview_url:
                   break
               time.sleep(5)
