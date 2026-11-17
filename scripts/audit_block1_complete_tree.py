@@ -27,7 +27,7 @@ CI_SCANNER = Path("/tmp/gitleaks-8.24.3/gitleaks")
 # UUIDs, explicitly invalid test token), pinned to immutable Git blob OIDs.
 # A new finding, changed file blob, line or rule must fail closed.
 REVIEWED_FIXTURE_FINDINGS = frozenset({
-    ("supabase/functions/factory-runtime-control-plane/index.ts", 147, ("private", "key"), ("7dfa1", "d7c52", "a901a", "45099", "eb503", "c3c01", "96472", "2ea85")),
+    ("supabase/functions/factory-runtime-control-plane/index.ts", 146, ("private", "key"), ("7dfa1", "d7c52", "a901a", "45099", "eb503", "c3c01", "96472", "2ea85")),
     ("tests/test_reconciled_candidate_delivery.py", 63, ("generic", "api", "key"), ("aa846", "a7db5", "69425", "2f362", "9ebf9", "665c3", "54080", "81bab")),
     ("tests/test_reconciled_candidate_delivery.py", 82, ("generic", "api", "key"), ("aa846", "a7db5", "69425", "2f362", "9ebf9", "665c3", "54080", "81bab")),
     ("tests/test_repair_runtime.py", 12, ("generic", "api", "key"), ("c8cbe", "b7fd7", "0f0d1", "33b25", "9d40c", "b519a", "6db9c", "88ebd")),
