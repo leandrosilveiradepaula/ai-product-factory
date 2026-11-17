@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from ai_product_factory.failed_preview_candidate import (
     reconcile_failed_preview_candidate,
@@ -18,6 +19,7 @@ CS="0bccb423-cacb-49fa-b238-c8baba27e372"
 TASK="62fa220a-565e-4932-a05a-8c318add316d"
 PROJECT="19f0f200-3777-46c6-969a-acf0d3426ff1"
 REPO="leandrosilveiradepaula/dark-channel-studio"
+FACTORY_REPO="leandrosilveiradepaula/ai-product-factory"
 BRANCH="factory/change-set-0bccb423"
 URL="https://dark-channel-studio-git-facto-431794-leandros-projects-102e32ab.vercel.app"
 BROWSER_RUN=44088733294
@@ -146,6 +148,28 @@ class FailedPreviewCandidateTests(unittest.TestCase):
                 with self.assertRaises(BlockedCandidateRecoveryDenied):
                     reconcile_failed_preview_candidate(**args)
                 self.assertEqual(store.calls,[])
+
+    def test_real_entrypoint_constructs_both_production_github_adapters(self):
+        # Prior regression: the mocked tests passed, but the actual CLI used
+        # GithubRestAdapter (undefined) instead of GitHubRestAdapter.
+        store,args=self.run_case()
+        args.pop("github_factory")
+        args.pop("factory_github")
+        factory=MockGithub(False)
+        target=MockGithub()
+        constructors=[]
+        def construct(*,repository):
+            constructors.append(repository)
+            if repository==FACTORY_REPO:
+                return factory
+            self.assertEqual(repository,REPO)
+            return target
+        with patch("ai_product_factory.failed_preview_candidate.GitHubRestAdapter",
+                   side_effect=construct):
+            result=reconcile_failed_preview_candidate(**args)
+        self.assertEqual(result["status"],"ci_pending")
+        self.assertEqual(constructors,[FACTORY_REPO,REPO])
+        self.assertEqual(len(store.calls),1)
 
     def test_incomplete_native_ci_blocks_recovery(self):
         for ci in [{"source":"github_actions_checks","workflows":1,"completed_native_checks":1},
