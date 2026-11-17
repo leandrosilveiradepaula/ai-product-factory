@@ -7,6 +7,7 @@ must leave the entire independent B4 criterion unverified.
 """
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 
@@ -19,10 +20,30 @@ TARGET_COMPARE = re.compile(
 )
 
 
+
+def resolve_b4_cross_repo_token(repository: str) -> str:
+    """Select explicitly delegated cross-repo reads on authenticated CI events.
+
+    The GitHub App installation-token broker intentionally rejects workflow_run
+    events. The post-validate certifier is a workflow_run and cannot ask that
+    privileged broker for a token. Its repository secret already carries the
+    explicitly authorized cross-repo credential. Use ONLY that credential in
+    this context; never try the Actions token, App broker, or a guessed token.
+    All other event types use the existing supported GitHub authorization path.
+    """
+    if (os.getenv("GITHUB_ACTIONS", "").strip().lower() == "true"
+            and os.getenv("GITHUB_EVENT_NAME", "").strip() == "workflow_run"):
+        token = os.getenv("FACTORY_GITHUB_TOKEN", "").strip()
+        if not token:
+            raise PermissionError("b4_explicit_cross_repo_credential_required")
+        return token
+    return resolve_github_token(repository)
+
+
 def cross_repo_b4_reader(
     *, factory_repository: str,
     github_read: Callable[[str, str], object],
-    token_resolver: Callable[[str], str] = resolve_github_token,
+    token_resolver: Callable[[str], str] = resolve_b4_cross_repo_token,
 ) -> Callable[[str], object]:
     """Return a narrowly scoped, non-caching cross-repo GitHub compare reader.
 

@@ -1,7 +1,9 @@
 """Cross-repo B4 GitHub provenance is explicit, narrow, read-only and fail-closed."""
 import unittest
 
-from ai_product_factory.cross_repo_b4_read import cross_repo_b4_reader
+from unittest.mock import patch
+
+from ai_product_factory.cross_repo_b4_read import cross_repo_b4_reader, resolve_b4_cross_repo_token
 from ai_product_factory.bounded_github_evidence_read import GitHubEvidenceTransportBlocked
 
 FACTORY = "leandrosilveiradepaula/ai-product-factory"
@@ -26,6 +28,57 @@ class CrossRepoB4ReadTests(unittest.TestCase):
             ("resolve", STUDIO),
             ("get", "fake-target-credential", COMPARE),
         ])
+
+    def test_certifier_workflow_run_uses_explicit_cross_repo_credential_only(self):
+        calls = []
+        with patch.dict("os.environ", {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "workflow_run",
+            "GITHUB_REPOSITORY": FACTORY,
+            "GITHUB_TOKEN": "native-repo-token-cannot-read-private-repo",
+            "FACTORY_GITHUB_TOKEN": "explicit-private-read-credential",
+        }, clear=True):
+            with patch("ai_product_factory.cross_repo_b4_read.resolve_github_token",
+                       side_effect=AssertionError("GitHub App broker must not be used here")):
+                get = cross_repo_b4_reader(
+                    factory_repository=FACTORY,
+                    github_read=lambda token, path:
+                        calls.append((token, path)) or {"status": "ahead"},
+                )
+                self.assertEqual(get(COMPARE), {"status": "ahead"})
+        self.assertEqual(calls, [("explicit-private-read-credential", COMPARE)])
+
+    def test_certifier_workflow_run_without_explicit_secret_fails_closed(self):
+        for absent in ("", "  "):
+            with self.subTest(absent=repr(absent)):
+                with patch.dict("os.environ", {
+                    "GITHUB_ACTIONS": "true",
+                    "GITHUB_EVENT_NAME": "workflow_run",
+                    "GITHUB_REPOSITORY": FACTORY,
+                    "GITHUB_TOKEN": "native-repo-token-not-allowed",
+                    "FACTORY_GITHUB_TOKEN": absent,
+                }, clear=True):
+                    with patch("ai_product_factory.cross_repo_b4_read.resolve_github_token",
+                               side_effect=AssertionError("no App broker fallback permitted")):
+                        get = cross_repo_b4_reader(factory_repository=FACTORY,
+                            github_read=lambda *_: self.fail("network called"))
+                        with self.assertRaisesRegex(
+                            PermissionError, "^b4_explicit_cross_repo_credential_required$"
+                        ):
+                            get(COMPARE)
+
+    def test_non_certifier_uses_existing_supported_resolver(self):
+        with patch.dict("os.environ", {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_TOKEN": "native",
+            "FACTORY_GITHUB_TOKEN": "explicit",
+        }, clear=True):
+            with patch("ai_product_factory.cross_repo_b4_read.resolve_github_token",
+                       return_value="verified-github-app-token") as original:
+                self.assertEqual(resolve_b4_cross_repo_token(STUDIO),
+                                 "verified-github-app-token")
+                original.assert_called_once_with(STUDIO)
 
     def test_denies_non_compare_and_current_factory_without_token_resolution(self):
         calls = []
