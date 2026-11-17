@@ -114,6 +114,7 @@ class Fixture:
         return verify_b4_greenfield_e2e(
             repository=FACTORY,assessed_commit=SHA,
             github_get=self.github,control_plane_get=self.cp,
+            cross_repo_get=self.github,
         )
 
 
