@@ -568,8 +568,20 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
                 cross_repo_get=cross_repo_b4_reader(
                     factory_repository=repository, github_read=github_read),
             )
-        except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
-                OSError, KeyError, TypeError, UnicodeError):
+        except B4GreenfieldE2EBlocked as exc:
+            # Only fixed built-in codes, never exception details, private URLs,
+            # token fragments or provider payloads, may enter the manifest.
+            code = str(exc)
+            if not re.fullmatch(r"b4_[a-z0-9_]{1,96}", code):
+                code = "b4_independent_source_unavailable"
+            manifest["criteria"]["test_strategy"]["critical_e2e"]["reason"] = (
+                "independent B4 source blocked: " + code
+            )
+            greenfield_e2e_proof = None
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError, UnicodeError):
+            manifest["criteria"]["test_strategy"]["critical_e2e"]["reason"] = (
+                "independent B4 source blocked: b4_independent_source_unavailable"
+            )
             greenfield_e2e_proof = None
         if greenfield_e2e_proof is not None:
             manifest["criteria"]["test_strategy"]["critical_e2e"].update(
