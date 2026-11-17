@@ -93,6 +93,70 @@ grant usage on schema public to authenticated;
                 if expected_clean:self.assertNotIn("public_rls_policy",codes)
                 else:self.assertIn("public_rls_policy",codes)
 
+    def test_authenticated_invoker_rpc_with_explicit_revocation_and_tenant_rls(self):
+        # A real REST RPC grant is necessary for an end-user JWT, and may
+        # be safe only with invoker+empty search_path+full tenant RLS.
+        text="""
+        create table public.tenant_items(id uuid,user_id uuid);
+        alter table public.tenant_items enable row level security;
+        alter table public.tenant_items force row level security;
+        create policy owner_items on public.tenant_items for select
+        to authenticated using (user_id=(select auth.uid()));
+        create or replace function public.read_items(p_id uuid)
+        returns boolean language plpgsql security invoker set search_path='' as $scope$
+        begin
+          return exists(select 1 from public.tenant_items
+            where id=p_id and user_id=(select auth.uid()));
+        end;
+        $scope$;
+        revoke all on function public.read_items(uuid) from public,anon;
+        grant execute on function public.read_items(uuid) to authenticated;
+        """
+        out=scan("supabase/migrations/scoped_rpc.sql",text)
+        self.assertEqual(out.evidence["blocking_findings"],0,out.findings)
+        self.assertNotIn("permissive_public_grant",{x["code"] for x in out.findings})
+
+    def test_public_or_unbounded_rpc_grants_never_become_safe(self):
+        base="""
+        alter table public.tenant_items enable row level security;
+        alter table public.tenant_items force row level security;
+        create policy owner_items on public.tenant_items for select
+          to authenticated using (user_id=(select auth.uid()));
+        create or replace function public.read_items(p_id uuid)
+        returns boolean language plpgsql security invoker set search_path='' as $scope$
+        begin
+          return exists(select 1 from public.tenant_items
+            where user_id=(select auth.uid()));
+        end;
+        $scope$;
+        revoke all on function public.read_items(uuid) from public,anon;
+        grant execute on function public.read_items(uuid) to authenticated;
+        """
+        bad=[
+            base.replace("security invoker","security definer"),
+            base.replace("set search_path=''","set search_path='public'"),
+            base.replace("revoke all on function public.read_items(uuid) from public,anon;",""),
+            base.replace("force row level security;","disable row level security;"),
+            base.replace("enable row level security;",""),
+            base.replace("using (user_id=(select auth.uid()))","using (true)"),
+            base.replace("to authenticated;\n", "to anon;\n"),
+            base.replace("grant execute on function public.read_items(uuid)",
+                         "grant all on function public.read_items(uuid)"),
+            base.replace("where user_id=(select auth.uid())",
+                         "where id=p_id from public.unscoped_data"),
+            base.replace("security invoker set search_path='' as $scope$",
+                         "security invoker set search_path='' as $scope$\n"
+                         "execute 'delete from public.tenant_items';"),
+            base.replace("revoke all on function public.read_items(uuid)",
+                         "revoke all on function public.other_items(uuid)"),
+        ]
+        for idx,fragment in enumerate(bad):
+            with self.subTest(case=idx):
+                out=scan("supabase/migrations/scope.sql",fragment)
+                self.assertGreater(out.evidence["blocking_findings"],0)
+                self.assertIn("permissive_public_grant",
+                              {x["code"] for x in out.findings})
+
     def test_unsafe_grants_and_missing_rls_fail_closed(self):
         for sql in [
             "grant select on public.studio_projects to anon;",

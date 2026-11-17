@@ -48,6 +48,84 @@ def _finding(code:str,severity:str,message:str,path:str,*,scope_keys:Iterable[st
 
 
 
+def _bounded_authenticated_invoker_grant(target:str, added:str)->bool:
+    """Accept an authenticated EXECUTE grant only with complete RLS evidence.
+
+    A published, explicitly revocable SECURITY INVOKER function runs as the
+    authenticated end-user, so the referenced tables' strict RLS is authoritative.
+    This *static* classifier is not the PostgreSQL QA or release authorization.
+    Missing declaration, signature, revoke, body, tenant policy or FORCE RLS
+    denies the grant. In particular SECURITY DEFINER is never accepted here.
+    """
+    match=re.fullmatch(
+        r"function\s+public\.([a-z_][a-z0-9_]*)\s*\(\s*([a-z_,\s]*)\s*\)",
+        target,re.I|re.S,
+    )
+    if match is None:return False
+    name=match.group(1).lower()
+    signature=",".join(x.strip().lower() for x in match.group(2).split(","))
+    if not signature or not all(
+        x in {"uuid","text","integer","bigint","boolean","jsonb"}
+        for x in signature.split(",")
+    ):return False
+    clean=re.sub(r"/\*[\s\S]*?\*/|--[^\n]*","",added)
+    compact=re.sub(r"\s+","",clean.lower())
+    if f"revokeallonfunctionpublic.{name}({signature})frompublic,anon;" not in compact:
+        return False
+    # Require the exact declaration in the added diff, not a claim in a
+    # comment, and not a similarly named function or a different signature.
+    decl=re.search(
+        r"\bcreate\s+(?:or\s+replace\s+)?function\s+public\."
+        +re.escape(name)+r"\s*\(([^)]*)\)\s+returns\s+[a-z_][a-z0-9_]*"
+        +r"\s+language\s+plpgsql\s+security\s+invoker"
+        +r"\s+set\s+search_path\s*=\s*''\s+as\s+\$([a-z_][a-z0-9_]*)\$",
+        clean,re.I|re.S,
+    )
+    if decl is None:return False
+    declared_types=[]
+    for arg in decl.group(1).split(","):
+        tokens=arg.strip().lower().split()
+        if len(tokens)!=2:return False
+        declared_types.append(tokens[1])
+    if ",".join(declared_types)!=signature:return False
+    tag=decl.group(2)
+    closing=re.search(r"\$"+re.escape(tag)+r"\$\s*;",clean[decl.end():],re.I)
+    if closing is None:return False
+    body=clean[decl.end():decl.end()+closing.start()]
+    if re.search(
+        r"\b(?:execute|security\s+definer|set\s+role|grant|revoke|"
+        r"create\s+role|alter\s+role|drop\s+table|truncate)\b",
+        body,re.I,
+    ):return False
+    # Every directly accessed relation must be protected by both ENABLE
+    # and FORCE RLS, with an actual end-user/tenant-scoped policy included
+    # in this reviewable SQL diff. An invoker cannot silently bypass them.
+    tables=set(x.lower() for x in re.findall(
+        r"\b(?:from|join|update|into|delete\s+from)\s+public\.([a-z_][a-z0-9_]*)\b",
+        body,re.I,
+    ))
+    if not tables:return False
+    statements=[x.strip() for x in clean.split(";")]
+    for table in tables:
+        for verb in ("enable","force"):
+            if not re.search(
+                r"\balter\s+table\s+public\."+re.escape(table)
+                +r"\s+"+verb+r"\s+row\s+level\s+security\b",
+                clean,re.I,
+            ):return False
+        if not any(
+            re.search(r"\bcreate\s+policy\s+[a-z_][a-z0-9_]*\s+on\s+public\."
+                      +re.escape(table)+r"\b",stmt,re.I)
+            and re.search(r"\bto\s+authenticated\b",stmt,re.I)
+            and re.search(r"\bauth\.uid\s*\(",stmt,re.I)
+            and re.search(r"\b(?:user_id|owner_id|created_by|actor_id|organization_id)\b",
+                          stmt,re.I)
+            and re.search(r"\b(?:using|with\s+check)\s*\(",stmt,re.I)
+            for stmt in statements
+        ):return False
+    return True
+
+
 def _sql_security_findings(path:str,added:str)->list[dict]:
     """Block broad SQL access, allow only reviewable tenant-scoped authenticated RLS.
 
@@ -96,6 +174,8 @@ def _sql_security_findings(path:str,added:str)->list[dict]:
             if role=="authenticated" and not re.search(r"\ball\b",rights):
                 if target=="function auth.uid()":
                     safe=True
+                elif target.startswith("function public."):
+                    safe=rights.strip()=="execute" and _bounded_authenticated_invoker_grant(target,added)
                 else:
                     tables=re.findall(r"\bpublic\.([a-z_][a-z0-9_]*)\b",target,re.I)
                     safe=bool(tables) and "function" not in target
