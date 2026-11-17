@@ -59,6 +59,9 @@ from trace_block1_requirements import verify_requirements_inventory
 from ai_product_factory.readiness_prewrite_guard import require_monotonic_before_write
 from ai_product_factory.visual_ci_source_bridge import bind_exact_ci_source
 from ai_product_factory.bounded_github_evidence_read import bounded_github_evidence_read
+from ai_product_factory.cross_repo_b4_read import cross_repo_b4_reader
+from ai_product_factory.github_auth import resolve_github_token
+from ai_product_factory.existing_project_github_inventory import _get as scoped_github_read
 from ai_product_factory.product_readiness_certification import _source_snapshot
 
 
@@ -525,6 +528,10 @@ def main(argv: list[str] | None = None) -> int:
                 assessed_commit=args.assessed_commit,
                 github_get=github_get,
                 control_plane_get=SupabaseAdmissionReader()._get,
+                cross_repo_get=cross_repo_b4_reader(
+                    factory_repository=args.repository,
+                    github_read=scoped_github_read,
+                ),
             )
         except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
                 OSError, KeyError, TypeError, UnicodeError):

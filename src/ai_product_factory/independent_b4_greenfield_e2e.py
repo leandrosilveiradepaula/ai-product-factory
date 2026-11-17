@@ -210,11 +210,16 @@ def _non_runtime_file(path: object) -> bool:
     return False
 
 
-def _verify_non_runtime_ancestor(*, github_get, target_repo: str,
+def _verify_non_runtime_ancestor(*, cross_repo_get, target_repo: str,
                                  predecessor: str, current: str) -> None:
     require(_sha(predecessor) and _sha(current) and predecessor != current,
             "b4_browser_witness_ancestor_invalid")
-    comparison = _gh(github_get, "/repos/" + target_repo + "/compare/"
+    # The Factory's GITHUB_TOKEN cannot read a private product repository.
+    # This path MUST use the explicitly configured cross-repo read credential,
+    # not silently fall back to the single-repo GitHub Actions token.
+    require(callable(cross_repo_get) and REPO.fullmatch(target_repo) is not None,
+            "b4_explicit_cross_repo_reader_required")
+    comparison = _gh(cross_repo_get, "/repos/" + target_repo + "/compare/"
                      + predecessor + "..." + current)
     files = comparison.get("files")
     ahead = comparison.get("ahead_by")
@@ -268,7 +273,8 @@ def _select_browser_wave(*, evaluations: list[dict], audit: list[dict],
 
 
 def verify_b4_greenfield_e2e(*, repository: str, assessed_commit: str,
-                             github_get, control_plane_get) -> VerifiedGreenfieldE2E:
+                             github_get, control_plane_get,
+                             cross_repo_get=None) -> VerifiedGreenfieldE2E:
     """Promote only executed critical_e2e; never infer critical_journeys.
 
     A positive proof needs a human-decided project, real multi-wave Change Set,
@@ -292,6 +298,7 @@ def verify_b4_greenfield_e2e(*, repository: str, assessed_commit: str,
             valid.append(_verify_project(
                 project, repository=repository, assessed_commit=assessed_commit,
                 github_get=github_get, cp=control_plane_get,
+                cross_repo_get=cross_repo_get,
             ))
         except (B4GreenfieldE2EBlocked, KeyError, TypeError, ValueError) as exc:
             reasons.append(type(exc).__name__)
@@ -300,7 +307,7 @@ def verify_b4_greenfield_e2e(*, repository: str, assessed_commit: str,
 
 
 def _verify_project(project: dict, *, repository: str, assessed_commit: str,
-                    github_get, cp) -> VerifiedGreenfieldE2E:
+                    github_get, cp, cross_repo_get=None) -> VerifiedGreenfieldE2E:
     pid = project.get("id")
     target = project.get("repository")
     manifest = project.get("manifest")
@@ -339,7 +346,7 @@ def _verify_project(project: dict, *, repository: str, assessed_commit: str,
             verified.append(_verify_changeset(
                 project_id=pid, target_repo=target, cs=cs, cp=cp,
                 repository=repository, assessed_commit=assessed_commit,
-                github_get=github_get,
+                github_get=github_get, cross_repo_get=cross_repo_get,
             ))
         except (B4GreenfieldE2EBlocked, KeyError, ValueError, TypeError):
             continue
@@ -349,7 +356,7 @@ def _verify_project(project: dict, *, repository: str, assessed_commit: str,
 
 def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
                       cp, repository: str, assessed_commit: str,
-                      github_get) -> VerifiedGreenfieldE2E:
+                      github_get, cross_repo_get=None) -> VerifiedGreenfieldE2E:
     csid = cs.get("id")
     rid = cs.get("release_run_id")
     sha = cs.get("candidate_commit")
@@ -528,7 +535,7 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
                          or a["payload"].get("original_browser_failure_preserved") is True)
                     for a in audit),
                 "b4_ancestral_witness_recovery_audit_missing")
-        _verify_non_runtime_ancestor(github_get=github_get,
+        _verify_non_runtime_ancestor(cross_repo_get=cross_repo_get,
                                      target_repo=target_repo,
                                      predecessor=predecessor,
                                      current=sha)

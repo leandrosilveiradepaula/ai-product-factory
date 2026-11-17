@@ -1916,6 +1916,9 @@ jobs:
       # Script entrypoints import ai_product_factory from src and scripts from the repository root.
       PYTHONPATH: src:.
       GITHUB_TOKEN: ${{ github.token }}
+      # Explicit cross-repo scope is required for private product SHA ancestry.
+      # This token never goes to checkout, browser or generated application code.
+      FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
       AUTHENTICATED_CONSOLE_RUN_ID: ${{ github.event.workflow_run.name == 'Authenticated Console visual evidence' && github.event.workflow_run.id || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

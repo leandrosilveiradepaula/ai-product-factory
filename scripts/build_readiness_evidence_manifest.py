@@ -16,6 +16,7 @@ from pathlib import Path
 
 from ai_product_factory.existing_project_github_inventory import _get as github_read
 from ai_product_factory.github_auth import resolve_github_token
+from ai_product_factory.cross_repo_b4_read import cross_repo_b4_reader
 from ai_product_factory.product_readiness_certification import (
     certify_product_readiness,
     conservative_verified_manifest,
@@ -564,6 +565,8 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
             greenfield_e2e_proof = verify_b4_greenfield_e2e(
                 repository=repository, assessed_commit=sha,
                 github_get=github_get, control_plane_get=control_plane_get,
+                cross_repo_get=cross_repo_b4_reader(
+                    factory_repository=repository, github_read=github_read),
             )
         except (B4GreenfieldE2EBlocked, ValueError, RuntimeError,
                 OSError, KeyError, TypeError, UnicodeError):
