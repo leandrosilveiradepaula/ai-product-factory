@@ -316,5 +316,111 @@ class B4FullJourneyReleaseGate(unittest.TestCase):
                     )
 
 
+
+def released_multiwave_fixture():
+    """A real original browser witness survives ONLY offline test/doc changes."""
+    fixture=released_fixture()
+    previous="e"*40
+    fixture.tables["factory_project_state_snapshots"][0]["evidence"]["candidate_commit"]=previous
+    fixture.tables["factory_evaluations"][-1]["created_at"]="2026-11-17T16:31:01Z"
+    fixture.tables["factory_evaluations"].append({
+        "id":"historical-browser-pass",
+        "eval_type":"browser_e2e","status":"success",
+        "baseline_ref":URL,"created_at":"2026-11-17T15:52:56Z",
+        "result":{"checks":["page_load","http_status","body_visible",
+                            "expected_text","console_clean"],
+                  "detail":None,"preview_url":URL},
+    })
+    fixture.tables["factory_audit_events"][0]["created_at"]="2026-11-17T16:31:02Z"
+    fixture.tables["factory_audit_events"][1].update(
+        event_type="preview.failed_candidate.reconciled",
+        created_at="2026-11-17T15:50:00Z",
+        payload={"candidate_commit":previous,"release_authorized":False,
+                 "historical_failures_preserved":True,
+                 "browser_snapshot_id":SNAP,"change_set_id":CSID,"pr_number":42},
+    )
+    fixture.tables["factory_audit_events"].append({
+        "id":5,"event_type":"change_set.blocked_release_candidate.reconciled",
+        "created_at":"2026-11-17T16:24:53Z",
+        "payload":{"candidate_commit":CANDIDATE,"previous_commit":previous,
+                   "change_set_id":CSID,"pr_number":42,
+                   "release_authorized":False,"old_evidence_preserved":True,
+                   "new_browser_evidence_required":True},
+    })
+    fixture.gh["/repos/"+TARGET+"/compare/"+previous+"..."+CANDIDATE]={
+        "status":"ahead","behind_by":0,"ahead_by":2,"total_commits":2,
+        "files":[{"filename":".github/workflows/validate.yml","status":"modified"},
+                 {"filename":"docs/OPERATIONS.md","status":"modified"},
+                 {"filename":"scripts/verify_migration_recovery.sh","status":"added"}],
+    }
+    return fixture
+
+
+class B4StrictPostReleaseMultiwaveWitness(unittest.TestCase):
+    def test_real_browser_recovery_plus_later_offline_validation_sha_is_not_fake(self):
+        fixture=released_multiwave_fixture()
+        proof=fixture.verify()
+        self.assertEqual(proof.candidate_commit,CANDIDATE)
+        self.assertEqual(proof.witness_candidate_commit,"e"*40)
+        self.assertTrue(proof.non_runtime_witness_inherited)
+        receipt=proof.receipt()
+        self.assertFalse(receipt["exact_candidate_snapshot"])
+        self.assertTrue(receipt["non_runtime_ancestry_independently_verified"])
+        self.assertFalse(receipt["greenfield_product_ready_inferred"])
+        result=verify_b4_critical_journeys(
+            e2e=proof,crm_traceability=verified_crm(),
+            control_plane_get=fixture.cp,
+        )
+        self.assertTrue(result.retained_receipt["human_release_observed"])
+        self.assertTrue(result.retained_receipt["operations_observed"])
+
+    def test_runtime_change_stale_browser_and_forged_receipts_fail_closed(self):
+        previous="e"*40
+        endpoint="/repos/"+TARGET+"/compare/"+previous+"..."+CANDIDATE
+        mutations=[
+          lambda f:f.gh[endpoint].update(files=[
+              {"filename":"app/server.js","status":"modified"}]),
+          lambda f:f.gh[endpoint].update(behind_by=1),
+          lambda f:f.gh[endpoint].update(total_commits=100),
+          lambda f:f.gh[endpoint].update(files=[]),
+          lambda f:f.gh[endpoint].update(files=[
+              {"filename":"supabase/migrations/20261117010100.sql","status":"modified"}]),
+          lambda f:f.gh[endpoint].update(files=[
+              {"filename":"scripts/verify_but_runtime.ts","status":"modified"}]),
+          lambda f:f.tables["factory_audit_events"][1]["payload"].update(
+              browser_snapshot_id="00000000-0000-0000-0000-000000000000"),
+          lambda f:f.tables["factory_audit_events"][1]["payload"].update(
+              historical_failures_preserved=False),
+          lambda f:f.tables["factory_audit_events"][-1]["payload"].update(
+              old_evidence_preserved=False),
+          lambda f:f.tables["factory_audit_events"][-1]["payload"].update(
+              new_browser_evidence_required=False),
+          lambda f:f.tables["factory_audit_events"][-1]["payload"].update(
+              previous_commit="f"*40),
+          lambda f:f.tables["factory_evaluations"][-2].update(
+              created_at="2026-11-17T15:50:01Z"),
+          lambda f:f.tables["factory_audit_events"][0].update(
+              created_at="2026-11-17T15:50:01Z"),
+          lambda f:f.tables["factory_evaluations"].append({
+              **f.tables["factory_evaluations"][-2],
+              "id":"unauthorized-duplicate-later-success"}),
+        ]
+        for idx,mutate in enumerate(mutations):
+            with self.subTest(case=idx):
+                fixture=released_multiwave_fixture()
+                mutate(fixture)
+                with self.assertRaises(B4GreenfieldE2EBlocked):
+                    fixture.verify()
+
+    def test_first_candidate_does_not_inherit_without_reconcile(self):
+        fixture=released_multiwave_fixture()
+        fixture.tables["factory_audit_events"]=[
+            a for a in fixture.tables["factory_audit_events"]
+            if a.get("event_type")!="change_set.blocked_release_candidate.reconciled"]
+        with self.assertRaises(B4GreenfieldE2EBlocked):
+            fixture.verify()
+
+
+
 if __name__=="__main__":
     unittest.main()

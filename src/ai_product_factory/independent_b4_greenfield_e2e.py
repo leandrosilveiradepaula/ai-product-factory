@@ -8,6 +8,7 @@ authorized; critical_journeys remains a distinct, stricter criterion.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import quote
 import re
 
@@ -80,6 +81,8 @@ class VerifiedGreenfieldE2E:
     preview_url: str
     source_factory_sha: str
     checks: tuple[str, ...]
+    witness_candidate_commit: str = ""
+    non_runtime_witness_inherited: bool = False
 
     def receipt(self) -> dict:
         return {
@@ -93,6 +96,9 @@ class VerifiedGreenfieldE2E:
             "candidate_pr": self.original_pr,
             "independent_browser_run_id": self.browser_run_id,
             "independent_snapshot_id": self.visual_witness_id,
+            "snapshot_candidate_commit": self.witness_candidate_commit or self.candidate_commit,
+            "exact_candidate_snapshot": not self.non_runtime_witness_inherited,
+            "non_runtime_ancestry_independently_verified": self.non_runtime_witness_inherited,
             "source_factory_commit": self.source_factory_sha,
             "verified_checks": list(self.checks),
             "greenfield_product_ready_inferred": False,
@@ -166,6 +172,99 @@ def _validate_source_run(*, github_get, factory: str, assessed_commit: str,
                 and type(comparison.get("ahead_by")) is int
                 and 1 <= comparison["ahead_by"] <= 300,
                 "b4_browser_verifier_commit_not_ancestor")
+
+
+
+def _recorded_at(row: dict) -> float:
+    """Only control-plane timestamps qualify for same-wave evidence selection."""
+    value = row.get("created_at")
+    require(isinstance(value, str) and 12 <= len(value) <= 64,
+            "b4_browser_wave_timestamp_missing")
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise B4GreenfieldE2EBlocked("b4_browser_wave_timestamp_invalid") from exc
+    require(moment.tzinfo is not None, "b4_browser_wave_timestamp_unzoned")
+    return moment.timestamp()
+
+
+def _non_runtime_file(path: object) -> bool:
+    """Fail closed: documentation, test and offline CI proof files only.
+
+    Modifying any application, migration, dependency, deployment configuration
+    or unknown executable path requires a NEW independent browser snapshot.
+    """
+    if not isinstance(path, str) or not re.fullmatch(r"[A-Za-z0-9_.\-/]+", path):
+        return False
+    if path.startswith("/") or any(segment in (".", "..", "") for segment in path.split("/")):
+        return False
+    if path == "README.md" or (path.startswith("docs/") and path.endswith(".md")):
+        return True
+    if path in (".github/workflows/validate.yml", ".github/workflows/validate.yaml"):
+        return True
+    if path.startswith(("tests/", "supabase/tests/")):
+        return True
+    if path.startswith("scripts/"):
+        name = path.rsplit("/", 1)[-1]
+        return name.startswith(("verify_", "check_")) and name.endswith((".sh", ".py"))
+    return False
+
+
+def _verify_non_runtime_ancestor(*, github_get, target_repo: str,
+                                 predecessor: str, current: str) -> None:
+    require(_sha(predecessor) and _sha(current) and predecessor != current,
+            "b4_browser_witness_ancestor_invalid")
+    comparison = _gh(github_get, "/repos/" + target_repo + "/compare/"
+                     + predecessor + "..." + current)
+    files = comparison.get("files")
+    ahead = comparison.get("ahead_by")
+    require(comparison.get("status") == "ahead"
+            and comparison.get("behind_by") == 0
+            and type(ahead) is int and 1 <= ahead <= 25
+            and comparison.get("total_commits") == ahead
+            and comparison.get("truncated") is not True
+            and isinstance(files, list) and 1 <= len(files) <= 50,
+            "b4_browser_ancestor_compare_incomplete")
+    require(all(isinstance(row, dict)
+                and row.get("status") in ("added", "modified", "removed", "renamed")
+                and _non_runtime_file(row.get("filename"))
+                and (row.get("status") != "renamed"
+                     or _non_runtime_file(row.get("previous_filename")))
+                for row in files),
+            "b4_browser_witness_runtime_changed")
+
+
+def _select_browser_wave(*, evaluations: list[dict], audit: list[dict],
+                         candidate_commit: str) -> tuple[dict, dict | None]:
+    successes = [e for e in evaluations
+                 if e.get("eval_type") == "browser_e2e" and e.get("status") == "success"]
+    # The first release candidate can have a single successful evaluation.
+    # Recovery and multiwave journeys retain ALL older successful evaluations:
+    # never interpret their count as proof of a forged extra browser run.
+    if len(successes) == 1:
+        return successes[0], None
+    rebind = [a for a in audit
+              if a.get("event_type") == "change_set.blocked_release_candidate.reconciled"
+              and isinstance(a.get("payload"), dict)
+              and a["payload"].get("candidate_commit") == candidate_commit
+              and a["payload"].get("new_browser_evidence_required") is True
+              and a["payload"].get("old_evidence_preserved") is True
+              and a["payload"].get("release_authorized") is False]
+    require(len(rebind) == 1, "b4_current_wave_rebind_missing_or_ambiguous")
+    cutoff = _recorded_at(rebind[0])
+    current = [e for e in successes
+               if _recorded_at(e) > cutoff]
+    require(len(current) == 1, "b4_current_wave_browser_success_not_unique")
+    selected = current[0]
+    require(any(a.get("event_type") == "preview.browser_evidence_recorded"
+                and isinstance(a.get("payload"), dict)
+                and a["payload"].get("status") == "success"
+                and a["payload"].get("preview_url") == selected.get("baseline_ref")
+                and a["payload"].get("detail") is None
+                and _recorded_at(a) >= cutoff
+                and abs(_recorded_at(a) - _recorded_at(selected)) < 180
+                for a in audit), "b4_current_wave_browser_audit_missing")
+    return selected, rebind[0]
 
 
 def verify_b4_greenfield_e2e(*, repository: str, assessed_commit: str,
@@ -344,10 +443,13 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
     require(any(e.get("eval_type") == "browser_e2e"
                 and e.get("status") == "failure" for e in evals),
             "b4_recovery_negative_path_missing")
-    browser_success = [e for e in evals if e.get("eval_type") == "browser_e2e"
-                       and e.get("status") == "success"]
-    require(len(browser_success) == 1, "b4_browser_success_missing_or_ambiguous")
-    success = browser_success[0]
+    audit = _rows(cp, "factory_audit_events",
+        "id,event_type,payload,created_at"
+        "&run_id=eq." + quote(rid, safe="")
+        + "&order=created_at.desc&limit=70", max_rows=70)
+    success, current_wave = _select_browser_wave(
+        evaluations=evals, audit=audit, candidate_commit=sha,
+    )
     browser = success.get("result")
     require(isinstance(browser, dict)
             and browser.get("detail") is None
@@ -365,7 +467,7 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
         "id,project_id,observed_stage,run_id,evidence,source_status,constraints,created_at"
         "&project_id=eq." + quote(project_id, safe="")
         + "&observed_stage=eq.verification&order=created_at.desc&limit=30", max_rows=30)
-    candidate = []
+    verified_snapshots = []
     for snapshot in snapshots:
         evidence = snapshot.get("evidence")
         src = snapshot.get("source_status")
@@ -377,7 +479,7 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
         if (snapshot.get("project_id") == project_id
                 and _identity(snapshot.get("id"))
                 and snapshot.get("run_id") is None
-                and evidence.get("candidate_commit") == sha
+                and _sha(evidence.get("candidate_commit"))
                 and evidence.get("target_repository") == target_repo
                 and isinstance(preview, dict)
                 and preview.get("url") == url
@@ -388,9 +490,50 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
                 and src.get("browser_visual_validation") == "success"
                 and constraints.get("product_ready_inferred") is False
                 and constraints.get("production_merge_authorized") is False):
-            candidate.append(snapshot)
-    require(len(candidate) >= 1, "b4_separate_visual_witness_missing")
-    snapshot = candidate[0]
+            verified_snapshots.append(snapshot)
+    direct = [snap for snap in verified_snapshots
+              if snap["evidence"]["candidate_commit"] == sha]
+    inherited = False
+    witness_candidate = sha
+    if direct:
+        snapshot = direct[0]
+    else:
+        # A newer release candidate can change ONLY offline tests/docs/validation
+        # while still executing a fresh delivery browser_e2e evaluation.
+        # Reuse the first-party browser snapshot only across a signed,
+        # strictly verified non-runtime ancestry edge on the SAME Change Set.
+        require(current_wave is not None,
+                "b4_latest_candidate_independent_visual_witness_missing")
+        lineage = current_wave["payload"]
+        predecessor = lineage.get("previous_commit")
+        require(_sha(predecessor) and predecessor != sha
+                and lineage.get("change_set_id") == csid
+                and lineage.get("pr_number") == release["pr_number"],
+                "b4_browser_witness_rebind_provenance_invalid")
+        older = [snap for snap in verified_snapshots
+                 if snap["evidence"]["candidate_commit"] == predecessor]
+        require(len(older) >= 1,
+                "b4_independent_ancestral_visual_witness_missing")
+        snapshot = older[0]
+        require(any(a.get("event_type") in (
+                        "preview.failed_candidate.reconciled",
+                        "preview.oidc_origin_mismatch.browser_verified_resume",
+                        "preview.external_feedback.browser_verified_resume")
+                    and isinstance(a.get("payload"), dict)
+                    and a["payload"].get("candidate_commit") == predecessor
+                    and a["payload"].get("release_authorized") is False
+                    and a["payload"].get("browser_snapshot_id",
+                        a["payload"].get("snapshot_id")) == snapshot["id"]
+                    and (a["payload"].get("historical_failures_preserved") is True
+                         or a["payload"].get("original_browser_failure_preserved") is True)
+                    for a in audit),
+                "b4_ancestral_witness_recovery_audit_missing")
+        _verify_non_runtime_ancestor(github_get=github_get,
+                                     target_repo=target_repo,
+                                     predecessor=predecessor,
+                                     current=sha)
+        inherited = True
+        witness_candidate = predecessor
     visual = snapshot["evidence"]["preview"]
     witness_sha = visual.get("verifier_factory_commit")
     witness_run = visual.get("browser_verifier_run_id")
@@ -402,10 +545,6 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
     )
     # Failure and recovery remain immutable, and the newer successful
     # delivery-run evaluation is never forged by the one-shot recovery RPC.
-    audit = _rows(cp, "factory_audit_events",
-        "id,event_type,payload,created_at"
-        "&run_id=eq." + quote(rid, safe="")
-        + "&order=created_at.desc&limit=70", max_rows=70)
     require(any(a.get("event_type") == "preview.browser_evidence_recorded"
                 and isinstance(a.get("payload"), dict)
                 and a["payload"].get("status") == "success"
@@ -413,11 +552,19 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
                 for a in audit), "b4_real_browser_persistence_audit_missing")
     require(any(a.get("event_type")
                 in ("preview.oidc_origin_mismatch.browser_verified_resume",
-                    "preview.external_feedback.browser_verified_resume")
+                    "preview.external_feedback.browser_verified_resume",
+                    "preview.failed_candidate.reconciled")
                 and isinstance(a.get("payload"), dict)
-                and a["payload"].get("candidate_commit") == sha
+                and a["payload"].get("candidate_commit") == witness_candidate
                 and a["payload"].get("release_authorized") is False
-                and a["payload"].get("original_browser_failure_preserved") is True
+                and (
+                    (a.get("event_type") != "preview.failed_candidate.reconciled"
+                     and a["payload"].get("original_browser_failure_preserved") is True)
+                    or (inherited
+                        and a.get("event_type") == "preview.failed_candidate.reconciled"
+                        and a["payload"].get("historical_failures_preserved") is True
+                        and a["payload"].get("browser_snapshot_id") == snapshot["id"])
+                )
                 for a in audit), "b4_independent_recovery_audit_missing")
     if merged_sha is not None:
         require(any(a.get("event_type") == "release.human_merge_observed"
@@ -431,6 +578,8 @@ def _verify_changeset(*, project_id: str, target_repo: str, cs: dict,
         browser_run_id=witness_run, visual_witness_id=snapshot["id"],
         preview_url=url, source_factory_sha=witness_sha,
         checks=tuple(sorted(REQUIRED_PREVIEW_CHECKS)),
+        witness_candidate_commit=witness_candidate,
+        non_runtime_witness_inherited=inherited,
     )
 
 
