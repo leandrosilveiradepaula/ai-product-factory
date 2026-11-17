@@ -203,8 +203,20 @@ def verify_independent_signed_b2(*, repository: str, assessed_commit: str,
         and (authenticated_capture.source_commit is None
              or (isinstance(authenticated_capture.source_commit, str)
                  and SHA.fullmatch(authenticated_capture.source_commit) is not None))
-        and type(authenticated_capture.artifact_id) is int
-        and authenticated_capture.artifact_id > 0
+        # The encrypted visual archive is retained for only one day.
+        # Its expiry is not the expiry of the separate signed Supabase/JWT
+        # receipt or the live HTTP route witness: both are independently
+        # downloaded, verified and pinned to the captured run/source SHA.
+        # The historical path is allowed only when the upstream verifier
+        # independently proved the captured registry, immutable ancestry,
+        # and byte-identical full Console tree (source_commit is present).
+        and (
+            (type(authenticated_capture.artifact_id) is int
+             and authenticated_capture.artifact_id > 0)
+            or (authenticated_capture.artifact_id is None
+                and isinstance(authenticated_capture.source_commit, str)
+                and SHA.fullmatch(authenticated_capture.source_commit) is not None)
+        )
         and isinstance(live_routes, VerifiedLiveConsoleBoundaries)
         and live_routes.repository == repository
         and live_routes.assessed_commit == assessed_commit

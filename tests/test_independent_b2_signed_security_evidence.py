@@ -154,6 +154,43 @@ class B2SignedSourcesTests(unittest.TestCase):
             verify(payload={**receipt(),"checks":{
                 **receipt()["checks"],"forgedSignatureRejected":False}})
 
+    def test_expired_encrypted_visual_archive_does_not_invalidate_live_signed_b2(self):
+        # Real captured registry + immutable ancestry + identical Console tree
+        # are checked upstream. B2 revalidates the still-active independent
+        # provider/JWT/RLS artifact, live route witness and isolated PG run.
+        au,lv,pg,secret=sources()
+        capture=AuthenticatedConsoleEvidence(
+            REPO,SHA,RUN,None,source_commit=SHA)
+        good=self.verify(src=(capture,lv,pg,secret))
+        self.assertEqual(good.criterion("authn_authz").verification_state,"executed")
+        self.assertEqual(good.criterion("data_access_boundaries").verification_state,"executed")
+
+        # Missing source ancestry cannot be substituted by a plain dataclass
+        # with no encrypted archive; signed evidence alone does not waive it.
+        no_source=AuthenticatedConsoleEvidence(REPO,SHA,RUN,None,source_commit=None)
+        with self.assertRaises(B2SignedSecurityBlocked):
+            self.verify(src=(no_source,lv,pg,secret))
+
+        # The signed source must still be identical to the original capture,
+        # not the current assessed commit or a stale/unrelated SHA.
+        wrong_source=AuthenticatedConsoleEvidence(
+            REPO,SHA,RUN,None,source_commit="f"*40)
+        with self.assertRaises(B2SignedSecurityBlocked):
+            self.verify(src=(wrong_source,lv,pg,secret))
+        # Expiration of the B2-specific signed receipt remains a hard denial.
+        with self.assertRaises(B2SignedSecurityBlocked):
+            self.verify(src=(capture,lv,pg,secret),
+                        meta={**artifact(),"expired":True})
+        # No direct browser proof without a retained B2-specific artifact.
+        missing=verify_independent_signed_b2(
+            repository=REPO,assessed_commit=SHA,authenticated_capture=capture,
+            live_routes=lv,isolated_pg=pg,secrets_proof=secret,
+            surface=VerifiedConsoleSurface(REPO,SHA,RUN,SHA,13,source_commit=SHA),
+            github_get=lambda _:{"total_count":0,"artifacts":[]},
+            artifact_reader=lambda **_:self.fail("missing must not fetch"),
+        )
+        self.assertIsNone(missing)
+
     def test_missing_source_cannot_promote_partial_to_pass(self):
         au,lv,pg,secret=sources()
         p=verify_independent_signed_b2(
