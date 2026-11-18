@@ -59,7 +59,7 @@ export default async function Deliveries({searchParams}:{searchParams:Promise<{p
     const items=cards.filter(c=>c.lane===lane.key);
     return <div className={"deliveryLane lane-"+lane.key} key={lane.key}>
      <div className="deliveryLaneHeading">
-      <div><h2>{lane.label}</h2><small>{lane.hint}</small></div><strong aria-label={items.length+" pacotes"}>{counts[lane.key]}</strong>
+      <div><h2>{lane.label}</h2><small>{lane.hint}</small></div><strong>{counts[lane.key]}<span className="visuallyHiddenStatus"> pacotes</span></strong>
      </div>
      <div className="deliveryLaneCards">
       {items.length===0?<p className="deliveryLaneEmpty">Nenhum trabalho nesta etapa.</p>:<>
