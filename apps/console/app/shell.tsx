@@ -9,11 +9,12 @@ import {ConsoleNav} from "./nav";
 
 type RouteContext={area:string;screen:string;purpose:string;advanced?:boolean};
 function routeContext(pathname:string):RouteContext{
- if(pathname==="/")return{area:"Operação",screen:"Visão geral",purpose:"Comece aqui. Veja se existe alguma ação sua e acompanhe o estado geral da Factory."};
+ if(pathname==="/")return{area:"Sua Factory",screen:"Início",purpose:"Crie, melhore ou acompanhe um produto. A Factory avisa se precisar de você."};
+ if(pathname.startsWith("/deliveries"))return{area:"Trabalho",screen:"Entregas",purpose:"Quadro automático dos pacotes de trabalho: um cartão não é autorização de release."};
  if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo projeto",purpose:"Use para criar um produto novo ou importar um projeto que já está em andamento."};
  if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Detalhes do projeto",purpose:"Esta é a tela principal de acompanhamento de um projeto. Veja a etapa atual e a próxima ação."};
  if(pathname==="/projects")return{area:"Projetos",screen:"Portfólio",purpose:"Use para escolher qual projeto acompanhar ou para iniciar um novo projeto."};
- if(pathname.startsWith("/gates"))return{area:"Operação",screen:"Ações humanas",purpose:"Decisões de produção e acessos pendentes; configuração opcional não é um gate de release."};
+ if(pathname.startsWith("/gates"))return{area:"Trabalho",screen:"Decisões",purpose:"Decisões humanas e acessos necessários, sempre com motivos antes de confirmar."};
  if(pathname.startsWith("/runs"))return{area:"Diagnóstico",screen:"Execuções",purpose:"Tela avançada para inspecionar como uma tarefa foi executada. Não é uma etapa obrigatória do fluxo.",advanced:true};
  if(pathname.startsWith("/queue"))return{area:"Diagnóstico",screen:"Fila de trabalho",purpose:"Tela avançada para observar backlog, despacho e trabalhos em execução. A Factory gerencia esta fila automaticamente.",advanced:true};
  if(pathname.startsWith("/agents"))return{area:"Diagnóstico",screen:"Agentes da Factory",purpose:"Tela avançada para entender quais especialistas existem, sua capacidade e quais trabalhos estão executando.",advanced:true};
@@ -138,13 +139,13 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <header className={attentionLoading||attentionUnavailable||(attention&&attention.count>0)?"topbar hasAttention":"topbar"}>
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
     <div className="topbarMeta">
-     {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Carregando aprovações…</span>
+     {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Verificando pendências…</span>
       :attentionUnavailable?<div className="topbarAttentionRecovery">
-       <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
+       <Link href="/gates" className="topbarAttention active" role="status">Pendências indisponíveis</Link>
        <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
       </div>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"ação pendente":"ações pendentes"}</Link>
-      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"pendência para revisar":"pendências para revisar"}</Link>
+      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma pendência humana nesta consulta</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
@@ -154,7 +155,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <p>{context.purpose}</p>
      <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
     </details>:null}
-    {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
+    {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Este projeto precisa de sua decisão</strong><span>Consulte o motivo e as evidências antes de decidir. Abrir decisões →</span></Link>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>
      <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>
@@ -165,6 +166,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
    <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
    <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
+   <Link href="/deliveries" onClick={()=>rememberNavigation("/deliveries")} aria-current={pathname.startsWith("/deliveries")?"page":undefined} className={pathname.startsWith("/deliveries")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="12" rx="1"/><rect x="17" y="4" width="4" height="8" rx="1"/></svg>Entregas</Link>
    <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
   </nav>
  </div>;
