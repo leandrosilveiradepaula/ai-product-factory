@@ -26,6 +26,8 @@ class BlockedWorkRecoveryContract(unittest.TestCase):
             "status='blocked' and cycle<max_cycles",
             "lease_owner is null and lease_expires_at is null",
             "j.change_set_id::text is distinct from r.metadata->>'change_set_id'",
+            "cs.project_id=p.id and cs.status='completed'",
+            "cs.root_task_id=st.id and st.project_id=p.id",
             "unique(project_id,command_id)",
             "unique(repair_job_id)",
         ):

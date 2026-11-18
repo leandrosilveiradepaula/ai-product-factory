@@ -48,7 +48,10 @@ create table public.factory_runs(
  lease_owner text,lease_expires_at timestamptz,started_at timestamptz,
  created_at timestamptz not null default now());
 create table public.factory_change_sets(
- id uuid primary key default gen_random_uuid(),status text not null);
+ id uuid primary key default gen_random_uuid(),
+ project_id uuid references public.factory_projects(id),
+ root_task_id uuid references public.factory_tasks(id),
+ status text not null,lease_owner text,lease_expires_at timestamptz);
 create table public.factory_repair_jobs(
  id uuid primary key default gen_random_uuid(),project_id uuid references public.factory_projects(id),
  task_id uuid references public.factory_tasks(id),source_run_id uuid references public.factory_runs(id),
@@ -63,7 +66,7 @@ create table public.factory_audit_events(
 
 def call(db,key,command,version,actor):
     return db.execute(
-        "select public.factory_restart_blocked_work_v1(%s,%s,%s,%s,%s)",
+        "select public.factory_restart_blocked_work_v1(%s,%s,%s,%s)",
         (key,command,version,actor)).fetchone()[0]
 
 def denied(db,key,command,version,actor):
@@ -82,7 +85,7 @@ def fixture(db,key,*,cycle=2,max_cycles=3,broken_context=False):
     src_run=db.execute(
         "insert into public.factory_runs(task_id,status,source_commit) values (%s,'merged',%s) returning id",
         (root_task,"a"*40)).fetchone()[0]
-    cs=db.execute("insert into public.factory_change_sets(status) values('completed') returning id").fetchone()[0]
+    cs=db.execute("insert into public.factory_change_sets(project_id,root_task_id,status) values(%s,%s,'completed') returning id",(pid,root_task)).fetchone()[0]
     repair_task=db.execute(
         "insert into public.factory_tasks(project_id,parent_task_id,title,status) values(%s,%s,'blocked repair','blocked') returning id",
         (pid,root_task)).fetchone()[0]
@@ -169,6 +172,10 @@ with psycopg.connect(dsn,autocommit=True) as db:
     denied(db,"exhausted",uuid.uuid4(),3,actor)
     tampered=fixture(db,"wrong-source",broken_context=True)
     denied(db,"wrong-source",uuid.uuid4(),3,actor)
+    foreign=fixture(db,"foreign-lineage")
+    db.execute("update public.factory_change_sets set project_id=%s where id=%s",
+               (initial["project"],foreign["change_set"]))
+    denied(db,"foreign-lineage",uuid.uuid4(),3,actor)
     busy=fixture(db,"busy")
     active_task=db.execute(
         "insert into public.factory_tasks(project_id,title,status) values(%s,'working','running') returning id",

@@ -64,6 +64,15 @@ begin
  select * into j from public.factory_repair_jobs where project_id=p.id and status='blocked' and cycle<max_cycles order by updated_at desc limit 1 for update; if not found then raise exception 'no resumable blocked repair' using errcode='PT409'; end if;
  select * into t from public.factory_tasks where id=j.task_id and project_id=p.id and status='blocked' for update; if not found then raise exception 'blocked repair task mismatch' using errcode='PT409'; end if;
  select * into r from public.factory_runs where task_id=t.id and status='blocked' and lease_owner is null and lease_expires_at is null order by created_at desc limit 1 for update; if not found then raise exception 'blocked repair lineage mismatch' using errcode='PT409'; end if;
+ if not exists(
+   select 1 from public.factory_change_sets cs
+     join public.factory_runs sr on sr.id=j.source_run_id
+     join public.factory_tasks st on st.id=sr.task_id
+   where cs.id=j.change_set_id and cs.project_id=p.id and cs.status='completed'
+     and cs.root_task_id=st.id and st.project_id=p.id
+     and sr.status in ('merged','integrated','completed')
+     and cs.lease_owner is null and cs.lease_expires_at is null
+ ) then raise exception 'terminal source is not verified in project' using errcode='PT409'; end if;
  if jsonb_typeof(r.metadata) is distinct from 'object'
     or r.metadata->>'change_set_id' is null
     or j.change_set_id::text is distinct from r.metadata->>'change_set_id'
