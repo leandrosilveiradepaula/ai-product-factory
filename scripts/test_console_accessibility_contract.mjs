@@ -254,7 +254,7 @@ test("authenticated #76: exact incomplete text glyphs are graphical and accessib
   assert.doesNotMatch(shell,/<span className="workspaceGlyph">/);
   assert.doesNotMatch(nav,/<span className="navAdvancedChevron"/);
   assert.match(shell,/<span>Infodive<\/span>/);
-  assert.match(nav,/<span className="navAdvancedTitle">Ferramentas avançadas<\/span>/);
+  assert.match(nav,/<span className="navAdvancedTitle">Diagnóstico e administração<\/span>/);
   assert.match(nav,/<summary className="navAdvancedToggle">/);
   assert.match(css,/\.workspaceGlyph\{width:14px;height:14px;flex:0 0 14px;display:block;color:#8d93a4\}/);
   assert.match(css,/\.sidebar \.navAdvancedChevron\{width:20px;height:20px;flex:0 0 20px;display:block;color:#adc6ff/);
