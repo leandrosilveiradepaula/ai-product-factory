@@ -9,6 +9,7 @@ ATTENTION=(APP/"api/human-attention/route.ts").read_text(encoding="utf-8")
 GATES=(APP/"gates/page.tsx").read_text(encoding="utf-8")
 SHELL=(APP/"shell.tsx").read_text(encoding="utf-8")
 NAV=(APP/"nav.tsx").read_text(encoding="utf-8")
+LOGIN=(APP/"login/page.tsx").read_text(encoding="utf-8")
 STYLE=(APP/"globals.css").read_text(encoding="utf-8")
 THEME=(APP/"theme.css").read_text(encoding="utf-8")
 CI=(ROOT/".github/workflows/console.yml").read_text(encoding="utf-8")
@@ -80,6 +81,13 @@ class OperatorFirstConsoleTests(unittest.TestCase):
    self.assertNotIn(hide,block)
   self.assertIn("--space-page-x:24px",THEME)
   self.assertIn("--radius-lg:12px",THEME)
+
+ def test_real_login_title_matches_visible_action_without_weakening_preview_guard(self):
+  self.assertIn('export const metadata={title:"Entrar na Factory — AI Product Factory"}',LOGIN)
+  self.assertIn('title="Entrar na Factory"',LOGIN)
+  verifier=(ROOT/"scripts/verify_preview.mjs").read_text(encoding="utf-8")
+  self.assertIn("preview_application_heading_or_title_unverified",verifier)
+  self.assertIn("containsExpectedText(normalizeVisibleText(observed.title",verifier)
 
  def test_real_policy_has_offline_runtime_regression_in_pinned_console_ci(self):
   self.assertIn("node ../../scripts/test_console_ux1506_runtime.cjs",CI)
