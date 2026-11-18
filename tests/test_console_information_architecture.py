@@ -53,7 +53,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('dashboard.projects.slice(0,4).map',HOME)
         self.assertIn('className="operatorWelcome"',HOME)
         self.assertIn('className="homeProjectGrid"',HOME)
-        self.assertIn('className="operatorAttention "',HOME)
+        self.assertIn('className={"operatorAttention "+',HOME)
         self.assertIn('details className="operatorDiagnostics"',HOME)
         self.assertIn('operatorStageLabel(p.stage)',HOME)
         self.assertLess(HOME.index('className="operatorWelcome"'),HOME.index('className="operatorDiagnostics"'))
