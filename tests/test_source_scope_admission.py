@@ -177,6 +177,50 @@ class PlatformAutomaticAdmissionTests(unittest.TestCase):
         self.assertEqual(sum(1 for p,_ in github.reads if p == PATH), 1)
         github.writes.assert_not_called()
 
+
+    def test_authorized_ux_demand_loads_issue_and_styles_at_exact_sha(self):
+        css = "apps/console/app/theme.css"
+        nav = "apps/console/app/nav.tsx"
+        github = FakeGitHub((css, nav), "Inspect `" + css + "` and `" + nav + "`.")
+        github.docs[css] = ":root { --font-size-body: 14px; }"
+        github.docs[nav] = "export const destinations = ['projects'];"
+        github.get_issue = Mock(return_value=GitHubIssue(
+            1506, "UX audit", "Inspect `" + css + "` and `" + nav + "`.", "issue-url"
+        ))
+        project = self.project()
+        project["manifest"]["continuation_request"]["summary"] = (
+            "Executar a demanda UX/UI #1506. Avaliar o Console."
+        )
+        result = live_platform_source_context(project=project, context={}, github=github)
+        candidate = result["current_state_facts"]["live_candidate"]
+        self.assertEqual(candidate["source_evidence"]["issue_reference"], 1506)
+        self.assertEqual(candidate["source_admission"]["status"], "complete")
+        self.assertTrue(candidate["source_admission"]["code_inspected"])
+        self.assertEqual([f["path"] for f in candidate["source_evidence"]["inspected_files"]],
+                         [css, nav])
+        github.get_issue.assert_called_once_with(1506)
+        github.writes.assert_not_called()
+
+    def test_ambiguous_operator_issue_scope_blocks_before_paid_stage(self):
+        github = FakeGitHub((PATH,), "Inspect " + PATH)
+        project = self.project()
+        project["manifest"]["continuation_request"]["summary"] = (
+            "Avaliar demanda UX/UI #1506 e issue #1507"
+        )
+        with self.assertRaisesRegex(PermissionError, "multiple GitHub issues"):
+            live_platform_source_context(project=project, context={}, github=github)
+        self.assertNotIn((PATH, SHA), github.reads)
+        github.writes.assert_not_called()
+
+    def test_unqualified_hashtag_does_not_bind_issue(self):
+        github = FakeGitHub((PATH,), "Inspect " + PATH)
+        project = self.project()
+        project["manifest"]["continuation_request"]["summary"] = "Avaliar UX/UI #1506"
+        result = live_platform_source_context(project=project, context={}, github=github)
+        candidate = result["current_state_facts"]["live_candidate"]
+        self.assertIsNone(candidate["source_evidence"]["issue_reference"])
+        self.assertEqual(candidate["source_admission"]["status"], "unscoped")
+
     def test_missing_explicit_issue_path_is_partial_and_not_falsely_complete(self):
         github = FakeGitHub((PATH,), "Inspect " + PATH + " and src/ai_product_factory/runtime_cli.py")
         context = live_platform_source_context(project=self.project(), context={}, github=github)

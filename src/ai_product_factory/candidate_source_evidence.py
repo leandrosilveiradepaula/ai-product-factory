@@ -29,7 +29,7 @@ _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _BACKTICK = re.compile(r"\x60([^\x60\r\n]{1,240})\x60")
 _CODE_PATH = re.compile(
     r"^(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
-    r"[A-Za-z0-9_./()\-]+\.(?:py|tsx?|jsx?|cjs|mjs)$"
+    r"[A-Za-z0-9_./()\-]+\.(?:py|tsx?|jsx?|cjs|mjs|css)$"
 )
 _SECRET_MATERIAL = re.compile(
     r"(?i)(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|"
@@ -154,7 +154,7 @@ def _request_paths(continuation_request: str | None) -> list[str]:
     if not isinstance(continuation_request, str):
         return []
     paths: list[str] = []
-    pattern = r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs)"
+    pattern = r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs|css)"
     for match in re.finditer(pattern, continuation_request):
         path = match.group()
         if _CODE_PATH.fullmatch(path) and ".." not in path.split("/") and path not in paths:
