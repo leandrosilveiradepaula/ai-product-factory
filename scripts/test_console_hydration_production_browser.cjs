@@ -124,6 +124,11 @@ function localApi(req,res){
     send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,
       title:"Synthetic read-only regression task",status:"completed",
       complexity:"low"}]);
+  else if(u.searchParams.get("select")==="id,project_id,parent_task_id,title,status,updated_at,external_key")
+    // A read-only package fixture exercises the real board and delivery detail.
+    send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,parent_task_id:null,
+      title:"Synthetic read-only regression task",status:"completed",external_key:"fixture-work",
+      updated_at:"2026-11-01T12:00:00Z"}]);
   else send(res,200,[]);
  }else if(u.pathname==="/rest/v1/factory_project_execution_controls"){
   // Isolated fixture must actually render the project control submit form.
@@ -364,6 +369,32 @@ test("B3: real Next client navigation renders loading then true offline error an
   if(cdp)await cdp.detach().catch(()=>{});
   await context.close();
  }
+});
+
+test("B3: real operator start, Kanban and delivery detail work with read-only fixture",async()=>{
+ const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",error=>errors.push("page_error:"+String(error).slice(0,90)));
+ try{
+  let response=await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(await page.locator("h1.title").innerText(),"Sua área de trabalho");
+  for(const label of ["Criar um produto","Melhorar um produto","Acompanhar entregas"])
+   assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing action "+label);
+  response=await page.goto(appOrigin+"/deliveries",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(await page.locator("h1.title").innerText(),"Quadro de trabalho");
+  assert.ok(await page.getByRole("heading",{name:"Encerrado"}).count()>=1);
+  assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
+  await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").first().click();
+  await page.waitForURL("**/deliveries/"+B3_TASK_ID);
+  assert.equal(await page.locator("h1.title").innerText(),"Synthetic read-only regression task");
+  assert.ok(await page.getByText("Este pacote foi encerrado").count()>=1);
+  assert.ok(await page.getByRole("link",{name:"Solicitar melhoria ou ajuste"}).count()>=1);
+  assert.deepEqual(errors,[],"new operator routes must hydrate without page errors");
+ }finally{await context.close();}
 });
 
 test("B3: real Next project detail hydration and command identity are stable across reloads",async()=>{
