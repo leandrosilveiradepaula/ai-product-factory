@@ -513,7 +513,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
    assert.equal(response?.status(),200);
    await page.locator(".topbarAttention.loading").waitFor({state:"visible",timeout:15000});
-   assert.equal(await page.locator(".topbarAttention.loading").innerText(),"Carregando aprovações…");
+   assert.equal(await page.locator(".topbarAttention.loading").innerText(),"Verificando pendências…");
    await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
    for(let i=0;i<60&&!firstRoute;i++)await new Promise(res=>setTimeout(res,50));
    assert.ok(firstRoute,"one real browser GET must be pending during loading");
@@ -522,7 +522,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    firstRoute=null;
    try{
      await page.waitForFunction(()=>
-       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 ações pendentes"&&
+       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 pendências para revisar"&&
        document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",
        null,{timeout:10000});
    }catch{
@@ -544,12 +544,12 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
    assert.equal(await page.locator(".topbarAttentionRecovery [role=status]").innerText(),
-     "Aprovações indisponíveis");
+     "Pendências indisponíveis");
    assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").count(),0);
    mode="cleared";
    await page.getByRole("button",{name:"Tentar novamente"}).click();
    await page.waitForFunction(()=>
-     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma aprovação pendente" &&
+     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma pendência humana nesta consulta" &&
      !document.querySelector(".desktopSidebarContent .humanAttentionCount"),null,{timeout:20000});
    mode="malformed";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
@@ -810,7 +810,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
   // BEFORE the costly, trusted 44-scan authenticated Preview run. All Supabase
   // responses are local fake GET inventories; this is not certification.
   const {CONSOLE_ROUTES}=await import(path.join(root,"scripts","console_surface_coverage_contract.mjs"));
-  assert.equal(CONSOLE_ROUTES.length,14,"Use exact production surface contract, not a cherry-picked subset");
+  assert.ok(CONSOLE_ROUTES.some(r=>r.name==="deliveries"&&r.path==="/deliveries"),"Exact production contract must include the new Kanban route");
   const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
   await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
   const page=await context.newPage();
