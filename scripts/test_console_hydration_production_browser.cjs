@@ -323,6 +323,11 @@ test("B3: real Next client navigation renders loading then true offline error an
  try{
   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   const loadingLink=await openRuns();
+  // The workspace now fetches product evidence in parallel on the server.
+  // A navigation claimed to be "client-side" must wait for real React
+  // hydration; otherwise Playwright follows a plain browser link and the
+  // expected Next loading and offline recovery cannot possibly appear.
+  await page.locator('.consoleShell[data-client-interactive="ready"]').waitFor({state:"attached",timeout:20000});
   cdp=await context.newCDPSession(page);
   await cdp.send("Network.enable");
   await cdp.send("Network.setCacheDisabled",{cacheDisabled:true});
@@ -346,6 +351,7 @@ test("B3: real Next client navigation renders loading then true offline error an
   // not Chrome's own network error or a synthetic intercepted response.
   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   const offlineLink=await openRuns();
+  await page.locator('.consoleShell[data-client-interactive="ready"]').waitFor({state:"attached",timeout:20000});
   await context.setOffline(true);offline=true;
   await offlineLink.click({timeout:10000});
   const transportError=page.locator(".consoleRouteError[role='alert']");

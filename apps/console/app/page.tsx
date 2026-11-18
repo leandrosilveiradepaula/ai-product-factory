@@ -52,7 +52,7 @@ export default async function Home(){
    <p className="productObjective">{view.objective}</p>
    <div className="productJourneyDeclared">
     <span>Etapa no cadastro: <strong>{view.declaredStageLabel}</strong> — não comprova conclusão</span>
-    <div className="journeyRail" aria-label={"Etapa cadastrada: "+view.declaredStageLabel}>
+    <div className="journeyRail" role="group" aria-label={"Etapa cadastrada: "+view.declaredStageLabel}>
      {PRODUCT_PHASES.map((step,i)=><span className={view.declaredStage===i?"current":""} key={step}>{step}</span>)}
     </div>
    </div>

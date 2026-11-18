@@ -35,6 +35,10 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
  const [transportDisconnected,setTransportDisconnected]=useState(false);
+ const [clientInteractive,setClientInteractive]=useState(false);
+ const [pendingNavigation,setPendingNavigation]=useState<string|null>(null);
+ useEffect(()=>{setClientInteractive(true);},[]);
+ useEffect(()=>{setPendingNavigation(null);},[pathname]);
  const pendingTransportRoute=useRef<string|null>(null);
  const attentionSettled=useRef(false);
  // No synthetic server error. A genuine browser offline event is the source.
@@ -49,8 +53,13 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   if(!navigator.onLine){
    pendingTransportRoute.current=href;
    setTransportDisconnected(true);
+   setPendingNavigation(null);
+  }else if(href!==pathname){
+   // This is a real navigation intent, not a synthetic worker indicator.
+   // Keep an accessible loading state until Next replaces the route.
+   setPendingNavigation(href);
   }
- },[]);
+ },[pathname]);
  const retryTransport=()=>{
   if(!navigator.onLine)return;
   const requested=pendingTransportRoute.current;
@@ -109,7 +118,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <main className="authMain">{children}</main>
   </div>;
  }
- return <div className="consoleShell">
+ return <div className="consoleShell" data-client-interactive={clientInteractive?"ready":"loading"}>
   <Link href="#main-content" className="skipToMain">Pular para o conteúdo principal</Link>
   <aside className="sidebar">
    <div className="brandRow">
@@ -155,6 +164,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
     </details>:null}
     {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
+    {!transportDisconnected&&pendingNavigation&&pendingNavigation!==pathname?
+     <div className="card consoleRouteLoading" role="status" aria-live="polite" aria-atomic="true">
+      <strong>Abrindo a página solicitada</strong>
+      <p className="muted">Consultando a situação registrada, sem iniciar novas tarefas.</p>
+     </div>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>
      <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>
