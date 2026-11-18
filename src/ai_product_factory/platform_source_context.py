@@ -13,10 +13,10 @@ from .source_scope_admission import assess_bounded_source_scope
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\Z")
 _GOVERNANCE = ("AGENTS.md", "PROJECT_PLAN.md")
-_ISSUE_REF = re.compile(r"\b(?:issue|tarefa)\s*#([1-9][0-9]{0,5})\b", re.IGNORECASE)
+_ISSUE_REF = re.compile(\n    r"\b(?:issue|tarefa|demanda)(?:\s+[A-Za-zÀ-ÿ0-9_/-]{1,32}){0,2}\s*#([1-9][0-9]{0,5})\b",\n    re.IGNORECASE,\n)
 _PATH_HINT = re.compile(
     r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
-    r"[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs)"
+    r"[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs|css)"
 )
 
 

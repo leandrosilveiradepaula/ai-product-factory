@@ -11,7 +11,7 @@ import re
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _PATH = re.compile(
     r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/"
-    r"[A-Za-z0-9_./()-]+\.(?:py|tsx?|jsx?|cjs|mjs)\Z"
+    r"[A-Za-z0-9_./()-]+\.(?:py|tsx?|jsx?|cjs|mjs|css)\Z"
 )
 _CODES = frozenset({
     "source_sha_unverified",

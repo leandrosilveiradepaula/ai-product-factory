@@ -104,6 +104,20 @@ class CandidateSourceEvidenceTests(unittest.TestCase):
         self.assertEqual(result["assessed_commit"], SHA)
         self.assertNotIn("src/../secret.py", _request_paths(request))
 
+
+    def test_css_is_bounded_source_not_write_authority(self):
+        path = "apps/console/app/theme.css"
+        self.github.list_file_paths.return_value = (path,)
+        result = collect_candidate_source_evidence(
+            "# Existing project", self.github, sha=SHA,
+            continuation_request="Revisar " + path,
+        )
+        self.assertEqual(result["status"], "bounded_source_inspected")
+        self.assertEqual(result["inspected_files"][0]["path"], path)
+        self.assertEqual(result["inspected_files"][0]["assessed_commit"], SHA)
+        self.assertEqual(_request_paths("Revisar " + path), [path])
+        self.assertEqual(_request_paths("src/../secret.css"), [])
+
     def test_invalid_ref_fails_before_git_access(self):
         with self.assertRaises(PermissionError):
             collect_candidate_source_evidence(self.doc, self.github, sha="main")

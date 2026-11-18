@@ -93,6 +93,43 @@ class ProductStageExecutorTests(unittest.TestCase):
                         handler.execute(work, "planning")
                     self.assertEqual(provider.calls, 0)
 
+
+    def test_owner_requested_audit_is_executable_builder_document_not_code_change(self):
+        class AuditProvider:
+            def __init__(self): self.requests = []
+            def execute(self, request):
+                self.requests.append(request)
+                return ModelResult(ModelRole.PRIMARY, json.dumps({
+                    "tasks": [{
+                        "task_key": "assess-console",
+                        "title": "Document verified usability findings and implementation plan",
+                        "required_capabilities": ["ui"],
+                        "scope_keys": ["docs/ux/console-audit.md"],
+                        "depends_on": [],
+                        "preferred_agent_role": "ui",
+                        "acceptance_criteria": [
+                            "Distinguish inspected source from unverified browser behavior",
+                            "Prioritize findings without changing production"
+                        ]
+                    }],
+                    "decisions_needed": [],
+                }))
+        provider = AuditProvider()
+        ui = AgentProfile("ui", "ui", ("ui", "ux"),
+                          ("github_write", "model_primary"),
+                          {"preferred": "primary"}, 2, 0.75, True)
+        context = {"manifest": {"continuation_request": {
+            "summary": "Realizar avaliação UX/UI e relatório de melhorias"
+        }}}
+        work = WorkItem("r-audit", "t-audit", "p-audit", "platform",
+                        ("planning",), context)
+        output = ProductStageExecutor(
+            ModelExecutor(primary=provider), team_profiles=(ui,)
+        ).execute(work, "planning")
+        self.assertEqual(output["_team_plan"]["status"], "ready")
+        self.assertEqual(len(output["tasks"]), 1)
+        self.assertIn("An explicitly requested audit", provider.requests[0].objective)
+
     def test_planning_without_tasks_or_decisions_is_not_successful(self):
         class EmptyProvider:
             def execute(self,request):
