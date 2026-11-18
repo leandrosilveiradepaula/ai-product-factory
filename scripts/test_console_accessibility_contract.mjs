@@ -49,7 +49,7 @@ test("reject malformed or ambiguous browser data",()=>{
   assert.throws(()=>verifyAccessibilitySnapshot(good,"../../secret"),/invalid_route/);
 });
 
-test("WCAG result must come from complete 44 live scans with contrast",()=>{
+test("WCAG result must cover every registered route and viewport with contrast",()=>{
   const result={violations:[],incomplete:[],
     passes:[{id:"color-contrast",nodes:[{}]},{id:"label",nodes:[{}]}]};
   const scan=(route,viewport)=>sanitizeAxeScan({results:result,route,viewport});
@@ -60,7 +60,7 @@ test("WCAG result must come from complete 44 live scans with contrast",()=>{
   const opts={scans,runId:99,sourceCommit:"a".repeat(40),targetCommit:"b".repeat(40),
     keyboardSkip:{reachedWithTab:true,visibleOnFocus:true,landedOnMain:true}};
   const audited=finishAxeAudit(opts);
-  assert.equal(audited.contrastNodes,44);
+  assert.equal(audited.contrastNodes,CONSOLE_ROUTES.length*3+2);
   assert.equal(audited.fullWcagCertified,false);
   assert.deepEqual(audited.routeNames,names);
   assert.throws(()=>finishAxeAudit({...opts,scans:scans.slice(1)}),/coverage_incomplete/);
