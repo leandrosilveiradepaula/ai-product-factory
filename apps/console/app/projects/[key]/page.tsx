@@ -223,6 +223,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     ] as const).filter(([state,command])=>state===executionControl.state&&(command!=="restart"||executionControl.state==="stopped"||recovery?.status==="blocked")).map(([,command,label])=>
       <ProjectControlForm key={command} projectKey={p.key} command={command}
         version={executionControl.version} label={label}
+        recovery={command==="restart"&&executionControl.state==="running"}
         action={command==="restart"&&executionControl.state==="running"?restartBlockedWork:controlProject}/>
     )}</div>
     {controlWake?<p role="status">Acionamento: {controlWake.status==="dispatched"?"Sinal aceito pelo GitHub":controlWake.status==="observed"?"Scheduler observou o pedido":controlWake.status==="pending"?"Nova tentativa agendada":controlWake.status==="claimed"?"Tentativa em andamento":controlWake.status==="suppressed"?"Invalidado por pausa/parada":controlWake.status==="exhausted"?"Tentativas esgotadas":"Aguardando"} · tentativas {controlWake.attempts}. Isto não comprova execução de modelo ou conclusão da tarefa.</p>:null}

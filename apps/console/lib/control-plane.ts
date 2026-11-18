@@ -573,8 +573,16 @@ export async function getProjectRecoveryStatus(projectId:string):Promise<Project
  const recoveries=await recoveryResponse.json();
  if(!Array.isArray(recoveries))return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
  const latest=recoveries[0];
- if(latest&&typeof latest.status==="string"&&["queued","claimed","recovering"].includes(latest.status))
-  return{status:"recovery_"+latest.status,cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,message:"Retomada já registrada; aguardando o worker e os gates normais.",updatedAt:typeof latest.updated_at==="string"?latest.updated_at:""};
+ const recoveryStates=new Set(["accepted","queued","claimed","recovering","completed","blocked"]);
+ const recoveredAt=typeof latest?.updated_at==="string"?Date.parse(latest.updated_at):NaN;
+ const sourceAt=typeof row.updated_at==="string"?Date.parse(row.updated_at):NaN;
+ // Do not let the immutable historical repair mask its newer continuation.
+ if(latest&&typeof latest.status==="string"&&recoveryStates.has(latest.status)
+    &&Number.isFinite(recoveredAt)&&Number.isFinite(sourceAt)&&recoveredAt>=sourceAt)
+  return{status:"recovery_"+(latest.status==="accepted"?"queued":latest.status),
+   cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,
+   maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,
+   message:null,updatedAt:latest.updated_at};
  return{status:typeof row.status==="string"?row.status:"unknown",
    cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,
    maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,

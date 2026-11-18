@@ -66,6 +66,22 @@ export function summarizeProductExperience(data:{
   "Não está em execução","Produto parado ou ainda não iniciado",
   "O controle do projeto não permite novos trabalhos. Seu histórico continua preservado.",
   "Retomada depende do controle do projeto","Iniciar ou retomar não significa liberar produção.","Retomar somente quando for sua intenção");
+ if(recovery?.status==="recovery_queued"||recovery?.status==="recovery_claimed")
+  return output("waiting","Retomada solicitada","Aguardando execução",
+   "O pedido foi registrado; nenhum worker ativo foi comprovado.",
+   "Assumir a continuação pendente","A Factory deve assumir o trabalho e registrar o resultado.","Nenhuma ação agora");
+ if(recovery?.status==="recovery_recovering"&&work.kind!=="running")
+  return output("waiting","Retomada sem lease comprovado","Retomada em verificação",
+   "Há um registro de execução, mas o lease não foi verificado.",
+   "Verificar o worker","Não anunciar execução ativa sem prova.","Nenhuma ação agora");
+ if(recovery?.status==="recovery_completed"&&work.kind!=="running")
+  return output("quiet","Etapa recuperada","A recuperação terminou",
+   "O trabalho de recuperação foi concluído, mas o produto não foi certificado.",
+   "Verificar a próxima entrega","Não confundir recuperação com release.","Nenhuma ação agora");
+ if(recovery?.status==="recovery_blocked")
+  return output("blocked","Recuperação bloqueada","A tentativa de retomada foi interrompida",
+   "A continuação ficou bloqueada e não pode ser reiniciada pelo mesmo pedido.",
+   "Preparar outra recuperação segura","Não reabrir o reparo original terminal.","Nenhuma aprovação solicitada");
  if(work.kind==="running")return output("working","Execução comprovada","A Factory está executando trabalho",
   "Existe um run iniciado e com lease vigente."+(repairBlocked?" Também há histórico de reparo bloqueado.":""),
   "Concluir a execução e verificar os resultados",

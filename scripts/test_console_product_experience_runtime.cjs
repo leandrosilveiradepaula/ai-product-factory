@@ -61,3 +61,17 @@ test("runtime reader demands a current lease and never uses lifecycle stage as e
  assert.match(cp,/if\(!response\.ok\)return none\("unavailable"\)/);
  assert.match(cp,/isInternalRecord:p\.manifest\?\.qa_canary===true/);
 });
+
+test("new recovery receipt supersedes historical blocked repair without claiming release",()=>{
+ const cp=fs.readFileSync(path.join(root,"apps/console/lib/control-plane.ts"),"utf8");
+ assert.match(cp,/recoveredAt>=sourceAt/);
+ assert.match(cp,/\"completed\",\"blocked\"/);
+ const row={cycle:2,maxCycles:3,updatedAt:"2026-11-18"};
+ assert.equal(view({recovery:{...row,status:"recovery_queued"}}).tone,"waiting");
+ assert.equal(view({recovery:{...row,status:"recovery_claimed"}}).tone,"waiting");
+ assert.equal(view({recovery:{...row,status:"recovery_recovering"}}).tone,"waiting");
+ const finished=view({recovery:{...row,status:"recovery_completed"}});
+ assert.equal(finished.tone,"quiet");
+ assert.match(finished.headline,/recuperação terminou/);
+ assert.equal(view({recovery:{...row,status:"recovery_blocked"}}).tone,"blocked");
+});
