@@ -1,0 +1,20 @@
+/* Execute real product-status policy without network, database or paid model. */
+"use strict";
+const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),vm=require("node:vm");
+const root=path.resolve(__dirname,"..");
+const ts=require(path.join(root,"apps/console/node_modules/typescript"));
+const content=fs.readFileSync(path.join(root,"apps/console/lib/product-status.ts"),"utf8");
+const start=content.indexOf("export function summarizeProductStatus(");
+const end=content.indexOf("\ntype ProjectRow=",start);
+assert.ok(start>=0&&end>start);
+const js=ts.transpileModule(content.slice(start,end),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const scope={exports:{}};vm.runInNewContext(js,scope,{timeout:10000});
+const classify=scope.exports.summarizeProductStatus;
+const base={key:"crm",isActive:true,controlState:"running",humanDecisions:0,confirmedRunning:0,validatingRuns:0,queuedRuns:0,unclosedTasks:0,latestRunStatus:"completed",latestRunId:"00000000-0000-4000-8000-000000000000",latestTaskStatus:"completed"};
+test("running control is not a running worker",()=>{const x=classify(base);assert.equal(x.state,"idle");assert.match(x.explanation,/Não há execução ativa confirmada/);});
+test("stopped legacy project cannot look like active work",()=>{const x=classify({...base,controlState:"stopped",confirmedRunning:1});assert.equal(x.state,"stopped");assert.match(x.explanation,/desabilitada/);});
+test("actual human gate has priority, not historical failure",()=>{const x=classify({...base,humanDecisions:1,latestRunStatus:"failed"});assert.equal(x.state,"decision");assert.equal(x.nextHref,"/gates");});
+test("lease-confirmed running and queued are distinct",()=>{assert.equal(classify({...base,confirmedRunning:1}).state,"executing");assert.equal(classify({...base,queuedRuns:1}).state,"queued");});
+test("failed run on unfinished task is investigation, not approval",()=>{const x=classify({...base,latestRunStatus:"failed_gate",latestTaskStatus:"blocked",unclosedTasks:1});assert.equal(x.state,"investigate");assert.notEqual(x.nextHref,"/gates");});
+test("a finished historical failure never makes a finished task look blocked",()=>{assert.equal(classify({...base,latestRunStatus:"failed",latestTaskStatus:"completed"}).state,"idle");});
+test("unavailable control never becomes healthy",()=>{assert.equal(classify({...base,controlState:"unavailable"}).state,"unknown");});

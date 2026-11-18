@@ -118,12 +118,16 @@ function localApi(req,res){
       execution_route:"direct",candidate_commit:null,branch_name:null,
       metadata:{},created_at:"2026-11-01T12:00:00Z",attempt_count:1,
       lease_owner:null,lease_expires_at:null,last_error:null}]);
+  else if(u.searchParams.get("select")==="id,task_id,status,created_at,started_at,lease_expires_at")
+    send(res,200,[{id:B3_RUN_ID,task_id:B3_TASK_ID,status:"completed",created_at:"2026-11-01T12:00:00Z",started_at:"2026-11-01T11:59:00Z",lease_expires_at:null}]);
   else send(res,200,[]);
  }else if(u.pathname==="/rest/v1/factory_tasks"){
   if(u.searchParams.get("id")==="eq."+B3_TASK_ID)
     send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,
       title:"Synthetic read-only regression task",status:"completed",
       complexity:"low"}]);
+  else if(u.searchParams.get("select")==="id,project_id,title,status,created_at,updated_at")
+    send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,title:"Synthetic read-only regression task",status:"completed",created_at:"2026-11-01T11:57:00Z",updated_at:"2026-11-01T12:00:00Z"}]);
   else if(u.searchParams.get("select")==="id,project_id,parent_task_id,title,status,updated_at,external_key")
     // A read-only package fixture exercises the real board and delivery detail.
     send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,parent_task_id:null,
@@ -134,8 +138,8 @@ function localApi(req,res){
   // Isolated fixture must actually render the project control submit form.
   // Otherwise a project-detail "hydration PASS" misses the former
   // non-deterministic random command_id on that route entirely.
-  send(res,200,u.searchParams.get("project_id")==="eq."+B3_PROJECT_ID
-    ?[{state:"running",version:1,generation:1}]:[]);
+  send(res,200,!u.searchParams.get("project_id")||u.searchParams.get("project_id")==="eq."+B3_PROJECT_ID
+    ?[{project_id:B3_PROJECT_ID,state:"running",version:1,generation:1}]:[]);
  }else if(u.pathname==="/rest/v1/factory_primary_cost_policy"){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
@@ -386,12 +390,15 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
  try{
   let response=await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
-  assert.equal(await page.locator("h1.title").innerText(),"Sua área de trabalho");
+  assert.equal(await page.locator("h1.title").innerText(),"O que está acontecendo com seus produtos?");
   for(const label of ["Criar um produto","Melhorar um produto","Acompanhar entregas"])
    assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing action "+label);
   response=await page.goto(appOrigin+"/deliveries",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
-  assert.equal(await page.locator("h1.title").innerText(),"Quadro de trabalho");
+  assert.equal(await page.locator("h1.title").innerText(),"Qual produto você quer acompanhar?");
+  assert.ok(await page.getByRole("heading",{name:"Escolha um produto"}).count()>=1);
+  await page.locator("a[href='/deliveries?project=ai-product-factory']").first().click();
+  await page.getByRole("heading",{name:"Quadro de trabalho"}).waitFor({state:"visible",timeout:12000});
   assert.ok(await page.getByRole("heading",{name:"Encerrado"}).count()>=1);
   assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
   // Check an independent hard navigation before testing the real client Link.

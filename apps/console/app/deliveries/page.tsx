@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {deliveryLanes,getDeliveryBoard,type DeliveryCard} from "../../lib/delivery-board";
+import {getProductSituations} from "../../lib/product-status";
 import {PageHeader} from "../ui";
 
 export const dynamic="force-dynamic";
@@ -21,9 +22,30 @@ function DeliveryCardView({item}:{item:DeliveryCard}){
 export default async function Deliveries({searchParams}:{searchParams:Promise<{project?:string;view?:string}>}){
  const query=await searchParams;
  const selected=typeof query.project==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(query.project)?query.project:"";
- const board=await getDeliveryBoard();
+ const [board,pulse]=await Promise.all([getDeliveryBoard(),getProductSituations()]);
  const knownProject=board.projects.some(p=>p.key===selected);
  const projectKey=knownProject?selected:"";
+ // Do not throw 151 historical work packages at an operator before they select
+ // the product they are actually trying to understand.
+ if(!projectKey&&query.project!=="all")return <>
+  <PageHeader eyebrow="Entregas" title="Qual produto você quer acompanhar?"
+   subtitle="O Kanban detalha as tarefas de um produto. Para entender o estado do produto como um todo, consulte primeiro a situação resumida."/>
+  <section className="deliveryChooser" aria-label="Escolher produto para ver entregas">
+   <h2>Escolha um produto</h2>
+   <p>Você não precisa organizar tarefas manualmente. A Factory mantém os registros, e você pode abrir a entrega que deseja investigar.</p>
+   <div className="deliveryChooserGrid">
+    {pulse.products.filter(p=>p.isActive).map(p=><article className="deliveryChooserCard" key={p.key}>
+     <h3>{p.name}</h3><span className={"productSituationStatus "+p.state}>{p.headline}</span>
+     <p>{p.explanation}</p>
+     <div className="deliveryChooserActions">
+      <Link prefetch={false} href={"/deliveries?project="+encodeURIComponent(p.key)}>Ver Kanban deste produto →</Link>
+      <Link prefetch={false} href={"/projects/"+encodeURIComponent(p.key)}>Ver situação do produto</Link>
+     </div>
+    </article>)}
+   </div>
+  </section>
+  <p className="deliveryDisclaimer">Você também pode <Link prefetch={false} href="/deliveries?project=all">consultar o quadro técnico de todos os projetos</Link>, incluindo histórico. Essa visão não equivale a progresso de produto ou autorização de publicação.</p>
+ </>;
  const scoped=projectKey?board.cards.filter(c=>c.projectKey===projectKey):board.cards;
  const showTechnical=query.view==="all";
  const technicalCount=scoped.filter(c=>c.internalRoutine).length;
@@ -41,7 +63,7 @@ export default async function Deliveries({searchParams}:{searchParams:Promise<{p
   </section>
 
   <nav className="deliveryFilters" aria-label="Filtrar entregas por produto">
-   <Link prefetch={false} className={!projectKey?"deliveryFilter active":"deliveryFilter"} aria-current={!projectKey?"page":undefined} href={"/deliveries"+viewSuffix}>Todos os produtos</Link>
+   <Link prefetch={false} className={!projectKey?"deliveryFilter active":"deliveryFilter"} aria-current={!projectKey?"page":undefined} href={"/deliveries?project=all"+(showTechnical?"&view=all":"")}>Todos os produtos</Link>
    {board.projects.map(p=><Link prefetch={false} className={projectKey===p.key?"deliveryFilter active":"deliveryFilter"}
      aria-current={projectKey===p.key?"page":undefined} key={p.key} href={"/deliveries?project="+encodeURIComponent(p.key)+projectViewSuffix}>{p.name}</Link>)}
   </nav>

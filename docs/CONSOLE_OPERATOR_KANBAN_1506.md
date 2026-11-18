@@ -39,3 +39,16 @@ Não há drag-and-drop, edição de status, publicação nem recuperação de ru
 5. Merge em `main` publica produção: **sempre gate humano**, independentemente de CI/Preview. Sem auto-merge, API paga para smoke, migration, novas credenciais, bypass de Auth/RLS ou alteração de política.
 
 **Estado deste documento:** descrição do candidato na PR #1516; não é laudo de CI verde, aprovação visual ou certificação automática do SHA.
+
+
+## Segunda reprovação de UX e orientação por produto (18/11/2026)
+
+O responsável voltou a reprovar o Preview, mesmo com o Kanban, porque não conseguia descobrir o que estava realmente acontecendo com cada produto. A prioridade passa a ser o retrato de produto, não o quadro global de tarefas.
+
+**Evidência read-only do Control Plane:** os seis projetos cadastrados como ativos incluem dois explicitamente parados no controle (Infodive Service Desk legado e Factory Wake Canary); nenhuma execução de worker estava ativa ou enfileirada no retrato consultado. Existiam 242 tarefas, 265 runs históricos e 151 pacotes raiz. A indicação de etapa de implementação/operação e a flag do cadastro não comprovam atividade.
+
+**Correção candidata:** fonte de estado de produto exclusiva de leitura em `apps/console/lib/product-status.ts`, com controle de execução, lease do último worker, última solicitação do Console, última tentativa, tipo de pendência humana e próximo passo. Ela não confunde status do cadastro com trabalho em andamento e não promove integração de código a release. Início e Projetos mostram este resumo antes dos mecanismos internos; o detalhe do produto mostra a situação real primeiro; o Kanban só aparece depois da seleção do produto, mantendo opção técnica global explícita.
+
+**Limites:** histórico de falhas não é um gate humano; tarefas encerradas não provam qualidade/publicação; requisições feitas em outros canais podem não aparecer como última solicitação do Console; ausência de execução ativa não prova que o projeto está concluído. Consultas incompletas falham fechado, sem números saudáveis inventados. Nenhuma migration, novo custo, mudança de Auth/RLS ou auto-merge.
+
+**Aceite pendente:** tipagem e Next build, políticas TypeScript reais em testes sem rede, Browser/Chromium com dados sintéticos, CI exata, Preview Vercel SHA-exato, inspeção humana das telas internas autenticadas. Depois dessa evidência, o responsável decide se a experiência ficou compreensível. O merge de produção é exclusivamente humano.

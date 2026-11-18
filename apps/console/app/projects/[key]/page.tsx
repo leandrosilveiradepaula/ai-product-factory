@@ -1,4 +1,6 @@
 import {cookies} from "next/headers";
+import {getProductSituations} from "../../../lib/product-status";
+import {ProductSituationCard} from "../../product-situation-card";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
@@ -164,7 +166,9 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const installProject=jar?.get("factory_github_app_install_project")?.value||"";
  const installPending=operator.role==="admin"&&installReturned&&installProject===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(key);
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id)]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl,pulse]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id),getProductSituations()]);
+ const situation=pulse.products.find(item=>item.key===p.key);
+ if(!situation)throw new Error("Estado do produto indisponível. Nenhum status presumido.");
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
@@ -190,7 +194,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
  const humanActionNeeded=Boolean(["draft","paused","stopped","unavailable"].includes(executionControl.state)
-   ||observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||["human_gate","release"].includes(p.stage));
+   ||observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||situation.state==="decision");
  const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
  return <>
   {installPending?<div className="card noticeCard" role="status">
@@ -200,7 +204,11 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <button className="primary" type="submit">Verificar acesso da GitHub App</button>
    </form>
   </div>:null}
-  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <PageHeader eyebrow="Produto" title={p.name} subtitle="O que foi pedido, o que está acontecendo e qual é o próximo passo." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <section className="productSituationDetail" aria-labelledby="product-situation-heading">
+   <h2 id="product-situation-heading">Situação atual do produto</h2>
+   <ProductSituationCard item={situation} showOpen={false}/>
+  </section>
   <section className="projectOperatorChoices" aria-label="Ações deste produto">
    <div>
     <span className="operatorEyebrow">ESCOLHA SEU PRÓXIMO PASSO</span>
@@ -211,12 +219,14 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     {executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir melhoria ou correção</ActionLink>
       :<ActionLink href="#project-control" variant="secondary">Ver como iniciar ou retomar</ActionLink>}
     <ActionLink href={"/deliveries?project="+encodeURIComponent(p.key)} variant="secondary">Acompanhar entregas</ActionLink>
-    {["human_gate","release"].includes(p.stage)?<ActionLink href="/gates" variant="secondary">Revisar decisões</ActionLink>:null}
+    {situation.state==="decision"?<ActionLink href="/gates" variant="secondary">Revisar decisões</ActionLink>:null}
    </div>
   </section>
+  <details className="projectStageDisclosure" open={humanActionNeeded}>
+   <summary>Ver marco registrado, indicadores e orientações técnicas</summary>
   <div className="projectOrientation">
    <aside className={humanActionNeeded?"nextActionCard needsHuman":"nextActionCard routine"} aria-label="Próxima etapa">
-    <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"A Factory está cuidando desta etapa"}</span>
+    <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"Contexto da etapa registrada"}</span>
     <h2>{action.title}</h2>
     <p>{action.body}</p>
     <div className="actions"><ActionLink href={action.href} variant={humanActionNeeded?"primary":"secondary"}>{action.label}</ActionLink></div>
@@ -235,6 +245,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" tarefas registradas"}/>
    <MetricCard label="Avaliação global" value={p.productReadiness.ready?"Aprovada no SHA avaliado":p.productReadiness.status==="not_assessed"?"Não avaliada":"Não aprovada"} note="Avaliação histórica não certifica commits posteriores."/>
   </div>
+  </details>
   {continuation?<section className="section" id="latest-request"><SectionHeader title="Último pedido" action={<span className="muted">{new Date(continuation.requestedAt).toLocaleString("pt-BR")}</span>}/>
    <div className="card denseStack">
     <p style={{margin:0}}>{continuation.summary}</p>

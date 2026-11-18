@@ -1,0 +1,125 @@
+import {requireConsoleOperator} from "./auth-server";
+import {getSupabaseServerConfig} from "./supabase-server";
+import {getHumanGates} from "./control-plane";
+
+/* Read-only interpretation of authoritative Control Plane records. It is NOT
+ * a release certification, work scheduler, heartbeat or progress percentage. */
+export type ProductState="decision"|"executing"|"verifying"|"queued"|"stopped"|"paused"|"investigate"|"idle"|"unknown";
+export type ProductLastRun={id:string;status:string;at:string;taskTitle:string};
+export type ProductSituation={
+ key:string;name:string;stage:string;isActive:boolean;controlState:string;
+ state:ProductState;headline:string;explanation:string;nextOwner:string;nextLabel:string;nextHref:string;
+ lastRequest:string|null;lastRequestAt:string|null;lastRun:ProductLastRun|null;
+ unclosedTasks:number;confirmedRunning:number;observedAt:string;updatedAt:string;
+};
+export type ProductSnapshot={products:ProductSituation[];observedAt:string};
+export type ProductObservation={
+ key:string;isActive:boolean;controlState:string;
+ humanDecisions:number;confirmedRunning:number;validatingRuns:number;queuedRuns:number;
+ unclosedTasks:number;latestRunStatus:string|null;latestRunId:string|null;latestTaskStatus:string|null;
+};
+export function summarizeProductStatus(p:ProductObservation):Pick<ProductSituation,"state"|"headline"|"explanation"|"nextOwner"|"nextLabel"|"nextHref">{
+ const detail="/projects/"+encodeURIComponent(p.key);
+ const last=p.latestRunId?"/runs/"+encodeURIComponent(p.latestRunId):detail;
+ const answer=(state:ProductState,headline:string,explanation:string,nextOwner:string,nextLabel:string,nextHref:string)=>
+  ({state,headline,explanation,nextOwner,nextLabel,nextHref});
+ if(!p.isActive)return answer("stopped","Fora do portfólio ativo","Este produto não está marcado como ativo no cadastro. Isso não diz se houve uma publicação.","Você, se desejar","Abrir produto",detail);
+ if(p.controlState==="stopped")return answer("stopped","Projeto parado","A execução está desabilitada pelo controle do projeto. Nenhum novo trabalho será iniciado sem comando autorizado.","Você, se desejar retomar","Ver controle do projeto",detail+"#project-control");
+ if(p.controlState==="paused"||p.controlState==="pausing"||p.controlState==="stopping")return answer("paused","Projeto pausado ou parando","O controle restringe novas execuções. Acompanhe o processo de pausa ou decida quando retomar.","Você, se desejar retomar","Ver controle do projeto",detail+"#project-control");
+ if(p.humanDecisions>0)return answer("decision","Precisa da sua decisão","Existe uma decisão humana acionável e vinculada a este produto. Revise motivo, impacto e evidências.","Você","Revisar decisão","/gates");
+ if(p.confirmedRunning>0)return answer("executing","Factory executando","Há execução com início registrado e lease vigente. Isso não significa que o produto esteja pronto.","Factory","Acompanhar execução",last);
+ if(p.validatingRuns>0)return answer("verifying","Validação registrada","O Control Plane indica trabalho em validação; CI, Preview e release ainda precisam das respectivas evidências.","Factory","Ver validação",last);
+ if(p.queuedRuns>0)return answer("queued","Trabalho aguardando execução","Há uma execução criada ou enfileirada, mas não foi confirmada atividade de worker.","Factory","Ver tarefa na fila",last);
+ if(p.controlState==="unavailable"||p.controlState==="draft")return answer("unknown","Controle não habilitado ou indisponível","Não foi possível comprovar que o projeto pode executar novas tarefas. O Console não deve inferir prontidão.","Você, para avaliar","Ver controle do projeto",detail+"#project-control");
+ const failed=new Set(["failed","blocked","failed_gate","repair_pending","dead_letter"]);
+ const open=new Set(["failed","blocked","repair_pending","created","queued","running","implementing","ci_pending","planning"]);
+ if(p.latestRunStatus&&failed.has(p.latestRunStatus)&&p.latestTaskStatus&&open.has(p.latestTaskStatus))
+  return answer("investigate","Última tentativa precisa de investigação","A execução mais recente foi interrompida e sua tarefa continua sem conclusão comprovada. Isso não é uma aprovação humana.","Investigação técnica","Ver última tentativa",last);
+ if(p.unclosedTasks>0)return answer("idle","Sem execução ativa confirmada","Existem tarefas sem conclusão técnica registrada, mas nenhum worker ativo foi comprovado nesta consulta.","Factory ou operador técnico","Consultar trabalho pendente","/deliveries?project="+encodeURIComponent(p.key));
+ return answer("idle","Nenhum trabalho em execução","O projeto está habilitado para receber trabalho. Não há execução ativa confirmada nem decisão humana pendente nesta consulta.","Você, se quiser novo trabalho","Solicitar melhoria",detail+"/request");
+}
+
+type ProjectRow={id:string;project_key:string;name:string;is_active:boolean;lifecycle_stage:string;updated_at:string;manifest:unknown};
+type ControlRow={project_id:string;state:string};
+type TaskRow={id:string;project_id:string;title:string;status:string;created_at:string;updated_at:string};
+type RunRow={id:string;task_id:string;status:string;created_at:string;started_at:string|null;lease_expires_at:string|null};
+const terminal=new Set(["completed","integrated","merged","work_unit_completed","cancelled","canceled"]);
+async function loadComplete<T extends Record<string,unknown>>(cfg:{url:string;headers:Record<string,string>},table:string,select:string,order:string,key:string):Promise<T[]>{
+ const all:T[]=[];const seen=new Set<string>();const pageSize=200;
+ for(let page=0;page<20;page++){
+  const endpoint=cfg.url+"/rest/v1/"+table+"?select="+encodeURIComponent(select)+"&order="+encodeURIComponent(order)+"&limit="+pageSize+"&offset="+page*pageSize;
+  const response=await fetch(endpoint,{headers:cfg.headers,cache:"no-store"});
+  if(!response.ok)throw new Error("Estado do produto indisponível: "+table+" HTTP "+response.status);
+  const batch:unknown=await response.json();
+  if(!Array.isArray(batch)||batch.length>pageSize||batch.some(v=>!v||typeof v!=="object"||Array.isArray(v)))
+   throw new Error("Inventário de produto inválido: "+table);
+  for(const item of batch as T[]){
+   const identity=item[key];
+   if(typeof identity!=="string"||!identity||seen.has(identity))throw new Error("Inventário de produto inconsistente: "+table);
+   seen.add(identity);all.push(item);
+  }
+  if(batch.length<pageSize)return all;
+ }
+ throw new Error("Inventário de produto excedeu o limite seguro de consulta: "+table);
+}
+export async function getProductSituations():Promise<ProductSnapshot>{
+ await requireConsoleOperator();
+ const cfg=getSupabaseServerConfig();
+ if(!cfg)throw new Error("Control Plane indisponível. Não é seguro exibir produtos sem status.");
+ const [projects,controls,tasks,runs,gates]=await Promise.all([
+  loadComplete<ProjectRow>(cfg,"factory_projects","id,project_key,name,is_active,lifecycle_stage,updated_at,manifest","updated_at.desc,id.desc","id"),
+  loadComplete<ControlRow>(cfg,"factory_project_execution_controls","project_id,state","project_id.asc","project_id"),
+  loadComplete<TaskRow>(cfg,"factory_tasks","id,project_id,title,status,created_at,updated_at","created_at.desc,id.desc","id"),
+  loadComplete<RunRow>(cfg,"factory_runs","id,task_id,status,created_at,started_at,lease_expires_at","created_at.desc,id.desc","id"),
+  getHumanGates(100,true),
+ ]);
+ if(gates.length===100)throw new Error("Inventário de decisões pode estar truncado.");
+ const observedAt=new Date().toISOString(),now=Date.parse(observedAt);
+ const byTask=new Map(tasks.map(t=>[t.id,t]));
+ const projectTasks=new Map<string,TaskRow[]>();
+ for(const t of tasks){const l=projectTasks.get(t.project_id)||[];l.push(t);projectTasks.set(t.project_id,l);}
+ const projectRuns=new Map<string,RunRow[]>();
+ for(const r of runs){const t=byTask.get(r.task_id);if(!t)continue;const l=projectRuns.get(t.project_id)||[];l.push(r);projectRuns.set(t.project_id,l);}
+ const controlById=new Map(controls.map(c=>[c.project_id,c.state]));
+ const pendingGates=new Map<string,number>();
+ for(const g of gates)if(g.status==="pending"&&g.actionable&&g.projectKey)pendingGates.set(g.projectKey,(pendingGates.get(g.projectKey)||0)+1);
+ const products:ProductSituation[]=projects.map(p=>{
+  const tasksFor=projectTasks.get(p.id)||[],runsFor=projectRuns.get(p.id)||[];
+  const last=runsFor[0]||null;
+  const lastTask=last?byTask.get(last.task_id):null;
+  // An in-progress label requires an actual started run with a live lease.
+  const verifiedRunning=runsFor.filter(r=>["running","implementing"].includes(r.status)&&
+   typeof r.started_at==="string"&&Number.isFinite(Date.parse(r.started_at))&&
+   typeof r.lease_expires_at==="string"&&Date.parse(r.lease_expires_at)>now);
+  const latestRuns=new Map<string,RunRow>();
+  for(const r of runsFor)if(!latestRuns.has(r.task_id))latestRuns.set(r.task_id,r);
+  const relevant=[...latestRuns.values()].filter(r=>{
+   const t=byTask.get(r.task_id);
+   return t&&!terminal.has(t.status);
+  });
+  const validationCount=relevant.filter(r=>["ci_pending","preview_ready","review_ready"].includes(r.status)).length;
+  const queuedCount=relevant.filter(r=>["created","queued"].includes(r.status)).length;
+  const continuation=p.manifest&&typeof p.manifest==="object"&&!Array.isArray(p.manifest)
+   ?(p.manifest as Record<string,unknown>).continuation_request:null;
+  const request=continuation&&typeof continuation==="object"&&!Array.isArray(continuation)?continuation as Record<string,unknown>:null;
+  const requestText=typeof request?.summary==="string"&&request.summary.trim()?request.summary.trim().slice(0,280):null;
+  const requestDate=typeof request?.requested_at==="string"&&Number.isFinite(Date.parse(request.requested_at))?request.requested_at:null;
+  const control=controlById.get(p.id)||"unavailable";
+  const status=summarizeProductStatus({
+   key:p.project_key,isActive:p.is_active,controlState:control,
+   humanDecisions:pendingGates.get(p.project_key)||0,confirmedRunning:verifiedRunning.length,
+   validatingRuns:validationCount,queuedRuns:queuedCount,
+   unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,
+   latestRunStatus:last?.status||null,latestRunId:verifiedRunning[0]?.id||relevant.find(r=>["ci_pending","preview_ready","review_ready","created","queued"].includes(r.status))?.id||last?.id||null,latestTaskStatus:lastTask?.status||null,
+  });
+  return {...status,key:p.project_key,name:p.name,stage:p.lifecycle_stage,
+   isActive:p.is_active,controlState:control,
+   lastRequest:requestText,lastRequestAt:requestDate,
+   lastRun:last?{id:last.id,status:last.status,at:last.created_at,taskTitle:lastTask?.title||"Execução registrada"}:null,
+   unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,
+   confirmedRunning:verifiedRunning.length,observedAt,updatedAt:p.updated_at};
+ });
+ const order:Record<ProductState,number>={decision:0,executing:1,verifying:2,queued:3,investigate:4,idle:5,paused:6,stopped:7,unknown:8};
+ products.sort((a,b)=>order[a.state]-order[b.state]||Date.parse(b.lastRun?.at||b.updatedAt)-Date.parse(a.lastRun?.at||a.updatedAt));
+ return{products,observedAt};
+}
