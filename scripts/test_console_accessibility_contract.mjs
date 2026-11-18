@@ -148,7 +148,7 @@ test("real #73 axe: named regions and no prohibited ARIA labels on generic eleme
   const read=file=>fs.readFileSync(path.resolve(import.meta.dirname,"..",file),"utf8");
   const home=read("apps/console/app/page.tsx"),ui=read("apps/console/app/ui.tsx");
   assert.match(home,/<section className="section operatorPortfolio" aria-labelledby="operator-products-title">/);
-   assert.match(home,/<h2 id="operator-products-title">O que está acontecendo com seus produtos<\/h2>/);
+   assert.match(home,/<h2 id="operator-products-title">Produtos acompanhados<\/h2>/);
   assert.doesNotMatch(home,/<div className="homeSummary" aria-label=/);
   assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
   assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
@@ -254,7 +254,7 @@ test("authenticated #76: exact incomplete text glyphs are graphical and accessib
   assert.doesNotMatch(shell,/<span className="workspaceGlyph">/);
   assert.doesNotMatch(nav,/<span className="navAdvancedChevron"/);
   assert.match(shell,/<span>Infodive<\/span>/);
-  assert.match(nav,/<span className="navAdvancedTitle">Diagnóstico e administração<\/span>/);
+  assert.match(nav,/<span className="navAdvancedTitle">Ferramentas técnicas<\/span>/);
   assert.match(nav,/<summary className="navAdvancedToggle">/);
   assert.match(css,/\.workspaceGlyph\{width:14px;height:14px;flex:0 0 14px;display:block;color:#8d93a4\}/);
   assert.match(css,/\.sidebar \.navAdvancedChevron\{width:20px;height:20px;flex:0 0 20px;display:block;color:#adc6ff/);
