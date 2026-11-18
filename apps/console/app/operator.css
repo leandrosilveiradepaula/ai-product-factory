@@ -121,3 +121,27 @@
 
 .deliveryTechnicalToggle{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border:1px solid #506987;border-radius:8px;background:#24354b;color:#c6dfff;font-size:12px;font-weight:700}
 .deliveryTechnicalToggle:hover,.deliveryTechnicalToggle:focus-visible{border-color:#9ac2ff;color:#fff;outline-offset:2px}
+
+/* Delivery detail: intent, next action and review before technical evidence. */
+.deliveryCard h3 a:hover,.deliveryCard h3 a:focus-visible{color:#b9d7ff;text-decoration:underline;text-underline-offset:4px}
+.deliveryDetailHero{border:1px solid #4b6690;border-radius:14px;background:#1d2c44;padding:24px;max-width:1000px}
+.deliveryDetailHero h2{font-size:24px;color:#f0f5fd;margin:13px 0 8px;line-height:1.25}
+.deliveryDetailHero p{font-size:15px;color:#c4d0e1;line-height:1.55;margin:0;max-width:780px}
+.deliveryDetailActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:20px}
+.deliveryDetailActions .linkButton{min-height:44px;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.deliveryDetailNext{max-width:1000px;border:1px solid #344259;border-radius:12px;background:#172130;margin-top:20px;padding:22px}
+.deliveryDetailNext h2{font-size:18px;color:#eaf2fc;margin:0 0 10px}
+.deliveryDetailNext p{font-size:14px;color:#bac9db;line-height:1.6;margin:0}
+.deliveryDetailNext a{font-size:13px;color:#bed8ff;text-decoration:underline;text-underline-offset:4px;min-height:35px;display:inline-flex;align-items:center}
+.deliveryDetailTasks{max-width:1000px;border:1px solid #354259;border-radius:12px;background:#141c28;margin-top:20px}
+.deliveryDetailTasks>summary{padding:17px 20px;color:#d4e5fa;font-size:14px;font-weight:700;cursor:pointer;min-height:52px}
+.deliveryDetailTasks>summary:focus-visible{outline:2px solid #86affb;outline-offset:3px}
+.deliveryDetailSteps{border-top:1px solid #344154;padding:10px 20px}
+.deliveryDetailStep{display:flex;justify-content:space-between;align-items:center;gap:15px;min-height:70px;padding:12px 0;border-bottom:1px solid #344154}
+.deliveryDetailStep:last-child{border-bottom:0}
+.deliveryDetailStep>div{display:grid;gap:6px;min-width:0}
+.deliveryDetailStep strong{font-size:14px;color:#e5effd;overflow-wrap:anywhere}
+.deliveryDetailStep small{font-size:12px;color:#b6c7da}
+.deliveryDetailStep a{flex:0 0 auto;color:#bed8ff;font-size:13px;min-height:40px;display:inline-flex;align-items:center}
+.deliveryDetailStep>span{color:#a1b3c6;font-size:12px}
+@media(max-width:760px){.deliveryDetailHero,.deliveryDetailNext{padding:18px}.deliveryDetailActions{display:grid;grid-template-columns:1fr}.deliveryDetailActions .linkButton{width:100%}.deliveryDetailStep{flex-direction:column;align-items:flex-start;gap:5px}}
