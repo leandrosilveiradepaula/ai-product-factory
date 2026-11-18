@@ -185,8 +185,8 @@
 .productSituationNext{display:flex;align-items:center;gap:14px;padding:13px 20px;border-top:1px solid #34455b;background:#162434}
 .productSituationNext>div{flex:1;min-width:0}
 .productSituationNext p{margin:4px 0 0;font-size:14px;font-weight:700;color:#edf4ff}
-.productSituationButton{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:11px 15px;background:#427edb;border:1px solid #6a9ee7;border-radius:9px;color:#fff;font-size:13px;font-weight:750;text-align:center;white-space:normal}
-.productSituationButton:hover,.productSituationButton:focus-visible{background:#5c94e9;outline-offset:3px}
+.productSituationButton{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:11px 15px;background:#2257a6;border:1px solid #6a9ee7;border-radius:9px;color:#fff;font-size:13px;font-weight:750;text-align:center;white-space:normal}
+.productSituationButton:hover,.productSituationButton:focus-visible{background:#2b64b5;outline-offset:3px}
 .productSituationSecondary{color:#bdd5ff;font-size:13px;font-weight:650;text-decoration:underline;text-underline-offset:3px;min-height:44px;display:inline-flex;align-items:center}
 .productSituationFootnote{margin:14px 0 0;font-size:12px;line-height:1.6;color:#adbed4}
 .productSituationDetail{margin-top:18px}
