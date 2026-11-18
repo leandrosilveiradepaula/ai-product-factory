@@ -334,6 +334,12 @@ test("B3: real Next client navigation renders loading then true offline error an
   await cdp.send("Network.emulateNetworkConditions",{
    offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
   });
+  // Delay the genuine local Next GET only; keep all response content real.
+  await page.route("**/runs?*",async route=>{
+   if(new URL(route.request().url()).pathname==="/runs"&&route.request().method()==="GET")
+    await new Promise(resolve=>setTimeout(resolve,1600));
+   await route.continue();
+  });
   await Promise.all([
    page.locator(".consoleRouteLoading[role='status']").waitFor({state:"visible",timeout:15000}),
    loadingLink.click({timeout:15000}),
@@ -390,6 +396,7 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
   assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
   await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").first().click();
   await page.waitForURL("**/deliveries/"+B3_TASK_ID);
+  await page.getByRole("heading",{name:"Synthetic read-only regression task",exact:true}).waitFor({state:"visible",timeout:12000});
   assert.equal(await page.locator("h1.title").innerText(),"Synthetic read-only regression task");
   assert.ok(await page.getByText("Este pacote foi encerrado").count()>=1);
   assert.ok(await page.getByRole("link",{name:"Solicitar melhoria ou ajuste"}).count()>=1);
