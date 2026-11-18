@@ -147,7 +147,7 @@ test("real #73 axe: named regions and no prohibited ARIA labels on generic eleme
   const path=await import("node:path");
   const read=file=>fs.readFileSync(path.resolve(import.meta.dirname,"..",file),"utf8");
   const home=read("apps/console/app/page.tsx"),ui=read("apps/console/app/ui.tsx");
-  assert.match(home,/<section className="homeSummary" aria-label="Resumo operacional">/);
+  assert.match(home,/<section className="section operatorPortfolio" aria-label="Seus produtos">/);
   assert.doesNotMatch(home,/<div className="homeSummary" aria-label=/);
   assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
   assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
