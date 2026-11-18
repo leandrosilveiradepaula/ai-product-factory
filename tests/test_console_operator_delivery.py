@@ -18,28 +18,47 @@ STYLE=(APP/"operator.css").read_text(encoding="utf-8")
 CI=(ROOT/".github/workflows/console.yml").read_text(encoding="utf-8")
 
 class OperatorExperienceTests(unittest.TestCase):
- def test_home_starts_with_three_real_goals_not_technical_incidents(self):
-  for label in ("Criar um produto", "Melhorar um produto", "Acompanhar entregas"):
-   self.assertIn(label, HOME)
-  for destination in ('href="/projects/new"', 'href="/projects"', 'href="/deliveries"'):
-   self.assertIn(destination,HOME)
-  self.assertLess(HOME.index('className="operatorWelcome"'),HOME.index('className="operatorDiagnostics"'))
+ def test_owner_cockpit_focuses_automatic_progress_and_real_human_gates(self):
+  for label in ("Sua Factory hoje","Nenhuma decisão sua neste momento",
+                "Últimos acontecimentos registrados","Novo produto","Atualização automática"):
+   self.assertIn(label,HOME)
+  self.assertIn('href="/projects/new"',HOME)
+  self.assertIn('className="factoryCommandBar"',HOME)
   self.assertIn('details className="operatorDiagnostics"',HOME)
-  self.assertNotIn("incidents.map",HOME)
-  self.assertNotIn("i.error",HOME)
-  self.assertNotIn("dashboard.pendingGates",HOME)
-  self.assertIn('getHumanGates(100,true)',HOME)
-  self.assertIn('getGitHubAppInstallActions()',HOME)
-  self.assertIn('getGitHubAppStatus()',HOME)
-  self.assertIn('summarizeOperatorAttention(',HOME)
- def test_four_destinations_on_desktop_and_mobile(self):
-  for label in ('label:"Início"', 'label:"Projetos"', 'label:"Entregas"', 'label:"Decisões"'):
-   self.assertIn(label,NAV)
-  self.assertIn('href:"/deliveries"',NAV)
+  self.assertLess(HOME.index('factoryCommandBar'),HOME.index('operatorDiagnostics'))
+  for forbidden in ("incidents.map","i.error","dashboard.pendingGates",'className="operatorWelcome"'):
+   self.assertNotIn(forbidden,HOME)
+  for exact in ('getHumanGates(100,true)','getGitHubAppInstallActions()',
+                'getGitHubAppStatus()', 'summarizeOperatorAttention(', 'getProductSituations()'):
+   self.assertIn(exact,HOME)
+
+ def test_three_owner_destinations_on_desktop_and_mobile(self):
+  primary=NAV.split("const primaryItems=[",1)[1].split("];",1)[0]
+  self.assertEqual([row.split('href:"',1)[1].split('"',1)[0]
+                    for row in primary.splitlines() if 'href:"' in row],
+                   ["/","/projects","/gates"])
+  for label in ('label:"Visão geral"','label:"Produtos"','label:"Decisões"'):
+   self.assertIn(label,primary)
+  self.assertIn('href:"/deliveries"',NAV.split("const advancedGroups=[",1)[1])
   self.assertIn('pathname.startsWith("/deliveries")',SHELL)
-  self.assertIn('>Entregas</Link>',SHELL)
+  self.assertNotIn('>Entregas</Link>',SHELL)
+  for label in ('>Visão geral</Link>','>Produtos</Link>','>Decisões'):
+   self.assertIn(label,SHELL)
   self.assertIn('pendência para revisar',SHELL)
-  self.assertIn('repeat(4,minmax(0,1fr))',STYLE)
+  self.assertIn('repeat(3,minmax(0,1fr))',STYLE)
+
+ def test_passive_refresh_never_touches_intake_or_human_decision_forms(self):
+  self.assertIn('const passiveOverview=',SHELL)
+  self.assertIn('pathname==="/"||pathname==="/projects"',SHELL)
+  self.assertIn('pathname.split("/").length===3',SHELL)
+  self.assertIn('if(!passiveOverview)return',SHELL)
+  self.assertIn('document.visibilityState!=="visible"',SHELL)
+  self.assertIn('!navigator.onLine',SHELL)
+  self.assertIn('router.refresh()',SHELL)
+  self.assertIn('activities.map(',HOME)
+  self.assertNotIn('mergeReadyReleaseFromConsole',SHELL)
+  self.assertNotIn('method:"POST"',HOME)
+
  def test_readonly_board_uses_authoritative_data_and_integrity_guards(self):
   for table in ('"factory_projects"', '"factory_tasks"', '"factory_runs"'):
    self.assertIn(table,READER)
