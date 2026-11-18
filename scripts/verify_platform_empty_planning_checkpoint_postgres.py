@@ -99,8 +99,9 @@ def fixture(db, *, project_kind="platform", error="planning has no actionable ta
                "values(%s,%s,'failed','direct',%s::jsonb)",(run,task,json.dumps(source_md)))
     db.execute("insert into public.factory_project_state_snapshots "
                "(id,project_id,run_id,observed_stage,summary,evidence,gaps,constraints,source_status) "
-               "values(%s,%s,%s,'reconciliation','valid source snapshot','[{\\"kind\\":\\"source\\"}]'::jsonb,"
-               "'[]'::jsonb,'[]'::jsonb,'{}'::jsonb)",(snapshot,project,run))
+               "values(%s,%s,%s,'reconciliation','valid source snapshot',%s::jsonb,"
+               "'[]'::jsonb,'[]'::jsonb,'{}'::jsonb)",
+               (snapshot,project,run,json.dumps([{"kind":"source"}])))
     def event(kind,payload):
         db.execute("insert into public.factory_audit_events(project_id,task_id,run_id,"
                    "actor_type,actor_ref,event_type,payload) "
