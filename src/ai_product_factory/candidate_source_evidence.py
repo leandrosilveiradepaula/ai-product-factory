@@ -154,7 +154,7 @@ def _request_paths(continuation_request: str | None) -> list[str]:
     if not isinstance(continuation_request, str):
         return []
     paths: list[str] = []
-    pattern = r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs)"
+    pattern = r"(?:src|test|tests|app|apps|pages|lib|packages|scripts)/[A-Za-z0-9_./()\-]+\.(?:tsx?|jsx?|py|cjs|mjs|css)"
     for match in re.finditer(pattern, continuation_request):
         path = match.group()
         if _CODE_PATH.fullmatch(path) and ".." not in path.split("/") and path not in paths:
