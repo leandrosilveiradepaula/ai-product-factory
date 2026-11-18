@@ -491,7 +491,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    firstRoute=null;
    try{
      await page.waitForFunction(()=>
-       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 decisões pendentes"&&
+       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 ações pendentes"&&
        document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",
        null,{timeout:10000});
    }catch{
