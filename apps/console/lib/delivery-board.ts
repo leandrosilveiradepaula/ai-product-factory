@@ -10,12 +10,12 @@ export type DeliveryLane="received"|"working"|"validating"|"waiting_human"|"bloc
 export type DeliveryCard={
  id:string;projectKey:string;projectName:string;title:string;
  latestActivity:string|null;lane:DeliveryLane;statusLabel:string;
- updatedAt:string;taskCount:number;latestRunId:string|null;
+ updatedAt:string;taskCount:number;latestRunId:string|null;internalRoutine:boolean;
  needsHuman:boolean;
 };
 export type DeliveryBoard={cards:DeliveryCard[];projects:{key:string;name:string}[];readAt:string};
 type ProjectRow={id:string;project_key:string;name:string;is_active:boolean};
-type TaskRow={id:string;project_id:string;parent_task_id:string|null;title:string;status:string;updated_at:string};
+type TaskRow={id:string;project_id:string;parent_task_id:string|null;title:string;status:string;updated_at:string;external_key:string|null};
 type RunRow={id:string;task_id:string;status:string;created_at:string};
 
 const completeStatuses=new Set(["completed","integrated","merged","work_unit_completed"]);
@@ -94,7 +94,7 @@ export async function getDeliveryBoard():Promise<DeliveryBoard>{
  if(!cfg)throw new Error("Control Plane indisponível. Não é seguro exibir um quadro vazio.");
  const [projects,tasks,runs,gates]=await Promise.all([
   allRows<ProjectRow>(cfg,"factory_projects","id,project_key,name,is_active","updated_at.desc,id.desc"),
-  allRows<TaskRow>(cfg,"factory_tasks","id,project_id,parent_task_id,title,status,updated_at","updated_at.desc,id.desc"),
+  allRows<TaskRow>(cfg,"factory_tasks","id,project_id,parent_task_id,title,status,updated_at,external_key","updated_at.desc,id.desc"),
   allRows<RunRow>(cfg,"factory_runs","id,task_id,status,created_at","created_at.desc,id.desc"),
   getHumanGates(100,true),
  ]);
@@ -133,6 +133,9 @@ export async function getDeliveryBoard():Promise<DeliveryBoard>{
    lane,statusLabel:deliveryStatusLabel(lane,statuses),
    updatedAt:newest.updated_at,taskCount:children.length,
    latestRunId:mostRecentRun?.id||null,needsHuman:humanGate,
+   // This versioned system event is a certification run, not a user delivery.
+   // It remains accessible via the board Technical routines toggle and /runs.
+   internalRoutine:typeof root.external_key==="string"&&root.external_key.startsWith("product-readiness:"),
   });
  }
  cards.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
