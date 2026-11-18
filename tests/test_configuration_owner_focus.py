@@ -11,7 +11,7 @@ class ConfigurationOwnerFocusTests(unittest.TestCase):
  def test_owner_budget_is_top_level_before_all_advanced_diagnostics(self):
   self.assertLess(PAGE.index("<PrimaryCostPolicyPanel"),PAGE.index("configurationBeyond"))
   self.assertIn('id="orcamento"',PANEL)
-  self.assertIn('href:"/configuration#orcamento"',HOME)
+  self.assertIn('href:"/configuration"',HOME)
   self.assertIn('id="politicas-avancadas"',PAGE)
   self.assertIn('id="politicas-de-preview"',PAGE)
   self.assertIn('id="dados-tecnicos"',PAGE)

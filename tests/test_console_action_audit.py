@@ -40,7 +40,7 @@ class ConsoleActionAuditTests(unittest.TestCase):
         panel=(APP/"configuration"/"cost-policy-panel.tsx").read_text(encoding="utf-8")
         owner=(ROOT/"apps"/"console"/"lib"/"owner-financial-blocker.ts").read_text(encoding="utf-8")
         self.assertIn('id="orcamento"',panel)
-        self.assertIn('"/configuration#orcamento"',owner)
+        self.assertIn('"/configuration"',owner)
         self.assertLess(text.index("<PrimaryCostPolicyPanel"),text.index("configurationBeyond"))
         self.assertIn('<details className="configurationDisclosure"',text)
         for target in ("governanca","modelos","execucao","preview","seguranca"):

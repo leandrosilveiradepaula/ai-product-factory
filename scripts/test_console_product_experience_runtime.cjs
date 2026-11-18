@@ -103,7 +103,7 @@ test("financial blocker requires a real pending-run audit and current policy",()
  assert.equal(blocked?.title,"Parado por limite financeiro");
  assert.match(blocked.detail,/US/);
  assert.match(blocked.detail,/0,50/);
- assert.equal(blocked.href,"/configuration#orcamento");
+ assert.equal(blocked.href,"/configuration");
  assert.equal(check(observed,{...policy,budgetUsd:20}),null);
  assert.equal(check({...observed,pendingRun:{...pending,status:"completed"}},policy),null);
  assert.equal(check({...observed,wakeEvidence:{...observed.wakeEvidence,blockerCode:"primary_auth_missing"}},policy),null);

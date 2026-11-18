@@ -31,7 +31,7 @@ export function ownerFinancialBlocker(
     !Number.isFinite(Date.parse(pending.createdAt))||
     Date.parse(detail.wakeEvidence.blockedAt)<Date.parse(pending.createdAt))return null;
 
- const common={href:"/configuration#orcamento",actionLabel:"Revisar orçamento"};
+ const common={href:"/configuration",actionLabel:"Revisar orçamento"};
  if(policy===null||policy.knownSpendUsd===null||
     policy.unknownPaidCostEvents===null||
     policy.unknownPaidCostEvents>0){
