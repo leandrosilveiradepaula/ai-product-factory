@@ -18,13 +18,18 @@ function DeliveryCardView({item}:{item:DeliveryCard}){
  </article>;
 }
 
-export default async function Deliveries({searchParams}:{searchParams:Promise<{project?:string}>}){
+export default async function Deliveries({searchParams}:{searchParams:Promise<{project?:string;view?:string}>}){
  const query=await searchParams;
  const selected=typeof query.project==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(query.project)?query.project:"";
  const board=await getDeliveryBoard();
  const knownProject=board.projects.some(p=>p.key===selected);
  const projectKey=knownProject?selected:"";
- const cards=projectKey?board.cards.filter(c=>c.projectKey===projectKey):board.cards;
+ const scoped=projectKey?board.cards.filter(c=>c.projectKey===projectKey):board.cards;
+ const showTechnical=query.view==="all";
+ const technicalCount=scoped.filter(c=>c.internalRoutine).length;
+ const cards=showTechnical?scoped:scoped.filter(c=>!c.internalRoutine);
+ const viewSuffix=showTechnical?"?view=all":"";
+ const projectViewSuffix=showTechnical?"&view=all":"";
  const counts=Object.fromEntries(deliveryLanes.map(l=>[l.key,cards.filter(c=>c.lane===l.key).length]));
  return <>
   <PageHeader eyebrow="Entregas" title="Quadro de trabalho"
@@ -36,14 +41,18 @@ export default async function Deliveries({searchParams}:{searchParams:Promise<{p
   </section>
 
   <nav className="deliveryFilters" aria-label="Filtrar entregas por produto">
-   <Link prefetch={false} className={!projectKey?"deliveryFilter active":"deliveryFilter"} aria-current={!projectKey?"page":undefined} href="/deliveries">Todos os produtos</Link>
+   <Link prefetch={false} className={!projectKey?"deliveryFilter active":"deliveryFilter"} aria-current={!projectKey?"page":undefined} href={"/deliveries"+viewSuffix}>Todos os produtos</Link>
    {board.projects.map(p=><Link prefetch={false} className={projectKey===p.key?"deliveryFilter active":"deliveryFilter"}
-     aria-current={projectKey===p.key?"page":undefined} key={p.key} href={"/deliveries?project="+encodeURIComponent(p.key)}>{p.name}</Link>)}
+     aria-current={projectKey===p.key?"page":undefined} key={p.key} href={"/deliveries?project="+encodeURIComponent(p.key)+projectViewSuffix}>{p.name}</Link>)}
   </nav>
 
   <div className="deliveryBoardHeading">
-   <p>{cards.length} {cards.length===1?"pacote de trabalho":"pacotes de trabalho"} encontrados · consulta {new Date(board.readAt).toLocaleString("pt-BR")}</p>
-   <span>O quadro mostra o estado registrado, não execução em tempo real.</span>
+   <p>{cards.length} {cards.length===1?"pacote de trabalho":"pacotes de trabalho"} no quadro · consulta {new Date(board.readAt).toLocaleString("pt-BR")}</p>
+   {technicalCount>0?<Link prefetch={false} className="deliveryTechnicalToggle"
+     href={showTechnical?("/deliveries"+(projectKey?"?project="+encodeURIComponent(projectKey):"")):
+       ("/deliveries?view=all"+(projectKey?"&project="+encodeURIComponent(projectKey):""))}>
+     {showTechnical?"Ocultar rotinas internas":technicalCount+" rotinas internas ocultas · Mostrar"}
+    </Link>:<span>Estados registrados; não é execução em tempo real.</span>}
   </div>
   <section className="deliveryBoard" aria-label="Quadro Kanban de entregas">
    {deliveryLanes.map(lane=>{
