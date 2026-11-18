@@ -200,7 +200,20 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <button className="primary" type="submit">Verificar acesso da GitHub App</button>
    </form>
   </div>:null}
-  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<>{executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink>:null}<details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <section className="projectOperatorChoices" aria-label="Ações deste produto">
+   <div>
+    <span className="operatorEyebrow">ESCOLHA SEU PRÓXIMO PASSO</span>
+    <h2>O que você quer fazer com este produto?</h2>
+    <p>Você descreve a mudança. A Factory organiza, implementa e testa; o controle de publicação continua humano.</p>
+   </div>
+   <div className="projectOperatorLinks">
+    {executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir melhoria ou correção</ActionLink>
+      :<ActionLink href="#project-control" variant="secondary">Ver como iniciar ou retomar</ActionLink>}
+    <ActionLink href={"/deliveries?project="+encodeURIComponent(p.key)} variant="secondary">Acompanhar entregas</ActionLink>
+    {["human_gate","release"].includes(p.stage)?<ActionLink href="/gates" variant="secondary">Revisar decisões</ActionLink>:null}
+   </div>
+  </section>
   <div className="projectOrientation">
    <aside className={humanActionNeeded?"nextActionCard needsHuman":"nextActionCard routine"} aria-label="Próxima etapa">
     <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"A Factory está cuidando desta etapa"}</span>
