@@ -35,12 +35,20 @@ class ConsoleActionAuditTests(unittest.TestCase):
         missing=[href for href in sorted(hrefs) if not route_file(href).exists()]
         self.assertEqual(missing,[])
 
-    def test_configuration_tabs_are_actionable_anchors(self):
+    def test_configuration_budget_is_primary_and_technical_destinations_are_disclosed(self):
         text=(APP/"configuration"/"page.tsx").read_text(encoding="utf-8")
+        panel=(APP/"configuration"/"cost-policy-panel.tsx").read_text(encoding="utf-8")
+        owner=(ROOT/"apps"/"console"/"lib"/"owner-financial-blocker.ts").read_text(encoding="utf-8")
+        self.assertIn('id="orcamento"',panel)
+        self.assertIn('"/configuration#orcamento"',owner)
+        self.assertLess(text.index("<PrimaryCostPolicyPanel"),text.index("configurationBeyond"))
+        self.assertIn('<details className="configurationDisclosure"',text)
         for target in ("governanca","modelos","execucao","preview","seguranca"):
-            self.assertIn(f'href="#{target}"',text)
             self.assertIn(f'id="{target}"',text)
-        self.assertNotIn('<div className="configTabs"><span',text)
+        self.assertIn('id="politicas-avancadas"',text)
+        self.assertIn('id="politicas-de-preview"',text)
+        self.assertIn('id="dados-tecnicos"',text)
+        self.assertNotIn('className="configTabs"',text)
 
     def test_auth_pages_do_not_render_authenticated_console_shell(self):
         layout=(APP/"layout.tsx").read_text(encoding="utf-8")
