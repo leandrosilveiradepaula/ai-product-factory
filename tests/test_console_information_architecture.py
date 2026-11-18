@@ -62,7 +62,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertNotIn('getHumanGates(8)',HOME)
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):
-        self.assertIn('último pedido',PROJECTS)
+        self.assertIn('Veja a fase de cada produto',PROJECTS)
         self.assertIn('getProductSituations()',PROJECTS)
         self.assertIn('ProductSituationCard',PROJECTS)
         self.assertNotIn('macroProgress',PROJECTS)
