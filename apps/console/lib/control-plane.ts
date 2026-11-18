@@ -350,7 +350,7 @@ function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
 export type ProjectPendingRun={id:string;status:string;attemptCount:number;createdAt:string};
 export type ProjectWakeEvidence={wakeStatus:string|null;wakeAt:string|null;workerObservedAt:string|null;productQueueDetected:boolean;blockerCode:string|null;blockedAt:string|null;workerRunId:string|null};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;tasks:ProjectTaskSummary[]};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;isInternalRecord:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
@@ -418,7 +418,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  }
  const preview=p.manifest?.preview&&typeof p.manifest.preview==="object"?p.manifest.preview:null;
  const evidence=preview?.evidence&&typeof preview.evidence==="object"?preview.evidence:null;
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,isInternalRecord:p.manifest?.qa_canary===true,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export type ProjectContinuationHistoryItem={id:string;summary:string;requestedAt:string;attachmentCount:number};
@@ -535,11 +535,52 @@ export async function getProjectStateContext(projectId:string):Promise<ProjectSt
 
 export type ProjectRecoveryStatus={status:string;cycle:number;maxCycles:number;message:string|null;updatedAt:string}|null;
 export async function getProjectRecoveryStatus(projectId:string):Promise<ProjectRecoveryStatus>{
- const cfg=serverHeaders();if(!cfg||!projectId)return null;
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg||!projectId)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
  const response=await fetch(cfg.url+"/rest/v1/factory_repair_jobs?select=status,cycle,max_cycles,finding,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"});
- if(!response.ok)return null;const rows=await response.json();const row=Array.isArray(rows)?rows[0]:null;if(!row)return null;
- const finding=row.finding&&typeof row.finding==="object"?row.finding:{};const message=typeof finding.message==="string"?finding.message:typeof finding.detail==="string"?finding.detail:null;
- return{status:String(row.status||"unknown"),cycle:Number(row.cycle||0),maxCycles:Number(row.max_cycles||0),message,updatedAt:String(row.updated_at||"")};
+ if(!response.ok)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const rows=await response.json();
+ if(!Array.isArray(rows))return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const row=rows[0];if(!row)return null;
+ const finding=row.finding&&typeof row.finding==="object"&&!Array.isArray(row.finding)?row.finding:{};
+ const message=typeof finding.message==="string"?finding.message.slice(0,400):typeof finding.detail==="string"?finding.detail.slice(0,400):null;
+ const cycle=Number(row.cycle),maxCycles=Number(row.max_cycles);
+ return{status:typeof row.status==="string"?row.status:"unknown",
+   cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,
+   maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,
+   message,updatedAt:typeof row.updated_at==="string"?row.updated_at:""};
+}
+
+export type ProjectWorkObservation={
+ kind:"running"|"recorded"|"idle"|"unavailable";
+ runId:string|null;at:string|null;
+};
+/** A registered/queued run is not a worker. Only a started run with a
+ * current lease and a running state is proof of active work. Read-only.
+ */
+export async function getProjectWorkObservation(taskIds:string[]):Promise<ProjectWorkObservation>{
+ await requireConsoleOperator();
+ const none=(kind:ProjectWorkObservation["kind"]):ProjectWorkObservation=>({kind,runId:null,at:null});
+ const cfg=serverHeaders();if(!cfg)return none("unavailable");
+ if(!Array.isArray(taskIds)||taskIds.length>500||taskIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))
+  return none("unavailable");
+ if(taskIds.length===0)return none("idle");
+ const q=taskIds.map(encodeURIComponent).join(",");
+ const response=await fetch(cfg.url+"/rest/v1/factory_runs?select=id,status,started_at,created_at,lease_owner,lease_expires_at&task_id=in.("+q+")&status=in.(created,queued,running,implementing,ci_pending,review_ready,preview_ready)&order=created_at.desc&limit=500",{
+  headers:cfg.headers,cache:"no-store",
+ });
+ if(!response.ok)return none("unavailable");
+ const rows=await response.json();
+ if(!Array.isArray(rows)||rows.length>=500)return none("unavailable");
+ const now=Date.now();
+ const validDate=(value:unknown)=>typeof value==="string"&&Number.isFinite(Date.parse(value));
+ const active=rows.find((r:any)=>(r.status==="running"||r.status==="implementing")&&validDate(r.started_at)&&
+  typeof r.lease_owner==="string"&&r.lease_owner.length>0&&validDate(r.lease_expires_at)&&Date.parse(r.lease_expires_at)>now);
+ if(active)return{kind:"running",runId:String(active.id),at:String(active.started_at)};
+ const recorded=rows.find((r:any)=>(r.status==="created"||r.status==="queued")&&r.started_at==null);
+ if(recorded)return{kind:"recorded",runId:String(recorded.id),at:typeof recorded.created_at==="string"?recorded.created_at:null};
+ return none("idle");
 }
 
 export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){

@@ -45,20 +45,26 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('context.advanced?<details className="technicalRouteHelp"',SHELL)
         self.assertNotIn('className={context.advanced?"screenGuide advanced":"screenGuide"}',SHELL)
 
-    def test_home_shows_real_projects_and_actionable_approvals_first(self):
-        self.assertIn('getHumanGates(30,true)',HOME)
-        self.assertIn('g.status==="pending"&&g.actionable',HOME)
-        self.assertIn('d.projects.slice(0,4).map',HOME)
-        self.assertIn('className={"homeFocus "+overviewAction.kind}',HOME)
-        self.assertIn('className="homeProjectGrid"',HOME)
-        self.assertIn('className="homeSummary"',HOME)
-        self.assertIn('className="homeQuietStatus"',HOME)
-        self.assertIn('className="technicalDetails homeTechnicalDetails"',HOME)
-        self.assertIn('className="overviewActivityDetails"',HOME)
-        self.assertIn('humanizeStatus(p.stage)',HOME)
-        self.assertNotIn('label="orquestrador online"',HOME)
-        self.assertNotIn('getHumanGates(8)',HOME)
-        self.assertNotIn('\\${recentRuns.length}',HOME)
+    def test_owner_home_requires_actual_execution_and_actionable_gates(self):
+        MODEL=(ROOT/"apps/console/lib/product-experience-model.ts").read_text(encoding="utf-8")
+        for item in ("getHumanGates(50,true)",'g.actionable&&g.status==="pending"',
+                     "getProjectWorkObservation(", "getProjectExecutionControl(",
+                     'className="factoryPulse"', 'className="productBoard"',
+                     'className="portfolioSecondary"', "renderProduct"):
+            with self.subTest(item=item): self.assertIn(item,HOME)
+        self.assertNotIn('detail?.pendingRun).length',HOME)
+        self.assertNotIn('project.stage==="operations"',HOME)
+        self.assertNotIn('project.key==="factory-wake-canary-20261019"',HOME)
+        self.assertNotIn('i<index?"complete"',HOME)
+        self.assertIn("detail.isInternalRecord",HOME)
+        self.assertIn('work.kind==="running"',MODEL)
+        self.assertIn('detail?.productReadiness.ready===true',MODEL)
+        self.assertIn('getHumanGates(50,true)',HOME)
+        self.assertIn('className="humanInbox"',HOME)
+        self.assertIn('getDashboard()',HOME)
+        self.assertIn('getProjectDetail(project.key)',HOME)
+        self.assertIn('getProjectStateContext(detail.id)',HOME)
+        self.assertIn('cache:"no-store"',(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8"))
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):
         self.assertIn('Etapa registrada',PROJECTS)
