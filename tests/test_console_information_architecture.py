@@ -64,7 +64,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertNotIn('project.stage==="operations"',HOME)
         self.assertNotIn('project.key==="factory-wake-canary-20261019"',HOME)
         self.assertNotIn('i<index?"complete"',HOME)
-        self.assertIn("detail.isInternalRecord",HOME)
+        self.assertIn("detail?.isInternalRecord",HOME)
         self.assertIn('work.kind==="running"',MODEL)
         self.assertIn('detail?.productReadiness.ready===true',MODEL)
         self.assertIn('getHumanGates(50,true)',HOME)
