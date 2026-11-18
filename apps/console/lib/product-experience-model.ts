@@ -77,7 +77,7 @@ export function summarizeProductExperience(data:{
  if(work.kind==="recorded"||detail.pendingRun)return output("waiting","Pedido registrado","A execução ainda não começou",
   "Há uma solicitação registrada, mas nenhum worker com lease vigente foi observado.",
   "Assumir a execução pendente","A Factory deve assumir o trabalho e registrar o resultado.","Nenhuma ação agora");
- if(work.kind==="unavailable"||control.state==="unavailable"||recovery?.status==="unavailable")return output("unknown",
+ if(work.kind==="unavailable"||recovery?.status==="unavailable")return output("unknown",
   "Verificação indisponível","Não foi possível confirmar a situação",
   "Uma das fontes de execução ou recuperação falhou. Não é seguro tratar ausência de resposta como sucesso.",
   "Restabelecer a verificação de evidências","Nenhum avanço nem certificação deve ser presumido.","Nenhuma aprovação solicitada");
