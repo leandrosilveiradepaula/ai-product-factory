@@ -77,7 +77,7 @@ class ConsoleGlobalReadinessOperabilityTests(unittest.TestCase):
     def test_authenticated_browser_executes_visual_not_mock_checks(self):
         self.assertIn("mobile readability/touch audit failed on",BROWSER)
         self.assertIn("readability.bodyPx < 14 || readability.mainPx < 14",BROWSER)
-        self.assertIn("readability.quickTargets.length !== 3",BROWSER)
+        self.assertIn("readability.quickTargets.length !== 4",BROWSER)
         self.assertIn("target.heightPx < 44",BROWSER)
         self.assertIn("keyboard skip link does not become visible on focus",BROWSER)
         self.assertIn('page.locator(".readinessDomainChecklist [role=\'listitem\']")',BROWSER)
