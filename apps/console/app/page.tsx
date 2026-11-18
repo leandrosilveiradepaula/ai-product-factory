@@ -25,22 +25,22 @@ export default async function Home(){
    </div>
    <div className="operatorChoices">
     <Link prefetch={false} href="/projects/new" className="operatorChoice featured">
-     <span className="operatorChoiceSymbol" aria-hidden="true">＋</span>
+     <span className="operatorChoiceSymbol" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 4v16M4 12h16"/></svg></span>
      <strong>Criar um produto</strong>
      <span>Tenho uma ideia e quero que a Factory a transforme em produto.</span>
-     <b>Descrever minha ideia <span aria-hidden="true">→</span></b>
+     <b>Descrever minha ideia</b>
     </Link>
     <Link prefetch={false} href="/projects" className="operatorChoice">
-     <span className="operatorChoiceSymbol" aria-hidden="true">✎</span>
+     <span className="operatorChoiceSymbol" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 16 0 4 4 0 11-11-4-4zM13 7l4 4"/></svg></span>
      <strong>Melhorar um produto</strong>
      <span>Quero corrigir algo, acrescentar uma função ou solicitar outra evolução.</span>
-     <b>Escolher o produto <span aria-hidden="true">→</span></b>
+     <b>Escolher o produto</b>
     </Link>
     <Link prefetch={false} href="/deliveries" className="operatorChoice">
-     <span className="operatorChoiceSymbol" aria-hidden="true">◎</span>
+     <span className="operatorChoiceSymbol" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg></span>
      <strong>Acompanhar entregas</strong>
      <span>Quero ver o quadro de trabalho, identificar bloqueios e acompanhar o resultado.</span>
-     <b>Abrir quadro de entregas <span aria-hidden="true">→</span></b>
+     <b>Abrir quadro de entregas</b>
     </Link>
    </div>
   </section>
