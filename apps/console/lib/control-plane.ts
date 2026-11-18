@@ -184,6 +184,24 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  return {...result,requestId,requestedAt:String(result.requested_at||""),wakeStatus};
 }
 
+/** Queue a new, auditable Product-stage continuation for one blocked repair.
+ * This is deliberately separate from lifecycle restart: stopped projects still
+ * use factory_control_project_v1, and terminal Change Sets are never reopened.
+ */
+export async function restartBlockedProjectWork(projectKey:string,expectedVersion:number,commandId:string){
+ const operator=await requireConsoleOperator();
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(projectKey)||!Number.isSafeInteger(expectedVersion)||expectedVersion<0||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(commandId))throw new Error("Comando de retomada inválido.");
+ const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
+ const response=await fetch(cfg.url+"/rest/v1/rpc/factory_restart_blocked_work_v1",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_command_id:commandId,p_expected_version:expectedVersion,p_actor_id:operator.userId}),cache:"no-store"});
+ if(!response.ok)throw new Error("A retomada não é elegível ou o estado foi alterado. Atualize a página.");
+ const result=await response.json();
+ if(!result||!['queued','claimed','recovering','completed','blocked'].includes(result.status)||typeof result.request_id!=="string"||typeof result.run_id!=="string"||typeof result.task_id!=="string")throw new Error("Confirmação de retomada inválida.");
+ let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
+ try{wakeStatus=await (await import("./project-control-wake-outbox")).deliverProjectControlWake(commandId);}
+ catch{wakeStatus="failed";console.warn("blocked_work_recovery_wake_will_retry");}
+ return {status:result.status as "queued"|"claimed"|"recovering"|"completed"|"blocked",requestId:result.request_id as string,runId:result.run_id as string,taskId:result.task_id as string,wakeStatus};
+}
+
 export async function getDashboard():Promise<Dashboard>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();
@@ -538,7 +556,10 @@ export async function getProjectRecoveryStatus(projectId:string):Promise<Project
  await requireConsoleOperator();
  const cfg=serverHeaders();
  if(!cfg||!projectId)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
- const response=await fetch(cfg.url+"/rest/v1/factory_repair_jobs?select=status,cycle,max_cycles,finding,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"});
+ const [response,recoveryResponse]=await Promise.all([
+  fetch(cfg.url+"/rest/v1/factory_repair_jobs?select=status,cycle,max_cycles,finding,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_blocked_work_recovery_requests?select=status,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"}),
+ ]);
  if(!response.ok)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
  const rows=await response.json();
  if(!Array.isArray(rows))return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
@@ -546,6 +567,10 @@ export async function getProjectRecoveryStatus(projectId:string):Promise<Project
  const finding=row.finding&&typeof row.finding==="object"&&!Array.isArray(row.finding)?row.finding:{};
  const message=typeof finding.message==="string"?finding.message.slice(0,400):typeof finding.detail==="string"?finding.detail.slice(0,400):null;
  const cycle=Number(row.cycle),maxCycles=Number(row.max_cycles);
+ const recoveries=recoveryResponse.ok?await recoveryResponse.json():[];
+ const latest=Array.isArray(recoveries)?recoveries[0]:null;
+ if(latest&&typeof latest.status==="string"&&["queued","claimed","recovering"].includes(latest.status))
+  return{status:"recovery_"+latest.status,cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,message:"Retomada já registrada; aguardando o worker e os gates normais.",updatedAt:typeof latest.updated_at==="string"?latest.updated_at:""};
  return{status:typeof row.status==="string"?row.status:"unknown",
    cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,
    maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,

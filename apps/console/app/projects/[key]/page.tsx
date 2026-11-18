@@ -2,7 +2,7 @@ import {cookies} from "next/headers";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
-import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation,getProjectExecutionControl,commandProjectExecution} from "../../../lib/control-plane";
+import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation,getProjectExecutionControl,getProjectRecoveryStatus,commandProjectExecution,restartBlockedProjectWork} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {RepositoryLinkForm} from "./repository-link-form";
@@ -65,6 +65,9 @@ const controlMessages:Record<string,{status:"success"|"attention";message:string
  requested:{status:"success",message:"Comando salvo. A Factory recebeu um sinal para verificar o estado e a fila, sem dispensar os gates de execução."},
  delayed:{status:"attention",message:"Comando salvo, mas não foi possível solicitar a verificação imediata. A próxima execução agendada poderá reconciliar o estado."},
  recorded:{status:"success",message:"Comando salvo no Control Plane. Nenhuma nova execução foi iniciada por esta confirmação."},
+ recovery_requested:{status:"success",message:"Retomada registrada. A Factory vai reconciliar o reparo como uma nova continuação; o Change Set terminal permanece preservado."},
+ recovery_recorded:{status:"success",message:"Retomada registrada no Control Plane. A execução ainda depende de o worker assumir a fila e dos gates normais."},
+ recovery_delayed:{status:"attention",message:"Retomada registrada, mas o sinal imediato não foi confirmado. A fila continua durável e o scheduler poderá assumi-la."},
 };
 
 const supabaseMessages:Record<string,{status:string;message:string}>={
@@ -126,6 +129,17 @@ async function controlProject(formData:FormData){
  const notice=result.wakeStatus==="requested"?"requested":result.wakeStatus==="not_needed"?"recorded":"delayed";
  redirect("/projects/"+key+"?control="+notice);
 }
+async function restartBlockedWork(formData:FormData){
+ "use server";
+ const key=String(formData.get("project_key")||"");
+ const rawVersion=formData.get("version");
+ const id=String(formData.get("command_id")||"");
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key)||typeof rawVersion!=="string"||!/^(0|[1-9][0-9]*)$/.test(rawVersion))throw new Error("Retomada inválida.");
+ const result=await restartBlockedProjectWork(key,Number(rawVersion),id);
+ revalidatePath("/projects/"+key);
+ const notice=result.wakeStatus==="requested"?"recovery_requested":"recovery_delayed";
+ redirect("/projects/"+key+"?control="+notice);
+}
 async function reconcileProject(formData:FormData){
  "use server";
  const projectKey=String(formData.get("project_key")||"");
@@ -162,7 +176,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const installProject=jar?.get("factory_github_app_install_project")?.value||"";
  const installPending=operator.role==="admin"&&installReturned&&installProject===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(key);
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id)]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl,recovery]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id),getProjectRecoveryStatus(p.id)]);
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
@@ -204,10 +218,12 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <p>O cadastro não inicia o desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar.</p>
     <div className="actions">{([
      ["draft","start","Iniciar projeto"],["running","pause","Pausar"],["running","stop","Parar"],
-     ["pausing","stop","Parar"],["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"]
-    ] as const).filter(([state])=>state===executionControl.state).map(([,command,label])=>
+    ["pausing","stop","Parar"],["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"],
+    ["running","restart","Reiniciar"]
+    ] as const).filter(([state,command])=>state===executionControl.state&&(command!=="restart"||executionControl.state==="stopped"||recovery?.status==="blocked")).map(([,command,label])=>
       <ProjectControlForm key={command} projectKey={p.key} command={command}
-        version={executionControl.version} label={label} action={controlProject}/>
+        version={executionControl.version} label={label}
+        action={command==="restart"&&executionControl.state==="running"?restartBlockedWork:controlProject}/>
     )}</div>
     {controlWake?<p role="status">Acionamento: {controlWake.status==="dispatched"?"Sinal aceito pelo GitHub":controlWake.status==="observed"?"Scheduler observou o pedido":controlWake.status==="pending"?"Nova tentativa agendada":controlWake.status==="claimed"?"Tentativa em andamento":controlWake.status==="suppressed"?"Invalidado por pausa/parada":controlWake.status==="exhausted"?"Tentativas esgotadas":"Aguardando"} · tentativas {controlWake.attempts}. Isto não comprova execução de modelo ou conclusão da tarefa.</p>:null}
      {executionControl.state==="unavailable"?<p role="alert">O controle de execução não está disponível. Nenhum comando foi liberado; verifique a ativação da migração e as permissões do Control Plane.</p>:null}
