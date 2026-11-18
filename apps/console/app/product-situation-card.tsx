@@ -21,7 +21,7 @@ function EvidenceRibbon({item}:{item:ProductSituation}){
   </div>
   <div className="productTruthMarkers">
    <span className={item.proof?.hasHumanMerge?"truthRecorded":"truthUnknown"}>{item.proof?.hasHumanMerge?"Código integrado":"Integração não confirmada"}</span>
-   <span className={item.proof?.productReady?"truthVerified":"truthUnverified"}>{item.proof?.productReady?"Entrega avaliada":"Uso real não aprovado"}</span>
+   <span className={item.proof?.productReady?"truthVerified":"truthUnverified"}>{item.proof?.productReady?"Entrega avaliada":"Uso funcional não comprovado"}</span>
   </div>
  </section>;
 }
@@ -77,7 +77,7 @@ export function ProductSituationCard({item,showOpen=true,compact=false}:{item:Pr
    <div><h3><Link prefetch={false} href={"/projects/"+encodeURIComponent(item.key)}>{item.name}</Link></h3>
     <span>{item.isInternalRecord?"Registro de teste interno":"Produto do portfólio"}</span>
    </div>
-   <span className={"productSituationStatus "+item.state}>{item.state==="decision"?"Decisão sua pendente":item.state==="investigate"?"Execução técnica bloqueada":item.state==="executing"?"Trabalho em curso":item.state==="stopped"?"Parado":item.state==="paused"?"Pausado":item.proof?.productReady?"Entrega avaliada":"Entrega pendente de aceite"}</span>
+   <span className={"productSituationStatus "+item.state}>{item.state==="decision"?"Decisão sua pendente":item.state==="investigate"?"Execução técnica bloqueada":item.state==="executing"?"Trabalho em curso":item.state==="stopped"?"Parado":item.state==="paused"?"Pausado":item.proof?.productReady?"Entrega avaliada":"Entrega não comprovada"}</span>
   </div>
   <EvidenceRibbon item={item}/>
   <FindingRows item={item}/>

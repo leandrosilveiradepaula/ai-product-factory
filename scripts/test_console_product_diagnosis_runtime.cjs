@@ -30,6 +30,8 @@ test("a merged greenfield with an unlinked database is not declared usable",()=>
  assert.equal(d.status,"blocked");assert.match(d.headline,/não entregue/);
  assert.match(d.findings.find(x=>x.label==="Banco no inventário da Factory").value,/não significa ausência de banco/);
  assert.ok(d.steps.some(x=>/Conferir o banco dedicado/.test(x.title)));
+ assert.equal(d.steps[0].title,"Instruções do repositório não verificadas","A falha técnica ativa deve vir antes de integrações que ainda precisam ser conferidas");
+ assert.equal(d.steps[1].title,"Conferir o banco dedicado e a conexão");
  assert.ok(d.steps.some(x=>/Instruções do repositório/.test(x.title)));
  assert.ok(d.steps.some(x=>/usuários autenticados/.test(x.title)));
  assert.ok(!JSON.stringify(d).includes("Studio"),"No client-specific status hardcoded");
@@ -37,7 +39,7 @@ test("a merged greenfield with an unlinked database is not declared usable",()=>
 test("a verified database alone never promotes functional readiness",()=>{
  const d=diagnoseProduct(p({databaseEvidence:{state:"verified",linked:1,lastVerifiedAt:"2026-11-16T00:00:00Z"},blocker:null,state:"idle"}));
  assert.equal(d.status,"unverified");
- assert.match(d.findings.find(x=>x.label==="Uso real do produto").value,/sem aceite/);
+ assert.match(d.findings.find(x=>x.label==="Uso real do produto").value,/Sem fluxo completo comprovado/);
  assert.ok(d.steps.some(x=>/fluxo com usuários autenticados/.test(x.title)));
 });
 test("human attention must be an actual gate, not a blocked task",()=>{

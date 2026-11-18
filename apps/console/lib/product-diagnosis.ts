@@ -25,7 +25,7 @@ export function diagnoseProduct(item:ProductSituation):ProductDiagnosis{
   },
   {
    label:"Uso real do produto",
-   value:ready?"Completude avaliada para a versão registrada":"Ainda sem aceite funcional completo",
+   value:ready?"Completude avaliada para a versão registrada":"Sem fluxo completo comprovado com usuário autenticado",
    kind:ready?"confirmed":"missing",
   },
  ];
@@ -40,17 +40,17 @@ export function diagnoseProduct(item:ProductSituation):ProductDiagnosis{
   detail:"Há um gate humano real. Consulte a solicitação, impacto e evidências antes de autorizar o próximo passo.",
   owner:"Operador, se houver gate",href:"/gates",cta:"Revisar decisão",
  });
- if(!ready&&!stopped&&item.projectKind==="greenfield"&&db?.state!=="verified")
-  steps.push({
-   title:"Conferir o banco dedicado e a conexão",
-   detail:"Verificar o banco que já exista, seu schema, permissões e vínculo com a Factory. Falta de vínculo neste inventário não significa que o banco não tenha sido criado.",
-   owner:"Equipe técnica",href:base+"#databases",cta:"Ver situação do banco",
-  });
  if(blocked&&item.blocker&&item.lastRun)
   steps.push({
    title:item.blocker.title,
    detail:item.blocker.resolution,
    owner:"Factory",href:"/runs/"+item.lastRun.id,cta:"Ver causa da interrupção",
+  });
+ if(!ready&&!stopped&&item.projectKind==="greenfield"&&db?.state!=="verified")
+  steps.push({
+   title:"Conferir o banco dedicado e a conexão",
+   detail:"Verificar o banco que já exista, seu schema, permissões e vínculo com a Factory. Falta de vínculo neste inventário não significa que o banco não tenha sido criado.",
+   owner:"Equipe técnica",href:base+"#databases",cta:"Ver situação do banco",
   });
  if(!ready&&!stopped)
   steps.push({

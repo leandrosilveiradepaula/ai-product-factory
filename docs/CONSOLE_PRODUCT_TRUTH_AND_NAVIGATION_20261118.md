@@ -45,6 +45,10 @@ Rotas contextuais: /projects/new é cadastro, não Start automático; /projects/
 5. Menu lateral tinha 14 destinos sem finalidade explícita. Foi adicionado subtítulo a todos, orientação de página e diagnóstico como área opcional. Os títulos de avaliação, Preview, agentes e criação foram revistos para não induzir segurança ou prontidão fictícias.
 6. Sem alterações de banco ou semântica de runtime; sem custos pagos, auto-merge ou gates forçados.
 
+## Refinamento de mensagem e prioridade de bloqueios
+
+Na tela de um produto com execução técnica bloqueada, a primeira ação deve ser a correção do bloqueio real, seguida da reconciliação de banco e verificação E2E. Ausência de evidência de uso não é rejeição de aceite humano: a interface indica **uso funcional não comprovado** e **entrega não comprovada**, reservando decisões humanas aos gates acionáveis. Teste determinístico cobre a prioridade da execução interrompida e a distinção de aceite.
+
 ## Gates de aceite
 
 Concluir testes reais de política em TypeScript, verificação estrutural de todas as 14 rotas, Next build e Chromium/axe desktop-mobile sem violation/incomplete, QA e CI exatos, Preview Vercel READY no mesmo SHA. A prova de browser hospedado que visita o login não valida a sessão privada por dentro. A experiência ainda exige revisão humana autenticada. Somente o usuário pode autorizar o merge que altera produção.
