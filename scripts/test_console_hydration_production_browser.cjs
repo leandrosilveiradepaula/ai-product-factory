@@ -444,7 +444,11 @@ test("B3: real Next project detail hydration and command identity are stable acr
     waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200);
    assert.equal(await page.locator("h1.title").innerText(),"AI Product Factory");
-   assert.equal(await page.locator(".productSituationDetail .journeyStep").count(),6,"project detail must show full product journey");
+   const disclosure=page.locator(".productSituationDetail .productJourneyDisclosure");
+   assert.equal(await disclosure.count(),1,"full historical journey is available in a disclosure");
+   assert.equal(await disclosure.getAttribute("open"),null,"unverified lifecycle must be closed by default");
+   await disclosure.locator("summary").click();
+   assert.equal(await page.locator(".productSituationDetail .journeyStep").count(),6,"operator can expand the registered product journey");
    assert.equal(await page.locator(".productSituationDetail .journeyCurrent h4").innerText(),"Testar");
    assert.equal(await page.locator(".productSituationDetail .journeyUpcoming h4").innerText(),"Publicar");
    const pause=page.getByRole("button",{name:"Pausar",exact:true});
