@@ -48,7 +48,7 @@ class ConsoleActionAuditTests(unittest.TestCase):
         self.assertIn("<ConsoleShell environmentLabel={environmentLabel}>{children}</ConsoleShell>",layout)
         self.assertIn('pathname==="/login"',shell)
         self.assertIn('pathname==="/unauthorized"',shell)
-        auth_block=shell.split("if(authOnly){",1)[1].split("return <div className=\"consoleShell\">",1)[0]
+        auth_block=shell.split("if(authOnly){",1)[1].split('return <div className="consoleShell"',1)[0]
         self.assertNotIn("ConsoleNav",auth_block)
         self.assertNotIn("Sessão ativa",auth_block)
         self.assertNotIn("Factory saudável",auth_block)
