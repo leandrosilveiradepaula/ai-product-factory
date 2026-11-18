@@ -335,6 +335,15 @@ class ProductStageExecutor:
             for completed in resume.values():
                 assert_executed_product_stage_output(completed)
             prior.update(resume)
+            if origin.get("source_failure") == "planning_non_actionable":
+                objective += (
+                    " EMPTY-PLAN RECOVERY: prior reconciliation/gap_analysis are "
+                    "historical observations from the OLD SHA, not proof of "
+                    "current UI defects or global readiness. Use the CURRENT "
+                    "inspected exact-SHA issue-scoped source and the same "
+                    "authorized audit request to create a real versioned report "
+                    "task, never invent browser checks or speculative code work."
+                )
             # Checkpointed gap analysis is now the canonical prior stage;
             # do not double-bill its tokens by echoing it in the manifest.
             intake_context=dict(item.context)
