@@ -8,6 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 APP=ROOT/"apps/console/app"
 HOME=(APP/"page.tsx").read_text(encoding="utf-8")
 BOARD=(APP/"deliveries/page.tsx").read_text(encoding="utf-8")
+DETAIL=(APP/"deliveries/[id]/page.tsx").read_text(encoding="utf-8")
 READER=(ROOT/"apps/console/lib/delivery-board.ts").read_text(encoding="utf-8")
 PRESENTATION=(ROOT/"apps/console/lib/operator-home.ts").read_text(encoding="utf-8")
 NAV=(APP/"nav.tsx").read_text(encoding="utf-8")
@@ -58,7 +59,11 @@ class OperatorExperienceTests(unittest.TestCase):
  def test_board_is_real_navigation_not_manual_movable_kanban(self):
   self.assertIn('getDeliveryBoard()',BOARD)
   self.assertIn('href="/gates"',BOARD)
-  self.assertIn('"/projects/"+item.projectKey',BOARD)
+  self.assertIn('"/deliveries/"+item.id',BOARD)
+  self.assertIn('"/projects/"+item.projectKey+"/request"',DETAIL)
+  self.assertIn('href="/deployments"',DETAIL)
+  self.assertIn('getDeliveryBoard()',DETAIL)
+  self.assertIn('Etapas e evidências técnicas',DETAIL)
   self.assertIn('"/runs/"+item.latestRunId',BOARD)
   self.assertIn("items.slice(8)",BOARD)
   self.assertIn('aria-label="Filtrar entregas por produto"',BOARD)
