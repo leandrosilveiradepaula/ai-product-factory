@@ -286,12 +286,12 @@ try {
   interactionEvidence.accessibility.keyboardSkip={
     reachedWithTab:true,visibleOnFocus:true,landedOnMain:true,
   };
-  // Daily navigation is limited to four operator purposes, never internal subsystems.
+  // Daily navigation is limited to three operator purposes, never internal subsystems.
   // Advanced tools are still real links, accessible after opening disclosure.
   const primaryNavHrefs = await page.locator(".desktopSidebarContent .sidebarNav > .navGroup a").evaluateAll(links =>
     links.map(link => new URL(link.href).pathname)
   );
-  if (JSON.stringify(primaryNavHrefs) !== JSON.stringify(["/","/projects","/deliveries","/gates"])) {
+  if (JSON.stringify(primaryNavHrefs) !== JSON.stringify(["/","/projects","/gates"])) {
     throw new Error(`unexpected primary navigation: ${JSON.stringify(primaryNavHrefs)}`);
   }
   const advancedMenu = page.locator(".desktopSidebarContent .navAdvanced");
@@ -300,7 +300,7 @@ try {
   }
   await advancedMenu.locator("summary").click();
   const advancedRoutes = await advancedMenu.locator("a").evaluateAll(links => links.map(link => new URL(link.href).pathname));
-  for (const href of ["/runs","/queue","/agents","/orchestration","/evals","/deployments","/usage","/audit","/configuration","/admin/operators"]) {
+  for (const href of ["/deliveries","/runs","/queue","/agents","/orchestration","/evals","/deployments","/usage","/audit","/configuration","/admin/operators"]) {
     if (!advancedRoutes.includes(href)) throw new Error(`advanced route missing: ${href}`);
   }
   interactionEvidence.navigationArchitecture = {primaryNavHrefs,advancedRoutes,advancedInitiallyCollapsed:true};
@@ -467,17 +467,17 @@ try {
     });
     if (readability.bodyPx < 14 || readability.mainPx < 14 || !readability.mainLandmark ||
         !readability.keyboardSkipPresent || readability.menuHeightPx < 44 ||
-        readability.quickTargets.length !== 4 ||
+        readability.quickTargets.length !== 3 ||
         readability.quickTargets.some(target => target.fontPx < 12 || target.heightPx < 44)) {
       throw new Error(`mobile readability/touch audit failed on ${route.path}: ${JSON.stringify(readability)}`);
     }
     const quickNavHrefs = await page.locator("nav.mobileQuickNav a").evaluateAll(links =>
       links.map(link => new URL(link.href).pathname)
     );
-    if (JSON.stringify(quickNavHrefs) !== JSON.stringify(["/","/projects","/deliveries","/gates"])) {
+    if (JSON.stringify(quickNavHrefs) !== JSON.stringify(["/","/projects","/gates"])) {
       throw new Error(`mobile quick navigation is incomplete on ${route.path}: ${JSON.stringify(quickNavHrefs)}`);
     }
-    const expectedCurrent = route.path.startsWith("/projects") ? "/projects" : route.path.startsWith("/deliveries") ? "/deliveries" : route.path === "/" ? "/" : null;
+    const expectedCurrent = route.path.startsWith("/projects") ? "/projects" : route.path.startsWith("/gates") ? "/gates" : route.path === "/" ? "/" : null;
     if (expectedCurrent) {
       const active = await page.locator('nav.mobileQuickNav a[aria-current="page"]').getAttribute("href");
       if (active !== expectedCurrent) throw new Error(`mobile active navigation mismatched on ${route.path}`);

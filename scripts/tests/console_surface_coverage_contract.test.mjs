@@ -18,7 +18,7 @@ function fixture() {
     accessibility:{checked:true,unnamedCount:0,missingImageAlt:0,duplicateIds:0,positiveTabOrder:0,
       invalidAriaReferences:0,focusableAriaHidden:0},
     expandedLayout:{width:390,viewport:390},
-    quickNavHrefs:["/","/projects","/deliveries","/gates"],
+    quickNavHrefs:["/","/projects","/gates"],
   }));
   mobile.push({name:"project-detail-mobile",verifiedWithoutMutation:true});
   return {captured,accessibilityRoutes,mobile,keyboardSkip:{

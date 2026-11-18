@@ -80,7 +80,7 @@ export function verifyConsoleSurfaceCoverage({captured, accessibilityRoutes,
         phone.readability.keyboardSkipPresent!==true ||
         !phone.expandedLayout ||
         phone.expandedLayout.width>phone.expandedLayout.viewport+2 ||
-        JSON.stringify(phone.quickNavHrefs)!==JSON.stringify(["/","/projects","/deliveries","/gates"])) {
+        JSON.stringify(phone.quickNavHrefs)!==JSON.stringify(["/","/projects","/gates"])) {
       throw new Error("console_surface_mobile_unverified:"+reference.name);
     }
   }

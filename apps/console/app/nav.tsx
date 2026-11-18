@@ -30,13 +30,13 @@ function Icon({name}:{name:IconName}){
 
 // Operator goals are the navigation, not internal subsystems. Advanced diagnostics remain available.
 const primaryItems=[
- {href:"/",label:"Início",hint:"Estado real dos produtos",icon:"overview" as IconName},
- {href:"/projects",label:"Projetos",hint:"Abrir ou criar um produto",icon:"projects" as IconName},
- {href:"/deliveries",label:"Entregas",hint:"Tarefas por produto",icon:"deliveries" as IconName},
- {href:"/gates",label:"Decisões",hint:"O que depende de você",icon:"gates" as IconName},
+ {href:"/",label:"Visão geral",hint:"O que aconteceu e o que vem depois",icon:"overview" as IconName},
+ {href:"/projects",label:"Produtos",hint:"Entregas e evolução de cada produto",icon:"projects" as IconName},
+ {href:"/gates",label:"Decisões",hint:"Somente ações que dependem de você",icon:"gates" as IconName},
 ];
 const advancedGroups=[
- {label:"Entender problemas e execuções",items:[
+ {label:"Detalhes das entregas e operações",items:[
+  {href:"/deliveries",label:"Entregas técnicas",hint:"Pacotes e tarefas por produto",icon:"deliveries" as IconName},
   {href:"/runs",label:"Execuções",hint:"Histórico e falhas",icon:"runs" as IconName},
   {href:"/queue",label:"Fila de trabalho",hint:"Tarefas aguardando",icon:"queue" as IconName},
   {href:"/agents",label:"Agentes",hint:"Especialistas disponíveis",icon:"agents" as IconName},
@@ -80,7 +80,7 @@ export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:num
  const advancedActive=advancedGroups.some(group=>group.items.some(item=>active(pathname,item.href)));
  return <nav className="sidebarNav" aria-label="Navegação da Factory">
   <div className="navGroup">
-   <div className="navGroupLabel">O que você quer fazer</div>
+   <div className="navGroupLabel">Acompanhamento</div>
    <div className="navGroupItems">
     {primaryItems.map(item=><NavLink key={item.href} {...item} pathname={pathname} count={attentionCount} onNavigate={onNavigate}/>)}
    </div>
@@ -88,11 +88,11 @@ export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:num
   <details key={pathname} className="navAdvanced" open={advancedActive}>
    <summary className="navAdvancedToggle">
     <svg className="navAdvancedChevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 9 7 7 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-    <span className="navAdvancedTitle">Diagnóstico e administração</span>
+    <span className="navAdvancedTitle">Ferramentas técnicas</span>
     {advancedActive?<span className="navAdvancedCurrent">Você está aqui</span>:null}
    </summary>
    <div className="navAdvancedContent">
-    <p className="navAdvancedHelp">Estas telas explicam os bastidores. Para usar um produto, comece por Projetos.</p>
+    <p className="navAdvancedHelp">A Factory opera automaticamente. Consulte os detalhes apenas para investigação ou administração.</p>
     {advancedGroups.map(group=><div className="navGroup" key={group.label}>
      <div className="navGroupLabel">{group.label}</div>
      <div className="navGroupItems">

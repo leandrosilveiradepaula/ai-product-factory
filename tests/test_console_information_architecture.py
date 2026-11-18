@@ -18,11 +18,11 @@ REVIEW=(APP/"projects/new/review/page.tsx").read_text(encoding="utf-8")
 
 
 class ConsoleInformationArchitectureTests(unittest.TestCase):
-    def test_exactly_four_primary_destinations_all_advanced_routes_preserved(self):
+    def test_exactly_three_primary_destinations_all_advanced_routes_preserved(self):
         block=NAV.split("const primaryItems=[",1)[1].split("];",1)[0]
-        self.assertEqual(re.findall(r'href:"([^"]+)"',block),["/","/projects","/deliveries","/gates"])
+        self.assertEqual(re.findall(r'href:"([^"]+)"',block),["/","/projects","/gates"])
         advanced=NAV.split("const advancedGroups=[",1)[1].split("];",1)[0]
-        for route in ("/runs","/queue","/agents","/orchestration","/evals",
+        for route in ("/deliveries","/runs","/queue","/agents","/orchestration","/evals",
                       "/deployments","/usage","/audit","/configuration","/admin/operators"):
             with self.subTest(route=route):
                 self.assertIn('href:"'+route+'"',advanced)
@@ -38,11 +38,11 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('onNavigate?.(href)',NAV)
         self.assertIn('className="mobileNav" key={pathname}',SHELL)
         self.assertIn('<nav className="mobileQuickNav" aria-label="Navegação rápida">',SHELL)
-        for route in ('href="/"','href="/projects"','href="/deliveries"','href="/gates"'):
+        for route in ('href="/"','href="/projects"','href="/gates"'):
             self.assertIn(route,SHELL)
         self.assertIn('attentionUnavailable',SHELL)
         self.assertIn('className="projectHumanAttention"',SHELL)
-        self.assertIn('className={"routePurpose "+(context.advanced?',SHELL)
+        self.assertIn('className="routePurpose isAdvanced"',SHELL)
         self.assertNotIn('className={context.advanced?"screenGuide advanced":"screenGuide"}',SHELL)
 
     def test_home_shows_real_products_and_operator_intentions_first(self):

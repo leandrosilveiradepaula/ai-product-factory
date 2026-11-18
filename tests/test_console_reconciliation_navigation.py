@@ -51,7 +51,7 @@ class TruthAndNavigationTests(unittest.TestCase):
    self.assertTrue(dest.is_file(),str(dest))
   self.assertEqual(len(re.findall(r'hint:"',primary+advanced)),14)
   self.assertIn('navItemHint',NAV)
-  self.assertIn('PARA QUE SERVE ESTA PÁGINA',SHELL)
+  self.assertIn('ÁREA TÉCNICA',SHELL)
   self.assertIn('ÁREA TÉCNICA',SHELL)
  def test_technical_navigation_is_not_a_product_ready_claim(self):
   for page in ('deployments','evals','agents','queue'):

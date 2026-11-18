@@ -8,6 +8,7 @@ import {explainRunBlocker,type ProductBlocker} from "./product-blocker";
  * a release certification, work scheduler, heartbeat or progress percentage. */
 export type ProductState="decision"|"executing"|"verifying"|"queued"|"stopped"|"paused"|"investigate"|"idle"|"unknown";
 export type ProductLastRun={id:string;status:string;at:string;taskTitle:string};
+export type ProductActivity={kind:"run"|"release"|"request"|"spec";title:string;at:string;href:string|null};
 export type ProductDatabaseEvidence={state:"verified"|"pending"|"not_recorded";linked:number;lastVerifiedAt:string|null};
 export type ProductSituation={
  key:string;name:string;stage:string;isActive:boolean;controlState:string;
@@ -17,6 +18,7 @@ export type ProductSituation={
  state:ProductState;headline:string;explanation:string;nextOwner:string;nextLabel:string;nextHref:string;
  lastRequest:string|null;lastRequestAt:string|null;lastRun:ProductLastRun|null;
  unclosedTasks:number;confirmedRunning:number;observedAt:string;updatedAt:string;
+ currentWork:string|null;activities:ProductActivity[];
 };
 export type ProductSnapshot={products:ProductSituation[];observedAt:string};
 export type ProductObservation={
@@ -179,6 +181,35 @@ export async function getProductSituations():Promise<ProductSnapshot>{
    linked:databaseRecords.length,lastVerifiedAt:verifiedDatabases[0]?.last_verified_at||null,
   };
   const blocker=last&&lastTask&&!terminal.has(lastTask.status)?explainRunBlocker(last.status,last.last_error):null;
+  // History is sourced from persisted Control Plane rows, never treated as a heartbeat.
+  const runLabels:Record<string,string>={
+   created:"Tentativa registrada",queued:"Tentativa aguardando worker",
+   running:"Início registrado",implementing:"Implementação registrada",
+   ci_pending:"Verificação de CI registrada",review_ready:"Revisão técnica registrada",
+   preview_ready:"Prévia técnica registrada",completed:"Execução técnica concluída",
+   integrated:"Integração registrada",merged:"Merge registrado",
+   blocked:"Tentativa bloqueada",failed:"Tentativa com falha",
+   failed_gate:"Verificação bloqueada",repair_pending:"Reparo pendente",
+   dead_letter:"Tentativa interrompida",cancelled:"Tentativa cancelada",
+  };
+  const activities:ProductActivity[]=[];
+  for(const r of runsFor.slice(0,5)){
+   if(!Number.isFinite(Date.parse(r.created_at)))continue;
+   activities.push({kind:"run",title:runLabels[r.status]||"Estado técnico registrado",
+    at:r.created_at,href:"/runs/"+encodeURIComponent(r.id)});
+  }
+  if(latestRelease&&Number.isFinite(Date.parse(latestRelease.created_at)))
+   activities.push({kind:"release",
+    title:latestRelease.status==="released"?"Relatório de publicação registrado (uso depende de prova)":latestRelease.status==="blocked"?"Relatório de publicação bloqueada":"Relatório de publicação registrado",
+    at:latestRelease.created_at,href:"/projects/"+encodeURIComponent(p.project_key)+"#product-readiness"});
+  const spec=latestSpecs.get(p.id);
+  if(spec&&Number.isFinite(Date.parse(spec.created_at)))
+   activities.push({kind:"spec",title:spec.status==="approved"?"Especificação aprovada no registro":"Especificação registrada: "+spec.status,
+    at:spec.created_at,href:sourceIssue(manifest)});
+  if(requestDate)activities.push({kind:"request",title:"Solicitação de continuidade registrada",at:requestDate,href:"/projects/"+encodeURIComponent(p.project_key)});
+  activities.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+  const activeRun=verifiedRunning[0];
+  const currentWork=activeRun?byTask.get(activeRun.task_id)?.title||"Execução iniciada com lease vigente":null;
   const isInternalRecord=manifest.qa_canary===true&&(!p.repository||p.repository.length===0);
   const status=summarizeProductStatus({
    key:p.project_key,isActive:p.is_active,controlState:control,
@@ -197,7 +228,7 @@ export async function getProductSituations():Promise<ProductSnapshot>{
    lastRequest:requestText,lastRequestAt:requestDate,
    lastRun:last?{id:last.id,status:last.status,at:last.created_at,taskTitle:lastTask?.title||"Execução registrada"}:null,
    unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,
-   confirmedRunning:verifiedRunning.length,observedAt,updatedAt:p.updated_at};
+   confirmedRunning:verifiedRunning.length,currentWork,activities:activities.slice(0,4),observedAt,updatedAt:p.updated_at};
  });
  const order:Record<ProductState,number>={decision:0,executing:1,verifying:2,queued:3,investigate:4,idle:5,paused:6,stopped:7,unknown:8};
  products.sort((a,b)=>order[a.state]-order[b.state]||Date.parse(b.lastRun?.at||b.updatedAt)-Date.parse(a.lastRun?.at||a.updatedAt));

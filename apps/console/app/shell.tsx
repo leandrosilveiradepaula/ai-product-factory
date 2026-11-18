@@ -9,12 +9,12 @@ import {ConsoleNav} from "./nav";
 
 type RouteContext={area:string;screen:string;purpose:string;advanced?:boolean};
 function routeContext(pathname:string):RouteContext{
- if(pathname==="/")return{area:"Sua Factory",screen:"Início",purpose:"Visão de todos os produtos. Aqui você vê o que foi comprovado, o que está bloqueado e a próxima ação."};
+ if(pathname==="/")return{area:"Sua Factory",screen:"Visão geral",purpose:"Produtos, entregas e decisões observados pela Factory."};
  if(pathname.startsWith("/deliveries"))return{area:"Trabalho",screen:"Entregas",purpose:"Tarefas técnicas de um produto. Use para investigar uma entrega, não para saber se o produto inteiro ficou pronto."};
  if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo produto",purpose:"Cadastre sua ideia ou conecte um projeto existente. O cadastro por si só não inicia um agente."};
  if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Acompanhamento do produto",purpose:"Veja as provas de entrega, o marco declarado, os impedimentos e o próximo passo. Use esta página antes do Kanban."};
- if(pathname==="/projects")return{area:"Projetos",screen:"Seus produtos",purpose:"Escolha um produto e confira o que foi entregue ou está pendente. Projetos aposentados ficam separados."};
- if(pathname.startsWith("/gates"))return{area:"Trabalho",screen:"Decisões",purpose:"Somente aprovações e acessos que exigem você. Falhas técnicas ficam nas páginas de diagnóstico."};
+ if(pathname==="/projects")return{area:"Produtos",screen:"Portfólio",purpose:"Acompanhe cada produto, sem confundir etapa cadastrada com entrega comprovada."};
+ if(pathname.startsWith("/gates"))return{area:"Sua Factory",screen:"Decisões",purpose:"Somente aprovações e acessos realmente necessários. Falhas técnicas são tratadas separadamente."};
  if(pathname.startsWith("/runs"))return{area:"Diagnóstico",screen:"Execuções",purpose:"Tela avançada para inspecionar como uma tarefa foi executada. Não é uma etapa obrigatória do fluxo.",advanced:true};
  if(pathname.startsWith("/queue"))return{area:"Diagnóstico",screen:"Fila de trabalho",purpose:"Tela avançada para observar backlog, despacho e trabalhos em execução. A Factory gerencia esta fila automaticamente.",advanced:true};
  if(pathname.startsWith("/agents"))return{area:"Diagnóstico",screen:"Agentes da Factory",purpose:"Tela avançada para entender quais especialistas existem, sua capacidade e quais trabalhos estão executando.",advanced:true};
@@ -39,6 +39,27 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const [navigatingTo,setNavigatingTo]=useState<string|null>(null);
  const pendingTransportRoute=useRef<string|null>(null);
  const attentionSettled=useRef(false);
+ // Passive server refresh only on read-only routes. Never refresh a decision form.
+ // No client-side state is interpreted as a worker heartbeat or a release.
+ const passiveOverview=pathname==="/"||pathname==="/projects"||
+  (pathname.startsWith("/projects/")&&pathname.split("/").length===3&&/^[a-z0-9-]+$/.test(pathname.split("/")[2]||""));
+ useEffect(()=>{
+  if(!passiveOverview)return;
+  let last=Date.now();
+  const refresh=()=>{
+   if(!navigator.onLine||document.visibilityState!=="visible")return;
+   const now=Date.now();
+   if(now-last<60000)return;
+   last=now;
+   router.refresh();
+  };
+  const timer=window.setInterval(refresh,60000);
+  const onFocus=()=>refresh();
+  const onVisible=()=>{if(document.visibilityState==="visible")refresh();};
+  window.addEventListener("focus",onFocus);
+  document.addEventListener("visibilitychange",onVisible);
+  return()=>{window.clearInterval(timer);window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onVisible);};
+ },[passiveOverview,pathname,router]);
  // No synthetic server error. A genuine browser offline event is the source.
  // Keep the alert actionable after 'online' until the human retries.
  useEffect(()=>{
@@ -156,11 +177,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
     </div>
    </header>
    <main className="main" id="main-content" tabIndex={-1}>
-    <div className={"routePurpose "+(context.advanced?"isAdvanced":"isWork")} role="note">
-     <span>{context.advanced?"ÁREA TÉCNICA":"PARA QUE SERVE ESTA PÁGINA"}</span>
+    {context.advanced?<div className="routePurpose isAdvanced" role="note">
+     <span>ÁREA TÉCNICA</span>
      <p>{context.purpose}</p>
-     {context.advanced?<Link href="/projects">Voltar aos produtos →</Link>:null}
-    </div>
+     <Link href="/projects">Voltar aos produtos →</Link>
+    </div>:null}
     {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Este projeto precisa de sua decisão</strong><span>Consulte o motivo e as evidências antes de decidir. Abrir decisões →</span></Link>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>
@@ -170,9 +191,9 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    </main>
   </div>
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
-   <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
-   <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
-   <Link href="/deliveries" onClick={()=>rememberNavigation("/deliveries")} aria-current={pathname.startsWith("/deliveries")?"page":undefined} className={pathname.startsWith("/deliveries")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="12" rx="1"/><rect x="17" y="4" width="4" height="8" rx="1"/></svg>Entregas</Link>
+   <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Visão geral</Link>
+   <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Produtos</Link>
+
    <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
   </nav>
  </div>;
