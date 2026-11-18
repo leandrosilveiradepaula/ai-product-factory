@@ -24,7 +24,8 @@ class OperatorBlockerVisibilityTests(unittest.TestCase):
   self.assertIn("getHumanGates(100,true)",ATTENTION)
   self.assertIn('onlyPending?"&status=eq.pending":""',CONTROL)
   self.assertIn("getGitHubAppStatus()",ATTENTION)
-  self.assertIn("githubApp.configured?0:1",ATTENTION)
+  self.assertIn("const count=pending.length+(githubApp.configured?installActions.length:0)",ATTENTION)
+   self.assertNotIn("githubApp.configured?0:1",ATTENTION)
   self.assertIn('status:"unavailable"',ATTENTION)
   self.assertNotIn("update ",ATTENTION.lower())
 
