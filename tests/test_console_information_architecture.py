@@ -71,7 +71,10 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('variant={humanActionNeeded?"primary":"secondary"}',PROJECT)
         self.assertIn('className="readinessEvidence"',PROJECT)
         self.assertIn('className="projectTechnicalDetails projectIntegrations"',PROJECT)
-        self.assertIn('open={integrationNeedsAttention}',PROJECT)
+        self.assertIn('className="projectDetailTechnicalDisclosure"',PROJECT)
+        self.assertNotIn('open={integrationNeedsAttention}',PROJECT)
+        self.assertIn('OpenProjectTechnicalAnchor',PROJECT)
+        self.assertIn('id="github-access"',PROJECT)
         for required in ('id="repository-setup"','id="product-readiness"',
                          'id="github-access"','id="preview-policy"','id="databases"',
                          'Reexecutar preflight','Conectar Supabase','Reconciliar projeto',

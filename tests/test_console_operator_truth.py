@@ -41,7 +41,11 @@ class OperatorTruthTests(unittest.TestCase):
   self.assertIn('explainRunBlocker(r.status,r.lastError)',R)
   self.assertLess(R.index('runOutcomeHero'),R.index('runTechnicalDisclosure'))
   self.assertIn('Voltar à situação do produto',R)
-  self.assertIn('O produto funciona? O que falta para usar?',P)
+  self.assertIn('Situação do produto e quem resolve o próximo passo',P)
+  self.assertIn('productOwnerSummary',C)
+  self.assertIn('productOwnerTechnical',C)
+  self.assertIn('projectDetailTechnicalDisclosure',P)
+  self.assertLess(C.index('ProductOwnerSummary item={item}'),C.index('<EvidenceRibbon item={item}/>'))
  def test_exact_runtime_tests_wired(self):
   self.assertIn('test_console_product_diagnosis_runtime.cjs',W)
   self.assertIn('test_console_operator_truth.py',W)
