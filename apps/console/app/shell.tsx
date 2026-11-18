@@ -54,12 +54,33 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    pendingTransportRoute.current=href;
    setTransportDisconnected(true);
    setPendingNavigation(null);
-  }else if(href!==pathname){
-   // This is a real navigation intent, not a synthetic worker indicator.
-   // Keep an accessible loading state until Next replaces the route.
-   setPendingNavigation(href);
+   // Prevent Next from racing an offline click against its own route retry.
+   // The pending destination is committed only after a deliberate retry.
+   return false;
   }
+  if(href!==pathname)setPendingNavigation(href);
+  return true;
  },[pathname]);
+ // Revalidate server-owned portfolio snapshots while this tab is visible.
+ // Do not poll editable intake screens, administrative forms or human gates.
+ useEffect(()=>{
+  if(authOnly)return;
+  const readOnlyPortfolio=pathname==="/"||pathname==="/projects"||
+   /^\/projects\/[a-z0-9-]+$/.test(pathname);
+  if(!readOnlyPortfolio)return;
+  let checkedAt=Date.now();
+  const update=()=>{
+   if(!navigator.onLine||document.visibilityState!=="visible")return;
+   if(Date.now()-checkedAt<60000)return;
+   checkedAt=Date.now();
+   router.refresh();
+  };
+  const timer=window.setInterval(update,60000);
+  const visible=()=>{if(document.visibilityState==="visible")update();};
+  window.addEventListener("focus",update);
+  document.addEventListener("visibilitychange",visible);
+  return()=>{window.clearInterval(timer);window.removeEventListener("focus",update);document.removeEventListener("visibilitychange",visible);};
+ },[authOnly,pathname,router]);
  const retryTransport=()=>{
   if(!navigator.onLine)return;
   const requested=pendingTransportRoute.current;

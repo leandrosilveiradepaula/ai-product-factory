@@ -82,7 +82,7 @@ export default async function Home(){
    <div><span className="pulseKicker">Agora</span>
     <h2>{working>0?"Execução com lease comprovado":unverifiable>0?"Execução parcialmente não verificável":"Nenhuma execução ativa comprovada"}</h2>
     <p>Atividade é verificada por início de run e lease vigente. Um pedido registrado não significa que alguém já está executando.</p>
-    <small className="factoryObservedAt">Control Plane consultado: <time dateTime={fetchedAt}>{formatWhen(fetchedAt)}</time></small>
+    <small className="factoryObservedAt">Control Plane consultado: <time dateTime={fetchedAt}>{formatWhen(fetchedAt)}</time>. Atualização automática enquanto esta aba estiver aberta e online.</small>
    </div>
    <div className="pulseStats">
     <span><b>{working}</b> execuções comprovadas</span>

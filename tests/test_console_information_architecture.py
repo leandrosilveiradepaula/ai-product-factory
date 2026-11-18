@@ -36,6 +36,12 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertNotIn('className="mobileNewProject"',SHELL)
         self.assertEqual(SHELL.count('<ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>'),2)
         self.assertIn('onNavigate?.(href)',NAV)
+        self.assertIn('event.preventDefault()',NAV)
+        self.assertIn('return false;',SHELL)
+        self.assertIn('pendingTransportRoute.current=href',SHELL)
+        self.assertIn('const readOnlyPortfolio=',SHELL)
+        self.assertIn('router.refresh()',SHELL)
+        self.assertIn('document.visibilityState==="visible"',SHELL)
         self.assertIn('className="mobileNav" key={pathname}',SHELL)
         self.assertIn('<nav className="mobileQuickNav" aria-label="Navegação rápida">',SHELL)
         for route in ('href="/"','href="/projects"','href="/gates"'):
