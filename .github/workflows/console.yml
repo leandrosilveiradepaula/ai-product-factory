@@ -72,6 +72,10 @@ jobs:
         run: node ../../scripts/test_console_status_semantics.cjs
       - name: Test real UX operator policy and optional human actions
         run: node ../../scripts/test_console_ux1506_runtime.cjs
+      - name: Test task-first operator journeys and Kanban state policies
+        run: node ../../scripts/test_console_operator_delivery_runtime.cjs
+      - name: Assert task-first navigation and read-only delivery contract
+        run: python -m unittest discover -s ../../tests -p 'test_console_operator_delivery.py'
       - name: Verify actual migration feedback modules with offline delayed audit
         run: node ../../scripts/test_console_migration_interaction.cjs
       # Actual React 19 formStatus and ConfirmSubmit in headless Chromium.
