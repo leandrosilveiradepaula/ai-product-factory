@@ -36,6 +36,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
  const [transportDisconnected,setTransportDisconnected]=useState(false);
+ const [navigatingTo,setNavigatingTo]=useState<string|null>(null);
  const pendingTransportRoute=useRef<string|null>(null);
  const attentionSettled=useRef(false);
  // No synthetic server error. A genuine browser offline event is the source.
@@ -50,14 +51,19 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   if(!navigator.onLine){
    pendingTransportRoute.current=href;
    setTransportDisconnected(true);
+   return;
   }
- },[]);
+  // Real operator click, not an invented network claim: show a pending state
+  // until the authenticated route commits or a documented error is rendered.
+  if(href!==pathname)setNavigatingTo(href);
+ },[pathname]);
+ useEffect(()=>{setNavigatingTo(null);},[pathname]);
  const retryTransport=()=>{
   if(!navigator.onLine)return;
   const requested=pendingTransportRoute.current;
   pendingTransportRoute.current=null;
   setTransportDisconnected(false);
-  if(requested&&requested!==pathname)router.push(requested);
+  if(requested&&requested!==pathname){setNavigatingTo(requested);router.push(requested);}
   else router.refresh();
  };
  // A slower stale response (including 503) must never replace a newer
@@ -160,7 +166,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <h1>Conexão interrompida</h1>
      <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>
      <button type="button" className="primary" onClick={retryTransport}>Tentar novamente</button>
-    </div>:children}
+    </div>:navigatingTo&&navigatingTo!==pathname?<div className="card consoleRouteLoading" role="status" aria-live="polite" aria-atomic="true"><strong>Abrindo área de trabalho</strong><p className="muted">Consultando o estado atual. Nenhuma tarefa ou publicação foi iniciada.</p></div>:children}
    </main>
   </div>
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
