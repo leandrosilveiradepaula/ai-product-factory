@@ -1,4 +1,6 @@
+import Link from "next/link";
 import {notFound} from "next/navigation";
+import {explainRunBlocker} from "../../../lib/product-blocker";
 import {getRunDetail} from "../../../lib/control-plane";
 import {isProviderCreditExhausted} from "../../../lib/operational-health-inventory";
 import {EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "../../ui";
@@ -10,10 +12,20 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
  const {id}=await params;const r=await getRunDetail(id);if(!r)notFound();
  const current=stages.indexOf(r.projectStage);
  const interrupted=["failed","blocked","failed_gate","dead_letter"].includes(r.status);
+ const blocker=explainRunBlocker(r.status,r.lastError);
  const cost=r.toolUsage.reduce((sum,x)=>sum+(x.cost||0),0);
  const units=r.toolUsage.reduce((sum,x)=>sum+(x.units||0),0);
  return <>
-  <PageHeader eyebrow="Execução do pipeline" title={r.taskTitle} subtitle={r.projectName+" · "+r.id} actions={<><StatusPill status={r.route||"unrouted"}/><StatusPill status={r.status}/></>}/>
+  <PageHeader eyebrow="Execução do trabalho" title={r.taskTitle} subtitle={r.projectName} actions={<StatusPill status={r.status}/>}/>
+  <section className={"runOutcomeHero "+(blocker?"isBlocked":"")} aria-label="Resultado e próximo passo desta execução">
+   <span>RESULTADO DO TRABALHO</span>
+   <h2>{blocker?blocker.title:interrupted?"Execução interrompida":"Tarefa registrada: "+humanizeStatus(r.status)}</h2>
+   <p>{blocker?blocker.why:"Esta tela acompanha uma tarefa técnica. O encerramento de uma execução não demonstra, por si só, que o produto já funciona ou foi liberado."}</p>
+   <div className="runOutcomeNext"><strong>Próxima providência</strong><p>{blocker?blocker.resolution:"Confira os requisitos e testes vinculados ao produto antes de declarar entrega concluída."}</p></div>
+   <Link href={"/projects/"+encodeURIComponent(r.projectKey)}>Voltar à situação do produto →</Link>
+  </section>
+  <details className="runTechnicalDisclosure">
+   <summary>Ver logs, etapas declaradas, evidências e custos da execução</summary>
   <section className="runStageContext" aria-label="Interpretação do estágio da execução">
    <strong>{interrupted?"Execução interrompida; produto não concluído":"Uma execução não representa todo o produto"}</strong>
    <p>O marco abaixo é a etapa <em>informada no cadastro do projeto</em>. Não significa que as etapas anteriores passaram em testes ou que o produto foi publicado. Confira as evidências desta execução.</p>
@@ -80,5 +92,6 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
     <div className="logPanel">run.id = {r.id}<br/>candidate = {r.candidateCommit||"none"}<br/>route = {r.route||"unrouted"}<br/>status = {r.status}</div>
    </aside>
   </div>
+  </details>
  </>;
 }

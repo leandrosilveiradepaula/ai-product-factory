@@ -26,7 +26,7 @@ class ProductStatusUXTests(unittest.TestCase):
   self.assertIn("Projeto parado",SERVER)
   self.assertIn("Sem execução ativa confirmada",SERVER)
  def test_owner_views_show_real_product_story(self):
-  for field in ("O QUE ESTÁ ACONTECENDO","ÚLTIMA SOLICITAÇÃO","ÚLTIMA TENTATIVA","PRÓXIMO PASSO"):
+  for field in ("O QUE ESTÁ ACONTECENDO","ÚLTIMA SOLICITAÇÃO","ÚLTIMA TENTATIVA","PRÓXIMO TRABALHO"):
    self.assertIn(field,CARD)
   self.assertIn("ProductSituationCard",HOME)
   self.assertIn("getProductSituations",HOME)

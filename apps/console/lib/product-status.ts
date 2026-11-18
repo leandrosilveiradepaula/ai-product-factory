@@ -2,15 +2,18 @@ import {requireConsoleOperator} from "./auth-server";
 import {getSupabaseServerConfig} from "./supabase-server";
 import {getHumanGates} from "./control-plane";
 import {assessProductProof,type ProductProof} from "./product-evidence";
+import {explainRunBlocker,type ProductBlocker} from "./product-blocker";
 
 /* Read-only interpretation of authoritative Control Plane records. It is NOT
  * a release certification, work scheduler, heartbeat or progress percentage. */
 export type ProductState="decision"|"executing"|"verifying"|"queued"|"stopped"|"paused"|"investigate"|"idle"|"unknown";
 export type ProductLastRun={id:string;status:string;at:string;taskTitle:string};
+export type ProductDatabaseEvidence={state:"verified"|"pending"|"not_recorded";linked:number;lastVerifiedAt:string|null};
 export type ProductSituation={
  key:string;name:string;stage:string;isActive:boolean;controlState:string;
  projectKind:string;repository:string|null;isInternalRecord:boolean;
  proof:ProductProof;specStatus:string|null;lastReleaseAt:string|null;
+ databaseEvidence:ProductDatabaseEvidence;requirementCount:number;sourceIssueUrl:string|null;blocker:ProductBlocker|null;
  state:ProductState;headline:string;explanation:string;nextOwner:string;nextLabel:string;nextHref:string;
  lastRequest:string|null;lastRequestAt:string|null;lastRun:ProductLastRun|null;
  unclosedTasks:number;confirmedRunning:number;observedAt:string;updatedAt:string;
@@ -45,11 +48,22 @@ export function summarizeProductStatus(p:ProductObservation):Pick<ProductSituati
 type ProjectRow={id:string;project_key:string;name:string;is_active:boolean;lifecycle_stage:string;updated_at:string;manifest:unknown;project_kind?:string;repository?:string|null};
 type ControlRow={project_id:string;state:string};
 type TaskRow={id:string;project_id:string;title:string;status:string;created_at:string;updated_at:string};
-type RunRow={id:string;task_id:string;status:string;created_at:string;started_at:string|null;lease_expires_at:string|null};
+type RunRow={id:string;task_id:string;status:string;created_at:string;started_at:string|null;lease_expires_at:string|null;last_error:string|null};
 type ReleaseRow={id:string;project_id:string;status:string;candidate_commit:string|null;created_at:string;report:unknown};
 type DeploymentRow={id:string;run_id:string;environment:string;status:string;created_at:string};
 type CertificationRow={id:string;project_id:string;assessed_commit:string;is_current:boolean;state:string;created_at:string};
 type SpecRow={id:string;project_id:string;status:string;version:number;created_at:string};
+type DbRow={id:string;project_id:string;status:string;last_verified_at:string|null};
+type RequirementRow={id:string;project_id:string;status:string};
+function sourceIssue(manifest:Record<string,unknown>):string|null{
+ if(!Array.isArray(manifest.references))return null;
+ for(const ref of manifest.references){
+  if(!ref||typeof ref!=="object"||Array.isArray(ref))continue;
+  const href=(ref as Record<string,unknown>).value;
+  if(typeof href==="string"&&/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/issues\/[1-9][0-9]*$/.test(href))return href;
+ }
+ return null;
+}
 function asObject(value:unknown):Record<string,unknown>{
  return value&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:{};
 }
@@ -76,15 +90,17 @@ export async function getProductSituations():Promise<ProductSnapshot>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control Plane indisponível. Não é seguro exibir produtos sem status.");
- const [projects,controls,tasks,runs,releases,deployments,certifications,specs,gates]=await Promise.all([
+ const [projects,controls,tasks,runs,releases,deployments,certifications,specs,databases,requirements,gates]=await Promise.all([
   loadComplete<ProjectRow>(cfg,"factory_projects","id,project_key,name,is_active,lifecycle_stage,updated_at,manifest,project_kind,repository","updated_at.desc,id.desc","id"),
   loadComplete<ControlRow>(cfg,"factory_project_execution_controls","project_id,state","project_id.asc","project_id"),
   loadComplete<TaskRow>(cfg,"factory_tasks","id,project_id,title,status,created_at,updated_at","created_at.desc,id.desc","id"),
-  loadComplete<RunRow>(cfg,"factory_runs","id,task_id,status,created_at,started_at,lease_expires_at","created_at.desc,id.desc","id"),
+  loadComplete<RunRow>(cfg,"factory_runs","id,task_id,status,created_at,started_at,lease_expires_at,last_error","created_at.desc,id.desc","id"),
   loadComplete<ReleaseRow>(cfg,"factory_release_reports","id,project_id,status,candidate_commit,created_at,report","created_at.desc,id.desc","id"),
   loadComplete<DeploymentRow>(cfg,"factory_deployments","id,run_id,environment,status,created_at","created_at.desc,id.desc","id"),
   loadComplete<CertificationRow>(cfg,"factory_product_readiness_certifications","id,project_id,assessed_commit,is_current,state,created_at","created_at.desc,id.desc","id"),
   loadComplete<SpecRow>(cfg,"factory_product_specs","id,project_id,status,version,created_at","created_at.desc,id.desc","id"),
+  loadComplete<DbRow>(cfg,"factory_project_databases","id,project_id,status,last_verified_at","id.asc","id"),
+  loadComplete<RequirementRow>(cfg,"factory_requirements","id,project_id,status","id.asc","id"),
   getHumanGates(100,true),
  ]);
  if(gates.length===100)throw new Error("Inventário de decisões pode estar truncado.");
@@ -110,6 +126,10 @@ export async function getProductSituations():Promise<ProductSnapshot>{
   const list=projectDeployments.get(task.project_id)||[];
   list.push(d);projectDeployments.set(task.project_id,list);
  }
+ const databasesForProject=new Map<string,DbRow[]>();
+ for(const db of databases){const list=databasesForProject.get(db.project_id)||[];list.push(db);databasesForProject.set(db.project_id,list);}
+ const requirementCounts=new Map<string,number>();
+ for(const req of requirements)if(req.status==="active")requirementCounts.set(req.project_id,(requirementCounts.get(req.project_id)||0)+1);
  const pendingGates=new Map<string,number>();
  for(const g of gates)if(g.status==="pending"&&g.actionable&&g.projectKey)pendingGates.set(g.projectKey,(pendingGates.get(g.projectKey)||0)+1);
  const products:ProductSituation[]=projects.map(p=>{
@@ -152,6 +172,13 @@ export async function getProductSituations():Promise<ProductSnapshot>{
    releaseCandidateSha:latestRelease?.candidate_commit||null,
   });
   const manifest=asObject(p.manifest);
+  const databaseRecords=databasesForProject.get(p.id)||[];
+  const verifiedDatabases=databaseRecords.filter(d=>["ready_read","ready_write"].includes(d.status)&&Boolean(d.last_verified_at));
+  const dbEvidence:ProductDatabaseEvidence={
+   state:verifiedDatabases.length>0?"verified":databaseRecords.length>0?"pending":"not_recorded",
+   linked:databaseRecords.length,lastVerifiedAt:verifiedDatabases[0]?.last_verified_at||null,
+  };
+  const blocker=last&&lastTask&&!terminal.has(lastTask.status)?explainRunBlocker(last.status,last.last_error):null;
   const isInternalRecord=manifest.qa_canary===true&&(!p.repository||p.repository.length===0);
   const status=summarizeProductStatus({
    key:p.project_key,isActive:p.is_active,controlState:control,
@@ -165,6 +192,8 @@ export async function getProductSituations():Promise<ProductSnapshot>{
    projectKind:p.project_kind||"unknown",repository:p.repository||null,isInternalRecord,
    proof,specStatus:latestSpecs.get(p.id)?.status||null,
    lastReleaseAt:latestRelease?.created_at||null,
+   databaseEvidence:dbEvidence,requirementCount:requirementCounts.get(p.id)||0,
+   sourceIssueUrl:sourceIssue(manifest),blocker,
    lastRequest:requestText,lastRequestAt:requestDate,
    lastRun:last?{id:last.id,status:last.status,at:last.created_at,taskTitle:lastTask?.title||"Execução registrada"}:null,
    unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,

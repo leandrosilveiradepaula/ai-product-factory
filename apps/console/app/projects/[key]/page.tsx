@@ -194,9 +194,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
- const humanActionNeeded=Boolean(["draft","paused","stopped","unavailable"].includes(executionControl.state)
-   ||observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||situation.state==="decision");
- const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
+ const humanActionNeeded=situation.state==="decision"; // Technical blockers are not mandatory human gates.
+ const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready")||(p.kind==="greenfield"&&databases.length===0);
  return <>
   {installPending?<div className="card noticeCard" role="status">
    <span>O GitHub retornou da instalação de {p.key}. Confirme a verificação das capacidades antes de considerar o acesso pronto.</span>
@@ -205,9 +204,9 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <button className="primary" type="submit">Verificar acesso da GitHub App</button>
    </form>
   </div>:null}
-  <PageHeader eyebrow="Produto" title={p.name} subtitle="Veja a fase atual, a próxima fase e o que falta para avançar." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <PageHeader eyebrow="Produto" title={p.name} subtitle="O que já existe, o que impede o uso e o trabalho que falta concluir." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
   <section className="productSituationDetail" aria-labelledby="product-situation-heading">
-   <h2 id="product-situation-heading">Sua jornada: onde está o produto e o que vem depois</h2>
+   <h2 id="product-situation-heading">O produto funciona? O que falta para usar?</h2>
    <ProductSituationCard item={situation} showOpen={false}/>
   </section>
   <details className="projectAuxActions">
@@ -391,8 +390,12 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     {Object.keys(state.snapshot.sourceStatus).length?<div><span className="detailLabel">Fontes reconciliadas</span><div className="valueList">{Object.entries(state.snapshot.sourceStatus).map(([source,value])=><div className="valueRow" key={source}><strong>{source}</strong><span className="muted">{display(value)}</span></div>)}</div></div>:null}
    </div>}
   </section>:null}
-  {hasPendingDatabase?<section className="section" id="databases"><SectionHeader title="Banco de dados · ação necessária" action={<span className="muted">{databases.filter(db=>db.status==="pending_access").length} pendente{databases.filter(db=>db.status==="pending_access").length===1?"":"s"}</span>}/>
-   {databases.length===0?<EmptyState>Nenhum banco foi vinculado a este projeto. A Factory pode registrar um banco existente ou preparar o provisionamento de um novo banco, sujeito aos gates aplicáveis.</EmptyState>:<div className="table">
+  <section className="section" id="databases"><SectionHeader title="Banco do produto — vínculo com a Factory" action={<span className="muted">{databases.length===0?"Sem vínculo no inventário":databases.length+" vínculo"+(databases.length===1?"":"s")}</span>}/>
+   {databases.length===0?<div className="card projectDatabaseInventoryNotice">
+    <strong>A Factory não tem um banco vinculado a este projeto.</strong>
+    <p>Isso <b>não significa que o banco não exista</b>. A Factory ainda não confirmou a conexão com o banco do aplicativo, suas migrations ou os usuários. O próximo trabalho é reconciliar o banco dedicado existente, com acesso mínimo autorizado.</p>
+    <p>Não crie outro banco por engano nem compartilhe chaves no navegador. O vínculo usa o fluxo de administração.</p>
+   </div>:<div className="table">
     <div className="tableRow tableHeader"><span>Banco</span><span>Acesso</span><span>Estado</span><span>Verificação</span></div>
     {databases.map(db=><div className="tableRow" key={db.id}>
      <div><strong>{db.provider==="supabase"?"Supabase":db.provider}</strong><div className="muted mono">{db.projectRef||"project_ref pendente"} · {db.environment}</div></div>
@@ -402,7 +405,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     </div>)}
    </div>}
    {databases.some(db=>db.status==="pending_access")?<div className="card" style={{marginTop:12}}><strong>Próxima ação</strong><p className="muted">Conecte o Supabase com acesso mínimo. A Factory valida a identidade do projeto e uma consulta somente leitura antes de considerar o banco pronto. Nenhuma credencial é exibida nesta tela.</p>{oauthReady&&operator.role==="admin"?<div className="actions">{databases.filter(db=>db.status==="pending_access"&&db.provider==="supabase").map(db=><a className="primary linkButton" key={db.id} href={`/api/integrations/supabase/connect?project=${encodeURIComponent(p.key)}&database=${encodeURIComponent(db.id)}`}>Conectar Supabase</a>)}</div>:oauthReady?<div className="badgeLine"><StatusPill status="blocked" label="Administrador necessário"/><span className="muted">A conexão OAuth altera credenciais server-side e só pode ser iniciada por um administrador da Factory.</span></div>:<div className="badgeLine"><StatusPill status="blocked" label="OAuth do Supabase não configurado"/><span className="muted">A Factory permanece fail-closed até o client ID e o client secret existirem no ambiente server-side.</span></div>}</div>:null}
-  </section>:null}
+  </section>
 
   <details className="projectTechnicalDetails">
    <summary>

@@ -84,6 +84,8 @@ jobs:
           python ../../tests/test_console_product_journey_ux.py
           node ../../scripts/test_console_product_evidence_runtime.cjs
           python ../../tests/test_console_reconciliation_navigation.py
+          node ../../scripts/test_console_product_diagnosis_runtime.cjs
+          python ../../tests/test_console_operator_truth.py
       - name: Verify actual migration feedback modules with offline delayed audit
         run: node ../../scripts/test_console_migration_interaction.cjs
       # Actual React 19 formStatus and ConfirmSubmit in headless Chromium.

@@ -19,7 +19,7 @@ class ProductJourneyUXTest(unittest.TestCase):
   self.assertNotIn("getSupabaseServerConfig",J)
   self.assertNotIn("mergeReadyReleaseFromConsole",J)
  def test_path_always_precedes_technical_diagnostics(self):
-  for token in ("Caminho previsto","MARCO INFORMADO NO CADASTRO","PRÓXIMA ETAPA OU VERIFICAÇÃO","O que falta para avançar:","PRÓXIMO PASSO","Responsável:"):
+  for token in ("Caminho previsto","MARCO INFORMADO NO CADASTRO","PRÓXIMA ETAPA OU VERIFICAÇÃO","O que falta para avançar:","PRÓXIMO TRABALHO","Responsável:"):
    self.assertIn(token,CARD)
   self.assertLess(CARD.index('className="journeyPath"'),CARD.index('className="journeyEvidence"'))
   self.assertIn('className="productJourneyTrack"',CARD)
