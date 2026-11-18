@@ -7,12 +7,12 @@ export const dynamic="force-dynamic";
 function DeliveryCardView({item}:{item:DeliveryCard}){
  return <article className="deliveryCard">
   <div className="deliveryCardOverline"><span>{item.projectName}</span><span className={"deliveryStatus "+item.lane}>{item.statusLabel}</span></div>
-  <h3>{item.title}</h3>
+  <h3><Link prefetch={false} href={"/deliveries/"+item.id}>{item.title}</Link></h3>
   {item.latestActivity?<p className="deliveryLatest">Última atividade: {item.latestActivity}</p>:null}
   <p className="deliveryCardMeta">{item.taskCount} {item.taskCount===1?"tarefa vinculada":"tarefas vinculadas"} · atualização {new Date(item.updatedAt).toLocaleDateString("pt-BR")}</p>
   <div className="deliveryCardActions">
    {item.needsHuman?<Link prefetch={false} className="deliveryActionLink" href="/gates">Revisar decisão →</Link>
-    :<Link prefetch={false} className="deliveryActionLink" href={"/projects/"+item.projectKey}>Abrir produto →</Link>}
+    :<Link prefetch={false} className="deliveryActionLink" href={"/deliveries/"+item.id}>Ver entrega →</Link>}
    {item.latestRunId?<Link prefetch={false} className="deliverySecondaryLink" href={"/runs/"+item.latestRunId}>Ver execução</Link>:null}
   </div>
  </article>;
