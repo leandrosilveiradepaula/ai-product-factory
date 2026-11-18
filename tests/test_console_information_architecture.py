@@ -18,9 +18,9 @@ REVIEW=(APP/"projects/new/review/page.tsx").read_text(encoding="utf-8")
 
 
 class ConsoleInformationArchitectureTests(unittest.TestCase):
-    def test_exactly_three_primary_destinations_all_advanced_routes_preserved(self):
+    def test_exactly_four_primary_destinations_all_advanced_routes_preserved(self):
         block=NAV.split("const primaryItems=[",1)[1].split("];",1)[0]
-        self.assertEqual(re.findall(r'href:"([^"]+)"',block),["/","/projects","/gates"])
+        self.assertEqual(re.findall(r'href:"([^"]+)"',block),["/","/projects","/deliveries","/gates"])
         advanced=NAV.split("const advancedGroups=[",1)[1].split("];",1)[0]
         for route in ("/runs","/queue","/agents","/orchestration","/evals",
                       "/deployments","/usage","/audit","/configuration","/admin/operators"):
@@ -38,27 +38,28 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('onNavigate?.(href)',NAV)
         self.assertIn('className="mobileNav" key={pathname}',SHELL)
         self.assertIn('<nav className="mobileQuickNav" aria-label="Navegação rápida">',SHELL)
-        for route in ('href="/"','href="/projects"','href="/gates"'):
+        for route in ('href="/"','href="/projects"','href="/deliveries"','href="/gates"'):
             self.assertIn(route,SHELL)
         self.assertIn('attentionUnavailable',SHELL)
         self.assertIn('className="projectHumanAttention"',SHELL)
         self.assertIn('context.advanced?<details className="technicalRouteHelp"',SHELL)
         self.assertNotIn('className={context.advanced?"screenGuide advanced":"screenGuide"}',SHELL)
 
-    def test_home_shows_real_projects_and_actionable_approvals_first(self):
-        self.assertIn('getHumanGates(30,true)',HOME)
-        self.assertIn('g.status==="pending"&&g.actionable',HOME)
-        self.assertIn('d.projects.slice(0,4).map',HOME)
-        self.assertIn('className={"homeFocus "+overviewAction.kind}',HOME)
+    def test_home_shows_real_products_and_operator_intentions_first(self):
+        for action in ("Criar um produto","Melhorar um produto","Acompanhar entregas"):
+            self.assertIn(action,HOME)
+        self.assertIn('getHumanGates(100,true)',HOME)
+        self.assertIn('summarizeOperatorAttention(',HOME)
+        self.assertIn('dashboard.projects.slice(0,4).map',HOME)
+        self.assertIn('className="operatorWelcome"',HOME)
         self.assertIn('className="homeProjectGrid"',HOME)
-        self.assertIn('className="homeSummary"',HOME)
-        self.assertIn('className="homeQuietStatus"',HOME)
-        self.assertIn('className="technicalDetails homeTechnicalDetails"',HOME)
-        self.assertIn('className="overviewActivityDetails"',HOME)
-        self.assertIn('humanizeStatus(p.stage)',HOME)
+        self.assertIn('className="operatorAttention "',HOME)
+        self.assertIn('details className="operatorDiagnostics"',HOME)
+        self.assertIn('operatorStageLabel(p.stage)',HOME)
+        self.assertLess(HOME.index('className="operatorWelcome"'),HOME.index('className="operatorDiagnostics"'))
+        self.assertNotIn('incidents.map',HOME)
         self.assertNotIn('label="orquestrador online"',HOME)
         self.assertNotIn('getHumanGates(8)',HOME)
-        self.assertNotIn('\\${recentRuns.length}',HOME)
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):
         self.assertIn('Etapa registrada',PROJECTS)
