@@ -404,7 +404,18 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
   assert.equal(await page.locator("h1.title").innerText(),"Escolha um produto para ver suas tarefas");
   assert.ok(await page.getByRole("heading",{name:"Escolha um produto"}).count()>=1);
   await page.locator("a[href='/deliveries?project=ai-product-factory']").first().click();
-  await page.getByRole("heading",{name:"Tarefas e entregas do produto"}).waitFor({state:"visible",timeout:12000});
+  try{
+   await page.getByRole("heading",{name:"Tarefas e entregas do produto"}).waitFor({state:"visible",timeout:16000});
+  }catch(error){
+   const route=new URL(page.url());
+   const headings=(await page.locator("h1.title").allTextContents().catch(()=>[])).slice(0,3);
+   const errorsVisible=(await page.locator('[role="alert"]').allTextContents().catch(()=>[])).map(x=>x.slice(0,140)).slice(0,3);
+   // This fixture contains no private account or production data. Still emit only
+   // allowlisted route/heading/error evidence; no page HTML, cookies or tokens.
+   assert.fail("Kanban selection did not render: "+
+    JSON.stringify({pathname:route.pathname,query:route.search,headings,errorsVisible,pageErrors:errors.slice(0,3)})+
+    " | "+String(error).split("\\n")[0].slice(0,160));
+  }
   assert.ok(await page.getByRole("heading",{name:"Encerrado"}).count()>=1);
   assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
   // Check an independent hard navigation before testing the real client Link.
