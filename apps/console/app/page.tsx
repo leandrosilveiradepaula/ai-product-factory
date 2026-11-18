@@ -38,9 +38,10 @@ export default async function Home(){
  const products=portfolio.filter(p=>!p.internal&&!p.paused);
  const paused=portfolio.filter(p=>!p.internal&&p.paused);
  const internal=portfolio.filter(p=>p.internal);
- const working=portfolio.filter(p=>p.view.tone==="working").length;
- const blocked=portfolio.filter(p=>p.view.tone==="blocked").length;
- const evaluated=portfolio.filter(p=>p.detail?.productReadiness.ready===true).length;
+ const working=portfolio.filter(p=>!p.internal&&p.view.tone==="working").length;
+ const blocked=portfolio.filter(p=>!p.internal&&p.view.tone==="blocked").length;
+ const evaluated=portfolio.filter(p=>!p.internal&&p.detail?.productReadiness.ready===true).length;
+ const unverifiable=portfolio.filter(p=>!p.internal&&p.view.tone==="unknown").length;
  const renderProduct=(entry:typeof portfolio[number])=>{
   const {project,view}=entry;
   return <article className={"productStory "+view.tone} key={project.key}>
@@ -79,7 +80,7 @@ export default async function Home(){
    actions={<ActionLink href="/projects/new" variant="primary">Descrever um produto</ActionLink>}/>
   <section className="factoryPulse" aria-label="Situação observada da Factory">
    <div><span className="pulseKicker">Agora</span>
-    <h2>{working>0?"Execução com lease comprovado":"Nenhuma execução ativa comprovada"}</h2>
+    <h2>{working>0?"Execução com lease comprovado":unverifiable>0?"Execução parcialmente não verificável":"Nenhuma execução ativa comprovada"}</h2>
     <p>Atividade é verificada por início de run e lease vigente. Um pedido registrado não significa que alguém já está executando.</p>
     <small className="factoryObservedAt">Control Plane consultado: <time dateTime={fetchedAt}>{formatWhen(fetchedAt)}</time></small>
    </div>

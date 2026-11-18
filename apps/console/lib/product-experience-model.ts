@@ -46,15 +46,19 @@ export function summarizeProductExperience(data:{
   work.kind==="unavailable"?"Execução não verificável nesta consulta":
   work.kind==="recorded"?"Pedido registrado, sem execução ativa comprovada":
   "Nenhuma execução ativa com lease comprovada";
- const repairBlocked=recovery?.status==="blocked"||context.snapshot?.sourceStatus?.repair_status==="blocked";
+ const repairBlocked=recovery?recovery.status==="blocked":context.snapshot?.sourceStatus?.repair_status==="blocked";
  const repairNote=recovery?.status==="blocked"&&recovery.maxCycles>0?
   "Reparo bloqueado: ciclo "+recovery.cycle+" de "+recovery.maxCycles:null;
  const base={proof,execution,objective,declaredStage,declaredStageLabel,repairNote};
  const output=(tone:Tone,label:string,headline:string,description:string,nextTitle:string,nextDetail:string,userAction:string):ProductExperience=>
-  {...base,tone,label,headline,description,nextTitle,nextDetail,userAction};
+  ({...base,tone,label,headline,description,nextTitle,nextDetail,userAction});
  if(!detail)return output("unknown","Dados indisponíveis","Situação do produto não verificada",
   "A origem do projeto não foi encontrada nesta consulta. A Factory precisa reconciliar os dados.",
   "Validar o registro do produto","Nenhuma conclusão ou execução pode ser presumida.","Nenhuma decisão solicitada");
+ if(control.state==="unavailable")return output("unknown","Controle indisponível",
+  "Estado de execução não verificado","O estado do projeto não pôde ser confirmado pelo Control Plane.",
+  "Verificar o controle do projeto","Não é seguro supor que uma execução ou retomada tenha ocorrido.",
+  "Nenhuma aprovação solicitada");
  if(actionableGates>0)return output("decision","Sua decisão é necessária","Uma aprovação humana real está pendente",
   "Existe uma decisão registrada para este produto, separada dos problemas técnicos.",
   "Aguardar decisão vinculada às evidências","A revisão deve indicar o impacto e a versão exata.","Revisar na área Decisões");
