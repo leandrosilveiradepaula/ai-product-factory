@@ -7,10 +7,12 @@ import {getHumanGates} from "./control-plane";
  * The Factory changes statuses; dragging a card does not dispatch work.
  */
 export type DeliveryLane="received"|"working"|"validating"|"waiting_human"|"blocked"|"closed";
+export type DeliveryTask={id:string;title:string;status:string;updatedAt:string;latestRunId:string|null;latestRunStatus:string|null};
 export type DeliveryCard={
  id:string;projectKey:string;projectName:string;title:string;
  latestActivity:string|null;lane:DeliveryLane;statusLabel:string;
  updatedAt:string;taskCount:number;latestRunId:string|null;internalRoutine:boolean;
+ tasks:DeliveryTask[];
  needsHuman:boolean;
 };
 export type DeliveryBoard={cards:DeliveryCard[];projects:{key:string;name:string}[];readAt:string};
@@ -133,6 +135,9 @@ export async function getDeliveryBoard():Promise<DeliveryBoard>{
    lane,statusLabel:deliveryStatusLabel(lane,statuses),
    updatedAt:newest.updated_at,taskCount:children.length,
    latestRunId:mostRecentRun?.id||null,needsHuman:humanGate,
+   tasks:byRecent.map(t=>({id:t.id,title:t.title,status:t.status,updatedAt:t.updated_at,
+    latestRunId:runsByTask.get(t.id)?.[0]?.id||null,
+    latestRunStatus:runsByTask.get(t.id)?.[0]?.status||null})),
    // This versioned system event is a certification run, not a user delivery.
    // It remains accessible via the board Technical routines toggle and /runs.
    internalRoutine:typeof root.external_key==="string"&&root.external_key.startsWith("product-readiness:"),
