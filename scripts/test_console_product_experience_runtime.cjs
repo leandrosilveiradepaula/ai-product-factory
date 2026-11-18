@@ -75,3 +75,16 @@ test("new recovery receipt supersedes historical blocked repair without claiming
  assert.match(finished.headline,/recuperação terminou/);
  assert.equal(view({recovery:{...row,status:"recovery_blocked"}}).tone,"blocked");
 });
+
+
+test("owner portfolio exposes authenticated lifecycle commands without engineering controls",()=>{
+ const home=fs.readFileSync(path.join(root,"apps/console/app/page.tsx"),"utf8");
+ assert.match(home,/restartBlockedProjectWork\(key,Number\(version\),id\)/);
+ assert.match(home,/command="restart" label="Reiniciar"/);
+ assert.match(home,/command="pause" label="Pausar"/);
+ assert.match(home,/command="stop" label="Parar"/);
+ assert.match(home,/Solicitar alteração/);
+ assert.match(home,/recovery\?\.status==="blocked"/);
+ assert.match(home,/revalidatePath\("\/"\)/);
+ assert.doesNotMatch(home,/lease_owner|change_set_id|primary_model|worker_id/i);
+});

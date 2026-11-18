@@ -147,10 +147,10 @@ test("real #73 axe: named regions and no prohibited ARIA labels on generic eleme
   const path=await import("node:path");
   const read=file=>fs.readFileSync(path.resolve(import.meta.dirname,"..",file),"utf8");
   const home=read("apps/console/app/page.tsx"),ui=read("apps/console/app/ui.tsx");
-  assert.match(home,/<section className="factoryPulse" aria-label="Situação observada da Factory">/);
   assert.match(home,/<section className="portfolio" aria-labelledby="portfolio-title">/);
-  assert.doesNotMatch(home,/<div className="factoryPulse" aria-label=/);
+  assert.match(home,/<article className={"ownerProductItem /);
   assert.doesNotMatch(home,/<div className="portfolio" aria-labelledby=/);
+  assert.match(home,/<p className="ownerCommandNotice" role="status">/);
   assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
   assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
   // Keep static stage lists grouped; focus is required for scrollable regions.

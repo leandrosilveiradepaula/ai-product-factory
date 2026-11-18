@@ -55,8 +55,10 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         MODEL=(ROOT/"apps/console/lib/product-experience-model.ts").read_text(encoding="utf-8")
         for item in ("getHumanGates(50,true)",'g.actionable&&g.status==="pending"',
                      "getProjectWorkObservation(", "getProjectExecutionControl(",
-                     'className="factoryPulse"', 'className="productBoard"',
-                     'className="portfolioSecondary"', "renderProduct"):
+                     'className="productBoard ownerProductList"',
+                     'className="portfolioSecondary"', "renderProduct",
+                     'ownerRestartBlocked','action={ownerRestartBlocked}',
+                     'action={ownerControl}', 'recovery/>'):
             with self.subTest(item=item): self.assertIn(item,HOME)
         self.assertNotIn('detail?.pendingRun).length',HOME)
         self.assertNotIn('project.stage==="operations"',HOME)
@@ -66,10 +68,15 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('work.kind==="running"',MODEL)
         self.assertIn('detail?.productReadiness.ready===true',MODEL)
         self.assertIn('getHumanGates(50,true)',HOME)
-        self.assertIn('className="humanInbox"',HOME)
+        self.assertIn('className="ownerHumanGates"',HOME)
         self.assertIn('getDashboard()',HOME)
         self.assertIn('getProjectDetail(project.key)',HOME)
         self.assertIn('getProjectStateContext(detail.id)',HOME)
+        self.assertIn('revalidatePath("/")',HOME)
+        self.assertIn('commandProjectExecution(',HOME)
+        self.assertIn('restartBlockedProjectWork(',HOME)
+        for banned in ('lease_owner','migration','change_set','worker_id'):
+            self.assertNotIn(banned,HOME)
         self.assertIn('cache:"no-store"',(ROOT/"apps/console/lib/control-plane.ts").read_text(encoding="utf-8"))
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):

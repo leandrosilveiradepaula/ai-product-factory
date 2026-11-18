@@ -39,3 +39,33 @@
 .productStory.decision{border-top:4px solid #e7c16f}
 @media(max-width:1000px){.productResponsibilities{grid-template-columns:1fr}}
 @media(max-width:560px){.journeyRail span{font-size:9px;word-break:break-word}.productTruthTag{font-size:11px}.productResponsibilities>div{padding:12px}}
+
+
+/* Owner lifecycle: minimal product state and commands, no engineering dashboard. */
+.ownerPortfolioTitle{font-size:20px;color:#edf3ff;margin:0 0 16px}
+.ownerProductList{grid-template-columns:1fr;gap:12px}
+.ownerProductItem{display:flex;justify-content:space-between;align-items:center;gap:20px;background:#171e2a;border:1px solid #35475b;border-radius:12px;padding:20px 22px}
+.ownerProductItem.owner-blocked{border-left:4px solid #e5ac61}
+.ownerProductItem.owner-working{border-left:4px solid #7ab5ee}
+.ownerProductItem.owner-decision{border-left:4px solid #e2ca79}
+.ownerProductIdentity{flex:1 1 0;min-width:0;display:grid;gap:6px}
+.ownerProductIdentity h3{margin:0;color:#f5f7fb;font-size:19px;line-height:1.35}
+.ownerProductIdentity p{margin:0;color:#b9c9d9;font-size:13px;line-height:1.5}
+.ownerProductState{font-size:13px;font-weight:700;color:#b3d6ff}
+.ownerProductState.owner-blocked{color:#ffd08a}
+.ownerProductState.owner-working{color:#b4ddff}
+.ownerProductState.owner-decision{color:#ffe09b}
+.ownerProductActions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;flex:0 1 430px}
+.ownerProductActions form{margin:0}
+.ownerProductActions button{min-height:44px;min-width:92px;padding:10px 14px;border-radius:8px}
+.ownerProductActions a{min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:10px 8px;font-size:13px;font-weight:650;color:#c6dcf8;text-decoration:none}
+.ownerProductActions .ownerDecisionLink{padding:10px 14px;border-radius:8px;background:#355b91;color:#fff}
+.ownerProductActions .ownerProductDetail{color:#9caec4}
+.ownerProductActions a:focus-visible{outline:2px solid #bbd8ff;outline-offset:3px}
+.ownerCommandNotice{border:1px solid #537a81;background:#19303a;color:#e2f2f5;border-radius:10px;padding:15px 18px;font-size:14px}
+.ownerHumanGates{margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:15px;padding:18px 20px;border:1px solid #8b6a2d;border-radius:12px}
+.ownerHumanGates h2{font-size:18px;margin:0;color:#f1e4b3}
+.ownerHumanGates a{color:#c8dafa;font-size:14px}
+.ownerEmpty{padding:22px;border:1px dashed #4d5c70;border-radius:9px;color:#c1cedd}
+@media(max-width:850px){.ownerProductItem{align-items:stretch;flex-direction:column;padding:17px}.ownerProductActions{flex:auto;justify-content:flex-start}}
+@media(max-width:540px){.ownerProductActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.ownerProductActions form,.ownerProductActions button{width:100%}.ownerProductActions a{min-width:0}.ownerProductIdentity h3{font-size:18px}}
