@@ -38,7 +38,7 @@ export default async function Home(){
     <div><h2 id="operator-products-title">Situação dos seus produtos</h2><p>Retrato dos registros do Control Plane consultados em {new Date(pulse.observedAt).toLocaleString("pt-BR")}. Nenhuma execução em andamento é presumida.</p></div>
     <Link prefetch={false} className="productSituationSecondary" href="/projects">Abrir portfólio completo →</Link>
    </div>
-   <div className="productPulseStats" aria-label="Situação observada">
+   <div className="productPulseStats" role="group" aria-label="Situação observada">
     <div><strong>{products.length}</strong><span>Projetos listados no cadastro</span></div>
     <div><strong>{running}</strong><span>Execuções com início e lease vigente</span></div>
     <div><strong>{stopped}</strong><span>Projetos com controle parado ou pausado</span></div>
@@ -63,15 +63,15 @@ export default async function Home(){
    </div>
    <div className="operatorChoices">
     <Link prefetch={false} href="/projects/new" className="operatorChoice featured">
-     <span className="operatorChoiceSymbol" aria-hidden="true">+</span>
+     <span className="operatorChoiceSymbol" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 4v16M4 12h16"/></svg></span>
      <strong>Criar um produto</strong><span>Começar a partir de uma ideia.</span><b>Descrever minha ideia →</b>
     </Link>
     <Link prefetch={false} href="/projects" className="operatorChoice">
-     <span className="operatorChoiceSymbol" aria-hidden="true">✎</span>
+     <span className="operatorChoiceSymbol" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 16 0 4 4 0 11-11-4-4zM13 7l4 4"/></svg></span>
      <strong>Melhorar um produto</strong><span>Pedir uma mudança ou corrigir algo.</span><b>Escolher produto →</b>
     </Link>
     <Link prefetch={false} href="/deliveries" className="operatorChoice">
-     <span className="operatorChoiceSymbol" aria-hidden="true">◎</span>
+     <span className="operatorChoiceSymbol" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg></span>
      <strong>Acompanhar entregas</strong><span>Ver o Kanban de um produto.</span><b>Abrir entregas →</b>
     </Link>
    </div>
