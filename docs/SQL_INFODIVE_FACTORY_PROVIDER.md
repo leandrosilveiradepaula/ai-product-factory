@@ -35,11 +35,13 @@ Do not enable until ALL these external gates are satisfied:
 3. Exact model ID, health and access policy are verified without model calls.
 4. A SQL-specialist workflow is explicitly selected and independently
    evaluated; do not assume a SQL-focused model can plan or code products.
-5. A human-approved input/output price or explicit zero marginal charge,
-   current Control Plane cost ceiling, per-run reservation and durable
-   tool_family=model ledger are implemented and validated. Unknown cost
-   blocks paid use. **This adapter cannot yet invoke a real model through
-   the Factory until metering is integrated.**
+5. A human-approved input/output price (or explicitly certified zero
+   marginal charge), current Control Plane cost ceiling, per-run reservation
+   and durable tool_family=model ledger are mandatory. The optional
+   private_model_metering.py wrapper implements this gate and records actual
+   usage, but it is NOT registered with the scheduled worker. Unknown cost
+   blocks paid use. A SQL-specific authorized worker and network route must
+   be implemented and evaluated separately before any live use.
 6. Only then perform an explicitly authorized bounded live invocation;
    record usage and review the evidence before production activation.
 
