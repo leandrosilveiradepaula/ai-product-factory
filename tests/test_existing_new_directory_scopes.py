@@ -93,7 +93,7 @@ class ExactNewDirectoryScopesTests(unittest.TestCase):
         worker.github.list_file_paths.return_value=files
         self.assertEqual(worker._bounded_file_scope(target, files), (target, None))
         # A report is a strict file grant, not broad permission for docs/**.
-        source=scoped_source([target, "apps/console/app/nav.tsx"])
+        source=scoped_source([target, "apps/console/app/nav.tsx", "console-ux-ui-audit"])
         source["assignment"]["context_paths"]=["apps/console/app/nav.tsx"]
         enriched, inspected=worker._resolved_repository_context(
             source=source,base_commit="a"*40,
