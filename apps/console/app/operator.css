@@ -228,3 +228,67 @@
 
 /* Inline SVG icon is not textual content for axe color-contrast sampling. */
 .productSituationButton svg{width:17px;height:17px;display:inline-block;vertical-align:middle;margin-left:7px;flex:0 0 auto}
+
+
+/* Product journey: show current phase, next phase and owner action before
+   technical activity. Prior steps are positions, never passed quality gates. */
+.journeyCard{border-color:#465b76;background:#182331}
+.journeyCardTop{background:#1e2c3d;align-items:center}
+.journeyCardTop .productSituationStatus{font-size:12px;font-weight:700}
+.journeyPath{padding:16px 20px 10px}
+.journeyPathHeading{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:13px}
+.journeyPathHeading h4{font-size:15px;color:#f0f5fe;margin:0;font-weight:760}
+.journeyPathHeading>span{font-size:12px;color:#c7d6e9;white-space:nowrap}
+.productJourneyTrack{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;list-style:none;margin:0;padding:0}
+.journeyStep{position:relative;display:flex;flex-direction:column;min-width:0;gap:4px;min-height:88px;padding:13px 11px;background:#182535;border:1px solid #3b4a5f;border-radius:9px}
+.journeyStep .journeyStepNumber{display:flex;align-items:center;justify-content:center;border-radius:50%;width:23px;height:23px;background:#2d3d50;border:1px solid #53657c;color:#e3effe;font-size:12px;line-height:1;font-weight:800;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.journeyStep strong{font-size:13px;color:#e4eefb;line-height:1.35;font-weight:700}
+.journeyStep small{font-size:11px;line-height:1.4;color:#b4c3d7}
+.journeyStep.anterior{border-color:#39485b;background:#1a2634}
+.journeyStep.atual{background:#1b416e;border:2px solid #9cc7ff;padding:12px 10px}
+.journeyStep.atual strong{color:#fff}
+.journeyStep.atual .journeyStepNumber{background:#e5f1ff;color:#133e73;border-color:#e5f1ff}
+.journeyStep.atual small{font-weight:800;color:#fff}
+.journeyStep.proxima{background:#22344a;border:1px dashed #8cb6e8}
+.journeyStep.proxima small{color:#c4ddff;font-weight:700}
+.journeyStep.futura{opacity:.78}
+.journeyStep.desconhecida{opacity:.65}
+.journeyPhaseOverview{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 20px 18px}
+.journeyPhaseOverview>div{min-width:0;border-radius:11px;padding:18px 19px;border:1px solid #45617d;background:#1c3046}
+.journeyPhaseOverview .journeyUpcoming{background:#1b293a;border-color:#45556a}
+.journeyOverline{display:block;font-size:11px;letter-spacing:.06em;font-weight:820;line-height:1.4;color:#b7d4fa}
+.journeyPhaseOverview h4{color:#f5f8ff;font-size:22px;line-height:1.23;letter-spacing:-.02em;margin:6px 0 8px}
+.journeyPhaseOverview p{font-size:14px;color:#d6e2f2;line-height:1.5;margin:0}
+.journeyPhaseOverview p strong{color:#f0f6ff}
+.journeyPhaseOverview small{font-size:12px;display:block;margin-top:12px;color:#c4d6ef}
+.journeyAction{display:flex;align-items:center;justify-content:space-between;gap:17px;border-top:1px solid #435a77;background:#182a40;padding:18px 20px}
+.journeyAction.needsHuman{border-top-color:#90703d;background:#302b20}
+.journeyAction.inactive{background:#202937}
+.journeyActionText{min-width:0;flex:1}
+.journeyAction h4{font-size:17px;line-height:1.35;letter-spacing:-.01em;color:#f0f5ff;margin:5px 0 6px}
+.journeyAction p{color:#d1dfee;font-size:13px;line-height:1.5;margin:0 0 8px;max-width:830px}
+.journeyAction small{font-size:12px;line-height:1.5;color:#c4d5eb}
+.journeyAction small strong{color:#f2f5fa}
+.journeyActionLinks{display:flex;flex-direction:column;align-items:stretch;gap:5px;flex:0 0 auto;min-width:190px;max-width:230px}
+.journeyActionLinks .productSituationButton{width:100%;min-height:46px}
+.journeyActionLinks .productSituationSecondary{justify-content:center;text-align:center;min-height:36px}
+.journeyEvidence{border-top:1px solid #36475c;background:#151e2b;padding:0}
+.journeyEvidence>summary{padding:13px 20px;min-height:46px;cursor:pointer;color:#c7dbf3;font-size:13px;font-weight:700}
+.journeyEvidence>summary:hover{background:#1d2d42}
+.journeyEvidence>summary:focus-visible{outline:2px solid #9cc7ff;outline-offset:2px}
+.journeyEvidenceContent{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:4px 20px 19px}
+.journeyEvidenceContent>div{border-radius:8px;background:#202c3d;padding:13px;min-width:0}
+.journeyEvidenceContent strong{font-size:11px;color:#c4d8ee}
+.journeyEvidenceContent p{font-size:13px;line-height:1.5;color:#d5e1ee;margin:6px 0 0;overflow-wrap:anywhere}
+.journeyEvidenceContent a{color:#cce0ff;text-decoration:underline;text-underline-offset:3px}
+.projectAuxActions{border:1px solid #334860;border-radius:10px;background:#182433;margin:14px 0 0}
+.projectAuxActions>summary{cursor:pointer;color:#ccdcf1;font-weight:730;font-size:13px;min-height:45px;padding:13px 17px}
+.projectAuxActions>summary:focus-visible{outline:2px solid #9cc7ff;outline-offset:3px}
+.projectAuxActions .projectOperatorChoices{margin:0;padding:17px;border:0}
+@media(max-width:1180px){.productJourneyTrack{grid-template-columns:repeat(3,minmax(0,1fr))}.journeyEvidenceContent{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.journeyCardTop{align-items:flex-start}.journeyPath{padding:14px 14px 8px}.productJourneyTrack{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.journeyStep{min-height:78px;padding:10px}.journeyStep.atual{padding:9px}.journeyPhaseOverview{grid-template-columns:1fr;gap:8px;padding:9px 14px 14px}.journeyPhaseOverview>div{padding:15px}.journeyPhaseOverview h4{font-size:21px}.journeyAction{padding:16px;flex-direction:column;align-items:stretch;gap:13px}.journeyActionLinks{min-width:0;max-width:none}.journeyEvidenceContent{grid-template-columns:1fr;padding:4px 14px 15px}.journeyPathHeading{align-items:center}.journeyPathHeading h4{font-size:15px}}
+
+.productOverviewTechnical{margin:0 0 17px;border:1px solid #35465d;border-radius:9px;background:#182435}
+.productOverviewTechnical>summary{min-height:45px;padding:12px 16px;cursor:pointer;font-weight:720;font-size:13px;color:#c5d8f2}
+.productOverviewTechnical>summary:focus-visible{outline:2px solid #9cc7ff;outline-offset:2px}
+.productOverviewTechnical .productPulseStats{padding:0 12px 13px;margin:0}

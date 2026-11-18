@@ -390,7 +390,12 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
  try{
   let response=await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
-  assert.equal(await page.locator("h1.title").innerText(),"O que está acontecendo com seus produtos?");
+  assert.equal(await page.locator("h1.title").innerText(),"Em que fase está cada produto?");
+   const product=page.locator(".productSituationList .journeyCard").first();
+   assert.equal(await product.locator(".journeyStep").count(),6,"all real product phases must be visible");
+   assert.equal(await product.locator(".journeyStep.atual strong").innerText(),"Testar","real lifecycle_stage maps to current phase");
+   assert.equal(await product.locator(".journeyUpcoming h4").innerText(),"Publicar","next phase must be intelligible");
+   assert.equal(await product.locator(".journeyAction.needsHuman").count(),0,"no user approval without actionable gate");
   for(const label of ["Criar um produto","Melhorar um produto","Acompanhar entregas"])
    assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing action "+label);
   response=await page.goto(appOrigin+"/deliveries",{waitUntil:"networkidle",timeout:45000});
@@ -438,6 +443,9 @@ test("B3: real Next project detail hydration and command identity are stable acr
     waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200);
    assert.equal(await page.locator("h1.title").innerText(),"AI Product Factory");
+   assert.equal(await page.locator(".productSituationDetail .journeyStep").count(),6,"project detail must show full product journey");
+   assert.equal(await page.locator(".productSituationDetail .journeyCurrent h4").innerText(),"Testar");
+   assert.equal(await page.locator(".productSituationDetail .journeyUpcoming h4").innerText(),"Publicar");
    const pause=page.getByRole("button",{name:"Pausar",exact:true});
    assert.equal(await pause.count(),1,"real running control must render submit form");
    const control=pause.locator("xpath=ancestor::form");

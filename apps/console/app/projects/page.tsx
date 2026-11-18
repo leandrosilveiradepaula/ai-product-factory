@@ -20,7 +20,7 @@ export default async function Projects({searchParams}:{searchParams:Promise<{sup
  const installPending=installReturned&&installProject&&d.projects.some(p=>p.key===installProject);
  return <>
   <PageHeader eyebrow="Produtos" title="Escolha o produto que quer acompanhar"
-   subtitle="Cada produto mostra o que acontece agora, o último pedido, a última tentativa e o próximo passo. Status do cadastro não significa execução." actions={<ActionLink href="/projects/new" variant="primary">Criar produto</ActionLink>}/>
+   subtitle="Veja a fase de cada produto, qual fase vem depois e se existe alguma ação sua necessária. Abra um produto para acompanhar a jornada." actions={<ActionLink href="/projects/new" variant="primary">Criar produto</ActionLink>}/>
   {notice?<div className="card noticeCard danger" role="status"><StatusPill status="failed"/><span>{notice}</span></div>:null}
   {installPending?<div className="card noticeCard" role="status">
    <span>O GitHub retornou da instalação de {installProject}. Confira as permissões concedidas e verifique o acesso; retornar a esta tela não comprova acesso.</span>

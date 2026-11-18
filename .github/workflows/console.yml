@@ -80,6 +80,8 @@ jobs:
         run: |
           node ../../scripts/test_console_product_status_runtime.cjs
           python ../../tests/test_console_product_status_ux.py
+          node ../../scripts/test_console_product_journey_runtime.cjs
+          python ../../tests/test_console_product_journey_ux.py
       - name: Verify actual migration feedback modules with offline delayed audit
         run: node ../../scripts/test_console_migration_interaction.cjs
       # Actual React 19 formStatus and ConfirmSubmit in headless Chromium.

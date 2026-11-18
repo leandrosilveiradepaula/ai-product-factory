@@ -29,7 +29,8 @@ const macroStages=[
  {label:"Planejar",detail:"Plano técnico e backlog",members:["planning"]},
  {label:"Construir",detail:"Implementação e revisão",members:["implementation","review"]},
  {label:"Validar",detail:"Testes, avaliações e prévia",members:["validation","preview"]},
- {label:"Liberar",detail:"Aprovação, release e operação",members:["human_gate","release","operations"]},
+ {label:"Publicar",detail:"Aprovação humana e release",members:["human_gate","release"]},
+ {label:"Operar",detail:"Operação e novos pedidos",members:["operations"]},
 ];
 function macroStageIndex(stage:string){return macroStages.findIndex(item=>item.members.includes(stage))}
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
@@ -204,12 +205,14 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <button className="primary" type="submit">Verificar acesso da GitHub App</button>
    </form>
   </div>:null}
-  <PageHeader eyebrow="Produto" title={p.name} subtitle="O que foi pedido, o que está acontecendo e qual é o próximo passo." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <PageHeader eyebrow="Produto" title={p.name} subtitle="Veja a fase atual, a próxima fase e o que falta para avançar." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
   <section className="productSituationDetail" aria-labelledby="product-situation-heading">
-   <h2 id="product-situation-heading">Situação atual do produto</h2>
+   <h2 id="product-situation-heading">Sua jornada: onde está o produto e o que vem depois</h2>
    <ProductSituationCard item={situation} showOpen={false}/>
   </section>
-  <section className="projectOperatorChoices" aria-label="Ações deste produto">
+  <details className="projectAuxActions">
+   <summary>Outras ações do projeto e acompanhamento técnico</summary>
+   <div className="projectOperatorChoices" aria-label="Ações deste produto">
    <div>
     <span className="operatorEyebrow">ESCOLHA SEU PRÓXIMO PASSO</span>
     <h2>O que você quer fazer com este produto?</h2>
@@ -221,9 +224,10 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <ActionLink href={"/deliveries?project="+encodeURIComponent(p.key)} variant="secondary">Acompanhar entregas</ActionLink>
     {situation.state==="decision"?<ActionLink href="/gates" variant="secondary">Revisar decisões</ActionLink>:null}
    </div>
-  </section>
-  <details className="projectStageDisclosure" open={humanActionNeeded}>
-   <summary>Ver marco registrado, indicadores e orientações técnicas</summary>
+   </div>
+  </details>
+  <details className="projectStageDisclosure">
+   <summary>Ver dados técnicos da fase e indicadores</summary>
   <div className="projectOrientation">
    <aside className={humanActionNeeded?"nextActionCard needsHuman":"nextActionCard routine"} aria-label="Próxima etapa">
     <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"Contexto da etapa registrada"}</span>
@@ -232,9 +236,9 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <div className="actions"><ActionLink href={action.href} variant={humanActionNeeded?"primary":"secondary"}>{action.label}</ActionLink></div>
    </aside>
    <div className="projectLifecyclePanel">
-    <h2 className="projectLifecycleTitle">Ciclo do produto</h2>
+    <h2 className="projectLifecycleTitle">Etapas técnicas registradas</h2>
     <p className="projectLifecycleHelp">As etapas indicam a posição registrada do produto; não provam execução, qualidade ou conclusão deste pedido.</p>
-    <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo do produto em cinco macroetapas">
+    <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo técnico do produto em seis macroetapas">
      {macroStages.map((item,i)=><div className={"macroStage "+(i<currentMacro?"done":i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail}</small></div>)}
     </div>
     <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>

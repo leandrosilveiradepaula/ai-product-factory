@@ -22,8 +22,8 @@ export default async function Home(){
  const stopped=stoppedProducts.length;
  const historicalProblems=health.failedRuns+health.blockedRuns;
  return <>
-  <PageHeader eyebrow="Seu trabalho" title="O que está acontecendo com seus produtos?"
-   subtitle="Acompanhe o último pedido, a execução real, o último resultado e o próximo passo. Não é necessário entender agentes, filas ou commits para usar a Factory."/>
+  <PageHeader eyebrow="Seu trabalho" title="Em que fase está cada produto?"
+   subtitle="Para cada produto, veja onde está, qual é a próxima fase e se você precisa fazer alguma coisa."/>
 
   {attention.count>0?<section className="operatorAttention requiresAction" role="status" aria-label="O que depende de você">
    <div className="operatorAttentionContent">
@@ -35,15 +35,18 @@ export default async function Home(){
 
   <section className="section operatorPortfolio" aria-labelledby="operator-products-title">
    <div className="productPulseHeader">
-    <div><h2 id="operator-products-title">Situação dos seus produtos</h2><p>Retrato dos registros do Control Plane consultados em {new Date(pulse.observedAt).toLocaleString("pt-BR")}. Nenhuma execução em andamento é presumida.</p></div>
+    <div><h2 id="operator-products-title">O caminho dos seus produtos</h2><p>As fases mostram a etapa registrada, não uma porcentagem de conclusão. A próxima ação aparece em cada produto.</p></div>
     <Link prefetch={false} className="productSituationSecondary" href="/projects">Abrir portfólio completo →</Link>
    </div>
+   <details className="productOverviewTechnical">
+    <summary>Consultar números técnicos do portfólio</summary>
    <div className="productPulseStats" role="group" aria-label="Situação observada">
     <div><strong>{products.length}</strong><span>Projetos listados no cadastro</span></div>
     <div><strong>{running}</strong><span>Execuções com início e lease vigente</span></div>
     <div><strong>{stopped}</strong><span>Projetos com controle parado ou pausado</span></div>
     <div><strong>{attention.count}</strong><span>Decisões ou acessos pendentes</span></div>
    </div>
+   </details>
    <div className="productSituationList">
     {products.length===0?<div className="operatorPortfolioEmpty">Nenhum produto ativo cadastrado. <Link href="/projects/new">Criar um produto →</Link></div>:
     visibleProducts.map(item=><ProductSituationCard key={item.key} item={item}/>)}

@@ -52,3 +52,14 @@ O responsável voltou a reprovar o Preview, mesmo com o Kanban, porque não cons
 **Limites:** histórico de falhas não é um gate humano; tarefas encerradas não provam qualidade/publicação; requisições feitas em outros canais podem não aparecer como última solicitação do Console; ausência de execução ativa não prova que o projeto está concluído. Consultas incompletas falham fechado, sem números saudáveis inventados. Nenhuma migration, novo custo, mudança de Auth/RLS ou auto-merge.
 
 **Aceite pendente:** tipagem e Next build, políticas TypeScript reais em testes sem rede, Browser/Chromium com dados sintéticos, CI exata, Preview Vercel SHA-exato, inspeção humana das telas internas autenticadas. Depois dessa evidência, o responsável decide se a experiência ficou compreensível. O merge de produção é exclusivamente humano.
+
+
+## Terceira reprovação de UX — caminho e próxima etapa (18/11/2026)
+
+O responsável avaliou o Preview do SHA `f0249c1` como apenas um pouco melhor, mas ainda confuso: não conseguia identificar o **momento do produto, a próxima fase nem o que precisava fazer após criar ou abrir um projeto**. A prova técnica anterior continua válida para aquele SHA, mas não é aceite de UX.
+
+**Defeito observado em código:** o único ciclo de cinco macroetapas ficava dentro de `projectStageDisclosure` (seção técnica recolhida), e `projectOperatorChoices` destacava "Pedir melhoria ou correção" inclusive durante implementação. A tela não indicava o que libera a próxima fase. Os indicadores de execução, o último pedido e o Kanban não substituem a jornada do produto.
+
+**Revisão candidata na mesma PR #1516:** uma fonte determinística, read-only e única `product-journey.ts` traduz `factory_projects.lifecycle_stage` em seis etapas de comunicação: Entender, Planejar, Construir, Testar, Publicar e Operar. Em cada produto, Home, Projetos e detalhe mostram a sequência completa com posição atual (não um percentual), próxima fase, critério para transição, ação agora e responsável. A etapa Operar abre novo ciclo apenas sob nova solicitação. Status de worker (lease) permanece independente do progresso. Ação humana obrigatória só aparece quando há gate acionável; falhas e tarefas sem worker são investigação técnica, não aprovação humana. As evidências ficam em seção expansível. Projetos parados continuam parados; não recomendar reinício automático de produto aposentado.
+
+**Aceite exigido:** testes unitários sobre a política TypeScript real, regressão Next/Chromium com projeto no estágio de validação exibindo "Testar → Publicar", acessibilidade real axe (desktop/mobile) com zero violação/incomplete, CI verde no SHA exato, Preview READY/identidade do SHA, e revisão humana da navegação autenticada. Não inventar evidência de fase concluída, próximo gate, percentual ou publicação. Não alterar Supabase, credenciais, migrações, modelo pago, controle de produção ou merge automático.
