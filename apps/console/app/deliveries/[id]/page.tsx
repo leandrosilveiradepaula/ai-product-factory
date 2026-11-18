@@ -26,7 +26,7 @@ function taskState(status:string){
 
 export default async function DeliveryDetails({params}:{params:Promise<{id:string}>}){
  const {id}=await params;
- if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))notFound();
+ if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))notFound();
  const board=await getDeliveryBoard();
  const item=board.cards.find(card=>card.id===id);
  if(!item)notFound();
