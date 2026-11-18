@@ -88,3 +88,27 @@ test("owner portfolio exposes authenticated lifecycle commands without engineeri
  assert.match(home,/revalidatePath\("\/"\)/);
  assert.doesNotMatch(home,/lease_owner|change_set_id|primary_model|worker_id/i);
 });
+
+
+test("financial blocker requires a real pending-run audit and current policy",()=>{
+ const source=fs.readFileSync(path.join(root,"apps/console/lib/owner-financial-blocker.ts"),"utf8");
+ const built=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+ const lib={exports:{}};vm.runInNewContext(built,lib,{timeout:5000});
+ const check=lib.exports.ownerFinancialBlocker;
+ const pending={id:"example",status:"queued",createdAt:"2026-11-18T18:02:48Z"};
+ const observed={pendingRun:pending,wakeEvidence:{blockerCode:"budget_exhausted",blockedAt:"2026-11-18T18:03:43Z"}};
+ const policy={budgetUsd:15,reserveUsd:0.5,knownSpendUsd:14.5408752,unknownPaidCostEvents:0};
+ const blocked=check(observed,policy);
+ assert.equal(blocked?.kind,"exhausted");
+ assert.equal(blocked?.title,"Parado por limite financeiro");
+ assert.match(blocked.detail,/US/);
+ assert.match(blocked.detail,/0,50/);
+ assert.equal(blocked.href,"/configuration#orcamento");
+ assert.equal(check(observed,{...policy,budgetUsd:20}),null);
+ assert.equal(check({...observed,pendingRun:{...pending,status:"completed"}},policy),null);
+ assert.equal(check({...observed,wakeEvidence:{...observed.wakeEvidence,blockerCode:"primary_auth_missing"}},policy),null);
+ assert.equal(check({...observed,wakeEvidence:{...observed.wakeEvidence,blockedAt:"2026-11-18T17:00:00Z"}},policy),null);
+ assert.equal(check(observed,{...policy,knownSpendUsd:null})?.kind,"unverified");
+ assert.equal(check(observed,{...policy,unknownPaidCostEvents:1})?.kind,"unverified");
+ assert.equal(check(observed,null)?.kind,"unverified");
+});

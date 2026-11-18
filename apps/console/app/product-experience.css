@@ -69,3 +69,16 @@
 .ownerEmpty{padding:22px;border:1px dashed #4d5c70;border-radius:9px;color:#c1cedd}
 @media(max-width:850px){.ownerProductItem{align-items:stretch;flex-direction:column;padding:17px}.ownerProductActions{flex:auto;justify-content:flex-start}}
 @media(max-width:540px){.ownerProductActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.ownerProductActions form,.ownerProductActions button{width:100%}.ownerProductActions a{min-width:0}.ownerProductIdentity h3{font-size:18px}}
+
+
+/* Financial execution blockers are owner decisions, not buried runner logs. */
+.ownerFinanceAction{background:#d89c3b;color:#16202c!important;border-radius:8px;padding:10px 16px!important;font-weight:750!important}
+.ownerFinancialDetail{color:#f4d8a5!important;font-size:13px;max-width:68ch}
+.ownerBudgetBanner{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 24px;margin:20px 0;border:1px solid #b88333;border-left:4px solid #dda24a;border-radius:12px;background:#332919;color:#f6e2bc}
+.ownerBudgetBanner strong{font-size:20px;color:#fff1d0}
+.ownerBudgetBanner p{margin:6px 0 0;line-height:1.5;color:#eed4a9}
+.ownerBudgetBanner a{flex-shrink:0}
+.ownerProgressDetails{margin:24px 0;border:1px solid #3e526a;border-radius:12px;padding:14px 18px}
+.ownerProgressDetails>summary{cursor:pointer;color:#c9ddf2;font-weight:650}
+.ownerProgressDetails>.projectTechnicalBody{padding-top:22px}
+@media(max-width:720px){.ownerBudgetBanner{align-items:stretch;flex-direction:column;padding:16px}.ownerBudgetBanner a{width:100%;text-align:center}}

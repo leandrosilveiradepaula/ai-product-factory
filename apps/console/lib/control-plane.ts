@@ -386,9 +386,13 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  if(taskIds.length){
   const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
   const runs=runsResponse.ok?await runsResponse.json():[];
-  const waiting=runs.find((x:any)=>x.status==="created"&&x.started_at==null);
+  // Recovery and later lifecycle work are queued, not always created. Never
+   // hide the Product Stage's recorded blocker by selecting created-only runs.
+   const waiting=runs.find((x:any)=>(x.status==="created"||x.status==="queued")
+     &&x.started_at==null);
   if(waiting){
-   pendingRun={id:String(waiting.id),status:"created",attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
+   pendingRun={id:String(waiting.id),status:String(waiting.status),
+     attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
    const since=encodeURIComponent(pendingRun.createdAt);
    const [wakeResponse,probeResponse,blockResponse]=await Promise.all([
     fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&project_id=eq.${encodeURIComponent(p.id)}&run_id=eq.${encodeURIComponent(pendingRun.id)}&event_type=in.(project.bootstrap.wake_attempted,project.continuation.wake_attempted)&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),

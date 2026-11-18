@@ -2,12 +2,14 @@ import {cookies} from "next/headers";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
-import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation,getProjectExecutionControl,getProjectRecoveryStatus,commandProjectExecution,restartBlockedProjectWork} from "../../../lib/control-plane";
+import {getProjectContinuationContext,getProjectContinuationHistory,getProjectDatabases,getProjectDetail,getProjectExecutionTeamPlan,getProjectGitHubAccess,getProjectOperations,getProjectStateContext,requestProjectGitHubRecheck,enqueueProjectReconciliation,getProjectExecutionControl,getProjectRecoveryStatus,getProjectWorkObservation,commandProjectExecution,restartBlockedProjectWork} from "../../../lib/control-plane";
 import {isSupabaseOAuthConfigured} from "../../../lib/supabase-oauth";
 import {getGitHubAppStatus} from "../../../lib/github-app";
 import {RepositoryLinkForm} from "./repository-link-form";
 import {ProjectControlForm} from "./control-confirm";
 import {getProjectControlWakeStatus} from "../../../lib/project-control-wake-outbox";
+import {getPrimaryCostPolicyView} from "../../../lib/primary-cost-policy";
+import {ownerFinancialBlocker} from "../../../lib/owner-financial-blocker";
 import {requireConsoleOperator} from "../../../lib/auth-server";
 import {ActionLink,EmptyState,humanizeStatus,MetricCard,PageHeader,SectionHeader,StatusPill} from "../../ui";
 
@@ -180,6 +182,11 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
+ const [financialPolicy,workObservation]=await Promise.all([
+  observedBlocker==="budget_exhausted"?getPrimaryCostPolicyView():Promise.resolve(null),
+  getProjectWorkObservation(p.tasks.map(t=>String(t.id)))
+ ]);
+ const financial=ownerFinancialBlocker(p,financialPolicy);
  const focusedControlAction=controlNextAction(executionControl.state);
  const controlWake=await getProjectControlWakeStatus(p.id);
  const action=focusedControlAction|| (observedBlocker?{
@@ -213,9 +220,14 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    </form>
   </div>:null}
   <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<>{executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink>:null}<details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  {financial?<section className="ownerBudgetBanner" role="alert" aria-label="Motivo da interrupção">
+    <div><strong>{financial.title}</strong>
+     <p>{financial.description}</p><p>{financial.detail}</p></div>
+    <ActionLink href={financial.href} variant="primary">{financial.actionLabel}</ActionLink>
+   </section>:null}
   <section className="section" id="project-control" aria-label="Controle de execução do projeto">
-   <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
-    <p>O cadastro não inicia o desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar.</p>
+   <div className="card denseStack"><strong>Execução do projeto: {financial?financial.title:executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?(workObservation.kind==="running"?"Desenvolvendo":"Aguardando execução"):executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
+    <p>{financial?"O pedido de retomada está preservado. A execução depende de uma decisão sobre o orçamento.":workObservation.kind==="running"?"A Factory está executando trabalho comprovado.":"Você controla quando iniciar, pausar, parar ou solicitar alterações."}</p>
     <div className="actions">{([
      ["draft","start","Iniciar projeto"],["running","pause","Pausar"],["running","stop","Parar"],
     ["pausing","stop","Parar"],["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"],
@@ -251,7 +263,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    </div>
   </section>:null}
   {query.wake_recovery?<div className="card noticeCard" role="status"><strong>Recuperação do worker:</strong> {query.wake_recovery==="requested"?"Solicitação aceita pelo GitHub; aguarde a execução real.":query.wake_recovery==="cooldown"?"Já houve uma tentativa recente. Aguarde pelo menos 15 minutos.":query.wake_recovery==="unconfigured"?"A integração de disparo não está configurada para a Factory.":query.wake_recovery==="not_eligible"?"Não foi encontrada uma execução inicial pendente elegível.":query.wake_recovery==="failed"?"Falha no acionamento. A tarefa continua preservada.":"Não foi possível verificar a recuperação."}</div>:null}
-  {p.pendingRun&&(p.stage==="discovery"||!observedBlocker)?<div className="card pendingProjectNotice" role="status">
+  {!financial&&p.pendingRun&&(p.stage==="discovery"||!observedBlocker)?<div className="card pendingProjectNotice" role="status">
    <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>{p.stage==="discovery"?"Descoberta ainda não iniciada":"Reconciliação aguardando o worker"}</strong></div>
    <p>O Control Plane preservou a execução <code>{p.pendingRun.id.slice(0,8)}</code>, ainda com {p.pendingRun.attemptCount} tentativas. Registrar o pedido não significa que um worker já iniciou o processamento.</p>
    {p.wakeEvidence?.wakeStatus==="requested"?<p>O Console registrou um pedido de acionamento aceito pelo GitHub. Isso não comprova que o worker executou.</p>:p.wakeEvidence?.wakeStatus==="failed"?<p>O Console registrou falha ao solicitar o acionamento imediato. A execução permanece na fila para recuperação.</p>:p.wakeEvidence?.wakeStatus==="unconfigured"?<p>O Console não encontrou uma identidade autorizada para o acionamento imediato. A execução permanece na fila.</p>:<p>Não há evidência registrada de acionamento imediato para esta execução.</p>}
@@ -259,12 +271,15 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    {p.wakeEvidence?.blockerCode?<p role="status"><strong>Bloqueio registrado para esta execução:</strong> {productWorkerBlockerMessage(p.wakeEvidence.blockerCode)} {p.wakeEvidence.blockedAt?<span className="muted">Evidência de {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. O worker não assumiu o run.</span>:null}</p>:null}
    <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink>{operator.role==="admin"?<form method="POST" action="/api/projects/wake-recovery"><input type="hidden" name="project_key" value={p.key}/><button className="linkButton" type="submit">{p.stage==="discovery"?"Iniciar desenvolvimento":"Solicitar recuperação do worker"}</button></form>:null}</div>
   </div>:null}
-  {p.pendingRun&&p.stage!=="discovery"&&observedBlocker?<div className="card pendingProjectNotice" role="status" aria-live="polite">
+  {!financial&&p.pendingRun&&p.stage!=="discovery"&&observedBlocker?<div className="card pendingProjectNotice" role="status" aria-live="polite">
    <div className="badgeLine"><StatusPill status="blocked" label="Execução pausada"/><strong>{observedBlocker==="budget_exhausted"?"Orçamento do modelo insuficiente":"Execução aguardando dependência do modelo"}</strong></div>
    <p><strong>Motivo registrado:</strong> {productWorkerBlockerMessage(observedBlocker)} A execução <code>{p.pendingRun.id.slice(0,8)}</code> não foi assumida e permanece na fila, com {p.pendingRun.attemptCount} tentativas.</p>
    {p.wakeEvidence?.blockedAt?<p className="muted">Evidência no Control Plane em {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. Não houve chamada ao modelo nesta tentativa.</p>:null}
    <div className="actions"><ActionLink href="/usage">Ver modelos e consumo</ActionLink><ActionLink href={"/runs/"+p.pendingRun.id}>Ver execução</ActionLink></div>
   </div>:null}
+  <details className="projectTechnicalDetails ownerProgressDetails">
+   <summary>Ver etapas, métricas e avaliações técnicas</summary>
+   <div className="projectTechnicalBody">
   <div className="projectOrientation">
    <div>
     <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo do produto em cinco macroetapas">
@@ -302,6 +317,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <div className="badgeLine"><span className="muted">{p.productReadiness.assessmentRef||"Sem assessment_ref"}</span>{p.productReadiness.createdAt?<span className="muted">avaliado em {new Date(p.productReadiness.createdAt).toLocaleString("pt-BR")}</span>:null}</div>
    </div>
   </section>
+   </div>
+  </details>
   {continuation?<section className="section" id="latest-request"><SectionHeader title="Último pedido" action={<span className="muted">{new Date(continuation.requestedAt).toLocaleString("pt-BR")}</span>}/>
    <div className="card denseStack">
     <p style={{margin:0}}>{continuation.summary}</p>

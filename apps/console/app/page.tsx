@@ -5,6 +5,8 @@ import {getDashboard,getHumanGates,getProjectDetail,getProjectRecoveryStatus,
  getProjectStateContext,getProjectExecutionControl,getProjectWorkObservation,
  commandProjectExecution,restartBlockedProjectWork} from "../lib/control-plane";
 import {summarizeProductExperience} from "../lib/product-experience-model";
+import {getPrimaryCostPolicyView} from "../lib/primary-cost-policy";
+import {ownerFinancialBlocker} from "../lib/owner-financial-blocker";
 import {ProjectControlForm} from "./projects/[key]/control-confirm";
 import {ActionLink,PageHeader} from "./ui";
 
@@ -70,12 +72,17 @@ export default async function Home({searchParams}:{
    actionableGates:pending.filter(g=>g.projectKey===project.key).length
   })};
  }));
+ // One complete-ledger read for the whole portfolio, only when an audited
+ // pending run indicates a financial blocker. No per-project price guesses.
+ const financialPolicy=products.some(p=>p.detail?.wakeEvidence?.blockerCode==="budget_exhausted")
+  ?await getPrimaryCostPolicyView():null;
  const ownerProducts=products.filter(p=>!p.detail?.isInternalRecord);
  const active=ownerProducts.filter(p=>!["draft","paused","stopped"].includes(p.control.state));
  const inactive=ownerProducts.filter(p=>["draft","paused","stopped"].includes(p.control.state));
  const internal=products.filter(p=>p.detail?.isInternalRecord);
  const renderProduct=(entry:typeof products[number])=>{
   const {project,view,control,recovery}=entry;
+  const financial=ownerFinancialBlocker(entry.detail,financialPolicy);
   const key=project.key;
   const path="/projects/"+encodeURIComponent(key);
   const needsDecision=view.tone==="decision";
@@ -85,36 +92,39 @@ export default async function Home({searchParams}:{
   const lifecycleCommand=control.state==="draft"?"start":
    control.state==="paused"?"resume":control.state==="stopped"?"restart":null;
   const lifecycleLabel=control.state==="draft"?"Iniciar":control.state==="paused"?"Retomar":"Reiniciar";
-  const status=needsDecision?"Aguardando decisão":
+  const status=financial?financial.title:needsDecision?"Aguardando decisão":
    control.state==="draft"?"Não iniciado":control.state==="paused"?"Pausado":
    control.state==="stopped"?"Parado":view.tone==="blocked"?"Parado":
    view.tone==="working"?"Desenvolvendo":view.tone==="waiting"?"Aguardando":
    view.tone==="evaluated"?"Pronto para avaliação":view.tone==="quiet"?"Aguardando":"Indisponível";
-  const summary=view.tone==="blocked"?"O desenvolvimento foi interrompido.":
+  const summary=financial?financial.description:
+   view.tone==="blocked"?"O desenvolvimento foi interrompido.":
    view.tone==="working"?"A Factory está trabalhando.":
    view.tone==="waiting"?"A Factory recebeu trabalho e aguarda execução comprovada.":
    view.tone==="evaluated"?"Há uma versão avaliada.":"Acompanhe ou solicite uma alteração.";
-  return <article className={"ownerProductItem owner-"+view.tone} key={key}>
+  return <article className={"ownerProductItem owner-"+(financial?"blocked":view.tone)} key={key}>
    <div className="ownerProductIdentity">
     <h3>{project.name}</h3>
-    <span className={"ownerProductState owner-"+view.tone}>{status}</span>
+    <span className={"ownerProductState owner-"+(financial?"blocked":view.tone)}>{status}</span>
     <p>{summary}</p>
+    {financial?<p className="ownerFinancialDetail" role="status">{financial.detail}</p>:null}
    </div>
    <div className="ownerProductActions">
+    {financial?<Link className="ownerFinanceAction" href={financial.href}>{financial.actionLabel}</Link>:null}
     {needsDecision?<Link className="ownerDecisionLink" href="/gates">Revisar decisão</Link>:null}
-    {!needsDecision&&canRestart?
+    {!needsDecision&&!financial&&canRestart?
      <ProjectControlForm projectKey={key} command="restart" label="Reiniciar"
       version={control.version} action={ownerRestartBlocked} recovery/>:null}
-    {!needsDecision&&!canRestart&&lifecycleCommand?
+    {!needsDecision&&!financial&&!canRestart&&lifecycleCommand?
      <ProjectControlForm projectKey={key} command={lifecycleCommand}
       label={lifecycleLabel} version={control.version} action={ownerControl}/>:null}
-    {!needsDecision&&control.state==="running"&&!canRestart?
+    {!needsDecision&&!financial&&control.state==="running"&&!canRestart?
      <ProjectControlForm projectKey={key} command="pause" label="Pausar"
       version={control.version} action={ownerControl}/>:null}
     {!needsDecision&&control.state==="running"?
      <ProjectControlForm projectKey={key} command="stop" label="Parar"
       version={control.version} action={ownerControl}/>:null}
-    {!needsDecision&&control.state==="running"?
+    {!needsDecision&&!financial&&control.state==="running"?
      <Link href={path+"/request"} className="ownerProductChange">Solicitar alteração</Link>:null}
     <Link href={path} className="ownerProductDetail">Ver detalhes</Link>
    </div>
