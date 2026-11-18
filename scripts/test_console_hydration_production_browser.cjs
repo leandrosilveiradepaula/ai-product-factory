@@ -390,20 +390,21 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
  try{
   let response=await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
-  assert.equal(await page.locator("h1.title").innerText(),"Em que fase está cada produto?");
+  assert.equal(await page.locator("h1.title").innerText(),"Seus produtos: o que foi entregue e o que falta?");
+   assert.ok(await page.locator(".navItemHint").count()>=4,"menu purposes must be visible");
+   assert.equal(await page.locator(".productTruth").first().count(),1,"product evidence must appear before code stage");
    const product=page.locator(".productSituationList .journeyCard").first();
-   assert.equal(await product.locator(".journeyStep").count(),6,"all real product phases must be visible");
-   assert.equal(await product.locator(".journeyStep.atual strong").innerText(),"Testar","real lifecycle_stage maps to current phase");
-   assert.equal(await product.locator(".journeyUpcoming h4").innerText(),"Publicar","next phase must be intelligible");
+   assert.equal(await product.locator(".productCompactDetails").count(),1,"home is concise and product-oriented");
+   assert.equal(await product.locator(".journeyStep").count(),0,"home must not mislead with unverified full stepper");
    assert.equal(await product.locator(".journeyAction.needsHuman").count(),0,"no user approval without actionable gate");
   for(const label of ["Criar um produto","Melhorar um produto","Acompanhar entregas"])
    assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing action "+label);
   response=await page.goto(appOrigin+"/deliveries",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
-  assert.equal(await page.locator("h1.title").innerText(),"Qual produto você quer acompanhar?");
+  assert.equal(await page.locator("h1.title").innerText(),"Escolha um produto para ver suas tarefas");
   assert.ok(await page.getByRole("heading",{name:"Escolha um produto"}).count()>=1);
   await page.locator("a[href='/deliveries?project=ai-product-factory']").first().click();
-  await page.getByRole("heading",{name:"Quadro de trabalho"}).waitFor({state:"visible",timeout:12000});
+  await page.getByRole("heading",{name:"Tarefas e entregas do produto"}).waitFor({state:"visible",timeout:12000});
   assert.ok(await page.getByRole("heading",{name:"Encerrado"}).count()>=1);
   assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
   // Check an independent hard navigation before testing the real client Link.

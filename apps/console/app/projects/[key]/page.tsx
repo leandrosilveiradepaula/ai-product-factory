@@ -239,7 +239,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <h2 className="projectLifecycleTitle">Etapas técnicas registradas</h2>
     <p className="projectLifecycleHelp">As etapas indicam a posição registrada do produto; não provam execução, qualidade ou conclusão deste pedido.</p>
     <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo técnico do produto em seis macroetapas">
-     {macroStages.map((item,i)=><div className={"macroStage "+(i<currentMacro?"done":i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail}</small></div>)}
+     {macroStages.map((item,i)=><div className={"macroStage "+(i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail} · Registro, não certificação</small></div>)}
     </div>
     <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>
    </div>

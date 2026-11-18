@@ -23,7 +23,7 @@ test("the same six phases guide both the overview and project detail",()=>{
  assert.match(a.conditionToAdvance,/revisado/);
 });
 test("sub-stages never fabricate another major phase",()=>{
- const expected={discovery:["Entender","Planejar"],specification:["Entender","Planejar"],planning:["Planejar","Construir"],review:["Construir","Testar"],validation:["Testar","Publicar"],preview:["Testar","Publicar"],human_gate:["Publicar","Operar"],release:["Publicar","Operar"],operations:["Operar","Novo ciclo, quando solicitado"]};
+ const expected={discovery:["Entender","Planejar"],specification:["Entender","Planejar"],planning:["Planejar","Construir"],review:["Construir","Testar"],validation:["Testar","Publicar"],preview:["Testar","Publicar"],human_gate:["Publicar","Operar"],release:["Publicar","Operar"],operations:["Operação registrada (não certificada)","Comprovar entrega funcional"]};
  for(const [stage,[current,next]]of Object.entries(expected)){
   const journey=describe(p({stage}));assert.equal(journey.phaseLabel,current,stage);assert.equal(journey.nextPhaseLabel,next,stage);
  }
@@ -44,7 +44,7 @@ test("a human decision is mandatory only for a real actionable gate",()=>{
 });
 test("blocked repair is technical, not a false approval",()=>{
  const x=describe(p({stage:"operations",state:"investigate",lastRun:{status:"blocked",id:"test",taskTitle:"Repair",at:"2026-11-17T00:00:00Z"}}));
- assert.equal(x.phaseLabel,"Operar");assert.equal(x.nextPhaseLabel,"Novo ciclo, quando solicitado");
+ assert.equal(x.phaseLabel,"Operação registrada (não certificada)");assert.equal(x.nextPhaseLabel,"Comprovar entrega funcional");
  assert.equal(x.action.owner,"Equipe técnica");assert.equal(x.action.humanRequired,false);
 });
 test("stopped and paused products do not request an unsafe automatic restart",()=>{
@@ -59,12 +59,17 @@ test("a newly registered draft tells the user how to start instead of claiming b
  assert.equal(x.action.owner,"Você");assert.equal(x.action.href,"/projects/factory-example#project-control");
  assert.equal(x.action.label,"Ir para Iniciar projeto");assert.equal(x.action.humanRequired,false);
 });
-test("new project has an explicit request action, active operation has optional improvement",()=>{
+test("new project requests a Start, but unverified operation requires delivery proof",()=>{
  const newProduct=describe(p({stage:"discovery",lastRequest:null,unclosedTasks:0}));
  assert.equal(newProduct.action.owner,"Você");assert.equal(newProduct.action.href,"/projects/factory-example/request");
  const operation=describe(p({stage:"operations"}));
- assert.equal(operation.action.owner,"Nenhuma ação necessária");assert.equal(operation.action.humanRequired,false);
- assert.equal(operation.action.label,"Solicitar melhoria");
+ assert.equal(operation.action.owner,"Equipe técnica");assert.equal(operation.action.humanRequired,false);
+ assert.equal(operation.action.label,"Ver evidências de publicação");
+});
+test("a certified operation is distinct from a merge-only product",()=>{
+ const x=describe(p({stage:"operations",proof:{productReady:true}}));
+ assert.equal(x.phaseLabel,"Operar");assert.equal(x.nextPhaseLabel,"Evoluir quando solicitado");
+ assert.equal(x.action.owner,"Nenhuma ação necessária");
 });
 test("unknown stages do not fabricate completed steps or a next phase",()=>{
  const x=describe(p({stage:"external_launch"}));

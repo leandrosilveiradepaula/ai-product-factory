@@ -9,12 +9,12 @@ import {ConsoleNav} from "./nav";
 
 type RouteContext={area:string;screen:string;purpose:string;advanced?:boolean};
 function routeContext(pathname:string):RouteContext{
- if(pathname==="/")return{area:"Sua Factory",screen:"Início",purpose:"Crie, melhore ou acompanhe um produto. A Factory avisa se precisar de você."};
- if(pathname.startsWith("/deliveries"))return{area:"Trabalho",screen:"Entregas",purpose:"Quadro automático dos pacotes de trabalho: um cartão não é autorização de release."};
- if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo projeto",purpose:"Use para criar um produto novo ou importar um projeto que já está em andamento."};
- if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Detalhes do projeto",purpose:"Esta é a tela principal de acompanhamento de um projeto. Veja a etapa atual e a próxima ação."};
- if(pathname==="/projects")return{area:"Projetos",screen:"Portfólio",purpose:"Use para escolher qual projeto acompanhar ou para iniciar um novo projeto."};
- if(pathname.startsWith("/gates"))return{area:"Trabalho",screen:"Decisões",purpose:"Decisões humanas e acessos necessários, sempre com motivos antes de confirmar."};
+ if(pathname==="/")return{area:"Sua Factory",screen:"Início",purpose:"Visão de todos os produtos. Aqui você vê o que foi comprovado, o que está bloqueado e a próxima ação."};
+ if(pathname.startsWith("/deliveries"))return{area:"Trabalho",screen:"Entregas",purpose:"Tarefas técnicas de um produto. Use para investigar uma entrega, não para saber se o produto inteiro ficou pronto."};
+ if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo produto",purpose:"Cadastre sua ideia ou conecte um projeto existente. O cadastro por si só não inicia um agente."};
+ if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Acompanhamento do produto",purpose:"Veja as provas de entrega, o marco declarado, os impedimentos e o próximo passo. Use esta página antes do Kanban."};
+ if(pathname==="/projects")return{area:"Projetos",screen:"Seus produtos",purpose:"Escolha um produto e confira o que foi entregue ou está pendente. Projetos aposentados ficam separados."};
+ if(pathname.startsWith("/gates"))return{area:"Trabalho",screen:"Decisões",purpose:"Somente aprovações e acessos que exigem você. Falhas técnicas ficam nas páginas de diagnóstico."};
  if(pathname.startsWith("/runs"))return{area:"Diagnóstico",screen:"Execuções",purpose:"Tela avançada para inspecionar como uma tarefa foi executada. Não é uma etapa obrigatória do fluxo.",advanced:true};
  if(pathname.startsWith("/queue"))return{area:"Diagnóstico",screen:"Fila de trabalho",purpose:"Tela avançada para observar backlog, despacho e trabalhos em execução. A Factory gerencia esta fila automaticamente.",advanced:true};
  if(pathname.startsWith("/agents"))return{area:"Diagnóstico",screen:"Agentes da Factory",purpose:"Tela avançada para entender quais especialistas existem, sua capacidade e quais trabalhos estão executando.",advanced:true};
@@ -122,7 +122,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <div className="brandRow">
     <Link href="/" className="brandBlock">
      <img className="brandMark" src="/ai-product-factory-logo.png" alt=""/>
-     <div className="brandText"><strong>AI Product Factory</strong><span>PAINEL DE CONTROLE</span></div>
+     <div className="brandText"><strong>AI Product Factory</strong><span>SEUS PRODUTOS</span></div>
     </Link>
    </div>
    <div className="workspacePicker"><svg className="workspaceGlyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="3.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/></svg><span>Infodive</span></div>
@@ -156,11 +156,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
     </div>
    </header>
    <main className="main" id="main-content" tabIndex={-1}>
-    {context.advanced?<details className="technicalRouteHelp">
-     <summary>Sobre esta área técnica</summary>
+    <div className={"routePurpose "+(context.advanced?"isAdvanced":"isWork")} role="note">
+     <span>{context.advanced?"ÁREA TÉCNICA":"PARA QUE SERVE ESTA PÁGINA"}</span>
      <p>{context.purpose}</p>
-     <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
-    </details>:null}
+     {context.advanced?<Link href="/projects">Voltar aos produtos →</Link>:null}
+    </div>
     {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Este projeto precisa de sua decisão</strong><span>Consulte o motivo e as evidências antes de decidir. Abrir decisões →</span></Link>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>

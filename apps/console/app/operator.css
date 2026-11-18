@@ -292,3 +292,62 @@
 .productOverviewTechnical>summary{min-height:45px;padding:12px 16px;cursor:pointer;font-weight:720;font-size:13px;color:#c5d8f2}
 .productOverviewTechnical>summary:focus-visible{outline:2px solid #9cc7ff;outline-offset:2px}
 .productOverviewTechnical .productPulseStats{padding:0 12px 13px;margin:0}
+
+
+/* UX reconciliation 18/11: verified delivery, declared stage, current worker
+   and human decisions are independent. Never render code merge as product done. */
+.productTruth{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,260px);gap:20px;padding:19px 22px;border-bottom:1px solid #35465c;background:#172839}
+.productTruthMain{min-width:0}
+.productTruthMain>strong{display:block;margin:5px 0 8px;color:#f1f6ff;font-size:18px;line-height:1.35;letter-spacing:-.01em}
+.productTruthMain p{font-size:13px;line-height:1.6;color:#d1deec;margin:0;max-width:880px}
+.productTruthMarkers{display:flex;flex-wrap:wrap;align-content:center;gap:8px}
+.productTruthMarkers>span{display:flex;align-items:center;min-width:0;padding:6px 10px;border-radius:7px;font-size:12px;line-height:1.35;font-weight:650}
+.truthRecorded{background:#253a4c;color:#cce4f2;border:1px solid #49728b}
+.truthUnknown{background:#222a39;color:#c0d0dd;border:1px solid #4b5968}
+.truthUnverified{background:#392e28;color:#ffe1c6;border:1px solid #856b54}
+.truthVerified{background:#1e3c36;color:#d3f3e5;border:1px solid #548476}
+.productSituationCard.compact .journeyCardTop{padding:14px 18px}
+.productSituationCard.compact .productSituationTop h3{font-size:17px}
+.productSituationCard.compact .productTruth{padding:14px 18px;gap:12px}
+.productSituationCard.compact .productTruthMain>strong{font-size:15px;margin:5px 0}
+.productSituationCard.compact .productTruthMain p{font-size:12px}
+.productSituationCard.compact .productTruthMarkers>span{font-size:11px}
+.productCompactDetails{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:13px 18px;border-bottom:1px solid #354358}
+.productCompactDetails>div{display:grid;align-content:start;gap:5px;min-width:0}
+.productCompactDetails span{color:#b4c8dd;font-size:10px;line-height:1.4;letter-spacing:.06em;font-weight:800}
+.productCompactDetails strong{color:#f0f4fc;font-size:14px;line-height:1.4}
+.productCompactDetails small{color:#bdcbda;font-size:12px;line-height:1.5}
+.productSituationCard.compact .journeyAction{padding:14px 18px}
+.productSituationCard.compact .journeyAction h4{font-size:15px}
+.productSituationCard.compact .journeyAction p{font-size:12px}
+.productSituationCard.compact .journeyActionLinks{max-width:210px}
+.productCompactOpen{min-height:40px;padding:12px 18px;display:flex;align-items:center;justify-content:flex-start;border-top:1px solid #35455b;color:#c1d9ff;font-size:13px;text-decoration:underline;text-underline-offset:3px;font-weight:720}
+.productCompactOpen:hover,.productCompactOpen:focus-visible{color:#fff;background:#243550}
+.journeyPathNotice{font-size:12px;line-height:1.55;color:#c1cfe1;margin:-2px 0 12px}
+.journeyStep.anterior{background:#202735;border-color:#405065}
+.journeyStep.anterior small{color:#c5cbd7}
+.journeyStep.atual{background:#243e5d;border-color:#93b9f0}
+.journeyStep.atual small{color:#e9f0fc}
+.runStageContext{padding:14px 18px;margin:0 0 16px;border:1px solid #756347;border-radius:10px;background:#2b2925}
+.runStageContext strong{font-size:15px;color:#ffe0a8;line-height:1.4}
+.runStageContext p{font-size:13px;line-height:1.6;color:#e1d9c9;margin:7px 0 0}
+.runStageDisclosure{border:1px solid #35465c;background:#172233;border-radius:10px;margin:0 0 16px}
+.runStageDisclosure>summary{min-height:46px;padding:12px 16px;font-size:13px;font-weight:750;color:#c2d8f7;cursor:pointer}
+.runStageDisclosure>summary:focus-visible{outline:2px solid #8ab9ff;outline-offset:3px}
+.runStageDisclosure .runStageRail{margin:0;border-top:1px solid #40516b}
+.sidebar .navItem{min-height:56px}
+.sidebar .navItemCopy{display:grid;gap:3px;min-width:0;flex:1}
+.sidebar .navItemLabel{display:block;min-width:0;overflow-wrap:anywhere;font-size:13px;line-height:1.3;font-weight:760}
+.sidebar .navItemHint{display:block;font-size:11px;line-height:1.35;color:#b0bdd1;font-weight:520}
+.sidebar .navItem.active .navItemHint{color:#d5e4ff}
+.sidebar .navAdvancedContent .navItem{min-height:53px}
+.sidebar .navAdvancedContent .navItemHint{font-size:10px}
+.sidebar .navAdvancedHelp{margin:0 8px;font-size:12px;line-height:1.5;color:#b9c9dc}
+.sidebar .navAdvancedTitle{font-size:13px}
+.routePurpose{display:flex;align-items:center;gap:14px;min-height:48px;padding:9px 17px;margin:0 0 19px;border:1px solid #344258;border-radius:9px;background:#1b2736}
+.routePurpose span{font-size:10px;flex:0 0 auto;color:#b8cbe6;letter-spacing:.075em;font-weight:820}
+.routePurpose p{margin:0;min-width:0;flex:1;font-size:13px;line-height:1.5;color:#d5e0ef}
+.routePurpose a{font-size:12px;color:#c4dfff;flex:0 0 auto;text-decoration:underline;text-underline-offset:3px}
+.routePurpose.isAdvanced{background:#202735;border-color:#4b5266}
+@media(max-width:1120px){.productTruth{grid-template-columns:1fr}.productTruthMarkers{justify-content:flex-start}}
+@media(max-width:760px){.productTruth{padding:15px;grid-template-columns:1fr}.productSituationCard.compact .productTruth{padding:14px}.productCompactDetails{grid-template-columns:1fr;padding:14px}.productSituationCard.compact .journeyActionLinks{max-width:none}.routePurpose{display:grid;gap:5px;padding:12px 14px}.routePurpose a{display:inline-flex;min-height:36px;align-items:center}.sidebar .navItem{min-height:49px}.sidebar .navItemLabel{font-size:13px}.sidebar .navItemHint{font-size:10px}}

@@ -42,7 +42,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
             self.assertIn(route,SHELL)
         self.assertIn('attentionUnavailable',SHELL)
         self.assertIn('className="projectHumanAttention"',SHELL)
-        self.assertIn('context.advanced?<details className="technicalRouteHelp"',SHELL)
+        self.assertIn('className={"routePurpose "+(context.advanced?',SHELL)
         self.assertNotIn('className={context.advanced?"screenGuide advanced":"screenGuide"}',SHELL)
 
     def test_home_shows_real_products_and_operator_intentions_first(self):
@@ -62,7 +62,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertNotIn('getHumanGates(8)',HOME)
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):
-        self.assertIn('Veja a fase de cada produto',PROJECTS)
+        self.assertIn('Veja entregas comprovadas',PROJECTS)
         self.assertIn('getProductSituations()',PROJECTS)
         self.assertIn('ProductSituationCard',PROJECTS)
         self.assertNotIn('macroProgress',PROJECTS)

@@ -9,7 +9,7 @@ export default async function Deployments(){
  const ready=rows.filter(x=>["ready","success","verified","released"].includes(x.status.toLowerCase())).length;
  const failed=rows.filter(x=>["failed","error"].includes(x.status.toLowerCase())).length;
  return <>
-  <PageHeader eyebrow="Liberação · ambientes" title="Implantações" subtitle="Histórico de Prévia e produção registrado pela Factory. Use para confirmar qual versão foi implantada e se a verificação terminou." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas observadas":"ambientes saudáveis"}/>}/>
+  <PageHeader eyebrow="Liberação · ambientes" title="Histórico de Preview e publicação" subtitle="Um deploy marcado como sucesso é registro técnico, não prova de que a aplicação funciona nem de produto completo. Confira SHA e testes." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas registradas":"sem falhas neste histórico"}/>}/>
   <div className="deploymentEnvGrid">
    <div className="card envCard"><span className="detailLabel">Preview</span><strong>{previews}</strong><p className="muted">candidatos observados</p></div>
    <div className="card envCard"><span className="detailLabel">Produção</span><strong>{production}</strong><p className="muted">registros duráveis</p></div>

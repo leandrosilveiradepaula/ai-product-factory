@@ -15,15 +15,16 @@ export default async function Home(){
   getGitHubAppStatus(),getOperationsHealth(),getUsageOverview(),getProductSituations(),
  ]);
  const attention=summarizeOperatorAttention(gates,installations,app.configured);
- const products=pulse.products.filter(p=>p.isActive);
+ const products=pulse.products.filter(p=>p.isActive&&!p.isInternalRecord);
  const running=products.reduce((n,p)=>n+p.confirmedRunning,0);
  const stoppedProducts=products.filter(p=>p.controlState==="stopped"||p.controlState==="paused");
  const visibleProducts=products.filter(p=>!stoppedProducts.includes(p));
+ const internalRecords=pulse.products.filter(p=>p.isInternalRecord);
  const stopped=stoppedProducts.length;
  const historicalProblems=health.failedRuns+health.blockedRuns;
  return <>
-  <PageHeader eyebrow="Seu trabalho" title="Em que fase está cada produto?"
-   subtitle="Para cada produto, veja onde está, qual é a próxima fase e se você precisa fazer alguma coisa."/>
+  <PageHeader eyebrow="Seu trabalho" title="Seus produtos: o que foi entregue e o que falta?"
+   subtitle="Cada projeto separa entregas realmente comprovadas, trabalho registrado e seu próximo passo. Um merge não é produto pronto."/>
 
   {attention.count>0?<section className="operatorAttention requiresAction" role="status" aria-label="O que depende de você">
    <div className="operatorAttentionContent">
@@ -35,7 +36,7 @@ export default async function Home(){
 
   <section className="section operatorPortfolio" aria-labelledby="operator-products-title">
    <div className="productPulseHeader">
-    <div><h2 id="operator-products-title">O caminho dos seus produtos</h2><p>As fases mostram a etapa registrada, não uma porcentagem de conclusão. A próxima ação aparece em cada produto.</p></div>
+    <div><h2 id="operator-products-title">O que está acontecendo com seus produtos</h2><p>Resumo verificado dos registros do Control Plane. Abra um produto para consultar o caminho e as evidências.</p></div>
     <Link prefetch={false} className="productSituationSecondary" href="/projects">Abrir portfólio completo →</Link>
    </div>
    <details className="productOverviewTechnical">
@@ -49,11 +50,15 @@ export default async function Home(){
    </details>
    <div className="productSituationList">
     {products.length===0?<div className="operatorPortfolioEmpty">Nenhum produto ativo cadastrado. <Link href="/projects/new">Criar um produto →</Link></div>:
-    visibleProducts.map(item=><ProductSituationCard key={item.key} item={item}/>)}
+    visibleProducts.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}
    </div>
    {stoppedProducts.length>0?<details className="productInactiveDisclosure">
     <summary>{stoppedProducts.length} {stoppedProducts.length===1?"produto parado ou pausado":"produtos parados ou pausados"} · Ver registros</summary>
-    <div className="productSituationList">{stoppedProducts.map(item=><ProductSituationCard key={item.key} item={item}/>)}</div>
+    <div className="productSituationList">{stoppedProducts.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}</div>
+   </details>:null}
+   {internalRecords.length>0?<details className="productInactiveDisclosure">
+    <summary>{internalRecords.length} {internalRecords.length===1?"registro técnico de teste":"registros técnicos de teste"} · Não são produtos de clientes</summary>
+    <div className="productSituationList">{internalRecords.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}</div>
    </details>:null}
    <p className="productSituationFootnote">“Projeto habilitado” não significa que exista um agente executando. “Execução concluída” não significa que o produto foi publicado ou certificado. O histórico técnico continua disponível.</p>
   </section>

@@ -66,8 +66,15 @@ export function describeNextAction(item:ProductSituation,phaseIndex:number):Jour
   return action("Equipe técnica","Retomar o trabalho pendente","Há tarefas registradas sem conclusão, mas nenhum worker em execução comprovada. É necessário investigar ou retomar o processamento; não há decisão sua registrada.","Ver tarefas pendentes","/deliveries?project="+encodeURIComponent(item.key));
  if(phaseIndex===4)
   return action("Equipe técnica","Conferir a publicação antes de avançar","A fase de liberação está registrada, mas não há decisão humana acionável nem execução ativa confirmada. É necessário reconciliar as evidências antes de qualquer release.","Ver implantações","/deployments");
- if(phaseIndex===PRODUCT_PHASES.length-1)
-  return action("Nenhuma ação necessária","Produto na fase de operação","A etapa registrada é Operação, sem trabalho ativo comprovado. Se você quiser uma melhoria, abra um novo pedido; publicação anterior não foi certificada por esta tela.","Solicitar melhoria",detail+"/request");
+ if(phaseIndex===PRODUCT_PHASES.length-1){
+  if(item.proof?.productReady!==true)
+   return action("Equipe técnica","Comprovar a entrega do produto",
+    "O cadastro indica operação, mas a entrega funcional não foi certificada. Verifique requisitos, interface, fluxo real, Preview e publicação antes de abrir outro ciclo.",
+    "Ver evidências de publicação","/deployments");
+  return action("Nenhuma ação necessária","Produto com entrega certificada",
+   "Existe certificação do candidato registrado. Você pode solicitar uma evolução em um novo ciclo.",
+   "Solicitar melhoria",detail+"/request");
+ }
  if(!item.lastRequest)
   return action("Você","Descrever o que quer construir","O projeto está habilitado, mas não há pedido recente registrado neste canal nem execução ativa. Envie a demanda para a Factory poder organizar o próximo trabalho.","Descrever pedido",detail+"/request");
  return action("Equipe técnica","Confirmar a continuidade da fase","O pedido está registrado, mas nenhum trabalho ativo foi comprovado. É necessário reconciliar as tarefas antes de declarar que o projeto avançou.","Ver pedidos e execução",detail+"#latest-request");
@@ -77,17 +84,22 @@ export function describeProductJourney(item:ProductSituation):ProductJourney{
  const phaseIndex=phaseKey?PRODUCT_PHASES.findIndex(p=>p.key===phaseKey):-1;
  const phase=phaseIndex>=0?PRODUCT_PHASES[phaseIndex]:null;
  const next=phaseIndex>=0&&phaseIndex<PRODUCT_PHASES.length-1?PRODUCT_PHASES[phaseIndex+1]:null;
+ const operationUnproven=phaseIndex===PRODUCT_PHASES.length-1&&item.proof?.productReady!==true;
  const phaseSteps:JourneyPhaseView[]=PRODUCT_PHASES.map((p,i):JourneyPhaseView=>({
   key:p.key,label:p.label,position:i+1,
   mark:phaseIndex<0?"desconhecida":i<phaseIndex?"anterior":i===phaseIndex?"atual":i===phaseIndex+1?"proxima":"futura",
  }));
  return{
   phaseIndex,phaseKnown:phaseIndex>=0,
-  phaseLabel:phase?.label||"Não identificada",
+  phaseLabel:operationUnproven?"Operação registrada (não certificada)":phase?.label||"Não identificada",
   substage:STAGE_SUBTITLE[item.stage]||"Sem informação",
-  phasePurpose:phase?.goal||"A Factory não conseguiu identificar com segurança a fase registrada.",
-  nextPhaseLabel:next?.label||(phaseIndex===PRODUCT_PHASES.length-1?"Novo ciclo, quando solicitado":"A confirmar"),
-  conditionToAdvance:phase?.exit||"O estado da jornada precisa ser verificado pelo operador técnico.",
+  phasePurpose:operationUnproven
+    ?"O cadastro passou para Operação após uma integração de código. Isso não comprova que o produto foi entregue e funciona."
+    :phase?.goal||"A Factory não conseguiu identificar com segurança a fase registrada.",
+  nextPhaseLabel:operationUnproven?"Comprovar entrega funcional":next?.label||(phaseIndex===PRODUCT_PHASES.length-1?"Evoluir quando solicitado":"A confirmar"),
+  conditionToAdvance:operationUnproven
+    ?"Confirmar requisitos, testes funcionais e Preview autenticado, além da disponibilidade e da aprovação da entrega. Um merge ou build READY não basta."
+    :phase?.exit||"O estado da jornada precisa ser verificado pelo operador técnico.",
   phaseSteps,action:describeNextAction(item,phaseIndex),
  };
 }

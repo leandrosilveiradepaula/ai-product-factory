@@ -13,13 +13,13 @@ export default async function NewProject({searchParams}:{searchParams:Promise<{i
  await requireConsoleOperator();
  const p=await searchParams;const initial=decode(p.intake);
  return <>
-  <PageHeader eyebrow="Novo projeto" title="Iniciar ou importar projeto" subtitle="Comece uma ideia nova ou traga um projeto em andamento. A Factory inicia Descoberta ou reconcilia o estado real antes de continuar."/>
+  <PageHeader eyebrow="Novo projeto" title="Cadastrar um produto ou conectar projeto" subtitle="Descreva a ideia ou conecte um repositório. O cadastro não inicia automaticamente o trabalho; depois você verá a ação Iniciar projeto, quando aplicável."/>
   <div className="intakeSteps" role="group" aria-label="Etapas para iniciar um projeto">
    <span className="current" aria-current="step">1. Descrever</span>
    <span>2. Revisar</span>
    <span>3. Acompanhar</span>
   </div>
-  <p className="intakeIntro">Conte o resultado que deseja alcançar. A escolha das ferramentas e dos agentes fica com a Factory, respeitando os gates configurados.</p>
+  <p className="intakeIntro">Descreva o resultado desejado. Depois revise o cadastro e abra o projeto para acompanhar seu estado. A Factory só começa a executar após um início autorizado.</p>
   <IntakeForm initial={initial}/>
  </>;
 }

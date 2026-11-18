@@ -1,6 +1,7 @@
 import {requireConsoleOperator} from "./auth-server";
 import {getSupabaseServerConfig} from "./supabase-server";
 import {getHumanGates} from "./control-plane";
+import {assessProductProof,type ProductProof} from "./product-evidence";
 
 /* Read-only interpretation of authoritative Control Plane records. It is NOT
  * a release certification, work scheduler, heartbeat or progress percentage. */
@@ -8,6 +9,8 @@ export type ProductState="decision"|"executing"|"verifying"|"queued"|"stopped"|"
 export type ProductLastRun={id:string;status:string;at:string;taskTitle:string};
 export type ProductSituation={
  key:string;name:string;stage:string;isActive:boolean;controlState:string;
+ projectKind:string;repository:string|null;isInternalRecord:boolean;
+ proof:ProductProof;specStatus:string|null;lastReleaseAt:string|null;
  state:ProductState;headline:string;explanation:string;nextOwner:string;nextLabel:string;nextHref:string;
  lastRequest:string|null;lastRequestAt:string|null;lastRun:ProductLastRun|null;
  unclosedTasks:number;confirmedRunning:number;observedAt:string;updatedAt:string;
@@ -39,10 +42,17 @@ export function summarizeProductStatus(p:ProductObservation):Pick<ProductSituati
  return answer("idle","Nenhum trabalho em execução","O projeto está habilitado para receber trabalho. Não há execução ativa confirmada nem decisão humana pendente nesta consulta.","Você, se quiser novo trabalho","Solicitar melhoria",detail+"/request");
 }
 
-type ProjectRow={id:string;project_key:string;name:string;is_active:boolean;lifecycle_stage:string;updated_at:string;manifest:unknown};
+type ProjectRow={id:string;project_key:string;name:string;is_active:boolean;lifecycle_stage:string;updated_at:string;manifest:unknown;project_kind?:string;repository?:string|null};
 type ControlRow={project_id:string;state:string};
 type TaskRow={id:string;project_id:string;title:string;status:string;created_at:string;updated_at:string};
 type RunRow={id:string;task_id:string;status:string;created_at:string;started_at:string|null;lease_expires_at:string|null};
+type ReleaseRow={id:string;project_id:string;status:string;candidate_commit:string|null;created_at:string;report:unknown};
+type DeploymentRow={id:string;run_id:string;environment:string;status:string;created_at:string};
+type CertificationRow={id:string;project_id:string;assessed_commit:string;is_current:boolean;state:string;created_at:string};
+type SpecRow={id:string;project_id:string;status:string;version:number;created_at:string};
+function asObject(value:unknown):Record<string,unknown>{
+ return value&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:{};
+}
 const terminal=new Set(["completed","integrated","merged","work_unit_completed","cancelled","canceled"]);
 async function loadComplete<T extends Record<string,unknown>>(cfg:{url:string;headers:Record<string,string>},table:string,select:string,order:string,key:string):Promise<T[]>{
  const all:T[]=[];const seen=new Set<string>();const pageSize=200;
@@ -66,11 +76,15 @@ export async function getProductSituations():Promise<ProductSnapshot>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control Plane indisponível. Não é seguro exibir produtos sem status.");
- const [projects,controls,tasks,runs,gates]=await Promise.all([
-  loadComplete<ProjectRow>(cfg,"factory_projects","id,project_key,name,is_active,lifecycle_stage,updated_at,manifest","updated_at.desc,id.desc","id"),
+ const [projects,controls,tasks,runs,releases,deployments,certifications,specs,gates]=await Promise.all([
+  loadComplete<ProjectRow>(cfg,"factory_projects","id,project_key,name,is_active,lifecycle_stage,updated_at,manifest,project_kind,repository","updated_at.desc,id.desc","id"),
   loadComplete<ControlRow>(cfg,"factory_project_execution_controls","project_id,state","project_id.asc","project_id"),
   loadComplete<TaskRow>(cfg,"factory_tasks","id,project_id,title,status,created_at,updated_at","created_at.desc,id.desc","id"),
   loadComplete<RunRow>(cfg,"factory_runs","id,task_id,status,created_at,started_at,lease_expires_at","created_at.desc,id.desc","id"),
+  loadComplete<ReleaseRow>(cfg,"factory_release_reports","id,project_id,status,candidate_commit,created_at,report","created_at.desc,id.desc","id"),
+  loadComplete<DeploymentRow>(cfg,"factory_deployments","id,run_id,environment,status,created_at","created_at.desc,id.desc","id"),
+  loadComplete<CertificationRow>(cfg,"factory_product_readiness_certifications","id,project_id,assessed_commit,is_current,state,created_at","created_at.desc,id.desc","id"),
+  loadComplete<SpecRow>(cfg,"factory_product_specs","id,project_id,status,version,created_at","created_at.desc,id.desc","id"),
   getHumanGates(100,true),
  ]);
  if(gates.length===100)throw new Error("Inventário de decisões pode estar truncado.");
@@ -81,6 +95,21 @@ export async function getProductSituations():Promise<ProductSnapshot>{
  const projectRuns=new Map<string,RunRow[]>();
  for(const r of runs){const t=byTask.get(r.task_id);if(!t)continue;const l=projectRuns.get(t.project_id)||[];l.push(r);projectRuns.set(t.project_id,l);}
  const controlById=new Map(controls.map(c=>[c.project_id,c.state]));
+ const latestReleases=new Map<string,ReleaseRow>();
+ for(const r of releases)if(!latestReleases.has(r.project_id))latestReleases.set(r.project_id,r);
+ const latestSpecs=new Map<string,SpecRow>();
+ for(const s of specs)if(!latestSpecs.has(s.project_id))latestSpecs.set(s.project_id,s);
+ const currentCertifications=new Map<string,CertificationRow>();
+ for(const cert of certifications)if(cert.is_current&&cert.state==="persisted"&&!currentCertifications.has(cert.project_id))
+  currentCertifications.set(cert.project_id,cert);
+ const projectDeployments=new Map<string,DeploymentRow[]>();
+ for(const d of deployments){
+  const run=runs.find(r=>r.id===d.run_id);
+  const task=run?byTask.get(run.task_id):null;
+  if(!task)continue;
+  const list=projectDeployments.get(task.project_id)||[];
+  list.push(d);projectDeployments.set(task.project_id,list);
+ }
  const pendingGates=new Map<string,number>();
  for(const g of gates)if(g.status==="pending"&&g.actionable&&g.projectKey)pendingGates.set(g.projectKey,(pendingGates.get(g.projectKey)||0)+1);
  const products:ProductSituation[]=projects.map(p=>{
@@ -105,6 +134,25 @@ export async function getProductSituations():Promise<ProductSnapshot>{
   const requestText=typeof request?.summary==="string"&&request.summary.trim()?request.summary.trim().slice(0,280):null;
   const requestDate=typeof request?.requested_at==="string"&&Number.isFinite(Date.parse(request.requested_at))?request.requested_at:null;
   const control=controlById.get(p.id)||"unavailable";
+  const latestRelease=latestReleases.get(p.id)||null;
+  const report=asObject(latestRelease?.report);
+  const dFor=projectDeployments.get(p.id)||[];
+  const readiness=asObject(report.product_readiness);
+  const definition=asObject(report.definition_of_done);
+  const certification=currentCertifications.get(p.id)||null;
+  const proof=assessProductProof({
+   releaseStatus:latestRelease?.status||null,
+   productComplete:report.product_complete,
+   productReadinessReady:readiness.ready,
+   definitionReady:definition.ready,
+   mergeSha:report.merge_sha,
+   hasPreviewRecord:dFor.some(d=>d.environment==="preview"&&d.status==="success"),
+   hasProductionDeployment:dFor.some(d=>d.environment==="production"&&d.status==="success"),
+   certificationSha:certification?.assessed_commit||null,
+   releaseCandidateSha:latestRelease?.candidate_commit||null,
+  });
+  const manifest=asObject(p.manifest);
+  const isInternalRecord=manifest.qa_canary===true&&(!p.repository||p.repository.length===0);
   const status=summarizeProductStatus({
    key:p.project_key,isActive:p.is_active,controlState:control,
    humanDecisions:pendingGates.get(p.project_key)||0,confirmedRunning:verifiedRunning.length,
@@ -114,6 +162,9 @@ export async function getProductSituations():Promise<ProductSnapshot>{
   });
   return {...status,key:p.project_key,name:p.name,stage:p.lifecycle_stage,
    isActive:p.is_active,controlState:control,
+   projectKind:p.project_kind||"unknown",repository:p.repository||null,isInternalRecord,
+   proof,specStatus:latestSpecs.get(p.id)?.status||null,
+   lastReleaseAt:latestRelease?.created_at||null,
    lastRequest:requestText,lastRequestAt:requestDate,
    lastRun:last?{id:last.id,status:last.status,at:last.created_at,taskTitle:lastTask?.title||"Execução registrada"}:null,
    unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,

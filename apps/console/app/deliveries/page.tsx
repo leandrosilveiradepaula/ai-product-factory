@@ -28,7 +28,7 @@ export default async function Deliveries({searchParams}:{searchParams:Promise<{p
  // Do not throw 151 historical work packages at an operator before they select
  // the product they are actually trying to understand.
  if(!projectKey&&query.project!=="all")return <>
-  <PageHeader eyebrow="Entregas" title="Qual produto você quer acompanhar?"
+  <PageHeader eyebrow="Entregas" title="Escolha um produto para ver suas tarefas"
    subtitle="O Kanban detalha as tarefas de um produto. Para entender o estado do produto como um todo, consulte primeiro a situação resumida."/>
   <section className="deliveryChooser" aria-label="Escolher produto para ver entregas">
    <h2>Escolha um produto</h2>
@@ -54,8 +54,8 @@ export default async function Deliveries({searchParams}:{searchParams:Promise<{p
  const projectViewSuffix=showTechnical?"&view=all":"";
  const counts=Object.fromEntries(deliveryLanes.map(l=>[l.key,cards.filter(c=>c.lane===l.key).length]));
  return <>
-  <PageHeader eyebrow="Entregas" title="Quadro de trabalho"
-   subtitle="Acompanhe pedidos e pacotes de trabalho de cada produto. A Factory atualiza os estados; você só decide quando houver uma pendência real."
+  <PageHeader eyebrow="Entregas" title="Tarefas e entregas do produto"
+   subtitle="Este quadro mostra tarefas técnicas de um produto, não a confirmação de que o produto inteiro foi entregue. Para o panorama completo, volte à página do produto."
    actions={<Link prefetch={false} className="primary linkButton" href="/projects">Solicitar uma melhoria</Link>}/>
   <section className="deliveryIntro" aria-label="Como usar o quadro">
    <div><strong>Como usar</strong><p>Escolha um cartão para ver seu produto e as execuções. Você não precisa mover cartões: eles refletem os registros verificados do Control Plane.</p></div>

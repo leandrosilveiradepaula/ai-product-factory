@@ -16,11 +16,14 @@ export default async function Projects({searchParams}:{searchParams:Promise<{sup
  const rawInstallProject=jar?.get("factory_github_app_install_project")?.value||"";
  const installProject=/^[a-z0-9][a-z0-9-]{0,63}$/.test(rawInstallProject)?rawInstallProject:null;
  const [d,pulse]=await Promise.all([getDashboard(),getProductSituations()]);
+ const current=pulse.products.filter(p=>!p.isInternalRecord&&p.state!=="stopped"&&p.state!=="paused");
+ const inactive=pulse.products.filter(p=>!p.isInternalRecord&&(p.state==="stopped"||p.state==="paused"));
+ const technical=pulse.products.filter(p=>p.isInternalRecord);
  const notice=query.supabase?notices[query.supabase]:undefined;
  const installPending=installReturned&&installProject&&d.projects.some(p=>p.key===installProject);
  return <>
   <PageHeader eyebrow="Produtos" title="Escolha o produto que quer acompanhar"
-   subtitle="Veja a fase de cada produto, qual fase vem depois e se existe alguma ação sua necessária. Abra um produto para acompanhar a jornada." actions={<ActionLink href="/projects/new" variant="primary">Criar produto</ActionLink>}/>
+   subtitle="Veja entregas comprovadas, bloqueios e próximos passos. A fase registrada não garante que o produto esteja finalizado." actions={<ActionLink href="/projects/new" variant="primary">Criar produto</ActionLink>}/>
   {notice?<div className="card noticeCard danger" role="status"><StatusPill status="failed"/><span>{notice}</span></div>:null}
   {installPending?<div className="card noticeCard" role="status">
    <span>O GitHub retornou da instalação de {installProject}. Confira as permissões concedidas e verifique o acesso; retornar a esta tela não comprova acesso.</span>
@@ -33,8 +36,16 @@ export default async function Projects({searchParams}:{searchParams:Promise<{sup
   <div className="productSituationList projectSituationList">
    {pulse.products.length===0?
     <div className="homeEmptyProject"><EmptyState>Nenhum produto cadastrado.</EmptyState><ActionLink href="/projects/new" variant="primary">Criar primeiro produto</ActionLink></div>:
-    pulse.products.map(item=><ProductSituationCard key={item.key} item={item}/>)}
+    current.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}
   </div>
+  {inactive.length>0?<details className="productInactiveDisclosure">
+   <summary>Projetos parados ou aposentados ({inactive.length})</summary>
+   <div className="productSituationList">{inactive.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}</div>
+  </details>:null}
+  {technical.length>0?<details className="productInactiveDisclosure">
+   <summary>Registros de testes internos ({technical.length})</summary>
+   <div className="productSituationList">{technical.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}</div>
+  </details>:null}
   <p className="productSituationFootnote">Situação observada em {new Date(pulse.observedAt).toLocaleString("pt-BR")}. Etapas e execuções são registros; publicação em produção exige evidências e aprovação humana próprias.</p>
  </>;
 }
