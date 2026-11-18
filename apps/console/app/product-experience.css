@@ -82,3 +82,77 @@
 .ownerProgressDetails>summary{cursor:pointer;color:#c9ddf2;font-weight:650}
 .ownerProgressDetails>.projectTechnicalBody{padding-top:22px}
 @media(max-width:720px){.ownerBudgetBanner{align-items:stretch;flex-direction:column;padding:16px}.ownerBudgetBanner a{width:100%;text-align:center}}
+
+
+/* Configuration: money and the associated decision first, diagnostics on demand. */
+.primaryCostPanel{padding:26px 28px;border-radius:14px;scroll-margin-top:calc(var(--topbar-height) + 16px)}
+.primaryCostHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.primaryCostHeader>div{min-width:0}
+.primaryCostKicker{font-size:11px;font-weight:750;letter-spacing:.09em;color:#a9cfff}
+.primaryCostHeader h2{margin:5px 0;font-size:clamp(23px,2.3vw,30px);letter-spacing:-.025em;color:#f3f7fc}
+.primaryCostHeader p{margin:8px 0 0;color:#b7c8dc;font-size:14px;line-height:1.5}
+.primaryCostHeader>.pill{flex-shrink:0;font-size:12px;padding:7px 12px}
+.primaryCostAlert{margin:20px 0 0;padding:15px 18px;background:#322818;border-left:4px solid #e3a94b;border-radius:8px;color:#f7e1b8;font-size:14px;line-height:1.55}
+.primaryCostAlert strong{color:#ffdf9e}
+.primaryCostAlert p{margin:5px 0 0}
+.primaryCostHealthy{margin:20px 0 0;padding:13px 16px;color:#c3e8d8;border:1px solid #315f53;border-radius:8px;font-size:13px}
+.primaryCostFeedback{margin:16px 0 0;padding:12px 14px;border:1px solid #4f7563;color:#d5f1e1;border-radius:8px}
+.primaryCostFeedbackError{border-color:#ae6060;color:#f9cbcb}
+.primaryCostBody{display:grid;grid-template-columns:minmax(0,1fr) minmax(310px,.94fr);gap:26px;margin-top:24px;align-items:start}
+.primaryCostSnapshot,.primaryCostEditor{min-width:0}
+.primaryCostSnapshot h3,.primaryCostEditor h3{font-size:17px;color:#ecf3fd;margin:0 0 14px}
+.primaryCostSnapshot{border:1px solid #33465e;background:#121c2a;border-radius:10px;padding:18px}
+.primaryCostMetrics{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.primaryCostMetrics>div{border:1px solid #33465a;border-radius:9px;padding:14px;background:#1b2839;min-width:0}
+.primaryCostMetrics dt{font-size:12px;color:#bfcee0;line-height:1.45}
+.primaryCostMetrics dd{margin:8px 0 0;color:#f7fbff;font-weight:750;font-size:clamp(19px,1.8vw,23px);line-height:1.3;overflow-wrap:anywhere}
+.primaryCostNote{color:#b5c7db;font-size:12px;line-height:1.6;margin:15px 0 0;overflow-wrap:anywhere}
+.primaryCostEditor{border:1px solid #394d65;border-radius:10px;padding:18px 20px}
+.primaryCostForm{max-width:none;margin:0;display:grid;gap:13px}
+.primaryCostPanel .primaryCostForm label{font-size:13px;line-height:1.45}
+.primaryCostPanel .primaryCostForm input:not([type="checkbox"]),.primaryCostPanel .primaryCostForm textarea{width:100%;min-width:0;background:#101722;border:1px solid #52657c;border-radius:7px;color:#f1f6ff;padding:11px 12px;font-size:14px}
+.primaryCostPanel .primaryCostForm textarea{resize:vertical;min-height:88px}
+.primaryCostPanel .primaryCostForm input:focus-visible,.primaryCostPanel .primaryCostForm textarea:focus-visible{outline:2px solid #91bcff;outline-offset:2px}
+.primaryCostPanel .primaryCostConfirm{display:flex;flex-direction:row;align-items:flex-start;gap:12px;line-height:1.5;font-size:12px;font-weight:500}
+.primaryCostPanel .primaryCostConfirm input[type="checkbox"]{flex:0 0 20px;width:20px;height:20px;margin:2px 0 0;accent-color:#80abef}
+.primaryCostPanel .primaryCostConfirm span{min-width:0;color:#d3deec}
+.primaryCostPanel .primaryCostSave{min-height:44px;justify-self:start;padding:12px 18px;font-size:14px}
+.primaryCostHistory{margin-top:24px;border-top:1px solid #384d63;padding-top:13px}
+.primaryCostHistory>summary{cursor:pointer;display:list-item;min-height:36px;padding:6px 8px;font-size:13px;color:#c6d9ed;font-weight:650}
+.primaryCostHistory>.tableWrap{max-width:100%;overflow:auto;margin-top:14px}
+.primaryCostHistory table{width:100%;min-width:640px}
+.configurationBeyond{margin-top:32px;display:grid;gap:12px}
+.configurationBeyondHeader h2{font-size:20px;color:#edf4ff;margin:0}
+.configurationBeyondHeader p{font-size:13px;color:#adbed3;margin:7px 0 8px;line-height:1.5}
+.configurationDisclosure{border:1px solid #364b65;background:#161e2b;border-radius:11px;min-width:0}
+.configurationDisclosure>summary{display:list-item;cursor:pointer;padding:17px 20px;margin-left:21px;min-height:70px;line-height:1.4;color:#edf4ff}
+.configurationDisclosure>summary strong{display:block;font-size:15px}
+.configurationDisclosure>summary small{display:block;color:#b8c9db;margin-top:4px;font-size:12px}
+.configurationDisclosure[open]>summary{border-bottom:1px solid #364b65}
+.configurationDisclosure>.overviewGrid,.configurationDisclosure>.card,.configurationDisclosure>.configurationDiagnostics{margin:16px;min-width:0}
+.configurationDisclosure>.overviewGrid{display:grid}
+.configurationDisclosure .configRows span,.configurationDisclosure .configRows strong{font-size:12px}
+.configurationDisclosure .configRows small{font-size:11px}
+.configurationAdvancedGrid .card{min-width:0}
+.configurationExplanation{margin:0 0 12px;color:#c7d5e8;line-height:1.55;font-size:13px}
+.configurationProjectList{display:grid;gap:8px}
+.configurationProjectRow{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 14px;font-size:13px;padding:9px 0;border-bottom:1px solid #334152}
+.configurationProjectRow strong{font-weight:650;color:#ecf3ff}
+.configurationProjectRow span{color:#b8c9db;overflow-wrap:anywhere;min-width:0}
+.configurationManifest{min-width:0}
+.configurationManifest>.configurationProjectRow{border:0}
+.configurationManifest>.manifestDetails{border-bottom:1px solid #334152;margin:0;padding:0 0 12px}
+.configurationManifest .manifestDetails>summary{min-height:36px;padding:7px 0;cursor:pointer;color:#b4d0f2;font-size:12px}
+.configurationManifest .jsonBlock{max-width:100%;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+.configurationDiagnostics>summary{cursor:pointer;font-size:12px;min-height:40px;color:#bbd1e8}
+.configurationDiagnostics>.logPanel{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;overflow:auto;font-size:11px}
+@media(max-width:1050px){.primaryCostBody{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:620px){
+ .primaryCostPanel{padding:18px}
+ .primaryCostHeader{flex-wrap:wrap}
+ .primaryCostMetrics{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ .primaryCostBody{gap:16px}
+ .primaryCostSnapshot,.primaryCostEditor{padding:14px}
+ .configurationDisclosure>.overviewGrid,.configurationDisclosure>.card,.configurationDisclosure>.configurationDiagnostics{margin:10px}
+ .configurationDisclosure>summary{padding:14px 12px;margin-left:21px}
+}

@@ -867,3 +867,43 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
     assert.deepEqual(problems,[],"Real Chromium/axe WCAG issues on inert fixture: "+JSON.stringify(problems));
   }finally{await context.close();}
 });
+
+
+test("configuration budget is first, reachable by anchor, and diagnostics stay collapsed",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",()=>errors.push("browser_page_error"));
+ try{
+  for(const width of [1280,390]){
+   await page.setViewportSize({width,height:width===390?844:900});
+   const response=await page.goto(appOrigin+"/configuration#orcamento",{
+    waitUntil:"networkidle",timeout:45000});
+   assert.equal(response?.status(),200);
+   const budget=page.locator("#orcamento");
+   assert.equal(await budget.count(),1,"budget anchor must exist");
+   assert.equal(await budget.getByRole("heading",{name:"Orçamento e custos"}).count(),1);
+   assert.equal(await page.locator("details.configurationDisclosure[open]").count(),0,
+    "advanced diagnostics must be collapsed by default");
+   assert.equal(await page.getByText("Situação atual",{exact:true}).count(),1);
+   assert.equal(await page.locator("details.primaryCostHistory[open]").count(),0);
+   const geometry=await page.evaluate(()=>{
+    const root=document.documentElement;
+    const target=document.getElementById("orcamento");
+    const bounds=target?.getBoundingClientRect();
+    return{scrollWidth:root.scrollWidth,width:window.innerWidth,top:bounds?.top??-999};
+   });
+   assert.ok(geometry.scrollWidth<=geometry.width+2,
+    "configuration financial page cannot overflow viewport: "+JSON.stringify(geometry));
+   assert.ok(geometry.top>=0&&geometry.top<geometry.width,
+    "budget anchor must be visible without hunting through policies: "+JSON.stringify(geometry));
+   await page.locator("details#dados-tecnicos > summary").click();
+   assert.equal(await page.locator("details#dados-tecnicos[open]").count(),1);
+   assert.equal(await page.locator("details.manifestDetails[open]").count(),0,
+    "opening diagnostic group must not dump JSON");
+   await page.locator("details#dados-tecnicos > summary").click();
+  }
+  assert.deepEqual(errors,[]);
+ }finally{await context.close();}
+});
