@@ -29,6 +29,74 @@ from .product_stage_output_contract import (
 from .journey_delivery_binding import JourneyBinding, JourneyBindingBlocked
 
 
+_EMPTY_PLAN_ERROR = "planning has no actionable tasks or decisions"
+_BUDGET_PLAN_ERROR = "reserved provider cost exceeds remaining budget"
+
+
+def _verified_platform_empty_plan_checkpoint(source_metadata: object, proof: object) -> bool:
+    """Fail-closed typed receipt; independent live source verification follows the claim."""
+    if not isinstance(source_metadata, dict) or not isinstance(proof, dict):
+        return False
+    stages = source_metadata.get("stage_evidence")
+    if not isinstance(stages, dict):
+        return False
+    planning = stages.get("planning")
+    if not isinstance(planning, dict) or planning.get("status") != "failed":
+        return False
+    receipt = planning.get("output")
+    source_sha = proof.get("source_commit")
+    return (
+        source_metadata.get("error") == _EMPTY_PLAN_ERROR
+        and source_metadata.get("source") == "factory-console"
+        and proof.get("source_failure") == "planning_non_actionable"
+        and isinstance(source_sha, str)
+        and re.fullmatch(r"[0-9a-f]{40}", source_sha) is not None
+        and isinstance(receipt, dict)
+        and receipt.get("assessed_commit") == source_sha
+        and receipt.get("reason_code") == "planning_non_actionable"
+        and receipt.get("observed_model_response") is True
+        and type(receipt.get("tasks_count")) is int and receipt["tasks_count"] == 0
+        and type(receipt.get("decisions_count")) is int and receipt["decisions_count"] == 0
+        and receipt.get("implementation_completed") is False
+        and receipt.get("requires_scope_reconciliation") is True
+        and all(
+            isinstance(stages.get(stage), dict)
+            and stages[stage].get("status") == "completed"
+            for stage in ("reconciliation", "gap_analysis")
+        )
+    )
+
+
+def _assert_changed_platform_source_for_empty_plan(context: dict) -> None:
+    """Never pay again on the original SHA or an uninspected, unbound issue."""
+    origin = context.get("_verified_resume_origin")
+    if not isinstance(origin, dict) or origin.get("source_failure") != "planning_non_actionable":
+        return
+    facts = context.get("current_state_facts")
+    candidate = facts.get("live_candidate") if isinstance(facts, dict) else None
+    if not isinstance(candidate, dict):
+        raise PermissionError("planning resume exact-source context missing")
+    source = candidate.get("source_evidence")
+    admission = candidate.get("source_admission")
+    sha = candidate.get("sha")
+    if (
+        not isinstance(sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", sha) is None
+        or sha == origin.get("source_commit")
+        or candidate.get("main_sha") != sha
+        or not isinstance(source, dict)
+        or source.get("assessed_commit") != sha
+        or source.get("status") != "bounded_source_inspected"
+        or type(source.get("issue_reference")) is not int
+        or source["issue_reference"] < 1
+        or not isinstance(admission, dict)
+        or admission.get("assessed_commit") != sha
+        or admission.get("code_inspected") is not True
+    ):
+        raise PermissionError("planning resume requires changed issue-scoped inspected source")
+
+
+
 class SupabaseRuntimeQueue(RuntimeQueue):
     """Server-side REST/RPC adapter for the durable runtime queue."""
     def __init__(self, *, url: str | None = None, service_role_key: str | None = None) -> None:
@@ -554,8 +622,14 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 or source[0].get("execution_route")!="direct"):
             raise PermissionError("planning resume source identity invalid")
         source_md=source[0].get("metadata")
+        empty_recovery = _verified_platform_empty_plan_checkpoint(source_md,proof)
+        budget_recovery = (
+            isinstance(source_md,dict)
+            and source_md.get("error") == _BUDGET_PLAN_ERROR
+            and proof.get("source_failure") in (None, "budget_reservation")
+        )
         if (not isinstance(source_md,dict)
-                or source_md.get("error")!="reserved provider cost exceeds remaining budget"
+                or not (empty_recovery or budget_recovery)
                 or source_md.get("stages")!=["reconciliation","gap_analysis","planning"]
                 or str(source_md.get("execution_generation"))!=str(epoch)
                 or source_md.get("continuation_request_id")!=proof["request_id"]):
@@ -588,7 +662,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 )):
             raise PermissionError("planning resume reconciliation checkpoint drift")
         project=self._get(
-            "factory_projects?select=id,manifest"
+            "factory_projects?select=id,project_kind,manifest"
             "&id=eq." + quote(project_id,safe="") + "&limit=2"
         )
         if (not isinstance(project,list) or len(project)!=1
@@ -596,6 +670,12 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 or not isinstance(project[0].get("manifest"),dict)):
             raise PermissionError("planning resume project identity invalid")
         manifest=project[0]["manifest"]
+        if empty_recovery and (
+            project[0].get("project_kind") != "platform"
+            or not isinstance(manifest.get("continuation_request"),dict)
+            or manifest["continuation_request"].get("source") != "factory-console"
+        ):
+            raise PermissionError("non-actionable resume requires exact platform Console request")
         if (manifest.get("gap_analysis")!=proof["gap_analysis"]
                 or original.get("manifest")!=manifest
                 or not isinstance(manifest.get("continuation_request"),dict)
@@ -615,6 +695,8 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         context["_verified_resume_origin"]={
             "source_run_id":source_id,"snapshot_id":snapshot_id,
             "request_id":proof["request_id"],"generation":epoch,
+            "source_failure":"planning_non_actionable" if empty_recovery else "budget_reservation",
+            "source_commit":proof.get("source_commit") if empty_recovery else None,
         }
         return context
 
@@ -1000,6 +1082,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     # Recheck the pinned nonproduction candidate using GETs;
                     # a moved branch must not enter a new paid planning call.
                     context=self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"],context)
+                    _assert_changed_platform_source_for_empty_plan(context)
                     self._reject_repeat_empty_planning(
                         run_id=data["run_id"],task_id=data["task_id"],context=context,
                     )

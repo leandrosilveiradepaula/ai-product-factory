@@ -1,0 +1,50 @@
+name: Platform empty planning checkpoint PostgreSQL QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*platform_empty_planning_checkpoint_recovery.sql"
+      - "scripts/verify_platform_empty_planning_checkpoint_postgres.py"
+      - "src/ai_product_factory/supabase_runtime_queue.py"
+      - "tests/test_platform_empty_planning_checkpoint.py"
+      - ".github/workflows/platform-empty-planning-checkpoint-postgres.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/*platform_empty_planning_checkpoint_recovery.sql"
+      - "scripts/verify_platform_empty_planning_checkpoint_postgres.py"
+      - ".github/workflows/platform-empty-planning-checkpoint-postgres.yml"
+permissions:
+  contents: read
+concurrency:
+  group: platform-checkpoint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factory_ci
+          POSTGRES_PASSWORD: factory_ci
+          POSTGRES_DB: factory_ux1506_checkpoint_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory_ci -d factory_ux1506_checkpoint_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Install pinned PostgreSQL client
+        run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Exercise typed checkpoint and negative ACL/source cases
+        env:
+          FACTORY_UX1506_PG_TEST_ISOLATED: "true"
+          FACTORY_UX1506_PG_TEST_DSN: "postgresql://factory_ci:factory_ci@127.0.0.1:5432/factory_ux1506_checkpoint_test"
+        run: python scripts/verify_platform_empty_planning_checkpoint_postgres.py
