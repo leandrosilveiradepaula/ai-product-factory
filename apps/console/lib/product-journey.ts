@@ -62,6 +62,8 @@ export function describeNextAction(item:ProductSituation,phaseIndex:number):Jour
   return action("Factory","Aguardar a execução do pedido","O trabalho foi enfileirado; ainda não há prova de que um worker tenha começado.","Ver trabalho na fila",item.nextHref);
  if(item.unclosedTasks>0)
   return action("Equipe técnica","Retomar o trabalho pendente","Há tarefas registradas sem conclusão, mas nenhum worker em execução comprovada. É necessário investigar ou retomar o processamento; não há decisão sua registrada.","Ver tarefas pendentes","/deliveries?project="+encodeURIComponent(item.key));
+ if(phaseIndex===4)
+  return action("Equipe técnica","Conferir a publicação antes de avançar","A fase de liberação está registrada, mas não há decisão humana acionável nem execução ativa confirmada. É necessário reconciliar as evidências antes de qualquer release.","Ver implantações","/deployments");
  if(phaseIndex===PRODUCT_PHASES.length-1)
   return action("Nenhuma ação necessária","Produto na fase de operação","A etapa registrada é Operação, sem trabalho ativo comprovado. Se você quiser uma melhoria, abra um novo pedido; publicação anterior não foi certificada por esta tela.","Solicitar melhoria",detail+"/request");
  if(!item.lastRequest)

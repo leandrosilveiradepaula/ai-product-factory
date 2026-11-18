@@ -29,7 +29,7 @@ class ProductJourneyUXTest(unittest.TestCase):
   self.assertIn("ProductSituationCard",PORTFOLIO)
   self.assertIn('details className="projectStageDisclosure"',PROJECT)
   self.assertIn("projectAuxActions",PROJECT)
-  self.assertIn("role=\\"group\\"",HOME)
+  self.assertIn('role="group"',HOME)
   self.assertIn('details className="productOverviewTechnical"',HOME)
  def test_explicit_action_only_on_authoritative_human_gate(self):
   self.assertIn('item.state==="decision"',J)

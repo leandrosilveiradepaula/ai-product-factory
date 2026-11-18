@@ -35,7 +35,7 @@ export function ProductSituationCard({item,showOpen=true}:{item:ProductSituation
      <li key={step.key} className={"journeyStep "+step.mark} aria-current={step.mark==="atual"?"step":undefined}>
       <span className="journeyStepNumber" aria-hidden="true">{step.position}</span>
       <strong>{step.label}</strong>
-      <small>{step.mark==="atual"?"Você está aqui":step.mark==="proxima"?"Vem depois":step.mark==="anterior"?"Fase anterior":"Etapa futura"}</small>
+      <small>{step.mark==="atual"?"Você está aqui":step.mark==="proxima"?"Vem depois":step.mark==="anterior"?"Fase anterior":step.mark==="desconhecida"?"Não confirmada":"Etapa futura"}</small>
      </li>)}
    </ol>
   </section>
