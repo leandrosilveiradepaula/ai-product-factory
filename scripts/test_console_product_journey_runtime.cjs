@@ -53,6 +53,12 @@ test("stopped and paused products do not request an unsafe automatic restart",()
   assert.equal(x.action.href,"/projects/factory-example#project-control");
  }
 });
+test("a newly registered draft tells the user how to start instead of claiming broken control",()=>{
+ const x=describe(p({stage:"discovery",controlState:"draft",state:"unknown"}));
+ assert.equal(x.phaseLabel,"Entender");assert.equal(x.nextPhaseLabel,"Planejar");
+ assert.equal(x.action.owner,"Você");assert.equal(x.action.href,"/projects/factory-example#project-control");
+ assert.equal(x.action.label,"Ir para Iniciar projeto");assert.equal(x.action.humanRequired,false);
+});
 test("new project has an explicit request action, active operation has optional improvement",()=>{
  const newProduct=describe(p({stage:"discovery",lastRequest:null,unclosedTasks:0}));
  assert.equal(newProduct.action.owner,"Você");assert.equal(newProduct.action.href,"/projects/factory-example/request");

@@ -50,6 +50,8 @@ export function describeNextAction(item:ProductSituation,phaseIndex:number):Jour
   return action("Você","Há uma decisão aguardando você","A Factory só pode seguir após sua decisão registrada. Confira o que será liberado e as evidências antes de aprovar.","Revisar decisão","/gates",true);
  if(item.state==="stopped"||item.state==="paused")
   return action("Nenhuma ação necessária",item.state==="stopped"?"Projeto parado":"Projeto pausado","O caminho está preservado, mas a Factory não pode avançar enquanto o controle impedir novas execuções. Retomar é opcional, não uma pendência obrigatória.","Ver situação e controle",detail+"#project-control");
+ if(item.controlState==="draft"&&phaseIndex>=0)
+  return action("Você","Iniciar o projeto cadastrado","O cadastro não começa o desenvolvimento sozinho. Abra o controle do projeto e escolha Iniciar projeto para a Factory assumir o primeiro trabalho, quando estiver habilitada.","Ir para Iniciar projeto",detail+"#project-control");
  if(item.state==="unknown"||phaseIndex<0)
   return action("Equipe técnica","É preciso confirmar o estado do produto","O sistema não conseguiu comprovar a fase ou o controle. Nenhuma próxima fase será apresentada como iniciada.","Consultar situação",detail);
  if(item.state==="investigate")

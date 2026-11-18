@@ -23,7 +23,7 @@ export function ProductSituationCard({item,showOpen=true}:{item:ProductSituation
     <h3><Link prefetch={false} href={"/projects/"+encodeURIComponent(item.key)}>{item.name}</Link></h3>
     <span>Jornada do produto · etapa registrada no Control Plane, não uma certificação</span>
    </div>
-   <span className={"productSituationStatus "+item.state}>Execução: {item.headline}</span>
+   <span className={"productSituationStatus "+item.state}>Execução: {item.controlState==="draft"?"Projeto ainda não iniciado":item.headline}</span>
   </div>
   <section className="journeyPath" aria-label={"Caminho de "+item.name}>
    <div className="journeyPathHeading">
