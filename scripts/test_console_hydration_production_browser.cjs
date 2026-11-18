@@ -394,6 +394,13 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
   assert.equal(await page.locator("h1.title").innerText(),"Quadro de trabalho");
   assert.ok(await page.getByRole("heading",{name:"Encerrado"}).count()>=1);
   assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
+  // Check an independent hard navigation before testing the real client Link.
+  // Both must resolve the same Control Plane-backed card; no mocked detail HTML.
+  const independent=await context.newPage();
+  const detailResponse=await independent.goto(appOrigin+"/deliveries/"+B3_TASK_ID,{waitUntil:"networkidle",timeout:45000});
+  assert.equal(detailResponse?.status(),200,"direct delivery detail HTTP status");
+  assert.equal(await independent.locator("h1.title").innerText(),"Synthetic read-only regression task","direct delivery detail content");
+  await independent.close();
   await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").first().click();
   await page.waitForURL("**/deliveries/"+B3_TASK_ID);
   await page.getByRole("heading",{name:"Synthetic read-only regression task",exact:true}).waitFor({state:"visible",timeout:12000});
@@ -894,7 +901,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
       assert.equal(response?.status(),200,"synthetic project detail unavailable");
       await scan("project-detail",width===390?"detail-mobile":"detail-desktop");
     }
-    assert.equal(results.length,44,"Must exercise the same 44 surface/viewport modes as trusted audit");
+    assert.equal(results.length,CONSOLE_ROUTES.length*3+2,"Must exercise every registered surface/viewport mode as trusted audit");
     const problems=results.filter(x=>x.incomplete.length||x.violations.length);
     assert.deepEqual(problems,[],"Real Chromium/axe WCAG issues on inert fixture: "+JSON.stringify(problems));
   }finally{await context.close();}
