@@ -22,6 +22,7 @@ if (os.environ.get("FACTORY_BLOCKED_RECOVERY_TEST_ISOLATED") != "true"
 root = Path(__file__).resolve().parents[1]
 wake_sql = (root / "supabase/migrations/20261019002000_project_control_wake_outbox.sql").read_text()
 recovery_sql = (root / "supabase/migrations/20261118160000_operator_blocked_work_recovery.sql").read_text()
+hardening_sql = (root / "supabase/migrations/20261118163000_blocked_recovery_trigger_function_acl.sql").read_text()
 schema = """
 create role service_role nologin;create role anon nologin;create role authenticated nologin;
 create table public.factory_projects(
@@ -103,6 +104,14 @@ with psycopg.connect(dsn,autocommit=True) as db:
     db.execute(schema)
     db.execute(wake_sql)
     db.execute(recovery_sql)
+    db.execute(hardening_sql)
+    helper=db.execute("""
+      select p.prosecdef,has_function_privilege('service_role',p.oid,'execute'),
+             has_function_privilege('anon',p.oid,'execute'),
+             has_function_privilege('authenticated',p.oid,'execute')
+      from pg_proc p where p.proname='factory_sync_blocked_work_recovery_request'
+    """).fetchone()
+    assert helper == (False, True, False, False),helper
     # The callable entrypoint and data remain inaccessible to both public roles.
     permissions=db.execute("""
      select p.prosecdef,has_function_privilege('service_role',p.oid,'execute'),
