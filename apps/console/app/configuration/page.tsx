@@ -40,7 +40,7 @@ export default async function Configuration({searchParams}:{
    <details className="configurationDisclosure" id="politicas-avancadas">
     <summary><span><strong>Funcionamento e segurança</strong>
      <small>Modelos, permissões, release e proteções da Factory</small></span></summary>
-    <div className="overviewGrid configOverviewGrid configurationAdvancedGrid">
+    <div className="overviewGrid configOverviewGrid">
      <div className="card" id="modelos">
       <div className="panelHeading"><strong>Provedores e execução</strong>
        <StatusPill status={c.controlPlaneConfigured?"healthy":"blocked"}

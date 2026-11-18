@@ -15,7 +15,7 @@ class ConfigurationOwnerFocusTests(unittest.TestCase):
   self.assertIn('id="politicas-avancadas"',PAGE)
   self.assertIn('id="politicas-de-preview"',PAGE)
   self.assertIn('id="dados-tecnicos"',PAGE)
-  self.assertIn('className="overviewGrid configOverviewGrid configurationAdvancedGrid"',PAGE)
+  self.assertIn('className="overviewGrid configOverviewGrid"',PAGE)
   self.assertNotIn('className="configTabs"',PAGE)
   self.assertIn("scroll-margin-top",CSS)
 

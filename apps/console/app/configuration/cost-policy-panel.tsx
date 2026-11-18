@@ -24,8 +24,8 @@ export function PrimaryCostPolicyPanel({
  const remaining=spent===null?null:policy.budgetUsd-spent;
  const unknown=policy.unknownPaidCostEvents;
  const unverifiable=remaining===null||unknown===null;
- const unknownPaid=!unverifiable&&unknown>0;
- const shortfall=!unverifiable&&!unknownPaid&&remaining<policy.reserveUsd
+ const unknownPaid=unknown!==null&&unknown>0;
+ const shortfall=remaining!==null&&!unverifiable&&!unknownPaid&&remaining<policy.reserveUsd
    ?Math.max(0,policy.reserveUsd-remaining):0;
  const blocked=unverifiable||unknownPaid||shortfall>0;
  const statusLabel=unverifiable?"Custo não verificável"
