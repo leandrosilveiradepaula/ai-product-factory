@@ -258,9 +258,10 @@ async function hydrationRound({throttled=false,repeats=3}={}){
     waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200,"actual protected configuration route must return 200");
    assert.equal(new URL(page.url()).pathname,"/configuration");
-   assert.equal(await page.locator("h1.title").innerText(),"Configuração");
+   assert.equal(await page.locator("h1.title").innerText(),"Configurações");
    assert.equal(await page.locator("#orcamento").count(),1);
-   assert.equal(await page.locator("nav.configTabs").count(),1);
+   assert.equal(await page.locator("details.configurationDisclosure").count(),3);
+   assert.equal(await page.locator("details.configurationDisclosure[open]").count(),0);
    assert.equal(browserErrors.length,0,
     "real React/Next server HTML must hydrate cleanly (no #418 or console errors)");
   }
@@ -445,7 +446,7 @@ test("B2: expired token refresh reaches same-request Server Components without u
   const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
   assert.equal(response?.status(),200);
   assert.equal(new URL(page.url()).pathname,"/configuration");
-  assert.equal(await page.locator("h1.title").innerText(),"Configuração");
+  assert.equal(await page.locator("h1.title").innerText(),"Configurações");
   assert.ok(refreshCalls>beforeCount,"middleware must renew expired access");
   // Production cookies are Secure; Chromium intentionally does not persist
   // Secure Set-Cookie on this isolated plain-HTTP origin. Verify the server
@@ -565,7 +566,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
  try{
   const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
   assert.equal(response?.status(),200);
-  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Configuração");
+  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Configurações");
   await page.waitForFunction(()=>document.querySelector("a.skipToMain")!==null);
   // First request must be pending; the second event must commit newer data.
   await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
@@ -878,8 +879,11 @@ test("configuration budget is first, reachable by anchor, and diagnostics stay c
  try{
   for(const width of [1280,390]){
    await page.setViewportSize({width,height:width===390?844:900});
-   const response=await page.goto(appOrigin+"/configuration#orcamento",{
-    waitUntil:"networkidle",timeout:45000});
+   // The second viewport uses a full document reload. Navigating to the
+   // same URL with only a hash change returns no HTTP response in Chromium.
+   const response=width===1280
+    ?await page.goto(appOrigin+"/configuration#orcamento",{waitUntil:"networkidle",timeout:45000})
+    :await page.reload({waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200);
    const budget=page.locator("#orcamento");
    assert.equal(await budget.count(),1,"budget anchor must exist");
