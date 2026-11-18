@@ -36,7 +36,10 @@ class BlockedWorkRecoveryContract(unittest.TestCase):
         self.assertIn("factory_project_execution_commands", MIGRATION)
         self.assertIn("'restart'", MIGRATION)
         self.assertIn("factory_sync_blocked_work_recovery_request", MIGRATION)
+        self.assertIn("when 'running' then 'recovering'", MIGRATION)
         self.assertIn("when 'implementing' then 'recovering'", MIGRATION)
+        self.assertIn("when 'failed' then 'blocked'", MIGRATION)
+        self.assertIn("when 'cancelled' then 'blocked'", MIGRATION)
         self.assertIn("when 'completed' then 'completed'", MIGRATION)
         self.assertIn("when 'blocked' then 'blocked'", MIGRATION)
 
@@ -48,6 +51,7 @@ class BlockedWorkRecoveryContract(unittest.TestCase):
         self.assertNotIn("factory_restart_blocked_work_v1", command)
         self.assertIn("export async function restartBlockedProjectWork", CONTROL)
         self.assertIn("factory_restart_blocked_work_v1", CONTROL)
+        self.assertIn('if(!recoveryResponse.ok)return{status:"unavailable"', CONTROL)
         self.assertIn("deliverProjectControlWake(commandId)", CONTROL)
         self.assertIn("restartBlockedWork", PAGE)
         self.assertIn('executionControl.state==="running"?restartBlockedWork:controlProject', PAGE)

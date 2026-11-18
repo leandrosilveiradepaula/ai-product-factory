@@ -22,8 +22,11 @@ begin
  if new.status is distinct from old.status then
    update public.factory_blocked_work_recovery_requests
    set status=case new.status
+     when 'running' then 'recovering'
      when 'implementing' then 'recovering'
      when 'completed' then 'completed'
+     when 'failed' then 'blocked'
+     when 'cancelled' then 'blocked'
      when 'blocked' then 'blocked'
      else status
    end,updated_at=now()
@@ -44,9 +47,20 @@ declare p public.factory_projects%rowtype; c public.factory_project_execution_co
 begin
  if nullif(btrim(p_project_key),'') is null or p_command_id is null or p_actor_id is null or p_expected_version<0 then raise exception 'invalid blocked recovery command' using errcode='PT400'; end if;
  select * into p from public.factory_projects where project_key=btrim(p_project_key) and is_active for update; if not found then raise exception 'project not found' using errcode='PT404'; end if;
- select * into e from public.factory_blocked_work_recovery_requests where project_id=p.id and command_id=p_command_id; if found then return jsonb_build_object('status',e.status,'request_id',e.id,'run_id',e.continuation_run_id,'task_id',e.continuation_task_id,'idempotent',true); end if;
+ select * into e from public.factory_blocked_work_recovery_requests where project_id=p.id and command_id=p_command_id;
+ if found then
+   if not exists(select 1 from public.factory_project_execution_commands k
+     where k.project_id=p.id and k.command_id=p_command_id and k.command='restart'
+       and k.expected_version=p_expected_version and k.actor_id=p_actor_id)
+   then raise exception 'reused recovery command with different actor or version' using errcode='PT409'; end if;
+   return jsonb_build_object('status',e.status,'request_id',e.id,'run_id',e.continuation_run_id,'task_id',e.continuation_task_id,'idempotent',true);
+ end if;
  select * into c from public.factory_project_execution_controls where project_id=p.id for update;
  if c.version<>p_expected_version or c.state<>'running' then raise exception 'project control is not running at expected version' using errcode='PT409'; end if;
+ if exists(select 1 from public.factory_runs a join public.factory_tasks at on at.id=a.task_id
+   where at.project_id=p.id and a.status in ('running','implementing')
+     and (a.lease_owner is not null or a.lease_expires_at>now()))
+ then raise exception 'another execution is active in this project' using errcode='PT409'; end if;
  select * into j from public.factory_repair_jobs where project_id=p.id and status='blocked' and cycle<max_cycles order by updated_at desc limit 1 for update; if not found then raise exception 'no resumable blocked repair' using errcode='PT409'; end if;
  select * into t from public.factory_tasks where id=j.task_id and project_id=p.id and status='blocked' for update; if not found then raise exception 'blocked repair task mismatch' using errcode='PT409'; end if;
  select * into r from public.factory_runs where task_id=t.id and status='blocked' and lease_owner is null and lease_expires_at is null order by created_at desc limit 1 for update; if not found then raise exception 'blocked repair lineage mismatch' using errcode='PT409'; end if;

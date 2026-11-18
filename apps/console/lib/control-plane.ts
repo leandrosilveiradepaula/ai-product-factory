@@ -567,8 +567,12 @@ export async function getProjectRecoveryStatus(projectId:string):Promise<Project
  const finding=row.finding&&typeof row.finding==="object"&&!Array.isArray(row.finding)?row.finding:{};
  const message=typeof finding.message==="string"?finding.message.slice(0,400):typeof finding.detail==="string"?finding.detail.slice(0,400):null;
  const cycle=Number(row.cycle),maxCycles=Number(row.max_cycles);
- const recoveries=recoveryResponse.ok?await recoveryResponse.json():[];
- const latest=Array.isArray(recoveries)?recoveries[0]:null;
+ // A missing migration or a denied privileged query is not proof that
+ // a restart command is available. Hide the control until the read succeeds.
+ if(!recoveryResponse.ok)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const recoveries=await recoveryResponse.json();
+ if(!Array.isArray(recoveries))return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const latest=recoveries[0];
  if(latest&&typeof latest.status==="string"&&["queued","claimed","recovering"].includes(latest.status))
   return{status:"recovery_"+latest.status,cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,message:"Retomada já registrada; aguardando o worker e os gates normais.",updatedAt:typeof latest.updated_at==="string"?latest.updated_at:""};
  return{status:typeof row.status==="string"?row.status:"unknown",
