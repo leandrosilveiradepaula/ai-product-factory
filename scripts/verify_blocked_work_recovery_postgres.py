@@ -7,6 +7,7 @@ network calls, paid providers, external GitHub writes, or production mutations.
 import json
 import os
 import uuid
+import sys
 from pathlib import Path
 
 import psycopg
@@ -20,6 +21,16 @@ if (os.environ.get("FACTORY_BLOCKED_RECOVERY_TEST_ISOLATED") != "true"
     raise SystemExit("REFUSING_NON_ISOLATED_BLOCKED_RECOVERY_DATABASE")
 
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root / "src"))
+from ai_product_factory.runtime_worker import RuntimeWorker, WorkItem, WorkStatus
+historical_epoch_sql = (root / "supabase/migrations/20261017111500_factory_manual_project_execution_controls.sql").read_text()
+def extract_ddl(text, start_marker, end_marker):
+    start=text.index(start_marker)
+    return text[start:text.index(end_marker,start)]
+epoch_sql=extract_ddl(historical_epoch_sql,
+    "create function public.factory_assert_project_execution_epoch(",
+    "revoke all on function public.factory_assert_project_execution_epoch")
+live_claim_sql=(root / "tests/fixtures/factory_claim_next_run_20261118.sql").read_text()
 wake_sql = (root / "supabase/migrations/20261019002000_project_control_wake_outbox.sql").read_text()
 recovery_sql = (root / "supabase/migrations/20261118160000_operator_blocked_work_recovery.sql").read_text()
 hardening_sql = (root / "supabase/migrations/20261118163000_blocked_recovery_trigger_function_acl.sql").read_text()
@@ -27,7 +38,7 @@ schema = """
 create role service_role nologin;create role anon nologin;create role authenticated nologin;
 create table public.factory_projects(
  id uuid primary key default gen_random_uuid(),project_key text not null unique,
- is_active boolean not null default true);
+ is_active boolean not null default true,manifest jsonb not null default '{}'::jsonb);
 create table public.factory_project_execution_controls(
  project_id uuid primary key references public.factory_projects(id),
  state text not null,version bigint not null,generation bigint not null);
@@ -100,11 +111,64 @@ def fixture(db,key,*,cycle=2,max_cycles=3,broken_context=False):
     return {"project":pid,"root_task":root_task,"source_run":src_run,"change_set":cs,
             "repair_task":repair_task,"run":run,"job":job}
 
+
+class IsolatedWorkerQueue:
+    """Actual RuntimeWorker + PostgreSQL claim; test handler is explicitly offline."""
+    def __init__(self, db):
+        self.db=db
+
+    def claim_next(self, worker_id):
+        row=self.db.execute("select public.factory_claim_next_run(%s)",
+                            (worker_id,)).fetchone()
+        if not row or row[0] is None:
+            return None
+        c=row[0]
+        return WorkItem(run_id=str(c["run_id"]),task_id=str(c["task_id"]),
+            project_id=str(c["project_id"]),project_key=str(c["project_key"]),
+            stages=tuple(c["stages"]),context=c["context"],
+            execution_generation=c["execution_generation"],worker_id=worker_id)
+
+    def assert_execution_epoch(self, item):
+        self.db.execute("select public.factory_assert_project_execution_epoch(%s,%s)",
+                        (uuid.UUID(item.project_id),item.execution_generation))
+
+    def record_stage(self,item,evidence):
+        self.db.execute("update public.factory_runs set metadata=jsonb_set("
+            "metadata,array['stage_evidence',%s],%s::jsonb,true) where id=%s",
+            (evidence.stage,json.dumps({"status":evidence.status,"output":evidence.output}),
+             uuid.UUID(item.run_id)))
+
+    def complete(self,item):
+        self.db.execute("update public.factory_runs set status='completed' where id=%s",
+                        (uuid.UUID(item.run_id),))
+        self.db.execute("update public.factory_tasks set status='completed' where id=%s",
+                        (uuid.UUID(item.task_id),))
+
+    def fail(self,item,error):
+        self.db.execute("update public.factory_runs set status='failed' where id=%s",
+                        (uuid.UUID(item.run_id),))
+        self.db.execute("update public.factory_tasks set status='failed' where id=%s",
+                        (uuid.UUID(item.task_id),))
+
+
+class IsolatedStageHandler:
+    """Deterministic, no LLM/API/GitHub/network calls. Not product-ready evidence."""
+    def __init__(self,fail_at=None):
+        self.fail_at=fail_at
+
+    def execute(self,item,stage):
+        if stage==self.fail_at:
+            raise RuntimeError("isolated_stage_failure")
+        return {"stage":stage,"summary":"offline execution verified"}
+
+
 with psycopg.connect(dsn,autocommit=True) as db:
     db.execute(schema)
     db.execute(wake_sql)
     db.execute(recovery_sql)
     db.execute(hardening_sql)
+    db.execute(epoch_sql)
+    db.execute(live_claim_sql)
     helper=db.execute("""
       select p.prosecdef,has_function_privilege('service_role',p.oid,'execute'),
              has_function_privilege('anon',p.oid,'execute'),
@@ -203,4 +267,36 @@ with psycopg.connect(dsn,autocommit=True) as db:
         pass
     else:
         raise AssertionError("anon role executed private restart")
+    # This proves the genuine Python RuntimeWorker can claim and settle a
+    # newly linked continuation against the PostgreSQL function snapshot.
+    # It does NOT execute a paid model or prove the live production scheduler.
+    historical=fixture(db,"runtime-continues")
+    receipt=call(db,"runtime-continues",uuid.uuid4(),3,actor)
+    offline=IsolatedWorkerQueue(db)
+    result=RuntimeWorker(queue=offline,handler=IsolatedStageHandler(),
+                         worker_id="isolated-worker-success").run_once()
+    assert result is not None and result.status==WorkStatus.COMPLETED,result
+    assert tuple(x.stage for x in result.evidence)==(
+       "reconciliation","gap_analysis","planning"),result
+    assert db.execute(
+       "select status from public.factory_blocked_work_recovery_requests where id=%s",
+       (uuid.UUID(receipt["request_id"]),)).fetchone()[0]=="completed"
+    assert db.execute("select status from public.factory_repair_jobs where id=%s",
+                      (historical["job"],)).fetchone()[0]=="blocked"
+    assert db.execute("select status from public.factory_change_sets where id=%s",
+                      (historical["change_set"],)).fetchone()[0]=="completed"
+    assert offline.claim_next("isolated-worker-repeat") is None
+
+    failing=fixture(db,"runtime-fails")
+    denied_command=uuid.uuid4()
+    failed_receipt=call(db,"runtime-fails",denied_command,3,actor)
+    failure=RuntimeWorker(queue=offline,
+       handler=IsolatedStageHandler(fail_at="gap_analysis"),
+       worker_id="isolated-worker-failure").run_once()
+    assert failure is not None and failure.status==WorkStatus.FAILED,failure
+    assert len(failure.evidence)==1
+    assert db.execute(
+       "select status from public.factory_blocked_work_recovery_requests where id=%s",
+       (uuid.UUID(failed_receipt["request_id"]),)).fetchone()[0]=="blocked"
+
 print("BLOCKED_WORK_RECOVERY_POSTGRES_PASS")
