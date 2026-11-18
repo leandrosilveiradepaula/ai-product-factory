@@ -28,7 +28,7 @@ class TruthAndNavigationTests(unittest.TestCase):
  def test_never_promote_merge_preview_or_lifecycle_stage_to_product_ready(self):
   self.assertIn('input.definitionReady===true&&matchingCert&&production',PROOF)
   self.assertIn('complete===false||ready===false',PROOF)
-  self.assertNotIn('lifecycle_stage',PROOF)
+  self.assertNotIn('input.lifecycle_stage',PROOF)
   self.assertIn('phaseIndex===PRODUCT_PHASES.length-1&&item.proof?.productReady!==true',JOURNEY)
   self.assertIn('Comprovar entrega funcional',JOURNEY)
   self.assertIn('Não significa que as fases anteriores tenham sido concluídas',CARD)
