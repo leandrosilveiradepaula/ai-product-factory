@@ -1,6 +1,10 @@
 import {signInAction} from "../auth-actions";
 import {Button,PageHeader} from "../ui";
 
+// Browser tabs and screen readers need an exact, task-specific title. The
+// site identity remains visible in the suffix on the only unauthenticated route.
+export const metadata={title:"Entrar na Factory — AI Product Factory"};
+
 function safeNext(value:string|undefined){
  if(!value||!value.startsWith("/")||value.startsWith("//")||value.includes("\\"))return "/";
  return value;
