@@ -264,15 +264,27 @@ class ChangeSetBuilderWorker:
         # Exact new test files directly inside an already populated test/ or
         # tests/ root are legitimate. They must never imply a wildcard grant.
         root_level_test=(len(segments)==2 and segments[0] in ("test","tests"))
-        if ((len(segments)<3 and not root_level_test)
+        root_level_doc=(len(segments)==2 and segments[0]=="docs" and path.endswith(".md"))
+        if ((len(segments)<3 and not root_level_test and not root_level_doc)
                 or any(segment in ("",".","..") or segment.startswith(".") for segment in segments)
                 or "//" in path or "/.github/" in path.lower()):
             return None
         if path not in all_paths:
-            if (not path.startswith(("src/","app/","apps/","packages/","test/","tests/"))
-                    or not path.endswith((".py",".ts",".tsx",".js",".jsx"))):
-                return None
             parent=path.rsplit("/",1)[0]
+            # Documentation is a builder deliverable, not an arbitrary code
+            # namespace. Allow a NEW exact .md file only under a populated
+            # docs/ parent at this pinned commit; never a wildcard or a
+            # new directory. Existing policy for new code/test files stays.
+            exact_doc = (
+                path.startswith("docs/") and path.endswith(".md")
+                and any(existing.startswith(parent+"/") and existing.endswith(".md")
+                        for existing in all_paths)
+            )
+            if not exact_doc and (
+                not path.startswith(("src/","app/","apps/","packages/","test/","tests/"))
+                or not path.endswith((".py",".ts",".tsx",".js",".jsx"))
+            ):
+                return None
             if not any(existing.startswith(parent+"/") for existing in all_paths):
                 # Permit an explicitly named file inside exactly ONE new
                 # directory, but only when its immediate parent namespace
