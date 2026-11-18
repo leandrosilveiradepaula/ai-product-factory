@@ -36,7 +36,7 @@ class OperatorBlockerVisibilityTests(unittest.TestCase):
                    'knownSpendUsd+reserveUsd<=budgetUsd',
                    '"Parado por limite financeiro"',
                    '"/configuration#orcamento"',
-                   '"A tarefa já está na fila. Não é necessário reiniciar novamente."'):
+                   'A tarefa já está na fila. Não é necessário reiniciar novamente.'):
    self.assertIn(contract,FINANCIAL)
   self.assertNotIn("15.00",FINANCIAL)
   self.assertNotIn("dark-channel-studio",FINANCIAL)

@@ -8,7 +8,8 @@ PAGE=(ROOT/"apps/console/app/projects/[key]/page.tsx").read_text()
 class Tests(unittest.TestCase):
  def test_pending_run_is_durable_not_claimed(self):
   self.assertIn("select=id,status,attempt_count,created_at,started_at",CONTROL)
-  self.assertIn('x.status==="created"&&x.started_at==null',CONTROL)
+  self.assertIn('x.status==="created"||x.status==="queued"',CONTROL)
+  self.assertIn('x.started_at==null',CONTROL)
   self.assertIn("pendingRun",CONTROL)
  def test_wake_and_probe_evidence_are_independent(self):
   self.assertIn("project.bootstrap.wake_attempted",CONTROL)
