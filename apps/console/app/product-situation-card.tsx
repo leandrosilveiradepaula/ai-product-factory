@@ -2,6 +2,7 @@ import Link from "next/link";
 import type {ProductSituation} from "../lib/product-status";
 import {describeProductJourney} from "../lib/product-journey";
 import {diagnoseProduct} from "../lib/product-diagnosis";
+import {summarizeOwnerProduct} from "../lib/product-operator-view";
 
 function lastRunLabel(status:string):string{
  switch(status){
@@ -11,6 +12,36 @@ function lastRunLabel(status:string):string{
   default:return "Estado: "+status.replaceAll("_"," ");
  }
 }
+function ProductOwnerSummary({item,compact}:{item:ProductSituation;compact:boolean}){
+ const view=summarizeOwnerProduct(item);
+ const last=item.lastRun;
+ return <section className={"productOwnerSummary owner-"+view.tone+(compact?" isCompact":"")} aria-label="Estado e responsabilidades do produto">
+  {item.objective?<p className="productOwnerObjective">{item.objective}</p>:null}
+  <div className="productOwnerVerdict">
+   <h4>{view.headline}</h4>
+   <p>{view.reason}</p>
+  </div>
+  <dl className="productOwnerFacts">
+   <div><dt>O que já existe</dt><dd>{view.delivery}</dd></div>
+   <div><dt>A Factory está trabalhando?</dt><dd>{view.activity}</dd></div>
+  </dl>
+  <div className="productOwnerResponsibilities">
+   <div className="productOwnerFactory">
+    <span className="productOwnerMicro">PRÓXIMO TRABALHO DA FACTORY</span>
+    <strong>{view.nextTitle}</strong>
+    <p>{view.nextDetail}</p>
+   </div>
+   <div className="productOwnerHuman">
+    <span className="productOwnerMicro">O QUE DEPENDE DE VOCÊ</span>
+    <strong>{view.yourAction}</strong>
+    <p>{view.yourDetail}</p>
+    {view.actionHref?<Link className="productOwnerHumanLink" prefetch={false} href={view.actionHref}>{view.actionLabel} →</Link>:null}
+   </div>
+  </div>
+  {last?<p className="productOwnerLast">Última tentativa registrada: <time dateTime={last.at}>{new Date(last.at).toLocaleString("pt-BR")}</time>. Isto não é uma execução em andamento.</p>:null}
+ </section>;
+}
+
 function EvidenceRibbon({item}:{item:ProductSituation}){
  const result=diagnoseProduct(item);
  return <section className="productTruth" aria-label="Estado verificável da entrega">
@@ -108,6 +139,10 @@ export function ProductSituationCard({item,showOpen=true,compact=false}:{item:Pr
    </div>
    <span className={"productSituationStatus "+item.state}>{item.state==="decision"?"Decisão sua pendente":item.state==="investigate"?"Execução técnica bloqueada":item.state==="executing"?"Trabalho em curso":item.state==="stopped"?"Parado":item.state==="paused"?"Pausado":item.proof?.productReady?"Entrega avaliada":"Entrega não comprovada"}</span>
   </div>
+  <ProductOwnerSummary item={item} compact={compact}/>
+  {showOpen?<Link prefetch={false} className="productCompactOpen" href={"/projects/"+encodeURIComponent(item.key)}>Ver situação completa →</Link>:null}
+  {!compact?<details className="productOwnerTechnical">
+   <summary>Ver evidências técnicas, tarefas e histórico</summary>
   <EvidenceRibbon item={item}/>
   <ProductCurrentSnapshot item={item}/>
   <FindingRows item={item}/>
@@ -139,7 +174,6 @@ export function ProductSituationCard({item,showOpen=true,compact=false}:{item:Pr
      </div>
     </details>
    </>}
-  {showOpen?<Link prefetch={false} className="productCompactOpen" href={"/projects/"+encodeURIComponent(item.key)}>Abrir produto →</Link>:null}
   <details className="journeyEvidence">
    <summary>Ver pedido, tentativas e evidência técnica</summary>
    <div className="journeyEvidenceContent">
@@ -160,5 +194,6 @@ export function ProductSituationCard({item,showOpen=true,compact=false}:{item:Pr
     <div><strong>ENTREGA</strong><p>{item.proof?.productReady?"Entrega certificada":"Entrega completa não certificada"}</p></div>
    </div>
   </details>
+  </details>:null}
  </article>;
 }

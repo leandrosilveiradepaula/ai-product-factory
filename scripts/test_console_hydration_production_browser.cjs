@@ -392,9 +392,9 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
   assert.equal(response?.status(),200);
   assert.equal(await page.locator("h1.title").innerText(),"Sua Factory hoje");
    assert.ok(await page.locator(".navItemHint").count()>=4,"menu purposes must be visible");
-   assert.equal(await page.locator(".productTruth").first().count(),1,"product evidence must appear before code stage");
+   assert.equal(await page.locator(".productOwnerSummary").first().count(),1,"the owner must see the product state and the next responsible party");
    const product=page.locator(".productSituationList .journeyCard").first();
-   assert.equal(await product.locator(".productCompactDetails").count(),1,"home is concise and product-oriented");
+   assert.equal(await product.locator(".productOwnerSummary").count(),1,"home is concise and action-oriented");
    assert.equal(await product.locator(".journeyStep").count(),0,"home must not mislead with unverified full stepper");
    assert.equal(await product.locator(".journeyAction.needsHuman").count(),0,"no user approval without actionable gate");
   for(const label of ["Nenhuma decisão sua neste momento","Últimos acontecimentos registrados"])
@@ -455,6 +455,11 @@ test("B3: real Next project detail hydration and command identity are stable acr
     waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200);
    assert.equal(await page.locator("h1.title").innerText(),"AI Product Factory");
+   const tech=page.locator(".projectDetailTechnicalDisclosure");
+   assert.equal(await tech.count(),1,"technical details remain available behind a disclosure");
+   if(await tech.getAttribute("open")===null)await tech.locator("summary").first().click();
+   const ownerEvidence=page.locator(".productSituationDetail .productOwnerTechnical");
+   if(await ownerEvidence.getAttribute("open")===null)await ownerEvidence.locator("summary").first().click();
    const disclosure=page.locator(".productSituationDetail .productJourneyDisclosure");
    assert.equal(await disclosure.count(),1,"full historical journey is available in a disclosure");
    assert.equal(await disclosure.getAttribute("open"),null,"unverified lifecycle must be closed by default");

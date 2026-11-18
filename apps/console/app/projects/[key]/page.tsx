@@ -1,6 +1,7 @@
 import {cookies} from "next/headers";
 import {getProductSituations} from "../../../lib/product-status";
 import {ProductSituationCard} from "../../product-situation-card";
+import {OpenProjectTechnicalAnchor} from "./open-technical-anchor";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
@@ -206,9 +207,13 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   </div>:null}
   <PageHeader eyebrow="Produto" title={p.name} subtitle="O que já existe, o que impede o uso e o trabalho que falta concluir." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
   <section className="productSituationDetail" aria-labelledby="product-situation-heading">
-   <h2 id="product-situation-heading">O produto funciona? O que falta para usar?</h2>
+   <h2 id="product-situation-heading">Situação do produto e quem resolve o próximo passo</h2>
    <ProductSituationCard item={situation} showOpen={false}/>
   </section>
+  <OpenProjectTechnicalAnchor/>
+  <details className="projectDetailTechnicalDisclosure" open={["stopped","paused","draft"].includes(executionControl.state)}>
+   <summary><strong>Ver operações, qualidade, banco e histórico técnico</strong><span>Informações completas para inspeção; não são ações necessárias para acompanhar o produto.</span></summary>
+   <div className="projectDetailTechnicalContent">
   <details className="projectAuxActions">
    <summary>Outras ações do projeto e acompanhamento técnico</summary>
    <div className="projectOperatorChoices" aria-label="Ações deste produto">
@@ -317,7 +322,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <div className="card denseStack">
     <div className="badgeLine"><strong>{p.productReadiness.ready?"A avaliação global passou para o SHA registrado. Isso não comprova que o HEAD atual permanece igual nem libera produção.":p.productReadiness.status==="not_assessed"?"Nenhuma auditoria global de produto foi registrada ainda.":"Existem domínios ou blockers que impedem declarar o produto pronto."}</strong>{p.productReadiness.assessedCommit?<span className="muted mono">{p.productReadiness.assessedCommit.slice(0,12)}</span>:null}</div>
     {p.productReadiness.blockers.length?<div><span className="detailLabel">Bloqueios que impedem a liberação</span><ul>{p.productReadiness.blockers.map((item,i)=><li key={i}>{item}</li>)}</ul></div>:null}
-     <details className="readinessDomainDisclosure" open={!p.productReadiness.ready}>
+     <details className="readinessDomainDisclosure">
       <summary>{p.productReadiness.ready?"Consultar os seis domínios avaliados no SHA registrado":"Consultar os seis domínios e suas pendências"}</summary>
      <div className="readinessDomainChecklist" role="list" aria-label="Domínios exigidos para a prontidão global">
       {productAuditDomains.map(domain=><div className="readinessDomain" role="listitem" key={domain.key}>
@@ -338,7 +343,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    <summary><span><strong>Pedidos anteriores</strong><small>Histórico durável registrado pela Factory.</small></span><span className="muted">{continuationHistory.length-1} pedido{continuationHistory.length===2?"":"s"} anterior{continuationHistory.length===2?"":"es"}</span></summary>
    <div className="projectTechnicalBody"><div className="timeline">{continuationHistory.slice(1).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><strong>{item.summary}</strong><span className="muted">{new Date(item.requestedAt).toLocaleString("pt-BR")}</span></div><div className="timelineMeta"><span>{item.attachmentCount+" anexo"+(item.attachmentCount===1?"":"s")}</span></div></div>)}</div></div>
   </details>:null}
-  <details className="projectTechnicalDetails projectIntegrations" open={integrationNeedsAttention}>
+  <details className="projectTechnicalDetails projectIntegrations">
    <summary><span><strong>Configurações e integrações</strong><small>Política de Preview e acesso ao GitHub. Pendências permanecem visíveis.</small></span><span className="muted">{integrationNeedsAttention?"Precisa de verificação":"Configuradas · ver detalhes"}</span></summary>
    <div className="projectTechnicalBody">
   <section className="section" id="preview-policy"><SectionHeader title="Prévia · política do projeto" action={<StatusPill status={previewPolicy?.required===false?"not_applicable":previewConfigured?"verified":"blocked"} label={previewPolicy?.required===false?"Não aplicável":previewConfigured?"Configurada":"Pendente"}/>}/>
@@ -452,6 +457,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   <section className="section"><SectionHeader title="Linha do tempo operacional" action={<span className="muted">{ops.timeline.length} eventos de evidência</span>}/>
    {ops.timeline.length===0?<EmptyState>Ainda não há evidências operacionais para este projeto.</EmptyState>:<div className="card"><div className="timeline">{ops.timeline.slice(0,40).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><StatusPill status={item.kind}/><strong>{item.title}</strong>{item.status?<StatusPill status={item.status}/>:null}</div><div className="timelineMeta"><span>{new Date(item.at).toLocaleString("pt-BR")}</span>{item.detail?<span>{item.detail}</span>:null}{item.cost!=null?<span>custo {item.cost}</span>:null}{item.ref?<code>{item.ref}</code>:null}</div></div>)}</div></div>}
   </section>
+   </div>
+  </details>
    </div>
   </details>
  </>;

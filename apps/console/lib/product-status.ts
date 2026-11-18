@@ -10,15 +10,16 @@ export type ProductState="decision"|"executing"|"verifying"|"queued"|"stopped"|"
 export type ProductLastRun={id:string;status:string;at:string;taskTitle:string};
 export type ProductActivity={kind:"run"|"release"|"request"|"spec";title:string;at:string;href:string|null};
 export type ProductDatabaseEvidence={state:"verified"|"pending"|"not_recorded";linked:number;lastVerifiedAt:string|null};
+export type ProductRepairEvidence={status:string;cycle:number;maxCycles:number;updatedAt:string;role:string};
 export type ProductSituation={
  key:string;name:string;stage:string;isActive:boolean;controlState:string;
- projectKind:string;repository:string|null;isInternalRecord:boolean;
+ projectKind:string;repository:string|null;isInternalRecord:boolean;objective:string|null;
  proof:ProductProof;specStatus:string|null;lastReleaseAt:string|null;
  databaseEvidence:ProductDatabaseEvidence;requirementCount:number;sourceIssueUrl:string|null;blocker:ProductBlocker|null;
  state:ProductState;headline:string;explanation:string;nextOwner:string;nextLabel:string;nextHref:string;
  lastRequest:string|null;lastRequestAt:string|null;lastRun:ProductLastRun|null;
  unclosedTasks:number;confirmedRunning:number;observedAt:string;updatedAt:string;
- currentWork:string|null;activities:ProductActivity[];
+ currentWork:string|null;activities:ProductActivity[];latestRepair:ProductRepairEvidence|null;
 };
 export type ProductSnapshot={products:ProductSituation[];observedAt:string};
 export type ProductObservation={
@@ -54,7 +55,8 @@ type RunRow={id:string;task_id:string;status:string;created_at:string;started_at
 type ReleaseRow={id:string;project_id:string;status:string;candidate_commit:string|null;created_at:string;report:unknown};
 type DeploymentRow={id:string;run_id:string;environment:string;status:string;created_at:string};
 type CertificationRow={id:string;project_id:string;assessed_commit:string;is_current:boolean;state:string;created_at:string};
-type SpecRow={id:string;project_id:string;status:string;version:number;created_at:string};
+type SpecRow={id:string;project_id:string;status:string;version:number;created_at:string;spec?:unknown};
+type RepairRow={id:string;project_id:string;status:string;cycle:number;max_cycles:number;source_role:string;updated_at:string};
 type DbRow={id:string;project_id:string;status:string;last_verified_at:string|null};
 type RequirementRow={id:string;project_id:string;status:string};
 function sourceIssue(manifest:Record<string,unknown>):string|null{
@@ -92,7 +94,7 @@ export async function getProductSituations():Promise<ProductSnapshot>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();
  if(!cfg)throw new Error("Control Plane indisponível. Não é seguro exibir produtos sem status.");
- const [projects,controls,tasks,runs,releases,deployments,certifications,specs,databases,requirements,gates]=await Promise.all([
+ const [projects,controls,tasks,runs,releases,deployments,certifications,specs,databases,repairs,requirements,gates]=await Promise.all([
   loadComplete<ProjectRow>(cfg,"factory_projects","id,project_key,name,is_active,lifecycle_stage,updated_at,manifest,project_kind,repository","updated_at.desc,id.desc","id"),
   loadComplete<ControlRow>(cfg,"factory_project_execution_controls","project_id,state","project_id.asc","project_id"),
   loadComplete<TaskRow>(cfg,"factory_tasks","id,project_id,title,status,created_at,updated_at","created_at.desc,id.desc","id"),
@@ -100,8 +102,9 @@ export async function getProductSituations():Promise<ProductSnapshot>{
   loadComplete<ReleaseRow>(cfg,"factory_release_reports","id,project_id,status,candidate_commit,created_at,report","created_at.desc,id.desc","id"),
   loadComplete<DeploymentRow>(cfg,"factory_deployments","id,run_id,environment,status,created_at","created_at.desc,id.desc","id"),
   loadComplete<CertificationRow>(cfg,"factory_product_readiness_certifications","id,project_id,assessed_commit,is_current,state,created_at","created_at.desc,id.desc","id"),
-  loadComplete<SpecRow>(cfg,"factory_product_specs","id,project_id,status,version,created_at","created_at.desc,id.desc","id"),
+  loadComplete<SpecRow>(cfg,"factory_product_specs","id,project_id,status,version,created_at,spec","created_at.desc,id.desc","id"),
   loadComplete<DbRow>(cfg,"factory_project_databases","id,project_id,status,last_verified_at","id.asc","id"),
+  loadComplete<RepairRow>(cfg,"factory_repair_jobs","id,project_id,status,cycle,max_cycles,source_role,updated_at","updated_at.desc,id.desc","id"),
   loadComplete<RequirementRow>(cfg,"factory_requirements","id,project_id,status","id.asc","id"),
   getHumanGates(100,true),
  ]);
@@ -117,6 +120,15 @@ export async function getProductSituations():Promise<ProductSnapshot>{
  for(const r of releases)if(!latestReleases.has(r.project_id))latestReleases.set(r.project_id,r);
  const latestSpecs=new Map<string,SpecRow>();
  for(const s of specs)if(!latestSpecs.has(s.project_id))latestSpecs.set(s.project_id,s);
+ // One latest repair per project, observed independently from run/control state.
+ const repairByProject=new Map<string,RepairRow>();
+ for(const repair of repairs)if(!repairByProject.has(repair.project_id))repairByProject.set(repair.project_id,repair);
+ const objectiveByProject=new Map<string,string>();
+ for(const s of specs){
+  const summary=asObject(s.spec).summary;
+  if(!objectiveByProject.has(s.project_id)&&typeof summary==="string"&&summary.trim())
+   objectiveByProject.set(s.project_id,summary.trim().slice(0,180));
+ }
  const currentCertifications=new Map<string,CertificationRow>();
  for(const cert of certifications)if(cert.is_current&&cert.state==="persisted"&&!currentCertifications.has(cert.project_id))
   currentCertifications.set(cert.project_id,cert);
@@ -210,6 +222,11 @@ export async function getProductSituations():Promise<ProductSnapshot>{
   activities.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
   const activeRun=verifiedRunning[0];
   const currentWork=activeRun?byTask.get(activeRun.task_id)?.title||"Execução iniciada com lease vigente":null;
+  const repair=repairByProject.get(p.id);
+  const latestRepair:ProductRepairEvidence|null=repair?{
+   status:repair.status,cycle:repair.cycle,maxCycles:repair.max_cycles,
+   role:repair.source_role,updatedAt:repair.updated_at,
+  }:null;
   const isInternalRecord=manifest.qa_canary===true&&(!p.repository||p.repository.length===0);
   const status=summarizeProductStatus({
    key:p.project_key,isActive:p.is_active,controlState:control,
@@ -218,7 +235,7 @@ export async function getProductSituations():Promise<ProductSnapshot>{
    unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,
    latestRunStatus:last?.status||null,latestRunId:verifiedRunning[0]?.id||relevant.find(r=>["ci_pending","preview_ready","review_ready","created","queued"].includes(r.status))?.id||last?.id||null,latestTaskStatus:lastTask?.status||null,
   });
-  return {...status,key:p.project_key,name:p.name,stage:p.lifecycle_stage,
+  return {...status,key:p.project_key,name:p.name,stage:p.lifecycle_stage,objective:objectiveByProject.get(p.id)||null,
    isActive:p.is_active,controlState:control,
    projectKind:p.project_kind||"unknown",repository:p.repository||null,isInternalRecord,
    proof,specStatus:latestSpecs.get(p.id)?.status||null,
@@ -228,7 +245,7 @@ export async function getProductSituations():Promise<ProductSnapshot>{
    lastRequest:requestText,lastRequestAt:requestDate,
    lastRun:last?{id:last.id,status:last.status,at:last.created_at,taskTitle:lastTask?.title||"Execução registrada"}:null,
    unclosedTasks:tasksFor.filter(t=>!terminal.has(t.status)).length,
-   confirmedRunning:verifiedRunning.length,currentWork,activities:activities.slice(0,4),observedAt,updatedAt:p.updated_at};
+   confirmedRunning:verifiedRunning.length,currentWork,activities:activities.slice(0,4),latestRepair,observedAt,updatedAt:p.updated_at};
  });
  const order:Record<ProductState,number>={decision:0,executing:1,verifying:2,queued:3,investigate:4,idle:5,paused:6,stopped:7,unknown:8};
  products.sort((a,b)=>order[a.state]-order[b.state]||Date.parse(b.lastRun?.at||b.updatedAt)-Date.parse(a.lastRun?.at||a.updatedAt));
