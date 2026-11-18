@@ -145,3 +145,6 @@
 .deliveryDetailStep a{flex:0 0 auto;color:#bed8ff;font-size:13px;min-height:40px;display:inline-flex;align-items:center}
 .deliveryDetailStep>span{color:#a1b3c6;font-size:12px}
 @media(max-width:760px){.deliveryDetailHero,.deliveryDetailNext{padding:18px}.deliveryDetailActions{display:grid;grid-template-columns:1fr}.deliveryDetailActions .linkButton{width:100%}.deliveryDetailStep{flex-direction:column;align-items:flex-start;gap:5px}}
+
+/* Decorative SVGs avoid unreadable symbol-glyph contrast diagnostics. */
+.operatorChoiceSymbol svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
