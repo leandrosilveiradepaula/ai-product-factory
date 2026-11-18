@@ -460,6 +460,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261117160500_verified_blocked_ci_state_alias.sql",
             "20261118005000_platform_empty_planning_checkpoint_recovery.sql",
             "20261118014500_retry_verified_document_scope_preflight.sql",
+            "20261118022000_platform_blocked_change_set_source_repin.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
