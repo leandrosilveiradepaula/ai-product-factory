@@ -109,3 +109,12 @@
 /* Four operator destinations share the fixed mobile navigation evenly. */
 @media(max-width:860px){.mobileQuickNav{grid-template-columns:repeat(4,minmax(0,1fr))}.mobileQuickLink{font-size:12px;gap:3px}}
 @media(max-width:380px){.mobileQuickLink{font-size:11px;padding:7px 2px}}
+
+/* Project details: explicit next steps above operational diagnostics. */
+.projectOperatorChoices{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:21px 24px;margin-bottom:20px;border:1px solid #49628a;border-radius:13px;background:#1c2c44}
+.projectOperatorChoices h2{font-size:21px;line-height:1.25;color:#f0f5fd;margin:6px 0}
+.projectOperatorChoices p{font-size:14px;color:#bfcee1;line-height:1.55;max-width:600px;margin:0}
+.projectOperatorLinks{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.projectOperatorLinks .linkButton{min-height:44px;font-size:13px;display:inline-flex;justify-content:center;align-items:center;text-align:center;white-space:normal}
+@media(max-width:1100px){.projectOperatorChoices{align-items:stretch;flex-direction:column}.projectOperatorLinks{justify-content:flex-start}}
+@media(max-width:760px){.projectOperatorChoices{padding:18px}.projectOperatorLinks{display:grid;grid-template-columns:1fr}.projectOperatorLinks .linkButton{width:100%}}
