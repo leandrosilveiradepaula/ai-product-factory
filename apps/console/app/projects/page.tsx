@@ -22,8 +22,8 @@ export default async function Projects({searchParams}:{searchParams:Promise<{sup
  const notice=query.supabase?notices[query.supabase]:undefined;
  const installPending=installReturned&&installProject&&d.projects.some(p=>p.key===installProject);
  return <>
-  <PageHeader eyebrow="Produtos" title="Escolha o produto que quer acompanhar"
-   subtitle="Veja entregas comprovadas, bloqueios e próximos passos. A fase registrada não garante que o produto esteja finalizado." actions={<ActionLink href="/projects/new" variant="primary">Criar produto</ActionLink>}/>
+  <PageHeader eyebrow="Produtos" title="Seus produtos"
+   subtitle="O que já existe, o que a Factory está fazendo e a próxima entrega de cada produto." actions={<ActionLink href="/projects/new" variant="primary">Criar produto</ActionLink>}/>
   {notice?<div className="card noticeCard danger" role="status"><StatusPill status="failed"/><span>{notice}</span></div>:null}
   {installPending?<div className="card noticeCard" role="status">
    <span>O GitHub retornou da instalação de {installProject}. Confira as permissões concedidas e verifique o acesso; retornar a esta tela não comprova acesso.</span>
@@ -33,6 +33,7 @@ export default async function Projects({searchParams}:{searchParams:Promise<{sup
     <button type="submit" className="primary">Verificar acesso da GitHub App</button>
    </form>
   </div>:null}
+  <div className="factoryObservationLine"><span>Consulta realizada: <time dateTime={pulse.observedAt}>{new Date(pulse.observedAt).toLocaleString("pt-BR")}</time></span><span>Atualização automática enquanto online.</span></div>
   <div className="productSituationList projectSituationList">
    {pulse.products.length===0?
     <div className="homeEmptyProject"><EmptyState>Nenhum produto cadastrado.</EmptyState><ActionLink href="/projects/new" variant="primary">Criar primeiro produto</ActionLink></div>:

@@ -390,15 +390,15 @@ test("B3: real operator start, Kanban and delivery detail work with read-only fi
  try{
   let response=await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
-  assert.equal(await page.locator("h1.title").innerText(),"Seus produtos: o que foi entregue e o que falta?");
+  assert.equal(await page.locator("h1.title").innerText(),"Sua Factory hoje");
    assert.ok(await page.locator(".navItemHint").count()>=4,"menu purposes must be visible");
    assert.equal(await page.locator(".productTruth").first().count(),1,"product evidence must appear before code stage");
    const product=page.locator(".productSituationList .journeyCard").first();
    assert.equal(await product.locator(".productCompactDetails").count(),1,"home is concise and product-oriented");
    assert.equal(await product.locator(".journeyStep").count(),0,"home must not mislead with unverified full stepper");
    assert.equal(await product.locator(".journeyAction.needsHuman").count(),0,"no user approval without actionable gate");
-  for(const label of ["Criar um produto","Melhorar um produto","Acompanhar entregas"])
-   assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing action "+label);
+  for(const label of ["Nenhuma decisão sua neste momento","Últimos acontecimentos registrados"])
+   assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing owner cockpit "+label);
   response=await page.goto(appOrigin+"/deliveries",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
   assert.equal(await page.locator("h1.title").innerText(),"Escolha um produto para ver suas tarefas");

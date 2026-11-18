@@ -45,24 +45,19 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('className="routePurpose isAdvanced"',SHELL)
         self.assertNotIn('className={context.advanced?"screenGuide advanced":"screenGuide"}',SHELL)
 
-    def test_home_shows_real_products_and_operator_intentions_first(self):
-        for action in ("Criar um produto","Melhorar um produto","Acompanhar entregas"):
-            self.assertIn(action,HOME)
-        self.assertIn('getHumanGates(100,true)',HOME)
-        self.assertIn('summarizeOperatorAttention(',HOME)
-        self.assertIn('getProductSituations()',HOME)
-        self.assertIn('className="operatorWelcome"',HOME)
-        self.assertIn('className="productSituationList"',HOME)
-        self.assertIn('className="operatorAttention requiresAction"',HOME)
-        self.assertIn('details className="operatorDiagnostics"',HOME)
-        self.assertIn('products.reduce((n,p)=>n+p.confirmedRunning,0)',HOME)
-        self.assertLess(HOME.index('className="operatorWelcome"'),HOME.index('className="operatorDiagnostics"'))
+    def test_home_shows_source_backed_products_and_passive_autonomy(self):
+        for key in ('Sua Factory hoje','Nenhuma decisão sua neste momento','Últimos acontecimentos registrados',
+                    'getHumanGates(100,true)','summarizeOperatorAttention(', 'getProductSituations()',
+                    'className="factoryCommandBar"','className="productSituationList"',
+                    'className="factoryRecent"','details className="productOverviewTechnical"',
+                    'details className="operatorDiagnostics"','visibleProducts.reduce((n,p)=>n+p.confirmedRunning,0)'):
+            with self.subTest(key=key): self.assertIn(key,HOME)
+        self.assertNotIn('className="operatorWelcome"',HOME)
         self.assertNotIn('incidents.map',HOME)
-        self.assertNotIn('label="orquestrador online"',HOME)
-        self.assertNotIn('getHumanGates(8)',HOME)
+        self.assertLess(HOME.index('className="factoryCommandBar"'),HOME.index('className="operatorDiagnostics"'))
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):
-        self.assertIn('Veja entregas comprovadas',PROJECTS)
+        self.assertIn('Seus produtos',PROJECTS)
         self.assertIn('getProductSituations()',PROJECTS)
         self.assertIn('ProductSituationCard',PROJECTS)
         self.assertNotIn('macroProgress',PROJECTS)
