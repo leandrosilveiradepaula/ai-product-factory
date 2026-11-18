@@ -1,13 +1,13 @@
 /* Operator workspace and Kanban: human intentions before system internals.
  * Specific components are kept separate from historical Console styles. */
-.operatorWelcome{border:1px solid #354762;border-radius:18px;background:linear-gradient(118deg,#1a2a45 0%,#171f2f 60%,#141b27 100%);padding:28px}
+.operatorWelcome{border:1px solid #354762;border-radius:18px;background:#1a2a45;padding:28px}
 .operatorWelcomeHeading{max-width:800px;margin-bottom:22px}
 .operatorEyebrow{display:block;color:#a9c6ff;font-size:12px;font-weight:800;letter-spacing:.11em}
 .operatorWelcome h2{color:#f1f5fc;font-size:clamp(24px,2.7vw,34px);letter-spacing:-.03em;line-height:1.2;margin:8px 0}
 .operatorWelcomeHeading p{font-size:15px;line-height:1.55;color:#c0cddd;margin:0}
 .operatorChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .operatorChoice{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:214px;padding:24px;border:1px solid #3a475d;border-radius:14px;background:#192434;color:#e9eef9;transition:background .15s ease,border-color .15s ease,transform .15s ease}
-.operatorChoice.featured{background:linear-gradient(140deg,#244879,#1c3657);border-color:#7dabea}
+.operatorChoice.featured{background:#244879;border-color:#7dabea}
 .operatorChoice:hover,.operatorChoice:focus-visible{border-color:#a5c6ff;background:#223751;transform:translateY(-2px);outline-offset:3px}
 .operatorChoiceSymbol{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:#304860;color:#dfeeff;font-size:26px;line-height:1}
 .operatorChoice.featured .operatorChoiceSymbol{background:#4b85ea;color:#fff}
