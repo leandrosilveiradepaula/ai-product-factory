@@ -429,3 +429,75 @@
  .runOutcomeHero h2{font-size:19px}
  .runTechnicalDisclosure>.runStageContext,.runTechnicalDisclosure>.runStageDisclosure,.runTechnicalDisclosure>.runDetailGrid{margin:10px}
 }
+
+/* Owner experience: readable hierarchy, passive evidence and progressive detail. */
+.factoryCommandBar{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(250px,.55fr);gap:14px;margin:19px 0 32px}
+.factoryCommandBar>div{border:1px solid #354a60;border-radius:15px;background:#1a283a;padding:24px}
+.factoryCommandBar .factoryAttentionState{background:#1b3444;border-color:#466780}
+.factoryOverline{display:block;color:#b9cfe8;font-size:12px;line-height:1.5;font-weight:750;letter-spacing:.07em}
+.factoryCommandBar h2{font-size:22px;line-height:1.28;color:#f5f8ff;margin:8px 0}
+.factoryCommandBar p{font-size:15px;line-height:1.58;color:#cddbe9;margin:0;max-width:68ch}
+.factoryCommandBar a,.factoryNewRequest,.productDecisionLink{min-height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #86b6f3;border-radius:9px;background:#315d95;padding:10px 16px;color:#fff;font-size:14px;font-weight:700}
+.factoryNewRequest{background:transparent;color:#d4e9ff}
+.factoryCommandBar a{margin-top:16px}
+.factoryExecutionState>strong{display:block;font-size:20px;line-height:1.4;color:#f3f7ff;margin:9px 0}
+.factoryAttentionNeedsAction h2{color:#fff0c7}
+.factoryObservationLine{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;color:#b5c9df;font-size:13px;line-height:1.5;margin:10px 0 18px}
+.factorySectionHeading{margin-bottom:16px}
+.factorySectionHeading h2,.productPulseHeader h2{font-size:23px;line-height:1.3;color:#f3f7ff;margin:0}
+.factorySectionHeading p,.productPulseHeader p{color:#bbcadb;font-size:14px;line-height:1.5;margin:6px 0 0}
+.factoryRecent{background:#172333;border:1px solid #35475d;border-radius:15px;padding:24px;margin-top:28px}
+.factoryActivityList{list-style:none;padding:0;margin:0;display:grid}
+.factoryActivityList li{display:grid;grid-template-columns:155px minmax(0,1fr) auto;gap:16px;align-items:start;border-top:1px solid #36475b;padding:16px 0}
+.factoryActivityDate{font-size:13px;color:#bbcada;line-height:1.4}
+.factoryActivityCopy{display:grid;gap:4px}
+.factoryActivityCopy strong{font-size:15px;color:#eaf1ff}
+.factoryActivityCopy>span{font-size:14px;line-height:1.5;color:#ccdaed}
+.factoryActivityList a{font-size:13px;color:#c2dfff;min-height:40px;display:flex;align-items:center}
+.factoryEmptyActivity{color:#c7d4e4;font-size:14px}
+.productOverviewTechnical{margin-top:24px;border:1px solid #35485d;border-radius:11px;background:#182536;padding:16px}
+.productOverviewTechnical summary{cursor:pointer;min-height:44px;color:#c6dcf9;font-size:14px;font-weight:700}
+.productSituationCard{border-color:#40516a;border-radius:16px;background:#172332}
+.productSituationCard.compact .productTruth{grid-template-columns:minmax(0,1fr) auto;padding:18px 20px}
+.productSituationCard .productTruthMain>strong{font-size:20px;line-height:1.32}
+.productSituationCard.compact .productTruthMain>strong{font-size:19px;line-height:1.32}
+.productSituationCard.compact .productTruthMain p{font-size:14px;line-height:1.55}
+.productSituationCard .productFact span{font-size:12px;line-height:1.5}
+.productSituationCard .productFact strong{font-size:14px;line-height:1.48}
+.productActivitySnapshot{padding:20px;display:grid;grid-template-columns:1.12fr 1.12fr .86fr;gap:18px;border-bottom:1px solid #384c62}
+.productActivitySnapshot>div{min-width:0}
+.productActivitySnapshot>div+div{padding-left:18px;border-left:1px solid #3a4d62}
+.productActivitySnapshot strong{display:block;font-size:17px;line-height:1.4;color:#f4f7ff;margin:7px 0}
+.productActivitySnapshot p{font-size:14px;line-height:1.55;color:#c2d1e3;margin:0}
+.productActivitySnapshot .productDeclaredPhase{grid-column:1/-1;border-top:1px solid #334458;padding-top:12px;color:#b4c4d7;font-size:12px}
+.productActivitySnapshot .productDecisionLink{grid-column:1/-1;justify-self:start}
+.productSituationCard.compact .productCompactDetails{grid-template-columns:repeat(3,minmax(0,1fr))}
+.productSituationCard.compact .productFact:nth-child(3){border-right:0}
+.productSituationCard.compact .productFact:nth-child(n+4){display:none}
+.productSituationCard .productCompactDetails{background:#142132}
+.productSituationCard .productFact{border-bottom:0}
+.productSituationCard .productCompactOpen{min-height:44px;display:flex;align-items:center;justify-content:flex-end;padding:12px 22px;font-size:14px;font-weight:700}
+.productSituationCard.compact .journeyEvidence{border-top:1px solid #36475b}
+.productWorkDisclosure{border-top:1px solid #3b4e64;background:#152031}
+.productWorkDisclosure>summary{padding:16px 22px;min-height:50px;color:#cfddf5;font-size:14px;font-weight:700;cursor:pointer}
+.productWorkDisclosure>summary:focus-visible{outline:2px solid #8db9ff}
+.productEventList{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:9px}
+.productEventList li{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:#cedbec}
+.productEventList time{color:#acbfd6}
+.productEventList a{color:#b6d8ff;text-decoration:underline}
+.sidebar .navItemLabel{font-size:15px;line-height:1.4}
+.sidebar .navItemHint{font-size:12px;line-height:1.5}
+.sidebar .navGroupLabel{font-size:12px}
+.sidebar .navItem{min-height:54px}
+.pageHeader .subtitle{font-size:15px;line-height:1.55}
+@media(max-width:1150px){.productActivitySnapshot{grid-template-columns:repeat(2,minmax(0,1fr))}.productActivitySnapshot .productRecentColumn{grid-column:1/-1;padding:15px 0 0;border-left:0;border-top:1px solid #34465c}}
+@media(max-width:760px){
+ .factoryCommandBar{grid-template-columns:1fr}.factoryCommandBar>div{padding:19px}
+ .factoryRecent{padding:16px}.factoryActivityList li{grid-template-columns:1fr;gap:5px}.factoryActivityList a{justify-content:flex-start}
+ .productActivitySnapshot{grid-template-columns:1fr;padding:16px}
+ .productActivitySnapshot>div+div,.productActivitySnapshot .productRecentColumn{grid-column:auto;padding:13px 0 0;border-left:0;border-top:1px solid #34455c}
+ .productSituationCard.compact .productCompactDetails{grid-template-columns:1fr}
+ .productSituationCard.compact .productFact{border-bottom:1px solid #34455c;border-right:0}
+ .productSituationCard.compact .productTruth{grid-template-columns:1fr}
+ .productSituationCard.compact .productTruthMarkers{max-width:none;justify-content:flex-start}
+}

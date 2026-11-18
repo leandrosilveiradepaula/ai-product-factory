@@ -33,6 +33,35 @@ function FindingRows({item}:{item:ProductSituation}){
   </div>)}
  </section>;
 }
+function ProductCurrentSnapshot({item}:{item:ProductSituation}){
+ const journey=describeProductJourney(item);
+ const diagnosis=diagnoseProduct(item);
+ const next=diagnosis.steps[0];
+ const recent=item.activities?.[0];
+ const now=item.state==="executing"&&item.currentWork
+  ?"Executando: "+item.currentWork:item.state==="investigate"&&item.blocker
+  ?item.blocker.title:item.headline;
+ return <section className="productActivitySnapshot" aria-label="Agora, próxima entrega e último registro">
+  <div className="productNowColumn">
+   <span className="factoryOverline">AGORA</span>
+   <strong>{now}</strong>
+   <p>{item.state==="executing"?"Execução iniciada e lease vigente verificados.":item.explanation}</p>
+  </div>
+  <div className="productNextColumn">
+   <span className="factoryOverline">PRÓXIMA ENTREGA OU VERIFICAÇÃO</span>
+   <strong>{next?.title||journey.nextPhaseLabel}</strong>
+   <p>{next?.owner?"Responsável: "+next.owner:"A confirmação exige evidências atuais."}</p>
+  </div>
+  <div className="productRecentColumn">
+   <span className="factoryOverline">ÚLTIMO REGISTRO</span>
+   <strong>{recent?.title||"Nenhum evento rastreável nesta consulta"}</strong>
+   <p>{recent?<time dateTime={recent.at}>{new Date(recent.at).toLocaleString("pt-BR")}</time>:"Sem data comprovada"}</p>
+  </div>
+  <p className="productDeclaredPhase">Marco do cadastro: {journey.phaseLabel}. Posição administrativa, não percentual de conclusão.</p>
+  {item.state==="decision"?<Link prefetch={false} href="/gates" className="productDecisionLink">Revisar decisão real →</Link>:null}
+ </section>;
+}
+
 function NextAction({item,compact}:{item:ProductSituation;compact:boolean}){
  const diagnosed=diagnoseProduct(item);
  const human=describeProductJourney(item).action;
@@ -44,8 +73,8 @@ function NextAction({item,compact}:{item:ProductSituation;compact:boolean}){
   <div className="journeyActionText">
    <span className="journeyOverline">PRÓXIMO TRABALHO</span>
    <h4>{step.title}</h4>
-   <p>{compact?step.detail.slice(0,210):step.detail}</p>
-   <small><strong>Responsável:</strong> {step.owner}{item.state==="decision"?" · decisão humana acionável":" · sem aprovação exigida só por haver falha"}</small>
+   <p>{compact?step.detail.slice(0,155):step.detail}</p>
+   <small><strong>Responsável:</strong> {step.owner}{item.state==="decision"?" · decisão humana":" · trabalho técnico"}</small>
   </div>
   <div className="journeyActionLinks">
    <Link prefetch={false} className="productSituationButton" href={step.href}>{step.cta}
@@ -80,10 +109,11 @@ export function ProductSituationCard({item,showOpen=true,compact=false}:{item:Pr
    <span className={"productSituationStatus "+item.state}>{item.state==="decision"?"Decisão sua pendente":item.state==="investigate"?"Execução técnica bloqueada":item.state==="executing"?"Trabalho em curso":item.state==="stopped"?"Parado":item.state==="paused"?"Pausado":item.proof?.productReady?"Entrega avaliada":"Entrega não comprovada"}</span>
   </div>
   <EvidenceRibbon item={item}/>
+  <ProductCurrentSnapshot item={item}/>
   <FindingRows item={item}/>
-  {compact?<NextAction item={item} compact/>:
+  {compact?null:
    <>
-    <RemainingWork item={item}/>
+    <details className="productWorkDisclosure"><summary>Ver plano completo e ações técnicas</summary><NextAction item={item} compact={false}/><RemainingWork item={item}/></details>
     <details className="productJourneyDisclosure">
      <summary>Ver histórico da jornada cadastrada (não comprova conclusão)</summary>
      <section className="journeyPath" aria-label={"Etapas declaradas para "+item.name}>
@@ -109,10 +139,16 @@ export function ProductSituationCard({item,showOpen=true,compact=false}:{item:Pr
      </div>
     </details>
    </>}
-  {showOpen?<Link prefetch={false} className="productCompactOpen" href={"/projects/"+encodeURIComponent(item.key)}>Abrir situação e plano do produto →</Link>:null}
+  {showOpen?<Link prefetch={false} className="productCompactOpen" href={"/projects/"+encodeURIComponent(item.key)}>Abrir produto →</Link>:null}
   <details className="journeyEvidence">
    <summary>Ver pedido, tentativas e evidência técnica</summary>
    <div className="journeyEvidenceContent">
+    <div><strong>ATIVIDADE REGISTRADA</strong>
+     {item.activities?.length?<ol className="productEventList">{item.activities.map((event,i)=><li key={event.kind+"-"+event.at+"-"+i}>
+      <time dateTime={event.at}>{new Date(event.at).toLocaleString("pt-BR")}</time>
+      <span>{event.title}</span>{event.href?<Link prefetch={false} href={event.href}>Evidência →</Link>:null}
+     </li>)}</ol>:<p>Sem eventos rastreáveis neste recorte.</p>}
+    </div>
     <div><strong>O QUE ESTÁ ACONTECENDO</strong><p>{item.headline}</p></div>
     <div><strong>ÚLTIMA SOLICITAÇÃO</strong><p>{item.lastRequest||"Sem pedido recente registrado neste canal."}</p></div>
     <div><strong>ÚLTIMA TENTATIVA</strong>
