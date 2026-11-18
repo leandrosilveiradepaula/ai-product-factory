@@ -533,6 +533,15 @@ export async function getProjectStateContext(projectId:string):Promise<ProjectSt
  };
 }
 
+export type ProjectRecoveryStatus={status:string;cycle:number;maxCycles:number;message:string|null;updatedAt:string}|null;
+export async function getProjectRecoveryStatus(projectId:string):Promise<ProjectRecoveryStatus>{
+ const cfg=serverHeaders();if(!cfg||!projectId)return null;
+ const response=await fetch(cfg.url+"/rest/v1/factory_repair_jobs?select=status,cycle,max_cycles,finding,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"});
+ if(!response.ok)return null;const rows=await response.json();const row=Array.isArray(rows)?rows[0]:null;if(!row)return null;
+ const finding=row.finding&&typeof row.finding==="object"?row.finding:{};const message=typeof finding.message==="string"?finding.message:typeof finding.detail==="string"?finding.detail:null;
+ return{status:String(row.status||"unknown"),cycle:Number(row.cycle||0),maxCycles:Number(row.max_cycles||0),message,updatedAt:String(row.updated_at||"")};
+}
+
 export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){
  const operator=await requireConsoleOperator();
  const cfg=serverHeaders();if(!cfg)throw new Error("Control plane unavailable");

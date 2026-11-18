@@ -1,118 +1,30 @@
 import Link from "next/link";
-import {isProviderCreditExhausted} from "../lib/operational-health-inventory";
-import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getRuns,getUsageOverview} from "../lib/control-plane";
-import {ActionLink,EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "./ui";
+import {getDashboard,getHumanGates,getProjectDetail,getProjectRecoveryStatus,getProjectStateContext} from "../lib/control-plane";
+import {ActionLink,PageHeader,StatusPill} from "./ui";
+
+const journey=["Ideia","Plano","Construção","Validação","Disponível"];
+const stageIndex:Record<string,number>={discovery:0,specification:0,planning:1,implementation:2,review:2,validation:3,preview:3,human_gate:4,release:4,operations:4};
+const time=(value:string)=>new Intl.DateTimeFormat("pt-BR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
+function reason(value:unknown){if(typeof value==="string")return value;if(value&&typeof value==="object"&&!Array.isArray(value)){const row=value as Record<string,unknown>;return typeof row.detail==="string"?row.detail:typeof row.reason==="string"?row.reason:typeof row.message==="string"?row.message:null;}return null;}
+function state(detail:Awaited<ReturnType<typeof getProjectDetail>>,context:Awaited<ReturnType<typeof getProjectStateContext>>,recovery:Awaited<ReturnType<typeof getProjectRecoveryStatus>>){
+ const gap=context.snapshot?.gaps.map(reason).find(Boolean); const repair=context.snapshot?.sourceStatus?.repair_status;
+ if(detail?.pendingRun)return{tone:"working",label:"A Factory está trabalhando",headline:"Trabalho em execução",copy:"Há uma execução registrada para este produto. A próxima atualização virá da própria esteira."};
+ if(recovery?.status==="blocked"||repair==="blocked"||gap)return{tone:"blocked",label:"A Factory está investigando",headline:"A evolução está bloqueada",copy:recovery?.message||gap||"Há uma dependência técnica registrada. Não existe uma decisão humana pendente para este bloqueio."};
+ if(detail?.stage==="operations")return{tone:"available",label:"Entrega observada",headline:"Uma entrega foi observada",copy:"A entrega não certifica o produto inteiro. A avaliação global continua separada e rastreável."};
+ if(detail?.active===false)return{tone:"quiet",label:"Produto parado",headline:"Sem trabalho autorizado",copy:"Não há execução ativa para este produto."};
+ return{tone:"quiet",label:"Aguardando próxima atualização",headline:"Sem execução ativa",copy:"A Factory não registrou trabalho ativo neste momento."};
+}
 
 export default async function Home(){
- const [d,health,usage,gates,runs,audit]=await Promise.all([
-  getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(30,true),getRuns(12),getAuditEvents(12),
- ]);
- // Historical or superseded pending rows are not operator actions.
- const pending=gates.filter(g=>g.status==="pending"&&g.actionable);
- const incidents=health.incidents.slice(0,2);
- const blocked=health.failedRuns+health.blockedRuns;
- const recentRuns=runs.slice(0,8);
- const recentAudit=audit.slice(0,8);
- const requiresDecision=pending.length>0;
- const hasIncident=incidents.length>0;
- const overviewAction=requiresDecision
-  ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
-  :hasIncident
-   ?{heading:"Existem ocorrências para investigar",description:"A Factory registrou um problema operacional. Consulte a execução e a evidência antes de intervir.",href:"/runs",label:"Ver execuções",kind:"warning"}
-   :d.projects.length===0
-    ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
-    :{heading:"Seus projetos estão no centro do trabalho",description:"Acompanhe a etapa de cada produto. Você só precisa intervir quando houver uma aprovação ou dependência explícita.",href:"/projects",label:"Ver todos os projetos",kind:"neutral"};
+ const dashboard=await getDashboard();
+ const products=await Promise.all(dashboard.projects.map(async project=>{const detail=await getProjectDetail(project.key);return{project,detail,context:await getProjectStateContext(detail?.id||""),recovery:await getProjectRecoveryStatus(detail?.id||"")};}));
+ const gates=await getHumanGates(50,true); const pending=gates.filter(g=>g.actionable&&g.status==="pending");
+ const active=products.filter(x=>x.detail?.pendingRun).length; const available=products.filter(x=>x.project.stage==="operations").length; const blocked=products.filter(x=>state(x.detail,x.context,x.recovery).tone==="blocked").length;
  return <>
-  <PageHeader
-   eyebrow="Área de trabalho"
-   title="Visão geral"
-   subtitle="Projetos, decisões e andamento. Os detalhes técnicos ficam disponíveis somente quando você precisar."
-  />
-
-  <section className={"homeFocus "+overviewAction.kind} aria-label="Próximo passo">
-   <div className="homeFocusContent">
-    <span className="homeFocusEyebrow">Onde começar</span>
-    <h2>{overviewAction.heading}</h2>
-    <p>{overviewAction.description}</p>
-   </div>
-   <ActionLink href={overviewAction.href} variant={requiresDecision||d.projects.length===0?"primary":"secondary"}>{overviewAction.label} →</ActionLink>
-  </section>
-
-  <section className="section homeProjects" aria-label="Seus projetos">
-   <SectionHeader title="Seus projetos" action={<Link className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
-   {d.projects.length===0?
-    <div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Você pode começar com uma ideia ou importar um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
-   :<div className="homeProjectGrid">
-     {d.projects.slice(0,4).map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
-      <div className="homeProjectHeading"><strong>{p.name}</strong><StatusPill status={p.status}/></div>
-      <span className="homeProjectStage">Etapa registrada: <b>{humanizeStatus(p.stage)}</b></span>
-      <span className="homeProjectFooter">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")} <b>Ver projeto →</b></span>
-     </Link>)}
-    </div>}
-  </section>
-
-  <section className="homeSummary" aria-label="Resumo operacional">
-   <Link href="/projects" className="homeSummaryItem"><span>Projetos no portfólio</span><strong>{d.projects.length}</strong></Link>
-   <Link href="/runs" className="homeSummaryItem"><span>Execuções em andamento</span><strong>{d.activeRuns}</strong></Link>
-   <Link href="/gates" className={d.pendingGates?"homeSummaryItem warning":"homeSummaryItem"}><span>Aprovações registradas como pendentes</span><strong>{d.pendingGates}</strong></Link>
-   <Link href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Falhas / fila de erro</span><strong>{blocked}</strong></Link>
-  </section>
-
-  <section className="section homeAttention">
-   <SectionHeader title="Acompanhamento de atenção" action={<Link className="homeSectionLink" href="/gates">Abrir todas as aprovações →</Link>}/>
-   {!requiresDecision&&!hasIncident?
-    <div className="homeQuietStatus" role="status">Nenhuma decisão humana acionável ou ocorrência recente foi encontrada nesta consulta. O acompanhamento dos demais bloqueios continua nas telas de cada projeto.</div>
-   :<div className="attentionGrid">
-     {pending.slice(0,2).map(g=><article className="card attentionCard warning" key={g.id}>
-      <div className="attentionBanner"><StatusPill status={g.type}/><span className="muted">Decisão humana</span></div>
-      <h3>{g.projectName||"Projeto"} precisa de uma decisão</h3>
-      {g.taskTitle?<p className="muted">{g.taskTitle}</p>:null}
-      <p>{Array.isArray(g.reasons)?g.reasons.map(r=>typeof r==="string"?r:JSON.stringify(r)).join(" · "):String(g.reasons||"A decisão humana é necessária para continuar.")}</p>
-      <div className="attentionFooter"><Link href={"/runs/"+g.runId}>Ver execução</Link><ActionLink href="/gates" variant="ghostButton">Revisar decisão</ActionLink></div>
-     </article>)}
-     {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
-      <div className="attentionBanner"><StatusPill status={i.status}/><span className="muted">Ocorrência operacional</span></div>
-      <h3>{isProviderCreditExhausted(i.error)?"Execução bloqueada por crédito da API":"Execução exige investigação"}</h3>
-      <p>{isProviderCreditExhausted(i.error)?"A API OpenAI recusou esta tentativa por crédito insuficiente. O registro é histórico e não comprova o saldo atual. Verifique o faturamento do provedor antes de solicitar recuperação auditada; o teto interno da Factory não adiciona créditos.":i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio."}</p>
-      <div className="attentionFooter"><span>{i.route?humanizeStatus(i.route):"Sem rota"}</span><ActionLink href={"/runs/"+i.id} variant="ghostButton">Ver execução</ActionLink></div>
-     </article>)}
-    </div>}
-  </section>
-
-  <details className="technicalDetails homeTechnicalDetails">
-   <summary>Indicadores técnicos e custos</summary>
-   <div className="technicalStats">
-    <Link href="/audit"><span>Eventos de ferramenta</span><strong>{usage.toolEvents}</strong><small>Registros auditados</small></Link>
-    <Link href="/usage"><span>Custo conhecido (USD)</span><strong>{usage.knownCost.toFixed(4)}</strong><small>Acumulado observado</small></Link>
-    <Link href="/usage"><span>Codex real</span><strong>{d.codexCalls}</strong><small>Invocações registradas</small></Link>
-    <Link href="/usage"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>Bloqueia novas chamadas pagas</small></Link>
-   </div>
-   <div className="homeTechnicalNote">{health.queuedRuns} execuções registradas na fila · {health.expiredLeases} leases expirados. Valores do Control Plane, não prova de execução em tempo real.</div>
-  </details>
-
-  <details className="overviewActivityDetails">
-   <summary><span><strong>Atividade técnica recente</strong><small>Execuções, SHAs e auditoria para investigação.</small></span><span className="muted">{recentRuns.length} execuções · {recentAudit.length} eventos</span></summary>
-   <div className="overviewActivityBody">
-    <section className="section">
-     <SectionHeader title="Execuções recentes" action={<ActionLink href="/runs" variant="ghostButton">Todas as execuções</ActionLink>}/>
-     <div className="table factoryActivityTable">
-      <div className="tableRow tableHeader"><span>Tarefa / execução</span><span>Rota</span><span>Estado</span><span>Tentativas</span><span>Commit</span></div>
-      {recentRuns.length===0?<EmptyState>Nenhuma execução registrada.</EmptyState>:recentRuns.map(r=><Link className="tableRow" href={"/runs/"+r.id} key={r.id}>
-       <div><strong>{r.taskTitle}</strong><div className="muted mono">{r.id.slice(0,12)}</div></div>
-       <StatusPill status={r.route||"unrouted"}/>
-       <StatusPill status={r.status}/>
-       <span>{r.attemptCount}</span>
-       <code>{r.candidateCommit?r.candidateCommit.slice(0,12):"—"}</code>
-      </Link>)}
-     </div>
-    </section>
-    <section className="section">
-     <SectionHeader title="Auditoria recente" action={<ActionLink href="/audit" variant="ghostButton">Abrir auditoria</ActionLink>}/>
-     {recentAudit.length===0?<EmptyState>Nenhum evento recente de auditoria.</EmptyState>:<div className="card recentActivity"><div className="timeline">
-      {recentAudit.map(x=><div className="timelineItem" key={x.id}><div className="badgeLine"><StatusPill status={x.actorType}/><strong>{x.eventType}</strong></div><div className="timelineMeta"><span>{new Date(x.createdAt).toLocaleString("pt-BR")}</span>{x.projectName?<span>{x.projectName}</span>:null}{x.runId?<Link href={"/runs/"+x.runId} className="mono">execução {x.runId.slice(0,8)}</Link>:null}</div></div>)}
-     </div></div>}
-    </section>
-   </div>
-  </details>
+  <PageHeader eyebrow="Central de produtos" title="O que sua Factory está entregando" subtitle="Acompanhe produtos e resultados. A infraestrutura só aparece quando ela explica uma decisão ou uma evidência." actions={<ActionLink href="/projects/new" variant="primary">Descrever um novo produto</ActionLink>}/>
+  <section className="factoryPulse" aria-label="Estado atual da Factory"><div><span className="pulseKicker">Agora</span><h2>{active?"A Factory está executando trabalho":"Nenhuma execução está em curso"}</h2><p>{active?`${active} produto${active===1?"":"s"} tem execução registrada. Você será chamado somente se surgir uma decisão que exija julgamento humano.`:"Não há trabalho ativo registrado. Isso não significa que todos os produtos estejam prontos; veja o próximo resultado de cada um abaixo."}</p></div><div className="pulseStats"><span><b>{available}</b> entregas observadas</span><span><b>{blocked}</b> bloqueios em investigação</span><span><b>{pending.length}</b> decisões para você</span></div></section>
+  {pending.length>0?<section className="humanInbox" aria-labelledby="human-inbox-title"><div><span className="eyebrow">Sua decisão</span><h2 id="human-inbox-title">{pending.length} decisão{pending.length===1?"":"ões"} exige{pending.length===1?"":"m"} seu julgamento</h2><p>A Factory não transforma falhas técnicas em aprovação humana. Estas são as únicas ações que requerem você agora.</p></div><ActionLink href="/gates" variant="primary">Revisar decisões</ActionLink></section>:null}
+  <section className="portfolio" aria-labelledby="portfolio-title"><div className="portfolioHeading"><div><span className="eyebrow">Portfólio</span><h2 id="portfolio-title">Produtos em acompanhamento</h2></div><Link href="/projects" className="textLink">Ver visão administrativa</Link></div><div className="productBoard">{products.map(({project,detail,context,recovery})=>{const verdict=state(detail,context,recovery);const index=stageIndex[project.stage]??0;const objective=context.objective||"Objetivo ainda não registrado no Control Plane.";const preview=detail?.previewPolicy?.evidenceSource;return <article className={`productStory ${verdict.tone}`} key={project.key}><div className="productStoryTop"><div className="productIdentity"><span className="productKind">{project.key==="factory-wake-canary-20261019"?"Registro técnico":"Produto"}</span><h3>{project.name}</h3></div><StatusPill status={verdict.tone==="blocked"?"blocked":verdict.tone==="working"?"running":project.stage}/></div><p className="productObjective">{objective}</p><div className="journeyRail" aria-label={`Jornada registrada: ${journey[Math.min(index,journey.length-1)]}.`}>{journey.map((step,i)=><span className={i<index?"complete":i===index?"current":""} key={step}>{step}</span>)}</div><div className="productVerdict"><span>{verdict.label}</span><strong>{verdict.headline}</strong><p>{verdict.copy}</p>{recovery?.status==="blocked"?<small>Recuperação: ciclo {recovery.cycle} de {recovery.maxCycles} · aguardando correção técnica da Factory.</small>:null}</div><div className="productStoryFooter"><span>Última evolução: {time(project.updatedAt)}</span><div>{preview?<span className="evidenceMark">Evidência registrada</span>:null}<Link href={`/projects/${project.key}`} className="productOpen">Abrir espaço do produto <span aria-hidden>→</span></Link></div></div></article>;})}</div></section>
+  <section className="factoryRecent" aria-label="Como interpretar o acompanhamento"><div><span className="eyebrow">Transparência sem ruído</span><h2>O que este painel mostra — e o que ele não presume</h2></div><p>“Entrega observada” não quer dizer produto pronto. “A Factory está trabalhando” só aparece quando existe execução registrada. Prévia, CI e release permanecem evidências separadas no espaço de cada produto.</p></section>
  </>;
 }

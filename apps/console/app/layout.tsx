@@ -1,5 +1,6 @@
 import "./theme.css";
 import "./globals.css";
+import "./product-experience.css";
 import {Inter} from "next/font/google";
 import {ConsoleShell} from "./shell";
 
