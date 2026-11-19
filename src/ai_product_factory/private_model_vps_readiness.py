@@ -31,7 +31,11 @@ class VpsSqlReadiness:
         return {
             "schema": "factory-vps-sql-infodive-readiness-v1",
             "provider": "infodive_ibm_cloud",
-            "status": "blocked",
+            "status": "preflight_ready" if (
+                self.code == "verified" and self.network == "verified"
+                and self.secret == "configured" and self.price == "approved"
+                and self.budget == "available" and self.worker == "configured"
+            ) else "blocked",
             "code": self.code,
             "network": self.network,
             "secret": self.secret,
@@ -101,6 +105,12 @@ def assess(
             budget = "available"
         except (PermissionError, RuntimeError, ValueError, OSError):
             budget = "blocked"
-    # The lane MUST remain unprovisioned: no service-role-only SQL claim RPC,
-    # lineage-bound authorization, durable lease and completion receipts yet.
-    return VpsSqlReadiness(code, network, secret, price, budget)
+    # Reuse existing Factory Product and Direct durable CAS/lease queues.
+    # Network/credential preflight is NOT evidence of a claimed work item.
+    worker = "configured" if (
+        src.get("FACTORY_PRIMARY_MODEL_PROVIDER") == "infodive_ibm_cloud"
+        and src.get("FACTORY_INFODIVE_VPS_WORKER_ENABLED") == "true"
+        and src.get("FACTORY_SQL_INFODIVE_ENABLED") == "true"
+        and src.get("FACTORY_SQL_INFODIVE_PRIVATE_ROUTE_ATTESTED") == "true"
+    ) else "not_provisioned"
+    return VpsSqlReadiness(code, network, secret, price, budget, worker)

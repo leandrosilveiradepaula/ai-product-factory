@@ -30,7 +30,7 @@ def main(argv=None):
             "sql_executed": False,
         }
     print(json.dumps(receipt, sort_keys=True))
-    return 2
+    return 0 if receipt["status"] == "preflight_ready" else 2
 
 
 if __name__ == "__main__":
