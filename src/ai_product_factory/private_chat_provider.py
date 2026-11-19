@@ -148,9 +148,27 @@ class SqlInfodiveProvider:
     def __repr__(self) -> str:
         return "SqlInfodiveProvider(<redacted>)"
 
+    def verify_route(self) -> None:
+        # The real transport always requires the existing VPS WireGuard route.
+        # Injected offline test transports do not contact any network.
+        if self._transport is _private_transport:
+            from .private_model_vps_route import (
+                PrivateVpsRouteError, verify_existing_vps_route,
+            )
+            try:
+                verify_existing_vps_route(
+                    self.config.base_url,
+                    interface=os.getenv("FACTORY_SQL_INFODIVE_WG_INTERFACE", "wg-ibm"),
+                )
+            except PrivateVpsRouteError:
+                raise PrivateModelError("private VPS route unavailable") from None
+
     def execute(self, request: ModelRequest) -> ModelResult:
         if not isinstance(request, ModelRequest):
             raise PrivateModelError("invalid private model request")
+        # Check route BEFORE reading the bearer: never leak it to the
+        # default interface, public internet or an untrusted worker host.
+        self.verify_route()
         try:
             secret = self._credential()
         except Exception:

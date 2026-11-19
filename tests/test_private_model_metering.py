@@ -104,3 +104,20 @@ class CostTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrivateRouteBeforeCostTests(unittest.TestCase):
+    def test_invalid_route_never_writes_paid_ledger(self):
+        ledger=Ledger()
+        class BadRoute:
+            def verify_route(self):
+                raise PrivateModelError("private VPS route unavailable")
+            def execute(self, req):
+                raise AssertionError("must not call model")
+        provider=MeteredPrivateProvider(
+            BadRoute(), PrivatePricing.from_env(ENV),
+            store=ledger, reserve=Decimal("0.5"))
+        with self.assertRaisesRegex(PrivateModelError, "route unavailable"):
+            provider.execute(ModelRequest(task_id="t", run_id="r", objective="x", context="y"))
+        self.assertEqual(ledger.reservations, [])
+        self.assertEqual(ledger.updates, [])

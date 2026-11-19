@@ -74,6 +74,11 @@ class MeteredPrivateProvider:
     def execute(self, req: ModelRequest) -> ModelResult:
         if not req.run_id:
             raise PrivateModelError("private model requires durable run_id")
+        # A failed local route is not a model call. Fail before creating
+        # a paid-cost reservation or marking exposure as unknown.
+        verify_route = getattr(self.underlying, "verify_route", None)
+        if callable(verify_route):
+            verify_route()
         if self.reserve is None:
             from .primary_cost_config import require_primary_cost_capacity
             amount = require_primary_cost_capacity().reserve_usd

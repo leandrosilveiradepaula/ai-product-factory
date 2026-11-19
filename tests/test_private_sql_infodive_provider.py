@@ -1,5 +1,7 @@
 import json
 import unittest
+from unittest.mock import patch
+from ai_product_factory.private_model_vps_route import PrivateVpsRouteError
 
 from ai_product_factory.model_executor import ModelRequest
 from ai_product_factory.private_chat_provider import (
@@ -89,3 +91,18 @@ class PrivateChatTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VpsProviderBoundaryTests(unittest.TestCase):
+    def test_real_transport_checks_existing_vps_route_before_reading_bearer(self):
+        from ai_product_factory.private_chat_provider import SqlInfodiveProvider
+        seen = []
+        cfg = PrivateChatConfig(base_url="http://10.66.66.1",
+                                model_id="SQL-InfoDive", allow_private_http=True,
+                                host_header="chat.internal")
+        provider = SqlInfodiveProvider(cfg,credential=lambda:seen.append("credential") or "sentinel")
+        with patch("ai_product_factory.private_model_vps_route.verify_existing_vps_route",
+                   side_effect=PrivateVpsRouteError("unapproved")):
+            with self.assertRaisesRegex(PrivateModelError, "route unavailable"):
+                provider.execute(ModelRequest(task_id="t", objective="x", context="y"))
+        self.assertEqual(seen, [])
