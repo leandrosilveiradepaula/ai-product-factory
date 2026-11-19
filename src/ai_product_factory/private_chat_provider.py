@@ -65,19 +65,20 @@ class PrivateChatConfig:
         if (port == 0 or uri.username or uri.password or uri.query or uri.fragment
                 or uri.path not in {"", "/"}):
             raise PrivateModelError("invalid private model endpoint")
-        # Only allow a private, literal IPv4 over the already approved VPN.
-        # Public HTTP/DNS names and redirects are always forbidden.
-        if uri.scheme == "http":
-            try:
-                ip = ipaddress.ip_address(hostname)
-            except ValueError:
-                raise PrivateModelError("private HTTP requires a private IP literal") from None
-            if (not self.allow_private_http or ip.version != 4 or not ip.is_private
-                    or ip.is_loopback or ip.is_link_local or ip.is_reserved
-                    or ip.is_unspecified or ip.is_multicast):
-                raise PrivateModelError("private HTTP requires a reviewed VPN route")
-        elif self.allow_private_http:
-            raise PrivateModelError("HTTP exception requires an HTTP endpoint")
+        # Both HTTPS and HTTP must target a literal RFC1918 IPv4 endpoint.
+        # Public HTTPS is not a safe fallback for a private bearer credential.
+        try:
+            ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            raise PrivateModelError("private model requires a literal IP") from None
+        if (ip.version != 4 or not ip.is_private or ip.is_loopback
+                or ip.is_link_local or ip.is_reserved or ip.is_unspecified
+                or ip.is_multicast):
+            raise PrivateModelError("private model requires a private IP")
+        if uri.scheme == "http" and not self.allow_private_http:
+            raise PrivateModelError("private HTTP requires explicit VPN approval")
+        if uri.scheme == "https" and self.allow_private_http:
+            raise PrivateModelError("HTTP exception requires HTTP")
         if not isinstance(self.model_id, str) or not _MODEL_PATTERN.fullmatch(self.model_id):
             raise PrivateModelError("invalid private model identifier")
         if self.host_header is not None:
