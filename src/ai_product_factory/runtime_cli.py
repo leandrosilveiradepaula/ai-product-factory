@@ -6,6 +6,10 @@ from .metered_provider import MeteredPrimaryProvider
 from .openai_provider import OpenAIResponsesProvider
 from .product_stage_executor import ProductStageExecutor
 from .runtime_auth import AuthKind,RuntimeAuthResolver
+from .primary_provider_selection import (
+ selected_primary_provider,require_primary_provider_ready,
+ require_agent_provider_policy,build_primary_model_executor,
+)
 from .runtime_worker import RuntimeWorker
 from .supabase_runtime_queue import SupabaseRuntimeQueue
 from .supabase_backlog_dispatch import SupabaseBacklogDispatch
@@ -109,11 +113,10 @@ def require_codex_runtime_enabled()->None:
 
 def build_handler():
  require_primary_runtime_enabled()
- auth=RuntimeAuthResolver().resolve_primary_api()
- if auth.kind in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:
-  profiles=SupabaseAgentScheduler().profiles()
-  return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())),team_profiles=profiles)
- raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
+ require_primary_provider_ready()
+ profiles=SupabaseAgentScheduler().profiles()
+ return ProductStageExecutor(build_primary_model_executor(),team_profiles=profiles)
+
 
 def run_recovery_once(max_attempts:int=3)->dict:
  queue=SupabaseRuntimeQueue()
@@ -217,8 +220,7 @@ def _release_completed_change_set(scheduler,item,receipt):
 def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
-  auth=RuntimeAuthResolver().resolve_primary_api()
-  if auth.kind not in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
+  require_primary_provider_ready()
   require_paid_runtime_budget()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  scheduler=SupabaseAgentScheduler()
@@ -228,7 +230,11 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
   run_id,agent_key=selected
  elif not agent_key:
   raise ValueError("agent_key is required when run_id is explicit")
- scheduler.require_route_tools(agent_key,"direct")
+ profile=scheduler.require_route_tools(agent_key,"direct")
+ try:
+  require_agent_provider_policy(profile,selected_primary_provider())
+ except (RuntimeError,PermissionError) as exc:
+  return {"claimed":False,"status":"blocked","error":str(exc)}
  queue=SupabaseDirectRunQueue()
  # Fail before lease claim or model call when the trusted Actions identity
  # cannot acquire its narrowly scoped cross-repository credential.
@@ -250,7 +256,7 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
   checkpoint=lambda:_routed_checkpoint(item,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
-  producer=ModelImplementationProducer(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())))
+  producer=ModelImplementationProducer(build_primary_model_executor())
   producer=_CheckpointedProducer(producer,checkpoint)
   github=_CheckpointedGitHub(preflight_github or GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):

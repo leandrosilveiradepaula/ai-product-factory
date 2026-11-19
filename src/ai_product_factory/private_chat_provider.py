@@ -188,6 +188,20 @@ class SqlInfodiveProvider:
             "acceptance_criteria": list(request.acceptance_criteria),
             "files": list(request.files),
         }
+        # General Factory models also need structured product and code output.
+        # Use plain Chat Completions JSON instructions rather than assuming
+        # the private API supports OpenAI response_format.
+        if request.output_schema is not None:
+            if not isinstance(request.output_schema, dict):
+                raise PrivateModelError("invalid structured model output contract")
+            try:
+                encoded = json.dumps(request.output_schema, ensure_ascii=False)
+            except (TypeError, ValueError):
+                raise PrivateModelError("invalid structured model output contract") from None
+            if len(encoded) > 32000:
+                raise PrivateModelError("structured model output contract too large")
+            prompt["output_schema"] = request.output_schema
+            prompt["output_rule"] = "Return only JSON matching output_schema; no Markdown fences."
         body = json.dumps({
             "model": self.config.model_id,
             "messages": [{"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}],
