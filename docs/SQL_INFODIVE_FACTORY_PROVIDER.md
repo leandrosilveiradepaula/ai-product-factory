@@ -58,3 +58,32 @@ Environment variables (all intentionally UNSET in this change):
 
 No live API call, budget change, migration, worker deployment, production
 merge, SQL execution or new recurring paid service is authorized here.
+
+## Manual WireGuard network-only preflight
+
+The workflow .github/workflows/sql-infodive-private-network.yml runs only
+via workflow_dispatch on the exact main repository and protected GitHub
+Environment ibm-private-llm. It does not receive the IBM model API bearer.
+It prepares a minimally scoped ephemeral WireGuard peer, routes only the
+private model IP /32 over factory-ibm, verifies interface and TCP reachability
+without sending HTTP, removes the temporary peer key and records a sanitized
+7-day SHA-bound artifact. A passing result proves network only, not a model,
+pricing, SQL, credential, or production readiness assessment.
+
+This workflow intentionally cannot run successfully until a private-network
+administrator provisions a new dedicated Factory peer (do not reuse financial
+Agent VPN keys) with least privilege and configures protected environment:
+
+- Secret FACTORY_INFODIVE_WG_CLIENT_PRIVATE_KEY
+- Variable FACTORY_INFODIVE_WG_PEER_PUBLIC_KEY
+- Variable FACTORY_INFODIVE_WG_ENDPOINT (hostname:UDP-port)
+- Variable FACTORY_INFODIVE_WG_CLIENT_ADDRESS (dedicated RFC1918 /32)
+- Variable FACTORY_SQL_INFODIVE_BASE_URL (private API IPv4 base URL)
+- Variable FACTORY_SQL_INFODIVE_MODEL (verified deployed model identifier)
+- Variable FACTORY_SQL_INFODIVE_HTTP_HOST (actual Host header, optional)
+
+Never put private keys or model credentials in PRs, workflows, artifacts,
+project manifests, UI settings, or GitHub logs. Do not click Run workflow
+before the dedicated VPN/access approval. A future SQL-specialist worker
+still needs an independent API credential and pricing/ledger approval; the
+general Product Stage/Direct/Codex routes remain untouched.
