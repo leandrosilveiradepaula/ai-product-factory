@@ -113,6 +113,14 @@ def require_codex_runtime_enabled()->None:
 
 def build_handler():
  require_primary_runtime_enabled()
+ # Keep the original OpenAI runtime path, mocks and auth semantics unchanged.
+ if selected_primary_provider()=="openai":
+  auth=RuntimeAuthResolver().resolve_primary_api()
+  if auth.kind in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:
+   profiles=SupabaseAgentScheduler().profiles()
+   return ProductStageExecutor(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider())),team_profiles=profiles)
+  raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
+ # A distinct, consciously selected native VPS-only IBM model lane.
  require_primary_provider_ready()
  profiles=SupabaseAgentScheduler().profiles()
  return ProductStageExecutor(build_primary_model_executor(),team_profiles=profiles)
@@ -220,7 +228,11 @@ def _release_completed_change_set(scheduler,item,receipt):
 def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)->dict:
  try:
   require_primary_runtime_enabled()
-  require_primary_provider_ready()
+  if selected_primary_provider()=="openai":
+   auth=RuntimeAuthResolver().resolve_primary_api()
+   if auth.kind not in {AuthKind.OPENAI_API_KEY,AuthKind.OPENAI_API_WIF}:raise RuntimeError(f"No supported primary-model runtime auth is configured (resolved: {auth.kind.value})")
+  else:
+   require_primary_provider_ready()
   require_paid_runtime_budget()
  except (RuntimeError,PermissionError) as exc:return {"claimed":False,"status":"blocked","error":str(exc)}
  scheduler=SupabaseAgentScheduler()
@@ -256,7 +268,9 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
   checkpoint=lambda:_routed_checkpoint(item,worker_id)
   if item.repository!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(item.project_key,("contents_write","issues_write","pull_requests_write"))
-  producer=ModelImplementationProducer(build_primary_model_executor())
+  executor=(ModelExecutor(primary=MeteredPrimaryProvider(OpenAIResponsesProvider()))
+            if selected_primary_provider()=="openai" else build_primary_model_executor())
+  producer=ModelImplementationProducer(executor)
   producer=_CheckpointedProducer(producer,checkpoint)
   github=_CheckpointedGitHub(preflight_github or GitHubRestAdapter(repository=item.repository),checkpoint)
   if getattr(item,"change_set_id",None):
