@@ -87,3 +87,7 @@ project manifests, UI settings, or GitHub logs. Do not click Run workflow
 before the dedicated VPN/access approval. A future SQL-specialist worker
 still needs an independent API credential and pricing/ledger approval; the
 general Product Stage/Direct/Codex routes remain untouched.
+
+## Safety boundary for manual network proof
+
+Workflow source and exact PR body must pass B1/B2 scope CI before human merge. The protected Environment must have required reviewers and must not be usable by unreviewed branches. The manual workflow exists only on the released main branch; its presence in a draft PR does not establish VPN connectivity or new access. CI unit tests use fake routes and sockets. Do not treat successful private TCP routing as an authenticated LLM request.
