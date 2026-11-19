@@ -7,7 +7,7 @@ from unittest.mock import patch
 from ai_product_factory import runtime_cli
 
 class GenericIBMRuntimeIntegrationTests(unittest.TestCase):
-    @patch.dict(os.environ, {"FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud"})
+    @patch.dict(os.environ, {"FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud","GITHUB_ACTIONS":"false"})
     def test_product_stage_uses_private_primary_under_existing_stage_handler(self):
         executor=object()
         profiles=(object(),)
@@ -22,7 +22,7 @@ class GenericIBMRuntimeIntegrationTests(unittest.TestCase):
             handler.assert_called_once_with(executor,team_profiles=profiles)
             ready.assert_called_once_with()
 
-    @patch.dict(os.environ, {"FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud"})
+    @patch.dict(os.environ, {"FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud","GITHUB_ACTIONS":"false"})
     def test_wrong_agent_provider_blocks_before_direct_claim(self):
         profile=SimpleNamespace(model_policy={"provider":"openai","enabled":True})
         with patch.object(runtime_cli,"require_primary_runtime_enabled"), \
@@ -37,7 +37,7 @@ class GenericIBMRuntimeIntegrationTests(unittest.TestCase):
             self.assertFalse(outcome["claimed"])
             queue.assert_not_called()
 
-    @patch.dict(os.environ, {"FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud"})
+    @patch.dict(os.environ, {"FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud","GITHUB_ACTIONS":"false"})
     def test_explicit_private_direct_assignment_can_check_empty_queue_no_model(self):
         profile=SimpleNamespace(model_policy={"provider":"infodive_ibm_cloud","enabled":True})
         with patch.object(runtime_cli,"require_primary_runtime_enabled"), \
