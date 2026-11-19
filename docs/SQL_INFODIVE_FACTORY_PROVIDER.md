@@ -115,3 +115,24 @@ Faltam:
 Nenhuma chamada à IBM, n8n, LangGraph, compra de crédito, migration,
 deploy ou merge ocorre nesta PR. Preview não se aplica fora
 de apps/console/**.
+
+
+## Native VPS worker readiness (19/11/2026)
+
+The native Python preflight is at scripts/factory_sql_infodive_vps_worker.py.
+The only supported invocation is --preflight-only (optional --tcp).
+It reads local installed checkout SHA, validates existing wg-ibm route,
+checks a dedicated Factory credential is PRESENT, verifies approved model
+price and reads the entire current paid-cost ledger through the existing
+Control Plane capacity guard. No model call, SQL, cost reservation, run claim,
+network reconfiguration, n8n or LangGraph is performed.
+
+Always emits a sanitized, explicitly BLOCKED receipt because a separate
+service-role-only SQL-specialist queue with lineage-bound claims, durable
+lease and idempotent completion does not yet exist. Matching SHA, budget
+and TCP alone cannot authorize paid SQL model use. Do not retrofit generic
+task or QA specialist queues as authorization to spend.
+
+A full VPS native worker service and durable SQL claim RPC will require a
+reviewed, versioned schema migration, release approval, independently protected
+worker credentials and live route proof. This code creates no VPS service.
