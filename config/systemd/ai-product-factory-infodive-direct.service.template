@@ -1,0 +1,28 @@
+# TEMPLATE INERTE: instalar/ativar apenas após revisão humana da produção.
+[Unit]
+Description=AI Product Factory general IBM LLM Direct worker on existing VPS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ai-product-factory
+Group=ai-product-factory
+WorkingDirectory=/opt/ai-product-factory
+EnvironmentFile=/etc/ai-product-factory/infodive.env
+Environment=PYTHONPATH=/opt/ai-product-factory/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/ai-product-factory/.venv/bin/python -m ai_product_factory.runtime_cli --mode direct --agent-key development --worker-id factory-vps-infodive
+TimeoutStartSec=900
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/ai-product-factory
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Intentionally no timer or automatic restart. Operator must provision access,
+# authenticate, validate network and paid policy before enabling any service.
+[Install]
+WantedBy=multi-user.target

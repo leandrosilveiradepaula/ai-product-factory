@@ -1,138 +1,128 @@
-# SQL-InfoDive na AI Product Factory — acesso DIRETO pela VPS
+# SQL-InfoDive (IBM Cloud) — LLM de propósito geral na Factory
 
-## Decisão arquitetural do operador (19/11/2026)
+## Decisão atual de produto — 19/11/2026
 
-A Factory NÃO utilizará n8n nem LangGraph para acessar a LLM.
-Os repositórios e conversas do Agente Financeiro são usados SOMENTE
-para recuperar o contrato de conexão. Não importar workflows n8n,
-não utilizar webhooks n8n, LangGraph, seus containers, ou tokens S2S.
+SQL-InfoDive é o NOME do modelo, não uma restrição ao domínio SQL.
+O modelo é uma LLM de propósito geral. A Factory poderá escolher esse
+provedor para Discovery, Product Spec, planejamento e implementação
+direta, usando o mesmo contrato de tarefas, testes e gates dos demais
+provedores. A adequação e qualidade das respostas por tipo de tarefa
+ainda exigem evals reais; não presumir uma aprovação apenas pelo nome.
 
-O fluxo pretendido é:
+O caminho de inferência oficial é:
 
-  Factory Control Plane (fila, orçamento, auditoria, autorização)
-         ↓ worker Python nativo da Factory, executando NA VPS
-  VPS existente srv1319424 (interface wg-ibm já instalada)
-         ↓ conexão direta pela rede privada WireGuard existente
-  API SQL-InfoDive hospedada na IBM Cloud
+Factory Python / Supabase Control Plane
+   -> worker Python NATIVO da Factory na VPS Infodive
+   -> interface WireGuard wg-ibm JÁ EXISTENTE na VPS
+   -> API Chat Completions SQL-InfoDive na IBM Cloud
 
-Nenhum novo WireGuard peer, túnel no GitHub Actions ou proxy público
-é necessário por esta arquitetura. O túnel EXISTENTE pode transportar
-ambas as aplicações na mesma VPS, desde que o isolamento das credenciais
-e os controles de acesso do host sejam mantidos. Não alterar o WireGuard
-que atende o Agente Financeiro, não copiar arquivos/chaves e não ampliar
-ACL/rede por conta própria. Os workers GitHub Actions permanecem no
-caminho atual e NÃO chamarão diretamente o IP privado da IBM.
+Não utilizar n8n nem LangGraph em nenhuma etapa do acesso da Factory.
+Os dois projetos serviram apenas como referência documental de configuração.
+Não migrar dados financeiros, não executar SQL financeiro e não copiar
+credenciais desses serviços.
 
-## Fonte do contrato, com datas e proveniência
+## Fonte e protocolo
 
-Fontes consultadas:
-- Histórico do projeto Agente Financeiro, 13/10, 06/11 e 09/11/2026.
-- agente-sql-langgraph/app/integrations/openai_compatible/configuration.py,
-  client.py (leitura documental, sem invocar LangGraph).
-- docs/deployment/local-llm-smoke.md e
-  docs/operations/N8N-OFFICIAL-SQL-INFODIVE-PROVIDER.md (leitura apenas;
-  os IPs ilustrativos desta última NÃO são configuração real).
+Observação histórica do Agente Financeiro (não prova de conectividade atual):
+- Modelo apresentado como SQL-InfoDive, provedor infodive_ibm_cloud.
+- Configuração de origem: app/integrations/openai_compatible/configuration.py
+  e client.py do repo agente-sql-langgraph; referências datadas 06 e 09/11.
+- VPN da VPS: wg-ibm, endereço do host documentado 10.66.66.6/32,
+  peer IBM histórico 52.118.255.226:51820/UDP.
+- Serviço privado histórico 10.66.66.1.
+- POST http://10.66.66.1/api/chat/completions
+- Host: chat.internal
+- Authorization: Bearer <credencial dedicada da Factory, server-side>
+- Resposta: choices[0].message.content, usage.prompt_tokens e
+  usage.completion_tokens. A Factory exige usage para contabilizar custo.
 
-Valores históricos que foram efetivamente registrados nas conversas:
-- Interface da VPS: wg-ibm, VPN split-tunnel.
-- Peer WireGuard IBM: 52.118.255.226:51820/UDP.
-- IP de túnel VPS: 10.66.66.6/32; rede privada 10.66.66.0/24.
-- Serviço privado: 10.66.66.1; o roteamento era via wg-ibm.
-- Endpoint: http://10.66.66.1/api/chat/completions
-- Cabeçalho HTTP: Host: chat.internal
-- Provedor: infodive_ibm_cloud; versão SQL:
-  sql-infodive-ibm-cloud-v1; modelo reportado SQL-InfoDive.
-- Segredo de API referenciado pelo nome OPENAI_COMPATIBLE_SQL_API_KEY
-  (NUNCA copiar valor ou usar token n8n/LangGraph S2S).
-- Em 06/11 e 09/11 houve evidência de handshake recente, TCP OK
-  e HTTP 200 no fluxo privado. ISSO É HISTÓRICO, não revalida o
-  serviço nem o token a partir deste novo worker.
+A prova de rota deve ser executada no processo real na VPS: o executor
+administrativo remoto retornou erro de netlink e um HEAD sem credencial
+atingiu timeout de TCP. Esses resultados NÃO provam que a VPN do host
+ou a API estejam indisponíveis. O gateway MCP da VPS está saudável,
+mas isso também não comprova o endpoint IBM.
 
-O adaptador Factory usa contrato OpenAI-compatible Chat Completions
-(model, messages, max_tokens, stream:false) e extrai
-choices[0].message.content e usage. Não utilizar Responses API por
-engano. Nome exato do modelo deve ser reconciliado em runtime sem
-imprimir nenhum segredo.
+## Estado do código na PR #1527
 
-## Código preparado nesta PR
+- Cliente privado Python, sem proxy HTTP, redirects ou endpoint público,
+  com Bearer próprio, erro sanitizado e limites de timeout/saída.
+- Provider opt-in por FACTORY_PRIMARY_MODEL_PROVIDER=infodive_ibm_cloud.
+  Valor default openai permanece. Não há fallback silencioso entre modelos.
+- Suporte a ModelRequest.output_schema como instrução JSON no protocolo
+  Chat Completions, sem pressupor suporte a response_format da OpenAI.
+- Product Stage: usa a fila existente factory_claim_next_run com CAS e
+  checkpoints de execução; não cria fila sintética ou outro Start.
+- Direct: usa o roteamento, claim, lease, PR e quality gates existentes.
+  O perfil do agente atribuído deve trazer model_policy.provider igual
+  a infodive_ibm_cloud e model_policy.enabled booleano true, configurado
+  pelo operador no Control Plane. Perfil de outro provedor não autoriza
+  uso da IBM mesmo que o worker esteja disponível.
+- Validação da rota wg-ibm e TCP ANTES de qualquer claim, token ou gasto.
+  O cliente revalida rota antes de ler a credencial para cada chamada.
+- Reuso de ledger/custo Primary atual: taxa de entrada e saída aprovada,
+  reserva por execução, custo observado e bloqueio de custo desconhecido.
+  O teto financeiro é cumulativo entre provedores; IBM não contorna saldo.
+- CLI de preflight sem LLM e template systemd inerte. Nenhum serviço real
+  da Factory foi instalado na VPS.
+- Testes offline usam transportes injetados. Não houve requisição paga,
+  instalação de peer WireGuard, modificação na produção nem migration.
 
-- src/ai_product_factory/private_chat_provider.py:
-  cliente HTTP direto com Bearer próprio e respostas sanitizadas.
-  Apenas o transporte de produção exige a rota efetiva da VPS,
-  antes de ler o token.
-- src/ai_product_factory/private_model_vps_route.py:
-  verifica localmente a rota do sistema com ip -json route get e
-  exige dev=wg-ibm; recusa eth0/default e outros destinos públicos.
-- scripts/sql_infodive_private_network.py --check-only:
-  teste local NA VPS: rota + conexão TCP, sem chamada HTTP nem token.
-  Nunca cria peer, executa SQL ou chama modelo.
-- src/ai_product_factory/private_model_metering.py:
-  preço aprovado e registro no ledger; verifica rede ANTES de
-  reservar custo. Nenhuma credencial pública.
-- Testes offline sem acesso ao provedor ou a VPS real.
-- Não há provider selecionado implicitamente pelo Product Stage,
-  Direct ou Codex.
+## Configuração futura exclusiva do processo VPS
 
-## Configuração prevista para worker Factory na própria VPS
+Todas as variáveis abaixo são server-side em arquivo legível somente por
+usuário/serviço dedicado à Factory (nunca NEXT_PUBLIC_, browser ou GitHub
+Actions; não reutilizar chaves n8n/LangGraph/Agente Financeiro):
 
-Variáveis de ambiente/secret do processo isolado Factory, não
-necessariamente as mesmas do Agente Financeiro:
-
+FACTORY_PRIMARY_MODEL_PROVIDER=infodive_ibm_cloud
+FACTORY_INFODIVE_VPS_WORKER_ENABLED=true
+FACTORY_PRIMARY_MODEL_ENABLED=true
+FACTORY_SQL_INFODIVE_ENABLED=true
+FACTORY_SQL_INFODIVE_PRIVATE_ROUTE_ATTESTED=true
+FACTORY_SQL_INFODIVE_WORKER_SHA=<SHA exato do checkout Factory na VPS>
 FACTORY_SQL_INFODIVE_BASE_URL=http://10.66.66.1
 FACTORY_SQL_INFODIVE_HTTP_HOST=chat.internal
-FACTORY_SQL_INFODIVE_MODEL=SQL-InfoDive (confirmar valor efetivo)
+FACTORY_SQL_INFODIVE_MODEL=<ID real do modelo, confirmar>
 FACTORY_SQL_INFODIVE_WG_INTERFACE=wg-ibm
 FACTORY_SQL_INFODIVE_ALLOW_PRIVATE_HTTP=true
-FACTORY_SQL_INFODIVE_API_KEY=<segredo próprio da Factory, protegido>
-FACTORY_SQL_INFODIVE_ENABLED=true (somente após gates)
-FACTORY_SQL_INFODIVE_PRIVATE_ROUTE_ATTESTED=true (após prova no host)
+FACTORY_SQL_INFODIVE_API_KEY=<nova credencial protegida dedicada Factory>
+FACTORY_SQL_INFODIVE_PRICING_APPROVED=true
+FACTORY_SQL_INFODIVE_INPUT_USD_PER_MILLION=<preço aprovado>
+FACTORY_SQL_INFODIVE_OUTPUT_USD_PER_MILLION=<preço aprovado>
 
-O modelo não é grátis por presunção: definir taxas aprovadas
-FACTORY_SQL_INFODIVE_PRICING_APPROVED, *_INPUT_USD_PER_MILLION e
-*_OUTPUT_USD_PER_MILLION, com ledger/reserva real da Factory.
-A política financeira e o teto do Control Plane não são alterados.
+Além disso: SUPABASE_URL, SUPABASE_SECRET_KEY (ou service_role legado),
+credencial GitHub cross-repo adequada e agente atribuído autorizado.
+O prefixo SQL nas variáveis existentes é uma herança de identificação
+do modelo; NÃO delimita tarefas que ele pode desempenhar.
 
-## Estado e dependências reais
+Preflight no checkout instalado e aprovado:
 
-A configuração histórica e o código não demonstram disponibilidade
-atual do serviço privado na VPS. As tentativas de inspeção direta
-com ferramentas administrativas retornaram exit code 1, sem prova
-nova; não apresentar health do MCP como health da LLM.
+python scripts/factory_sql_infodive_vps_worker.py --preflight-only --tcp
 
-Faltam:
-1. Instalar/autenticar o worker Python DA FACTORY na VPS sob
-   usuário/serviço isolado e configuração própria protegida.
-   Publicação e credenciais/alteração de acesso exigem gate humano.
-2. Executar o preflight --check-only NA VPS e registrar recibo
-   datado de rota/TCP, sem chamada de modelo.
-3. Integrar esse worker ao Control Plane através de fila durável
-   e seleção explícita de tarefas elegíveis à SQL-InfoDive.
-   Não executar SQL financeiro automaticamente.
-4. Aprovar custo marginal/preços e verificar capacidade real.
-5. Autorizar teste privado limitado, verificar uso e auditoria.
-6. Merge/release de produção é exclusivamente humano.
+O resultado preflight_ready apenas comprova pré-requisitos de configuração,
+reconciliação de SHA, rota/TCP e orçamento. Não garante capacidade da API
+nem autorização de execução de um run. A CLI não faz chamadas de modelo
+nem claims. A rotina de produção deve usar o runtime_cli já existente,
+por exemplo --mode direct (perfil autorizado) e --mode product, conforme
+a política e o Control Plane. O template systemd incluído permanece
+DESABILITADO e requer adaptação ao host.
 
-Nenhuma chamada à IBM, n8n, LangGraph, compra de crédito, migration,
-deploy ou merge ocorre nesta PR. Preview não se aplica fora
-de apps/console/**.
+## Gates para ativação e primeira prova real
 
+1. Merge de produção é EXCLUSIVAMENTE humano. A PR está em draft.
+2. Confirmar rota wg-ibm e TCP a partir do próprio worker, sem model call.
+3. Instalar o worker isolado da Factory na VPS, com serviço, conta, env e
+   escopo mínimos revisados (alteração de produção/acesso sensível).
+4. Provisionar token próprio e confirmar o ID atual da LLM; não reciclar
+   token do Agente Financeiro.
+5. Aprovar preços efetivos (inclusive 0 apenas se marginalmente gratuito
+   e explicitamente comprovado); o teto interno histórico US$15 está
+   esgotado para a reserva US$0,50. Nenhuma ampliação implícita é aceita.
+6. Vincular o perfil de agente autorizado ao provider no Control Plane
+   e verificar um run elegível; não disparar trabalho de outro projeto.
+7. Autorizar uma chamada real delimitada, conferir resposta, usage e
+   recibo de custo, executar evals por tipo de tarefa e qualificar a
+   adequação do modelo antes de tratar a integração como operacional.
 
-## Native VPS worker readiness (19/11/2026)
-
-The native Python preflight is at scripts/factory_sql_infodive_vps_worker.py.
-The only supported invocation is --preflight-only (optional --tcp).
-It reads local installed checkout SHA, validates existing wg-ibm route,
-checks a dedicated Factory credential is PRESENT, verifies approved model
-price and reads the entire current paid-cost ledger through the existing
-Control Plane capacity guard. No model call, SQL, cost reservation, run claim,
-network reconfiguration, n8n or LangGraph is performed.
-
-Always emits a sanitized, explicitly BLOCKED receipt because a separate
-service-role-only SQL-specialist queue with lineage-bound claims, durable
-lease and idempotent completion does not yet exist. Matching SHA, budget
-and TCP alone cannot authorize paid SQL model use. Do not retrofit generic
-task or QA specialist queues as authorization to spend.
-
-A full VPS native worker service and durable SQL claim RPC will require a
-reviewed, versioned schema migration, release approval, independently protected
-worker credentials and live route proof. This code creates no VPS service.
+A seleção por env da VPS não altera a configuração do GitHub-hosted runner.
+Não adicionar saldo automaticamente, não auto-merge, não executar benchmark
+de 63 perguntas e não declarar product_ready por causa desse preflight.
