@@ -32,7 +32,7 @@ class WarmupTests(unittest.TestCase):
         via=lambda *a,**k: calls.append("route") if route is None else route()
         return warmup_if_pending(
             BASE if env is None else env,
-            pending=lambda _: pending,c apacity=ret,
+            pending=lambda _: pending,capacity=ret,
             route=via,request=transport,
         ),calls
 
