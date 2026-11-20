@@ -97,6 +97,8 @@ jobs:
       # This is credential-free boundary evidence, not live JWT or E2E proof.
       - name: Install pinned Console TypeScript for B2 runtime boundary suite
         run: npm ci --ignore-scripts --no-audit --no-fund --prefix apps/console
+      - name: Parse OIDC broker Edge source with pinned TypeScript compiler (no deploy)
+        run: node scripts/check_edge_b4_typescript_syntax.cjs
       - name: Execute B2 Console ingress and operator authorization denials
         run: node --test scripts/test_block1_b2_console_boundary.cjs
       - name: Verify B2 live Console access witness negative contracts
