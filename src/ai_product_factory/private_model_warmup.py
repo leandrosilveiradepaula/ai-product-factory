@@ -44,7 +44,8 @@ def has_queued_product_run(env: Mapping[str, str]) -> bool:
             any(x in cfg.url for x in ("@", "?", "#"))):
         raise WarmupBlocked("control-plane destination invalid")
     req = urllib.request.Request(
-        cfg.url + "/rest/v1/factory_runs?select=id&status=eq.queued&limit=1",
+        cfg.url + "/rest/v1/factory_runs?select=id,task:factory_tasks!inner(status)"
+        "&status=in.(created,queued)&task.status=eq.queued&limit=1",
         headers=cfg.headers, method="GET",
     )
     try:

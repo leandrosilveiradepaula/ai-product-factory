@@ -1,6 +1,7 @@
 """Cold-start barrier regressions; all tests offline, no real API tokens."""
 import unittest
-from ai_product_factory.private_model_warmup import WarmupBlocked, warmup_if_pending
+from unittest.mock import patch
+from ai_product_factory.private_model_warmup import WarmupBlocked, warmup_if_pending, has_queued_product_run
 
 BASE={
     "FACTORY_PRIMARY_MODEL_PROVIDER":"infodive_ibm_cloud",
@@ -42,6 +43,30 @@ class WarmupTests(unittest.TestCase):
         self.assertEqual(state["status"],"idle")
         self.assertFalse(state["model_invoked"])
         self.assertEqual(calls,[])
+
+    def test_live_queue_read_includes_created_runs_with_queued_tasks(self):
+        class Response:
+            status=200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, count):
+                return b'[{"id":"a4dc4c80-75b6-4d7c-8595-8988e36ea984","task":{"status":"queued"}}]'
+        class Opener:
+            def open(self, request, timeout):
+                url=request.full_url
+                self_assertions = (
+                    "status=in.(created,queued)" in url,
+                    "task.status=eq.queued" in url,
+                    "factory_tasks!inner" in url,
+                    timeout==20,
+                )
+                if not all(self_assertions):
+                    raise AssertionError("missing real Product queue eligibility")
+                return Response()
+        env={"SUPABASE_URL":"https://example.supabase.co",
+             "SUPABASE_SECRET_KEY":"sb_secret_offline_fake"}
+        with patch("ai_product_factory.private_model_warmup._http",return_value=Opener()):
+            self.assertTrue(has_queued_product_run(env))
 
     def test_valid_zero_cost_private_route(self):
         state,calls=self.make()

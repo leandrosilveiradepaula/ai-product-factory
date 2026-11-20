@@ -10,7 +10,7 @@ com conteudo OK e usage de 1532 tokens de entrada/2 de saida.
 O carregamento a frio e explicacao plausivel, nao causa comprovada.
 
 O Product Stage tem um guard de cold-start ANTES de qualquer claim:
-- Consulta read-only apenas runs existentes em estado queued.
+- Consulta read-only apenas runs existentes com status created ou queued e tarefa queued.
 - Sem tarefas: sai imediatamente, sem usar a credencial IBM ou tokens.
 - Com tarefas: valida provider, modelo, rota privada, Control Plane,
   budget e taxas aprovadas exatamente zero.
