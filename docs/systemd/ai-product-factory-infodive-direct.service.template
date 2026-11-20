@@ -8,12 +8,13 @@ Wants=network-online.target
 Type=oneshot
 User=ai-product-factory
 Group=ai-product-factory
-WorkingDirectory=/opt/ai-product-factory
+WorkingDirectory=/opt/ai-product-factory/worker
 EnvironmentFile=/etc/ai-product-factory/infodive.env
-Environment=PYTHONPATH=/opt/ai-product-factory/src
+Environment=PYTHONPATH=/opt/ai-product-factory/worker/src
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/opt/ai-product-factory/.venv/bin/python -m ai_product_factory.runtime_cli --mode direct --agent-key development --worker-id factory-vps-infodive
-TimeoutStartSec=900
+ExecStartPre=/opt/ai-product-factory/worker/.venv/bin/python /opt/ai-product-factory/worker/scripts/factory_sql_infodive_vps_worker.py --preflight-only --tcp
+ExecStart=/opt/ai-product-factory/worker/.venv/bin/python -m ai_product_factory.runtime_cli --mode direct --agent-key development --worker-id factory-vps-infodive
+TimeoutStartSec=2400
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

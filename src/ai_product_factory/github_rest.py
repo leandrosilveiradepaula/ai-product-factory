@@ -121,6 +121,29 @@ class GitHubRestAdapter:
             raise GitHubRequestError(status)
         return data
 
+    def assert_repository_identity(self) -> int:
+        """Read-only authenticated GET before Direct claims any work.
+
+        A token for a different repository or an unverified response cannot
+        authorize paid work or a lease; the separate Control Plane capability
+        check still owns write authorization.
+        """
+        row = self._call("GET", f"/repos/{self.repository}")
+        if not isinstance(row, dict):
+            raise PermissionError("GitHub repository identity unavailable")
+        full_name, repo_id = row.get("full_name"), row.get("id")
+        if (
+            not isinstance(full_name, str)
+            or full_name.lower() != self.repository.lower()
+            or type(repo_id) is not int
+            or repo_id <= 0
+        ):
+            raise PermissionError("GitHub repository identity mismatch")
+        permissions = row.get("permissions")
+        if isinstance(permissions, dict) and permissions.get("push") is False:
+            raise PermissionError("GitHub credential lacks repository write access")
+        return repo_id
+
     def create_issue(self, *, title: str, body: str) -> GitHubIssue:
         row = self._call("POST", f"/repos/{self.repository}/issues", payload={"title": title, "body": body})
         return GitHubIssue(row["number"], row["title"], row.get("body") or "", row["html_url"])

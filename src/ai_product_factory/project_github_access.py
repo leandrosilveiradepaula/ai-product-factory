@@ -141,6 +141,8 @@ class SupabaseProjectGitHubAccessStore:
         )
         if not rows:
             raise PermissionError("GitHub capability preflight has not been completed for this project")
+        if rows[0].get("status") != "ready":
+            raise PermissionError("GitHub capability preflight is not currently ready")
         observed = dict(rows[0].get("observed_capabilities") or {})
         missing = [name for name in capabilities if str(observed.get(name) or "") != "verified"]
         if missing:
