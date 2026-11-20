@@ -253,21 +253,25 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  # GitHub Actions may obtain a short-lived GitHub App token via its OIDC
  # broker; the VPS has no Actions OIDC identity and therefore requires
  # an explicit server-side FACTORY_GITHUB_TOKEN, never GITHUB_TOKEN.
- preflight_target=queue.preflight_target(run_id)
- if preflight_target is None:return {"claimed":False,"status":"empty"}
- target_repo,target_key=preflight_target
- if (
-  selected_primary_provider()=="infodive_ibm_cloud"
-  and os.getenv("GITHUB_ACTIONS","").strip().lower()!="true"
-  and not os.getenv("FACTORY_GITHUB_TOKEN","").strip()
- ):
-  return {"claimed":False,"status":"blocked_github_credential",
-          "reason_code":"native_ibm_direct_requires_factory_github_token"}
- if target_repo!=os.getenv("GITHUB_REPOSITORY","").strip():
-  SupabaseProjectGitHubAccessStore().require_capabilities(
-   target_key,("contents_write","issues_write","pull_requests_write"))
- preflight_github=GitHubRestAdapter(repository=target_repo)
- preflight_github.assert_repository_identity()
+ preflight_github=None
+ preflight_target=None
+ # The existing OpenAI CLI outside Actions retains its prior contract.
+ # GitHub Actions already preflighted; extend the same safety to IBM VPS.
+ if (os.getenv("GITHUB_ACTIONS","").strip().lower()=="true"
+     or selected_primary_provider()=="infodive_ibm_cloud"):
+  preflight_target=queue.preflight_target(run_id)
+  if preflight_target is None:return {"claimed":False,"status":"empty"}
+  target_repo,target_key=preflight_target
+  if (selected_primary_provider()=="infodive_ibm_cloud"
+      and os.getenv("GITHUB_ACTIONS","").strip().lower()!="true"
+      and not os.getenv("FACTORY_GITHUB_TOKEN","").strip()):
+   return {"claimed":False,"status":"blocked_github_credential",
+           "reason_code":"native_ibm_direct_requires_factory_github_token"}
+  if target_repo!=os.getenv("GITHUB_REPOSITORY","").strip():
+   SupabaseProjectGitHubAccessStore().require_capabilities(
+    target_key,("contents_write","issues_write","pull_requests_write"))
+  preflight_github=GitHubRestAdapter(repository=target_repo)
+  preflight_github.assert_repository_identity()
  item=queue.claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
