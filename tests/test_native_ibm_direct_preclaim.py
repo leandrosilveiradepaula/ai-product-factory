@@ -36,19 +36,43 @@ class NativeVpsDirectClaimTests(unittest.TestCase):
         producer = stack.enter_context(patch("ai_product_factory.runtime_cli.ModelImplementationProducer"))
         return scheduler, queue, access, github, producer
 
-    def test_missing_vps_token_blocks_without_claim_or_model(self):
+    def test_failed_jit_exchange_blocks_without_claim_or_model(self):
         from contextlib import ExitStack
-        with ExitStack() as stack:
+        with ExitStack() as stack, patch(
+            "ai_product_factory.runtime_cli.mint_vps_github_app_token",
+            side_effect=PermissionError("token refused"),
+        ) as exchange:
             scheduler, queue, access, github, producer = self.setup_mocks(stack)
             outcome = run_direct_once("worker", "development", "run-1")
             self.assertEqual(outcome["status"], "blocked_github_credential")
             self.assertFalse(outcome["claimed"])
-            self.assertEqual(outcome["reason_code"], "native_ibm_direct_requires_factory_github_token")
+            self.assertEqual(outcome["reason_code"], "vps_github_app_jit_unavailable")
+            exchange.assert_called_once_with("owner/crm", "crm-infodive")
             queue.return_value.claim_next.assert_not_called()
-            access.assert_not_called()
+            access.return_value.require_capabilities.assert_called_once()
             github.assert_not_called()
             producer.assert_not_called()
             scheduler.return_value.release.assert_not_called()
+
+    def test_jit_token_is_per_target_and_used_before_claim(self):
+        from contextlib import ExitStack
+        with ExitStack() as stack, patch(
+            "ai_product_factory.runtime_cli.mint_vps_github_app_token",
+            return_value="ghs_offline_testing_only_1234567890",
+        ) as exchange:
+            scheduler, queue, access, github, producer = self.setup_mocks(stack)
+            queue.return_value.claim_next.return_value = None
+            outcome = run_direct_once("worker", "development", "run-1")
+            self.assertEqual(outcome, {"claimed": False, "status": "empty"})
+            exchange.assert_called_once_with("owner/crm", "crm-infodive")
+            github.assert_called_once_with(
+                repository="owner/crm", token="ghs_offline_testing_only_1234567890",
+            )
+            github.return_value.assert_repository_identity.assert_not_called()
+            queue.return_value.claim_next.assert_called_once_with(
+                "worker", "development", "run-1",
+            )
+            producer.assert_not_called()
 
     def test_with_token_preflight_verified_before_claim_and_no_model_if_empty(self):
         from contextlib import ExitStack

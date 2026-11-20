@@ -24,6 +24,7 @@ from .change_set_store import SupabaseChangeSetStore
 from .change_set_worker import ChangeSetBuilderWorker
 from .change_set_integrator import ChangeSetIntegrator
 from .github_rest import GitHubRestAdapter,GitHubRequestError
+from .vps_github_app import mint_vps_github_app_token
 from .autonomous_github import AutonomousGitHubLoop,GitHubWorkSession
 from .issue_materializer import GitHubIssueMaterializer
 from .supabase_issue_binding import SupabaseIssueBindingStore
@@ -248,30 +249,38 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  except (RuntimeError,PermissionError) as exc:
   return {"claimed":False,"status":"blocked","error":str(exc)}
  queue=SupabaseDirectRunQueue()
- # Every Direct worker, including the native IBM VPS, MUST establish the
- # exact project target and authenticate GitHub BEFORE taking a lease.
- # GitHub Actions may obtain a short-lived GitHub App token via its OIDC
- # broker; the VPS has no Actions OIDC identity and therefore requires
- # an explicit server-side FACTORY_GITHUB_TOKEN, never GITHUB_TOKEN.
+ # Every Direct route resolves a durable project and authenticates GitHub
+ # before any run lease or model call. Actions keeps its OIDC broker.
+ # Native IBM VPS prefers an existing explicit FACTORY_GITHUB_TOKEN, or
+ # exchanges privileged server-side GitHub App credentials for a narrowly
+ # scoped, ephemeral installation token via an isolated OS pipe.
  preflight_github=None
  preflight_target=None
- # The existing OpenAI CLI outside Actions retains its prior contract.
- # GitHub Actions already preflighted; extend the same safety to IBM VPS.
  if (os.getenv("GITHUB_ACTIONS","").strip().lower()=="true"
      or selected_primary_provider()=="infodive_ibm_cloud"):
   preflight_target=queue.preflight_target(run_id)
   if preflight_target is None:return {"claimed":False,"status":"empty"}
   target_repo,target_key=preflight_target
-  if (selected_primary_provider()=="infodive_ibm_cloud"
-      and os.getenv("GITHUB_ACTIONS","").strip().lower()!="true"
-      and not os.getenv("FACTORY_GITHUB_TOKEN","").strip()):
-   return {"claimed":False,"status":"blocked_github_credential",
-           "reason_code":"native_ibm_direct_requires_factory_github_token"}
   if target_repo!=os.getenv("GITHUB_REPOSITORY","").strip():
    SupabaseProjectGitHubAccessStore().require_capabilities(
     target_key,("contents_write","issues_write","pull_requests_write"))
-  preflight_github=GitHubRestAdapter(repository=target_repo)
-  preflight_github.assert_repository_identity()
+  native_ibm=(selected_primary_provider()=="infodive_ibm_cloud"
+              and os.getenv("GITHUB_ACTIONS","").strip().lower()!="true")
+  if native_ibm and not os.getenv("FACTORY_GITHUB_TOKEN","").strip():
+   try:
+    token=mint_vps_github_app_token(target_repo,target_key)
+   except (RuntimeError,PermissionError,OSError):
+    return {"claimed":False,"status":"blocked_github_credential",
+            "reason_code":"vps_github_app_jit_unavailable"}
+   # JIT issuance already verified exact repository ID, installation
+   # scope, token permissions and expiry. GET /repos can report push=false
+   # for a genuinely write-capable GitHub App installation token.
+   # We proved write by a temporary branch create+delete; do not repeat
+   # that mutation on every work claim, or rely on push to override scope.
+   preflight_github=GitHubRestAdapter(repository=target_repo,token=token)
+  else:
+   preflight_github=GitHubRestAdapter(repository=target_repo)
+   preflight_github.assert_repository_identity()
  item=queue.claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
