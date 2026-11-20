@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 import os
+from copy import deepcopy
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -41,7 +42,7 @@ PERMISSIONS = {
 
 class FakeAPI:
     def __init__(self):
-        self.access = dict(ACCESS)
+        self.access = deepcopy(ACCESS)
         self.created_token = {
             "token": "ghs_offline_testing_only_1234567890",
             "expires_at": (
