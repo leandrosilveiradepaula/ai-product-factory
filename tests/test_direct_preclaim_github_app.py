@@ -88,7 +88,7 @@ class DirectPreclaimTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler", return_value=scheduler), \
              patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \
              patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"), \
-             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github, \
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter", autospec=True) as github, \
              patch("ai_product_factory.runtime_cli.OpenAIResponsesProvider") as model:
             result = run_direct_once("w", "development", "run")
         self.assertEqual(result, {"claimed": False, "status": "empty"})
@@ -109,7 +109,7 @@ class DirectPreclaimTests(unittest.TestCase):
              patch("ai_product_factory.runtime_cli.RuntimeAuthResolver", return_value=auth), \
              patch("ai_product_factory.runtime_cli.SupabaseAgentScheduler"), \
              patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue", return_value=queue), \
-             patch("ai_product_factory.runtime_cli.GitHubRestAdapter") as github:
+             patch("ai_product_factory.runtime_cli.GitHubRestAdapter", autospec=True) as github:
             result = run_direct_once("w", "development", "run")
         self.assertEqual(result["status"], "empty")
         queue.claim_next.assert_not_called()

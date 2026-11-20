@@ -32,7 +32,7 @@ class NativeVpsDirectClaimTests(unittest.TestCase):
         queue = stack.enter_context(patch("ai_product_factory.runtime_cli.SupabaseDirectRunQueue"))
         queue.return_value.preflight_target.return_value = ("owner/crm", "crm-infodive")
         access = stack.enter_context(patch("ai_product_factory.runtime_cli.SupabaseProjectGitHubAccessStore"))
-        github = stack.enter_context(patch("ai_product_factory.runtime_cli.GitHubRestAdapter"))
+        github = stack.enter_context(patch("ai_product_factory.runtime_cli.GitHubRestAdapter", autospec=True))
         producer = stack.enter_context(patch("ai_product_factory.runtime_cli.ModelImplementationProducer"))
         return scheduler, queue, access, github, producer
 
