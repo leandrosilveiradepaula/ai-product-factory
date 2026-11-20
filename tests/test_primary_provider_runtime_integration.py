@@ -47,13 +47,12 @@ class GenericIBMRuntimeIntegrationTests(unittest.TestCase):
              patch.object(runtime_cli,"SupabaseDirectRunQueue") as queue, \
              patch.object(runtime_cli,"build_primary_model_executor") as build:
             scheduler.return_value.require_route_tools.return_value=profile
-            queue.return_value.claim_next.return_value=None
+            queue.return_value.preflight_target.return_value=None
             outcome=runtime_cli.run_direct_once("worker-1",agent_key="development",
                                                 run_id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
             self.assertEqual(outcome,{"claimed":False,"status":"empty"})
             build.assert_not_called()
-            queue.return_value.claim_next.assert_called_once_with(
-                "worker-1","development","bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+            queue.return_value.claim_next.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

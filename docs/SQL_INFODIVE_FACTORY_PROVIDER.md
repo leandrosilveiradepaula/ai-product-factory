@@ -126,3 +126,31 @@ DESABILITADO e requer adaptação ao host.
 A seleção por env da VPS não altera a configuração do GitHub-hosted runner.
 Não adicionar saldo automaticamente, não auto-merge, não executar benchmark
 de 63 perguntas e não declarar product_ready por causa desse preflight.
+
+## Atualização operacional — 20/11/2026 (Direct nativo na VPS)
+
+A PR #1545 foi mergeada humanamente (main `5cbc68277b37a1f45cf8fd2950d2dc171576f433`),
+e o Product Stage da VPS foi verificado em execução agendada real.
+O Direct permanece **desabilitado**. O GitHub App do CRM/Dark Channel é
+emitido via broker OIDC do GitHub Actions, que não fornece identidade OIDC
+à VPS. A VPN IBM, a credencial do modelo e o Supabase não concedem acesso
+de escrita GitHub cross-repository. Não tentar reaproveitar GITHUB_TOKEN.
+
+Antes de qualquer claim Direct, inclusive na VPS, o runtime exige:
+1. binding exato run → task → projeto → repositório ativo na fila do Control Plane;
+2. autorização GitHub do projeto em estado `ready` e capacidades verificadas
+   `contents_write`, `issues_write`, `pull_requests_write` para cross-repo;
+3. no native IBM VPS, token `FACTORY_GITHUB_TOKEN` explícito, mantido
+   somente server-side e nunca enviado à LLM, ao browser ou ao código gerado;
+4. leitura autenticada do repositório GitHub retornando `full_name` e `id`
+   correspondentes ao alvo, e permissão de push quando publicada pela API;
+5. agente Direct com `github_write`/`model_primary`, `model_policy.provider=infodive_ibm_cloud`
+   e `model_policy.enabled=true`, além do orçamento e da rota privada.
+
+Um bloqueio de credencial retorna `blocked_github_credential` antes do
+claim, sem gastar tokens, escrever branches ou consumir tentativas.
+Os timers Direct **não devem** ser ativados sem validação real do token
+escopado e da política do agente. O GitHub App existente não autoriza
+emitir tokens em nome da VPS fora do broker já restrito ao GitHub Actions;
+qualquer novo mecanismo de identidade para VPS é alteração sensível
+sujeita a gate humano.

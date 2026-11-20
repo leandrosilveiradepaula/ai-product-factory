@@ -96,6 +96,7 @@ class DirectPreclaimTests(unittest.TestCase):
         model.assert_not_called()
         scheduler.release.assert_not_called()
         github.assert_called_once_with(repository="owner/target")
+        github.return_value.assert_repository_identity.assert_called_once_with()
 
     def test_preflight_without_eligible_task_does_not_create_lease(self):
         queue = MagicMock()

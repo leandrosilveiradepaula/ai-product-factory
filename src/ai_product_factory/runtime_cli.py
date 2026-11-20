@@ -248,17 +248,26 @@ def run_direct_once(worker_id:str,agent_key:str|None=None,run_id:str|None=None)-
  except (RuntimeError,PermissionError) as exc:
   return {"claimed":False,"status":"blocked","error":str(exc)}
  queue=SupabaseDirectRunQueue()
- # Fail before lease claim or model call when the trusted Actions identity
- # cannot acquire its narrowly scoped cross-repository credential.
- preflight_github=None
- preflight_target=None
- if os.getenv("GITHUB_ACTIONS","").strip().lower()=="true":
-  preflight_target=queue.preflight_target(run_id)
-  if preflight_target is None:return {"claimed":False,"status":"empty"}
-  target_repo,target_key=preflight_target
-  if target_repo!=os.getenv("GITHUB_REPOSITORY","").strip():
-   SupabaseProjectGitHubAccessStore().require_capabilities(target_key,("contents_write","issues_write","pull_requests_write"))
-  preflight_github=GitHubRestAdapter(repository=target_repo)
+ # Every Direct worker, including the native IBM VPS, MUST establish the
+ # exact project target and authenticate GitHub BEFORE taking a lease.
+ # GitHub Actions may obtain a short-lived GitHub App token via its OIDC
+ # broker; the VPS has no Actions OIDC identity and therefore requires
+ # an explicit server-side FACTORY_GITHUB_TOKEN, never GITHUB_TOKEN.
+ preflight_target=queue.preflight_target(run_id)
+ if preflight_target is None:return {"claimed":False,"status":"empty"}
+ target_repo,target_key=preflight_target
+ if (
+  selected_primary_provider()=="infodive_ibm_cloud"
+  and os.getenv("GITHUB_ACTIONS","").strip().lower()!="true"
+  and not os.getenv("FACTORY_GITHUB_TOKEN","").strip()
+ ):
+  return {"claimed":False,"status":"blocked_github_credential",
+          "reason_code":"native_ibm_direct_requires_factory_github_token"}
+ if target_repo!=os.getenv("GITHUB_REPOSITORY","").strip():
+  SupabaseProjectGitHubAccessStore().require_capabilities(
+   target_key,("contents_write","issues_write","pull_requests_write"))
+ preflight_github=GitHubRestAdapter(repository=target_repo)
+ preflight_github.assert_repository_identity()
  item=queue.claim_next(worker_id,agent_key,run_id)
  if item is None:return {"claimed":False,"status":"empty"}
  try:
