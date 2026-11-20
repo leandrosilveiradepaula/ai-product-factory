@@ -1,0 +1,37 @@
+# Template; deploy only after verified main SHA and authorized VPS rollout.
+[Unit]
+Description=AI Product Factory IBM Cloud Product Stage on existing WireGuard VPS
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/ai-product-factory/worker/src/ai_product_factory/runtime_cli.py
+
+[Service]
+Type=oneshot
+User=ai-product-factory
+Group=ai-product-factory
+WorkingDirectory=/opt/ai-product-factory/worker
+EnvironmentFile=/etc/ai-product-factory/infodive.env
+Environment=PYTHONPATH=/opt/ai-product-factory/worker/src
+Environment=HOME=/var/lib/ai-product-factory
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/opt/ai-product-factory/worker/.venv/bin/python /opt/ai-product-factory/worker/scripts/factory_sql_infodive_vps_worker.py --preflight-only --tcp
+ExecStartPre=/opt/ai-product-factory/worker/.venv/bin/python /opt/ai-product-factory/worker/scripts/factory_sql_infodive_cold_start.py --when-product-pending --max-wait-seconds 1800
+ExecStart=/opt/ai-product-factory/worker/.venv/bin/python -m ai_product_factory.runtime_cli --mode product --worker-id factory-vps-infodive-product
+TimeoutStartSec=2400
+Restart=no
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/ai-product-factory
+InaccessiblePaths=/docker/agente-sql-langgraph-repo /etc/wireguard
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+SystemCallArchitectures=native
+StandardOutput=journal
+StandardError=journal
