@@ -63,7 +63,8 @@ def _transport(method: str, url: str, headers: dict, body: bytes | None) -> tupl
 def _source_sha():
     try:
         return subprocess.check_output(
-            ["/usr/bin/git", "-C", str(ROOT), "rev-parse", "HEAD"],
+            ["/usr/bin/git", "-c", "safe.directory=" + str(ROOT),
+             "-C", str(ROOT), "rev-parse", "HEAD"],
             text=True, timeout=8, stderr=subprocess.DEVNULL,
         ).strip()
     except Exception:
