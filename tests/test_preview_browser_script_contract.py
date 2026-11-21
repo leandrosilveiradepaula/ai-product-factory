@@ -17,6 +17,20 @@ class PreviewBrowserScriptContractTests(unittest.TestCase):
         self.assertIn('emit("success"',text)
         self.assertIn('emit("failure"',text)
 
+    def test_console_title_and_route_heading_are_independent_evidence(self):
+        script=(ROOT/"scripts/verify_preview.mjs").read_text()
+        helper=(ROOT/"scripts/preview_application_identity.cjs").read_text()
+        trusted=(ROOT/".github/workflows/console-browser-evidence.yml").read_text()
+        self.assertIn("requirePreviewTitleAndHeading",script)
+        self.assertIn("FACTORY_PREVIEW_EXPECTED_TITLE",script)
+        self.assertIn('FACTORY_PREVIEW_EXPECTED_TITLE: "AI Product Factory"',trusted)
+        self.assertIn("preview_application_title_unverified",helper)
+        self.assertIn("preview_application_heading_unverified",helper)
+        self.assertNotIn(
+            'containsExpectedText(normalizeVisibleText(observed.title || ""), expectedText)',
+            script,
+        )
+
     def test_scheduled_preview_job_self_hosts_playwright_only_when_needed(self):
         text=(ROOT/".github/workflows/autonomous-runner.yml").read_text()
         preview=text.split("\n  preview:",1)[1].split("\n  alerts:",1)[0]
