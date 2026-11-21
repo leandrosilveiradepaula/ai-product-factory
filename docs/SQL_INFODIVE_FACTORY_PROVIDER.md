@@ -154,3 +154,43 @@ escopado e da política do agente. O GitHub App existente não autoriza
 emitir tokens em nome da VPS fora do broker já restrito ao GitHub Actions;
 qualquer novo mecanismo de identidade para VPS é alteração sensível
 sujeita a gate humano.
+
+## Direct nativo na VPS: credencial GitHub App temporaria (20/11/2026)
+
+A Factory usa o mesmo GitHub App ja aprovado para os projetos ativos, sem
+copiar um PAT ou a chave privada do app para disco. A VPS ja tem a
+SUPABASE_SECRET_KEY apenas no seu EnvironmentFile root-owned 0600.
+
+Quando e SOMENTE quando um run Direct ja foi atribuido, com modelo IBM
+autorizado e budget disponivel, a Factory:
+1. valida run, task, projeto e repositório no Control Plane e verifica
+   contents_write, issues_write, pull_requests_write e status ready;
+2. o subprocesso isolado /usr/bin/python3 valida o SHA exato do worker;
+3. le a chave privada pela RPC SERVICE-ROLE-ONLY
+   factory_get_github_app_credentials (security invoker);
+4. em memoria, assina JWT do GitHub App e emite installation token
+   de 1 hora para exatamente UM repositorio; exige permissões API
+   contents=write, issues=write, pull_requests=write;
+5. exige que GET /installation/repositories retorne so o repositório
+   esperado e GET /repos/owner/repo confirme o repository_id exato;
+6. entrega o token por pipe anonimo ao runtime; nunca por stdout, disk,
+   argv, variavel de ambiente do modelo nem browser;
+7. antes do claim, passa o token explicitamente ao GitHubRestAdapter.
+   O worker continua seguindo os CAS, leases, budget/ledger, PR, CI,
+   Preview e gate humano de merge existentes.
+
+Nao criar branches de teste na execucao agendada. A prova operacional
+reversivel em 20/11/2026 criou e excluiu uma branch temporaria no CRM
+com a credencial JIT, comprovando contents:write apesar do
+permissions.push=false da resposta GET /repos. Este campo nao substitui
+a verificação da permissão contents=write do token explicitamente emitido.
+
+Dependencia de runtime: python3-cryptography do Python do sistema
+(/usr/bin/python3, existente na VPS Ubuntu); o runtime Factory usa a .venv
+isolada sem essa dependencia. A chave do GitHub App permanece no Supabase,
+privilegiada; nenhuma migration ou alteração de RLS foi necessaria.
+
+Sem run: status empty, nenhum token emitido. Sem credencial, permissao,
+escopo, modelo aprovado, readiness ou rota: blocked antes do claim. O
+token expira e precisa ser emitido novamente para cada tarefa. GitHub
+Actions usa o broker OIDC ja existente, sem alteracao.
