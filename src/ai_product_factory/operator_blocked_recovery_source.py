@@ -141,7 +141,8 @@ def inspect_operator_sql_recovery(*, project: dict, context: dict,
                     or pm.get("retry_of") != original_run
                     or pm.get("retry_source_generation") != str(request.get("execution_generation"))
                     or pm.get("source") != "operator-blocked-work-recovery"
-                    or md.get("retry_source_generation") is not None):
+                    or pm.get("execution_generation") != request.get("execution_generation")
+                    or md.get("retry_source_generation") != str(request.get("execution_generation"))):
                 raise SourceScopeBlocked(_DENIED)
     elif (rid != original_run
           or request.get("status") not in ("queued", "running")
