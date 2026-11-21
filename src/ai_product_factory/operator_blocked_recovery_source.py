@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Callable
 from urllib.parse import quote
 from uuid import UUID
@@ -61,6 +62,86 @@ def _command(get: Callable[[str], object], pid: str, command_id: str) -> dict:
             or rows[0].get("command_id") != command_id):
         raise SourceScopeBlocked(_DENIED)
     return rows[0]
+
+
+
+
+def _reviewed_sql_finding_superseded(*, get: Callable[[str], object],
+                                     github: object, repair: dict, root_run_id: str,
+                                     path: str, current_sql: str) -> bool:
+    """Detect a later independent security PASS of identical versioned SQL.
+
+    This is a narrow, read-only no-replay preflight, never a security
+    certification or a mutation of historical repair/Change Set records.
+    """
+    candidate = repair.get("candidate_commit")
+    if not isinstance(candidate, str) or not _SHA.fullmatch(candidate):
+        raise SourceScopeBlocked(_DENIED)
+    try:
+        rows = get(
+            "factory_specialist_lane_jobs?"
+            "select=run_id,role,status,candidate_commit,completed_at,findings,evidence"
+            "&run_id=eq." + quote(root_run_id, safe="")
+            + "&role=eq.security&candidate_commit=eq." + candidate
+            + "&order=completed_at.desc&limit=12"
+        )
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        raise SourceScopeBlocked(_DENIED) from exc
+    if not isinstance(rows, list) or len(rows) > 12:
+        raise SourceScopeBlocked(_DENIED)
+    if not rows:
+        return False
+
+    def timestamp(value: object):
+        if not isinstance(value, str):
+            return None
+        try:
+            date = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return date if date.tzinfo is not None else None
+        except ValueError:
+            return None
+
+    opened = timestamp(repair.get("created_at"))
+    if opened is None:
+        raise SourceScopeBlocked(_DENIED)
+    reviews = []
+    for row in rows:
+        if (not isinstance(row, dict)
+                or row.get("run_id") != root_run_id
+                or row.get("role") != "security"
+                or row.get("candidate_commit") != candidate):
+            raise SourceScopeBlocked(_DENIED)
+        finished = timestamp(row.get("completed_at"))
+        if row.get("status") not in ("passed", "failed") or finished is None:
+            return False
+        reviews.append((finished, row))
+    if len(rows) == 12:
+        # An incomplete API page must never prove the latest review.
+        raise SourceScopeBlocked(_DENIED)
+    finished, latest = max(reviews, key=lambda entry: entry[0])
+    evidence = latest.get("evidence")
+    findings = latest.get("findings")
+    if (finished <= opened or latest.get("status") != "passed"
+            or not isinstance(evidence, dict)
+            or evidence.get("scanner") != "architecture_guardian_v1"
+            or evidence.get("candidate_commit") != candidate
+            or type(evidence.get("blocking_findings")) is not int
+            or evidence["blocking_findings"] != 0
+            or not isinstance(findings, list)
+            or any(not isinstance(finding, dict)
+                   or finding.get("severity") in ("error", "critical")
+                   for finding in findings)):
+        return False
+    try:
+        reviewed_sql = github.get_file_text(path, ref=candidate)
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        raise SourceScopeBlocked(_DENIED) from exc
+    if (not isinstance(reviewed_sql, str)
+            or not reviewed_sql.strip()
+            or len(reviewed_sql.encode()) > 65536
+            or redact_repository_text(reviewed_sql) != reviewed_sql):
+        raise SourceScopeBlocked(_DENIED)
+    return reviewed_sql == current_sql
 
 
 def inspect_operator_sql_recovery(*, project: dict, context: dict,
@@ -188,7 +269,7 @@ def inspect_operator_sql_recovery(*, project: dict, context: dict,
 
     job = _one(get, "factory_repair_jobs", "id", job_id,
                "id,project_id,change_set_id,source_run_id,task_id,status,"
-               "source_role,cycle,max_cycles,candidate_commit,finding,write_scopes")
+               "source_role,cycle,max_cycles,candidate_commit,finding,write_scopes,created_at")
     finding = job.get("finding")
     scopes = job.get("write_scopes")
     if (job.get("project_id") != pid or job.get("change_set_id") != cs_id
@@ -256,6 +337,14 @@ def inspect_operator_sql_recovery(*, project: dict, context: dict,
         excerpt, complete = _bounded_excerpt(code, 14000)
         if github.get_branch_sha("main") != sha:
             raise SourceScopeBlocked(_DENIED)
+        if _reviewed_sql_finding_superseded(
+            get=get, github=github, repair=job,
+            root_run_id=_uuid(job["source_run_id"]), path=path,
+            current_sql=code,
+        ):
+            raise SourceScopeBlocked("operator_recovery_superseded_security_pass")
+    except SourceScopeBlocked:
+        raise
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
         raise SourceScopeBlocked(_DENIED) from exc
 
