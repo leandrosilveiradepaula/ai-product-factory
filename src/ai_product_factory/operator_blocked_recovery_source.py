@@ -113,19 +113,36 @@ def inspect_operator_sql_recovery(*, project: dict, context: dict,
             or request.get("continuation_task_id") != task_id):
         raise SourceScopeBlocked(_DENIED)
     if "retry_of" in md:
-        if (md.get("retry_of") != original_run
-                or md.get("retry_source_generation") != str(request.get("execution_generation"))
-                or request.get("status") != "blocked"):
+        if request.get("status") != "blocked":
             raise SourceScopeBlocked(_DENIED)
-        failed = _one(get, "factory_runs", "id", original_run,
-                      "id,task_id,status,last_error,metadata")
-        if (failed.get("task_id") != task_id or failed.get("status") != "failed"
-                or failed.get("last_error") not in (
+        first = _one(get, "factory_runs", "id", original_run,
+                     "id,task_id,status,last_error,metadata")
+        if (first.get("task_id") != task_id or first.get("status") != "failed"
+                or first.get("last_error") not in (
                     "reconciliation_context_preflight_failed",
                     "reconciliation_greenfield_owner_continuation_required")
-                or not isinstance(failed.get("metadata"), dict)
-                or failed["metadata"].get("source") != "operator-blocked-work-recovery"):
+                or not isinstance(first.get("metadata"), dict)
+                or first["metadata"].get("source") != "operator-blocked-work-recovery"):
             raise SourceScopeBlocked(_DENIED)
+        if md.get("retry_of") == original_run:
+            if md.get("retry_source_generation") != str(request.get("execution_generation")):
+                raise SourceScopeBlocked(_DENIED)
+        else:
+            # Exactly one additional retry for the original retry's source
+            # authentication failure. This is not an unbounded replay.
+            prior_id = _uuid(md.get("retry_of"))
+            previous = _one(get, "factory_runs", "id", prior_id,
+                            "id,task_id,status,last_error,metadata")
+            pm = previous.get("metadata")
+            if (previous.get("task_id") != task_id
+                    or previous.get("status") != "failed"
+                    or previous.get("last_error") != "reconciliation_context_preflight_failed"
+                    or not isinstance(pm, dict)
+                    or pm.get("retry_of") != original_run
+                    or pm.get("retry_source_generation") != str(request.get("execution_generation"))
+                    or pm.get("source") != "operator-blocked-work-recovery"
+                    or md.get("retry_source_generation") is not None):
+                raise SourceScopeBlocked(_DENIED)
     elif (rid != original_run
           or request.get("status") not in ("queued", "running")
           or md.get("execution_generation") != request.get("execution_generation")):
