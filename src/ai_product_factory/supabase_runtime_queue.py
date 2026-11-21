@@ -483,7 +483,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 or manifest.get("onboarding_mode") != "greenfield"
                 or not isinstance(manifest.get("continuation_request"), dict)
                 or manifest["continuation_request"].get("source") != "github-owner"):
-                raise PermissionError("greenfield source provenance unavailable")
+                raise SourceScopeBlocked("greenfield_owner_continuation_required")
             github = GitHubRestAdapter(repository=repo)
             return live_greenfield_source_context(
                 project=project, context=context, github=github,

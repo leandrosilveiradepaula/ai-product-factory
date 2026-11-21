@@ -19,6 +19,7 @@ _CODES = frozenset({
     "source_paths_not_inspected",
     "source_authorization_issue_mismatch",
     "source_active_scope_oversized",
+    "greenfield_owner_continuation_required",
 })
 
 
