@@ -40,8 +40,14 @@ export function summarizeProductExperience(data:{
   ?context.objective.trim().slice(0,280):"Objetivo não disponível nesta consulta.";
  const evaluated=detail?.productReadiness.ready===true;
  const assessed=detail?.productReadiness.assessedCommit;
- const proof=evaluated?"Prontidão avaliada para o commit "+(assessed?assessed.slice(0,8):"registrado")+
-  "; mudanças posteriores não são certificadas.":"Uso funcional ainda não comprovado.";
+ const assessedProof=evaluated?"Prontidão avaliada para o commit "+(assessed?assessed.slice(0,8):"registrado")+
+  "; mudanças posteriores não são certificadas.":"Prontidão do produto ainda não comprovada.";
+ const releaseProof=detail?.releaseEvidence?.kind==="released"?
+  "Release registrado no Control Plane (commit "+detail.releaseEvidence.candidateCommit?.slice(0,8)+
+  "); publicação atual e funcionamento não são comprovados por esse registro.":
+  detail?.releaseEvidence?.kind==="unavailable"?"Histórico de release não verificável nesta consulta.":null;
+ const proof=[releaseProof,assessedProof].filter(Boolean).join(" ");
+ const latestFailure=detail?.latestRun?.failureKind??null;
  const execution=work.kind==="running"?"Execução iniciada com lease válido":
   work.kind==="unavailable"?"Execução não verificável nesta consulta":
   work.kind==="recorded"?"Pedido registrado, sem execução ativa comprovada":
@@ -78,15 +84,23 @@ export function summarizeProductExperience(data:{
   return output("quiet","Etapa recuperada","A recuperação terminou",
    "O trabalho de recuperação foi concluído, mas o produto não foi certificado.",
    "Verificar a próxima entrega","Não confundir recuperação com release.","Nenhuma ação agora");
- if(recovery?.status==="recovery_blocked")
-  return output("blocked","Recuperação bloqueada","A tentativa de retomada foi interrompida",
-   "A continuação ficou bloqueada e não pode ser reiniciada pelo mesmo pedido.",
-   "Preparar outra recuperação segura","Não reabrir o reparo original terminal.","Nenhuma aprovação solicitada");
  if(work.kind==="running")return output("working","Execução comprovada","A Factory está executando trabalho",
   "Existe um run iniciado e com lease vigente."+(repairBlocked?" Também há histórico de reparo bloqueado.":""),
   "Concluir a execução e verificar os resultados",
   "Build, testes e Preview continuam exigindo evidências independentes.","Nenhuma ação agora");
- if(repairBlocked)return output("blocked","Reparo técnico bloqueado","A Factory precisa corrigir uma falha",
+ if(latestFailure==="no_actionable_work")
+  return output("blocked","Retomada sem trabalho válido","A última retomada falhou sem tarefas acionáveis",
+   "Não há execução ativa comprovada. Repetir o mesmo pedido não cria trabalho novo.",
+   "Reconciliar o trabalho e o release registrados",
+   "A Factory deve conferir a revisão técnica posterior e identificar trabalho genuinamente novo antes de outra tentativa.",
+   "Nenhuma nova aprovação solicitada");
+ if(recovery?.status==="recovery_blocked")
+  return output("blocked","Recuperação bloqueada","A última recuperação não concluiu o trabalho",
+   "A continuação ficou bloqueada. O histórico e o release anterior não devem ser reabertos por tentativa cega.",
+   "Verificar a falha e o escopo da recuperação",
+   "A Factory precisa preparar uma correção com evidência nova; não basta pressionar Reiniciar.",
+   "Nenhuma aprovação solicitada");
+ if(repairBlocked)return output("blocked","Reparo técnico bloqueado","Há um reparo técnico registrado como bloqueado",
   (repairNote?repairNote+". ":"")+"Não há prova de recuperação em andamento. O bloqueio não é uma aprovação humana.",
   "Resolver a causa e preparar retomada segura",
   "Trabalho técnico da Factory; a existência de uma falha não dispara automaticamente o reparo.","Nenhuma aprovação solicitada");
