@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {getDashboard,getHumanGates,getProjectDetail,getProjectRecoveryStatus,
  getProjectStateContext,getProjectExecutionControl,getProjectWorkObservation,
  commandProjectExecution,restartBlockedProjectWork} from "../lib/control-plane";
-import {summarizeProductExperience} from "../lib/product-experience-model";
+import {PRODUCT_PHASES,summarizeProductExperience} from "../lib/product-experience-model";
 import {getPrimaryCostPolicyView} from "../lib/primary-cost-policy";
 import {ownerFinancialBlocker} from "../lib/owner-financial-blocker";
 import {ProjectControlForm} from "./projects/[key]/control-confirm";
@@ -92,41 +92,67 @@ export default async function Home({searchParams}:{
   const lifecycleCommand=control.state==="draft"?"start":
    control.state==="paused"?"resume":control.state==="stopped"?"restart":null;
   const lifecycleLabel=control.state==="draft"?"Iniciar":control.state==="paused"?"Retomar":"Reiniciar";
-  const status=financial?financial.title:needsDecision?"Aguardando decisão":
+  const status=financial?financial.title:needsDecision?"Aguardando sua decisão":
    control.state==="draft"?"Não iniciado":control.state==="paused"?"Pausado":
-   control.state==="stopped"?"Parado":view.tone==="blocked"?"Parado":
-   view.tone==="working"?"Desenvolvendo":view.tone==="waiting"?"Aguardando":
-   view.tone==="evaluated"?"Pronto para avaliação":view.tone==="quiet"?"Aguardando":"Indisponível";
-  const summary=financial?financial.description:
-   view.tone==="blocked"?"O desenvolvimento foi interrompido.":
-   view.tone==="working"?"A Factory está trabalhando.":
-   view.tone==="waiting"?"A Factory recebeu trabalho e aguarda execução comprovada.":
-   view.tone==="evaluated"?"Há uma versão avaliada.":"Acompanhe ou solicite uma alteração.";
+   control.state==="stopped"?"Desativado":view.label;
+  const summary=financial?financial.description:view.headline;
+  const nextStep=financial?"Revisar o limite antes de solicitar trabalho pago":view.nextTitle;
+  const nextExplanation=financial?financial.detail:view.nextDetail;
+  const responsible=needsDecision?"Você — revisão de aprovação":
+   financial?"Você — decisão financeira":
+   ["draft","paused","stopped"].includes(control.state)?"Você — quando decidir ativar":
+   view.tone==="blocked"?"Factory — reconciliar falha técnica":
+   view.tone==="unknown"?"Factory — recuperar leitura confiável":
+   view.tone==="evaluated"?"Factory — validar a versão atual":
+   "Factory — próxima etapa técnica";
+  const manageCommand=control.state==="running"&&Number.isSafeInteger(control.version)&&control.version>=0;
+  const canManage=manageCommand||Boolean(!needsDecision&&!financial&&(canRestart||lifecycleCommand));
   return <article className={"ownerProductItem owner-"+(financial?"blocked":view.tone)} key={key}>
    <div className="ownerProductIdentity">
-    <h3>{project.name}</h3>
-    <span className={"ownerProductState owner-"+(financial?"blocked":view.tone)}>{status}</span>
-    <p>{summary}</p>
-    {financial?<p className="ownerFinancialDetail" role="status">{financial.detail}</p>:null}
+    <div className="ownerProductHeading">
+     <h3>{project.name}</h3>
+     <strong className={"ownerProductState owner-"+(financial?"blocked":view.tone)}>{status}</strong>
+    </div>
+    <p className="ownerProductSummary">{summary}</p>
+    <p className="ownerProductExplanation">{financial?financial.detail:view.description}</p>
+    <div className="ownerProductJourney" aria-label={"Jornada do produto "+project.name}>
+     <p>Fase registrada: <strong>{view.declaredStageLabel}</strong> <span>(posição administrativa; não certifica conclusão)</span></p>
+     <ol className="ownerProductJourneyRail">
+      {PRODUCT_PHASES.map((phase,index)=><li key={phase}
+       className={index===view.declaredStage?"isCurrent":""}
+       aria-current={index===view.declaredStage?"step":undefined}>{phase}</li>)}
+     </ol>
+    </div>
+    <div className="ownerProductResponsibilities">
+     <div><span>Próximo passo</span><strong>{nextStep}</strong><p>{nextExplanation}</p></div>
+     <div><span>Quem atua agora</span><strong>{responsible}</strong></div>
+    </div>
+    <p className="ownerProductProof">{view.proof} {view.execution}.</p>
    </div>
    <div className="ownerProductActions">
-    {financial?<Link className="ownerFinanceAction" href={financial.href}>{financial.actionLabel}</Link>:null}
     {needsDecision?<Link className="ownerDecisionLink" href="/gates">Revisar decisão</Link>:null}
-    {!needsDecision&&!financial&&canRestart?
-     <ProjectControlForm projectKey={key} command="restart" label="Reiniciar"
-      version={control.version} action={ownerRestartBlocked} recovery/>:null}
-    {!needsDecision&&!financial&&!canRestart&&lifecycleCommand?
-     <ProjectControlForm projectKey={key} command={lifecycleCommand}
-      label={lifecycleLabel} version={control.version} action={ownerControl}/>:null}
-    {!needsDecision&&!financial&&control.state==="running"&&!canRestart?
-     <ProjectControlForm projectKey={key} command="pause" label="Pausar"
-      version={control.version} action={ownerControl}/>:null}
-    {!needsDecision&&control.state==="running"?
-     <ProjectControlForm projectKey={key} command="stop" label="Parar"
-      version={control.version} action={ownerControl}/>:null}
-    {!needsDecision&&!financial&&control.state==="running"?
-     <Link href={path+"/request"} className="ownerProductChange">Solicitar alteração</Link>:null}
-    <Link href={path} className="ownerProductDetail">Ver detalhes</Link>
+    {financial?<Link className="ownerFinanceAction" href={financial.href}>{financial.actionLabel}</Link>:null}
+    <Link href={path} className="ownerProductDetail">Ver andamento e evidências</Link>
+    {canManage?<details className="ownerProjectControls">
+     <summary>Gerenciar execução</summary>
+     <p>Controles administrativos. Controle ativo não significa worker executando.</p>
+     <div className="ownerProjectControlButtons">
+      {!needsDecision&&!financial&&canRestart?
+       <ProjectControlForm projectKey={key} command="restart" label="Reiniciar"
+        version={control.version} action={ownerRestartBlocked} recovery/>:null}
+      {!needsDecision&&!financial&&!canRestart&&lifecycleCommand?
+       <ProjectControlForm projectKey={key} command={lifecycleCommand}
+        label={lifecycleLabel} version={control.version} action={ownerControl}/>:null}
+      {!needsDecision&&!financial&&manageCommand&&!canRestart?
+       <ProjectControlForm projectKey={key} command="pause" label="Pausar"
+        version={control.version} action={ownerControl}/>:null}
+      {!needsDecision&&manageCommand?
+       <ProjectControlForm projectKey={key} command="stop" label="Parar"
+        version={control.version} action={ownerControl}/>:null}
+      {!needsDecision&&!financial&&manageCommand?
+       <Link href={path+"/request"} className="ownerProductChange">Solicitar alteração</Link>:null}
+     </div>
+    </details>:null}
    </div>
   </article>;
  };
@@ -141,7 +167,8 @@ export default async function Home({searchParams}:{
    <Link href="/gates">Revisar decisões</Link>
   </section>:null}
   <section className="portfolio" aria-labelledby="portfolio-title">
-   <h2 id="portfolio-title" className="ownerPortfolioTitle">Desenvolvimento dos produtos</h2>
+   <h2 id="portfolio-title" className="ownerPortfolioTitle">Andamento dos produtos</h2>
+   <p className="ownerPortfolioIntro">A fase é uma posição registrada, diferente de execução ativa e prontidão comprovada.</p>
    <div className="productBoard ownerProductList">
     {active.length?active.map(renderProduct):<p className="ownerEmpty">Nenhum produto em desenvolvimento.</p>}
    </div>
