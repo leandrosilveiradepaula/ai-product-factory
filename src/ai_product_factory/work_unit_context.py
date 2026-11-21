@@ -91,6 +91,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
     repository={
         "project_key":str(source.get("project_key") or ""),
         "repository":str(source.get("repository") or ""),
+        "project_kind":source.get("project_kind") if source.get("project_kind") in ("greenfield","existing","platform") else "unspecified",
         "exact_base_commit":base_commit,
         "work_branch":branch,
         "write_scopes":scopes,

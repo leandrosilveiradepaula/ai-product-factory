@@ -10,7 +10,7 @@ class ModelImplementationProducer:
  def produce(self,item:DirectExecutionItem)->ImplementationArtifact:
   objective=("Implement the task as a minimal repository patch. Return JSON only with "
              "plan_markdown, files (array of objects with path and full content), commit_message, "
-             "pr_title, pr_body, blocked_reason. AGENTS.md remains authoritative. Reconcile task-specific "
+             "pr_title, pr_body, blocked_reason. AGENTS.md remains authoritative ONLY when its complete exact-SHA contents are supplied in repository_snapshot. For a greenfield (repository.project_kind=greenfield), AGENTS.md may legitimately be absent; do not invent its content or block solely on its absence. Use provided README, explicit approved write scopes, constraints and human decisions. For existing/platform projects, missing mandatory governance is never permission to proceed. Reconcile task-specific "
              "repository governance with durable human_decisions from the context packet: a newer explicit "
              "human decision may authorize or clarify the current task when an older CURRENT_TASK is stale, "
              "but it never broadens repository.write_scopes or overrides security, sandbox, data-loss, cost, "
@@ -66,7 +66,7 @@ class ModelImplementationProducer:
    "required":["plan_markdown","files","commit_message","pr_title","pr_body","blocked_reason","decision_needed"],
    "additionalProperties":False,
   }
-  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Treat AGENTS.md as authoritative and reconcile task-governance files with durable human_decisions without widening write scopes or safety boundaries.","Do not invent authorization that repository governance or durable human decisions do not grant."),output_schema=schema)
+  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Honor AGENTS.md when actually supplied at the exact SHA. Do not hallucinate absent governance or treat missing AGENTS.md alone as a blocker in greenfield; keep explicit scopes, approved constraints and safety gates authoritative.","Do not invent authorization that repository governance or durable human decisions do not grant."),output_schema=schema)
   result=self.executor.execute(ExecutionRoute.DIRECT,request)
   try:data=json.loads(result.output)
   except json.JSONDecodeError as exc:raise ValueError("implementation producer returned invalid JSON") from exc
