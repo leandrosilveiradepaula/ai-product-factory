@@ -118,7 +118,7 @@ class FakeGet:
         self.calls.append(path)
         table=path.split("?",1)[0]
         if table not in self.data:raise RuntimeError("unexpected table")
-        matches=re.findall(r"(?:^|&)([a-z_]+)=eq\.([0-9a-f-]{36})",path)
+        matches=re.findall(r"(?:^|&)([a-z_]+)=eq\.([0-9a-f-]{36})(?=&|$)",path)
         text_matches=re.findall(r"(?:^|&)(role|candidate_commit)=eq\.([a-z_0-9]{2,40})",path)
         return [copy.deepcopy(row) for row in self.data[table]
                 if all(row.get(key)==value for key,value in matches)
