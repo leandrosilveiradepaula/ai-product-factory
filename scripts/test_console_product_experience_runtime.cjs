@@ -157,3 +157,31 @@ test("owner portfolio only reads classified latest outcome and release facts",()
  assert.match(cp,/latestRun,releaseEvidence,tasks/);
  assert.doesNotMatch(cp,/last_error:String/);
 });
+
+
+test("attention display separates genuine gates from GitHub App registration",()=>{
+ const lib=fs.readFileSync(path.join(root,"apps/console/lib/owner-attention-counts.ts"),"utf8");
+ const js=ts.transpileModule(lib,{compilerOptions:{target:ts.ScriptTarget.ES2022,
+  module:ts.ModuleKind.CommonJS}}).outputText;
+ const out={};vm.runInNewContext(js,{exports:out},{timeout:5000});
+ const counts=out.ownerAttentionCounts;
+ assert.equal(typeof counts,"function");
+ const notConfigured=counts({pendingHumanGateCount:0,githubAppConfigured:false,pendingInstallCount:4});
+ assert.equal(notConfigured.count,1);
+ assert.equal(notConfigured.pendingHumanGateCount,0);
+ assert.equal(notConfigured.pendingIntegrationActionCount,1);
+ const configured=counts({pendingHumanGateCount:2,githubAppConfigured:true,pendingInstallCount:3});
+ assert.equal(configured.count,5);
+ assert.equal(configured.pendingHumanGateCount,2);
+ assert.equal(configured.pendingIntegrationActionCount,3);
+ assert.throws(()=>counts({pendingHumanGateCount:-1,githubAppConfigured:true,pendingInstallCount:0}),/owner_attention_unverifiable/);
+ assert.throws(()=>counts({pendingHumanGateCount:0,githubAppConfigured:"yes",pendingInstallCount:0}),/owner_attention_unverifiable/);
+ const api=fs.readFileSync(path.join(root,"apps/console/app/api/human-attention/route.ts"),"utf8");
+ const shell=fs.readFileSync(path.join(root,"apps/console/app/shell.tsx"),"utf8");
+ const gates=fs.readFileSync(path.join(root,"apps/console/app/gates/page.tsx"),"utf8");
+ assert.match(api,/ownerAttentionCounts/);
+ assert.match(shell,/snapshot\.pendingHumanGateCount\+snapshot\.pendingIntegrationActionCount/);
+ assert.match(shell,/ação de integração/);
+ assert.match(gates,/counts\.pendingHumanGateCount/);
+ assert.match(gates,/counts\.pendingIntegrationActionCount/);
+});

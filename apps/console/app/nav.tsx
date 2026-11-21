@@ -31,7 +31,7 @@ function Icon({name}:{name:IconName}){
 const primaryItems=[
  {href:"/",label:"Visão geral",icon:"overview" as IconName},
  {href:"/projects",label:"Projetos",icon:"projects" as IconName},
- {href:"/gates",label:"Aprovações",icon:"gates" as IconName},
+ {href:"/gates",label:"Decisões e acessos",icon:"gates" as IconName},
 ];
 const advancedGroups=[
  {label:"Acompanhar execução",items:[

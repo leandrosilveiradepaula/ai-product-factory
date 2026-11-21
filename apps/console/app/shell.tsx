@@ -31,7 +31,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const router=useRouter();
  const authOnly=pathname==="/login"||pathname==="/unauthorized";
  const context=routeContext(pathname);
- const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
+ const [attention,setAttention]=useState<{count:number;pendingHumanGateCount:number;pendingIntegrationActionCount:number;projects:string[]}|null>(null);
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
  const [transportDisconnected,setTransportDisconnected]=useState(false);
@@ -99,9 +99,19 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    const response=await fetch("/api/human-attention",{cache:"no-store"});
    if(!response.ok)throw new Error("attention unavailable");
    const snapshot:unknown=await response.json();
-   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
+   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||
+    !("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||snapshot.count<0||
+    !("pendingHumanGateCount" in snapshot)||typeof snapshot.pendingHumanGateCount!=="number"||
+    !Number.isSafeInteger(snapshot.pendingHumanGateCount)||snapshot.pendingHumanGateCount<0||
+    !("pendingIntegrationActionCount" in snapshot)||typeof snapshot.pendingIntegrationActionCount!=="number"||
+    !Number.isSafeInteger(snapshot.pendingIntegrationActionCount)||snapshot.pendingIntegrationActionCount<0||
+    snapshot.count!==snapshot.pendingHumanGateCount+snapshot.pendingIntegrationActionCount||
+    !("projects" in snapshot)||!Array.isArray(snapshot.projects)||
+    !snapshot.projects.every((p:unknown)=>typeof p==="string"))
+    throw new Error("invalid attention snapshot");
    if(epoch===attentionEpoch.current){
-    setAttention({count:Number(snapshot.count),projects:snapshot.projects});
+    setAttention({count:snapshot.count,pendingHumanGateCount:snapshot.pendingHumanGateCount,
+     pendingIntegrationActionCount:snapshot.pendingIntegrationActionCount,projects:snapshot.projects});
     setAttentionUnavailable(false);
     setAttentionLoading(false);
     attentionSettled.current=true;
@@ -134,6 +144,12 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   window.addEventListener("focus",onFocus);
   return()=>{++attentionEpoch.current;window.clearInterval(tick);window.removeEventListener("focus",onFocus);};
  },[refreshAttention,pathname,authOnly]);
+ const attentionLabel=attention?[
+  attention.pendingHumanGateCount>0?
+   attention.pendingHumanGateCount+" "+(attention.pendingHumanGateCount===1?"decisão pendente":"decisões pendentes"):null,
+  attention.pendingIntegrationActionCount>0?
+   attention.pendingIntegrationActionCount+" "+(attention.pendingIntegrationActionCount===1?"ação de integração":"ações de integração"):null,
+ ].filter(Boolean).join(" · "):"";
  if(authOnly){
   return <div className="authShell">
    <main className="authMain">{children}</main>
@@ -170,11 +186,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
     <div className="topbarMeta">
      {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Carregando aprovações…</span>
       :attentionUnavailable?<div className="topbarAttentionRecovery">
-       <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
+       <Link href="/gates" className="topbarAttention active" role="status">Decisões e integrações indisponíveis</Link>
        <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
       </div>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"decisão pendente":"decisões pendentes"}</Link>
-      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attentionLabel}</Link>
+      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma decisão ou integração pendente</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
