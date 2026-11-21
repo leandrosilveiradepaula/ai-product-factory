@@ -106,7 +106,7 @@ export default async function Home({searchParams}:{
    view.tone==="evaluated"?"Factory — validar a versão atual":
    "Factory — próxima etapa técnica";
   const manageCommand=control.state==="running"&&Number.isSafeInteger(control.version)&&control.version>=0;
-  const canManage=manageCommand||Boolean(!needsDecision&&!financial&&(canRestart||lifecycleCommand));
+  const canManage=!needsDecision&&(manageCommand||Boolean(!financial&&(canRestart||lifecycleCommand)));
   return <article className={"ownerProductItem owner-"+(financial?"blocked":view.tone)} key={key}>
    <div className="ownerProductIdentity">
     <div className="ownerProductHeading">
@@ -125,7 +125,7 @@ export default async function Home({searchParams}:{
     </div>
     <div className="ownerProductResponsibilities">
      <div><span>Próximo passo</span><strong>{nextStep}</strong><p>{nextExplanation}</p></div>
-     <div><span>Quem atua agora</span><strong>{responsible}</strong></div>
+     <div><span>Responsável pelo próximo passo</span><strong>{responsible}</strong></div>
     </div>
     <p className="ownerProductProof">{view.proof} {view.execution}.</p>
    </div>
