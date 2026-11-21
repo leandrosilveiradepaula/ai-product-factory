@@ -71,6 +71,7 @@ def fixture():
       }],
       "factory_repair_jobs":[{
         "id":JOB,"project_id":PID,"change_set_id":CS,"source_run_id":ROOT,
+        "created_at":"2026-11-17T14:40:04+00:00",
         "task_id":ORIGINAL_TASK,"status":"blocked","source_role":"security",
         "cycle":2,"max_cycles":3,"candidate_commit":OLDER,
         "finding":FINDING,"write_scopes":[PATH],
@@ -118,8 +119,10 @@ class FakeGet:
         table=path.split("?",1)[0]
         if table not in self.data:raise RuntimeError("unexpected table")
         matches=re.findall(r"(?:^|&)([a-z_]+)=eq\.([0-9a-f-]{36})",path)
+        text_matches=re.findall(r"(?:^|&)(role|candidate_commit)=eq\.([a-z_0-9]{2,40})",path)
         return [copy.deepcopy(row) for row in self.data[table]
-                if all(row.get(key)==value for key,value in matches)]
+                if all(row.get(key)==value for key,value in matches)
+                and all(row.get(key)==value for key,value in text_matches)]
 
 
 class OperatorRecoveryTests(unittest.TestCase):
