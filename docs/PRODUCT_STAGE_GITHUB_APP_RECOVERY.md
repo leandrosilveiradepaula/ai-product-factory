@@ -26,3 +26,18 @@ A geração de nova continuação não ocorre nesta PR; é uma ação
 operacional controlada após merge humano, CI e rollout por SHA.
 A migração SQL Dark Channel não é aplicada, Preview do Console é
 N/A e auto-merge permanece inexistente.
+
+## Contrato real da RPC de retry (21/11/2026)
+
+A RPC `factory_retry_failed_run(uuid,text)` usa
+`retry_source_generation = v_source.metadata->>'execution_generation'`.
+O primeiro retry ja reivindicado registra `execution_generation=1`.
+Assim, o segundo retry nasce com `retry_source_generation="1"` (texto),
+**nao null**. Uma verificacao somente-leitura com o Supabase real e
+GitHub App real reproduziu o bloqueio anterior e provou que o restante
+do preflight admite a continuacao quando esse formato e respeitado.
+Agora o guard compara a geracao textual do novo retry com a geracao
+atual e tambem verifica a geracao efetiva do run anterior. Valores
+nulos, numericos, antigos ou malformados bloqueiam antes da leitura
+GitHub. A cadeia continua limitada ao retry adicional de um preflight
+sem uso do modelo; nenhuma migracao, merge ou custo e autorizado.

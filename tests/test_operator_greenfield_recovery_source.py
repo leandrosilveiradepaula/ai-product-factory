@@ -211,14 +211,16 @@ class OperatorRecoveryTests(unittest.TestCase):
         second["id"]="dddddddd-dddd-dddd-dddd-dddddddddddd"
         second["metadata"]["retry_of"]=RID
         second["metadata"]["retry_source_generation"]="1"
-        second["metadata"].pop("execution_generation")
+        # A claimed first retry has the real execution epoch reinstated.
+        self.assertEqual(second["metadata"]["execution_generation"],1)
         second["status"]="failed"
         second["last_error"]="reconciliation_context_preflight_failed"
         third=copy.deepcopy(second)
         third["id"]="eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
         third["status"]="running"
         third["metadata"]["retry_of"]=second["id"]
-        third["metadata"]["retry_source_generation"]=None
+        # RPC projects the source epoch to TEXT, never null.
+        third["metadata"]["retry_source_generation"]="1"
         db.data["factory_runs"].extend([second,third])
         db.data["factory_blocked_work_recovery_requests"][0]["status"]="blocked"
         ctx,_,_=self.inspect(db=db,run_id=third["id"])
@@ -233,6 +235,14 @@ class OperatorRecoveryTests(unittest.TestCase):
         db.data["factory_runs"].append(fourth)
         with self.assertRaises(SourceScopeBlocked):
             self.inspect(db=db,run_id=fourth["id"])
+        for invalid in (None, 1, "0", "2", "1 "):
+            with self.subTest(epoch=invalid):
+                gh=FakeGithub()
+                third["metadata"]["retry_source_generation"]=invalid
+                with self.assertRaises(SourceScopeBlocked):
+                    self.inspect(db=db,github=gh,run_id=third["id"])
+                self.assertEqual(gh.reads,[])
+        third["metadata"]["retry_source_generation"]="1"
 
     def test_queue_recovery_uses_claimed_run_not_arbitrary_source(self):
         queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="offline")
