@@ -77,6 +77,36 @@ test("new recovery receipt supersedes historical blocked repair without claiming
 });
 
 
+test("real recovery failure with released change set shows precise next action",()=>{
+ const r=view({
+  detail:{...detail,latestRun:{status:"failed",failureKind:"no_actionable_work",
+   createdAt:"2026-11-21T10:56:01Z"},
+   releaseEvidence:{kind:"released",candidateCommit:"b".repeat(40),
+    updatedAt:"2026-11-17T18:08:11Z"}},
+  recovery:{status:"recovery_blocked",cycle:2,maxCycles:3,message:null,updatedAt:"2026-11-20T16:46:12Z"},
+ });
+ assert.equal(r.tone,"blocked");
+ assert.match(r.label,/Retomada sem trabalho/);
+ assert.match(r.description,/Repetir o mesmo pedido não cria trabalho novo/);
+ assert.match(r.nextTitle,/Reconciliar/);
+ assert.match(r.proof,/Release registrado/);
+ assert.match(r.proof,/não são comprovados/);
+ assert.equal(r.declaredStageLabel,"Operação");
+});
+test("live worker with current lease is not hidden by an old blocked recovery",()=>{
+ const r=view({recovery:{status:"recovery_blocked",cycle:2,maxCycles:3},
+  work:{kind:"running",runId:"live",at:"2026-11-21T16:50:00Z"},
+  detail:{...detail,latestRun:{status:"failed",failureKind:"no_actionable_work",createdAt:"2026-11-21"}}});
+ assert.equal(r.tone,"working");
+});
+test("recorded release does not prove whole-product readiness",()=>{
+ const r=view({detail:{...detail,releaseEvidence:{kind:"released",
+  candidateCommit:"c".repeat(40),updatedAt:"2026-11-17"}}});
+ assert.equal(r.tone,"quiet");
+ assert.match(r.proof,/não são comprovados/);
+ assert.match(r.proof,/Prontidão do produto ainda não comprovada/);
+});
+
 test("owner portfolio exposes authenticated lifecycle commands without engineering controls",()=>{
  const home=fs.readFileSync(path.join(root,"apps/console/app/page.tsx"),"utf8");
  assert.match(home,/restartBlockedProjectWork\(key,Number\(version\),id\)/);
@@ -86,6 +116,12 @@ test("owner portfolio exposes authenticated lifecycle commands without engineeri
  assert.match(home,/Solicitar alteração/);
  assert.match(home,/recovery\?\.status==="blocked"/);
  assert.match(home,/revalidatePath\("\/"\)/);
+ assert.match(home,/Fase registrada:/);
+ assert.match(home,/view.declaredStageLabel/);
+ assert.match(home,/view.nextTitle/);
+ assert.match(home,/ownerProductJourneyRail/);
+ assert.match(home,/view.proof/);
+ assert.match(home,/<summary>Gerenciar execução<\/summary>/);
  assert.doesNotMatch(home,/lease_owner|change_set_id|primary_model|worker_id/i);
 });
 
@@ -111,4 +147,13 @@ test("financial blocker requires a real pending-run audit and current policy",()
  assert.equal(check(observed,{...policy,knownSpendUsd:null})?.kind,"unverified");
  assert.equal(check(observed,{...policy,unknownPaidCostEvents:1})?.kind,"unverified");
  assert.equal(check(observed,null)?.kind,"unverified");
+});
+
+test("owner portfolio only reads classified latest outcome and release facts",()=>{
+ const cp=fs.readFileSync(path.join(root,"apps/console/lib/control-plane.ts"),"utf8");
+ assert.match(cp,/releaseResponse\.ok/);
+ assert.match(cp,/status=eq\.released/);
+ assert.match(cp,/planning has no actionable tasks or decisions/);
+ assert.match(cp,/latestRun,releaseEvidence,tasks/);
+ assert.doesNotMatch(cp,/last_error:String/);
 });
