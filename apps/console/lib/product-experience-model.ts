@@ -23,6 +23,10 @@ export type ProductExperience={
  declaredStage:number|null;
  declaredStageLabel:string;
  repairNote:string|null;
+ recordedMilestone:string;
+ readinessLabel:string;
+ executionLabel:string;
+ readinessGapCount:number|null;
 };
 export function summarizeProductExperience(data:{
  project:Project;
@@ -55,7 +59,32 @@ export function summarizeProductExperience(data:{
  const repairBlocked=recovery?recovery.status==="blocked":context.snapshot?.sourceStatus?.repair_status==="blocked";
  const repairNote=recovery?.status==="blocked"&&recovery.maxCycles>0?
   "Reparo bloqueado: ciclo "+recovery.cycle+" de "+recovery.maxCycles:null;
- const base={proof,execution,objective,declaredStage,declaredStageLabel,repairNote};
+ // Evidence inventory is not a six-step completion percentage. An administrative
+ // lifecycle_stage can be "operations" while readiness has not been assessed.
+ const recordedMilestone=evaluated?"Avaliação de uma versão registrada":
+  detail?.releaseEvidence?.kind==="released"?"Release registrado":
+  detail?.tasks?.some(task=>task.status==="integrated")?"Alterações integradas":
+  detail?.tasks?.length?"Trabalho planejado":
+  context.objective?"Definição do produto registrada":"Nenhum marco comprovado";
+ const readinessLabel=evaluated?"Avaliação por versão registrada":"Funcionamento não comprovado";
+ const executionLabel=work.kind==="running"?"Trabalho em andamento":
+  work.kind==="recorded"?"Pedido na fila":
+  work.kind==="unavailable"?"Execução não verificável":
+  ["draft","paused","pausing","stopped","stopping"].includes(control.state)?"Controle desativado":
+  "Sem trabalho ativo";
+ let readinessGapCount:number|null=null;
+ if(Array.isArray(context.snapshot?.gaps)){
+  const domains=new Set<string>();
+  for(const gap of context.snapshot.gaps){
+   if(!gap||typeof gap!=="object"||Array.isArray(gap))continue;
+   const row=gap as Record<string,unknown>;
+   if(row.kind==="global_readiness_evidence_required"&&
+      typeof row.domain==="string"&&row.domain.trim())domains.add(row.domain);
+  }
+  readinessGapCount=domains.size;
+ }
+ const base={proof,execution,objective,declaredStage,declaredStageLabel,repairNote,
+  recordedMilestone,readinessLabel,executionLabel,readinessGapCount};
  const output=(tone:Tone,label:string,headline:string,description:string,nextTitle:string,nextDetail:string,userAction:string):ProductExperience=>
   ({...base,tone,label,headline,description,nextTitle,nextDetail,userAction});
  if(!detail)return output("unknown","Dados indisponíveis","Situação do produto não verificada",
@@ -89,16 +118,16 @@ export function summarizeProductExperience(data:{
   "Concluir a execução e verificar os resultados",
   "Build, testes e Preview continuam exigindo evidências independentes.","Nenhuma ação agora");
  if(latestFailure==="no_actionable_work")
-  return output("blocked","Retomada sem trabalho válido","A última retomada falhou sem tarefas acionáveis",
-   "Não há execução ativa comprovada. Repetir o mesmo pedido não cria trabalho novo.",
-   "Reconciliar o trabalho e o release registrados",
-   "A Factory deve conferir a revisão técnica posterior e identificar trabalho genuinamente novo antes de outra tentativa.",
-   "Nenhuma nova aprovação solicitada");
+  return output("blocked","Desenvolvimento bloqueado","A última tentativa não encontrou tarefas que pudesse executar",
+   "O sistema não está sendo desenvolvido neste momento. Insistir em Reiniciar não resolve.",
+   "Verificar o que falta entregar e criar trabalho executável",
+   "A Factory precisa identificar as pendências reais, registrar uma tarefa válida e só então tentar continuar.",
+   "Nenhuma aprovação humana solicitada");
  if(recovery?.status==="recovery_blocked")
-  return output("blocked","Recuperação bloqueada","A última recuperação não concluiu o trabalho",
-   "A continuação ficou bloqueada. O histórico e o release anterior não devem ser reabertos por tentativa cega.",
-   "Verificar a falha e o escopo da recuperação",
-   "A Factory precisa preparar uma correção com evidência nova; não basta pressionar Reiniciar.",
+  return output("blocked","Correção bloqueada","A tentativa de corrigir o produto falhou",
+   "O sistema não está sendo desenvolvido nesta tentativa. Um novo clique em Reiniciar pode repetir a mesma falha.",
+   "Identificar a causa e preparar uma tarefa de correção",
+   "A Factory deve analisar a falha registrada e criar uma ação nova que não repita a tentativa anterior.",
    "Nenhuma aprovação solicitada");
  if(repairBlocked)return output("blocked","Reparo técnico bloqueado","Há um reparo técnico registrado como bloqueado",
   (repairNote?repairNote+". ":"")+"Não há prova de recuperação em andamento. O bloqueio não é uma aprovação humana.",

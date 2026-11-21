@@ -23,6 +23,9 @@ test("administrative operations does not imply delivery",()=>{
  const r=view({});
  assert.equal(r.tone,"quiet");assert.match(r.proof,/não comprovado/);
  assert.equal(r.declaredStageLabel,"Operação");
+ assert.equal(r.recordedMilestone,"Nenhum marco comprovado");
+ assert.equal(r.readinessLabel,"Funcionamento não comprovado");
+ assert.equal(r.executionLabel,"Sem trabalho ativo");
  assert.match(r.execution,/Nenhuma execução ativa/);
 });
 test("created pending run is not a running worker",()=>{
@@ -86,12 +89,14 @@ test("real recovery failure with released change set shows precise next action",
   recovery:{status:"recovery_blocked",cycle:2,maxCycles:3,message:null,updatedAt:"2026-11-20T16:46:12Z"},
  });
  assert.equal(r.tone,"blocked");
- assert.match(r.label,/Retomada sem trabalho/);
- assert.match(r.description,/Repetir o mesmo pedido não cria trabalho novo/);
- assert.match(r.nextTitle,/Reconciliar/);
+ assert.equal(r.label,"Desenvolvimento bloqueado");
+ assert.match(r.description,/Insistir em Reiniciar não resolve/);
+ assert.match(r.nextTitle,/criar trabalho executável/);
  assert.match(r.proof,/Release registrado/);
  assert.match(r.proof,/não são comprovados/);
  assert.equal(r.declaredStageLabel,"Operação");
+ assert.equal(r.recordedMilestone,"Release registrado");
+ assert.equal(r.readinessLabel,"Funcionamento não comprovado");
 });
 test("live worker with current lease is not hidden by an old blocked recovery",()=>{
  const r=view({recovery:{status:"recovery_blocked",cycle:2,maxCycles:3},
@@ -116,11 +121,15 @@ test("owner portfolio exposes authenticated lifecycle commands without engineeri
  assert.match(home,/Solicitar alteração/);
  assert.match(home,/recovery\?\.status==="blocked"/);
  assert.match(home,/revalidatePath\("\/"\)/);
- assert.match(home,/Fase registrada:/);
+ assert.match(home,/Último marco registrado/);
+ assert.match(home,/Produto em funcionamento/);
+ assert.match(home,/Execução agora/);
  assert.match(home,/view.declaredStageLabel/);
  assert.match(home,/view.nextTitle/);
- assert.match(home,/ownerProductJourneyRail/);
+ assert.match(home,/ownerProductFacts/);
+ assert.match(home,/ownerProductEvidence/);
  assert.match(home,/view.proof/);
+ assert.doesNotMatch(home,/ownerProductJourneyRail/);
  assert.match(home,/<summary>Gerenciar execução<\/summary>/);
  assert.doesNotMatch(home,/lease_owner|change_set_id|primary_model|worker_id/i);
 });
@@ -184,4 +193,39 @@ test("attention display separates genuine gates from GitHub App registration",()
  assert.match(shell,/ação de integração/);
  assert.match(gates,/counts\.pendingHumanGateCount/);
  assert.match(gates,/counts\.pendingIntegrationActionCount/);
+});
+
+
+test("only separately evidenced milestones appear; operations registry never means ready",()=>{
+ const snapshot={sourceStatus:{product_readiness:"not_assessed"},gaps:[
+  ...["security","observability_operations","test_strategy","product_experience","documentation","functional_completeness"]
+   .map(domain=>({kind:"global_readiness_evidence_required",domain})),
+  {kind:"global_readiness_evidence_required",domain:"security"},
+ ]};
+ const result=view({context:{objective:"Studio",snapshot},detail:{...detail,releaseEvidence:{
+  kind:"released",candidateCommit:"a".repeat(40),updatedAt:"2026-11-17"}}});
+ assert.equal(result.declaredStageLabel,"Operação");
+ assert.equal(result.recordedMilestone,"Release registrado");
+ assert.equal(result.readinessLabel,"Funcionamento não comprovado");
+ assert.equal(result.readinessGapCount,6);
+ assert.notEqual(result.tone,"evaluated");
+});
+test("readiness and running status use separate exact evidence",()=>{
+ const running=view({work:{kind:"running",runId:"real",at:"2026-11-21T19:00:00Z"}});
+ assert.equal(running.executionLabel,"Trabalho em andamento");
+ assert.equal(running.readinessLabel,"Funcionamento não comprovado");
+ const noData=view({work:{kind:"unavailable",runId:null,at:null}});
+ assert.equal(noData.executionLabel,"Execução não verificável");
+ const ready=view({detail:{...detail,productReadiness:{
+  ready:true,assessedCommit:"b".repeat(40)},releaseEvidence:{kind:"none"}}});
+ assert.equal(ready.readinessLabel,"Avaliação por versão registrada");
+ assert.match(ready.recordedMilestone,/Avaliação de uma versão/);
+});
+test("the database badge never claims that an unregistered database does not exist",()=>{
+ const home=fs.readFileSync(path.join(root,"apps/console/app/page.tsx"),"utf8");
+ assert.match(home,/getProjectDatabases\(detail\.id\)/);
+ assert.match(home,/databases===null\?"unavailable"/);
+ assert.match(home,/databases\.length>0\?"registered"/);
+ assert.match(home,/não comprova que o produto não tenha um banco externo/);
+ assert.match(home,/Sem trabalho ativo|view\.executionLabel/);
 });

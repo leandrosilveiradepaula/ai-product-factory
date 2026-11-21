@@ -2,9 +2,9 @@ import Link from "next/link";
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {getDashboard,getHumanGates,getProjectDetail,getProjectRecoveryStatus,
- getProjectStateContext,getProjectExecutionControl,getProjectWorkObservation,
+ getProjectStateContext,getProjectExecutionControl,getProjectWorkObservation,getProjectDatabases,
  commandProjectExecution,restartBlockedProjectWork} from "../lib/control-plane";
-import {PRODUCT_PHASES,summarizeProductExperience} from "../lib/product-experience-model";
+import {summarizeProductExperience} from "../lib/product-experience-model";
 import {getPrimaryCostPolicyView} from "../lib/primary-cost-policy";
 import {ownerFinancialBlocker} from "../lib/owner-financial-blocker";
 import {ProjectControlForm} from "./projects/[key]/control-confirm";
@@ -54,7 +54,7 @@ export default async function Home({searchParams}:{
  const pending=gates.filter(g=>g.actionable&&g.status==="pending");
  const products=await Promise.all(dashboard.projects.map(async project=>{
   const detail=await getProjectDetail(project.key);
-  if(!detail)return{project,detail:null,recovery:null,
+  if(!detail)return{project,detail:null,recovery:null,databaseLink:"unavailable" as const,
    control:{state:"unavailable" as const,version:-1,generation:0},
    view:summarizeProductExperience({project,detail:null,
     context:{objective:null,snapshot:null},recovery:null,
@@ -62,12 +62,15 @@ export default async function Home({searchParams}:{
     work:{kind:"unavailable",runId:null,at:null},
     actionableGates:pending.filter(g=>g.projectKey===project.key).length})
   };
-  const [context,recovery,control,work]=await Promise.all([
+  const [context,recovery,control,work,databases]=await Promise.all([
    getProjectStateContext(detail.id),getProjectRecoveryStatus(detail.id),
    getProjectExecutionControl(detail.id),
-   getProjectWorkObservation(detail.tasks.map(t=>String(t.id)))
+   getProjectWorkObservation(detail.tasks.map(t=>String(t.id))),
+   getProjectDatabases(detail.id).then(rows=>Array.isArray(rows)?rows:null).catch(()=>null)
   ]);
-  return{project,detail,recovery,control,view:summarizeProductExperience({
+  const databaseLink=databases===null?"unavailable" as const:
+   databases.length>0?"registered" as const:"none" as const;
+  return{project,detail,recovery,control,databaseLink,view:summarizeProductExperience({
    project,detail,context,recovery,control,work,
    actionableGates:pending.filter(g=>g.projectKey===project.key).length
   })};
@@ -98,13 +101,12 @@ export default async function Home({searchParams}:{
   const summary=financial?financial.description:view.headline;
   const nextStep=financial?"Revisar o limite antes de solicitar trabalho pago":view.nextTitle;
   const nextExplanation=financial?financial.detail:view.nextDetail;
-  const responsible=needsDecision?"Você — revisão de aprovação":
-   financial?"Você — decisão financeira":
-   ["draft","paused","stopped"].includes(control.state)?"Você — quando decidir ativar":
-   view.tone==="blocked"?"Factory — reconciliar falha técnica":
-   view.tone==="unknown"?"Factory — recuperar leitura confiável":
-   view.tone==="evaluated"?"Factory — validar a versão atual":
-   "Factory — próxima etapa técnica";
+  const responsible=needsDecision?"Você":financial?"Você":
+   ["draft","paused","stopped"].includes(control.state)?"Você":"Factory";
+  const ownerInstruction=needsDecision?"Há uma decisão de produto para revisar.":
+   financial?"O limite financeiro depende da sua decisão.":
+   ["draft","paused","stopped"].includes(control.state)?"Você decide quando iniciar ou retomar.":
+   "Nenhuma aprovação sua está pendente neste projeto.";
   const manageCommand=control.state==="running"&&Number.isSafeInteger(control.version)&&control.version>=0;
   const canManage=!needsDecision&&(manageCommand||Boolean(!financial&&(canRestart||lifecycleCommand)));
   return <article className={"ownerProductItem owner-"+(financial?"blocked":view.tone)} key={key}>
@@ -115,27 +117,46 @@ export default async function Home({searchParams}:{
     </div>
     <p className="ownerProductSummary">{summary}</p>
     <p className="ownerProductExplanation">{financial?financial.detail:view.description}</p>
-    <div className="ownerProductJourney" role="group" aria-label={"Jornada do produto "+project.name}>
-     <p>Fase registrada: <strong>{view.declaredStageLabel}</strong> <span>(posição administrativa; não certifica conclusão)</span></p>
-     <ol className="ownerProductJourneyRail">
-      {PRODUCT_PHASES.map((phase,index)=><li key={phase}
-       className={index===view.declaredStage?"isCurrent":""}
-       aria-current={index===view.declaredStage?"step":undefined}>{phase}</li>)}
-     </ol>
+    <dl className="ownerProductFacts" aria-label={"Situação comprovada de "+project.name}>
+     <div><dt>Último marco registrado</dt><dd>{view.recordedMilestone}</dd></div>
+     <div><dt>Produto em funcionamento</dt><dd>{view.readinessLabel}</dd></div>
+     <div><dt>Execução agora</dt><dd>{view.executionLabel}</dd></div>
+    </dl>
+    <div className="ownerProductNext">
+     <div>
+      <span>O que precisa acontecer agora</span>
+      <strong>{nextStep}</strong>
+      <p>{nextExplanation}</p>
+     </div>
+     <div>
+      <span>Quem precisa agir</span>
+      <strong>{responsible}</strong>
+      <p>{ownerInstruction}</p>
+     </div>
     </div>
-    <div className="ownerProductResponsibilities">
-     <div><span>Próximo passo</span><strong>{nextStep}</strong><p>{nextExplanation}</p></div>
-     <div><span>Responsável pelo próximo passo</span><strong>{responsible}</strong></div>
-    </div>
-    <p className="ownerProductProof">{view.proof} {view.execution}.</p>
+    {view.readinessGapCount!==null&&view.readinessGapCount>0?
+     <p className="ownerProductMissing">Último levantamento: {view.readinessGapCount} {view.readinessGapCount===1?"área ainda sem avaliação de prontidão":"áreas ainda sem avaliação de prontidão"}.</p>:null}
+    {entry.databaseLink==="none"?
+     <p className="ownerProductMissing">Banco de dados: nenhum vínculo registrado na Factory. Isso não comprova que o produto não tenha um banco externo.</p>:null}
+    {entry.databaseLink==="unavailable"?
+     <p className="ownerProductMissing">Conexão com banco: cadastro não pôde ser verificado.</p>:null}
    </div>
    <div className="ownerProductActions">
     {needsDecision?<Link className="ownerDecisionLink" href="/gates">Revisar decisão</Link>:null}
     {financial?<Link className="ownerFinanceAction" href={financial.href}>{financial.actionLabel}</Link>:null}
-    <Link href={path} className="ownerProductDetail">Ver andamento e evidências</Link>
+    <Link href={path} className="ownerProductDetail">Abrir projeto e acompanhar</Link>
+    <details className="ownerProductEvidence">
+     <summary>Ver evidências e histórico</summary>
+     <dl>
+      <div><dt>Fase no cadastro</dt><dd>{view.declaredStageLabel} — não certifica a entrega</dd></div>
+      <div><dt>Vínculo de banco na Factory</dt><dd>{entry.databaseLink==="registered"?"Cadastrado":entry.databaseLink==="none"?"Não cadastrado":"Não verificável"}</dd></div>
+     </dl>
+     <p>{view.proof}</p>
+     <p>{view.execution}.</p>
+    </details>
     {canManage?<details className="ownerProjectControls">
      <summary>Gerenciar execução</summary>
-     <p>Controles administrativos. Controle ativo não significa worker executando.</p>
+     <p>Estes comandos alteram o controle administrativo; não comprovam que existe trabalho executando.</p>
      <div className="ownerProjectControlButtons">
       {!needsDecision&&!financial&&canRestart?
        <ProjectControlForm projectKey={key} command="restart" label="Reiniciar"
@@ -168,7 +189,7 @@ export default async function Home({searchParams}:{
   </section>:null}
   <section className="portfolio" aria-labelledby="portfolio-title">
    <h2 id="portfolio-title" className="ownerPortfolioTitle">Andamento dos produtos</h2>
-   <p className="ownerPortfolioIntro">A fase é uma posição registrada, diferente de execução ativa e prontidão comprovada.</p>
+   <p className="ownerPortfolioIntro">O que já foi registrado, o que falta comprovar e quem pode agir agora.</p>
    <div className="productBoard ownerProductList">
     {active.length?active.map(renderProduct):<p className="ownerEmpty">Nenhum produto com processamento habilitado.</p>}
    </div>
