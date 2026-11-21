@@ -454,6 +454,37 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         context["current_state_facts"] = facts
         return context
 
+    def _live_claimed_candidate_context(self, project_id: str, context: dict, *, run_id: str) -> dict:
+        """Keep OWNER source precedence; verify a claimed operator recovery independently."""
+        try:
+            return self._live_candidate_context(project_id, context)
+        except SourceScopeBlocked as exc:
+            if exc.code != "greenfield_owner_continuation_required":
+                raise
+            manifest = context.get("manifest") if isinstance(context, dict) else None
+            if (not isinstance(manifest, dict)
+                    or manifest.get("source") != "factory-console"
+                    or manifest.get("onboarding_mode") != "greenfield"
+                    or not isinstance(manifest.get("bootstrap_request_id"), str)):
+                raise
+            rows = self._get(
+                "factory_projects?select=id,repository,project_kind,manifest"
+                "&id=eq." + quote(project_id, safe="") + "&limit=2"
+            )
+            if (not isinstance(rows, list) or len(rows) != 1
+                    or not isinstance(rows[0], dict)
+                    or rows[0].get("id") != project_id):
+                raise SourceScopeBlocked("operator_recovery_lineage_unverified")
+            from .operator_blocked_recovery_source import inspect_operator_sql_recovery
+            repo = rows[0].get("repository")
+            if not isinstance(repo, str) or not repo.strip():
+                raise SourceScopeBlocked("operator_recovery_lineage_unverified")
+            github = GitHubRestAdapter(repository=repo)
+            return inspect_operator_sql_recovery(
+                project=rows[0], context=context, run_id=run_id,
+                get=self._get, github=github,
+            )
+
     def _live_candidate_context(self, project_id: str, context: dict) -> dict:
         """Read live candidate evidence before paid reconciliation; no GitHub writes."""
         rows = self._get(
@@ -1022,7 +1053,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         if "reconciliation" in stages:
             try:
                 context = self._reconciliation_context(data["project_id"], context)
-                context = self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"], context)
+                context = self._live_journey_context(context) if journey_id else self._live_claimed_candidate_context(data["project_id"], context, run_id=data["run_id"])
             except Exception as exc:
                 # The claim is already durable; RuntimeWorker has no WorkItem
                 # if this context preparation raises. Settle it with the

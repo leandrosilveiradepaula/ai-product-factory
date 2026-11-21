@@ -189,20 +189,37 @@ def _verified_greenfield_source_for_reconciliation(context: object) -> bool:
     owner = manifest.get("continuation_request")
     if (manifest.get("source") != "factory-console"
         or manifest.get("onboarding_mode") != "greenfield"
-        or not isinstance(manifest.get("bootstrap_request_id"), str)
-        or not isinstance(owner, dict)
-        or owner.get("source") != "github-owner"
-        or not isinstance(owner.get("github"), dict)
-        or owner["github"].get("repository") != "leandrosilveiradepaula/ai-product-factory"
-        or owner["github"].get("issue_number") != 1055
-        or owner["github"].get("actor_id") != 256917842):
+        or not isinstance(manifest.get("bootstrap_request_id"), str)):
+        return False
+    owner_valid = (
+        isinstance(owner, dict)
+        and owner.get("source") == "github-owner"
+        and isinstance(owner.get("github"), dict)
+        and owner["github"].get("repository") == "leandrosilveiradepaula/ai-product-factory"
+        and owner["github"].get("issue_number") == 1055
+        and owner["github"].get("actor_id") == 256917842
+    )
+    recovery = facts.get("operator_recovery")
+    recovery_valid = (
+        isinstance(recovery, dict)
+        and recovery.get("status") == "validated_operator_restart"
+        and recovery.get("recovery_kind") == "versioned_sql_security_repair"
+        and isinstance(recovery.get("scope_paths"), list)
+        and len(recovery["scope_paths"]) == 1
+        and isinstance(recovery["scope_paths"][0], str)
+        and isinstance(recovery.get("source_commit"), str)
+    )
+    if not owner_valid and not recovery_valid:
         return False
 
     candidate = facts.get("live_candidate")
     if not isinstance(candidate, dict):
         return False
     sha = candidate.get("sha")
-    if (candidate.get("observed_from") != "live_greenfield_main_exact_sha"
+    source_mode = ("live_greenfield_main_exact_sha"
+                   if owner_valid and not recovery_valid
+                   else "live_greenfield_operator_recovery_exact_sha")
+    if (candidate.get("observed_from") != source_mode
         or candidate.get("branch") != "main"
         or not isinstance(sha, str)
         or re.fullmatch(r"[0-9a-f]{40}", sha) is None
@@ -221,6 +238,14 @@ def _verified_greenfield_source_for_reconciliation(context: object) -> bool:
         or source.get("assessed_commit") != sha):
         return False
     files = source.get("inspected_files")
+    if recovery_valid and (
+        recovery.get("source_commit") != sha
+        or source.get("request_source_paths") != recovery.get("scope_paths")
+        or not isinstance(files, list)
+        or len(files) != 1
+        or files[0].get("path") != recovery["scope_paths"][0]
+    ):
+        return False
     if (not isinstance(files, list) or not 1 <= len(files) <= 4
         or not all(
             isinstance(f, dict)
@@ -274,6 +299,20 @@ class ProductStageExecutor:
         # A README-only repository is an actual, unimplemented product: do not
         # demand an existing source-code defect before creating its foundation.
         if stage == "planning":
+            recovery=((item.context.get("current_state_facts") or {}).get("operator_recovery")
+                      if isinstance(item.context, dict) else None)
+            if isinstance(recovery, dict) and recovery.get("status") == "validated_operator_restart":
+                objective += (
+                    " OPERATOR REPAIR CONSTRAINT: This is not a new product Start. "
+                    "Produce at most ONE build task scoped exactly to the "
+                    "existing verified repair.scope_paths. No unrelated files, "
+                    "new migrations, security policy broadening or extra tasks. "
+                    "A database GRANT paired with restrictive RLS may be "
+                    "required; do not remove it solely due to a scanner label. "
+                    "Specialist QA/security reviews must check proposed changes "
+                    "against PostgreSQL tenant-isolation tests. Missing exact "
+                    "evidence is a blocker, never a license to guess."
+                )
             manifest = item.context.get("manifest")
             original = item.context.get("intake_spec")
             if (isinstance(manifest, dict)
@@ -305,7 +344,21 @@ class ProductStageExecutor:
                     "product decision remains, request that decision; never "
                     "invent work or approvals."
                 )
-        if verified_greenfield:
+        if verified_greenfield and isinstance(
+            (item.context.get("current_state_facts") or {}).get("operator_recovery"), dict
+        ):
+            objective = (
+                "Reconcile ONLY this already-operator-authorized blocked SQL "
+                "security remediation from verified exact-SHA repository "
+                "evidence and immutable Console Restart lineage. The prior "
+                "Change Set is terminal and must never be reopened. Missing "
+                "historical snapshots are not success evidence. Do not invent "
+                "new requirements, remove valid authenticated privileges "
+                "without assessing RLS, or claim a completed product. Return "
+                "JSON only with observed_stage, summary, evidence, gaps, "
+                "constraints and source_status. Source evidence is READ ONLY."
+            )
+        elif verified_greenfield:
             objective = (
                 "Reconcile this already-created Console greenfield using only "
                 "the exact-SHA live Github source receipt, verified current "
@@ -414,6 +467,27 @@ class ProductStageExecutor:
                     if not title and task_key:
                         task["title"]=task_key
         if stage=="planning":
+            recovery=((item.context.get("current_state_facts") or {}).get("operator_recovery")
+                      if isinstance(item.context, dict) else None)
+            if isinstance(recovery, dict) and recovery.get("status") == "validated_operator_restart":
+                allowed=recovery.get("scope_paths")
+                tasks=output.get("tasks")
+                if (not isinstance(allowed, list) or len(allowed) != 1
+                        or not isinstance(tasks, list) or len(tasks) > 1
+                        or any(
+                            not isinstance(task, dict)
+                            or task.get("scope_keys") != allowed
+                            or (task.get("context_paths") is not None
+                                and (not isinstance(task.get("context_paths"), list)
+                                     or any(path not in (*allowed, "README.md", "package.json")
+                                            for path in task["context_paths"])))
+                            for task in tasks
+                        )):
+                    raise PermissionError("operator recovery planning escaped frozen repair scope")
+                output["_operator_recovery_constraint"] = (
+                    "Operator Restart permits only a fresh scoped candidate; "
+                    "no terminal Change Set reopening."
+                )
             _drop_unsubstantiated_business_priorities(output,item.context.get("current_state_facts"))
             # Do not settle a run as completed if no executable task or real
             # decision was produced. Such a result may signal a stale request,
