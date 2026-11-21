@@ -136,8 +136,11 @@ test("real Overview WCAG contrast and decision accessible name regressions",asyn
   ]);
   for(const match of css.matchAll(/(?:[;{]\s*)color\s*:\s*(#[0-9a-f]{6})(?=\s*[;}])/gi))
     assert.ok(!lowContrast.has(match[1].toLowerCase()),"low-contrast source foreground "+match[1]);
-  assert.ok(shell.includes('className="topbarAttention active">{attention.count}'),
-    "Attention link name must derive from its visible operator decision label");
+  assert.ok(shell.includes('className="topbarAttention active">{attentionLabel}</Link>'),
+    "Attention link accessible name must derive from its actual visible categories");
+  assert.match(shell,/attention\.pendingHumanGateCount>0/);
+  assert.match(shell,/attention\.pendingIntegrationActionCount>0/);
+  assert.match(shell,/snapshot\.count!==snapshot\.pendingHumanGateCount\+snapshot\.pendingIntegrationActionCount/);
   assert.ok(!/topbarAttention active"\s+aria-label=/.test(shell),
     "A contradictory aria-label must not override the visible label");
 });
