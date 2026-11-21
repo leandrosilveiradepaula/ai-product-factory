@@ -156,3 +156,40 @@
  .configurationDisclosure>.overviewGrid,.configurationDisclosure>.card,.configurationDisclosure>.configurationDiagnostics{margin:10px}
  .configurationDisclosure>summary{padding:14px 12px;margin-left:21px}
 }
+
+/* Owner-visible delivery evidence: phase != completion. */
+.ownerPortfolioIntro{margin:-5px 0 18px;color:#b5c5d7;font-size:13px;line-height:1.55}
+.ownerProductList{gap:15px}
+.ownerProductItem{display:grid;grid-template-columns:minmax(0,1fr) minmax(225px,270px);gap:24px;align-items:start;padding:24px}
+.ownerProductIdentity{gap:13px}
+.ownerProductHeading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 14px}
+.ownerProductHeading h3{font-size:20px}
+.ownerProductState{font-size:12px;max-width:100%;line-height:1.5}
+.ownerProductSummary{font-size:16px!important;color:#f1f6ff!important;font-weight:650;line-height:1.45!important}
+.ownerProductExplanation{font-size:13px!important;color:#c1d0df!important;line-height:1.55!important}
+.ownerProductJourney{display:grid;gap:10px;padding:14px 0;border-top:1px solid #34445a;border-bottom:1px solid #34445a}
+.ownerProductJourney>p{color:#c4d2e1;font-size:12px!important;line-height:1.45!important}
+.ownerProductJourney>p strong{color:#eaf3ff}
+.ownerProductJourney>p span{color:#9aacc1}
+.ownerProductJourneyRail{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
+.ownerProductJourneyRail li{min-width:0;border-top:2px solid #45536a;padding:7px 2px 0;color:#a7b5c7;font-size:10px;text-align:center;line-height:1.35}
+.ownerProductJourneyRail li.isCurrent{border-top:3px solid #85b9ff;color:#e2efff;font-weight:750}
+.ownerProductResponsibilities{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(175px,.85fr);gap:12px}
+.ownerProductResponsibilities>div{min-width:0;border:1px solid #374861;background:#121c2b;border-radius:9px;padding:13px}
+.ownerProductResponsibilities span{color:#9eb7d2;font-size:11px;font-weight:700}
+.ownerProductResponsibilities strong{display:block;margin-top:6px;color:#eef5ff;font-size:14px;line-height:1.4}
+.ownerProductResponsibilities p{margin-top:5px!important;color:#bdcadc!important;line-height:1.5!important;font-size:12px!important}
+.ownerProductProof{font-size:11px!important;line-height:1.55!important;color:#a6bcd5!important}
+.ownerProductActions{display:flex;align-items:stretch;flex-direction:column;gap:12px;flex:none;min-width:0}
+.ownerProductActions>a{border:1px solid #51729c;border-radius:8px;padding:12px 14px;text-align:center;min-height:44px}
+.ownerProductActions>a.ownerProductDetail{color:#e3eeff;border-color:#4a78b5;background:#253b59;font-size:14px}
+.ownerProjectControls{width:100%;border:1px solid #3b4d63;border-radius:8px;background:#141d2a}
+.ownerProjectControls>summary{padding:12px 14px;cursor:pointer;min-height:44px;color:#bcd0e8;font-size:13px;font-weight:650}
+.ownerProjectControls>summary:focus-visible{outline:2px solid #9bc9ff;outline-offset:2px}
+.ownerProjectControls>p{padding:0 14px;margin:0 0 12px;font-size:12px;line-height:1.5;color:#b6c7db}
+.ownerProjectControlButtons{display:grid;gap:9px;padding:0 14px 14px}
+.ownerProjectControlButtons form{margin:0}
+.ownerProjectControlButtons button,.ownerProjectControlButtons a{min-height:42px;width:100%;display:flex;align-items:center;justify-content:center;padding:9px 10px;border-radius:7px;text-align:center}
+.ownerProjectControlButtons button.danger{background:#862522}
+@media(max-width:1050px){.ownerProductItem{grid-template-columns:1fr}.ownerProductActions{flex-direction:row;flex-wrap:wrap;align-items:flex-start}.ownerProductActions>a,.ownerProjectControls{width:auto;min-width:180px}}
+@media(max-width:690px){.ownerProductItem{padding:18px;gap:16px}.ownerProductResponsibilities{grid-template-columns:1fr}.ownerProductActions{flex-direction:column}.ownerProductActions>a,.ownerProjectControls{width:100%;min-width:0}.ownerProductJourneyRail li{font-size:9px;overflow-wrap:anywhere}}
