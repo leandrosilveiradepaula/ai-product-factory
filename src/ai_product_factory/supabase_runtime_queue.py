@@ -454,6 +454,31 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         context["current_state_facts"] = facts
         return context
 
+    @staticmethod
+    def _github_for_project(project: dict) -> GitHubRestAdapter:
+        """Use one ephemeral, repository-scoped GitHub App token on native VPS.
+
+        The token lives only in memory, never argv/env/files, logs or prompts.
+        GitHub Actions keeps the original OIDC installation-token path.
+        """
+        repository = project.get("repository")
+        if not isinstance(repository, str) or "/" not in repository:
+            raise PermissionError("project repository identity unavailable")
+        if (os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
+                or os.environ.get("FACTORY_PRIMARY_MODEL_PROVIDER") != "infodive_ibm_cloud"
+                or os.environ.get("FACTORY_INFODIVE_VPS_WORKER_ENABLED") != "true"):
+            return GitHubRestAdapter(repository=repository)
+        project_key = project.get("project_key")
+        if (not isinstance(project_key, str) or not project_key.strip()
+                or not isinstance(project.get("id"), str)):
+            raise PermissionError("native Product Stage project identity missing")
+        from .vps_github_app import VpsGitHubAppUnavailable, mint_vps_github_app_token
+        try:
+            temporary_token = mint_vps_github_app_token(repository, project_key)
+        except VpsGitHubAppUnavailable:
+            raise PermissionError("native Product Stage GitHub App unavailable") from None
+        return GitHubRestAdapter(repository=repository, token=temporary_token)
+
     def _live_claimed_candidate_context(self, project_id: str, context: dict, *, run_id: str) -> dict:
         """Keep OWNER source precedence; verify a claimed operator recovery independently."""
         try:
@@ -468,7 +493,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     or not isinstance(manifest.get("bootstrap_request_id"), str)):
                 raise
             rows = self._get(
-                "factory_projects?select=id,repository,project_kind,manifest"
+                "factory_projects?select=id,project_key,repository,project_kind,manifest"
                 "&id=eq." + quote(project_id, safe="") + "&limit=2"
             )
             if (not isinstance(rows, list) or len(rows) != 1
@@ -479,7 +504,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             repo = rows[0].get("repository")
             if not isinstance(repo, str) or not repo.strip():
                 raise SourceScopeBlocked("operator_recovery_lineage_unverified")
-            github = GitHubRestAdapter(repository=repo)
+            github = self._github_for_project(rows[0])
             return inspect_operator_sql_recovery(
                 project=rows[0], context=context, run_id=run_id,
                 get=self._get, github=github,
@@ -488,7 +513,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
     def _live_candidate_context(self, project_id: str, context: dict) -> dict:
         """Read live candidate evidence before paid reconciliation; no GitHub writes."""
         rows = self._get(
-            "factory_projects?select=id,repository,project_kind,manifest"
+            "factory_projects?select=id,project_key,repository,project_kind,manifest"
             "&id=eq." + quote(project_id, safe="") + "&limit=1"
         )
         if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
@@ -503,7 +528,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             from .platform_source_context import live_platform_source_context
             if not isinstance(repo, str) or "/" not in repo:
                 raise PermissionError("platform reconciliation has no repository identity")
-            github = GitHubRestAdapter(repository=repo)
+            github = self._github_for_project(project)
             return live_platform_source_context(project=project, context=context, github=github)
         if project.get("project_kind") == "greenfield":
             from .greenfield_source_context import live_greenfield_source_context
@@ -515,7 +540,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 or not isinstance(manifest.get("continuation_request"), dict)
                 or manifest["continuation_request"].get("source") != "github-owner"):
                 raise SourceScopeBlocked("greenfield_owner_continuation_required")
-            github = GitHubRestAdapter(repository=repo)
+            github = self._github_for_project(project)
             return live_greenfield_source_context(
                 project=project, context=context, github=github,
             )
@@ -525,7 +550,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             manifest.get("delivery_target") if isinstance(manifest, dict) else None,
             repository=repo,
         )
-        github = GitHubRestAdapter(repository=repo)
+        github = self._github_for_project(project)
         target.verify(github)
         main_sha = github.get_branch_sha("main")
         governance = {}
