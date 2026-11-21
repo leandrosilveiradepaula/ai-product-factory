@@ -117,7 +117,7 @@ export default async function Home({searchParams}:{
     </div>
     <p className="ownerProductSummary">{summary}</p>
     <p className="ownerProductExplanation">{financial?financial.detail:view.description}</p>
-    <dl className="ownerProductFacts" aria-label={"Situação comprovada de "+project.name}>
+    <dl className="ownerProductFacts">
      <div><dt>Último marco registrado</dt><dd>{view.recordedMilestone}</dd></div>
      <div><dt>Produto em funcionamento</dt><dd>{view.readinessLabel}</dd></div>
      <div><dt>Execução agora</dt><dd>{view.executionLabel}</dd></div>

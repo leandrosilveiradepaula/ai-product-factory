@@ -23,7 +23,7 @@ test("administrative operations does not imply delivery",()=>{
  const r=view({});
  assert.equal(r.tone,"quiet");assert.match(r.proof,/não comprovado/);
  assert.equal(r.declaredStageLabel,"Operação");
- assert.equal(r.recordedMilestone,"Nenhum marco comprovado");
+ assert.equal(r.recordedMilestone,"Definição do produto registrada");
  assert.equal(r.readinessLabel,"Funcionamento não comprovado");
  assert.equal(r.executionLabel,"Sem trabalho ativo");
  assert.match(r.execution,/Nenhuma execução ativa/);
@@ -126,7 +126,8 @@ test("owner portfolio exposes authenticated lifecycle commands without engineeri
  assert.match(home,/Execução agora/);
  assert.match(home,/view.declaredStageLabel/);
  assert.match(home,/view.nextTitle/);
- assert.match(home,/ownerProductFacts/);
+ assert.match(home,/<dl className="ownerProductFacts">/);
+ assert.doesNotMatch(home,/<dl className="ownerProductFacts" aria-label=/);
  assert.match(home,/ownerProductEvidence/);
  assert.match(home,/view.proof/);
  assert.doesNotMatch(home,/ownerProductJourneyRail/);
