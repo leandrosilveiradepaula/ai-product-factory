@@ -104,7 +104,7 @@ test("recorded release does not prove whole-product readiness",()=>{
   candidateCommit:"c".repeat(40),updatedAt:"2026-11-17"}}});
  assert.equal(r.tone,"quiet");
  assert.match(r.proof,/não são comprovados/);
- assert.match(r.proof,/Prontidão do produto ainda não comprovada/);
+ assert.match(r.proof,/prontidão do produto ainda não certificada/);
 });
 
 test("owner portfolio exposes authenticated lifecycle commands without engineering controls",()=>{

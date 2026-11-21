@@ -41,7 +41,7 @@ export function summarizeProductExperience(data:{
  const evaluated=detail?.productReadiness.ready===true;
  const assessed=detail?.productReadiness.assessedCommit;
  const assessedProof=evaluated?"Prontidão avaliada para o commit "+(assessed?assessed.slice(0,8):"registrado")+
-  "; mudanças posteriores não são certificadas.":"Prontidão do produto ainda não comprovada.";
+  "; mudanças posteriores não são certificadas.":"Uso funcional ainda não comprovado; prontidão do produto ainda não certificada.";
  const releaseProof=detail?.releaseEvidence?.kind==="released"?
   "Release registrado no Control Plane (commit "+detail.releaseEvidence.candidateCommit?.slice(0,8)+
   "); publicação atual e funcionamento não são comprovados por esse registro.":

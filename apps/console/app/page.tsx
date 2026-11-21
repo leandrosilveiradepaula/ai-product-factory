@@ -170,7 +170,7 @@ export default async function Home({searchParams}:{
    <h2 id="portfolio-title" className="ownerPortfolioTitle">Andamento dos produtos</h2>
    <p className="ownerPortfolioIntro">A fase é uma posição registrada, diferente de execução ativa e prontidão comprovada.</p>
    <div className="productBoard ownerProductList">
-    {active.length?active.map(renderProduct):<p className="ownerEmpty">Nenhum produto em desenvolvimento.</p>}
+    {active.length?active.map(renderProduct):<p className="ownerEmpty">Nenhum produto com processamento habilitado.</p>}
    </div>
    {inactive.length>0?<details className="portfolioSecondary">
     <summary>Produtos pausados ou não iniciados ({inactive.length})</summary>
