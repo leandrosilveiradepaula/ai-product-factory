@@ -281,7 +281,10 @@ class OperatorRecoveryTests(unittest.TestCase):
             {**passed, "completed_at": "2026-11-17T13:20:20+00:00"},
             {**passed, "evidence": {**passed["evidence"], "blocking_findings": 1}},
             {**passed, "evidence": {**passed["evidence"], "blocking_findings": "0"}},
-            {**passed, "findings": [{"severity": "critical"}]},
+            {**passed, "findings": [{"code": "security_alert", "severity": "critical"}]},
+            {**passed, "findings": [{"code": "missing_severity"}]},
+            {**passed, "findings": [{"severity": "warning"}]},
+            {**passed, "findings": [{"code": "unknown", "severity": "unexpected"}]},
         ]
         for review in cases:
             with self.subTest(review=review):
@@ -301,6 +304,20 @@ class OperatorRecoveryTests(unittest.TestCase):
             else old_get(path, ref=ref)
         )
         context, _, _ = self.inspect(db=db, github=github)
+        self.assertEqual(context["current_state_facts"]["operator_recovery"]["status"],
+                         "validated_operator_restart")
+
+    def test_other_candidate_review_does_not_clear_this_finding(self):
+        db = FakeGet()
+        db.data["factory_repair_jobs"][0]["created_at"] = "2026-11-17T14:40:04+00:00"
+        db.data["factory_specialist_lane_jobs"] = [{
+            "run_id": ROOT, "role": "security", "candidate_commit": HEAD,
+            "status": "passed", "completed_at": "2026-11-17T15:50:20+00:00",
+            "evidence": {"scanner": "architecture_guardian_v1",
+                         "candidate_commit": HEAD, "blocking_findings": 0},
+            "findings": [],
+        }]
+        context, _, _ = self.inspect(db=db)
         self.assertEqual(context["current_state_facts"]["operator_recovery"]["status"],
                          "validated_operator_restart")
 
