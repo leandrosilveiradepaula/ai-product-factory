@@ -230,7 +230,7 @@ async function hydrationRound({throttled=false,repeats=3}={}){
   }
   if(url.pathname==="/api/human-attention"){
     await route.fulfill({status:200,contentType:"application/json",
-      body:JSON.stringify({status:"ok",count:0,projects:[]})});return;
+      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})});return;
   }
   await route.continue();
  });
@@ -387,7 +387,7 @@ test("B3: real Next project detail hydration and command identity are stable acr
  try{
   await context.route("**/api/human-attention",async route=>
     route.fulfill({status:200,contentType:"application/json",
-      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,projects:[]})}));
+      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
   for(let index=0;index<4;index++){
    const response=await page.goto(appOrigin+"/projects/ai-product-factory",{
     waitUntil:"networkidle",timeout:45000});
@@ -473,10 +473,11 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    observations++;
    if(firstRoute===null&&observations===1){firstRoute=route;return;}
    const cases={
-     pending:{status:200,body:{status:"ok",count:2,projects:[]}},
+     pending:{status:200,body:{status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]}},
      unavailable:{status:503,body:{status:"unavailable"}},
-     cleared:{status:200,body:{status:"ok",count:0,projects:[]}},
-     malformed:{status:200,body:{status:"ok",count:-1,projects:[]}},
+     cleared:{status:200,body:{status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]}},
+     integration:{status:200,body:{status:"ok",count:1,pendingHumanGateCount:0,pendingIntegrationActionCount:1,projects:[]}},
+     malformed:{status:200,body:{status:"ok",count:-1,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]}},
    };
    const res=cases[mode];
    assert.ok(res,"unexpected B3 control state");
@@ -494,7 +495,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    for(let i=0;i<60&&!firstRoute;i++)await new Promise(res=>setTimeout(res,50));
    assert.ok(firstRoute,"one real browser GET must be pending during loading");
    await firstRoute.fulfill({status:200,contentType:"application/json",
-     body:JSON.stringify({status:"ok",count:2,projects:[]})});
+     body:JSON.stringify({status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]})});
    firstRoute=null;
    try{
      await page.waitForFunction(()=>
@@ -520,22 +521,28 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
    assert.equal(await page.locator(".topbarAttentionRecovery [role=status]").innerText(),
-     "Aprovações indisponíveis");
+     "Decisões e integrações indisponíveis");
    assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").count(),0);
    mode="cleared";
    await page.getByRole("button",{name:"Tentar novamente"}).click();
    await page.waitForFunction(()=>
-     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma aprovação pendente" &&
+     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma decisão ou integração pendente" &&
      !document.querySelector(".desktopSidebarContent .humanAttentionCount"),null,{timeout:20000});
+   mode="integration";
+   await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+   await page.waitForFunction(()=>
+     document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="1 ação de integração"&&
+     document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="1",
+     null,{timeout:20000});
    mode="malformed";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
    assert.equal(pageErrors.length,0,"all state transitions must preserve genuine React integrity");
    assert.equal(mutations,0,"all B3 controls must remain GET-only");
-   assert.ok(observations>=4);
+   assert.ok(observations>=5);
  }finally{
    if(firstRoute)await firstRoute.fulfill({status:200,contentType:"application/json",
-     body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+     body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}).catch(()=>{});
    await context.close();
  }
 });
@@ -556,7 +563,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
    calls++;
    if(calls===1){pending=route;return;}
    await route.fulfill({status:200,contentType:"application/json",
-    body:JSON.stringify({status:"ok",count:2,projects:[]})});return;
+    body:JSON.stringify({status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]})});return;
   }
   await route.continue();
  });
@@ -575,7 +582,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
   await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
   await page.waitForFunction(()=>document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",null,{timeout:15000});
   await pending.fulfill({status:200,contentType:"application/json",
-   body:JSON.stringify({status:"ok",count:0,projects:[]})});
+   body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})});
   pending=null;
   await page.waitForTimeout(150);
   assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").innerText(),"2");
@@ -583,7 +590,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
   assert.equal(violations.length,violationsBefore);
  }finally{
   if(pending)await pending.fulfill({status:200,contentType:"application/json",
-   body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+   body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}).catch(()=>{});
   await context.close();
  }
 });
@@ -629,7 +636,7 @@ test("B2/B3: real authenticated intake advances to review without a server actio
    await route.abort("blockedbyclient");return;
   }
   if(url.pathname==="/api/human-attention"){
-   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})});return;
+   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})});return;
   }
   await route.continue();
  });
@@ -677,7 +684,7 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
  try{
   await context.route("**/api/human-attention",async route=>
    route.fulfill({status:200,contentType:"application/json",
-    body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+    body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
   const response=await page.goto(appOrigin+"/runs",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200,"isolated real /runs must load");
   assert.equal(new URL(page.url()).pathname,"/runs");
@@ -751,7 +758,7 @@ test("B3 #79: full six-agent cards keep lengthy model policies nonoverlapping an
  const page=await context.newPage();
  try{
   await context.route("**/api/human-attention",async route=>
-   route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+   route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
   const response=await page.goto(appOrigin+"/agents",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
   assert.equal(await page.locator("h1.title").innerText(),"Agentes da Factory");
@@ -796,7 +803,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
   try{
     await context.route("**/api/human-attention",async route=>
       route.fulfill({status:200,contentType:"application/json",
-        body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+        body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
     const scan=async(name,mode)=>{
       await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
       const diagnostic=["overview:mobile","overview:mobile-menu","new-project:desktop",

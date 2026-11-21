@@ -115,7 +115,7 @@ export default async function Home({searchParams}:{
     </div>
     <p className="ownerProductSummary">{summary}</p>
     <p className="ownerProductExplanation">{financial?financial.detail:view.description}</p>
-    <div className="ownerProductJourney" aria-label={"Jornada do produto "+project.name}>
+    <div className="ownerProductJourney" role="group" aria-label={"Jornada do produto "+project.name}>
      <p>Fase registrada: <strong>{view.declaredStageLabel}</strong> <span>(posição administrativa; não certifica conclusão)</span></p>
      <ol className="ownerProductJourneyRail">
       {PRODUCT_PHASES.map((phase,index)=><li key={phase}
