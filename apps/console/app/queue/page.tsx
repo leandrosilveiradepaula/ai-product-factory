@@ -11,7 +11,7 @@ export default async function Queue(){
  const queued=operational.filter(x=>["queued","queued_execution","dispatching"].includes(x.status)).length;
  const high=operational.filter(x=>x.complexity==="high").length;
  return <>
-  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Acompanhe trabalho operacional e tarefas antigas que precisam de reconciliação. Estar na fila não significa autorização de execução." actions={<ActionLink href="/projects/new" variant="primary">+ Novo projeto</ActionLink>}/>
+  <PageHeader eyebrow="Diagnóstico · trabalho automático" title="Fila de trabalho" subtitle="Acompanhe trabalho operacional e tarefas antigas que precisam de reconciliação. Estar na fila não significa autorização de execução." actions={<ActionLink href="/projects">Voltar aos produtos</ActionLink>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Trabalho operacional</span><strong>{operational.length}</strong><small>itens que ainda exigem verificação dos gates</small></div>
    <div className="operationalStat"><span>Em execução</span><strong>{executing}</strong><small>estado registrado, não prova worker ativo</small></div>

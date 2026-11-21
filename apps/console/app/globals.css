@@ -1207,3 +1207,92 @@ body{line-height:1.55}
  .topbarAttentionRecovery{width:100%;flex-wrap:wrap;justify-content:center}
  .topbarAttentionRetry{min-height:44px}
 }
+
+/* UX/UI #1506 — operator-first clarity, inspectable in exact-SHA Preview.
+   This is a presentation layer, not evidence of a completed run or global
+   product certification. All gates, disclosures and technical routes remain. */
+.main{max-width:1480px;margin:0 auto;font-size:15px;line-height:1.6}
+.main .pageHeader{margin-bottom:26px;gap:20px}
+.main .title{font-size:clamp(28px,2.3vw,36px);letter-spacing:-.028em;line-height:1.14}
+.main .subtitle{font-size:15px;line-height:1.6;color:#c3ccdd;max-width:80ch}
+.main .section{margin-top:24px}
+.main .sectionHeader h2{font-size:18px;line-height:1.35}
+.main .card{border-radius:12px;padding:clamp(16px,1.4vw,22px)}
+.main .detailLabel{font-size:12px;letter-spacing:.065em;line-height:1.45}
+.main .cardMeta,.main .metricNote,.main .timelineMeta{font-size:13px;line-height:1.5}
+.main .tableHeader,.main .runHeader{font-size:12px;line-height:1.5}
+.main .tableRow,.main .runRow{font-size:14px;line-height:1.55;padding:12px 14px}
+.main .primary,.main .secondary,.main .danger,.main .ghostButton,.main .linkButton{min-height:44px;font-size:14px}
+.main .metricCard .metric{font-size:22px;line-height:1.3}
+.sidebar .brandBlock strong{font-size:15px;line-height:1.2}
+.sidebar .brandBlock span{font-size:11px;letter-spacing:.1em}
+.sidebar .navGroupLabel{font-size:12px;letter-spacing:.06em}
+.sidebar .navItem{font-size:14px;min-height:44px;padding:10px 12px;line-height:1.35}
+.sidebar .navAdvancedToggle{min-height:44px;font-size:14px}
+.topbar .topbarTrail,.topbar strong{font-size:13px}
+.topbar .topbarAttention{min-height:38px;font-size:13px}
+.projectOrientation{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:stretch;margin-top:4px}
+.projectOrientation .nextActionCard{min-width:0;padding:24px 28px;border-radius:14px;background:#1b2941;border:1px solid #5c7eb3}
+.projectOrientation .nextActionCard.routine{background:#1b2636;border-color:#485f7c}
+.projectOrientation .nextActionCard .detailLabel{font-size:12px;color:#c4d7f4;letter-spacing:.08em}
+.projectOrientation .nextActionCard h2{font-size:clamp(22px,2.2vw,28px);line-height:1.23;max-width:38ch;margin:8px 0 10px;color:#f3f7ff}
+.projectOrientation .nextActionCard p{font-size:15px;line-height:1.6;max-width:78ch;color:#d0dbed}
+.projectOrientation .nextActionCard .actions{margin-top:18px}
+.projectOrientation .nextActionCard .linkButton{min-height:44px}
+.projectLifecyclePanel{min-width:0;padding:18px 22px;border:1px solid #333e50;border-radius:12px;background:#161d28}
+.projectLifecycleTitle{font-size:16px;line-height:1.3;margin:0;color:#e3eafa}
+.projectLifecycleHelp{color:#b6c4d9;font-size:13px;line-height:1.5;margin:4px 0 14px}
+.projectLifecyclePanel .macroLifecycle{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.projectLifecyclePanel .macroStage{min-width:0;border-radius:9px;padding:12px 13px}
+.projectLifecyclePanel .macroStage strong{font-size:15px;line-height:1.35}
+.projectLifecyclePanel .macroStage small{font-size:13px;line-height:1.45}
+.projectLifecyclePanel .microStageLine{margin-top:12px;font-size:13px}
+.projectPrimaryMetrics{gap:12px;margin:16px 0}
+.projectPrimaryMetrics .metricCard{border-radius:12px;min-width:0}
+.projectPrimaryMetrics .metricLabel{font-size:13px;color:#c3cbdb}
+.projectPrimaryMetrics .metric{font-size:18px;overflow-wrap:anywhere}
+.projectControlSection{margin-top:14px}
+.projectControlCard{background:#161e2a;border-color:#303e52}
+.projectControlLayout{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px}
+.projectControlDescription{flex:1 1 340px;min-width:0}
+.projectControlDescription strong{display:block;font-size:17px;line-height:1.4;margin-top:4px}
+.projectControlDescription p{font-size:14px;line-height:1.6;margin:6px 0 0;max-width:85ch;color:#c1cede}
+.projectControlActions{flex:0 1 auto;justify-content:flex-end;align-items:center}
+.projectControlActions button{min-height:44px;min-width:92px}
+.projectQueuedNotice{border-color:#64542c;background:#201d19}
+.projectQueuedNotice>p{max-width:90ch}
+.projectPendingDiagnostics{margin-top:12px;border-top:1px solid #514932;padding-top:12px}
+.projectPendingDiagnostics>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:650;color:#f2d69a}
+.projectPendingDiagnostics>summary:focus-visible,.readinessDomainDisclosure>summary:focus-visible,.gateOptionalSetup>summary:focus-visible{outline:3px solid #92bfff;outline-offset:3px}
+.readinessDomainDisclosure{margin-top:12px;border:1px solid #384456;border-radius:10px;background:#121b26;padding:8px 14px}
+.readinessDomainDisclosure>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:650;color:#d7e4fa}
+.readinessDomainDisclosure[open] .readinessDomainChecklist{margin-top:12px}
+.readinessDomainDisclosure .readinessDomainDisclaimer{margin:14px 0 4px}
+.gateOptionalSetup{margin:10px 0 18px;border:1px solid #38455a;border-radius:12px;background:#151e2b}
+.gateOptionalSetup>summary{cursor:pointer;min-height:44px;padding:14px 18px;font-size:14px;font-weight:650;color:#d3e2f6}
+.gateOptionalSetup .gateCard{margin:8px 12px 12px}
+@media(max-width:920px){
+ .main{padding:20px 18px 100px}
+ .projectLifecyclePanel .macroLifecycle{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .projectPrimaryMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .projectControlActions{justify-content:flex-start}
+}
+@media(max-width:560px){
+ .main{padding:18px 14px calc(96px + env(safe-area-inset-bottom))}
+ .main .title{font-size:28px}
+ .main .sectionHeader h2{font-size:17px}
+ .projectOrientation .nextActionCard{padding:20px 18px}
+ .projectOrientation .nextActionCard h2{font-size:23px}
+ .projectLifecyclePanel{padding:16px}
+ .projectLifecyclePanel .macroLifecycle{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .projectLifecyclePanel .macroStage:last-child{grid-column:span 2}
+ .projectPrimaryMetrics{grid-template-columns:minmax(0,1fr)}
+ .projectControlLayout{align-items:stretch}
+ .projectControlActions{flex:1 1 100%;justify-content:stretch}
+ .projectControlActions form{flex:1 1 auto}
+ .projectControlActions button{width:100%}
+ .main .tableRow,.main .runRow{padding:12px 10px}
+}
+@media(prefers-reduced-motion:reduce){
+ .projectOrientation .nextActionCard{transition:none}
+}

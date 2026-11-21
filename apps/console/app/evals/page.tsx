@@ -9,7 +9,7 @@ export default async function Evals(){
  const scored=rows.filter(x=>x.score!=null);
  const avg=scored.length?scored.reduce((s,x)=>s+(x.score||0),0)/scored.length:null;
  return <>
-  <PageHeader eyebrow="Qualidade · evidências automáticas" title="Avaliações e testes" subtitle="Resultados de testes e avaliações usados pela Factory para decidir se um candidato pode avançar. Consulte principalmente quando houver uma falha." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas detectadas":"quality gate limpo"}/>}/>
+  <PageHeader eyebrow="Qualidade · evidências automáticas" title="Evidências de testes" subtitle="Resultados técnicos vinculados às execuções. A ausência de testes falhos não certifica todo o produto nem um release." actions={<StatusPill status={failed?"attention":"healthy"} label={failed?"falhas registradas":"sem falhas neste histórico"}/>}/>
   <div className="operationalStrip">
    <div className="operationalStat"><span>Avaliações</span><strong>{rows.length}</strong><small>registros duráveis</small></div>
    <div className="operationalStat"><span>Aprovadas</span><strong>{passed}</strong><small>evidências verdes</small></div>

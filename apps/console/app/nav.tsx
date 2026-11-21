@@ -4,7 +4,7 @@ import Link from "next/link";
 import {usePathname} from "next/navigation";
 import type {ReactNode} from "react";
 
-type IconName="overview"|"projects"|"runs"|"queue"|"agents"|"orchestration"|"gates"|"evals"|"deployments"|"usage"|"audit"|"configuration"|"operators";
+type IconName="overview"|"deliveries"|"projects"|"runs"|"queue"|"agents"|"orchestration"|"gates"|"evals"|"deployments"|"usage"|"audit"|"configuration"|"operators";
 
 function Icon({name}:{name:IconName}){
  const common={fill:"none",stroke:"currentColor",strokeWidth:1.7,strokeLinecap:"round" as const,strokeLinejoin:"round" as const};
@@ -12,6 +12,7 @@ function Icon({name}:{name:IconName}){
  switch(name){
   case "overview": body=<><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></>;break;
   case "projects": body=<><path d="M3.5 7.5h6l1.8 2h9.2v9.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19z"/><path d="M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h4.5l1.8 2H19a1.5 1.5 0 0 1 1.5 1.5v2.5"/></>;break;
+  case "deliveries": body=<><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="12" rx="1"/><rect x="17" y="4" width="4" height="8" rx="1"/></>;break;
   case "runs": body=<><circle cx="12" cy="12" r="8.5"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/></>;break;
   case "queue": body=<><path d="M6 6.5h14M6 12h14M6 17.5h14"/><circle cx="3.5" cy="6.5" r=".7" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r=".7" fill="currentColor" stroke="none"/><circle cx="3.5" cy="17.5" r=".7" fill="currentColor" stroke="none"/></>;break;
   case "agents": body=<><circle cx="8" cy="8" r="2.5"/><circle cx="16.5" cy="9" r="2"/><path d="M3.5 19c.5-3.8 2.2-5.7 5-5.7s4.5 1.9 5 5.7M13 18.5c.4-2.8 1.7-4.2 4-4.2 2.1 0 3.3 1.3 3.7 3.8"/></>;break;
@@ -27,28 +28,29 @@ function Icon({name}:{name:IconName}){
  return <svg viewBox="0 0 24 24" aria-hidden {...common}>{body}</svg>;
 }
 
-// Three destinations for day-to-day work; all technical routes remain one click away.
+// Operator goals are the navigation, not internal subsystems. Advanced diagnostics remain available.
 const primaryItems=[
- {href:"/",label:"Visão geral",icon:"overview" as IconName},
- {href:"/projects",label:"Projetos",icon:"projects" as IconName},
- {href:"/gates",label:"Aprovações",icon:"gates" as IconName},
+ {href:"/",label:"Visão geral",hint:"O que aconteceu e o que vem depois",icon:"overview" as IconName},
+ {href:"/projects",label:"Produtos",hint:"Entregas e evolução de cada produto",icon:"projects" as IconName},
+ {href:"/gates",label:"Decisões",hint:"Somente ações que dependem de você",icon:"gates" as IconName},
 ];
 const advancedGroups=[
- {label:"Acompanhar execução",items:[
-  {href:"/runs",label:"Execuções",icon:"runs" as IconName},
-  {href:"/queue",label:"Fila de trabalho",icon:"queue" as IconName},
-  {href:"/agents",label:"Agentes",icon:"agents" as IconName},
-  {href:"/orchestration",label:"Orquestração",icon:"orchestration" as IconName},
+ {label:"Detalhes das entregas e operações",items:[
+  {href:"/deliveries",label:"Entregas técnicas",hint:"Pacotes e tarefas por produto",icon:"deliveries" as IconName},
+  {href:"/runs",label:"Execuções",hint:"Histórico e falhas",icon:"runs" as IconName},
+  {href:"/queue",label:"Fila de trabalho",hint:"Tarefas aguardando",icon:"queue" as IconName},
+  {href:"/agents",label:"Agentes",hint:"Especialistas disponíveis",icon:"agents" as IconName},
+  {href:"/orchestration",label:"Orquestração",hint:"Automação e reparos",icon:"orchestration" as IconName},
  ]},
- {label:"Qualidade e entrega",items:[
-  {href:"/evals",label:"Avaliações e testes",icon:"evals" as IconName},
-  {href:"/deployments",label:"Implantações",icon:"deployments" as IconName},
+ {label:"Verificação técnica",items:[
+  {href:"/evals",label:"Avaliações e testes",hint:"Evidências de qualidade",icon:"evals" as IconName},
+  {href:"/deployments",label:"Implantações",hint:"Prévia e produção",icon:"deployments" as IconName},
  ]},
- {label:"Administração",items:[
-  {href:"/usage",label:"Modelos e custos",icon:"usage" as IconName},
-  {href:"/audit",label:"Auditoria",icon:"audit" as IconName},
-  {href:"/configuration",label:"Configurações",icon:"configuration" as IconName},
-  {href:"/admin/operators",label:"Operadores",icon:"operators" as IconName},
+ {label:"Administração da Factory",items:[
+  {href:"/usage",label:"Modelos e custos",hint:"Uso e limites",icon:"usage" as IconName},
+  {href:"/audit",label:"Auditoria",hint:"Quem fez o quê",icon:"audit" as IconName},
+  {href:"/configuration",label:"Configurações",hint:"Políticas e permissões",icon:"configuration" as IconName},
+  {href:"/admin/operators",label:"Operadores",hint:"Acesso de usuários",icon:"operators" as IconName},
  ]},
 ];
 export const primaryDestinations=primaryItems.map(({href})=>href);
@@ -57,8 +59,8 @@ function active(pathname:string,href:string){
  if(href==="/")return pathname==="/";
  return pathname===href||pathname.startsWith(href+"/");
 }
-function NavLink({href,label,icon,pathname,count,onNavigate}:{
- href:string;label:string;icon:IconName;pathname:string;count?:number|null;
+function NavLink({href,label,hint,icon,pathname,count,onNavigate}:{
+ href:string;label:string;hint?:string;icon:IconName;pathname:string;count?:number|null;
  onNavigate?:(href:string)=>void;
 }){
  const isActive=active(pathname,href);
@@ -66,7 +68,7 @@ function NavLink({href,label,icon,pathname,count,onNavigate}:{
  // This also guarantees a user-initiated client transition observes genuine loading.
  return <Link prefetch={false} onClick={()=>onNavigate?.(href)} className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
   <span className="navIcon"><Icon name={icon}/></span>
-  <span className="navItemLabel">{label}</span>
+  <span className="navItemCopy"><span className="navItemLabel">{label}</span>{hint?<small className="navItemHint">{hint}</small>:null}</span>
   {href==="/gates"&&count!==null&&count!==undefined&&count>0
    ?<span className="humanAttentionCount">{count}</span>
    :null}
@@ -78,7 +80,7 @@ export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:num
  const advancedActive=advancedGroups.some(group=>group.items.some(item=>active(pathname,item.href)));
  return <nav className="sidebarNav" aria-label="Navegação da Factory">
   <div className="navGroup">
-   <div className="navGroupLabel">Seu trabalho</div>
+   <div className="navGroupLabel">Acompanhamento</div>
    <div className="navGroupItems">
     {primaryItems.map(item=><NavLink key={item.href} {...item} pathname={pathname} count={attentionCount} onNavigate={onNavigate}/>)}
    </div>
@@ -86,10 +88,11 @@ export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:num
   <details key={pathname} className="navAdvanced" open={advancedActive}>
    <summary className="navAdvancedToggle">
     <svg className="navAdvancedChevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 9 7 7 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-    <span className="navAdvancedTitle">Ferramentas avançadas</span>
+    <span className="navAdvancedTitle">Ferramentas técnicas</span>
     {advancedActive?<span className="navAdvancedCurrent">Você está aqui</span>:null}
    </summary>
    <div className="navAdvancedContent">
+    <p className="navAdvancedHelp">A Factory opera automaticamente. Consulte os detalhes apenas para investigação ou administração.</p>
     {advancedGroups.map(group=><div className="navGroup" key={group.label}>
      <div className="navGroupLabel">{group.label}</div>
      <div className="navGroupItems">

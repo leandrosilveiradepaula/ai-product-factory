@@ -5,6 +5,7 @@
 export const CONSOLE_ROUTES = Object.freeze([
   {name:"overview",path:"/",width:1296},
   {name:"projects",path:"/projects",width:1296},
+  {name:"deliveries",path:"/deliveries",width:1296},
   {name:"runs",path:"/runs",width:1296},
   {name:"new-project",path:"/projects/new",width:1296},
   {name:"human-gates",path:"/gates",width:1980},

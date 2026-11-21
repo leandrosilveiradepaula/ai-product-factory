@@ -1,0 +1,101 @@
+"""Operator-first Factory Console and real read-only Kanban contract.
+No mock board, no auto-merge, no implicit paid model or database mutation.
+"""
+from pathlib import Path
+import unittest
+
+ROOT=Path(__file__).resolve().parents[1]
+APP=ROOT/"apps/console/app"
+HOME=(APP/"page.tsx").read_text(encoding="utf-8")
+BOARD=(APP/"deliveries/page.tsx").read_text(encoding="utf-8")
+DETAIL=(APP/"deliveries/[id]/page.tsx").read_text(encoding="utf-8")
+READER=(ROOT/"apps/console/lib/delivery-board.ts").read_text(encoding="utf-8")
+PRESENTATION=(ROOT/"apps/console/lib/operator-home.ts").read_text(encoding="utf-8")
+NAV=(APP/"nav.tsx").read_text(encoding="utf-8")
+SHELL=(APP/"shell.tsx").read_text(encoding="utf-8")
+LAYOUT=(APP/"layout.tsx").read_text(encoding="utf-8")
+STYLE=(APP/"operator.css").read_text(encoding="utf-8")
+CI=(ROOT/".github/workflows/console.yml").read_text(encoding="utf-8")
+
+class OperatorExperienceTests(unittest.TestCase):
+ def test_owner_cockpit_focuses_automatic_progress_and_real_human_gates(self):
+  for label in ("Sua Factory hoje","Nenhuma decisão sua neste momento",
+                "Últimos acontecimentos registrados","Novo produto","Atualização automática"):
+   self.assertIn(label,HOME)
+  self.assertIn('href="/projects/new"',HOME)
+  self.assertIn('className="factoryCommandBar"',HOME)
+  self.assertIn('details className="operatorDiagnostics"',HOME)
+  self.assertLess(HOME.index('factoryCommandBar'),HOME.index('operatorDiagnostics'))
+  for forbidden in ("incidents.map","i.error","dashboard.pendingGates",'className="operatorWelcome"'):
+   self.assertNotIn(forbidden,HOME)
+  for exact in ('getHumanGates(100,true)','getGitHubAppInstallActions()',
+                'getGitHubAppStatus()', 'summarizeOperatorAttention(', 'getProductSituations()'):
+   self.assertIn(exact,HOME)
+
+ def test_three_owner_destinations_on_desktop_and_mobile(self):
+  primary=NAV.split("const primaryItems=[",1)[1].split("];",1)[0]
+  self.assertEqual([row.split('href:"',1)[1].split('"',1)[0]
+                    for row in primary.splitlines() if 'href:"' in row],
+                   ["/","/projects","/gates"])
+  for label in ('label:"Visão geral"','label:"Produtos"','label:"Decisões"'):
+   self.assertIn(label,primary)
+  self.assertIn('href:"/deliveries"',NAV.split("const advancedGroups=[",1)[1])
+  self.assertIn('pathname.startsWith("/deliveries")',SHELL)
+  self.assertNotIn('>Entregas</Link>',SHELL)
+  for label in ('>Visão geral</Link>','>Produtos</Link>','>Decisões'):
+   self.assertIn(label,SHELL)
+  self.assertIn('pendência para revisar',SHELL)
+  self.assertIn('repeat(3,minmax(0,1fr))',STYLE)
+
+ def test_passive_refresh_never_touches_intake_or_human_decision_forms(self):
+  self.assertIn('const passiveOverview=',SHELL)
+  self.assertIn('pathname==="/"||pathname==="/projects"',SHELL)
+  self.assertIn('pathname.split("/").length===3',SHELL)
+  self.assertIn('if(!passiveOverview)return',SHELL)
+  self.assertIn('document.visibilityState!=="visible"',SHELL)
+  self.assertIn('!navigator.onLine',SHELL)
+  self.assertIn('router.refresh()',SHELL)
+  self.assertIn('activities.map(',HOME)
+  self.assertNotIn('mergeReadyReleaseFromConsole',SHELL)
+  self.assertNotIn('method:"POST"',HOME)
+
+ def test_readonly_board_uses_authoritative_data_and_integrity_guards(self):
+  for table in ('"factory_projects"', '"factory_tasks"', '"factory_runs"'):
+   self.assertIn(table,READER)
+  self.assertIn("getHumanGates(100,true)",READER)
+  self.assertIn("requireConsoleOperator()",READER)
+  self.assertIn('cache:"no-store"',READER)
+  self.assertIn("rootOf(task,byId)",READER)
+  self.assertIn("seen.has(current.parent_task_id)",READER)
+  self.assertIn("parent.project_id!==task.project_id",READER)
+  self.assertIn("excede limite verificado",READER)
+  self.assertIn('export type DeliveryLane=',READER)
+  self.assertIn('blockedStatuses',READER)
+  for label in ('A fazer','Em execução','Validando','Aguardando você','Bloqueado','Encerrado'):
+   self.assertIn(label,READER)
+  for sensitive in ('method:"POST"','apply_migration','mergeReadyReleaseFromConsole','FACTORY_PRIMARY_MODEL_ENABLED'):
+   self.assertNotIn(sensitive,READER)
+ def test_board_is_real_navigation_not_manual_movable_kanban(self):
+  self.assertIn('getDeliveryBoard()',BOARD)
+  self.assertIn('href="/gates"',BOARD)
+  self.assertIn('"/deliveries/"+item.id',BOARD)
+  self.assertIn('"/projects/"+item.projectKey+"/request"',DETAIL)
+  self.assertIn('href="/deployments"',DETAIL)
+  self.assertIn('getDeliveryBoard()',DETAIL)
+  self.assertIn('Etapas e evidências técnicas',DETAIL)
+  self.assertIn('"/runs/"+item.latestRunId',BOARD)
+  self.assertIn("items.slice(8)",BOARD)
+  self.assertIn('aria-label="Filtrar entregas por produto"',BOARD)
+  self.assertIn("Você não precisa mover cartões",BOARD)
+  self.assertIn('não comprova aprovação de qualidade',BOARD)
+  self.assertNotIn("draggable",BOARD)
+  self.assertNotIn("onDrop",BOARD)
+ def test_responsive_accessible_styles_and_compiler_regression(self):
+  self.assertIn('import "./operator.css";',LAYOUT)
+  for style in (".operatorChoices", ".operatorChoice:focus-visible", ".deliveryBoard",
+                ".deliveryCard", ".deliveryFilter.active", "@media(max-width:760px)"):
+   self.assertIn(style,STYLE)
+  self.assertIn("node ../../scripts/test_console_operator_delivery_runtime.cjs",CI)
+
+if __name__=="__main__":
+ unittest.main()

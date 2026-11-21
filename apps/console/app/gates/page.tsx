@@ -148,29 +148,29 @@ export default async function Gates({searchParams}:{searchParams:Promise<{error?
  const planningWakeNotice=typeof params.planning_wake==="string"?planningWakeMessages[params.planning_wake]:undefined;
  const githubNotice=typeof params.github_app==="string"?githubAppNotices[params.github_app]:undefined;
  const migrationResult=typeof params.migration_result==="string"?await getVerifiedMigrationOutcome(params.migration_result):null;
- const [gates,githubApp,githubInstallActions]=await Promise.all([getHumanGates(),getGitHubAppStatus(),getGitHubAppInstallActions()]);const pending=gates.filter(g=>g.status==="pending"&&g.actionable);const history=gates.filter(g=>g.status!=="pending"||!g.actionable);const githubAppActionPending=!githubApp.configured;const installActions=githubApp.configured?githubInstallActions:[];const pendingCount=pending.length+(githubAppActionPending?1:0)+installActions.length;const resolved=history.length;
+ const [gates,githubApp,githubInstallActions]=await Promise.all([getHumanGates(),getGitHubAppStatus(),getGitHubAppInstallActions()]);const pending=gates.filter(g=>g.status==="pending"&&g.actionable);const history=gates.filter(g=>g.status!=="pending"||!g.actionable);const githubAppActionPending=!githubApp.configured;const installActions=githubApp.configured?githubInstallActions:[];const pendingCount=pending.length+installActions.length;const resolved=history.length;
  return <>
   {actionError?<GateActionErrorBanner message={actionError}/>:null}
   {planningWakeNotice?<div className="card noticeCard" role="status">{planningWakeNotice}</div>:null}
   {migrationResult?<GateActionSuccessBanner migrationName={migrationResult.migrationName} alreadyApplied={migrationResult.alreadyApplied}/>:null}
   {githubNotice?<div className={"card noticeCard "+(githubNotice.status==="success"?"success":"danger")} role="status"><StatusPill status={githubNotice.status}/><span>{githubNotice.message}</span></div>:null}
-  <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" críticas pendentes":"nenhuma pendência"}/>}/>
+  <PageHeader eyebrow="Ações do operador" title="O que precisa de você" subtitle="Gates de produção e dependências de acesso aparecem aqui. O registro opcional de uma GitHub App é separado e não é contado como decisão pendente." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" ações pendentes":"nenhuma ação pendente"}/>}/>
   <div className="operationalStrip">
-   <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pendingCount}</strong><small>ação humana</small></div>
+   <div className="operationalStat warning"><span>Ações que exigem sua atenção</span><strong>{pendingCount}</strong><small>gates e acessos pendentes</small></div>
    <div className="operationalStat"><span>Resolvidas</span><strong>{resolved}</strong><small>histórico durável</small></div>
    <div className="operationalStat"><span>Política</span><strong>fail-closed</strong><small>sem bypass</small></div>
    <div className="operationalStat"><span>Produção</span><strong>humana</strong><small>merge nunca automático</small></div>
   </div>
   <div className="gateLayout">
    <section className="denseStack">
-    {githubAppActionPending?<article className="card gateCard pending">
+    {githubAppActionPending?<details className="gateOptionalSetup"><summary>Configuração opcional · registrar GitHub App</summary><article className="card gateCard">
      <div className="gateBanner"><div className="badgeLine"><StatusPill status="pending"/><StatusPill status="sensitive_access"/></div><span className="muted mono">AÇÃO · github-app</span></div>
      <div className="gateContent">
       <div><span className="detailLabel">Motivo</span><h3>Registrar GitHub App da Factory</h3><p className="muted">A Factory precisa do teu consentimento no GitHub para criar a identidade da App. O registro armazena os segredos somente no Supabase Vault e não instala a App em nenhum repositório.</p></div>
       <div className="gateMeta"><div><span className="detailLabel">Escopo</span><strong>Acesso sensível</strong><div className="muted">registro da App; instalação e seleção de repositórios continuam separadas</div></div></div>
      </div>
      <div className="gateForm"><GateDecisionPending><div className="gatePendingStatus" role="status">Esta ação só é considerada concluída depois que o GitHub retornar um callback válido e a configuração server-side for persistida.</div><div className="gateActionBar"><a className="primary linkButton" href="/api/integrations/github-app/register?return_to=gates">Registrar GitHub App</a></div></GateDecisionPending></div>
-    </article>:null}
+    </article></details>:null}
     {installActions.map(action=><article className="card gateCard pending" key={"github-app-install-"+action.projectKey}>
      <div className="gateBanner"><div className="badgeLine"><StatusPill status="pending"/><StatusPill status="sensitive_access"/></div><span className="muted mono">AÇÃO · github-app-install</span></div>
      <div className="gateContent">

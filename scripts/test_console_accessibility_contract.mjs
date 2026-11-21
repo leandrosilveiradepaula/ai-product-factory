@@ -49,7 +49,7 @@ test("reject malformed or ambiguous browser data",()=>{
   assert.throws(()=>verifyAccessibilitySnapshot(good,"../../secret"),/invalid_route/);
 });
 
-test("WCAG result must come from complete 44 live scans with contrast",()=>{
+test("WCAG result must cover every registered route and viewport with contrast",()=>{
   const result={violations:[],incomplete:[],
     passes:[{id:"color-contrast",nodes:[{}]},{id:"label",nodes:[{}]}]};
   const scan=(route,viewport)=>sanitizeAxeScan({results:result,route,viewport});
@@ -60,7 +60,7 @@ test("WCAG result must come from complete 44 live scans with contrast",()=>{
   const opts={scans,runId:99,sourceCommit:"a".repeat(40),targetCommit:"b".repeat(40),
     keyboardSkip:{reachedWithTab:true,visibleOnFocus:true,landedOnMain:true}};
   const audited=finishAxeAudit(opts);
-  assert.equal(audited.contrastNodes,44);
+  assert.equal(audited.contrastNodes,CONSOLE_ROUTES.length*3+2);
   assert.equal(audited.fullWcagCertified,false);
   assert.deepEqual(audited.routeNames,names);
   assert.throws(()=>finishAxeAudit({...opts,scans:scans.slice(1)}),/coverage_incomplete/);
@@ -147,7 +147,8 @@ test("real #73 axe: named regions and no prohibited ARIA labels on generic eleme
   const path=await import("node:path");
   const read=file=>fs.readFileSync(path.resolve(import.meta.dirname,"..",file),"utf8");
   const home=read("apps/console/app/page.tsx"),ui=read("apps/console/app/ui.tsx");
-  assert.match(home,/<section className="homeSummary" aria-label="Resumo operacional">/);
+  assert.match(home,/<section className="section operatorPortfolio" aria-labelledby="operator-products-title">/);
+   assert.match(home,/<h2 id="operator-products-title">Produtos acompanhados<\/h2>/);
   assert.doesNotMatch(home,/<div className="homeSummary" aria-label=/);
   assert.doesNotMatch(ui,/<span className=\{resolved\?"pill "\+resolved:"pill"\} aria-label=/);
   assert.match(ui,/<span className="visuallyHiddenStatus">\{spokenLabel\}<\/span>/);
@@ -253,7 +254,7 @@ test("authenticated #76: exact incomplete text glyphs are graphical and accessib
   assert.doesNotMatch(shell,/<span className="workspaceGlyph">/);
   assert.doesNotMatch(nav,/<span className="navAdvancedChevron"/);
   assert.match(shell,/<span>Infodive<\/span>/);
-  assert.match(nav,/<span className="navAdvancedTitle">Ferramentas avançadas<\/span>/);
+  assert.match(nav,/<span className="navAdvancedTitle">Ferramentas técnicas<\/span>/);
   assert.match(nav,/<summary className="navAdvancedToggle">/);
   assert.match(css,/\.workspaceGlyph\{width:14px;height:14px;flex:0 0 14px;display:block;color:#8d93a4\}/);
   assert.match(css,/\.sidebar \.navAdvancedChevron\{width:20px;height:20px;flex:0 0 20px;display:block;color:#adc6ff/);

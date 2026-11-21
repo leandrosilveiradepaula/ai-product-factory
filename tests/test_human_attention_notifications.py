@@ -34,7 +34,7 @@ class HumanAttentionNotificationTests(unittest.TestCase):
  def test_project_specific_link_and_truthful_refresh(self):
   self.assertIn("attention.projects.includes",SHELL)
   self.assertIn('href="/gates"',SHELL)
-  self.assertIn("Decisão humana pendente neste projeto",SHELL)
+  self.assertIn("Este projeto precisa de sua decisão",SHELL)
   self.assertIn('fetch("/api/human-attention",{cache:"no-store"})',SHELL)
   self.assertIn('document.visibilityState==="visible"',SHELL)
   self.assertIn('window.addEventListener("focus"',SHELL)

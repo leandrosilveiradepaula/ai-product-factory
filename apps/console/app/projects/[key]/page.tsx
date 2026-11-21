@@ -1,4 +1,7 @@
 import {cookies} from "next/headers";
+import {getProductSituations} from "../../../lib/product-status";
+import {ProductSituationCard} from "../../product-situation-card";
+import {OpenProjectTechnicalAnchor} from "./open-technical-anchor";
 import {redirect} from "next/navigation";
 import {notFound} from "next/navigation";
 import {revalidatePath} from "next/cache";
@@ -27,14 +30,17 @@ const macroStages=[
  {label:"Planejar",detail:"Plano técnico e backlog",members:["planning"]},
  {label:"Construir",detail:"Implementação e revisão",members:["implementation","review"]},
  {label:"Validar",detail:"Testes, avaliações e prévia",members:["validation","preview"]},
- {label:"Liberar",detail:"Aprovação, release e operação",members:["human_gate","release","operations"]},
+ {label:"Publicar",detail:"Aprovação humana e release",members:["human_gate","release"]},
+ {label:"Operar",detail:"Operação e novos pedidos",members:["operations"]},
 ];
 function macroStageIndex(stage:string){return macroStages.findIndex(item=>item.members.includes(stage))}
 function display(value:unknown){return typeof value==="string"?value:JSON.stringify(value)}
-function nextAction(stage:string,hasPendingDatabase:boolean,activeTasks:number){
+function nextAction(stage:string,hasPendingDatabase:boolean,activeTasks:number,readiness:{ready:boolean;assessedCommit:string|null}){
  if(hasPendingDatabase)return {title:"Conectar o banco de dados",body:"A Factory está aguardando a conexão mínima necessária para reconciliar e executar o trabalho com evidência real.",href:"#databases",label:"Ver banco de dados"};
  if(stage==="human_gate")return {title:"Tomar a decisão pendente",body:"A automação chegou a um gate humano. Revise o motivo e decida antes de a Factory continuar.",href:"/gates",label:"Abrir aprovações"};
  if(stage==="release")return {title:"Verificar as condições do release",body:"A etapa registrada não comprova CI, auditoria ou Preview. Verifique as evidências antes de qualquer merge humano de produção.",href:"/deployments",label:"Ver implantações"};
+ if(stage==="operations"&&activeTasks>0)return {title:"Há tarefas abertas neste projeto",body:"O produto está na etapa Operação, mas "+activeTasks+" tarefa"+(activeTasks===1?" continua registrada como aberta.":"s continuam registradas como abertas.")+" Isso não significa que o worker esteja executando agora. Consulte o estado de cada execução.",href:"/runs",label:"Ver execuções"};
+ if(stage==="operations"&&readiness.ready)return {title:"Avaliação global aprovada no SHA registrado",body:"Uma avaliação independente aprovou o produto no commit "+(readiness.assessedCommit?.slice(0,12)||"registrado")+". Novas alterações precisam de comprovação própria; isso não autoriza merge ou release de produção.",href:"#product-readiness",label:"Consultar avaliação e evidências"};
  if(stage==="operations")return {title:"Verificar a prontidão global do produto",body:"O projeto chegou à Operação, mas um release concluído não certifica o sistema inteiro. Consulte os domínios pendentes e as evidências atuais antes de considerá-lo pronto.",href:"#product-readiness",label:"Revisar prontidão"};
  if(activeTasks===0)return {title:"Nenhuma ação necessária agora",body:"Não há tarefas abertas neste projeto. Acompanhe novas evidências ou inicie um novo trabalho quando necessário.",href:"/projects",label:"Voltar aos projetos"};
  if(["discovery","specification"].includes(stage))return {title:"Descoberta registrada; verificar execução",body:"O projeto pode estar apenas enfileirado. O processamento depende de um worker ativo e, para etapas semânticas, de autenticação, quota e orçamento de modelo aprovados. A existência da tarefa não comprova que a Descoberta começou.",href:"/runs",label:"Ver execuções"};
@@ -162,7 +168,9 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const installProject=jar?.get("factory_github_app_install_project")?.value||"";
  const installPending=operator.role==="admin"&&installReturned&&installProject===key&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(key);
  const p=await getProjectDetail(key);if(!p)notFound();
- const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id)]);
+ const [ops,state,databases,teamPlan,githubAccess,githubAppStatus,continuation,continuationHistory,executionControl,pulse]=await Promise.all([getProjectOperations(p.id),getProjectStateContext(p.id),getProjectDatabases(p.id),getProjectExecutionTeamPlan(p.id),getProjectGitHubAccess(p.id,p.repository),getGitHubAppStatus(),getProjectContinuationContext(p.id),getProjectContinuationHistory(p.id),getProjectExecutionControl(p.id),getProductSituations()]);
+ const situation=pulse.products.find(item=>item.key===p.key);
+ if(!situation)throw new Error("Estado do produto indisponível. Nenhum status presumido.");
  const activeTasks=p.tasks.filter(t=>!["completed","cancelled","failed","merged"].includes(t.status));const oauthReady=isSupabaseOAuthConfigured();
  const hasPendingDatabase=databases.some(db=>db.status==="pending_access");
  const observedBlocker=p.pendingRun&&p.wakeEvidence?.blockerCode?p.wakeEvidence.blockerCode:null;
@@ -177,7 +185,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   title:"Vincular repositório GitHub",
   body:"O projeto possui planejamento, mas precisa de um repositório privado autorizado pela GitHub App para iniciar a implementação. O orçamento do modelo permanece independente.",
   href:"#repository-setup",label:"Preparar repositório",
- }:nextAction(p.stage,hasPendingDatabase,activeTasks.length));
+ }:nextAction(p.stage,hasPendingDatabase,activeTasks.length,p.productReadiness));
  const currentMacro=macroStageIndex(p.stage);
  const supabaseNotice=query.supabase?supabaseMessages[query.supabase]:undefined;
  const githubAppNotice=query.github_app?githubAppMessages[query.github_app]:undefined;
@@ -187,9 +195,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
  const reconciliationNotice=query.reconciliation==="enqueued"?"Reconciliação enfileirada. A Factory vai atualizar o estado do projeto antes de planejar o trabalho restante.":query.reconciliation==="already_active"?"Já existe uma reconciliação ativa para este projeto; nenhuma duplicata foi criada.":undefined;
  const previewPolicy=p.previewPolicy;
  const previewConfigured=Boolean(previewPolicy&&(previewPolicy.required!==null||previewPolicy.provider||previewPolicy.mode));
- const humanActionNeeded=Boolean(["draft","paused","stopped","unavailable"].includes(executionControl.state)
-   ||observedBlocker||hasPendingDatabase||(!p.repository&&p.kind==="greenfield")||["human_gate","release"].includes(p.stage));
- const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready");
+ const humanActionNeeded=situation.state==="decision"; // Technical blockers are not mandatory human gates.
+ const integrationNeedsAttention=!previewConfigured||(githubAccess!==null&&githubAccess.status!=="ready")||(p.kind==="greenfield"&&databases.length===0);
  return <>
   {installPending?<div className="card noticeCard" role="status">
    <span>O GitHub retornou da instalação de {p.key}. Confirme a verificação das capacidades antes de considerar o acesso pronto.</span>
@@ -198,17 +205,78 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <button className="primary" type="submit">Verificar acesso da GitHub App</button>
    </form>
   </div>:null}
-  <PageHeader eyebrow="Projeto" title={p.name} subtitle={p.repository||p.key} actions={<>{executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant={humanActionNeeded?"secondary":"primary"}>Solicitar alteração</ActionLink>:null}<details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
-  <section className="section" id="project-control" aria-label="Controle de execução do projeto">
-   <div className="card denseStack"><strong>Execução do projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Em execução":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
-    <p>O cadastro não inicia o desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar.</p>
-    <div className="actions">{([
+  <PageHeader eyebrow="Produto" title={p.name} subtitle="O que já existe, o que impede o uso e o trabalho que falta concluir." actions={<><details className="projectMoreActions"><summary>Mais opções</summary><div className="projectMoreActionsMenu"><ActionLink href="/queue">Ver fila de trabalho</ActionLink>{p.kind==="existing"&&executionControl.state==="running"?<form action={reconcileProject}><input type="hidden" name="project_key" value={p.key}/><button type="submit" className="linkButton">Reconciliar projeto</button></form>:null}</div></details></>}/>
+  <section className="productSituationDetail" aria-labelledby="product-situation-heading">
+   <h2 id="product-situation-heading">Situação do produto e quem resolve o próximo passo</h2>
+   <ProductSituationCard item={situation} showOpen={false}/>
+  </section>
+  <OpenProjectTechnicalAnchor/>
+  <details className="projectDetailTechnicalDisclosure" open={["stopped","paused","draft"].includes(executionControl.state)}>
+   <summary><strong>Ver operações, qualidade, banco e histórico técnico</strong><span>Informações completas para inspeção; não são ações necessárias para acompanhar o produto.</span></summary>
+   <div className="projectDetailTechnicalContent">
+  <details className="projectAuxActions">
+   <summary>Outras ações do projeto e acompanhamento técnico</summary>
+   <div className="projectOperatorChoices" aria-label="Ações deste produto">
+   <div>
+    <span className="operatorEyebrow">ESCOLHA SEU PRÓXIMO PASSO</span>
+    <h2>O que você quer fazer com este produto?</h2>
+    <p>Você descreve a mudança. A Factory organiza, implementa e testa; o controle de publicação continua humano.</p>
+   </div>
+   <div className="projectOperatorLinks">
+    {executionControl.state==="running"?<ActionLink href={"/projects/"+p.key+"/request"} variant="primary">Pedir melhoria ou correção</ActionLink>
+      :<ActionLink href="#project-control" variant="secondary">Ver como iniciar ou retomar</ActionLink>}
+    <ActionLink href={"/deliveries?project="+encodeURIComponent(p.key)} variant="secondary">Acompanhar entregas</ActionLink>
+    {situation.state==="decision"?<ActionLink href="/gates" variant="secondary">Revisar decisões</ActionLink>:null}
+   </div>
+   </div>
+  </details>
+  <details className="projectStageDisclosure">
+   <summary>Ver dados técnicos da fase e indicadores</summary>
+  <div className="projectOrientation">
+   <aside className={humanActionNeeded?"nextActionCard needsHuman":"nextActionCard routine"} aria-label="Próxima etapa">
+    <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"Contexto da etapa registrada"}</span>
+    <h2>{action.title}</h2>
+    <p>{action.body}</p>
+    <div className="actions"><ActionLink href={action.href} variant={humanActionNeeded?"primary":"secondary"}>{action.label}</ActionLink></div>
+   </aside>
+   <div className="projectLifecyclePanel">
+    <h2 className="projectLifecycleTitle">Etapas técnicas registradas</h2>
+    <p className="projectLifecycleHelp">As etapas indicam a posição registrada do produto; não provam execução, qualidade ou conclusão deste pedido.</p>
+    <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo técnico do produto em seis macroetapas">
+     {macroStages.map((item,i)=><div className={"macroStage "+(i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail} · Registro, não certificação</small></div>)}
+    </div>
+    <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>
+   </div>
+  </div>
+  <div className="grid compact projectPrimaryMetrics">
+   <MetricCard label="Controle do projeto" value={executionControl.state==="running"?"Habilitado":humanizeStatus(executionControl.state)} note="Permissão para assumir tarefas; não comprova worker ativo."/>
+   <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" tarefas registradas"}/>
+   <MetricCard label="Avaliação global" value={p.productReadiness.ready?"Aprovada no SHA avaliado":p.productReadiness.status==="not_assessed"?"Não avaliada":"Não aprovada"} note="Avaliação histórica não certifica commits posteriores."/>
+  </div>
+  </details>
+  {continuation?<section className="section" id="latest-request"><SectionHeader title="Último pedido" action={<span className="muted">{new Date(continuation.requestedAt).toLocaleString("pt-BR")}</span>}/>
+   <div className="card denseStack">
+    <p style={{margin:0}}>{continuation.summary}</p>
+    <div className="badgeLine"><StatusPill status="verified" label="Registrado no projeto"/><span className="muted">{continuation.attachmentCount+" anexo"+(continuation.attachmentCount===1?"":"s")}</span></div>
+    {continuation.attachments.length?<div className="compactList">{continuation.attachments.map(file=><div className="compactRow" key={file.id}><strong>{file.name}</strong><div className="badgeLine"><span className="muted">{file.mimeType+" · "+(file.sizeBytes/1024/1024).toFixed(2)+" MB"}</span><a className="linkButton" href={"/api/projects/"+encodeURIComponent(p.key)+"/attachments/"+encodeURIComponent(file.id)}>Baixar</a></div></div>)}</div>:continuation.attachmentCount?<p className="muted" style={{margin:0}}>Os anexos foram registrados, mas a listagem privada não está disponível neste momento.</p>:null}
+   </div>
+  </section>:null}
+  <section className="section projectControlSection" id="project-control" aria-label="Controle de execução do projeto">
+   <div className="card projectControlCard">
+    <div className="projectControlLayout">
+     <div className="projectControlDescription">
+      <span className="detailLabel">Permissão de execução</span>
+      <strong>Projeto: {executionControl.state==="draft"?"Não iniciado":executionControl.state==="running"?"Habilitado para receber trabalho":executionControl.state==="pausing"?"Pausando":executionControl.state==="paused"?"Pausado":executionControl.state==="stopping"?"Parando":executionControl.state==="unavailable"?"Aguardando ativação segura":"Parado"}</strong>
+      <p>{executionControl.state==="running"?"A Factory pode assumir tarefas, mas isso não significa que exista um worker executando agora.":"O cadastro por si só não inicia desenvolvimento. Somente você pode iniciar, pausar, retomar, parar ou reiniciar."}</p>
+     </div>
+     <div className="actions projectControlActions">{([
      ["draft","start","Iniciar projeto"],["running","pause","Pausar"],["running","stop","Parar"],
      ["pausing","stop","Parar"],["paused","resume","Retomar"],["paused","stop","Parar"],["stopped","restart","Reiniciar"]
     ] as const).filter(([state])=>state===executionControl.state).map(([,command,label])=>
       <ProjectControlForm key={command} projectKey={p.key} command={command}
         version={executionControl.version} label={label} action={controlProject}/>
     )}</div>
+    </div>
     {controlWake?<p role="status">Acionamento: {controlWake.status==="dispatched"?"Sinal aceito pelo GitHub":controlWake.status==="observed"?"Scheduler observou o pedido":controlWake.status==="pending"?"Nova tentativa agendada":controlWake.status==="claimed"?"Tentativa em andamento":controlWake.status==="suppressed"?"Invalidado por pausa/parada":controlWake.status==="exhausted"?"Tentativas esgotadas":"Aguardando"} · tentativas {controlWake.attempts}. Isto não comprova execução de modelo ou conclusão da tarefa.</p>:null}
      {executionControl.state==="unavailable"?<p role="alert">O controle de execução não está disponível. Nenhum comando foi liberado; verifique a ativação da migração e as permissões do Control Plane.</p>:null}
     {["pausing","stopping"].includes(executionControl.state)?<p role="status">Aguardando conclusão segura dos trabalhos em andamento. Nenhuma tarefa nova deve ser iniciada.</p>:null}
@@ -234,12 +302,14 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    </div>
   </section>:null}
   {query.wake_recovery?<div className="card noticeCard" role="status"><strong>Recuperação do worker:</strong> {query.wake_recovery==="requested"?"Solicitação aceita pelo GitHub; aguarde a execução real.":query.wake_recovery==="cooldown"?"Já houve uma tentativa recente. Aguarde pelo menos 15 minutos.":query.wake_recovery==="unconfigured"?"A integração de disparo não está configurada para a Factory.":query.wake_recovery==="not_eligible"?"Não foi encontrada uma execução inicial pendente elegível.":query.wake_recovery==="failed"?"Falha no acionamento. A tarefa continua preservada.":"Não foi possível verificar a recuperação."}</div>:null}
-  {p.pendingRun&&(p.stage==="discovery"||!observedBlocker)?<div className="card pendingProjectNotice" role="status">
-   <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>{p.stage==="discovery"?"Descoberta ainda não iniciada":"Reconciliação aguardando o worker"}</strong></div>
+  {p.pendingRun&&(p.stage==="discovery"||!observedBlocker)?<div className="card pendingProjectNotice projectQueuedNotice" role="status">
+   <div className="badgeLine"><StatusPill status="queued" label="Aguardando execução"/><strong>{p.stage==="discovery"?"Descoberta na fila":"Solicitação aguardando o worker"}</strong></div>
    <p>O Control Plane preservou a execução <code>{p.pendingRun.id.slice(0,8)}</code>, ainda com {p.pendingRun.attemptCount} tentativas. Registrar o pedido não significa que um worker já iniciou o processamento.</p>
+   <details className="projectPendingDiagnostics"><summary>Entender o acionamento e as evidências do worker</summary>
    {p.wakeEvidence?.wakeStatus==="requested"?<p>O Console registrou um pedido de acionamento aceito pelo GitHub. Isso não comprova que o worker executou.</p>:p.wakeEvidence?.wakeStatus==="failed"?<p>O Console registrou falha ao solicitar o acionamento imediato. A execução permanece na fila para recuperação.</p>:p.wakeEvidence?.wakeStatus==="unconfigured"?<p>O Console não encontrou uma identidade autorizada para o acionamento imediato. A execução permanece na fila.</p>:<p>Não há evidência registrada de acionamento imediato para esta execução.</p>}
    {p.wakeEvidence?.workerObservedAt?<p>Última observação global do scheduler: {new Date(p.wakeEvidence.workerObservedAt).toLocaleString("pt-BR")}. {p.wakeEvidence.productQueueDetected?"A fila de trabalho de produto foi detectada; isso não confirma que esta execução foi assumida.":"Nenhum trabalho de produto foi indicado nessa observação."} O wake solicita o acionamento do worker existente, sem ignorar bloqueios de modelo, quota ou orçamento.</p>:<p>Ainda não existe observação do scheduler posterior ao enfileiramento.</p>}
    {p.wakeEvidence?.blockerCode?<p role="status"><strong>Bloqueio registrado para esta execução:</strong> {productWorkerBlockerMessage(p.wakeEvidence.blockerCode)} {p.wakeEvidence.blockedAt?<span className="muted">Evidência de {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. O worker não assumiu o run.</span>:null}</p>:null}
+   </details>
    <div className="actions"><ActionLink href="/runs">Ver execuções</ActionLink>{operator.role==="admin"?<form method="POST" action="/api/projects/wake-recovery"><input type="hidden" name="project_key" value={p.key}/><button className="linkButton" type="submit">{p.stage==="discovery"?"Iniciar desenvolvimento":"Solicitar recuperação do worker"}</button></form>:null}</div>
   </div>:null}
   {p.pendingRun&&p.stage!=="discovery"&&observedBlocker?<div className="card pendingProjectNotice" role="status" aria-live="polite">
@@ -248,29 +318,12 @@ export default async function Project({params,searchParams}:{params:Promise<{key
    {p.wakeEvidence?.blockedAt?<p className="muted">Evidência no Control Plane em {new Date(p.wakeEvidence.blockedAt).toLocaleString("pt-BR")}{p.wakeEvidence.workerRunId?" · Actions #"+p.wakeEvidence.workerRunId:""}. Não houve chamada ao modelo nesta tentativa.</p>:null}
    <div className="actions"><ActionLink href="/usage">Ver modelos e consumo</ActionLink><ActionLink href={"/runs/"+p.pendingRun.id}>Ver execução</ActionLink></div>
   </div>:null}
-  <div className="projectOrientation">
-   <div>
-    <div className="macroLifecycle" role="region" tabIndex={0} aria-label="Ciclo do produto em cinco macroetapas">
-     {macroStages.map((item,i)=><div className={"macroStage "+(i<currentMacro?"done":i===currentMacro?"current":"")} key={item.label}><span>Etapa {i+1}</span><strong>{item.label}</strong><small>{item.detail}</small></div>)}
-    </div>
-    <div className="microStageLine"><span>Etapa detalhada atual:</span><StatusPill status={p.stage} tone="accent"/><span className="muted">{stageLabels[stages.indexOf(p.stage)]||humanizeStatus(p.stage)}</span></div>
-   </div>
-   <aside className={humanActionNeeded?"nextActionCard needsHuman":"nextActionCard routine"} aria-label="Próxima etapa">
-    <span className="detailLabel">{humanActionNeeded?"O que precisa da sua atenção":"A Factory está cuidando desta etapa"}</span>
-    <h2>{action.title}</h2>
-    <p>{action.body}</p>
-    <div className="actions"><ActionLink href={action.href} variant={humanActionNeeded?"primary":"secondary"}>{action.label}</ActionLink></div>
-   </aside>
-  </div>
-  <div className="grid compact projectPrimaryMetrics">
-   <MetricCard label="Etapa do fluxo" value={currentMacro>=0?(currentMacro+1)+" de 5":"—"} note="Posição registrada, não prontidão ou release verificado."/>
-   <MetricCard label="Tarefas abertas" value={activeTasks.length} note={p.tasks.length+" no total"}/>
-   <MetricCard label="Evidências" value={ops.evaluations+ops.deployments} note={ops.evaluations+" avaliações · "+ops.deployments+" implantações"}/>
-  </div>
   <section className="section" id="product-readiness"><SectionHeader title="Prontidão global do produto" action={<StatusPill status={p.productReadiness.ready?"verified":p.productReadiness.status==="not_assessed"?"unverified":"blocked"} label={p.productReadiness.ready?"Auditoria aprovada":p.productReadiness.status==="not_assessed"?"Não avaliado":"Produto não pronto"}/>}/>
    <div className="card denseStack">
     <div className="badgeLine"><strong>{p.productReadiness.ready?"A avaliação global passou para o SHA registrado. Isso não comprova que o HEAD atual permanece igual nem libera produção.":p.productReadiness.status==="not_assessed"?"Nenhuma auditoria global de produto foi registrada ainda.":"Existem domínios ou blockers que impedem declarar o produto pronto."}</strong>{p.productReadiness.assessedCommit?<span className="muted mono">{p.productReadiness.assessedCommit.slice(0,12)}</span>:null}</div>
     {p.productReadiness.blockers.length?<div><span className="detailLabel">Bloqueios que impedem a liberação</span><ul>{p.productReadiness.blockers.map((item,i)=><li key={i}>{item}</li>)}</ul></div>:null}
+     <details className="readinessDomainDisclosure">
+      <summary>{p.productReadiness.ready?"Consultar os seis domínios avaliados no SHA registrado":"Consultar os seis domínios e suas pendências"}</summary>
      <div className="readinessDomainChecklist" role="list" aria-label="Domínios exigidos para a prontidão global">
       {productAuditDomains.map(domain=><div className="readinessDomain" role="listitem" key={domain.key}>
        <div className="readinessDomainHeading"><strong>{domain.label}</strong><StatusPill status={p.productReadiness.ready?"verified":"attention"} label={p.productReadiness.ready?"Avaliado no SHA registrado":"Comprovação pendente"}/></div>
@@ -278,6 +331,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
       </div>)}
      </div>
      <p className="readinessDomainDisclaimer">Os seis domínios são obrigatórios. Sem avaliação global independente para o SHA atual, nenhuma aprovação é inferida de CI, release ou existência de arquivos. Esta consulta não inicia tarefas nem modelos.</p>
+     </details>
      <div className="actions"><ActionLink href="/evals" variant="ghostButton">Examinar avaliações</ActionLink><ActionLink href="/deployments" variant="ghostButton">Examinar implantações</ActionLink></div>
     <details className="readinessEvidence"><summary>Ver avaliação detalhada e evidências</summary>
     {Object.keys(p.productReadiness.domains).length?<div className="detailGrid">{Object.entries(p.productReadiness.domains).map(([key,value])=><div className="detailItem" key={key}><span className="detailLabel">{humanizeStatus(key)}</span><StatusPill status={value.status} label={humanizeStatus(value.status)}/>{value.verification_state?<span className="muted">verificação · {humanizeStatus(value.verification_state)}</span>:null}{value.coverage?.length?<span className="muted">cobertura · {value.coverage.map(humanizeStatus).join(" · ")}</span>:null}{value.reason?<span className="muted">{value.reason}</span>:null}</div>)}</div>:<p className="muted" style={{margin:0}}>A Factory não infere prontidão a partir de CI, Preview, release ou ausência de issues. É necessária uma avaliação global explícita.</p>}
@@ -285,18 +339,11 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     <div className="badgeLine"><span className="muted">{p.productReadiness.assessmentRef||"Sem assessment_ref"}</span>{p.productReadiness.createdAt?<span className="muted">avaliado em {new Date(p.productReadiness.createdAt).toLocaleString("pt-BR")}</span>:null}</div>
    </div>
   </section>
-  {continuation?<section className="section" id="latest-request"><SectionHeader title="Último pedido" action={<span className="muted">{new Date(continuation.requestedAt).toLocaleString("pt-BR")}</span>}/>
-   <div className="card denseStack">
-    <p style={{margin:0}}>{continuation.summary}</p>
-    <div className="badgeLine"><StatusPill status="verified" label="Registrado no projeto"/><span className="muted">{continuation.attachmentCount+" anexo"+(continuation.attachmentCount===1?"":"s")}</span></div>
-    {continuation.attachments.length?<div className="compactList">{continuation.attachments.map(file=><div className="compactRow" key={file.id}><strong>{file.name}</strong><div className="badgeLine"><span className="muted">{file.mimeType+" · "+(file.sizeBytes/1024/1024).toFixed(2)+" MB"}</span><a className="linkButton" href={"/api/projects/"+encodeURIComponent(p.key)+"/attachments/"+encodeURIComponent(file.id)}>Baixar</a></div></div>)}</div>:continuation.attachmentCount?<p className="muted" style={{margin:0}}>Os anexos foram registrados, mas a listagem privada não está disponível neste momento.</p>:null}
-   </div>
-  </section>:null}
   {continuationHistory.length>1?<details className="projectTechnicalDetails">
    <summary><span><strong>Pedidos anteriores</strong><small>Histórico durável registrado pela Factory.</small></span><span className="muted">{continuationHistory.length-1} pedido{continuationHistory.length===2?"":"s"} anterior{continuationHistory.length===2?"":"es"}</span></summary>
    <div className="projectTechnicalBody"><div className="timeline">{continuationHistory.slice(1).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><strong>{item.summary}</strong><span className="muted">{new Date(item.requestedAt).toLocaleString("pt-BR")}</span></div><div className="timelineMeta"><span>{item.attachmentCount+" anexo"+(item.attachmentCount===1?"":"s")}</span></div></div>)}</div></div>
   </details>:null}
-  <details className="projectTechnicalDetails projectIntegrations" open={integrationNeedsAttention}>
+  <details className="projectTechnicalDetails projectIntegrations">
    <summary><span><strong>Configurações e integrações</strong><small>Política de Preview e acesso ao GitHub. Pendências permanecem visíveis.</small></span><span className="muted">{integrationNeedsAttention?"Precisa de verificação":"Configuradas · ver detalhes"}</span></summary>
    <div className="projectTechnicalBody">
   <section className="section" id="preview-policy"><SectionHeader title="Prévia · política do projeto" action={<StatusPill status={previewPolicy?.required===false?"not_applicable":previewConfigured?"verified":"blocked"} label={previewPolicy?.required===false?"Não aplicável":previewConfigured?"Configurada":"Pendente"}/>}/>
@@ -348,8 +395,12 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     {Object.keys(state.snapshot.sourceStatus).length?<div><span className="detailLabel">Fontes reconciliadas</span><div className="valueList">{Object.entries(state.snapshot.sourceStatus).map(([source,value])=><div className="valueRow" key={source}><strong>{source}</strong><span className="muted">{display(value)}</span></div>)}</div></div>:null}
    </div>}
   </section>:null}
-  {hasPendingDatabase?<section className="section" id="databases"><SectionHeader title="Banco de dados · ação necessária" action={<span className="muted">{databases.filter(db=>db.status==="pending_access").length} pendente{databases.filter(db=>db.status==="pending_access").length===1?"":"s"}</span>}/>
-   {databases.length===0?<EmptyState>Nenhum banco foi vinculado a este projeto. A Factory pode registrar um banco existente ou preparar o provisionamento de um novo banco, sujeito aos gates aplicáveis.</EmptyState>:<div className="table">
+  <section className="section" id="databases"><SectionHeader title="Banco do produto — vínculo com a Factory" action={<span className="muted">{databases.length===0?"Sem vínculo no inventário":databases.length+" vínculo"+(databases.length===1?"":"s")}</span>}/>
+   {databases.length===0?<div className="card projectDatabaseInventoryNotice">
+    <strong>A Factory não tem um banco vinculado a este projeto.</strong>
+    <p>Isso <b>não significa que o banco não exista</b>. A Factory ainda não confirmou a conexão com o banco do aplicativo, suas migrations ou os usuários. O próximo trabalho é reconciliar o banco dedicado existente, com acesso mínimo autorizado.</p>
+    <p>Não crie outro banco por engano nem compartilhe chaves no navegador. O vínculo usa o fluxo de administração.</p>
+   </div>:<div className="table">
     <div className="tableRow tableHeader"><span>Banco</span><span>Acesso</span><span>Estado</span><span>Verificação</span></div>
     {databases.map(db=><div className="tableRow" key={db.id}>
      <div><strong>{db.provider==="supabase"?"Supabase":db.provider}</strong><div className="muted mono">{db.projectRef||"project_ref pendente"} · {db.environment}</div></div>
@@ -359,7 +410,7 @@ export default async function Project({params,searchParams}:{params:Promise<{key
     </div>)}
    </div>}
    {databases.some(db=>db.status==="pending_access")?<div className="card" style={{marginTop:12}}><strong>Próxima ação</strong><p className="muted">Conecte o Supabase com acesso mínimo. A Factory valida a identidade do projeto e uma consulta somente leitura antes de considerar o banco pronto. Nenhuma credencial é exibida nesta tela.</p>{oauthReady&&operator.role==="admin"?<div className="actions">{databases.filter(db=>db.status==="pending_access"&&db.provider==="supabase").map(db=><a className="primary linkButton" key={db.id} href={`/api/integrations/supabase/connect?project=${encodeURIComponent(p.key)}&database=${encodeURIComponent(db.id)}`}>Conectar Supabase</a>)}</div>:oauthReady?<div className="badgeLine"><StatusPill status="blocked" label="Administrador necessário"/><span className="muted">A conexão OAuth altera credenciais server-side e só pode ser iniciada por um administrador da Factory.</span></div>:<div className="badgeLine"><StatusPill status="blocked" label="OAuth do Supabase não configurado"/><span className="muted">A Factory permanece fail-closed até o client ID e o client secret existirem no ambiente server-side.</span></div>}</div>:null}
-  </section>:null}
+  </section>
 
   <details className="projectTechnicalDetails">
    <summary>
@@ -406,6 +457,8 @@ export default async function Project({params,searchParams}:{params:Promise<{key
   <section className="section"><SectionHeader title="Linha do tempo operacional" action={<span className="muted">{ops.timeline.length} eventos de evidência</span>}/>
    {ops.timeline.length===0?<EmptyState>Ainda não há evidências operacionais para este projeto.</EmptyState>:<div className="card"><div className="timeline">{ops.timeline.slice(0,40).map(item=><div className="timelineItem" key={item.id}><div className="badgeLine"><StatusPill status={item.kind}/><strong>{item.title}</strong>{item.status?<StatusPill status={item.status}/>:null}</div><div className="timelineMeta"><span>{new Date(item.at).toLocaleString("pt-BR")}</span>{item.detail?<span>{item.detail}</span>:null}{item.cost!=null?<span>custo {item.cost}</span>:null}{item.ref?<code>{item.ref}</code>:null}</div></div>)}</div></div>}
   </section>
+   </div>
+  </details>
    </div>
   </details>
  </>;

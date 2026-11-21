@@ -118,19 +118,28 @@ function localApi(req,res){
       execution_route:"direct",candidate_commit:null,branch_name:null,
       metadata:{},created_at:"2026-11-01T12:00:00Z",attempt_count:1,
       lease_owner:null,lease_expires_at:null,last_error:null}]);
+  else if(u.searchParams.get("select")==="id,task_id,status,created_at,started_at,lease_expires_at")
+    send(res,200,[{id:B3_RUN_ID,task_id:B3_TASK_ID,status:"completed",created_at:"2026-11-01T12:00:00Z",started_at:"2026-11-01T11:59:00Z",lease_expires_at:null}]);
   else send(res,200,[]);
  }else if(u.pathname==="/rest/v1/factory_tasks"){
   if(u.searchParams.get("id")==="eq."+B3_TASK_ID)
     send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,
       title:"Synthetic read-only regression task",status:"completed",
       complexity:"low"}]);
+  else if(u.searchParams.get("select")==="id,project_id,title,status,created_at,updated_at")
+    send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,title:"Synthetic read-only regression task",status:"completed",created_at:"2026-11-01T11:57:00Z",updated_at:"2026-11-01T12:00:00Z"}]);
+  else if(u.searchParams.get("select")==="id,project_id,parent_task_id,title,status,updated_at,external_key")
+    // A read-only package fixture exercises the real board and delivery detail.
+    send(res,200,[{id:B3_TASK_ID,project_id:B3_PROJECT_ID,parent_task_id:null,
+      title:"Synthetic read-only regression task",status:"completed",external_key:"fixture-work",
+      updated_at:"2026-11-01T12:00:00Z"}]);
   else send(res,200,[]);
  }else if(u.pathname==="/rest/v1/factory_project_execution_controls"){
   // Isolated fixture must actually render the project control submit form.
   // Otherwise a project-detail "hydration PASS" misses the former
   // non-deterministic random command_id on that route entirely.
-  send(res,200,u.searchParams.get("project_id")==="eq."+B3_PROJECT_ID
-    ?[{state:"running",version:1,generation:1}]:[]);
+  send(res,200,!u.searchParams.get("project_id")||u.searchParams.get("project_id")==="eq."+B3_PROJECT_ID
+    ?[{project_id:B3_PROJECT_ID,state:"running",version:1,generation:1}]:[]);
  }else if(u.pathname==="/rest/v1/factory_primary_cost_policy"){
   send(res,200,[{policy_key:"primary",budget_usd:"10.0000",reserve_usd:"0.5000",
     version:1,updated_at:"2026-10-30T15:44:00Z",updated_by:null}]);
@@ -329,6 +338,12 @@ test("B3: real Next client navigation renders loading then true offline error an
   await cdp.send("Network.emulateNetworkConditions",{
    offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
   });
+  // Delay the genuine local Next GET only; keep all response content real.
+  await page.route("**/runs?*",async route=>{
+   if(new URL(route.request().url()).pathname==="/runs"&&route.request().method()==="GET")
+    await new Promise(resolve=>setTimeout(resolve,1600));
+   await route.continue();
+  });
   await Promise.all([
    page.locator(".consoleRouteLoading[role='status']").waitFor({state:"visible",timeout:15000}),
    loadingLink.click({timeout:15000}),
@@ -366,6 +381,60 @@ test("B3: real Next client navigation renders loading then true offline error an
  }
 });
 
+test("B3: real operator start, Kanban and delivery detail work with read-only fixture",async()=>{
+ const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",error=>errors.push("page_error:"+String(error).slice(0,90)));
+ try{
+  let response=await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(await page.locator("h1.title").innerText(),"Sua Factory hoje");
+   assert.ok(await page.locator(".navItemHint").count()>=4,"menu purposes must be visible");
+   assert.equal(await page.locator(".productOwnerSummary").first().count(),1,"the owner must see the product state and the next responsible party");
+   const product=page.locator(".productSituationList .journeyCard").first();
+   assert.equal(await product.locator(".productOwnerSummary").count(),1,"home is concise and action-oriented");
+   assert.equal(await product.locator(".journeyStep").count(),0,"home must not mislead with unverified full stepper");
+   assert.equal(await product.locator(".journeyAction.needsHuman").count(),0,"no user approval without actionable gate");
+  for(const label of ["Nenhuma decisão sua neste momento","Últimos acontecimentos registrados"])
+   assert.ok(await page.getByText(label,{exact:true}).count()>=1,"missing owner cockpit "+label);
+  response=await page.goto(appOrigin+"/deliveries",{waitUntil:"networkidle",timeout:45000});
+  assert.equal(response?.status(),200);
+  assert.equal(await page.locator("h1.title").innerText(),"Escolha um produto para ver suas tarefas");
+  assert.ok(await page.getByRole("heading",{name:"Escolha um produto"}).count()>=1);
+  await page.locator("a[href='/deliveries?project=ai-product-factory']").first().click();
+  try{
+   await page.getByRole("heading",{name:"Tarefas e entregas do produto"}).waitFor({state:"visible",timeout:16000});
+  }catch(error){
+   const route=new URL(page.url());
+   const headings=(await page.locator("h1.title").allTextContents().catch(()=>[])).slice(0,3);
+   const errorsVisible=(await page.locator('[role="alert"]').allTextContents().catch(()=>[])).map(x=>x.slice(0,140)).slice(0,3);
+   // This fixture contains no private account or production data. Still emit only
+   // allowlisted route/heading/error evidence; no page HTML, cookies or tokens.
+   assert.fail("Kanban selection did not render: "+
+    JSON.stringify({pathname:route.pathname,query:route.search,headings,errorsVisible,pageErrors:errors.slice(0,3)})+
+    " | "+String(error).split("\\n")[0].slice(0,160));
+  }
+  assert.ok(await page.getByRole("heading",{name:"Encerrado"}).count()>=1);
+  assert.equal(await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").count(),2);
+  // Check an independent hard navigation before testing the real client Link.
+  // Both must resolve the same Control Plane-backed card; no mocked detail HTML.
+  const independent=await context.newPage();
+  const detailResponse=await independent.goto(appOrigin+"/deliveries/"+B3_TASK_ID,{waitUntil:"networkidle",timeout:45000});
+  assert.equal(detailResponse?.status(),200,"direct delivery detail HTTP status");
+  assert.equal(await independent.locator("h1.title").innerText(),"Synthetic read-only regression task","direct delivery detail content");
+  await independent.close();
+  await page.locator("a[href='/deliveries/"+B3_TASK_ID+"']").first().click();
+  await page.waitForURL("**/deliveries/"+B3_TASK_ID);
+  await page.getByRole("heading",{name:"Synthetic read-only regression task",exact:true}).waitFor({state:"visible",timeout:12000});
+  assert.equal(await page.locator("h1.title").innerText(),"Synthetic read-only regression task");
+  assert.ok(await page.getByText("Este pacote foi encerrado").count()>=1);
+  assert.ok(await page.getByRole("link",{name:"Solicitar melhoria ou ajuste"}).count()>=1);
+  assert.deepEqual(errors,[],"new operator routes must hydrate without page errors");
+ }finally{await context.close();}
+});
+
 test("B3: real Next project detail hydration and command identity are stable across reloads",async()=>{
  const context=await browser.newContext({
   viewport:{width:1280,height:900},locale:"pt-BR",timezoneId:"America/Sao_Paulo",
@@ -386,6 +455,18 @@ test("B3: real Next project detail hydration and command identity are stable acr
     waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200);
    assert.equal(await page.locator("h1.title").innerText(),"AI Product Factory");
+   const tech=page.locator(".projectDetailTechnicalDisclosure");
+   assert.equal(await tech.count(),1,"technical details remain available behind a disclosure");
+   if(await tech.getAttribute("open")===null)await tech.locator("summary").first().click();
+   const ownerEvidence=page.locator(".productSituationDetail .productOwnerTechnical");
+   if(await ownerEvidence.getAttribute("open")===null)await ownerEvidence.locator("summary").first().click();
+   const disclosure=page.locator(".productSituationDetail .productJourneyDisclosure");
+   assert.equal(await disclosure.count(),1,"full historical journey is available in a disclosure");
+   assert.equal(await disclosure.getAttribute("open"),null,"unverified lifecycle must be closed by default");
+   await disclosure.locator("summary").click();
+   assert.equal(await page.locator(".productSituationDetail .journeyStep").count(),6,"operator can expand the registered product journey");
+   assert.equal(await page.locator(".productSituationDetail .journeyCurrent h4").innerText(),"Testar");
+   assert.equal(await page.locator(".productSituationDetail .journeyUpcoming h4").innerText(),"Publicar");
    const pause=page.getByRole("button",{name:"Pausar",exact:true});
    assert.equal(await pause.count(),1,"real running control must render submit form");
    const control=pause.locator("xpath=ancestor::form");
@@ -482,7 +563,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
    assert.equal(response?.status(),200);
    await page.locator(".topbarAttention.loading").waitFor({state:"visible",timeout:15000});
-   assert.equal(await page.locator(".topbarAttention.loading").innerText(),"Carregando aprovações…");
+   assert.equal(await page.locator(".topbarAttention.loading").innerText(),"Verificando pendências…");
    await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
    for(let i=0;i<60&&!firstRoute;i++)await new Promise(res=>setTimeout(res,50));
    assert.ok(firstRoute,"one real browser GET must be pending during loading");
@@ -491,7 +572,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    firstRoute=null;
    try{
      await page.waitForFunction(()=>
-       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 decisões pendentes"&&
+       document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="2 pendências para revisar"&&
        document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",
        null,{timeout:10000});
    }catch{
@@ -513,12 +594,12 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
    assert.equal(await page.locator(".topbarAttentionRecovery [role=status]").innerText(),
-     "Aprovações indisponíveis");
+     "Pendências indisponíveis");
    assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").count(),0);
    mode="cleared";
    await page.getByRole("button",{name:"Tentar novamente"}).click();
    await page.waitForFunction(()=>
-     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma aprovação pendente" &&
+     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma pendência humana nesta consulta" &&
      !document.querySelector(".desktopSidebarContent .humanAttentionCount"),null,{timeout:20000});
    mode="malformed";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
@@ -779,7 +860,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
   // BEFORE the costly, trusted 44-scan authenticated Preview run. All Supabase
   // responses are local fake GET inventories; this is not certification.
   const {CONSOLE_ROUTES}=await import(path.join(root,"scripts","console_surface_coverage_contract.mjs"));
-  assert.equal(CONSOLE_ROUTES.length,14,"Use exact production surface contract, not a cherry-picked subset");
+  assert.ok(CONSOLE_ROUTES.some(r=>r.name==="deliveries"&&r.path==="/deliveries"),"Exact production contract must include the new Kanban route");
   const context=await browser.newContext({viewport:{width:1296,height:900},locale:"pt-BR"});
   await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
   const page=await context.newPage();
@@ -856,7 +937,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
       assert.equal(response?.status(),200,"synthetic project detail unavailable");
       await scan("project-detail",width===390?"detail-mobile":"detail-desktop");
     }
-    assert.equal(results.length,44,"Must exercise the same 44 surface/viewport modes as trusted audit");
+    assert.equal(results.length,CONSOLE_ROUTES.length*3+2,"Must exercise every registered surface/viewport mode as trusted audit");
     const problems=results.filter(x=>x.incomplete.length||x.violations.length);
     assert.deepEqual(problems,[],"Real Chromium/axe WCAG issues on inert fixture: "+JSON.stringify(problems));
   }finally{await context.close();}

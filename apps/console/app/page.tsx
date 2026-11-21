@@ -1,117 +1,105 @@
 import Link from "next/link";
-import {isProviderCreditExhausted} from "../lib/operational-health-inventory";
-import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getRuns,getUsageOverview} from "../lib/control-plane";
-import {ActionLink,EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "./ui";
+import {getGitHubAppInstallActions,getHumanGates,getOperationsHealth,getUsageOverview} from "../lib/control-plane";
+import {getGitHubAppStatus} from "../lib/github-app";
+import {getProductSituations} from "../lib/product-status";
+import {summarizeOperatorAttention} from "../lib/operator-home";
+import {ProductSituationCard} from "./product-situation-card";
+import {PageHeader} from "./ui";
 
+/** Read-only owner cockpit. The shell refreshes passive views periodically;
+ * these snapshots never initiate workers, paid models or releases. */
 export default async function Home(){
- const [d,health,usage,gates,runs,audit]=await Promise.all([
-  getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(30,true),getRuns(12),getAuditEvents(12),
+ const [gates,installations,app,health,usage,pulse]=await Promise.all([
+  getHumanGates(100,true),getGitHubAppInstallActions(),
+  getGitHubAppStatus(),getOperationsHealth(),getUsageOverview(),getProductSituations(),
  ]);
- // Historical or superseded pending rows are not operator actions.
- const pending=gates.filter(g=>g.status==="pending"&&g.actionable);
- const incidents=health.incidents.slice(0,2);
- const blocked=health.failedRuns+health.blockedRuns;
- const recentRuns=runs.slice(0,8);
- const recentAudit=audit.slice(0,8);
- const requiresDecision=pending.length>0;
- const hasIncident=incidents.length>0;
- const overviewAction=requiresDecision
-  ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
-  :hasIncident
-   ?{heading:"Existem ocorrências para investigar",description:"A Factory registrou um problema operacional. Consulte a execução e a evidência antes de intervir.",href:"/runs",label:"Ver execuções",kind:"warning"}
-   :d.projects.length===0
-    ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
-    :{heading:"Seus projetos estão no centro do trabalho",description:"Acompanhe a etapa de cada produto. Você só precisa intervir quando houver uma aprovação ou dependência explícita.",href:"/projects",label:"Ver todos os projetos",kind:"neutral"};
+ const attention=summarizeOperatorAttention(gates,installations,app.configured);
+ const products=pulse.products.filter(p=>!p.isInternalRecord);
+ const stoppedProducts=products.filter(p=>!p.isActive||["stopped","paused","pausing","stopping"].includes(p.controlState));
+ const visibleProducts=products.filter(p=>!stoppedProducts.includes(p));
+ const internalRecords=pulse.products.filter(p=>p.isInternalRecord);
+ const running=visibleProducts.reduce((n,p)=>n+p.confirmedRunning,0);
+ const historicalProblems=health.failedRuns+health.blockedRuns;
+ const latestChanges=products.flatMap(item=>item.activities.map(event=>({
+  key:item.key+"-"+event.kind+"-"+event.at+"-"+(event.href||""),
+  product:item.name,at:event.at,title:event.title,href:event.href,
+ }))).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,6);
  return <>
-  <PageHeader
-   eyebrow="Área de trabalho"
-   title="Visão geral"
-   subtitle="Projetos, decisões e andamento. Os detalhes técnicos ficam disponíveis somente quando você precisar."
-  />
-
-  <section className={"homeFocus "+overviewAction.kind} aria-label="Próximo passo">
-   <div className="homeFocusContent">
-    <span className="homeFocusEyebrow">Onde começar</span>
-    <h2>{overviewAction.heading}</h2>
-    <p>{overviewAction.description}</p>
-   </div>
-   <ActionLink href={overviewAction.href} variant={requiresDecision||d.projects.length===0?"primary":"secondary"}>{overviewAction.label} →</ActionLink>
-  </section>
-
-  <section className="section homeProjects" aria-label="Seus projetos">
-   <SectionHeader title="Seus projetos" action={<Link className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
-   {d.projects.length===0?
-    <div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Você pode começar com uma ideia ou importar um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
-   :<div className="homeProjectGrid">
-     {d.projects.slice(0,4).map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
-      <div className="homeProjectHeading"><strong>{p.name}</strong><StatusPill status={p.status}/></div>
-      <span className="homeProjectStage">Etapa registrada: <b>{humanizeStatus(p.stage)}</b></span>
-      <span className="homeProjectFooter">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")} <b>Ver projeto →</b></span>
-     </Link>)}
+  <PageHeader eyebrow="Visão geral" title="Sua Factory hoje"
+   subtitle="O que já foi entregue, o que está acontecendo e o que depende de você."
+   actions={<Link prefetch={false} href="/projects/new" className="factoryNewRequest">Novo produto</Link>}/>
+  <section className="factoryCommandBar" aria-label="Situação da Factory">
+   <div className="factoryAttentionState">
+    <span className="factoryOverline">SUA PARTICIPAÇÃO</span>
+    {attention.count>0?<div className="factoryAttentionNeedsAction" role="status">
+     <h2>{attention.title}</h2><p>{attention.description}</p>
+     <Link prefetch={false} href="/gates">Revisar o que depende de mim →</Link>
+    </div>:<div className="factoryAttentionClear" role="status">
+     <h2>Nenhuma decisão sua neste momento</h2>
+     <p>A Factory segue as tarefas permitidas. Isso não significa que todos os produtos estejam prontos.</p>
     </div>}
-  </section>
-
-  <section className="homeSummary" aria-label="Resumo operacional">
-   <Link href="/projects" className="homeSummaryItem"><span>Projetos no portfólio</span><strong>{d.projects.length}</strong></Link>
-   <Link href="/runs" className="homeSummaryItem"><span>Execuções em andamento</span><strong>{d.activeRuns}</strong></Link>
-   <Link href="/gates" className={d.pendingGates?"homeSummaryItem warning":"homeSummaryItem"}><span>Aprovações registradas como pendentes</span><strong>{d.pendingGates}</strong></Link>
-   <Link href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Falhas / fila de erro</span><strong>{blocked}</strong></Link>
-  </section>
-
-  <section className="section homeAttention">
-   <SectionHeader title="Acompanhamento de atenção" action={<Link className="homeSectionLink" href="/gates">Abrir todas as aprovações →</Link>}/>
-   {!requiresDecision&&!hasIncident?
-    <div className="homeQuietStatus" role="status">Nenhuma decisão humana acionável ou ocorrência recente foi encontrada nesta consulta. O acompanhamento dos demais bloqueios continua nas telas de cada projeto.</div>
-   :<div className="attentionGrid">
-     {pending.slice(0,2).map(g=><article className="card attentionCard warning" key={g.id}>
-      <div className="attentionBanner"><StatusPill status={g.type}/><span className="muted">Decisão humana</span></div>
-      <h3>{g.projectName||"Projeto"} precisa de uma decisão</h3>
-      {g.taskTitle?<p className="muted">{g.taskTitle}</p>:null}
-      <p>{Array.isArray(g.reasons)?g.reasons.map(r=>typeof r==="string"?r:JSON.stringify(r)).join(" · "):String(g.reasons||"A decisão humana é necessária para continuar.")}</p>
-      <div className="attentionFooter"><Link href={"/runs/"+g.runId}>Ver execução</Link><ActionLink href="/gates" variant="ghostButton">Revisar decisão</ActionLink></div>
-     </article>)}
-     {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
-      <div className="attentionBanner"><StatusPill status={i.status}/><span className="muted">Ocorrência operacional</span></div>
-      <h3>{isProviderCreditExhausted(i.error)?"Execução bloqueada por crédito da API":"Execução exige investigação"}</h3>
-      <p>{isProviderCreditExhausted(i.error)?"A API OpenAI recusou esta tentativa por crédito insuficiente. O registro é histórico e não comprova o saldo atual. Verifique o faturamento do provedor antes de solicitar recuperação auditada; o teto interno da Factory não adiciona créditos.":i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio."}</p>
-      <div className="attentionFooter"><span>{i.route?humanizeStatus(i.route):"Sem rota"}</span><ActionLink href={"/runs/"+i.id} variant="ghostButton">Ver execução</ActionLink></div>
-     </article>)}
-    </div>}
-  </section>
-
-  <details className="technicalDetails homeTechnicalDetails">
-   <summary>Indicadores técnicos e custos</summary>
-   <div className="technicalStats">
-    <Link href="/audit"><span>Eventos de ferramenta</span><strong>{usage.toolEvents}</strong><small>Registros auditados</small></Link>
-    <Link href="/usage"><span>Custo conhecido (USD)</span><strong>{usage.knownCost.toFixed(4)}</strong><small>Acumulado observado</small></Link>
-    <Link href="/usage"><span>Codex real</span><strong>{d.codexCalls}</strong><small>Invocações registradas</small></Link>
-    <Link href="/usage"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>Bloqueia novas chamadas pagas</small></Link>
    </div>
-   <div className="homeTechnicalNote">{health.queuedRuns} execuções registradas na fila · {health.expiredLeases} leases expirados. Valores do Control Plane, não prova de execução em tempo real.</div>
+   <div className="factoryExecutionState">
+    <span className="factoryOverline">ATIVIDADE OBSERVADA</span>
+    <strong>{running>0?running+" execução"+(running===1?"":"ões")+" com lease vigente":"Nenhuma execução ativa comprovada"}</strong>
+    <p>Projeto habilitado não é o mesmo que worker executando.</p>
+   </div>
+  </section>
+  <section className="section operatorPortfolio" aria-labelledby="operator-products-title">
+   <div className="productPulseHeader"><div>
+    <h2 id="operator-products-title">Produtos acompanhados</h2>
+    <p>Entrega comprovada, situação atual e próxima verificação.</p>
+   </div><Link prefetch={false} className="productSituationSecondary" href="/projects">Ver todos os produtos →</Link></div>
+   <div className="factoryObservationLine">
+    <span>Consulta ao Control Plane: <time dateTime={pulse.observedAt}>{new Date(pulse.observedAt).toLocaleString("pt-BR")}</time></span>
+    <span>Atualização automática a cada minuto enquanto online.</span>
+   </div>
+   <div className="productSituationList">
+    {visibleProducts.length===0?<div className="operatorPortfolioEmpty">Nenhum produto ativo registrado. <Link href="/projects/new">Descrever produto →</Link></div>:
+     visibleProducts.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}
+   </div>
+   {stoppedProducts.length>0?<details className="productInactiveDisclosure">
+    <summary>Produtos parados ou aposentados ({stoppedProducts.length})</summary>
+    <div className="productSituationList">{stoppedProducts.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}</div>
+   </details>:null}
+   {internalRecords.length>0?<details className="productInactiveDisclosure">
+    <summary>Registros técnicos de teste ({internalRecords.length})</summary>
+    <div className="productSituationList">{internalRecords.map(item=><ProductSituationCard key={item.key} item={item} compact/>)}</div>
+   </details>:null}
+  </section>
+  <section className="factoryRecent" aria-labelledby="factory-recent-title">
+   <div className="factorySectionHeading"><h2 id="factory-recent-title">Últimos acontecimentos registrados</h2>
+    <p>Eventos históricos, não prova de que o worker continua ativo.</p></div>
+   {latestChanges.length===0?<p className="factoryEmptyActivity">Nenhuma atividade disponível nesta consulta.</p>:
+    <ol className="factoryActivityList">{latestChanges.map(event=><li key={event.key}>
+     <span className="factoryActivityDate"><time dateTime={event.at}>{new Date(event.at).toLocaleString("pt-BR")}</time></span>
+     <span className="factoryActivityCopy"><strong>{event.product}</strong><span>{event.title}</span></span>
+     {event.href?<Link prefetch={false} href={event.href} aria-label={"Ver registro: "+event.product+" — "+event.title}>Ver registro →</Link>:null}
+    </li>)}</ol>}
+  </section>
+  <details className="productOverviewTechnical">
+   <summary>Indicadores técnicos do portfólio</summary>
+   <div className="productPulseStats" role="group" aria-label="Situação observada">
+    <div><strong>{products.length}</strong><span>Produtos cadastrados</span></div>
+    <div><strong>{running}</strong><span>Execuções com lease vigente</span></div>
+    <div><strong>{stoppedProducts.length}</strong><span>Produtos parados ou pausados</span></div>
+    <div><strong>{attention.count}</strong><span>Ações humanas registradas</span></div>
+   </div>
   </details>
-
-  <details className="overviewActivityDetails">
-   <summary><span><strong>Atividade técnica recente</strong><small>Execuções, SHAs e auditoria para investigação.</small></span><span className="muted">{recentRuns.length} execuções · {recentAudit.length} eventos</span></summary>
-   <div className="overviewActivityBody">
-    <section className="section">
-     <SectionHeader title="Execuções recentes" action={<ActionLink href="/runs" variant="ghostButton">Todas as execuções</ActionLink>}/>
-     <div className="table factoryActivityTable">
-      <div className="tableRow tableHeader"><span>Tarefa / execução</span><span>Rota</span><span>Estado</span><span>Tentativas</span><span>Commit</span></div>
-      {recentRuns.length===0?<EmptyState>Nenhuma execução registrada.</EmptyState>:recentRuns.map(r=><Link className="tableRow" href={"/runs/"+r.id} key={r.id}>
-       <div><strong>{r.taskTitle}</strong><div className="muted mono">{r.id.slice(0,12)}</div></div>
-       <StatusPill status={r.route||"unrouted"}/>
-       <StatusPill status={r.status}/>
-       <span>{r.attemptCount}</span>
-       <code>{r.candidateCommit?r.candidateCommit.slice(0,12):"—"}</code>
-      </Link>)}
-     </div>
-    </section>
-    <section className="section">
-     <SectionHeader title="Auditoria recente" action={<ActionLink href="/audit" variant="ghostButton">Abrir auditoria</ActionLink>}/>
-     {recentAudit.length===0?<EmptyState>Nenhum evento recente de auditoria.</EmptyState>:<div className="card recentActivity"><div className="timeline">
-      {recentAudit.map(x=><div className="timelineItem" key={x.id}><div className="badgeLine"><StatusPill status={x.actorType}/><strong>{x.eventType}</strong></div><div className="timelineMeta"><span>{new Date(x.createdAt).toLocaleString("pt-BR")}</span>{x.projectName?<span>{x.projectName}</span>:null}{x.runId?<Link href={"/runs/"+x.runId} className="mono">execução {x.runId.slice(0,8)}</Link>:null}</div></div>)}
-     </div></div>}
-    </section>
+  <details className="operatorDiagnostics">
+   <summary><span><strong>Diagnóstico do sistema</strong><small>Custos, incidentes e outras evidências para investigação.</small></span>
+    <span className="operatorDiagnosticCount">{historicalProblems} falhas ou bloqueios históricos</span></summary>
+   <div className="operatorDiagnosticsBody">
+    <p>Histórico não é a lista de impedimentos atuais. Verifique cada execução antes de solicitar recuperação.</p>
+    <div className="operatorDiagnosticMetrics">
+     <div><span>Falhas históricas</span><strong>{health.failedRuns}</strong></div>
+     <div><span>Bloqueios históricos</span><strong>{health.blockedRuns}</strong></div>
+     <div><span>Fila registrada</span><strong>{health.queuedRuns}</strong></div>
+     <div><span>Custo conhecido (USD)</span><strong>{usage.knownCost.toFixed(2)}</strong></div>
+    </div>
+    <div className="operatorDiagnosticLinks">
+     <Link href="/runs">Execuções →</Link><Link href="/usage">Custos →</Link><Link href="/audit">Auditoria →</Link>
+    </div>
    </div>
   </details>
  </>;

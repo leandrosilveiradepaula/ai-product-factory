@@ -89,15 +89,15 @@
   --color-card-meta:#8d93a4;
 
   --radius-xs:2px;
-  --radius-sm:2px;
-  --radius-md:3px;
-  --radius-lg:3px;
-  --radius-pill:2px;
-  --space-page-x:8px;
-  --space-page-y:8px;
-  --sidebar-width:228px;
+  --radius-sm:7px;
+  --radius-md:10px;
+  --radius-lg:12px;
+  --radius-pill:999px;
+  --space-page-x:24px;
+  --space-page-y:24px;
+  --sidebar-width:240px;
   --sidebar-width-collapsed:72px;
-  --topbar-height:62px;
+  --topbar-height:66px;
 
   --shadow-card:none;
   --shadow-accent:none;

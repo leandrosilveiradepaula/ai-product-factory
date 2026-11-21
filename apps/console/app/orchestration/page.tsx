@@ -31,8 +31,8 @@ export default async function Orchestration(){
  const blockedReleases=data.releases.filter(x=>x.status==="blocked");
  const ready=data.releases.filter(x=>x.status==="ready_for_human_release");
  return <>
-  <PageHeader eyebrow="Orquestração adaptativa" title="Operação da Factory"
-   subtitle="Visão técnica do motor da Factory: prioridades, incidentes, ciclos de reparo, reexecuções de análise e prontidão para liberação."/>
+  <PageHeader eyebrow="Orquestração adaptativa" title="Motor de execução da Factory"
+   subtitle="Diagnóstico do orquestrador: filas, reparos e incidentes. Use Projetos para entender o status de cada produto."/>
   <div className="grid compact">
    <MetricCard label="Projetos no portfólio" value={data.projects.length} note={data.projects.filter(x=>x.paused).length+" pausados"}/>
    <MetricCard label="Incidentes ativos" value={data.incidents.length} note={urgent.length+" P0/P1"}/>

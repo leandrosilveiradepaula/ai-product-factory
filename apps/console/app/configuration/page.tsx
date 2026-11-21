@@ -17,7 +17,7 @@ export default async function Configuration({searchParams}:{searchParams:Promise
   getConsoleConfiguration(),requireConsoleOperator(),getPrimaryCostPolicyView(),searchParams,
  ]);
  return <>
-  <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Políticas e estado administrativo da Factory. Use para governança e diagnóstico; projetos são conduzidos pelas telas de Projeto e Aprovações." actions={operator.role==="admin"?<ActionLink href="/admin/operators">Operadores</ActionLink>:<StatusPill status="active" label="perfil operador"/>}/>
+  <PageHeader eyebrow="Governança · políticas e circuit breakers" title="Configuração" subtitle="Políticas e estado administrativo da Factory. Use para governança e diagnóstico; projetos são conduzidos pelas telas de Projetos e Decisões." actions={operator.role==="admin"?<ActionLink href="/admin/operators">Operadores</ActionLink>:<StatusPill status="active" label="perfil operador"/>}/>
   <nav className="configTabs" aria-label="Seções de configuração">
    <a href="#governanca">Governança</a>
    <a href="#modelos">Modelos</a>
