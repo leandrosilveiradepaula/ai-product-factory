@@ -129,7 +129,9 @@ def _reviewed_sql_finding_superseded(*, get: Callable[[str], object],
             or evidence["blocking_findings"] != 0
             or not isinstance(findings, list)
             or any(not isinstance(finding, dict)
-                   or finding.get("severity") in ("error", "critical")
+                   or finding.get("severity") not in ("warning", "info")
+                   or not isinstance(finding.get("code"), str)
+                   or not finding["code"].strip()
                    for finding in findings)):
         return False
     try:
