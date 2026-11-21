@@ -368,7 +368,10 @@ function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
 export type ProjectPendingRun={id:string;status:string;attemptCount:number;createdAt:string};
 export type ProjectWakeEvidence={wakeStatus:string|null;wakeAt:string|null;workerObservedAt:string|null;productQueueDetected:boolean;blockerCode:string|null;blockedAt:string|null;workerRunId:string|null};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;isInternalRecord:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;tasks:ProjectTaskSummary[]};
+// Read-only, typed owner evidence; never surface raw worker errors.
+export type ProjectLatestRun={status:string;createdAt:string;failureKind:"no_actionable_work"|"context_preflight"|"failed"|"blocked"|null};
+export type ProjectReleaseEvidence={kind:"released"|"none"|"unavailable";candidateCommit:string|null;updatedAt:string|null};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;isInternalRecord:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;latestRun?:ProjectLatestRun|null;releaseEvidence?:ProjectReleaseEvidence;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
@@ -377,15 +380,39 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  if(!projectResponse.ok)throw new Error("Unable to load project");
  const projects=await projectResponse.json();if(!projects.length)return null;
  const p=projects[0];
- const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
+ const [tasksResponse,releaseResponse]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_release_reports?select=status,candidate_commit,updated_at&project_id=eq.${encodeURIComponent(p.id)}&status=eq.released&order=updated_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
+ ]);
  const tasks=tasksResponse.ok?await tasksResponse.json():[];
+ // Released report proves a past release event, not current Vercel availability.
+ let releaseEvidence:ProjectReleaseEvidence={kind:"unavailable",candidateCommit:null,updatedAt:null};
+ if(releaseResponse.ok){
+  const releases=await releaseResponse.json();
+  if(Array.isArray(releases)&&releases.length===0)
+   releaseEvidence={kind:"none",candidateCommit:null,updatedAt:null};
+  else if(Array.isArray(releases)&&releases.length===1&&releases[0]?.status==="released"&&
+    typeof releases[0].candidate_commit==="string"&&/^[0-9a-f]{40}$/.test(releases[0].candidate_commit)&&
+    typeof releases[0].updated_at==="string"&&Number.isFinite(Date.parse(releases[0].updated_at)))
+   releaseEvidence={kind:"released",candidateCommit:releases[0].candidate_commit,updatedAt:releases[0].updated_at};
+ }
  const taskIds=tasks.map((x:any)=>String(x.id));
  let productReadiness:ProjectReadinessSummary={ready:false,status:"not_assessed",assessedCommit:null,assessmentRef:null,domains:{},blockers:[],createdAt:null};
  let pendingRun:ProjectPendingRun|null=null;
  let wakeEvidence:ProjectWakeEvidence|null=null;
+ let latestRun:ProjectLatestRun|null=null;
  if(taskIds.length){
-  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
+  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at,last_error&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
   const runs=runsResponse.ok?await runsResponse.json():[];
+  if(Array.isArray(runs)&&runs.length>0){
+   const last=runs[0],status=typeof last.status==="string"?last.status:"unknown";
+   const err=typeof last.last_error==="string"?last.last_error:"";
+   const failureKind:ProjectLatestRun["failureKind"]=status==="blocked"?"blocked":
+     status!=="failed"?null:err==="planning has no actionable tasks or decisions"?"no_actionable_work":
+     err==="reconciliation_context_preflight_failed"?"context_preflight":"failed";
+   latestRun={status,createdAt:typeof last.created_at==="string"?last.created_at:"",
+     failureKind};
+  }
   // Recovery and later lifecycle work are queued, not always created. Never
    // hide the Product Stage's recorded blocker by selecting created-only runs.
    const waiting=runs.find((x:any)=>(x.status==="created"||x.status==="queued")
@@ -440,7 +467,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  }
  const preview=p.manifest?.preview&&typeof p.manifest.preview==="object"?p.manifest.preview:null;
  const evidence=preview?.evidence&&typeof preview.evidence==="object"?preview.evidence:null;
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,isInternalRecord:p.manifest?.qa_canary===true,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,isInternalRecord:p.manifest?.qa_canary===true,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,latestRun,releaseEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export type ProjectContinuationHistoryItem={id:string;summary:string;requestedAt:string;attachmentCount:number};
