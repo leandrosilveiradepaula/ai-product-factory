@@ -202,6 +202,38 @@ class OperatorRecoveryTests(unittest.TestCase):
         original["last_error"]="unrelated_failure"
         with self.assertRaises(SourceScopeBlocked):self.inspect(db=db,run_id=RETRY)
 
+    def test_second_retry_requires_original_failed_auth_and_no_third_replay(self):
+        db=FakeGet()
+        first=db.data["factory_runs"][0]
+        first["status"]="failed"
+        first["last_error"]="reconciliation_context_preflight_failed"
+        second=copy.deepcopy(first)
+        second["id"]="dddddddd-dddd-dddd-dddd-dddddddddddd"
+        second["metadata"]["retry_of"]=RID
+        second["metadata"]["retry_source_generation"]="1"
+        second["metadata"].pop("execution_generation")
+        second["status"]="failed"
+        second["last_error"]="reconciliation_context_preflight_failed"
+        third=copy.deepcopy(second)
+        third["id"]="eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+        third["status"]="running"
+        third["metadata"]["retry_of"]=second["id"]
+        third["metadata"]["retry_source_generation"]=None
+        db.data["factory_runs"].extend([second,third])
+        db.data["factory_blocked_work_recovery_requests"][0]["status"]="blocked"
+        ctx,_,_=self.inspect(db=db,run_id=third["id"])
+        self.assertEqual(ctx["current_state_facts"]["operator_recovery"]["run_id"],third["id"])
+        second["last_error"]="model_failed"
+        with self.assertRaises(SourceScopeBlocked):
+            self.inspect(db=db,run_id=third["id"])
+        second["last_error"]="reconciliation_context_preflight_failed"
+        fourth=copy.deepcopy(third)
+        fourth["id"]="ffffffff-ffff-ffff-ffff-ffffffffffff"
+        fourth["metadata"]["retry_of"]=third["id"]
+        db.data["factory_runs"].append(fourth)
+        with self.assertRaises(SourceScopeBlocked):
+            self.inspect(db=db,run_id=fourth["id"])
+
     def test_queue_recovery_uses_claimed_run_not_arbitrary_source(self):
         queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="offline")
         db=FakeGet()
