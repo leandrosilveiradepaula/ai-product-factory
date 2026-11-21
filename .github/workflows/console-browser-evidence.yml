@@ -81,6 +81,7 @@ jobs:
         env:
           FACTORY_PREVIEW_URL: ${{ steps.target.outputs.preview_url }}
           FACTORY_PREVIEW_EXPECTED_TEXT: ${{ steps.target.outputs.expected_text }}
+          FACTORY_PREVIEW_EXPECTED_TITLE: "AI Product Factory"
           FACTORY_VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
           FACTORY_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
         shell: bash

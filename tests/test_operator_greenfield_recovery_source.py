@@ -71,6 +71,7 @@ def fixture():
       }],
       "factory_repair_jobs":[{
         "id":JOB,"project_id":PID,"change_set_id":CS,"source_run_id":ROOT,
+        "created_at":"2026-11-17T14:40:04+00:00",
         "task_id":ORIGINAL_TASK,"status":"blocked","source_role":"security",
         "cycle":2,"max_cycles":3,"candidate_commit":OLDER,
         "finding":FINDING,"write_scopes":[PATH],
@@ -79,6 +80,7 @@ def fixture():
         "id":TASK,"project_id":PID,"status":"running",
         "acceptance_criteria":[{"finding":FINDING,"source_role":"security"}],
       }],
+      "factory_specialist_lane_jobs":[],
       "factory_change_sets":[{
         "id":CS,"project_id":PID,"root_task_id":ROOT_TASK,"status":"completed",
         "lease_owner":None,"lease_expires_at":None,
@@ -116,9 +118,11 @@ class FakeGet:
         self.calls.append(path)
         table=path.split("?",1)[0]
         if table not in self.data:raise RuntimeError("unexpected table")
-        matches=re.findall(r"(?:^|&)([a-z_]+)=eq\.([0-9a-f-]{36})",path)
+        matches=re.findall(r"(?:^|&)([a-z_]+)=eq\.([0-9a-f-]{36})(?=&|$)",path)
+        text_matches=re.findall(r"(?:^|&)(role|candidate_commit)=eq\.([a-z_0-9]{2,40})",path)
         return [copy.deepcopy(row) for row in self.data[table]
-                if all(row.get(key)==value for key,value in matches)]
+                if all(row.get(key)==value for key,value in matches)
+                and all(row.get(key)==value for key,value in text_matches)]
 
 
 class OperatorRecoveryTests(unittest.TestCase):
@@ -243,6 +247,106 @@ class OperatorRecoveryTests(unittest.TestCase):
                     self.inspect(db=db,github=gh,run_id=third["id"])
                 self.assertEqual(gh.reads,[])
         third["metadata"]["retry_source_generation"]="1"
+
+    def test_later_pass_on_identical_sql_prevents_paid_historical_repair(self):
+        db = FakeGet()
+        db.data["factory_repair_jobs"][0]["created_at"] = "2026-11-17T14:40:04+00:00"
+        review = {
+            "run_id": ROOT, "role": "security", "candidate_commit": OLDER,
+            "status": "passed", "completed_at": "2026-11-17T15:50:20+00:00",
+            "evidence": {"scanner": "architecture_guardian_v1",
+                         "candidate_commit": OLDER, "blocking_findings": 0},
+            "findings": [{"code": "dependency_surface_changed", "severity": "warning"}],
+        }
+        db.data["factory_specialist_lane_jobs"].append(review)
+        github = FakeGithub()
+        with self.assertRaisesRegex(
+            SourceScopeBlocked, "operator_recovery_superseded_security_pass"
+        ):
+            self.inspect(db=db, github=github)
+        self.assertIn(("file", PATH, OLDER), github.reads)
+
+    def test_bad_or_outdated_review_never_certifies_supersession(self):
+        base = FakeGet()
+        base.data["factory_repair_jobs"][0]["created_at"] = "2026-11-17T14:40:04+00:00"
+        passed = {
+            "run_id": ROOT, "role": "security", "candidate_commit": OLDER,
+            "status": "passed", "completed_at": "2026-11-17T15:50:20+00:00",
+            "evidence": {"scanner": "architecture_guardian_v1",
+                         "candidate_commit": OLDER, "blocking_findings": 0},
+            "findings": [],
+        }
+        cases = [
+            {**passed, "status": "failed"},
+            {**passed, "completed_at": "2026-11-17T13:20:20+00:00"},
+            {**passed, "evidence": {**passed["evidence"], "blocking_findings": 1}},
+            {**passed, "evidence": {**passed["evidence"], "blocking_findings": "0"}},
+            {**passed, "findings": [{"code": "security_alert", "severity": "critical"}]},
+            {**passed, "findings": [{"code": "missing_severity"}]},
+            {**passed, "findings": [{"severity": "warning"}]},
+            {**passed, "findings": [{"code": "unknown", "severity": "unexpected"}]},
+        ]
+        for review in cases:
+            with self.subTest(review=review):
+                db = FakeGet(base.data)
+                db.data["factory_specialist_lane_jobs"] = [review]
+                context, _, _ = self.inspect(db=db)
+                self.assertEqual(
+                    context["current_state_facts"]["operator_recovery"]["status"],
+                    "validated_operator_restart",
+                )
+        db = FakeGet(base.data)
+        db.data["factory_specialist_lane_jobs"] = [passed]
+        github = FakeGithub()
+        old_get = github.get_file_text
+        github.get_file_text = lambda path, ref: (
+            "-- changed after review" if path == PATH and ref == HEAD
+            else old_get(path, ref=ref)
+        )
+        context, _, _ = self.inspect(db=db, github=github)
+        self.assertEqual(context["current_state_facts"]["operator_recovery"]["status"],
+                         "validated_operator_restart")
+
+    def test_other_candidate_review_does_not_clear_this_finding(self):
+        db = FakeGet()
+        db.data["factory_repair_jobs"][0]["created_at"] = "2026-11-17T14:40:04+00:00"
+        db.data["factory_specialist_lane_jobs"] = [{
+            "run_id": ROOT, "role": "security", "candidate_commit": HEAD,
+            "status": "passed", "completed_at": "2026-11-17T15:50:20+00:00",
+            "evidence": {"scanner": "architecture_guardian_v1",
+                         "candidate_commit": HEAD, "blocking_findings": 0},
+            "findings": [],
+        }]
+        context, _, _ = self.inspect(db=db)
+        self.assertEqual(context["current_state_facts"]["operator_recovery"]["status"],
+                         "validated_operator_restart")
+
+    def test_latest_failed_review_overrides_earlier_pass(self):
+        db = FakeGet()
+        db.data["factory_repair_jobs"][0]["created_at"] = "2026-11-17T14:40:04+00:00"
+        passed = {
+            "run_id": ROOT, "role": "security", "candidate_commit": OLDER,
+            "status": "passed", "completed_at": "2026-11-17T15:50:20+00:00",
+            "evidence": {"scanner": "architecture_guardian_v1",
+                         "candidate_commit": OLDER, "blocking_findings": 0},
+            "findings": [],
+        }
+        db.data["factory_specialist_lane_jobs"] = [
+            passed, {**passed, "status": "failed",
+                     "completed_at": "2026-11-17T16:50:20+00:00"},
+        ]
+        context, _, _ = self.inspect(db=db)
+        self.assertEqual(context["current_state_facts"]["operator_recovery"]["status"],
+                         "validated_operator_restart")
+
+    def test_review_source_unavailable_fails_closed(self):
+        db = FakeGet()
+        del db.data["factory_specialist_lane_jobs"]
+        github = FakeGithub()
+        with self.assertRaisesRegex(SourceScopeBlocked,
+                                    "operator_recovery_lineage_unverified"):
+            self.inspect(db=db, github=github)
+
 
     def test_queue_recovery_uses_claimed_run_not_arbitrary_source(self):
         queue=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="offline")

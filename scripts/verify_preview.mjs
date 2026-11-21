@@ -1,11 +1,14 @@
 import { chromium } from "playwright";
 import matcher from "./preview_text_match.cjs";
+import identity from "./preview_application_identity.cjs";
 import {firstPartyPreviewHeaders} from "./preview_first_party_headers.mjs";
 import {isVercelExternalTelemetryPing403,isCorrelatedVercelPingConsoleError} from "./preview_browser_integrity.mjs";
 const { normalizeVisibleText, containsExpectedText } = matcher;
+const {requirePreviewTitleAndHeading} = identity;
 
 const previewUrl = process.env.FACTORY_PREVIEW_URL;
 const expectedText = (process.env.FACTORY_PREVIEW_EXPECTED_TEXT || "").trim();
+const expectedTitle = (process.env.FACTORY_PREVIEW_EXPECTED_TITLE || "").trim();
 const trustedOidcToken = (process.env.FACTORY_VERCEL_TRUSTED_OIDC_TOKEN || "").trim();
 const browserExecutablePath = (process.env.FACTORY_BROWSER_EXECUTABLE_PATH || "").trim();
 const checks = [];
@@ -39,6 +42,10 @@ if (!previewUrl || !/^https:\/\//.test(previewUrl)) {
 
 if (!expectedText || expectedText.length > 120 || /[\r\n]/.test(expectedText)) {
   emit("failure", "preview_application_marker_required");
+  process.exit(0);
+}
+if (expectedTitle.length > 120 || /[\r\n]/.test(expectedTitle)) {
+  emit("failure", "preview_application_title_marker_invalid");
   process.exit(0);
 }
 
@@ -113,9 +120,10 @@ try {
   // Vercel SSO may contain a project label but cannot substitute the app's
   // document title and its own accessible top-level heading.
   const heading=await page.getByRole("heading",{level:1}).first().innerText({timeout:10000});
-  if (!containsExpectedText(normalizeVisibleText(observed.title || ""), expectedText)
-      || !containsExpectedText(normalizeVisibleText(heading), expectedText))
-    throw new Error("preview_application_heading_or_title_unverified");
+  const identityFailure=requirePreviewTitleAndHeading({
+    title: observed.title, heading, expectedText, expectedTitle,
+  });
+  if (identityFailure) throw new Error(identityFailure);
   checks.push("expected_text");
 
   for(const entry of consoleErrors){
