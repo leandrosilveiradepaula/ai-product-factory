@@ -184,6 +184,24 @@ export async function enqueueProjectContinuation(projectKey:string,request:strin
  return {...result,requestId,requestedAt:String(result.requested_at||""),wakeStatus};
 }
 
+/** Queue a new, auditable Product-stage continuation for one blocked repair.
+ * This is deliberately separate from lifecycle restart: stopped projects still
+ * use factory_control_project_v1, and terminal Change Sets are never reopened.
+ */
+export async function restartBlockedProjectWork(projectKey:string,expectedVersion:number,commandId:string){
+ const operator=await requireConsoleOperator();
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(projectKey)||!Number.isSafeInteger(expectedVersion)||expectedVersion<0||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(commandId))throw new Error("Comando de retomada inválido.");
+ const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
+ const response=await fetch(cfg.url+"/rest/v1/rpc/factory_restart_blocked_work_v1",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_command_id:commandId,p_expected_version:expectedVersion,p_actor_id:operator.userId}),cache:"no-store"});
+ if(!response.ok)throw new Error("A retomada não é elegível ou o estado foi alterado. Atualize a página.");
+ const result=await response.json();
+ if(!result||!['queued','claimed','recovering','completed','blocked'].includes(result.status)||typeof result.request_id!=="string"||typeof result.run_id!=="string"||typeof result.task_id!=="string")throw new Error("Confirmação de retomada inválida.");
+ let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
+ try{wakeStatus=await (await import("./project-control-wake-outbox")).deliverProjectControlWake(commandId);}
+ catch{wakeStatus="failed";console.warn("blocked_work_recovery_wake_will_retry");}
+ return {status:result.status as "queued"|"claimed"|"recovering"|"completed"|"blocked",requestId:result.request_id as string,runId:result.run_id as string,taskId:result.task_id as string,wakeStatus};
+}
+
 export async function getDashboard():Promise<Dashboard>{
  await requireConsoleOperator();
  const cfg=getSupabaseServerConfig();
@@ -350,7 +368,10 @@ function verifiedProductReadinessAssessment(row:Record<string,any>,result:Record
 export type ProjectReadinessSummary={ready:boolean;status:string;assessedCommit:string|null;assessmentRef:string|null;domains:Record<string,ProjectReadinessDomain>;blockers:string[];createdAt:string|null};
 export type ProjectPendingRun={id:string;status:string;attemptCount:number;createdAt:string};
 export type ProjectWakeEvidence={wakeStatus:string|null;wakeAt:string|null;workerObservedAt:string|null;productQueueDetected:boolean;blockerCode:string|null;blockedAt:string|null;workerRunId:string|null};
-export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;tasks:ProjectTaskSummary[]};
+// Read-only, typed owner evidence; never surface raw worker errors.
+export type ProjectLatestRun={status:string;createdAt:string;failureKind:"no_actionable_work"|"context_preflight"|"failed"|"blocked"|null};
+export type ProjectReleaseEvidence={kind:"released"|"none"|"unavailable";candidateCommit:string|null;updatedAt:string|null};
+export type ProjectDetail={id:string;key:string;name:string;repository:string|null;kind:string;stage:string;active:boolean;isInternalRecord:boolean;updatedAt:string;previewPolicy:ProjectPreviewPolicy|null;productReadiness:ProjectReadinessSummary;pendingRun:ProjectPendingRun|null;wakeEvidence:ProjectWakeEvidence|null;latestRun?:ProjectLatestRun|null;releaseEvidence?:ProjectReleaseEvidence;tasks:ProjectTaskSummary[]};
 
 export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|null>{
  await requireConsoleOperator();
@@ -359,18 +380,46 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  if(!projectResponse.ok)throw new Error("Unable to load project");
  const projects=await projectResponse.json();if(!projects.length)return null;
  const p=projects[0];
- const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
+ const [tasksResponse,releaseResponse]=await Promise.all([
+  fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"}),
+  fetch(`${cfg.url}/rest/v1/factory_release_reports?select=status,candidate_commit,updated_at&project_id=eq.${encodeURIComponent(p.id)}&status=eq.released&order=updated_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
+ ]);
  const tasks=tasksResponse.ok?await tasksResponse.json():[];
+ // Released report proves a past release event, not current Vercel availability.
+ let releaseEvidence:ProjectReleaseEvidence={kind:"unavailable",candidateCommit:null,updatedAt:null};
+ if(releaseResponse.ok){
+  const releases=await releaseResponse.json();
+  if(Array.isArray(releases)&&releases.length===0)
+   releaseEvidence={kind:"none",candidateCommit:null,updatedAt:null};
+  else if(Array.isArray(releases)&&releases.length===1&&releases[0]?.status==="released"&&
+    typeof releases[0].candidate_commit==="string"&&/^[0-9a-f]{40}$/.test(releases[0].candidate_commit)&&
+    typeof releases[0].updated_at==="string"&&Number.isFinite(Date.parse(releases[0].updated_at)))
+   releaseEvidence={kind:"released",candidateCommit:releases[0].candidate_commit,updatedAt:releases[0].updated_at};
+ }
  const taskIds=tasks.map((x:any)=>String(x.id));
  let productReadiness:ProjectReadinessSummary={ready:false,status:"not_assessed",assessedCommit:null,assessmentRef:null,domains:{},blockers:[],createdAt:null};
  let pendingRun:ProjectPendingRun|null=null;
  let wakeEvidence:ProjectWakeEvidence|null=null;
+ let latestRun:ProjectLatestRun|null=null;
  if(taskIds.length){
-  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
+  const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at,last_error&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
   const runs=runsResponse.ok?await runsResponse.json():[];
-  const waiting=runs.find((x:any)=>x.status==="created"&&x.started_at==null);
+  if(Array.isArray(runs)&&runs.length>0){
+   const last=runs[0],status=typeof last.status==="string"?last.status:"unknown";
+   const err=typeof last.last_error==="string"?last.last_error:"";
+   const failureKind:ProjectLatestRun["failureKind"]=status==="blocked"?"blocked":
+     status!=="failed"?null:err==="planning has no actionable tasks or decisions"?"no_actionable_work":
+     err==="reconciliation_context_preflight_failed"?"context_preflight":"failed";
+   latestRun={status,createdAt:typeof last.created_at==="string"?last.created_at:"",
+     failureKind};
+  }
+  // Recovery and later lifecycle work are queued, not always created. Never
+   // hide the Product Stage's recorded blocker by selecting created-only runs.
+   const waiting=runs.find((x:any)=>(x.status==="created"||x.status==="queued")
+     &&x.started_at==null);
   if(waiting){
-   pendingRun={id:String(waiting.id),status:"created",attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
+   pendingRun={id:String(waiting.id),status:String(waiting.status),
+     attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
    const since=encodeURIComponent(pendingRun.createdAt);
    const [wakeResponse,probeResponse,blockResponse]=await Promise.all([
     fetch(`${cfg.url}/rest/v1/factory_audit_events?select=event_type,payload,created_at&project_id=eq.${encodeURIComponent(p.id)}&run_id=eq.${encodeURIComponent(pendingRun.id)}&event_type=in.(project.bootstrap.wake_attempted,project.continuation.wake_attempted)&created_at=gte.${since}&order=created_at.desc&limit=1`,{headers:cfg.headers,cache:"no-store"}),
@@ -418,7 +467,7 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  }
  const preview=p.manifest?.preview&&typeof p.manifest.preview==="object"?p.manifest.preview:null;
  const evidence=preview?.evidence&&typeof preview.evidence==="object"?preview.evidence:null;
- return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
+ return {id:p.id,key:p.project_key,name:p.name,repository:p.repository,kind:p.project_kind,isInternalRecord:p.manifest?.qa_canary===true,stage:p.lifecycle_stage,active:Boolean(p.is_active),updatedAt:p.updated_at,previewPolicy:preview?{provider:preview.provider?String(preview.provider):null,mode:preview.mode?String(preview.mode):null,required:typeof preview.required==="boolean"?preview.required:null,reason:preview.reason?String(preview.reason):null,evidenceSource:evidence?.source?String(evidence.source):null,evidenceCommit:evidence?.commit_sha?String(evidence.commit_sha):null}:null,productReadiness,pendingRun,wakeEvidence,latestRun,releaseEvidence,tasks:tasks.map((x:any)=>({id:x.id,title:x.title,status:x.status,complexity:x.complexity,externalKey:x.external_key,updatedAt:x.updated_at}))};
 }
 
 export type ProjectContinuationHistoryItem={id:string;summary:string;requestedAt:string;attachmentCount:number};
@@ -531,6 +580,75 @@ export async function getProjectStateContext(projectId:string):Promise<ProjectSt
   objective:typeof spec.summary==="string"?spec.summary:null,
   snapshot:x?{id:String(x.id),runId:x.run_id?String(x.run_id):null,observedStage:x.observed_stage?String(x.observed_stage):null,summary:String(x.summary),evidence:Array.isArray(x.evidence)?x.evidence:[],gaps:Array.isArray(x.gaps)?x.gaps:[],constraints:Array.isArray(x.constraints)?x.constraints:[],sourceStatus:x.source_status&&typeof x.source_status==="object"?x.source_status:{},createdAt:String(x.created_at)}:null
  };
+}
+
+export type ProjectRecoveryStatus={status:string;cycle:number;maxCycles:number;message:string|null;updatedAt:string}|null;
+export async function getProjectRecoveryStatus(projectId:string):Promise<ProjectRecoveryStatus>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg||!projectId)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const [response,recoveryResponse]=await Promise.all([
+  fetch(cfg.url+"/rest/v1/factory_repair_jobs?select=status,cycle,max_cycles,finding,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"}),
+  fetch(cfg.url+"/rest/v1/factory_blocked_work_recovery_requests?select=status,updated_at&project_id=eq."+encodeURIComponent(projectId)+"&order=updated_at.desc&limit=1",{headers:cfg.headers,cache:"no-store"}),
+ ]);
+ if(!response.ok)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const rows=await response.json();
+ if(!Array.isArray(rows))return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const row=rows[0];if(!row)return null;
+ const finding=row.finding&&typeof row.finding==="object"&&!Array.isArray(row.finding)?row.finding:{};
+ const message=typeof finding.message==="string"?finding.message.slice(0,400):typeof finding.detail==="string"?finding.detail.slice(0,400):null;
+ const cycle=Number(row.cycle),maxCycles=Number(row.max_cycles);
+ // A missing migration or a denied privileged query is not proof that
+ // a restart command is available. Hide the control until the read succeeds.
+ if(!recoveryResponse.ok)return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const recoveries=await recoveryResponse.json();
+ if(!Array.isArray(recoveries))return{status:"unavailable",cycle:0,maxCycles:0,message:null,updatedAt:""};
+ const latest=recoveries[0];
+ const recoveryStates=new Set(["accepted","queued","claimed","recovering","completed","blocked"]);
+ const recoveredAt=typeof latest?.updated_at==="string"?Date.parse(latest.updated_at):NaN;
+ const sourceAt=typeof row.updated_at==="string"?Date.parse(row.updated_at):NaN;
+ // Do not let the immutable historical repair mask its newer continuation.
+ if(latest&&typeof latest.status==="string"&&recoveryStates.has(latest.status)
+    &&Number.isFinite(recoveredAt)&&Number.isFinite(sourceAt)&&recoveredAt>=sourceAt)
+  return{status:"recovery_"+(latest.status==="accepted"?"queued":latest.status),
+   cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,
+   maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,
+   message:null,updatedAt:latest.updated_at};
+ return{status:typeof row.status==="string"?row.status:"unknown",
+   cycle:Number.isSafeInteger(cycle)&&cycle>=0?cycle:0,
+   maxCycles:Number.isSafeInteger(maxCycles)&&maxCycles>=0?maxCycles:0,
+   message,updatedAt:typeof row.updated_at==="string"?row.updated_at:""};
+}
+
+export type ProjectWorkObservation={
+ kind:"running"|"recorded"|"idle"|"unavailable";
+ runId:string|null;at:string|null;
+};
+/** A registered/queued run is not a worker. Only a started run with a
+ * current lease and a running state is proof of active work. Read-only.
+ */
+export async function getProjectWorkObservation(taskIds:string[]):Promise<ProjectWorkObservation>{
+ await requireConsoleOperator();
+ const none=(kind:ProjectWorkObservation["kind"]):ProjectWorkObservation=>({kind,runId:null,at:null});
+ const cfg=serverHeaders();if(!cfg)return none("unavailable");
+ if(!Array.isArray(taskIds)||taskIds.length>500||taskIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))
+  return none("unavailable");
+ if(taskIds.length===0)return none("idle");
+ const q=taskIds.map(encodeURIComponent).join(",");
+ const response=await fetch(cfg.url+"/rest/v1/factory_runs?select=id,status,started_at,created_at,lease_owner,lease_expires_at&task_id=in.("+q+")&status=in.(created,queued,running,implementing,ci_pending,review_ready,preview_ready)&order=created_at.desc&limit=500",{
+  headers:cfg.headers,cache:"no-store",
+ });
+ if(!response.ok)return none("unavailable");
+ const rows=await response.json();
+ if(!Array.isArray(rows)||rows.length>=500)return none("unavailable");
+ const now=Date.now();
+ const validDate=(value:unknown)=>typeof value==="string"&&Number.isFinite(Date.parse(value));
+ const active=rows.find((r:any)=>(r.status==="running"||r.status==="implementing")&&validDate(r.started_at)&&
+  typeof r.lease_owner==="string"&&r.lease_owner.length>0&&validDate(r.lease_expires_at)&&Date.parse(r.lease_expires_at)>now);
+ if(active)return{kind:"running",runId:String(active.id),at:String(active.started_at)};
+ const recorded=rows.find((r:any)=>(r.status==="created"||r.status==="queued")&&r.started_at==null);
+ if(recorded)return{kind:"recorded",runId:String(recorded.id),at:typeof recorded.created_at==="string"?recorded.created_at:null};
+ return none("idle");
 }
 
 export async function resolveHumanGate(gateId:string,resolution:"approved"|"rejected",note?:string){

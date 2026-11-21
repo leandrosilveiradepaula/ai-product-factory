@@ -6,6 +6,7 @@ import {mergeReadyReleaseFromConsole} from "../../lib/release-operator";
 import {applyPendingMigrationFromConsole} from "../../lib/migration-operator";
 import {getVerifiedMigrationOutcome} from "../../lib/migration-feedback";
 import {getGitHubAppStatus} from "../../lib/github-app";
+import {ownerAttentionCounts} from "../../lib/owner-attention-counts";
 import {EmptyState,PageHeader,StatusPill} from "../ui";
 import {GateDecisionPending} from "./gate-decision-form";
 import {GateActionErrorBanner} from "./gate-action-error-banner";
@@ -148,16 +149,16 @@ export default async function Gates({searchParams}:{searchParams:Promise<{error?
  const planningWakeNotice=typeof params.planning_wake==="string"?planningWakeMessages[params.planning_wake]:undefined;
  const githubNotice=typeof params.github_app==="string"?githubAppNotices[params.github_app]:undefined;
  const migrationResult=typeof params.migration_result==="string"?await getVerifiedMigrationOutcome(params.migration_result):null;
- const [gates,githubApp,githubInstallActions]=await Promise.all([getHumanGates(),getGitHubAppStatus(),getGitHubAppInstallActions()]);const pending=gates.filter(g=>g.status==="pending"&&g.actionable);const history=gates.filter(g=>g.status!=="pending"||!g.actionable);const githubAppActionPending=!githubApp.configured;const installActions=githubApp.configured?githubInstallActions:[];const pendingCount=pending.length+(githubAppActionPending?1:0)+installActions.length;const resolved=history.length;
+ const [gates,githubApp,githubInstallActions]=await Promise.all([getHumanGates(),getGitHubAppStatus(),getGitHubAppInstallActions()]);const pending=gates.filter(g=>g.status==="pending"&&g.actionable);const history=gates.filter(g=>g.status!=="pending"||!g.actionable);const githubAppActionPending=!githubApp.configured;const installActions=githubApp.configured?githubInstallActions:[];const counts=ownerAttentionCounts({pendingHumanGateCount:pending.length,githubAppConfigured:githubApp.configured,pendingInstallCount:githubInstallActions.length});const pendingCount=counts.count;
  return <>
   {actionError?<GateActionErrorBanner message={actionError}/>:null}
   {planningWakeNotice?<div className="card noticeCard" role="status">{planningWakeNotice}</div>:null}
   {migrationResult?<GateActionSuccessBanner migrationName={migrationResult.migrationName} alreadyApplied={migrationResult.alreadyApplied}/>:null}
   {githubNotice?<div className={"card noticeCard "+(githubNotice.status==="success"?"success":"danger")} role="status"><StatusPill status={githubNotice.status}/><span>{githubNotice.message}</span></div>:null}
-  <PageHeader eyebrow="Sua caixa de entrada de decisões" title="Decisões que precisam de você" subtitle="Se esta tela estiver vazia, você não precisa fazer nada. A Factory só para aqui quando produção, dados, acesso, custo ou uma mudança importante exigem sua decisão." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" críticas pendentes":"nenhuma pendência"}/>}/>
+  <PageHeader eyebrow="Sua caixa de entrada" title="Decisões e acessos" subtitle="Aprovações humanas e configurações de acesso são responsabilidades distintas. Nenhuma integração equivale à aprovação de um produto." actions={<StatusPill status={pendingCount?"attention":"healthy"} label={pendingCount?pendingCount+" pendências":"nenhuma pendência"}/>}/>
   <div className="operationalStrip">
-   <div className="operationalStat warning"><span>Aguardando sua decisão</span><strong>{pendingCount}</strong><small>ação humana</small></div>
-   <div className="operationalStat"><span>Resolvidas</span><strong>{resolved}</strong><small>histórico durável</small></div>
+   <div className="operationalStat warning"><span>Decisões humanas</span><strong>{counts.pendingHumanGateCount}</strong><small>gates acionáveis</small></div>
+   <div className="operationalStat"><span>Integrações</span><strong>{counts.pendingIntegrationActionCount}</strong><small>acessos a configurar</small></div>
    <div className="operationalStat"><span>Política</span><strong>fail-closed</strong><small>sem bypass</small></div>
    <div className="operationalStat"><span>Produção</span><strong>humana</strong><small>merge nunca automático</small></div>
   </div>

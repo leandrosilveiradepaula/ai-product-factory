@@ -230,7 +230,7 @@ async function hydrationRound({throttled=false,repeats=3}={}){
   }
   if(url.pathname==="/api/human-attention"){
     await route.fulfill({status:200,contentType:"application/json",
-      body:JSON.stringify({status:"ok",count:0,projects:[]})});return;
+      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})});return;
   }
   await route.continue();
  });
@@ -258,9 +258,10 @@ async function hydrationRound({throttled=false,repeats=3}={}){
     waitUntil:"networkidle",timeout:45000});
    assert.equal(response?.status(),200,"actual protected configuration route must return 200");
    assert.equal(new URL(page.url()).pathname,"/configuration");
-   assert.equal(await page.locator("h1.title").innerText(),"Configuração");
+   assert.equal(await page.locator("h1.title").innerText(),"Configurações");
    assert.equal(await page.locator("#orcamento").count(),1);
-   assert.equal(await page.locator("nav.configTabs").count(),1);
+   assert.equal(await page.locator("details.configurationDisclosure").count(),3);
+   assert.equal(await page.locator("details.configurationDisclosure[open]").count(),0);
    assert.equal(browserErrors.length,0,
     "real React/Next server HTML must hydrate cleanly (no #418 or console errors)");
   }
@@ -323,6 +324,11 @@ test("B3: real Next client navigation renders loading then true offline error an
  try{
   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   const loadingLink=await openRuns();
+  // The workspace now fetches product evidence in parallel on the server.
+  // A navigation claimed to be "client-side" must wait for real React
+  // hydration; otherwise Playwright follows a plain browser link and the
+  // expected Next loading and offline recovery cannot possibly appear.
+  await page.locator('.consoleShell[data-client-interactive="ready"]').waitFor({state:"attached",timeout:20000});
   cdp=await context.newCDPSession(page);
   await cdp.send("Network.enable");
   await cdp.send("Network.setCacheDisabled",{cacheDisabled:true});
@@ -346,6 +352,7 @@ test("B3: real Next client navigation renders loading then true offline error an
   // not Chrome's own network error or a synthetic intercepted response.
   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   const offlineLink=await openRuns();
+  await page.locator('.consoleShell[data-client-interactive="ready"]').waitFor({state:"attached",timeout:20000});
   await context.setOffline(true);offline=true;
   await offlineLink.click({timeout:10000});
   const transportError=page.locator(".consoleRouteError[role='alert']");
@@ -380,7 +387,7 @@ test("B3: real Next project detail hydration and command identity are stable acr
  try{
   await context.route("**/api/human-attention",async route=>
     route.fulfill({status:200,contentType:"application/json",
-      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,projects:[]})}));
+      body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
   for(let index=0;index<4;index++){
    const response=await page.goto(appOrigin+"/projects/ai-product-factory",{
     waitUntil:"networkidle",timeout:45000});
@@ -439,7 +446,7 @@ test("B2: expired token refresh reaches same-request Server Components without u
   const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
   assert.equal(response?.status(),200);
   assert.equal(new URL(page.url()).pathname,"/configuration");
-  assert.equal(await page.locator("h1.title").innerText(),"Configuração");
+  assert.equal(await page.locator("h1.title").innerText(),"Configurações");
   assert.ok(refreshCalls>beforeCount,"middleware must renew expired access");
   // Production cookies are Secure; Chromium intentionally does not persist
   // Secure Set-Cookie on this isolated plain-HTTP origin. Verify the server
@@ -466,10 +473,11 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    observations++;
    if(firstRoute===null&&observations===1){firstRoute=route;return;}
    const cases={
-     pending:{status:200,body:{status:"ok",count:2,projects:[]}},
+     pending:{status:200,body:{status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]}},
      unavailable:{status:503,body:{status:"unavailable"}},
-     cleared:{status:200,body:{status:"ok",count:0,projects:[]}},
-     malformed:{status:200,body:{status:"ok",count:-1,projects:[]}},
+     cleared:{status:200,body:{status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]}},
+     integration:{status:200,body:{status:"ok",count:1,pendingHumanGateCount:0,pendingIntegrationActionCount:1,projects:[]}},
+     malformed:{status:200,body:{status:"ok",count:-1,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]}},
    };
    const res=cases[mode];
    assert.ok(res,"unexpected B3 control state");
@@ -487,7 +495,7 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    for(let i=0;i<60&&!firstRoute;i++)await new Promise(res=>setTimeout(res,50));
    assert.ok(firstRoute,"one real browser GET must be pending during loading");
    await firstRoute.fulfill({status:200,contentType:"application/json",
-     body:JSON.stringify({status:"ok",count:2,projects:[]})});
+     body:JSON.stringify({status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]})});
    firstRoute=null;
    try{
      await page.waitForFunction(()=>
@@ -513,22 +521,28 @@ test("B3: actual React shell exposes loading, pending, unavailable, retry, clear
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
    assert.equal(await page.locator(".topbarAttentionRecovery [role=status]").innerText(),
-     "Aprovações indisponíveis");
+     "Decisões e integrações indisponíveis");
    assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").count(),0);
    mode="cleared";
    await page.getByRole("button",{name:"Tentar novamente"}).click();
    await page.waitForFunction(()=>
-     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma aprovação pendente" &&
+     document.querySelector(".visuallyHiddenStatus[role=status]")?.textContent?.trim()==="Nenhuma decisão ou integração pendente" &&
      !document.querySelector(".desktopSidebarContent .humanAttentionCount"),null,{timeout:20000});
+   mode="integration";
+   await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+   await page.waitForFunction(()=>
+     document.querySelector('a.topbarAttention.active[href="/gates"]')?.textContent?.trim()==="1 ação de integração"&&
+     document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="1",
+     null,{timeout:20000});
    mode="malformed";
    await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
    await page.getByRole("button",{name:"Tentar novamente"}).waitFor({state:"visible",timeout:15000});
    assert.equal(pageErrors.length,0,"all state transitions must preserve genuine React integrity");
    assert.equal(mutations,0,"all B3 controls must remain GET-only");
-   assert.ok(observations>=4);
+   assert.ok(observations>=5);
  }finally{
    if(firstRoute)await firstRoute.fulfill({status:200,contentType:"application/json",
-     body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+     body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}).catch(()=>{});
    await context.close();
  }
 });
@@ -549,7 +563,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
    calls++;
    if(calls===1){pending=route;return;}
    await route.fulfill({status:200,contentType:"application/json",
-    body:JSON.stringify({status:"ok",count:2,projects:[]})});return;
+    body:JSON.stringify({status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]})});return;
   }
   await route.continue();
  });
@@ -559,7 +573,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
  try{
   const response=await page.goto(appOrigin+"/configuration",{waitUntil:"domcontentloaded",timeout:45000});
   assert.equal(response?.status(),200);
-  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Configuração");
+  await page.waitForFunction(()=>document.querySelector("h1.title")?.textContent==="Configurações");
   await page.waitForFunction(()=>document.querySelector("a.skipToMain")!==null);
   // First request must be pending; the second event must commit newer data.
   await page.waitForFunction(()=>document.querySelector("nav.sidebarNav")!==null);
@@ -568,7 +582,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
   await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
   await page.waitForFunction(()=>document.querySelector(".desktopSidebarContent .humanAttentionCount")?.textContent?.trim()==="2",null,{timeout:15000});
   await pending.fulfill({status:200,contentType:"application/json",
-   body:JSON.stringify({status:"ok",count:0,projects:[]})});
+   body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})});
   pending=null;
   await page.waitForTimeout(150);
   assert.equal(await page.locator(".desktopSidebarContent .humanAttentionCount").innerText(),"2");
@@ -576,7 +590,7 @@ test("B3: stale attention request cannot overwrite a newer successful operator s
   assert.equal(violations.length,violationsBefore);
  }finally{
   if(pending)await pending.fulfill({status:200,contentType:"application/json",
-   body:JSON.stringify({status:"ok",count:0,projects:[]})}).catch(()=>{});
+   body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}).catch(()=>{});
   await context.close();
  }
 });
@@ -622,7 +636,7 @@ test("B2/B3: real authenticated intake advances to review without a server actio
    await route.abort("blockedbyclient");return;
   }
   if(url.pathname==="/api/human-attention"){
-   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})});return;
+   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})});return;
   }
   await route.continue();
  });
@@ -670,7 +684,7 @@ test("B3: the real /runs sidebar color-contrast is determinable in an isolated C
  try{
   await context.route("**/api/human-attention",async route=>
    route.fulfill({status:200,contentType:"application/json",
-    body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+    body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
   const response=await page.goto(appOrigin+"/runs",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200,"isolated real /runs must load");
   assert.equal(new URL(page.url()).pathname,"/runs");
@@ -744,7 +758,7 @@ test("B3 #79: full six-agent cards keep lengthy model policies nonoverlapping an
  const page=await context.newPage();
  try{
   await context.route("**/api/human-attention",async route=>
-   route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+   route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
   const response=await page.goto(appOrigin+"/agents",{waitUntil:"networkidle",timeout:45000});
   assert.equal(response?.status(),200);
   assert.equal(await page.locator("h1.title").innerText(),"Agentes da Factory");
@@ -789,7 +803,7 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
   try{
     await context.route("**/api/human-attention",async route=>
       route.fulfill({status:200,contentType:"application/json",
-        body:JSON.stringify({status:"ok",count:0,projects:[]})}));
+        body:JSON.stringify({status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]})}));
     const scan=async(name,mode)=>{
       await page.addScriptTag({path:path.join(consoleDir,"node_modules","axe-core","axe.min.js")});
       const diagnostic=["overview:mobile","overview:mobile-menu","new-project:desktop",
@@ -860,4 +874,48 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
     const problems=results.filter(x=>x.incomplete.length||x.violations.length);
     assert.deepEqual(problems,[],"Real Chromium/axe WCAG issues on inert fixture: "+JSON.stringify(problems));
   }finally{await context.close();}
+});
+
+
+test("configuration budget is first and visible via the owner route on desktop and mobile",async()=>{
+ const context=await browser.newContext({viewport:{width:1280,height:900},locale:"pt-BR"});
+ await context.addCookies([{name:"factory_access_token",value:AUTH_TOKEN,url:appOrigin}]);
+ const page=await context.newPage();
+ const errors=[];
+ page.on("pageerror",()=>errors.push("browser_page_error"));
+ try{
+  for(const width of [1280,390]){
+   await page.setViewportSize({width,height:width===390?844:900});
+   // Each viewport navigates from the portfolio, just as the owner does.
+   // The budget is the first section, without fragile fragment scrolling.
+   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
+   const response=await page.goto(appOrigin+"/configuration",{
+    waitUntil:"networkidle",timeout:45000});
+   assert.equal(response?.status(),200);
+   const budget=page.locator("#orcamento");
+   assert.equal(await budget.count(),1,"budget anchor must exist");
+   assert.equal(await budget.getByRole("heading",{name:"Orçamento e custos"}).count(),1);
+   assert.equal(await page.locator("details.configurationDisclosure[open]").count(),0,
+    "advanced diagnostics must be collapsed by default");
+   assert.equal(await page.getByText("Situação atual",{exact:true}).count(),1);
+   assert.equal(await page.locator("details.primaryCostHistory[open]").count(),0);
+   const geometry=await page.evaluate(()=>{
+    const root=document.documentElement;
+    const target=document.getElementById("orcamento");
+    const bounds=target?.getBoundingClientRect();
+    return{scrollWidth:root.scrollWidth,width:window.innerWidth,height:window.innerHeight,
+      top:bounds?.top??-999};
+   });
+   assert.ok(geometry.scrollWidth<=geometry.width+2,
+    "configuration financial page cannot overflow viewport: "+JSON.stringify(geometry));
+   assert.ok(geometry.top>=0&&geometry.top<geometry.height,
+    "budget must appear in the initial viewport without hunting through policies: "+JSON.stringify(geometry));
+   await page.locator("details#dados-tecnicos > summary").click();
+   assert.equal(await page.locator("details#dados-tecnicos[open]").count(),1);
+   assert.equal(await page.locator("details.manifestDetails[open]").count(),0,
+    "opening diagnostic group must not dump JSON");
+   await page.locator("details#dados-tecnicos > summary").click();
+  }
+  assert.deepEqual(errors,[]);
+ }finally{await context.close();}
 });
