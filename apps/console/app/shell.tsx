@@ -13,7 +13,7 @@ function routeContext(pathname:string):RouteContext{
  if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo projeto",purpose:"Use para criar um produto novo ou importar um projeto que já está em andamento."};
  if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Detalhes do projeto",purpose:"Esta é a tela principal de acompanhamento de um projeto. Veja a etapa atual e a próxima ação."};
  if(pathname==="/projects")return{area:"Projetos",screen:"Portfólio",purpose:"Use para escolher qual projeto acompanhar ou para iniciar um novo projeto."};
- if(pathname.startsWith("/gates"))return{area:"Operação",screen:"Aprovações humanas",purpose:"Caixa de entrada das decisões que realmente precisam de você. Se estiver vazia, não há ação humana pendente."};
+ if(pathname.startsWith("/gates"))return{area:"Operação",screen:"Decisões e acessos",purpose:"Aprovações humanas e configurações de integração são apresentadas separadamente. Sem decisões não há gate humano pendente."};
  if(pathname.startsWith("/runs"))return{area:"Diagnóstico",screen:"Execuções",purpose:"Tela avançada para inspecionar como uma tarefa foi executada. Não é uma etapa obrigatória do fluxo.",advanced:true};
  if(pathname.startsWith("/queue"))return{area:"Diagnóstico",screen:"Fila de trabalho",purpose:"Tela avançada para observar backlog, despacho e trabalhos em execução. A Factory gerencia esta fila automaticamente.",advanced:true};
  if(pathname.startsWith("/agents"))return{area:"Diagnóstico",screen:"Agentes da Factory",purpose:"Tela avançada para entender quais especialistas existem, sua capacidade e quais trabalhos estão executando.",advanced:true};
@@ -31,10 +31,14 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const router=useRouter();
  const authOnly=pathname==="/login"||pathname==="/unauthorized";
  const context=routeContext(pathname);
- const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
+ const [attention,setAttention]=useState<{count:number;pendingHumanGateCount:number;pendingIntegrationActionCount:number;projects:string[]}|null>(null);
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
  const [transportDisconnected,setTransportDisconnected]=useState(false);
+ const [clientInteractive,setClientInteractive]=useState(false);
+ const [pendingNavigation,setPendingNavigation]=useState<string|null>(null);
+ useEffect(()=>{setClientInteractive(true);},[]);
+ useEffect(()=>{setPendingNavigation(null);},[pathname]);
  const pendingTransportRoute=useRef<string|null>(null);
  const attentionSettled=useRef(false);
  // No synthetic server error. A genuine browser offline event is the source.
@@ -49,8 +53,34 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   if(!navigator.onLine){
    pendingTransportRoute.current=href;
    setTransportDisconnected(true);
+   setPendingNavigation(null);
+   // Prevent Next from racing an offline click against its own route retry.
+   // The pending destination is committed only after a deliberate retry.
+   return false;
   }
- },[]);
+  if(href!==pathname)setPendingNavigation(href);
+  return true;
+ },[pathname]);
+ // Revalidate server-owned portfolio snapshots while this tab is visible.
+ // Do not poll editable intake screens, administrative forms or human gates.
+ useEffect(()=>{
+  if(authOnly)return;
+  const readOnlyPortfolio=pathname==="/"||pathname==="/projects"||
+   /^\/projects\/[a-z0-9-]+$/.test(pathname);
+  if(!readOnlyPortfolio)return;
+  let checkedAt=Date.now();
+  const update=()=>{
+   if(!navigator.onLine||document.visibilityState!=="visible")return;
+   if(Date.now()-checkedAt<60000)return;
+   checkedAt=Date.now();
+   router.refresh();
+  };
+  const timer=window.setInterval(update,60000);
+  const visible=()=>{if(document.visibilityState==="visible")update();};
+  window.addEventListener("focus",update);
+  document.addEventListener("visibilitychange",visible);
+  return()=>{window.clearInterval(timer);window.removeEventListener("focus",update);document.removeEventListener("visibilitychange",visible);};
+ },[authOnly,pathname,router]);
  const retryTransport=()=>{
   if(!navigator.onLine)return;
   const requested=pendingTransportRoute.current;
@@ -69,9 +99,19 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    const response=await fetch("/api/human-attention",{cache:"no-store"});
    if(!response.ok)throw new Error("attention unavailable");
    const snapshot:unknown=await response.json();
-   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
+   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||
+    !("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||snapshot.count<0||
+    !("pendingHumanGateCount" in snapshot)||typeof snapshot.pendingHumanGateCount!=="number"||
+    !Number.isSafeInteger(snapshot.pendingHumanGateCount)||snapshot.pendingHumanGateCount<0||
+    !("pendingIntegrationActionCount" in snapshot)||typeof snapshot.pendingIntegrationActionCount!=="number"||
+    !Number.isSafeInteger(snapshot.pendingIntegrationActionCount)||snapshot.pendingIntegrationActionCount<0||
+    snapshot.count!==snapshot.pendingHumanGateCount+snapshot.pendingIntegrationActionCount||
+    !("projects" in snapshot)||!Array.isArray(snapshot.projects)||
+    !snapshot.projects.every((p:unknown)=>typeof p==="string"))
+    throw new Error("invalid attention snapshot");
    if(epoch===attentionEpoch.current){
-    setAttention({count:Number(snapshot.count),projects:snapshot.projects});
+    setAttention({count:snapshot.count,pendingHumanGateCount:snapshot.pendingHumanGateCount,
+     pendingIntegrationActionCount:snapshot.pendingIntegrationActionCount,projects:snapshot.projects});
     setAttentionUnavailable(false);
     setAttentionLoading(false);
     attentionSettled.current=true;
@@ -104,12 +144,18 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   window.addEventListener("focus",onFocus);
   return()=>{++attentionEpoch.current;window.clearInterval(tick);window.removeEventListener("focus",onFocus);};
  },[refreshAttention,pathname,authOnly]);
+ const attentionLabel=attention?[
+  attention.pendingHumanGateCount>0?
+   attention.pendingHumanGateCount+" "+(attention.pendingHumanGateCount===1?"decisão pendente":"decisões pendentes"):null,
+  attention.pendingIntegrationActionCount>0?
+   attention.pendingIntegrationActionCount+" "+(attention.pendingIntegrationActionCount===1?"ação de integração":"ações de integração"):null,
+ ].filter(Boolean).join(" · "):"";
  if(authOnly){
   return <div className="authShell">
    <main className="authMain">{children}</main>
   </div>;
  }
- return <div className="consoleShell">
+ return <div className="consoleShell" data-client-interactive={clientInteractive?"ready":"loading"}>
   <Link href="#main-content" className="skipToMain">Pular para o conteúdo principal</Link>
   <aside className="sidebar">
    <div className="brandRow">
@@ -140,11 +186,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
     <div className="topbarMeta">
      {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Carregando aprovações…</span>
       :attentionUnavailable?<div className="topbarAttentionRecovery">
-       <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
+       <Link href="/gates" className="topbarAttention active" role="status">Decisões e integrações indisponíveis</Link>
        <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
       </div>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"decisão pendente":"decisões pendentes"}</Link>
-      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attentionLabel}</Link>
+      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma decisão ou integração pendente</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
@@ -155,6 +201,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
     </details>:null}
     {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
+    {!transportDisconnected&&pendingNavigation&&pendingNavigation!==pathname?
+     <div className="card consoleRouteLoading" role="status" aria-live="polite" aria-atomic="true">
+      <strong>Abrindo a página solicitada</strong>
+      <p className="muted">Consultando a situação registrada, sem iniciar novas tarefas.</p>
+     </div>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>
      <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>

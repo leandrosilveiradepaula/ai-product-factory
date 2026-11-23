@@ -30,7 +30,7 @@ export async function POST(request:Request){
    ?"stale":"failed";
  }
  return NextResponse.redirect(
-  new URL("/configuration?cost_policy="+encodeURIComponent(status)+"#orcamento",url.origin),
+  new URL("/configuration?cost_policy="+encodeURIComponent(status),url.origin),
   303,
  );
 }

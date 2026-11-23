@@ -32,7 +32,15 @@ test("empty human decision state is independent of real GitHub integration actio
  const gates=await source("apps/console/app/gates/page.tsx");
  const browser=await source("scripts/verify_block1_b3_real_console_state_matrix.mjs");
  assert.match(api,/pendingHumanGateCount:pending\.length/);
- assert.match(api,/count,pendingHumanGateCount/);
+ assert.match(api,/status:"ok",\.\.\.counts,projects/);
+ assert.match(api,/ownerAttentionCounts/);
+ const summary=await source("apps/console/lib/owner-attention-counts.ts");
+ assert.match(summary,/pendingHumanGateCount\+pendingIntegrationActionCount/);
+ assert.match(summary,/githubAppConfigured\?pendingInstallCount:1/);
+ const shell=await source("apps/console/app/shell.tsx");
+ assert.match(shell,/snapshot\.count!==snapshot\.pendingHumanGateCount\+snapshot\.pendingIntegrationActionCount/);
+ assert.match(shell,/attention\.pendingHumanGateCount>0/);
+ assert.match(shell,/attention\.pendingIntegrationActionCount>0/);
  assert.match(gates,/pending\.length===0\?<div className="humanGateEmpty" role="status">/);
  assert.match(gates,/githubAppActionPending/);
  assert.match(browser,/payload\.pendingHumanGateCount!==0/);
