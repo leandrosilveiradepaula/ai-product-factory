@@ -24,6 +24,9 @@ from ai_product_factory.product_readiness_certification import (
 from ai_product_factory.native_v2_traceability_certification import (
     TraceabilityUnverified, verify_existing_crm_v2_traceability,
 )
+from ai_product_factory.current_native_v2_traceability import (
+    CurrentTraceabilityBlocked, verify_current_crm_v2_traceability,
+)
 from ai_product_factory.independent_health_evidence import (
     HealthEvidenceBlocked, verify_health_for_certification,
 )
@@ -130,10 +133,10 @@ def build_verified_baseline(*, repository: str, sha: str, github_get,
     proof = None
     if verify_native_v2:
         try:
-            proof = verify_existing_crm_v2_traceability(
+            proof = verify_current_crm_v2_traceability(
                 repository=repository, assessed_commit=sha, github_get=github_get,
             )
-        except (TraceabilityUnverified, ValueError, RuntimeError, OSError, KeyError,
+        except (CurrentTraceabilityBlocked, TraceabilityUnverified, ValueError, RuntimeError, OSError, KeyError,
                 TypeError, UnicodeError):
             # Preserve existing exact-SHA unit/integration baseline; never
             # manufacture a positive traceability claim after failed source.

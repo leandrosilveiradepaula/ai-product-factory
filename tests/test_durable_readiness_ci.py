@@ -106,7 +106,7 @@ class DurableReadinessCITests(unittest.TestCase):
                 verification_state="observed", source="github_exact_native_v2_artifact",
                 evidence=("https://github.com/" + REPO + "/actions/runs/42026802447#sha=" + SHA,),
             )
-        with patch("build_readiness_evidence_manifest.verify_existing_crm_v2_traceability",
+        with patch("build_readiness_evidence_manifest.verify_current_crm_v2_traceability",
                    side_effect=proof):
             baseline = build_verified_baseline(
                 repository=REPO, sha=SHA, github_get=lambda path: github()[path],
@@ -120,7 +120,7 @@ class DurableReadinessCITests(unittest.TestCase):
              ("observability_operations", "traceability")},
         )
         self.assertFalse(baseline["product_ready"])
-        with patch.object(cli, "verify_existing_crm_v2_traceability", side_effect=proof) as verify:
+        with patch.object(cli, "verify_current_crm_v2_traceability", side_effect=proof) as verify:
             code, cls, store, output, _ = self.run_cli(baseline, verify_native_v2=True)
         self.assertEqual(code, 0)
         self.assertEqual(verify.call_count, 1)
@@ -140,13 +140,13 @@ class DurableReadinessCITests(unittest.TestCase):
                 verification_state="observed", source="github_native_v2_source",
                 evidence=("evidence#sha=" + SHA,),
             )
-        with patch("build_readiness_evidence_manifest.verify_existing_crm_v2_traceability",
+        with patch("build_readiness_evidence_manifest.verify_current_crm_v2_traceability",
                    side_effect=proof):
             baseline = build_verified_baseline(
                 repository=REPO, sha=SHA, github_get=lambda path: github()[path],
                 verify_native_v2=True,
             )
-        with patch.object(cli, "verify_existing_crm_v2_traceability",
+        with patch.object(cli, "verify_current_crm_v2_traceability",
                           side_effect=RuntimeError("artifact deleted")):
             with self.assertRaises(RuntimeError):
                 self.run_cli(baseline, verify_native_v2=True)

@@ -12,6 +12,9 @@ from ai_product_factory.supabase_delivery_store import SupabaseDeliveryStore
 from ai_product_factory.native_v2_traceability_certification import (
     verify_existing_crm_v2_traceability,
 )
+from ai_product_factory.current_native_v2_traceability import (
+    verify_current_crm_v2_traceability,
+)
 from ai_product_factory.independent_health_evidence import verify_health_for_certification
 from ai_product_factory.independent_setup_evidence import verify_existing_clean_setup
 from ai_product_factory.independent_rollback_evidence import verify_existing_isolated_rollback
@@ -338,10 +341,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.verify_native_v2_traceability:
         trace = manifest.get("criteria", {}).get("observability_operations", {}).get("traceability")
         if isinstance(trace, dict) and trace.get("status") == "passed":
-            # This independently re-fetches and verifies the historical OWNER
-            # run, artifact bytes, current code identity and live Control Plane.
-            # A missing/altered source fails before begin/persist RPC.
-            proof = verify_existing_crm_v2_traceability(
+            # This independently re-runs the bounded, GET-only V2 audit in
+            # the current trusted post-CI identity.  Historical artifacts may
+            # expire, but they can neither manufacture nor suppress this
+            # current-SHA claim.
+            proof = verify_current_crm_v2_traceability(
                 repository=args.repository,
                 assessed_commit=args.assessed_commit,
                 github_get=github_get,

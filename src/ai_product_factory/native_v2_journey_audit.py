@@ -172,8 +172,9 @@ def _check_owner_intake(*, reader, factory_github, journey: dict,
 def _check_lineage(*, reader, project: dict, journey: dict, bound: dict) -> tuple[dict, dict, dict, list[dict], list[dict]]:
     pid, jid = project["id"], journey["id"]
     binding = journey.get("binding")
+    state = journey.get("state")
     require(
-        journey.get("state") == "preview_verified"
+        state in ("preview_verified", "closed")
         and journey.get("production_release_sha") is None
         and journey.get("binding_version") == 2
         and type(journey.get("execution_generation")) is int
@@ -236,6 +237,35 @@ def _check_lineage(*, reader, project: dict, journey: dict, bound: dict) -> tupl
         "v2_change_set_epoch_mismatch",
     )
     root_id, release_id = _uuid(cs.get("root_task_id")), _uuid(cs.get("release_run_id"))
+    # A human merge into the dedicated Preview branch may subsequently close
+    # the Journey. It remains non-production only when its exact reconciler
+    # receipt binds the original release run, candidate and Preview merge.
+    if state == "closed":
+        preview_merge_sha = journey.get("preview_merge_sha")
+        require(is_sha(preview_merge_sha), "v2_closed_preview_merge_missing")
+        closure = one(
+            reader, "factory_audit_events",
+            "id,project_id,task_id,run_id,event_type,actor_type,actor_ref,payload",
+            "run_id=eq." + release_id + "&event_type=eq.journey.closed",
+            "v2_closed_preview_event_missing",
+        )
+        require(
+            closure.get("project_id") == pid
+            and closure.get("task_id") is None
+            and closure.get("run_id") == release_id
+            and closure.get("event_type") == "journey.closed"
+            and closure.get("actor_type") == "system"
+            and closure.get("actor_ref") == "journey-v2-reconciler"
+            and closure.get("payload") == {
+                "journey_id": journey["id"],
+                "closure_reason": "observed_nonproduction_merge",
+                "automatic_merge": False,
+                "candidate_commit": journey["candidate_commit"],
+                "preview_merge_sha": preview_merge_sha,
+                "production_released": False,
+            },
+            "v2_closed_preview_event_invalid",
+        )
     root = one(
         reader, "factory_tasks", "id,project_id,parent_task_id,journey_id,status,risk",
         "id=eq." + root_id, "v2_root_task_missing",
@@ -556,7 +586,8 @@ def audit_existing_native_v2(*, reader: SupabaseJourneyReader,
         "id,project_id,request_id,request_source,auth_actor_ref,auth_event_id,"
         "request_digest,request_snapshot,issue_repository,issue_number,state,"
         "execution_generation,project_policy_version,policy_digest,binding,"
-        "binding_version,source_commit,candidate_commit,production_release_sha,created_at",
+        "binding_version,source_commit,candidate_commit,preview_merge_sha,"
+        "production_release_sha,created_at",
         "id=eq." + jid, "journey_v2_unavailable",
     )
     require(journey.get("id") == jid and journey.get("project_id") == pid,
