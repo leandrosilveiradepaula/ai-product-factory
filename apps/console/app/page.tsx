@@ -1,11 +1,12 @@
 import Link from "next/link";
 import {isProviderCreditExhausted} from "../lib/operational-health-inventory";
+import {getCurrentFactoryCertificate} from "../lib/factory-certification";
 import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getRuns,getUsageOverview} from "../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "./ui";
 
 export default async function Home(){
- const [d,health,usage,gates,runs,audit]=await Promise.all([
-  getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(30,true),getRuns(12),getAuditEvents(12),
+ const [d,health,usage,gates,runs,audit,factoryCert]=await Promise.all([
+  getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(30,true),getRuns(12),getAuditEvents(12),getCurrentFactoryCertificate(),
  ]);
  // Historical or superseded pending rows are not operator actions.
  const pending=gates.filter(g=>g.status==="pending"&&g.actionable);
@@ -18,7 +19,7 @@ export default async function Home(){
  const overviewAction=requiresDecision
   ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
   :hasIncident
-   ?{heading:"Existem ocorrências para investigar",description:"A Factory registrou um problema operacional. Consulte a execução e a evidência antes de intervir.",href:"/runs",label:"Ver execuções",kind:"warning"}
+   ?{heading:"Existem falhas registradas no histórico",description:"Há execuções anteriores com falha. Isso não comprova que a Factory esteja parada agora. Consulte o registro antes de intervir.",href:"/runs",label:"Ver histórico",kind:"warning"}
    :d.projects.length===0
     ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
     :{heading:"Seus projetos estão no centro do trabalho",description:"Acompanhe a etapa de cada produto. Você só precisa intervir quando houver uma aprovação ou dependência explícita.",href:"/projects",label:"Ver todos os projetos",kind:"neutral"};
@@ -28,6 +29,16 @@ export default async function Home(){
    title="Visão geral"
    subtitle="Projetos, decisões e andamento. Os detalhes técnicos ficam disponíveis somente quando você precisar."
   />
+
+  <section className={"factoryCertification "+factoryCert.state} aria-labelledby="factory-certification-heading">
+   <div className="factoryCertificationContent">
+    <span className="factoryCertificationKicker">Estado da própria Factory</span>
+    <h2 id="factory-certification-heading">{factoryCert.state==="certified"?"Certificação independente aprovada":factoryCert.state==="not_certified"?"Certificação do commit atual pendente":"Certificação atual indisponível"}</h2>
+    <p>{factoryCert.state==="certified"?"19 de 19 critérios aprovados no mesmo commit da main. A certificação não substitui a monitorização da operação nem comprova que outros produtos foram entregues.":factoryCert.state==="not_certified"?"Ainda não existe um certificado independente aprovado para o commit atual. Resultados de commits anteriores não são automaticamente válidos.":"Não foi possível confrontar o commit principal com o certificado do Control Plane. Não é seguro afirmar que a versão atual está certificada."}</p>
+    {factoryCert.sha?<p className="factoryCertificationMeta">Commit verificado: <code>{factoryCert.sha.slice(0,12)}</code>{factoryCert.persistedAt?" · Certificado em "+new Date(factoryCert.persistedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"}):""}</p>:null}
+   </div>
+   <Link href="/evals" className="factoryCertificationLink">Ver evidências e testes →</Link>
+  </section>
 
   <section className={"homeFocus "+overviewAction.kind} aria-label="Próximo passo">
    <div className="homeFocusContent">
@@ -45,7 +56,8 @@ export default async function Home(){
    :<div className="homeProjectGrid">
      {d.projects.slice(0,4).map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
       <div className="homeProjectHeading"><strong>{p.name}</strong><StatusPill status={p.status}/></div>
-      <span className="homeProjectStage">Etapa registrada: <b>{humanizeStatus(p.stage)}</b></span>
+      <span className="homeProjectStage">Etapa do cadastro: <b>{humanizeStatus(p.stage)}</b> <small>(não é certificação)</small></span>
+      {p.key==="ai-product-factory"&&factoryCert.state==="certified"?<span className="homeFactoryProof">Certificação da Factory: {factoryCert.passed}/{factoryCert.total} no commit atual</span>:null}
       <span className="homeProjectFooter">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")} <b>Ver projeto →</b></span>
      </Link>)}
     </div>}
@@ -72,8 +84,8 @@ export default async function Home(){
      </article>)}
      {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
       <div className="attentionBanner"><StatusPill status={i.status}/><span className="muted">Ocorrência operacional</span></div>
-      <h3>{isProviderCreditExhausted(i.error)?"Execução bloqueada por crédito da API":"Execução exige investigação"}</h3>
-      <p>{isProviderCreditExhausted(i.error)?"A API OpenAI recusou esta tentativa por crédito insuficiente. O registro é histórico e não comprova o saldo atual. Verifique o faturamento do provedor antes de solicitar recuperação auditada; o teto interno da Factory não adiciona créditos.":i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio."}</p>
+      <h3>{isProviderCreditExhausted(i.error)?"Execução bloqueada por crédito da API":"Execução com falha registrada"}</h3>
+      <p>{isProviderCreditExhausted(i.error)?"A API OpenAI recusou esta tentativa por crédito insuficiente. O registro é histórico e não comprova o saldo atual. Verifique o faturamento do provedor antes de solicitar recuperação auditada; o teto interno da Factory não adiciona créditos.":(i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio.")+" Registro histórico: confira se houve recuperação posterior antes de intervir."}</p>
       <div className="attentionFooter"><span>{i.route?humanizeStatus(i.route):"Sem rota"}</span><ActionLink href={"/runs/"+i.id} variant="ghostButton">Ver execução</ActionLink></div>
      </article>)}
     </div>}

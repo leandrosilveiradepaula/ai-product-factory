@@ -31,7 +31,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const router=useRouter();
  const authOnly=pathname==="/login"||pathname==="/unauthorized";
  const context=routeContext(pathname);
- const [attention,setAttention]=useState<{count:number;projects:string[]}|null>(null);
+ const [attention,setAttention]=useState<{count:number;pendingHumanGateCount:number;pendingIntegrationActionCount:number;projects:string[]}|null>(null);
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
  const [transportDisconnected,setTransportDisconnected]=useState(false);
@@ -69,9 +69,9 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    const response=await fetch("/api/human-attention",{cache:"no-store"});
    if(!response.ok)throw new Error("attention unavailable");
    const snapshot:unknown=await response.json();
-   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
+   if(!snapshot||typeof snapshot!=="object"||!("status" in snapshot)||snapshot.status!=="ok"||!("count" in snapshot)||typeof snapshot.count!=="number"||!Number.isSafeInteger(snapshot.count)||Number(snapshot.count)<0||!("pendingHumanGateCount" in snapshot)||typeof snapshot.pendingHumanGateCount!=="number"||!Number.isSafeInteger(snapshot.pendingHumanGateCount)||snapshot.pendingHumanGateCount<0||!("pendingIntegrationActionCount" in snapshot)||typeof snapshot.pendingIntegrationActionCount!=="number"||!Number.isSafeInteger(snapshot.pendingIntegrationActionCount)||snapshot.pendingIntegrationActionCount<0||snapshot.count!==snapshot.pendingHumanGateCount+snapshot.pendingIntegrationActionCount||!("projects" in snapshot)||!Array.isArray(snapshot.projects)||!snapshot.projects.every((p:unknown)=>typeof p==="string"))throw new Error("invalid attention snapshot");
    if(epoch===attentionEpoch.current){
-    setAttention({count:Number(snapshot.count),projects:snapshot.projects});
+    setAttention({count:Number(snapshot.count),pendingHumanGateCount:Number(snapshot.pendingHumanGateCount),pendingIntegrationActionCount:Number(snapshot.pendingIntegrationActionCount),projects:snapshot.projects});
     setAttentionUnavailable(false);
     setAttentionLoading(false);
     attentionSettled.current=true;
@@ -120,7 +120,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    </div>
    <div className="workspacePicker"><svg className="workspaceGlyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="3.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/></svg><span>Infodive</span></div>
    <div className="desktopSidebarContent">
-    <ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>
+    <ConsoleNav attentionCount={attention?.pendingHumanGateCount??null} onNavigate={rememberNavigation}/>
     <div className="sidebarFooter">
      <div className="sidebarHealth"><span>Ambiente de trabalho</span></div>
      <div className="sidebarFooterRow"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
@@ -129,7 +129,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <details className="mobileNav" key={pathname}>
     <summary><span>Menu completo</span><span className="mobileNavHint">{context.screen}</span></summary>
     <div className="mobileNavBody">
-     <ConsoleNav attentionCount={attention?.count??null} onNavigate={rememberNavigation}/>
+     <ConsoleNav attentionCount={attention?.pendingHumanGateCount??null} onNavigate={rememberNavigation}/>
      <div className="mobileNavFooter"><span className="envBadge">{environmentLabel}</span><form action={signOutAction}><button type="submit" className="signOut">Sair</button></form></div>
     </div>
    </details>
@@ -143,7 +143,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
        <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
        <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
       </div>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"decisão pendente":"decisões pendentes"}</Link>
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.pendingHumanGateCount>0?attention.pendingHumanGateCount+" "+(attention.pendingHumanGateCount===1?"decisão pendente":"decisões pendentes"):""}{attention.pendingHumanGateCount>0&&attention.pendingIntegrationActionCount>0?" · ":""}{attention.pendingIntegrationActionCount>0?attention.pendingIntegrationActionCount+" "+(attention.pendingIntegrationActionCount===1?"configuração de integração":"configurações de integração"):""}</Link>
       :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
@@ -154,7 +154,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
      <p>{context.purpose}</p>
      <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
     </details>:null}
-    {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
+    {attention&&attention.pendingHumanGateCount>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>
      <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>
@@ -165,7 +165,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
    <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
    <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
-   <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
+   <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.pendingHumanGateCount>0?<strong className="mobileQuickCount">{attention.pendingHumanGateCount}</strong>:null}</Link>
   </nav>
  </div>;
 }

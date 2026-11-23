@@ -1207,3 +1207,21 @@ body{line-height:1.55}
  .topbarAttentionRecovery{width:100%;flex-wrap:wrap;justify-content:center}
  .topbarAttentionRetry{min-height:44px}
 }
+
+/* Current-SHA certification is separate from a historical project stage. */
+.factoryCertification{display:flex;align-items:center;justify-content:space-between;gap:22px;margin:16px 0 24px;padding:22px 24px;border:1px solid #45546a;border-radius:12px;background:#17202c}
+.factoryCertification.certified{border-left:4px solid #56b8a1}
+.factoryCertification.not_certified{border-left:4px solid #d4ad60}
+.factoryCertification.unavailable{border-left:4px solid #788da7}
+.factoryCertificationContent{min-width:0}
+.factoryCertificationKicker{display:block;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a9bdd5}
+.factoryCertification h2{font-size:21px;line-height:1.3;margin:7px 0;color:#eff5ff}
+.factoryCertification p{margin:0;color:#c2d0e1;line-height:1.55;font-size:14px}
+.factoryCertification .factoryCertificationMeta{margin-top:10px;font-size:12px;color:#aabbd0}
+.factoryCertification code{font-size:12px;color:#e4efff;overflow-wrap:anywhere}
+.factoryCertificationLink{display:inline-flex;align-items:center;justify-content:center;min-height:44px;flex:0 0 auto;color:#d5e5ff;font-size:13px;font-weight:700;text-decoration:none}
+.factoryCertificationLink:hover{text-decoration:underline;text-underline-offset:3px}
+.factoryCertificationLink:focus-visible{outline:2px solid #a9d1ff;outline-offset:3px}
+.homeProjectStage small{font-size:12px;color:#b1c1d5}
+.homeFactoryProof{font-size:13px;font-weight:700;color:#8ad7c5}
+@media(max-width:760px){.factoryCertification{flex-direction:column;align-items:flex-start;padding:19px}.factoryCertificationLink{width:100%;justify-content:flex-start}}
