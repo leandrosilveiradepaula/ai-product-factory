@@ -136,8 +136,10 @@ test("real Overview WCAG contrast and decision accessible name regressions",asyn
   ]);
   for(const match of css.matchAll(/(?:[;{]\s*)color\s*:\s*(#[0-9a-f]{6})(?=\s*[;}])/gi))
     assert.ok(!lowContrast.has(match[1].toLowerCase()),"low-contrast source foreground "+match[1]);
-  assert.ok(shell.includes('className="topbarAttention active">{attention.count}'),
-    "Attention link name must derive from its visible operator decision label");
+  assert.ok(shell.includes('className="topbarAttention active">{attention.pendingHumanGateCount'),
+    "The visible attention link must use real decision count, not an aggregate");
+  assert.ok(shell.includes('attention.pendingIntegrationActionCount>0?attention.pendingIntegrationActionCount'),
+    "Integration actions must have a separate visible label");
   assert.ok(!/topbarAttention active"\s+aria-label=/.test(shell),
     "A contradictory aria-label must not override the visible label");
 });

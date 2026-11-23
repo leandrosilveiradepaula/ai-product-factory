@@ -55,9 +55,9 @@ export default async function Home(){
     <div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Você pode começar com uma ideia ou importar um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
    :<div className="homeProjectGrid">
      {d.projects.slice(0,4).map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
-      <div className="homeProjectHeading"><strong>{p.name}</strong><StatusPill status={p.status}/></div>
+      <div className="homeProjectHeading"><strong>{p.name}</strong><StatusPill status={p.status} label={p.status==="active"?"Cadastro ativo":"Cadastro inativo"}/></div>
       <span className="homeProjectStage">Etapa do cadastro: <b>{humanizeStatus(p.stage)}</b> <small>(não é certificação)</small></span>
-      {p.key==="ai-product-factory"&&factoryCert.state==="certified"?<span className="homeFactoryProof">Certificação da Factory: {factoryCert.passed}/{factoryCert.total} no commit atual</span>:null}
+      {p.key==="ai-product-factory"?<span className={"homeFactoryProof"+(factoryCert.state==="certified"?"":" unverified")}>{factoryCert.state==="certified"?"Certificação da Factory: "+factoryCert.passed+"/"+factoryCert.total+" no commit atual":factoryCert.state==="not_certified"?"Certificação do commit atual pendente":"Certificação do commit atual não verificável"}</span>:null}
       <span className="homeProjectFooter">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")} <b>Ver projeto →</b></span>
      </Link>)}
     </div>}
