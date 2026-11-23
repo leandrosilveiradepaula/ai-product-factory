@@ -286,7 +286,7 @@ try {
   interactionEvidence.accessibility.keyboardSkip={
     reachedWithTab:true,visibleOnFocus:true,landedOnMain:true,
   };
-  // Daily navigation must be limited to the three operator destinations.
+  // Daily navigation is limited to three operator purposes, never internal subsystems.
   // Advanced tools are still real links, accessible after opening disclosure.
   const primaryNavHrefs = await page.locator(".desktopSidebarContent .sidebarNav > .navGroup a").evaluateAll(links =>
     links.map(link => new URL(link.href).pathname)
@@ -300,7 +300,7 @@ try {
   }
   await advancedMenu.locator("summary").click();
   const advancedRoutes = await advancedMenu.locator("a").evaluateAll(links => links.map(link => new URL(link.href).pathname));
-  for (const href of ["/runs","/queue","/agents","/orchestration","/evals","/deployments","/usage","/audit","/configuration","/admin/operators"]) {
+  for (const href of ["/deliveries","/runs","/queue","/agents","/orchestration","/evals","/deployments","/usage","/audit","/configuration","/admin/operators"]) {
     if (!advancedRoutes.includes(href)) throw new Error(`advanced route missing: ${href}`);
   }
   interactionEvidence.navigationArchitecture = {primaryNavHrefs,advancedRoutes,advancedInitiallyCollapsed:true};
@@ -477,7 +477,7 @@ try {
     if (JSON.stringify(quickNavHrefs) !== JSON.stringify(["/","/projects","/gates"])) {
       throw new Error(`mobile quick navigation is incomplete on ${route.path}: ${JSON.stringify(quickNavHrefs)}`);
     }
-    const expectedCurrent = route.path.startsWith("/projects") ? "/projects" : route.path === "/" ? "/" : null;
+    const expectedCurrent = route.path.startsWith("/projects") ? "/projects" : route.path.startsWith("/gates") ? "/gates" : route.path === "/" ? "/" : null;
     if (expectedCurrent) {
       const active = await page.locator('nav.mobileQuickNav a[aria-current="page"]').getAttribute("href");
       if (active !== expectedCurrent) throw new Error(`mobile active navigation mismatched on ${route.path}`);

@@ -57,7 +57,9 @@ class GitHubAppInstallGateTests(unittest.TestCase):
         # Pending human decisions are separate from GitHub App registration or
         # installation, which must remain visible even when gates are empty.
         self.assertIn('pending.length===0?<div className="humanGateEmpty"', gates)
-        self.assertIn("githubAppActionPending?<article", gates)
+        self.assertIn('githubAppActionPending?<details className="gateOptionalSetup"', gates)
+        self.assertIn('Configuração opcional', gates)
+        self.assertIn('const pendingCount=pending.length+installActions.length', gates)
         self.assertIn("installActions.map(action=>", gates)
         self.assertIn("Ações de integração são apresentadas separadamente.", gates)
 

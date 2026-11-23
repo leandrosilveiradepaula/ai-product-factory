@@ -26,11 +26,11 @@ function fixture() {
   }};
 }
 
-test("full 14-route desktop + phone + keyboard inventory stays bounded",()=>{
+test("full exact-route desktop + phone + keyboard inventory stays bounded",()=>{
   const receipt=verifyConsoleSurfaceCoverage(fixture());
-  assert.equal(receipt.desktopRoutes,14);
-  assert.equal(receipt.mobileRoutes,14);
-  assert.equal(receipt.accessibleRoutes,14);
+  assert.equal(receipt.desktopRoutes,CONSOLE_ROUTES.length);
+  assert.equal(receipt.mobileRoutes,CONSOLE_ROUTES.length);
+  assert.equal(receipt.accessibleRoutes,CONSOLE_ROUTES.length);
   assert.equal(receipt.productExperienceCertified,false);
   assert.equal(receipt.fullErrorLoadingEmptyStateMatrixVerified,false);
   assert.equal(receipt.writes,0);

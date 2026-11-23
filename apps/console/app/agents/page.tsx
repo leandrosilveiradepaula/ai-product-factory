@@ -32,7 +32,7 @@ export default async function Agents(){
    eyebrow="Diagnóstico · especialistas da Factory"
    title="Agentes da Factory"
    subtitle="Mostra os especialistas que a Factory pode acionar automaticamente. Você não precisa escolher agentes manualmente para conduzir um projeto."
-   actions={<StatusPill status={working?"running":"healthy"} label={working?working+" especialistas em trabalho":"registry saudável"}/>}
+   actions={<StatusPill status={working?"running":"healthy"} label={working?working+" especialistas em trabalho":"especialistas cadastrados"}/>}
   />
 
   <div className="operationalStrip">

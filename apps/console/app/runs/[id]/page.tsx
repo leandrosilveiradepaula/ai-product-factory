@@ -1,4 +1,6 @@
+import Link from "next/link";
 import {notFound} from "next/navigation";
+import {explainRunBlocker} from "../../../lib/product-blocker";
 import {getRunDetail} from "../../../lib/control-plane";
 import {isProviderCreditExhausted} from "../../../lib/operational-health-inventory";
 import {EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "../../ui";
@@ -8,14 +10,35 @@ const labels=["Descoberta","Especificação","Plano","Implementação","Revisão
 
 export default async function RunDetailPage({params}:{params:Promise<{id:string}>}){
  const {id}=await params;const r=await getRunDetail(id);if(!r)notFound();
- const current=Math.max(0,stages.indexOf(r.projectStage));
+ const current=stages.indexOf(r.projectStage);
+ const interrupted=["failed","blocked","failed_gate","dead_letter"].includes(r.status);
+ const blocker=explainRunBlocker(r.status,r.lastError);
  const cost=r.toolUsage.reduce((sum,x)=>sum+(x.cost||0),0);
  const units=r.toolUsage.reduce((sum,x)=>sum+(x.units||0),0);
  return <>
-  <PageHeader eyebrow="Execução do pipeline" title={r.taskTitle} subtitle={r.projectName+" · "+r.id} actions={<><StatusPill status={r.route||"unrouted"}/><StatusPill status={r.status}/></>}/>
-  <div className="runStageRail" role="region" tabIndex={0} aria-label="Etapas da execução">
-   {labels.map((label,index)=><div className={index<current?"runStage done":index===current?"runStage current":"runStage"} key={label}><span className="runStageDot">{index<current?<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>:index+1}</span><strong>{label}</strong><small>{index===current?"atual":index<current?"concluída":"aguardando"}</small></div>)}
-  </div>
+  <PageHeader eyebrow="Execução do trabalho" title={r.taskTitle} subtitle={r.projectName} actions={<StatusPill status={r.status}/>}/>
+  <section className={"runOutcomeHero "+(blocker?"isBlocked":"")} aria-label="Resultado e próximo passo desta execução">
+   <span>RESULTADO DO TRABALHO</span>
+   <h2>{blocker?blocker.title:interrupted?"Execução interrompida":"Tarefa registrada: "+humanizeStatus(r.status)}</h2>
+   <p>{blocker?blocker.why:"Esta tela acompanha uma tarefa técnica. O encerramento de uma execução não demonstra, por si só, que o produto já funciona ou foi liberado."}</p>
+   <div className="runOutcomeNext"><strong>Próxima providência</strong><p>{blocker?blocker.resolution:"Confira os requisitos e testes vinculados ao produto antes de declarar entrega concluída."}</p></div>
+   <Link href={"/projects/"+encodeURIComponent(r.projectKey)}>Voltar à situação do produto →</Link>
+  </section>
+  <details className="runTechnicalDisclosure">
+   <summary>Ver logs, etapas declaradas, evidências e custos da execução</summary>
+  <section className="runStageContext" aria-label="Interpretação do estágio da execução">
+   <strong>{interrupted?"Execução interrompida; produto não concluído":"Uma execução não representa todo o produto"}</strong>
+   <p>O marco abaixo é a etapa <em>informada no cadastro do projeto</em>. Não significa que as etapas anteriores passaram em testes ou que o produto foi publicado. Confira as evidências desta execução.</p>
+  </section>
+  <details className="runStageDisclosure">
+   <summary>Ver sequência de etapas cadastradas (não é progresso certificado)</summary>
+   <div className="runStageRail" role="region" tabIndex={0} aria-label="Marcos do cadastro do projeto">
+    {labels.map((label,index)=><div className={index===current?"runStage current":"runStage"} key={label}>
+     <span className="runStageDot">{index+1}</span><strong>{label}</strong>
+     <small>{index===current?"marco registrado":index<current?"conclusão não comprovada":"etapa prevista"}</small>
+    </div>)}
+   </div>
+  </details>
   <div className="runDetailGrid">
    <section className="denseStack">
     <div className="card">
@@ -25,7 +48,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
       <div className="runScore"><span>Estado</span><strong>{humanizeStatus(r.status)}</strong></div>
      </div>
      <div className="detailGrid">
-      <div className="detailItem"><span className="detailLabel">Etapa</span><strong>{humanizeStatus(r.projectStage)}</strong></div>
+      <div className="detailItem"><span className="detailLabel">Etapa no cadastro</span><strong>{humanizeStatus(r.projectStage)}</strong></div>
       <div className="detailItem"><span className="detailLabel">Complexidade</span><strong>{humanizeStatus(r.taskComplexity)}</strong></div>
       <div className="detailItem"><span className="detailLabel">Branch</span><code>{r.branchName||"—"}</code></div>
       <div className="detailItem"><span className="detailLabel">Commit candidato</span><code>{r.candidateCommit||"—"}</code></div>
@@ -57,7 +80,7 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
      {r.audit.length===0?<EmptyState>Nenhum evento de auditoria.</EmptyState>:<div className="timeline">{r.audit.map(x=><div className="timelineItem" key={x.id}><strong>{x.eventType}</strong><div className="timelineMeta"><span>{new Date(x.createdAt).toLocaleString("pt-BR")}</span><span>{x.actorType}{x.actorRef?" · "+x.actorRef:""}</span></div></div>)}</div>}
     </div>
     <div className="card">
-     <div className="panelHeading"><strong>Recursos e custo</strong><StatusPill status={r.lastError?"attention":"healthy"} label={r.lastError?"atenção":"dentro da política"}/></div>
+     <div className="panelHeading"><strong>Recursos e custo</strong><StatusPill status={r.lastError?"attention":"unknown"} label={r.lastError?"atenção":"limites não avaliados nesta página"}/></div>
      <div className="compactList">
       <div className="compactRow"><span className="muted">Tentativas</span><strong>{r.attemptCount}</strong></div>
       <div className="compactRow"><span className="muted">Lease owner</span><span>{r.leaseOwner||"—"}</span></div>
@@ -69,5 +92,6 @@ export default async function RunDetailPage({params}:{params:Promise<{id:string}
     <div className="logPanel">run.id = {r.id}<br/>candidate = {r.candidateCommit||"none"}<br/>route = {r.route||"unrouted"}<br/>status = {r.status}</div>
    </aside>
   </div>
+  </details>
  </>;
 }

@@ -9,11 +9,12 @@ import {ConsoleNav} from "./nav";
 
 type RouteContext={area:string;screen:string;purpose:string;advanced?:boolean};
 function routeContext(pathname:string):RouteContext{
- if(pathname==="/")return{area:"Operação",screen:"Visão geral",purpose:"Comece aqui. Veja se existe alguma ação sua e acompanhe o estado geral da Factory."};
- if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo projeto",purpose:"Use para criar um produto novo ou importar um projeto que já está em andamento."};
- if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Detalhes do projeto",purpose:"Esta é a tela principal de acompanhamento de um projeto. Veja a etapa atual e a próxima ação."};
- if(pathname==="/projects")return{area:"Projetos",screen:"Portfólio",purpose:"Use para escolher qual projeto acompanhar ou para iniciar um novo projeto."};
- if(pathname.startsWith("/gates"))return{area:"Operação",screen:"Aprovações humanas",purpose:"Caixa de entrada das decisões que realmente precisam de você. Se estiver vazia, não há ação humana pendente."};
+ if(pathname==="/")return{area:"Sua Factory",screen:"Visão geral",purpose:"Produtos, entregas e decisões observados pela Factory."};
+ if(pathname.startsWith("/deliveries"))return{area:"Trabalho",screen:"Entregas",purpose:"Tarefas técnicas de um produto. Use para investigar uma entrega, não para saber se o produto inteiro ficou pronto."};
+ if(pathname.startsWith("/projects/new"))return{area:"Projetos",screen:"Novo produto",purpose:"Cadastre sua ideia ou conecte um projeto existente. O cadastro por si só não inicia um agente."};
+ if(/^\/projects\/[^/]+/.test(pathname))return{area:"Projetos",screen:"Acompanhamento do produto",purpose:"Veja as provas de entrega, o marco declarado, os impedimentos e o próximo passo. Use esta página antes do Kanban."};
+ if(pathname==="/projects")return{area:"Produtos",screen:"Portfólio",purpose:"Acompanhe cada produto, sem confundir etapa cadastrada com entrega comprovada."};
+ if(pathname.startsWith("/gates"))return{area:"Sua Factory",screen:"Decisões",purpose:"Somente aprovações e acessos realmente necessários. Falhas técnicas são tratadas separadamente."};
  if(pathname.startsWith("/runs"))return{area:"Diagnóstico",screen:"Execuções",purpose:"Tela avançada para inspecionar como uma tarefa foi executada. Não é uma etapa obrigatória do fluxo.",advanced:true};
  if(pathname.startsWith("/queue"))return{area:"Diagnóstico",screen:"Fila de trabalho",purpose:"Tela avançada para observar backlog, despacho e trabalhos em execução. A Factory gerencia esta fila automaticamente.",advanced:true};
  if(pathname.startsWith("/agents"))return{area:"Diagnóstico",screen:"Agentes da Factory",purpose:"Tela avançada para entender quais especialistas existem, sua capacidade e quais trabalhos estão executando.",advanced:true};
@@ -35,8 +36,30 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
  const [attentionUnavailable,setAttentionUnavailable]=useState(false);
  const [attentionLoading,setAttentionLoading]=useState(true);
  const [transportDisconnected,setTransportDisconnected]=useState(false);
+ const [navigatingTo,setNavigatingTo]=useState<string|null>(null);
  const pendingTransportRoute=useRef<string|null>(null);
  const attentionSettled=useRef(false);
+ // Passive server refresh only on read-only routes. Never refresh a decision form.
+ // No client-side state is interpreted as a worker heartbeat or a release.
+ const passiveOverview=pathname==="/"||pathname==="/projects"||
+  (pathname.startsWith("/projects/")&&pathname.split("/").length===3&&/^[a-z0-9-]+$/.test(pathname.split("/")[2]||""));
+ useEffect(()=>{
+  if(!passiveOverview)return;
+  let last=Date.now();
+  const refresh=()=>{
+   if(!navigator.onLine||document.visibilityState!=="visible")return;
+   const now=Date.now();
+   if(now-last<60000)return;
+   last=now;
+   router.refresh();
+  };
+  const timer=window.setInterval(refresh,60000);
+  const onFocus=()=>refresh();
+  const onVisible=()=>{if(document.visibilityState==="visible")refresh();};
+  window.addEventListener("focus",onFocus);
+  document.addEventListener("visibilitychange",onVisible);
+  return()=>{window.clearInterval(timer);window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onVisible);};
+ },[passiveOverview,pathname,router]);
  // No synthetic server error. A genuine browser offline event is the source.
  // Keep the alert actionable after 'online' until the human retries.
  useEffect(()=>{
@@ -49,14 +72,19 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   if(!navigator.onLine){
    pendingTransportRoute.current=href;
    setTransportDisconnected(true);
+   return;
   }
- },[]);
+  // Real operator click, not an invented network claim: show a pending state
+  // until the authenticated route commits or a documented error is rendered.
+  if(href!==pathname)setNavigatingTo(href);
+ },[pathname]);
+ useEffect(()=>{setNavigatingTo(null);},[pathname]);
  const retryTransport=()=>{
   if(!navigator.onLine)return;
   const requested=pendingTransportRoute.current;
   pendingTransportRoute.current=null;
   setTransportDisconnected(false);
-  if(requested&&requested!==pathname)router.push(requested);
+  if(requested&&requested!==pathname){setNavigatingTo(requested);router.push(requested);}
   else router.refresh();
  };
  // A slower stale response (including 503) must never replace a newer
@@ -115,7 +143,7 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <div className="brandRow">
     <Link href="/" className="brandBlock">
      <img className="brandMark" src="/ai-product-factory-logo.png" alt=""/>
-     <div className="brandText"><strong>AI Product Factory</strong><span>PAINEL DE CONTROLE</span></div>
+     <div className="brandText"><strong>AI Product Factory</strong><span>SEUS PRODUTOS</span></div>
     </Link>
    </div>
    <div className="workspacePicker"><svg className="workspaceGlyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="3.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="3.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/><rect x="13.5" y="13.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.7"/></svg><span>Infodive</span></div>
@@ -138,33 +166,34 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    <header className={attentionLoading||attentionUnavailable||(attention&&attention.count>0)?"topbar hasAttention":"topbar"}>
     <div className="topbarTrail"><span>{context.area}</span><b>/</b><strong>{context.screen}</strong></div>
     <div className="topbarMeta">
-     {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Carregando aprovações…</span>
+     {attentionLoading?<span className="topbarAttention loading" role="status" aria-live="polite">Verificando pendências…</span>
       :attentionUnavailable?<div className="topbarAttentionRecovery">
-       <Link href="/gates" className="topbarAttention active" role="status">Aprovações indisponíveis</Link>
+       <Link href="/gates" className="topbarAttention active" role="status">Pendências indisponíveis</Link>
        <button type="button" className="topbarAttentionRetry" onClick={retryAttention}>Tentar novamente</button>
       </div>
-      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"decisão pendente":"decisões pendentes"}</Link>
-      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma aprovação pendente</span>}
+      :attention&&attention.count>0?<Link href="/gates" className="topbarAttention active">{attention.count} {attention.count===1?"pendência para revisar":"pendências para revisar"}</Link>
+      :<span className="visuallyHiddenStatus" role="status" aria-live="polite">Nenhuma pendência humana nesta consulta</span>}
      <span className="topbarEnvironment">{environmentLabel}</span>
     </div>
    </header>
    <main className="main" id="main-content" tabIndex={-1}>
-    {context.advanced?<details className="technicalRouteHelp">
-     <summary>Sobre esta área técnica</summary>
+    {context.advanced?<div className="routePurpose isAdvanced" role="note">
+     <span>ÁREA TÉCNICA</span>
      <p>{context.purpose}</p>
-     <Link href="/" className="screenGuideLink">Voltar à visão geral</Link>
-    </details>:null}
-    {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Decisão humana pendente neste projeto</strong><span>A Factory precisa de sua resposta para continuar. Abrir aprovações →</span></Link>:null}
+     <Link href="/projects">Voltar aos produtos →</Link>
+    </div>:null}
+    {attention&&attention.count>0&&pathname.startsWith("/projects/")&&attention.projects.includes(decodeURIComponent(pathname.split("/")[2]||""))?<Link href="/gates" className="projectHumanAttention" role="status"><strong>Este projeto precisa de sua decisão</strong><span>Consulte o motivo e as evidências antes de decidir. Abrir decisões →</span></Link>:null}
     {transportDisconnected?<div className="card consoleRouteError" role="alert" aria-live="assertive" aria-atomic="true">
      <h1>Conexão interrompida</h1>
      <p className="muted">A conexão do navegador foi interrompida. Nenhuma ação foi confirmada. Reconecte-se e tente novamente para consultar o estado atual da Factory.</p>
      <button type="button" className="primary" onClick={retryTransport}>Tentar novamente</button>
-    </div>:children}
+    </div>:navigatingTo&&navigatingTo!==pathname?<div className="card consoleRouteLoading" role="status" aria-live="polite" aria-atomic="true"><strong>Abrindo área de trabalho</strong><p className="muted">Consultando o estado atual. Nenhuma tarefa ou publicação foi iniciada.</p></div>:children}
    </main>
   </div>
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
-   <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
-   <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
+   <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Visão geral</Link>
+   <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Produtos</Link>
+
    <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.count>0?<strong className="mobileQuickCount">{attention.count}</strong>:null}</Link>
   </nav>
  </div>;

@@ -22,7 +22,7 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         block=NAV.split("const primaryItems=[",1)[1].split("];",1)[0]
         self.assertEqual(re.findall(r'href:"([^"]+)"',block),["/","/projects","/gates"])
         advanced=NAV.split("const advancedGroups=[",1)[1].split("];",1)[0]
-        for route in ("/runs","/queue","/agents","/orchestration","/evals",
+        for route in ("/deliveries","/runs","/queue","/agents","/orchestration","/evals",
                       "/deployments","/usage","/audit","/configuration","/admin/operators"):
             with self.subTest(route=route):
                 self.assertIn('href:"'+route+'"',advanced)
@@ -42,28 +42,24 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
             self.assertIn(route,SHELL)
         self.assertIn('attentionUnavailable',SHELL)
         self.assertIn('className="projectHumanAttention"',SHELL)
-        self.assertIn('context.advanced?<details className="technicalRouteHelp"',SHELL)
+        self.assertIn('className="routePurpose isAdvanced"',SHELL)
         self.assertNotIn('className={context.advanced?"screenGuide advanced":"screenGuide"}',SHELL)
 
-    def test_home_shows_real_projects_and_actionable_approvals_first(self):
-        self.assertIn('getHumanGates(30,true)',HOME)
-        self.assertIn('g.status==="pending"&&g.actionable',HOME)
-        self.assertIn('d.projects.slice(0,4).map',HOME)
-        self.assertIn('className={"homeFocus "+overviewAction.kind}',HOME)
-        self.assertIn('className="homeProjectGrid"',HOME)
-        self.assertIn('className="homeSummary"',HOME)
-        self.assertIn('className="homeQuietStatus"',HOME)
-        self.assertIn('className="technicalDetails homeTechnicalDetails"',HOME)
-        self.assertIn('className="overviewActivityDetails"',HOME)
-        self.assertIn('humanizeStatus(p.stage)',HOME)
-        self.assertNotIn('label="orquestrador online"',HOME)
-        self.assertNotIn('getHumanGates(8)',HOME)
-        self.assertNotIn('\\${recentRuns.length}',HOME)
+    def test_home_shows_source_backed_products_and_passive_autonomy(self):
+        for key in ('Sua Factory hoje','Nenhuma decisão sua neste momento','Últimos acontecimentos registrados',
+                    'getHumanGates(100,true)','summarizeOperatorAttention(', 'getProductSituations()',
+                    'className="factoryCommandBar"','className="productSituationList"',
+                    'className="factoryRecent"','details className="productOverviewTechnical"',
+                    'details className="operatorDiagnostics"','visibleProducts.reduce((n,p)=>n+p.confirmedRunning,0)'):
+            with self.subTest(key=key): self.assertIn(key,HOME)
+        self.assertNotIn('className="operatorWelcome"',HOME)
+        self.assertNotIn('incidents.map',HOME)
+        self.assertLess(HOME.index('className="factoryCommandBar"'),HOME.index('className="operatorDiagnostics"'))
 
     def test_project_cards_show_stage_not_fabricated_percentages(self):
-        self.assertIn('Etapa registrada',PROJECTS)
-        self.assertIn('Indicador de posição, não de prontidão',PROJECTS)
-        self.assertIn('className="projectMiniRail"',PROJECTS)
+        self.assertIn('Seus produtos',PROJECTS)
+        self.assertIn('getProductSituations()',PROJECTS)
+        self.assertIn('ProductSituationCard',PROJECTS)
         self.assertNotIn('macroProgress',PROJECTS)
         self.assertNotIn('Progresso pelas 5 macroetapas',PROJECTS)
         self.assertIn('href="/projects/new"',PROJECTS)
@@ -75,7 +71,10 @@ class ConsoleInformationArchitectureTests(unittest.TestCase):
         self.assertIn('variant={humanActionNeeded?"primary":"secondary"}',PROJECT)
         self.assertIn('className="readinessEvidence"',PROJECT)
         self.assertIn('className="projectTechnicalDetails projectIntegrations"',PROJECT)
-        self.assertIn('open={integrationNeedsAttention}',PROJECT)
+        self.assertIn('className="projectDetailTechnicalDisclosure"',PROJECT)
+        self.assertNotIn('open={integrationNeedsAttention}',PROJECT)
+        self.assertIn('OpenProjectTechnicalAnchor',PROJECT)
+        self.assertIn('id="github-access"',PROJECT)
         for required in ('id="repository-setup"','id="product-readiness"',
                          'id="github-access"','id="preview-policy"','id="databases"',
                          'Reexecutar preflight','Conectar Supabase','Reconciliar projeto',
