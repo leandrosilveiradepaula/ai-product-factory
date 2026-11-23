@@ -116,7 +116,7 @@ class RecentB3SourceReuse(unittest.TestCase):
 
     def test_reject_stale_run_rerun_unsafe_event_and_wrong_repository(self):
         run_path = PREFIX + "/actions/runs/" + str(RUN)
-        for change in ({"run_attempt": 2}, {"event": "workflow_dispatch"},
+        for change in ({"run_attempt": 2}, {"event": "issues"},
                        {"conclusion": "failure"}, {"head_sha": "f"*40},
                        {"repository": {"full_name": "attacker/other"}}):
             docs = data()
