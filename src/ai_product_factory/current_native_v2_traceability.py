@@ -12,6 +12,7 @@ import re
 from collections.abc import Callable, Mapping
 
 from .autonomy_journey_reader import SupabaseJourneyReader
+from .github_rest import GitHubRestAdapter
 from .native_v2_journey_audit import EvidenceBlocked, audit_existing_native_v2
 from .product_readiness_certification import VerifiedCriterionEvidence
 
@@ -62,10 +63,26 @@ def verify_current_crm_v2_traceability(*, repository: str, assessed_commit: str,
         and current.get("run_attempt") == 1,
         "current_v2_runner_unbound",
     )
+    # The GitHub App /github-app/token broker intentionally disallows token
+    # issuance from workflow_run.  The operator-provisioned, scoped
+    # FACTORY_GITHUB_TOKEN is the supported cross-repository credential here;
+    # do not try the forbidden broker first or use the repo-local token for CRM.
+    native_token = env.get("GITHUB_TOKEN", "").strip()
+    cross_token = env.get("FACTORY_GITHUB_TOKEN", "").strip()
+    require(bool(native_token) and bool(cross_token),
+            "current_v2_cross_repo_credential_unavailable")
+
+    def source_github(*, repository: str):
+        require(repository in (REPO, "leandrosilveiradepaula/crm-infodive"),
+                "current_v2_repository_scope_invalid")
+        token = native_token if repository == REPO else cross_token
+        return GitHubRestAdapter(repository=repository, token=token)
+
     try:
         receipt = audit(
             reader=reader if reader is not None else SupabaseJourneyReader(),
             project_key=PROJECT_KEY, journey_id=JOURNEY_ID,
+            github_factory=source_github,
         )
     except EvidenceBlocked as exc:
         raise CurrentTraceabilityBlocked("current_v2_audit_blocked") from exc

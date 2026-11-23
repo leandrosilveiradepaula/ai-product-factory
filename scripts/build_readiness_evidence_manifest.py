@@ -30,12 +30,12 @@ from ai_product_factory.current_native_v2_traceability import (
 from ai_product_factory.independent_health_evidence import (
     HealthEvidenceBlocked, verify_health_for_certification,
 )
-from ai_product_factory.independent_setup_evidence import (
-    SetupEvidenceBlocked, verify_existing_clean_setup,
+from ai_product_factory.current_documentation_evidence import (
+    CurrentDocumentationBlocked as SetupEvidenceBlocked,
+    verify_current_clean_setup as verify_existing_clean_setup,
+    verify_current_isolated_rollback as verify_existing_isolated_rollback,
 )
-from ai_product_factory.independent_rollback_evidence import (
-    RollbackEvidenceBlocked, verify_existing_isolated_rollback,
-)
+RollbackEvidenceBlocked = SetupEvidenceBlocked
 from ai_product_factory.independent_security_evidence import (
     SecurityEvidenceBlocked, verify_existing_secrets_dependencies,
 )
