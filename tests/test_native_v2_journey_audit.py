@@ -79,7 +79,7 @@ def fixture():
             state="preview_verified", execution_generation=19,
             project_policy_version=4, policy_digest=POLICY, binding=bind,
             binding_version=2, source_commit=START, candidate_commit=CANDIDATE,
-            production_release_sha=None, created_at=CREATED,
+            preview_merge_sha=None, production_release_sha=None, created_at=CREATED,
         )],
         "factory_audit_events": [
             row(id=1, project_id=PID, task_id=None, run_id=None,
@@ -280,6 +280,29 @@ class NativeV2AuditTests(unittest.TestCase):
         self.assertIs(proof["product_ready"], False)
         self.assertEqual(proof["paid_calls"], 0)
         self.assertEqual(proof["writes"], 0)
+
+    def test_exact_closed_preview_receipt_remains_nonproduction_only(self):
+        data = fixture()
+        data["factory_journeys"][0].update(state="closed", preview_merge_sha=MERGE)
+        data["factory_audit_events"].append({
+            "id": 4, "project_id": PID, "task_id": None, "run_id": RELEASE,
+            "event_type": "journey.closed", "actor_type": "system",
+            "actor_ref": "journey-v2-reconciler", "payload": {
+                "journey_id": JID,
+                "closure_reason": "observed_nonproduction_merge",
+                "automatic_merge": False,
+                "candidate_commit": CANDIDATE,
+                "preview_merge_sha": MERGE,
+                "production_released": False,
+            },
+        })
+        proof = run(data)
+        self.assertEqual(proof["status"], "integrated_nonproduction")
+        self.assertIs(proof["production_released"], False)
+
+        data["factory_audit_events"][-1]["payload"]["production_released"] = True
+        with self.assertRaises(EvidenceBlocked):
+            run(data)
 
     def test_native_v2_never_requests_nonexistent_run_project_id(self):
         # Real Postgres factory_runs belongs to project through its task,
