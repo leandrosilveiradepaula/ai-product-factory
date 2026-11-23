@@ -81,7 +81,11 @@ test("Console must not confuse administrative stage, approval and integration",(
  assert.match(page,/factoryCert.state==="certified"/);
  assert.match(page,/Etapa do cadastro/);
  assert.match(page,/não é certificação/);
- assert.match(page,/falhas registradas no histórico/);
+ assert.match(page,/heading:"Escolha um produto para acompanhar"/);
+ assert.match(page,/const hasIncident=incidents.length>0/);
+ assert.match(page,/!requiresDecision&&!hasIncident/);
+ assert.doesNotMatch(page,/:hasIncident\s*\?/);
+ assert.match(page,/href:"\/projects",label:"Abrir projetos"/);
  assert.match(shell,/attention\.pendingHumanGateCount>0/);
  assert.match(shell,/pendingIntegrationActionCount/);
  assert.match(shell,/configuração de integração/);

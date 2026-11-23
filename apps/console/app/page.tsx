@@ -16,13 +16,13 @@ export default async function Home(){
  const recentAudit=audit.slice(0,8);
  const requiresDecision=pending.length>0;
  const hasIncident=incidents.length>0;
+ // A historical failed or blocked run is operator evidence, not a next step
+ // for the owner. Only actionable human gates displace product navigation.
  const overviewAction=requiresDecision
   ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
-  :hasIncident
-   ?{heading:"Existem falhas registradas no histórico",description:"Há execuções anteriores com falha. Isso não comprova que a Factory esteja parada agora. Consulte o registro antes de intervir.",href:"/runs",label:"Ver histórico",kind:"warning"}
-   :d.projects.length===0
-    ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
-    :{heading:"Seus projetos estão no centro do trabalho",description:"Acompanhe a etapa de cada produto. Você só precisa intervir quando houver uma aprovação ou dependência explícita.",href:"/projects",label:"Ver todos os projetos",kind:"neutral"};
+  :d.projects.length===0
+   ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
+   :{heading:"Escolha um produto para acompanhar",description:"Veja o que foi comprovado, o que ainda falta e qual é a próxima ação de cada projeto. Ocorrências operacionais continuam disponíveis abaixo e no histórico.",href:"/projects",label:"Abrir projetos",kind:"neutral"};
  return <>
   <PageHeader
    eyebrow="Área de trabalho"
