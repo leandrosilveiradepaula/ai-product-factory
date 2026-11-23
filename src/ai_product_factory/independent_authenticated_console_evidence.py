@@ -138,7 +138,7 @@ def _verify_reusable_source(*, repository: str,
     run = github_get(prefix + "/actions/runs/" + str(workflow_run_id))
     if not isinstance(run, dict) or (
         run.get("id") != workflow_run_id or run.get("name") != WORKFLOW
-        or run.get("path") != WORKFLOW_PATH or run.get("event") != "push"
+        or run.get("path") != WORKFLOW_PATH or run.get("event") not in ("push", "workflow_dispatch")
         or run.get("head_branch") != branch or run.get("head_sha") != source_commit
         or run.get("run_attempt") != 1 or run.get("status") != "completed"
         or run.get("conclusion") != "success"
