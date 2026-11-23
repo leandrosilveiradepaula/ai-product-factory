@@ -6,6 +6,7 @@ from ai_product_factory.independent_authenticated_console_evidence import (
     AuthenticatedConsoleEvidenceBlocked, HISTORICAL_SOURCE_SHA,
     HISTORICAL_WORKFLOW_RUN_ID, _console_blobs, verify_authenticated_console_evidence,
     verify_reusable_historical_authenticated_console_evidence,
+    verify_reusable_latest_authenticated_console_evidence,
 )
 
 
@@ -85,6 +86,45 @@ class AuthenticatedConsoleEvidenceTests(unittest.TestCase):
             else: data[prefix + "/git/ref/heads/main"]["object"].update(update)
             with self.subTest(path=path, update=update), self.assertRaises(AuthenticatedConsoleEvidenceBlocked):
                 self.verify(data)
+
+    def test_latest_registered_manual_capture_is_reusable_when_console_is_identical(self):
+        candidate = "b" * 40
+        source = "c" * 40
+        run_id = 99
+        prefix = "/repos/" + REPO
+        tree = {"truncated": False, "tree": [
+            {"type": "blob", "path": "apps/console/app/page.tsx",
+             "mode": "100644", "sha": "d" * 40},
+        ]}
+        data = {
+            prefix: {"full_name": REPO, "default_branch": "main"},
+            prefix + "/git/ref/heads/main": {"object": {"sha": candidate}},
+            prefix + "/actions/runs/" + str(run_id): {
+                "id": run_id, "name": "Authenticated Console visual evidence",
+                "path": ".github/workflows/authenticated-visual-evidence.yml",
+                "event": "workflow_dispatch", "head_branch": "main",
+                "head_sha": source, "run_attempt": 1, "status": "completed",
+                "conclusion": "success", "repository": {"full_name": REPO},
+            },
+            prefix + "/actions/runs/" + str(run_id) + "/jobs?per_page=100": {
+                "total_count": 1, "jobs": [{"name": "capture", "run_id": run_id,
+                "head_sha": source, "status": "completed", "conclusion": "success"}]},
+            prefix + "/actions/runs/" + str(run_id) + "/artifacts?per_page=100": {
+                "total_count": 0, "artifacts": []},
+            prefix + "/compare/" + source + "..." + candidate: {
+                "status": "ahead", "behind_by": 0,
+                "base_commit": {"sha": source}, "merge_base_commit": {"sha": source}},
+            prefix + "/git/trees/" + source + "?recursive=1": tree,
+            prefix + "/git/trees/" + candidate + "?recursive=1": tree,
+        }
+        registry = [{"workflow_run_id": run_id, "source_commit": source,
+                     "artifact_name": "authenticated-console-" + str(run_id),
+                     "status": "captured"}]
+        proof = verify_reusable_latest_authenticated_console_evidence(
+            repository=REPO, assessed_commit=candidate, github_get=lambda path: data[path],
+            control_plane_get=lambda path: registry,
+        )
+        self.assertEqual(proof.workflow_run_id, run_id)
 
     def test_recursive_console_tree_accepts_directories_and_compares_only_files(self):
         tree = {"truncated": False, "tree": [
