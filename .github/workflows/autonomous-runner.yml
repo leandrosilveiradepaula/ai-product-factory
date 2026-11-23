@@ -104,7 +104,7 @@ on:
           - human_release_observed
           - operations
   workflow_run:
-    # Reuses the existing trusted OIDC preflight and trusted post-CI sources; no new timer.
+    # Reuses the existing trusted OIDC preflight and post-CI sources; no new timer.
     workflows: ["Control Plane OIDC preflight", "validate", "Authenticated Console visual evidence"]
     types: [completed]
     branches: [main]
