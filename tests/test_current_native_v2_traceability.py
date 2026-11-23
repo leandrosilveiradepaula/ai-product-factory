@@ -14,7 +14,8 @@ def env():
         "GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": REPO,
         "GITHUB_EVENT_NAME": "workflow_run", "GITHUB_REF": "refs/heads/main",
         "GITHUB_WORKFLOW_REF": REPO + "/.github/workflows/autonomous-runner.yml@refs/heads/main",
-        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ID": "123", "GITHUB_TOKEN": "native-fixture",
+        "FACTORY_GITHUB_TOKEN": "cross-repo-fixture",
     }
 
 
@@ -48,6 +49,29 @@ class CurrentNativeV2TraceabilityTests(unittest.TestCase):
                          ("observability_operations", "traceability"))
         self.assertEqual(proof.verification_state, "observed")
         self.assertIn(SHA, proof.evidence[0])
+
+    def test_cross_repository_uses_explicit_scoped_token_not_broker(self):
+        def audit(**args):
+            factory = args["github_factory"]
+            self.assertEqual(factory(repository=REPO).token, "native-fixture")
+            self.assertEqual(factory(repository="leandrosilveiradepaula/crm-infodive").token,
+                             "cross-repo-fixture")
+            with self.assertRaises(CurrentTraceabilityBlocked):
+                factory(repository="other/untrusted")
+            return receipt()
+        proof = verify_current_crm_v2_traceability(
+            repository=REPO, assessed_commit=SHA, github_get=github,
+            reader=object(), environment=env(), audit=audit)
+        self.assertEqual(proof.criterion, "traceability")
+
+    def test_missing_cross_repo_token_fails_before_source_call(self):
+        bad = env()
+        del bad["FACTORY_GITHUB_TOKEN"]
+        with self.assertRaises(CurrentTraceabilityBlocked):
+            verify_current_crm_v2_traceability(
+                repository=REPO, assessed_commit=SHA, github_get=github,
+                reader=object(), environment=bad,
+                audit=lambda **_: self.fail("audit must not run"))
 
     def test_wrong_identity_and_any_release_claim_fail_closed(self):
         bad = env(); bad["GITHUB_EVENT_NAME"] = "workflow_dispatch"
