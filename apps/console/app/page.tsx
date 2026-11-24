@@ -55,7 +55,7 @@ export default async function Home(){
   <section className="section homeProjects" aria-label="Seus projetos">
    <SectionHeader title="Seus projetos" action={<Link className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
    {trackedProjects.length===0?
-    <div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Você pode começar com uma ideia ou importar um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
+    <div className="homeEmptyProject"><EmptyState>Nenhum projeto em acompanhamento. Você pode consultar projetos parados abaixo ou cadastrar um novo.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
    :<div className="homeProjectGrid">
      {trackedProjects.map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
       <div className="homeProjectHeading"><strong>{p.name}</strong><span className="homeControlLabel">{portfolioProjectControlLabel(p)}</span></div>
