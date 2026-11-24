@@ -278,8 +278,8 @@ with psycopg.connect(DSN, autocommit=True) as db:
         cur.execute("""insert into public.factory_blocked_work_recovery_requests(project_id,source_task_id,source_run_id,repair_job_id,
          continuation_task_id,continuation_run_id,status) values(%s,%s,%s,%s,%s,%s,'blocked')""",
          (p3,repair_task,blocked_run,repair,recovery_task,recovery_run))
-        cur.execute("insert into public.factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload) values(%s,%s,'system','release-observer','release.human_merge_observed',%s)",
-          (p3,root_run,Jsonb({"pr":2,"head_sha":NEW_SHA,"merge_sha":"f"*40})))
+        cur.execute("insert into public.factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload) values(%s,%s,'factory','release-followup','release.human_merge_observed',%s)",
+          (None,root_run,Jsonb({"pr":2,"head_sha":NEW_SHA,"merge_sha":"f"*40})))
         proof={"candidate_commit":NEW_SHA,"_factory_epoch":"1","blocking_findings":0,
                "coverage":{"sql_rls_rpc_invariants":True},"unreviewable_paths":[],
                "database_lineage":[{"path":path}]}

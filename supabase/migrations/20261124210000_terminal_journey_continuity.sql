@@ -257,7 +257,10 @@ begin
     or old_run.metadata->>'change_set_id' is distinct from c.id::text
     or old_run.lease_owner is not null or old_run.lease_expires_at is not null
     or not exists(select 1 from public.factory_audit_events a
-      where a.project_id=p.id and a.run_id=root.id and a.event_type='release.human_merge_observed'
+      where (a.project_id=p.id or a.project_id is null) and a.run_id=root.id
+       and (a.task_id=root.task_id or a.task_id is null)
+       and a.actor_type='factory' and a.actor_ref='release-followup'
+       and a.event_type='release.human_merge_observed'
        and a.payload->>'head_sha'=c.candidate_commit and a.payload->>'merge_sha'=root.candidate_commit
        and a.payload->>'pr' ~ '^[1-9][0-9]*$')
  then return jsonb_build_object('status','not_eligible','reason','terminal_delivery_lineage_not_verified'); end if;
