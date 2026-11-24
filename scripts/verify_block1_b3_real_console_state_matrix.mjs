@@ -111,7 +111,15 @@ export async function verifyRealConsoleStateMatrix({
        payload.count<0||!Array.isArray(payload.projects)||
        !payload.projects.every(key=>typeof key==="string"))
       throw Error("b3_real_states_actual_empty_state_unavailable");
-    await navigate(page,origin+"/gates",{heading:"Decisões que precisam de você",stage:"gates"});
+    // The human decision inbox title is editable UX copy, not a proof identity.
+    // Demand a real 200 /gates response, its visible semantic H1, the signed
+    // first-party attention API, and the actual empty-decision status below.
+    // Rewriting a heading must never fake or invalidate the independent B3 gate.
+    await navigate(page,origin+"/gates",{stage:"gates"});
+    try{
+      await page.getByRole("heading",{level:1}).first()
+        .waitFor({state:"visible",timeout:20000});
+    }catch{throw Error("b3_real_states_gate_heading_missing");}
     try{
       await page.locator(".humanGateEmpty[role='status']").waitFor({state:"visible",timeout:15000});
     }catch{

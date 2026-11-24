@@ -42,6 +42,21 @@ test("empty human decision state is independent of real GitHub integration actio
  assert.ok(!browser.includes("context.route("));
  assert.match(browser,/await navigate\(page,origin\+"\/gates"/);
 });
+test("real decision inbox proof uses current semantic H1, not fixed UX copy",async()=>{
+ const page=await source("apps/console/app/gates/page.tsx");
+ const browser=await source("scripts/verify_block1_b3_real_console_state_matrix.mjs");
+ // A real H1 exists on the first-party inbox, but its words are not a
+ // security/health criterion; changing copy must not invalidate real proof.
+ assert.match(page,/<PageHeader[^\n]*title="[^"]+"/);
+ assert.ok(browser.includes('await navigate(page,origin+"/gates",{stage:"gates"})'));
+ assert.ok(browser.includes('getByRole("heading",{level:1}).first()'));
+ assert.ok(browser.includes("b3_real_states_gate_heading_missing"));
+ assert.ok(!browser.includes('heading:"Decisões que precisam de você"'));
+ assert.ok(!browser.includes('heading:"O que depende de você"'));
+ assert.ok(browser.includes('payload.pendingHumanGateCount!==0'));
+ assert.ok(browser.includes(".humanGateEmpty[role='status']"));
+ assert.ok(!browser.includes("context.route("));
+});
 test("original real-state producer and browser quality gates remain fail closed",async()=>{
  const sourceBrowser=await source("scripts/capture_authenticated_console.mjs");
  const producer=await source("scripts/verify_block1_b3_real_console_state_matrix.mjs");
