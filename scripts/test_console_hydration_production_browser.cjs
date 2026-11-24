@@ -28,7 +28,7 @@ let mock,nextProcess,browser,appOrigin,mockOrigin;
 const violations=[];
 const driverErrors=[];
 const fixtureProjects=[{
-  id:B3_PROJECT_ID,updated_at:"2026-11-01T12:00:00Z",
+  id:B3_PROJECT_ID,created_at:"2026-10-01T12:00:00Z",updated_at:"2026-11-01T12:00:00Z",
   project_key:"ai-product-factory",name:"AI Product Factory",
   repository:"leandrosilveiradepaula/ai-product-factory",
   project_kind:"existing",lifecycle_stage:"validation",
@@ -322,6 +322,7 @@ test("B3: real Next client navigation renders loading then true offline error an
  };
  try{
   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
+  await page.getByRole("heading",{name:"Visão geral",exact:true}).waitFor({state:"visible",timeout:10000});
   const loadingLink=await openRuns();
   cdp=await context.newCDPSession(page);
   await cdp.send("Network.enable");
@@ -837,6 +838,18 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
         assert.equal(new URL(page.url()).pathname,route.path,"unexpected public login redirect: "+route.name);
         assert.equal(await page.locator("h1.title").count(),1,
           "real protected screen must render a title: "+route.name);
+        if(route.name==="overview"){
+          const summary=page.locator("section.homeSummary");
+          for(const [label,count] of [["Projetos em acompanhamento","1"],["Execuções com reserva vigente","0"],["Decisões humanas pendentes","0"],["Tarefas a reconciliar","0"]]){
+            const item=summary.locator(".homeSummaryItem").filter({hasText:label});
+            assert.equal(await item.count(),1,"portfolio metric missing: "+label);
+            assert.equal(await item.locator("strong").innerText(),count,"portfolio metric inconsistent: "+label);
+          }
+          const project=page.locator(".homeProjectCard").filter({hasText:"AI Product Factory"});
+          assert.equal(await project.count(),1,"real portfolio card missing");
+          assert.equal(await project.locator(".homeControlLabel").innerText(),"Sem execução ativa");
+          assert.equal(await page.locator(".homeAttention .attentionCard.danger").count(),0);
+        }
         await scan(route.name,width===390?"mobile":"desktop");
         if(width===390){
           const menu=page.locator(".mobileNav > summary");
