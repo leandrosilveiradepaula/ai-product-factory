@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20261101130000_journey_v2_safe_supersession.sql"
+      - "supabase/migrations/20261124210000_terminal_journey_continuity.sql"
+      - "src/ai_product_factory/terminal_journey_refresh.py"
+      - "src/ai_product_factory/supabase_runtime_queue.py"
       - "scripts/verify_journey_v2_safe_supersession_postgres.py"
       - "src/ai_product_factory/journey_delivery_binding.py"
       - "tests/test_journey_delivery_binding.py"

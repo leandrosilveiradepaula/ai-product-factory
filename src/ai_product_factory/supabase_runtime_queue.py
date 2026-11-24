@@ -306,8 +306,26 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 outcomes.append({"journey_id":journey.get("id"),"status":"awaiting_source","reason":"control_plane_identity_unavailable"});continue
             project,control=projects[0],controls[0]
             try:
-                binding=resolve_pending_main_snapshot(journey=journey,project=project,control=control,
-                    github=github_factory(project["repository"]))
+                github=github_factory(project["repository"])
+                try:
+                    binding=resolve_pending_main_snapshot(journey=journey,project=project,control=control,github=github)
+                except JourneyBindingBlocked as exc:
+                    if str(exc)!="journey_source_preview_pin_mismatch":
+                        raise
+                    from .terminal_journey_refresh import refresh_terminal_source
+                    rotation=refresh_terminal_source(queue=self,github=github,project=project,
+                        control=control,journey=journey)
+                    projects=self._get("factory_projects?select=id,project_key,repository,manifest,is_active&id=eq."+quote(project_id,safe="")+"&limit=1")
+                    controls=self._get("factory_project_execution_controls?select=project_id,state,generation,version&project_id=eq."+quote(project_id,safe="")+"&limit=1")
+                    if len(projects)!=1 or len(controls)!=1:
+                        raise JourneyBindingBlocked("journey_terminal_refresh_control_unavailable")
+                    project,control=projects[0],controls[0]
+                    policy=project.get("manifest",{}).get("journey_delivery_binding_v2",{})
+                    if (control.get("generation")!=rotation["generation"]
+                        or control.get("version")!=rotation["version"]
+                        or policy.get("digest")!=rotation["policy_digest"]):
+                        raise JourneyBindingBlocked("journey_terminal_refresh_control_changed")
+                    binding=resolve_pending_main_snapshot(journey=journey,project=project,control=control,github=github)
                 self.record_journey_source_evidence_v2(journey_id=journey["id"], binding=binding)
                 receipt=self.bind_journey_source_v2(project_key=project["project_key"],request_id=journey["request_id"],
                     expected_generation=control["generation"],expected_policy_version=binding["policy_version"],binding=binding)

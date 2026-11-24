@@ -147,3 +147,47 @@ class JourneyBindingTests(unittest.TestCase):
             context={"manifest":{"journey_delivery_binding_v2":{"enabled":False}}})
         self.assertEqual(journey,JOURNEY)
         self.assertEqual(context["journey_request"],snapshot)
+
+class TerminalJourneyRefreshTests(unittest.TestCase):
+    def test_fails_closed_if_previous_preview_is_not_in_main(self):
+        from ai_product_factory.terminal_journey_refresh import refresh_terminal_source
+        prior_source="a"*40
+        prior_delivery="b"*40
+        main="c"*40
+        ref="preview/journey-base-"+JOURNEY
+        project={"id":PROJECT,"project_key":"crm-infodive","repository":REPO,"manifest":{
+            "journey_delivery_binding_v2":{"source_mode":"main_snapshot","source_commit_pin":prior_source,"digest":"d"*64}}}
+        control={"state":"running","generation":19,"version":19}
+        journey={"id":JOURNEY,"project_id":PROJECT,"request_id":REQUEST,"state":"awaiting_source"}
+        plan={"project_id":PROJECT,"repository":REPO,"journey_id":JOURNEY,"request_id":REQUEST,
+              "preview_ref":ref,"prior_policy_digest":"d"*64,"generation":19,"version":19,
+              "prior_source_sha":prior_source,"prior_delivery_sha":prior_delivery}
+        class GH:
+            repository=REPO
+            def __init__(self): self.branches=[]; self.diverged=True
+            def get_branch_sha(self, branch): return main
+            def compare_commits(self, old, new):
+                return {"status":"diverged","behind_by":1,"ahead_by":2} if self.diverged and old==prior_delivery else {"status":"ahead","behind_by":0,"ahead_by":2}
+            def ensure_branch_at_sha(self, branch, sha): self.branches.append((branch,sha)); return sha
+        class Queue:
+            def __init__(self): self.calls=[]; self.deny=False
+            def _rpc(self,name,params):
+                self.calls.append(name)
+                if name=="factory_plan_terminal_journey_refresh_v2":
+                    if self.deny: raise RuntimeError("not authorized")
+                    return plan
+                return {"status":"rotated","journey_id":JOURNEY,"source_commit":main,"preview_ref":ref,
+                        "production_release_authorized":False,"generation":20,"version":20}
+        gh,queue=GH(),Queue()
+        def invoke():
+            return refresh_terminal_source(queue=queue,github=gh,project=project,control=control,journey=journey)
+        with self.assertRaisesRegex(JourneyBindingBlocked,"journey_prior_preview_not_released"): invoke()
+        self.assertEqual(gh.branches,[])
+        queue.deny=True
+        with self.assertRaisesRegex(JourneyBindingBlocked,"not_authorized"): invoke()
+        self.assertEqual(gh.branches,[])
+        queue.deny=False; gh.diverged=False
+        self.assertEqual(invoke()["generation"],20)
+        self.assertEqual(gh.branches,[(ref,main)])
+        self.assertEqual(queue.calls[-3:],["factory_plan_terminal_journey_refresh_v2",
+            "factory_plan_terminal_journey_refresh_v2","factory_commit_terminal_journey_refresh_v2"])

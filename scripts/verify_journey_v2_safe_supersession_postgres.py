@@ -170,3 +170,65 @@ with psycopg.connect(DSN, autocommit=True) as db:
         blocked(db,lambda c:call(c,"factory_supersede_inactive_journey_v2",*args[:2],
             "33333333-3333-4333-8333-333333333333",*args[3:]))
 print("JOURNEY_V2_SAFE_SUPERSESSION_POSTGRES_PASS")
+
+# Independent project: terminal delivery then a genuinely new authorized request.
+# The previous fixture deliberately remains unchanged, including its history.
+with psycopg.connect(DSN, autocommit=True) as db:
+    with db.cursor() as cur:
+        cur.execute("alter table public.factory_human_gates add column status text")
+        cur.execute((ROOT / "supabase/migrations/20261124210000_terminal_journey_continuity.sql").read_text())
+        p2="b2ea3201-e9a3-489f-bf14-916aecc7de09"
+        old_j="bb14e150-2c7e-423b-8e5d-e211dab6225c"
+        next_request="11111111-1111-4111-8111-111111111112"
+        old_policy={"enabled":True,"version":4,"digest":"e"*64,"source_mode":"main_snapshot",
+                    "preview_base_ref":"preview/terminal-qa","release_base_ref":"main",
+                    "source_commit_pin":OLD_SHA,"preview_base_source_sha":OLD_SHA}
+        cur.execute("""insert into public.factory_projects(id,project_key,repository,manifest,is_active,project_kind)
+          values(%s,'terminal-qa','owner/terminal-qa',%s,true,'existing')""",
+          (p2,Jsonb({"journey_delivery_binding_v2":old_policy})))
+        cur.execute("insert into public.factory_project_execution_controls(project_id,state,generation,version) values(%s,'running',19,19)",(p2,))
+        old_request="11111111-1111-4111-8111-111111111113"
+        old_text="previous legitimate delivery"
+        old_digest=hashlib.sha256(old_text.encode()).hexdigest()
+        cur.execute("""insert into public.factory_journeys(id,project_id,request_id,request_source,auth_actor_ref,auth_event_id,
+          request_digest,request_snapshot,state,execution_generation,project_policy_version,policy_digest,binding,source_commit,preview_merge_sha)
+          values(%s,%s,%s,'github-owner','github-owner','321',%s,%s,'closed',19,4,%s,%s,%s,%s)""",
+          (old_j,p2,old_request,old_digest,Jsonb({"text":old_text,"digest":old_digest}),"e"*64,
+           Jsonb({"journey_id":old_j,"source_commit":OLD_SHA,"repository":"owner/terminal-qa","preview_base_ref":"preview/terminal-qa"}),
+           OLD_SHA,"d"*40))
+        auth=("terminal-qa",OPERATOR,19,19,"e"*64,True)
+        blocked(db,lambda c:call(c,"factory_authorize_journey_refresh_v2",auth[0],"88888888-8888-4888-8888-888888888888",*auth[2:]))
+        assert call(cur,"factory_authorize_journey_refresh_v2",*auth)["changed"]
+        assert not call(cur,"factory_authorize_journey_refresh_v2",*auth)["changed"]
+        req="real subsequent change"
+        intake=call(cur,"factory_enqueue_journey_intake_v2","terminal-qa",req,next_request,"github-owner","github-owner","322",
+              hashlib.sha256(req.encode()).hexdigest(),"leandrosilveiradepaula/ai-product-factory",1055)
+        jid=intake["journey_id"]
+        args=("terminal-qa",jid,19,19,"e"*64)
+        plan=call(cur,"factory_plan_terminal_journey_refresh_v2",*args)
+        assert plan["prior_delivery_sha"]=="d"*40 and plan["prior_journey_id"]==old_j
+        assert plan["preview_ref"]=="preview/journey-base-"+jid
+        blocked(db,lambda c:call(c,"factory_plan_terminal_journey_refresh_v2",args[0],args[1],18,*args[3:]))
+        evidence={"repository":"owner/terminal-qa","main_sha":NEW_SHA,"preview_sha":NEW_SHA,
+          "preview_ref":plan["preview_ref"],"prior_source_sha":OLD_SHA,"prior_delivery_sha":"d"*40,
+          "source_ancestor_verified":True,"delivery_ancestor_verified":True,
+          "verification_source":"github_exact_refs","production_release_authorized":False}
+        for bad in ({**evidence,"delivery_ancestor_verified":False},{**evidence,"preview_sha":OLD_SHA},
+                    {**evidence,"repository":"other/repo"},{**evidence,"production_release_authorized":True}):
+            blocked(db,lambda c:call(c,"factory_commit_terminal_journey_refresh_v2",*args,Jsonb(bad)))
+        cur.execute("set role authenticated")
+        blocked(db,lambda c:call(c,"factory_plan_terminal_journey_refresh_v2",*args))
+        cur.execute("reset role")
+        receipt=call(cur,"factory_commit_terminal_journey_refresh_v2",*args,Jsonb(evidence))
+        assert receipt["generation"]==20 and receipt["version"]==20 and receipt["policy_version"]==5
+        assert not receipt["production_release_authorized"]
+        assert call(cur,"factory_commit_terminal_journey_refresh_v2",*args,Jsonb(evidence))==receipt
+        cur.execute("select state,preview_merge_sha,production_release_sha from public.factory_journeys where id=%s",(old_j,))
+        assert cur.fetchone()==("closed","d"*40,None)
+        cur.execute("select state,source_commit from public.factory_journeys where id=%s",(jid,))
+        assert cur.fetchone()==("awaiting_source",None)
+        cur.execute("select count(*) from public.factory_journey_refresh_receipts_v2 where journey_id=%s",(jid,))
+        assert cur.fetchone()[0]==1
+        cur.execute("select count(*) from public.factory_tasks where project_id=%s",(p2,))
+        assert cur.fetchone()[0]==0
+print("TERMINAL_JOURNEY_CONTINUITY_POSTGRES_PASS")

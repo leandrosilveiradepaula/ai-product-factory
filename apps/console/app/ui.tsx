@@ -130,7 +130,7 @@ export function EmptyState({children}:{children:ReactNode}){
 }
 
 export function ActionLink({href,children,variant="secondary"}:{href:string;children:ReactNode;variant?:"primary"|"secondary"|"ghostButton"}){
-  return <Link className={variant+" linkButton"} href={href}>{children}</Link>;
+  return <Link className={variant+" linkButton"} href={href} prefetch={false}>{children}</Link>;
 }
 
 export function Button({variant="secondary",className="",...props}:ButtonHTMLAttributes<HTMLButtonElement>&{variant?:"primary"|"secondary"|"danger"|"ghostButton"}){

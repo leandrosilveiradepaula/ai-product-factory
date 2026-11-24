@@ -85,3 +85,14 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   assert.ok(api.includes('status:503'));
   assert.ok(!api.includes("route.fulfill"));
 });
+
+test("overview and shared action links do not prefetch authenticated dynamic routes",async()=>{
+ const fs=await import("node:fs/promises");
+ const home=await fs.readFile(new URL("../apps/console/app/page.tsx",import.meta.url),"utf8");
+ const ui=await fs.readFile(new URL("../apps/console/app/ui.tsx",import.meta.url),"utf8");
+ const proof=await fs.readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
+ assert.ok(!/<Link\s+(?!prefetch=)/.test(home),"all Home links must be explicitly non-prefetched");
+ assert.ok(ui.includes('href={href} prefetch={false}'));
+ assert.ok(proof.includes('page.waitForLoadState("networkidle"'));
+ assert.ok(proof.includes('loadingRouteRequests=0;\n    browserClient='));
+});

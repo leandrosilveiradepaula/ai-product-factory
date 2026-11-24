@@ -161,7 +161,13 @@ export async function verifyRealConsoleStateMatrix({
     // cache, throttle only genuine Chrome HTTP transport, never intercept or
     // fabricate server responses. No prefetch is allowed by the real nav.
     await navigate(page,origin+"/",{heading:"Visão geral",stage:"loading_origin"});
+    // A server-rendered heading can appear before the client hydrates. Wait
+    // for the actual client attention fetch to settle, not a fixed sleep.
+    await page.locator(".topbarAttention.loading").waitFor({state:"hidden",timeout:20000});
+    await page.waitForLoadState("networkidle",{timeout:30000});
     const loadingLink=await openRealRunsLink(page);
+    // Count only the navigation initiated below, never a preceding request.
+    loadingRouteRequests=0;
     browserClient=await context.newCDPSession(page);
     await browserClient.send("Network.enable");
     await browserClient.send("Network.setCacheDisabled",{cacheDisabled:true});
