@@ -19,6 +19,7 @@ const FRESH_TOKEN="offline-fixture-renewed-access";
 const EXPIRED_TOKEN="offline-fixture-expired-access";
 const REFRESH_TOKEN="offline-fixture-refresh";
 let refreshCalls=0;
+let fixtureRecoveryEligible=false;
 const MOCK_KEY="sb_secret_offline_fixture_not_real";
 const PUB_KEY="offline-fixture-publishable";
 const B3_RUN_ID="93fd8cdc-f000-4a01-978e-463798628e4e";
@@ -104,7 +105,7 @@ function localApi(req,res){
     violations.push("invalid_eligibility_read");send(res,400,{});return;
    }
    // Inert, read-only result. The real SQL dry-run and ACL are tested separately.
-   send(res,200,{status:"not_eligible",reason:"no_resumable_repair"});
+   send(res,200,fixtureRecoveryEligible?{status:"eligible",repair_id:"22222222-2222-4222-8222-222222222222"}:{status:"not_eligible",reason:"no_resumable_repair"});
   });
   return;
  }
@@ -892,7 +893,34 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
       await page.setViewportSize({width,height:width===390?844:900});
       const response=await page.goto(appOrigin+"/projects/ai-product-factory",{waitUntil:"networkidle",timeout:45000});
       assert.equal(response?.status(),200,"synthetic project detail unavailable");
+      const region=page.getByRole("region",{name:"Controle de execução do projeto"});
+      const {validateProjectLifecycleReadOnly}=await import("./project_control_readonly_contract.mjs");
+      const observe=async()=>validateProjectLifecycleReadOnly({
+        heading:await region.locator("strong").first().innerText(),
+        expectedProjectKey:"ai-product-factory",
+        controlState:await region.getAttribute("data-control-state"),
+        workObservation:await region.getAttribute("data-work-observation"),
+        recoveryEligibility:await region.getAttribute("data-recovery-eligibility"),
+        forms:await region.locator("form").evaluateAll(nodes=>nodes.map(form=>({
+          command:form.querySelector('input[name="command"]')?.value,
+          version:form.querySelector('input[name="version"]')?.value,
+          projectKey:form.querySelector('input[name="project_key"]')?.value,
+          commandId:form.querySelector('input[name="command_id"]')?.value,
+          label:form.querySelector('button[type="submit"]')?.textContent?.trim(),
+        }))),
+      });
+      const idle=await observe();
+      assert.equal(idle.stateLabel,"Sem execução ativa");
+      assert.deepEqual(idle.availableCommands,["pause","stop"]);
       await scan("project-detail",width===390?"detail-mobile":"detail-desktop");
+      // Inspect the real rendered controls without submitting a command.
+      fixtureRecoveryEligible=true;
+      try{
+        await page.reload({waitUntil:"networkidle",timeout:45000});
+        const eligible=await observe();
+        assert.equal(eligible.recoveryEligibility,"eligible");
+        assert.deepEqual(eligible.availableCommands,["pause","restart","stop"]);
+      }finally{fixtureRecoveryEligible=false;}
     }
     assert.equal(results.length,44,"Must exercise the same 44 surface/viewport modes as trusted audit");
     const problems=results.filter(x=>x.incomplete.length||x.violations.length);

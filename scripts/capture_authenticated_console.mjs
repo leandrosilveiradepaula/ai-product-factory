@@ -365,7 +365,12 @@ try {
       commandId:form.querySelector('input[name="command_id"]')?.value,
       label:form.querySelector('button[type="submit"]')?.textContent?.trim(),
     })));
-    return validateProjectLifecycleReadOnly({heading,forms,expectedProjectKey});
+    return validateProjectLifecycleReadOnly({
+      heading,forms,expectedProjectKey,
+      controlState:await region.getAttribute("data-control-state"),
+      workObservation:await region.getAttribute("data-work-observation"),
+      recoveryEligibility:await region.getAttribute("data-recovery-eligibility"),
+    });
   };
   await page.route(mutationGuardPattern,projectMutationGuard);
   const detailResponse = await page.goto(detailUrl.toString(), {waitUntil:"networkidle",timeout:60000});
