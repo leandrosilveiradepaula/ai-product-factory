@@ -1243,3 +1243,8 @@ body{line-height:1.55}
 .homeReconciliationCard h3,.homeReconciliationCard p{margin:0;overflow-wrap:anywhere}
 .homeReconciliationCard .attentionFooter{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;padding:0;background:transparent}
 .homeReconciliationCard a{min-height:44px;display:inline-flex;align-items:center;color:#adc6ff}
+
+/* Real router pending state: no artificial minimum delay. */
+.consoleNavigationLoading{display:inline-flex;align-items:center;flex:0 0 16px;justify-content:center}
+.consoleNavigationSpinner{display:block;width:14px;height:14px;border:2px solid #66748b;border-top-color:#adc6ff;border-radius:50%;animation:consoleSpin .8s linear infinite}
+@media(prefers-reduced-motion:reduce){.consoleNavigationSpinner{animation:none}}

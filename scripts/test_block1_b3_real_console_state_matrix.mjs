@@ -96,3 +96,5 @@ test("overview and shared action links do not prefetch authenticated dynamic rou
  assert.ok(proof.includes('page.waitForLoadState("networkidle"'));
  assert.ok(proof.includes('loadingRouteRequests=0;\n    browserClient='));
 });
+
+test("client navigation loading is owned by actual Next link status",async()=>{ const nav=await readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8"); assert.ok(nav.includes("const {pending}=useLinkStatus()")); assert.ok(nav.includes("pending?<span className=\"consoleNavigationLoading\" role=\"status\"")); });

@@ -38,7 +38,7 @@ class ManualProjectControlConsoleContract(unittest.TestCase):
 
     def test_manual_transitions_signal_scheduler_only_after_rpc_succeeds(self):
         command = CONTROL.split("export async function commandProjectExecution(", 1)[1].split(
-            "\nexport async function enqueueProjectBootstrap", 1)[0]
+            "\nexport type ProjectWorkObservation", 1)[0].split("\nexport async function ",1)[0]
         self.assertLess(command.index("if(!response.ok)throw"),command.index("deliverProjectControlWake(commandId)"))
         self.assertIn("const {state", "const {state") if False else None
         self.assertIn("deliverProjectControlWake(commandId)",command)

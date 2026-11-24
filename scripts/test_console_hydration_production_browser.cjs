@@ -331,7 +331,7 @@ test("B3: real Next client navigation renders loading then true offline error an
    offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
   });
   await Promise.all([
-   page.locator(".consoleRouteLoading[role='status']").waitFor({state:"visible",timeout:15000}),
+   page.locator(".consoleRouteLoading[role='status']:visible,.consoleNavigationLoading[role='status']:visible").first().waitFor({state:"visible",timeout:15000}),
    loadingLink.click({timeout:15000}),
   ]);
   await page.getByRole("heading",{name:"Execuções",exact:true})

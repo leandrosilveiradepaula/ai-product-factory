@@ -238,16 +238,16 @@ begin
     or j.status is distinct from 'blocked' or j.source_role is distinct from 'security'
     or j.finding->>'kind' is distinct from 'database_security'
     or j.finding->>'code' is distinct from 'permissive_public_grant'
-    or j.finding->>'path' is null or j.finding->>'path' !~ '^supabase/migrations/[A-Za-z0-9_-]+\.sql
+    or j.finding->>'path' is null or j.finding->>'path' !~ '^supabase/migrations/[A-Za-z0-9_-]+\.sql$'
     or c.status is distinct from 'completed' or c.release_run_id is distinct from root.id
     or c.lease_owner is not null or c.lease_expires_at is not null
-    or c.candidate_commit is null or c.candidate_commit !~ '^[a-f0-9]{40}
-    or j.candidate_commit is null or j.candidate_commit !~ '^[a-f0-9]{40}
+    or c.candidate_commit is null or c.candidate_commit !~ '^[a-f0-9]{40}$'
+    or j.candidate_commit is null or j.candidate_commit !~ '^[a-f0-9]{40}$'
     or c.candidate_commit=j.candidate_commit
     or root.task_id is distinct from c.root_task_id or root.status is distinct from 'merged'
     or root.lease_owner is not null or root.lease_expires_at is not null
     or root.metadata->>'execution_generation' is distinct from v_ctl.generation::text
-    or root.candidate_commit is null or root.candidate_commit !~ '^[a-f0-9]{40}
+    or root.candidate_commit is null or root.candidate_commit !~ '^[a-f0-9]{40}$'
     or not exists(select 1 from public.factory_tasks rt where rt.id=c.root_task_id
                  and rt.project_id=p.id and rt.status in ('completed','integrated'))
     or t.id is null or t.status is distinct from 'blocked' or t.parent_task_id is distinct from c.root_task_id
@@ -259,7 +259,7 @@ begin
     or not exists(select 1 from public.factory_audit_events a
       where a.project_id=p.id and a.run_id=root.id and a.event_type='release.human_merge_observed'
        and a.payload->>'head_sha'=c.candidate_commit and a.payload->>'merge_sha'=root.candidate_commit
-       and a.payload->>'pr' ~ '^[1-9][0-9]*)
+       and a.payload->>'pr' ~ '^[1-9][0-9]*$')
  then return jsonb_build_object('status','not_eligible','reason','terminal_delivery_lineage_not_verified'); end if;
  select * into s from public.factory_specialist_lane_jobs
  where project_id=p.id and run_id=root.id and role='security'
@@ -355,8 +355,8 @@ begin
        where p.id=p_project_id and p.is_active)
  then return jsonb_build_object('status','not_eligible','reason','project_not_running'); end if;
  if not public.factory_control_quiescent(p_project_id) or exists(
-    select 1 from public.factory_runs r join public.factory_tasks t on t.id=r.task_id
-      where t.project_id=p_project_id and r.status in ('created','queued','running','implementing'))
+    select 1 from public.factory_runs r join public.factory_tasks rt on rt.id=r.task_id
+      where rt.project_id=p_project_id and r.status in ('created','queued','running','implementing'))
  then return jsonb_build_object('status','not_eligible','reason','work_in_progress'); end if;
  select * into j from public.factory_repair_jobs where project_id=p_project_id and status='blocked'
      and cycle<max_cycles order by updated_at desc,id desc limit 1;

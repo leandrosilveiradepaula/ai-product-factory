@@ -174,7 +174,7 @@ export async function verifyRealConsoleStateMatrix({
     await browserClient.send("Network.emulateNetworkConditions",{
       offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
     });
-    const status=page.locator(".consoleRouteLoading[role='status']");
+    const status=page.locator(".consoleRouteLoading[role='status']:visible,.consoleNavigationLoading[role='status']:visible").first();
     try{
       await Promise.all([
         status.waitFor({state:"visible",timeout:15000}),

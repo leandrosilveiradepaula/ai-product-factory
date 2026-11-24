@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link,{useLinkStatus} from "next/link";
 import {usePathname} from "next/navigation";
 import type {ReactNode} from "react";
 
@@ -57,6 +57,12 @@ function active(pathname:string,href:string){
  if(href==="/")return pathname==="/";
  return pathname===href||pathname.startsWith(href+"/");
 }
+// Link-owned pending state follows the actual Next router transition even
+// when the server loading boundary has not arrived over a slow connection.
+function NavigationPending(){
+ const {pending}=useLinkStatus();
+ return pending?<span className="consoleNavigationLoading" role="status" aria-live="polite" aria-label="Carregando página"><span aria-hidden="true" className="consoleNavigationSpinner"/></span>:null;
+}
 function NavLink({href,label,icon,pathname,count,onNavigate}:{
  href:string;label:string;icon:IconName;pathname:string;count?:number|null;
  onNavigate?:(href:string)=>void;
@@ -67,6 +73,7 @@ function NavLink({href,label,icon,pathname,count,onNavigate}:{
  return <Link prefetch={false} onClick={()=>onNavigate?.(href)} className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
   <span className="navIcon"><Icon name={icon}/></span>
   <span className="navItemLabel">{label}</span>
+  <NavigationPending/>
   {href==="/gates"&&count!==null&&count!==undefined&&count>0
    ?<span className="humanAttentionCount">{count}</span>
    :null}
