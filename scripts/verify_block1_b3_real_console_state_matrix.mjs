@@ -161,14 +161,20 @@ export async function verifyRealConsoleStateMatrix({
     // cache, throttle only genuine Chrome HTTP transport, never intercept or
     // fabricate server responses. No prefetch is allowed by the real nav.
     await navigate(page,origin+"/",{heading:"Visão geral",stage:"loading_origin"});
+    // A server-rendered heading can appear before the client hydrates. Wait
+    // for the actual client attention fetch to settle, not a fixed sleep.
+    await page.locator(".topbarAttention.loading").waitFor({state:"hidden",timeout:20000});
+    await page.waitForLoadState("networkidle",{timeout:30000});
     const loadingLink=await openRealRunsLink(page);
+    // Count only the navigation initiated below, never a preceding request.
+    loadingRouteRequests=0;
     browserClient=await context.newCDPSession(page);
     await browserClient.send("Network.enable");
     await browserClient.send("Network.setCacheDisabled",{cacheDisabled:true});
     await browserClient.send("Network.emulateNetworkConditions",{
       offline:false,latency:1800,downloadThroughput:51200,uploadThroughput:51200,
     });
-    const status=page.locator(".consoleRouteLoading[role='status']");
+    const status=page.locator(".consoleRouteLoading[role='status']:visible,.consoleNavigationLoading[role='status']:visible").first();
     try{
       await Promise.all([
         status.waitFor({state:"visible",timeout:15000}),
@@ -191,7 +197,9 @@ export async function verifyRealConsoleStateMatrix({
     const offlineLink=await openRealRunsLink(page);
     await context.setOffline(true);
     offline=true;
+    await page.waitForFunction(()=>navigator.onLine===false);
     await offlineLink.click({timeout:10000});
+    if(new URL(page.url()).pathname!=="/")throw Error("b3_offline_document_not_preserved");
     const error=page.locator(".consoleRouteError[role='alert']");
     try{await error.waitFor({state:"visible",timeout:20000});}
     catch{throw Error("b3_real_states_connection_error_not_rendered");}
@@ -200,7 +208,11 @@ export async function verifyRealConsoleStateMatrix({
     checks.connectionError=true;
     await context.setOffline(false);
     offline=false;
-    await error.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+    await page.waitForFunction(()=>navigator.onLine===true);
+    await Promise.all([
+     page.waitForResponse(r=>new URL(r.url()).origin===origin&&new URL(r.url()).pathname==="/runs"&&r.request().method()==="GET"&&r.ok(),{timeout:30000}),
+     error.getByRole("button",{name:"Tentar novamente",exact:true}).click(),
+    ]);
     await page.getByRole("heading",{name:"Execuções",exact:true})
       .waitFor({state:"visible",timeout:30000});
     checks.recovered=true;

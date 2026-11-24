@@ -85,3 +85,27 @@ test("browser source cannot intercept or fulfill real responses",async()=>{
   assert.ok(api.includes('status:503'));
   assert.ok(!api.includes("route.fulfill"));
 });
+
+test("overview and shared action links do not prefetch authenticated dynamic routes",async()=>{
+ const fs=await import("node:fs/promises");
+ const home=await fs.readFile(new URL("../apps/console/app/page.tsx",import.meta.url),"utf8");
+ const ui=await fs.readFile(new URL("../apps/console/app/ui.tsx",import.meta.url),"utf8");
+ const proof=await fs.readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
+ assert.ok(!/<Link\s+(?!prefetch=)/.test(home),"all Home links must be explicitly non-prefetched");
+ assert.ok(ui.includes('href={href} prefetch={false}'));
+ assert.ok(proof.includes('page.waitForLoadState("networkidle"'));
+ assert.ok(proof.includes('loadingRouteRequests=0;\n    browserClient='));
+});
+
+test("client navigation loading is owned by actual Next link status",async()=>{ const {readFile}=await import("node:fs/promises"); const nav=await readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8"); assert.ok(nav.includes("const {pending}=useLinkStatus()")); assert.ok(nav.includes("pending?<span className=\"consoleNavigationLoading\" role=\"status\"")); });
+
+test("offline navigation suppresses native fallback, then verifies actual retry response",async()=>{
+ const {readFile}=await import("node:fs/promises");
+ const nav=await readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8");
+ const shell=await readFile(new URL("../apps/console/app/shell.tsx",import.meta.url),"utf8");
+ const proof=await readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
+ assert.ok(nav.includes("if(onNavigate?.(href))event.preventDefault()"));
+ assert.ok(shell.includes("if(navigator.onLine)return false"));
+ assert.ok(proof.includes("b3_offline_document_not_preserved"));
+ assert.ok(proof.includes("page.waitForResponse"));
+});

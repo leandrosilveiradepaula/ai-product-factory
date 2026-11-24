@@ -19,13 +19,8 @@ export default async function Home(){
  const recentAudit=audit.slice(0,8);
  const requiresDecision=pending.length>0;
  const hasIncident=pendingProjects.length>0||health.expiredLeases>0||unverifiedControls.length>0;
- // A historical failed or blocked run is operator evidence, not a next step
- // for the owner. Only actionable human gates displace product navigation.
- const overviewAction=requiresDecision
-  ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
-  :trackedProjects.length===0
-   ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
-   :{heading:"Escolha um produto para acompanhar",description:"Veja o que foi comprovado, o que ainda falta e qual é a próxima ação de cada projeto. Ocorrências operacionais continuam disponíveis abaixo e no histórico.",href:"/projects",label:"Abrir projetos",kind:"neutral"};
+ // A next-action banner is justified only by an actionable human gate.
+ // The project grid already provides navigation and its empty state provides creation.
  return <>
   <PageHeader
    eyebrow="Área de trabalho"
@@ -40,24 +35,23 @@ export default async function Home(){
     <p>{factoryCert.state==="certified"?"19 de 19 critérios aprovados no mesmo commit da main. A certificação não substitui a monitorização da operação nem comprova que outros produtos foram entregues.":factoryCert.state==="not_certified"?"Ainda não existe um certificado independente aprovado para o commit atual. Resultados de commits anteriores não são automaticamente válidos.":"Não foi possível confrontar o commit principal com o certificado do Control Plane. Não é seguro afirmar que a versão atual está certificada."}</p>
     {factoryCert.sha?<p className="factoryCertificationMeta">Commit verificado: <code>{factoryCert.sha.slice(0,12)}</code>{factoryCert.persistedAt?" · Certificado em "+new Date(factoryCert.persistedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"}):""}</p>:null}
    </div>
-   <Link href="/evals" className="factoryCertificationLink">Ver evidências e testes →</Link>
+   <Link prefetch={false} href="/evals" className="factoryCertificationLink">Ver evidências e testes →</Link>
   </section>
 
-  <section className={"homeFocus "+overviewAction.kind} aria-label="Próximo passo">
+  {requiresDecision?<section className="homeFocus warning" aria-labelledby="home-decisions-heading">
    <div className="homeFocusContent">
-    <span className="homeFocusEyebrow">Onde começar</span>
-    <h2>{overviewAction.heading}</h2>
-    <p>{overviewAction.description}</p>
+    <h2 id="home-decisions-heading">{pending.length===1?"Uma decisão aguarda sua aprovação":pending.length+" decisões aguardam sua aprovação"}</h2>
+    <p>Revise as solicitações que precisam de uma resposta para o trabalho continuar.</p>
    </div>
-   <ActionLink href={overviewAction.href} variant={requiresDecision||trackedProjects.length===0?"primary":"secondary"}>{overviewAction.label} →</ActionLink>
-  </section>
+   <ActionLink href="/gates" variant="primary">Revisar decisões →</ActionLink>
+  </section>:null}
 
   <section className="section homeProjects" aria-label="Seus projetos">
-   <SectionHeader title="Seus projetos" action={<Link className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
+   <SectionHeader title="Seus projetos" action={<Link prefetch={false} className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
    {trackedProjects.length===0?
     <div className="homeEmptyProject"><EmptyState>Nenhum projeto em acompanhamento. Você pode consultar projetos parados abaixo ou cadastrar um novo.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
    :<div className="homeProjectGrid">
-     {trackedProjects.map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
+     {trackedProjects.map(p=><Link prefetch={false} className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
       <div className="homeProjectHeading"><strong>{p.name}</strong><span className="homeControlLabel">{portfolioProjectControlLabel(p)}</span></div>
       <span className="homeProjectStage">{p.key==="ai-product-factory"&&factoryCert.state==="certified"?"Prontidão da Factory verificada.":<>Última etapa registrada: <b>{humanizeStatus(p.stage)}</b> · funcionamento do produto não comprovado nesta tela.</>}</span>
       {p.pendingTasks.length>0?<span className="homeOperationalNote">{p.pendingTasks.length} {p.pendingTasks.length===1?"tarefa sem encerramento confirmado":"tarefas sem encerramento confirmado"}.</span>:null}
@@ -65,18 +59,18 @@ export default async function Home(){
       <span className="homeProjectFooter">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")} <b>Ver projeto →</b></span>
      </Link>)}
     </div>}
-   {stoppedProjects.length>0?<details className="technicalDetails homeStoppedProjects"><summary>Projetos parados ou inativos ({stoppedProjects.length})</summary><div className="homeStoppedList">{stoppedProjects.map(p=><Link key={p.key} href={"/projects/"+p.key}><strong>{p.name}</strong><span>{portfolioProjectControlLabel(p)} · {p.pendingTasks.length} pendências registradas</span></Link>)}</div></details>:null}
+   {stoppedProjects.length>0?<details className="technicalDetails homeStoppedProjects"><summary>Projetos parados ou inativos ({stoppedProjects.length})</summary><div className="homeStoppedList">{stoppedProjects.map(p=><Link prefetch={false} key={p.key} href={"/projects/"+p.key}><strong>{p.name}</strong><span>{portfolioProjectControlLabel(p)} · {p.pendingTasks.length} pendências registradas</span></Link>)}</div></details>:null}
   </section>
 
   <section className="homeSummary" aria-label="Resumo operacional">
-   <Link href="/projects" className="homeSummaryItem"><span>Projetos em acompanhamento</span><strong>{trackedProjects.length}</strong></Link>
-   <Link href="/runs" className="homeSummaryItem"><span>Execuções com reserva vigente</span><strong>{portfolio.activeLeases}</strong></Link>
-   <Link href="/gates" className={pending.length?"homeSummaryItem warning":"homeSummaryItem"}><span>Decisões humanas pendentes</span><strong>{pending.length}</strong></Link>
-   <Link href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Tarefas a reconciliar</span><strong>{blocked}</strong></Link>
+   <Link prefetch={false} href="/projects" className="homeSummaryItem"><span>Projetos em acompanhamento</span><strong>{trackedProjects.length}</strong></Link>
+   <Link prefetch={false} href="/runs" className="homeSummaryItem"><span>Execuções com reserva vigente</span><strong>{portfolio.activeLeases}</strong></Link>
+   <Link prefetch={false} href="/gates" className={pending.length?"homeSummaryItem warning":"homeSummaryItem"}><span>Decisões humanas pendentes</span><strong>{pending.length}</strong></Link>
+   <Link prefetch={false} href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Tarefas a reconciliar</span><strong>{blocked}</strong></Link>
   </section>
 
   <section className="section homeAttention">
-   <SectionHeader title="O que precisa de atenção" action={<Link className="homeSectionLink" href="/gates">Ver aprovações humanas →</Link>}/> 
+   <SectionHeader title="O que precisa de atenção" action={<Link prefetch={false} className="homeSectionLink" href="/gates">Ver aprovações humanas →</Link>}/> 
    <p className="homeOperationalNote">As pendências técnicas abaixo são agrupadas por projeto e tarefa, não por tentativa. Não equivalem a decisões suas ou falhas em execução agora. Jornadas substituídas ou encerradas permanecem no histórico.</p>
    {!requiresDecision&&!hasIncident?
     <div className="homeQuietStatus" role="status">Nenhuma decisão humana ou tarefa pendente de reconciliação foi encontrada no portfólio em acompanhamento nesta consulta. Isso não comprova a prontidão dos produtos.</div>
@@ -86,7 +80,7 @@ export default async function Home(){
       <h3>{g.projectName||"Projeto"} precisa de uma decisão</h3>
       {g.taskTitle?<p className="muted">{g.taskTitle}</p>:null}
       <p>{Array.isArray(g.reasons)?g.reasons.map(r=>typeof r==="string"?r:JSON.stringify(r)).join(" · "):String(g.reasons||"A decisão humana é necessária para continuar.")}</p>
-      <div className="attentionFooter"><Link href={"/runs/"+g.runId}>Ver execução</Link><ActionLink href="/gates" variant="ghostButton">Revisar decisão</ActionLink></div>
+      <div className="attentionFooter"><Link prefetch={false} href={"/runs/"+g.runId}>Ver execução</Link><ActionLink href="/gates" variant="ghostButton">Revisar decisão</ActionLink></div>
      </article>)}
      {pendingProjects.map(p=>{
       const latest=p.pendingTasks[0];
@@ -96,21 +90,21 @@ export default async function Home(){
        <h3>{p.name}</h3>
        <p>{portfolioPendingReason(latest.error)}</p>
        <p className="homeOperationalNote">Último registro em {new Date(latest.updatedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}. {legacy>0?legacy+" sem jornada vinculada. ":""}Nenhuma retomada é disparada por esta consulta.</p>
-       <div className="attentionFooter"><Link href={"/projects/"+p.key}>Acompanhar projeto →</Link>{latest.runId?<Link href={"/runs/"+latest.runId}>Ver última execução</Link>:null}</div>
+       <div className="attentionFooter"><Link prefetch={false} href={"/projects/"+p.key}>Acompanhar projeto →</Link>{latest.runId?<Link prefetch={false} href={"/runs/"+latest.runId}>Ver última execução</Link>:null}</div>
       </article>;
      })}
-     {health.expiredLeases>0?<article className="card homeReconciliationCard"><h3>{health.expiredLeases} reservas expiradas</h3><p>O histórico indica reservas de execução expiradas. Consulte o diagnóstico para verificar a recuperação.</p><Link href="/runs">Ver execuções →</Link></article>:null}
-     {unverifiedControls.map(p=><article className="card homeReconciliationCard" key={"control-"+p.key}><h3>{p.name}</h3><p>Não foi possível verificar o controle de execução. Não é seguro afirmar que o projeto está em espera.</p><Link href={"/projects/"+p.key}>Ver projeto →</Link></article>)}
+     {health.expiredLeases>0?<article className="card homeReconciliationCard"><h3>{health.expiredLeases} reservas expiradas</h3><p>O histórico indica reservas de execução expiradas. Consulte o diagnóstico para verificar a recuperação.</p><Link prefetch={false} href="/runs">Ver execuções →</Link></article>:null}
+     {unverifiedControls.map(p=><article className="card homeReconciliationCard" key={"control-"+p.key}><h3>{p.name}</h3><p>Não foi possível verificar o controle de execução. Não é seguro afirmar que o projeto está em espera.</p><Link prefetch={false} href={"/projects/"+p.key}>Ver projeto →</Link></article>)}
     </div>}
   </section>
 
   <details className="technicalDetails homeTechnicalDetails">
    <summary>Indicadores técnicos e custos</summary>
    <div className="technicalStats">
-    <Link href="/audit"><span>Eventos de ferramenta</span><strong>{usage.toolEvents}</strong><small>Registros auditados</small></Link>
-    <Link href="/usage"><span>Custo conhecido (USD)</span><strong>{usage.knownCost.toFixed(4)}</strong><small>Acumulado observado</small></Link>
-    <Link href="/usage"><span>Codex real</span><strong>{d.codexCalls}</strong><small>Invocações registradas</small></Link>
-    <Link href="/usage"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>Bloqueia novas chamadas pagas</small></Link>
+    <Link prefetch={false} href="/audit"><span>Eventos de ferramenta</span><strong>{usage.toolEvents}</strong><small>Registros auditados</small></Link>
+    <Link prefetch={false} href="/usage"><span>Custo conhecido (USD)</span><strong>{usage.knownCost.toFixed(4)}</strong><small>Acumulado observado</small></Link>
+    <Link prefetch={false} href="/usage"><span>Codex real</span><strong>{d.codexCalls}</strong><small>Invocações registradas</small></Link>
+    <Link prefetch={false} href="/usage"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>Bloqueia novas chamadas pagas</small></Link>
    </div>
    <div className="homeTechnicalNote">{portfolio.historicalFailureRecords} registros de falha ou bloqueio no histórico completo · {portfolio.stoppedPendingTasks} tarefas sem encerramento confirmado em projetos parados/inativos · {health.queuedRuns} execuções registradas na fila · {health.expiredLeases} reservas expiradas. Valores observados no Control Plane, não prova de execução em tempo real.</div>
   </details>
@@ -122,7 +116,7 @@ export default async function Home(){
      <SectionHeader title="Execuções recentes" action={<ActionLink href="/runs" variant="ghostButton">Todas as execuções</ActionLink>}/>
      <div className="table factoryActivityTable">
       <div className="tableRow tableHeader"><span>Tarefa / execução</span><span>Rota</span><span>Estado</span><span>Tentativas</span><span>Commit</span></div>
-      {recentRuns.length===0?<EmptyState>Nenhuma execução registrada.</EmptyState>:recentRuns.map(r=><Link className="tableRow" href={"/runs/"+r.id} key={r.id}>
+      {recentRuns.length===0?<EmptyState>Nenhuma execução registrada.</EmptyState>:recentRuns.map(r=><Link prefetch={false} className="tableRow" href={"/runs/"+r.id} key={r.id}>
        <div><strong>{r.taskTitle}</strong><div className="muted mono">{r.id.slice(0,12)}</div></div>
        <StatusPill status={r.route||"unrouted"}/>
        <StatusPill status={r.status}/>
@@ -134,7 +128,7 @@ export default async function Home(){
     <section className="section">
      <SectionHeader title="Auditoria recente" action={<ActionLink href="/audit" variant="ghostButton">Abrir auditoria</ActionLink>}/>
      {recentAudit.length===0?<EmptyState>Nenhum evento recente de auditoria.</EmptyState>:<div className="card recentActivity"><div className="timeline">
-      {recentAudit.map(x=><div className="timelineItem" key={x.id}><div className="badgeLine"><StatusPill status={x.actorType}/><strong>{x.eventType}</strong></div><div className="timelineMeta"><span>{new Date(x.createdAt).toLocaleString("pt-BR")}</span>{x.projectName?<span>{x.projectName}</span>:null}{x.runId?<Link href={"/runs/"+x.runId} className="mono">execução {x.runId.slice(0,8)}</Link>:null}</div></div>)}
+      {recentAudit.map(x=><div className="timelineItem" key={x.id}><div className="badgeLine"><StatusPill status={x.actorType}/><strong>{x.eventType}</strong></div><div className="timelineMeta"><span>{new Date(x.createdAt).toLocaleString("pt-BR")}</span>{x.projectName?<span>{x.projectName}</span>:null}{x.runId?<Link prefetch={false} href={"/runs/"+x.runId} className="mono">execução {x.runId.slice(0,8)}</Link>:null}</div></div>)}
      </div></div>}
     </section>
    </div>

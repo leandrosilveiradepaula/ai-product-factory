@@ -100,6 +100,55 @@ export async function commandProjectExecution(projectKey:string,command:"start"|
          generation:result.generation as number,command:result.command as string,wakeStatus};
 }
 
+export type ProjectRecoveryEligibility={status:"eligible"|"not_eligible"|"unavailable";reason:string|null};
+export async function getProjectRecoveryEligibility(projectId:string):Promise<ProjectRecoveryEligibility>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ const unavailable:ProjectRecoveryEligibility={status:"unavailable",reason:null};
+ if(!cfg)return unavailable;
+ try{
+  const response=await fetch(cfg.url+"/rest/v1/rpc/factory_blocked_recovery_eligibility_v2",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_id:projectId}),cache:"no-store"});
+  if(!response.ok)return unavailable;
+  const result=await response.json();
+  if(result?.status==="eligible"&&typeof result.repair_id==="string")return{status:"eligible",reason:null};
+  if(result?.status==="not_eligible"&&typeof result.reason==="string")return{status:"not_eligible",reason:result.reason};
+  return unavailable;
+ }catch{return unavailable;}
+}
+
+export async function restartBlockedProjectWork(projectKey:string,expectedVersion:number,commandId:string){
+ const operator=await requireConsoleOperator();
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(projectKey)||!Number.isSafeInteger(expectedVersion)||expectedVersion<0||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(commandId))throw new Error("Comando de recuperação inválido.");
+ const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control Plane indisponível.");
+ const response=await fetch(cfg.url+"/rest/v1/rpc/factory_restart_blocked_work_v2",{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey,p_command_id:commandId,p_expected_version:expectedVersion,p_actor_id:operator.userId}),cache:"no-store"});
+ if(!response.ok)throw new Error("O reparo não é elegível ou o estado foi alterado. Atualize a página.");
+ const result=await response.json();
+ if(!result||!["queued","claimed","recovering","completed","blocked"].includes(result.status)||typeof result.request_id!=="string"||typeof result.run_id!=="string"||typeof result.task_id!=="string")throw new Error("Recibo de recuperação inválido.");
+ let wakeStatus:"requested"|"failed"|"unconfigured"|"not_needed"="not_needed";
+ if(result.status==="queued"){
+  try{wakeStatus=await (await import("./project-control-wake-outbox")).deliverProjectControlWake(commandId);}
+  catch{wakeStatus="failed";console.warn("blocked_work_recovery_wake_will_retry");}
+ }
+ return {...result,wakeStatus};
+}
+
+export type ProjectWorkObservation="running"|"recorded"|"idle"|"unavailable";
+export async function getProjectWorkObservation(taskIds:string[]):Promise<ProjectWorkObservation>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg||!Array.isArray(taskIds)||taskIds.length>500||taskIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))return "unavailable";
+ if(!taskIds.length)return "idle";
+ try{
+  const response=await fetch(cfg.url+"/rest/v1/factory_runs?select=status,started_at,lease_owner,lease_expires_at&task_id=in.("+taskIds.map(encodeURIComponent).join(",")+")&status=in.(created,queued,running,implementing,ci_pending,review_ready,preview_ready)&limit=500",{headers:cfg.headers,cache:"no-store"});
+  if(!response.ok)return "unavailable";
+  const rows=await response.json();if(!Array.isArray(rows)||rows.length>=500)return "unavailable";
+  const date=(v:unknown)=>typeof v==="string"&&Number.isFinite(Date.parse(v));
+  if(rows.some((r:any)=>["running","implementing"].includes(r.status)&&date(r.started_at)&&typeof r.lease_owner==="string"&&r.lease_owner&&date(r.lease_expires_at)&&Date.parse(r.lease_expires_at)>Date.now()))return "running";
+  if(rows.some((r:any)=>["created","queued"].includes(r.status)&&r.started_at==null))return "recorded";
+  return "idle";
+ }catch{return "unavailable";}
+}
+
 export async function enqueueProjectBootstrap(projectKey:string){await requireConsoleOperator();const cfg=getSupabaseServerConfig();if(!cfg)throw new Error("Control plane credentials are not configured");const response=await fetch(`${cfg.url}/rest/v1/rpc/factory_enqueue_project_bootstrap`,{method:"POST",headers:{...cfg.headers,"Content-Type":"application/json"},body:JSON.stringify({p_project_key:projectKey}),cache:"no-store"});if(!response.ok)throw new Error("Não foi possível enfileirar o ciclo inicial da Factory.");return response.json() as Promise<{project_id:string;task_id:string;run_id:string;created:boolean}>;}
 
 export async function enqueueProjectContinuation(projectKey:string,request:string,attachmentCount=0,requestedId?:string){

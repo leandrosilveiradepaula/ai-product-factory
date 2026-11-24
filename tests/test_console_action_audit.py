@@ -159,3 +159,15 @@ class ConsoleActionAuditTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
+class OperationalContinuityActionTests(unittest.TestCase):
+    def test_restart_uses_verified_backend_not_registration_state(self):
+        detail=(APP/"projects"/"[key]"/"page.tsx").read_text()
+        control=(ROOT/"apps"/"console"/"lib"/"control-plane.ts").read_text()
+        self.assertIn('getProjectRecoveryEligibility(p.id)',detail)
+        self.assertIn('recoveryEligibility.status==="eligible"',detail)
+        self.assertIn('restartBlockedWork:controlProject',detail)
+        self.assertIn('/rest/v1/rpc/factory_restart_blocked_work_v2',control)
+        self.assertIn('getProjectWorkObservation(p.tasks.map',detail)
+        self.assertIn('Sem execução ativa',detail)
+        self.assertNotIn('executionControl.state==="running"?"Em execução"',detail)

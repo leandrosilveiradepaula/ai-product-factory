@@ -915,13 +915,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 
 /* Home: one clear next step, real projects, operational exceptions.
    All technical detail stays present inside explicitly named disclosures. */
-.homeFocus{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:24px 26px;border:1px solid #354663;border-radius:12px;background:#1b2740}
+.homeFocus{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border:1px solid #354663;border-radius:10px;background:#1b2740}
 .homeFocus.warning{border-color:#7c622b;background:#2c2419}
 .homeFocusContent{min-width:0;flex:1}
-.homeFocusEyebrow{display:block;color:#adc6ff;font-size:12px;font-weight:750;letter-spacing:.045em;margin-bottom:7px}
-.homeFocus.warning .homeFocusEyebrow{color:#ffdf8a}
-.homeFocus h2{margin:0;color:#f1f5fd;font-size:clamp(18px,2.3vw,24px);line-height:1.28;letter-spacing:-.015em}
-.homeFocus p{margin:8px 0 0;max-width:760px;color:#b8c4d6;font-size:14px;line-height:1.55}
+.homeFocus h2{margin:0;color:#f1f5fd;font-size:clamp(16px,2vw,20px);line-height:1.35;letter-spacing:-.015em}
+.homeFocus p{margin:4px 0 0;max-width:760px;color:#b8c4d6;font-size:14px;line-height:1.5}
 .homeFocus .linkButton{min-height:44px;flex:0 0 auto;white-space:normal;text-align:center;display:inline-flex;align-items:center;justify-content:center}
 .homeProjects{margin-top:26px}
 .homeSectionLink{color:#adc6ff;text-decoration:none;font-size:13px;font-weight:650}
@@ -1008,7 +1006,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
  .mobileQuickLink span{font-size:18px;line-height:1}
  .mobileQuickLink.active{background:#273b5d;color:#f0f5ff;box-shadow:inset 0 0 0 1px #527bb7}
  .mobileQuickCount{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;border-radius:50%;background:#fbbf24;color:#251900;font-size:11px;flex:0 0 auto}
- .homeFocus{padding:20px;align-items:flex-start;flex-direction:column;gap:15px}
+ .homeFocus{padding:14px;align-items:flex-start;flex-direction:column;gap:10px}
  .homeFocus .linkButton{width:100%}
  .homeProjectGrid{grid-template-columns:1fr}
  .projectMoreActionsMenu{right:0}
@@ -1245,3 +1243,8 @@ body{line-height:1.55}
 .homeReconciliationCard h3,.homeReconciliationCard p{margin:0;overflow-wrap:anywhere}
 .homeReconciliationCard .attentionFooter{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;padding:0;background:transparent}
 .homeReconciliationCard a{min-height:44px;display:inline-flex;align-items:center;color:#adc6ff}
+
+/* Real router pending state: no artificial minimum delay. */
+.consoleNavigationLoading{display:inline-flex;align-items:center;flex:0 0 16px;justify-content:center}
+.consoleNavigationSpinner{display:block;width:14px;height:14px;border:2px solid #66748b;border-top-color:#adc6ff;border-radius:50%;animation:consoleSpin .8s linear infinite}
+@media(prefers-reduced-motion:reduce){.consoleNavigationSpinner{animation:none}}
