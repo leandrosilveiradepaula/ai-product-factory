@@ -65,12 +65,12 @@ function NavigationPending(){
 }
 function NavLink({href,label,icon,pathname,count,onNavigate}:{
  href:string;label:string;icon:IconName;pathname:string;count?:number|null;
- onNavigate?:(href:string)=>void;
+ onNavigate?:(href:string)=>boolean;
 }){
  const isActive=active(pathname,href);
  // Dynamic authenticated Control Plane pages must not be speculatively fetched.
  // This also guarantees a user-initiated client transition observes genuine loading.
- return <Link prefetch={false} onClick={()=>onNavigate?.(href)} className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
+ return <Link prefetch={false} onNavigate={event=>{if(onNavigate?.(href))event.preventDefault();}} className={isActive?"navItem active":"navItem"} href={href} aria-current={isActive?"page":undefined}>
   <span className="navIcon"><Icon name={icon}/></span>
   <span className="navItemLabel">{label}</span>
   <NavigationPending/>
@@ -80,7 +80,7 @@ function NavLink({href,label,icon,pathname,count,onNavigate}:{
  </Link>;
 }
 
-export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:number|null;onNavigate?:(href:string)=>void}){
+export function ConsoleNav({attentionCount=null,onNavigate}:{attentionCount?:number|null;onNavigate?:(href:string)=>boolean}){
  const pathname=usePathname();
  const advancedActive=advancedGroups.some(group=>group.items.some(item=>active(pathname,item.href)));
  return <nav className="sidebarNav" aria-label="Navegação da Factory">

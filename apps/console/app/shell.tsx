@@ -46,10 +46,11 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
   return()=>window.removeEventListener("offline",handleOffline);
  },[]);
  const rememberNavigation=useCallback((href:string)=>{
-  if(!navigator.onLine){
-   pendingTransportRoute.current=href;
-   setTransportDisconnected(true);
-  }
+  if(navigator.onLine)return false;
+  pendingTransportRoute.current=href;
+  setTransportDisconnected(true);
+  // Keep the current document mounted until the recorded navigation is retried.
+  return true;
  },[]);
  const retryTransport=()=>{
   if(!navigator.onLine)return;
@@ -163,9 +164,9 @@ export function ConsoleShell({children,environmentLabel}:{children:ReactNode;env
    </main>
   </div>
   <nav className="mobileQuickNav" aria-label="Navegação rápida">
-   <Link href="/" onClick={()=>rememberNavigation("/")} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
-   <Link href="/projects" onClick={()=>rememberNavigation("/projects")} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
-   <Link href="/gates" onClick={()=>rememberNavigation("/gates")} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.pendingHumanGateCount>0?<strong className="mobileQuickCount">{attention.pendingHumanGateCount}</strong>:null}</Link>
+   <Link href="/" prefetch={false} onNavigate={event=>{if(rememberNavigation("/"))event.preventDefault();}} aria-current={pathname==="/"?"page":undefined} className={pathname==="/"?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z"/></svg>Início</Link>
+   <Link href="/projects" prefetch={false} onNavigate={event=>{if(rememberNavigation("/projects"))event.preventDefault();}} aria-current={pathname.startsWith("/projects")?"page":undefined} className={pathname.startsWith("/projects")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 9h8M8 13h8M8 17h6"/></svg>Projetos</Link>
+   <Link href="/gates" prefetch={false} onNavigate={event=>{if(rememberNavigation("/gates"))event.preventDefault();}} aria-current={pathname.startsWith("/gates")?"page":undefined} className={pathname.startsWith("/gates")?"mobileQuickLink active":"mobileQuickLink"}><svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4 12 5 5L20 6"/></svg>Decisões{attention&&attention.pendingHumanGateCount>0?<strong className="mobileQuickCount">{attention.pendingHumanGateCount}</strong>:null}</Link>
   </nav>
  </div>;
 }

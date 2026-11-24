@@ -70,8 +70,8 @@ function localApi(req,res){
  let u;
  try{u=new URL(req.url,"http://127.0.0.1");}
  catch {violations.push("invalid_internal_route");send(res,400,{});return;}
- // The only write-shaped fixture is Supabase Auth's local token-renewal
- // handshake. It changes no data and rejects every other POST.
+ // The only allowed POSTs are the exact, inert Auth renewal and status/eligibility RPCs.
+ // All other POSTs are rejected; none can mutate fixture or real project data.
  if(req.method==="POST"&&u.pathname==="/auth/v1/token"&&
     u.searchParams.get("grant_type")==="refresh_token"){
   if(req.headers.apikey!==PUB_KEY){violations.push("invalid_refresh_key");send(res,403,{});return;}
@@ -92,6 +92,21 @@ function localApi(req,res){
  if(req.method==="POST"&&u.pathname==="/rest/v1/rpc/factory_get_github_app_status"&&req.headers.apikey===MOCK_KEY){
   // Read-only status RPC, not a write; no external GitHub or database access.
   send(res,200,{configured:false,status:"unavailable"});return;
+ }
+ if(req.method==="POST"&&u.pathname==="/rest/v1/rpc/factory_blocked_recovery_eligibility_v2"){
+  if(!requireLocalAuth(req,u)){violations.push("unauthorized_eligibility_read");send(res,403,{});return;}
+  let raw="";
+  req.on("data",chunk=>{raw+=chunk.toString();if(raw.length>1024)req.destroy();});
+  req.on("end",()=>{
+   let payload;
+   try{payload=JSON.parse(raw);}catch{payload=null;}
+   if(!payload||Object.keys(payload).length!==1||payload.p_project_id!==B3_PROJECT_ID){
+    violations.push("invalid_eligibility_read");send(res,400,{});return;
+   }
+   // Inert, read-only result. The real SQL dry-run and ACL are tested separately.
+   send(res,200,{status:"not_eligible",reason:"no_resumable_repair"});
+  });
+  return;
  }
  if(req.method!=="GET"){
   violations.push("mutation_attempt:"+req.method+":"+u.pathname);send(res,405,{});return;
@@ -343,18 +358,24 @@ test("B3: real Next client navigation renders loading then true offline error an
   });
 
   // New page document clears client-side router cache; the menu's Link has
-  // prefetch=false. A genuine offline transition must render app/error.tsx,
-  // not Chrome's own network error or a synthetic intercepted response.
+  // prefetch=false. Offline navigation must retain the current document and show
+  // the shell's transport alert rather than a failed browser document.
   await page.goto(appOrigin+"/",{waitUntil:"networkidle",timeout:45000});
   const offlineLink=await openRuns();
   await context.setOffline(true);offline=true;
+  await page.waitForFunction(()=>navigator.onLine===false);
   await offlineLink.click({timeout:10000});
+  assert.equal(new URL(page.url()).pathname,"/","offline navigation must preserve the current document");
   const transportError=page.locator(".consoleRouteError[role='alert']");
   await transportError.waitFor({state:"visible",timeout:20000});
   await transportError.getByRole("button",{name:"Tentar novamente",exact:true})
    .waitFor({state:"visible",timeout:10000});
   await context.setOffline(false);offline=false;
-  await transportError.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+  await page.waitForFunction(()=>navigator.onLine===true);
+  await Promise.all([
+   page.waitForResponse(r=>new URL(r.url()).origin===appOrigin&&new URL(r.url()).pathname==="/runs"&&r.request().method()==="GET"&&r.ok()),
+   transportError.getByRole("button",{name:"Tentar novamente",exact:true}).click(),
+  ]);
   await page.getByRole("heading",{name:"Execuções",exact:true})
    .waitFor({state:"visible",timeout:30000});
   assert.equal(new URL(page.url()).pathname,"/runs");

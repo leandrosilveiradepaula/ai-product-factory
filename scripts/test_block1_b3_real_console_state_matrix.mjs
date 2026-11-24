@@ -98,3 +98,14 @@ test("overview and shared action links do not prefetch authenticated dynamic rou
 });
 
 test("client navigation loading is owned by actual Next link status",async()=>{ const {readFile}=await import("node:fs/promises"); const nav=await readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8"); assert.ok(nav.includes("const {pending}=useLinkStatus()")); assert.ok(nav.includes("pending?<span className=\"consoleNavigationLoading\" role=\"status\"")); });
+
+test("offline navigation suppresses native fallback, then verifies actual retry response",async()=>{
+ const {readFile}=await import("node:fs/promises");
+ const nav=await readFile(new URL("../apps/console/app/nav.tsx",import.meta.url),"utf8");
+ const shell=await readFile(new URL("../apps/console/app/shell.tsx",import.meta.url),"utf8");
+ const proof=await readFile(new URL("./verify_block1_b3_real_console_state_matrix.mjs",import.meta.url),"utf8");
+ assert.ok(nav.includes("if(onNavigate?.(href))event.preventDefault()"));
+ assert.ok(shell.includes("if(navigator.onLine)return false"));
+ assert.ok(proof.includes("b3_offline_document_not_preserved"));
+ assert.ok(proof.includes("page.waitForResponse"));
+});

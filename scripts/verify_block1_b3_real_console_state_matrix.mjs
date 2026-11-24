@@ -197,7 +197,9 @@ export async function verifyRealConsoleStateMatrix({
     const offlineLink=await openRealRunsLink(page);
     await context.setOffline(true);
     offline=true;
+    await page.waitForFunction(()=>navigator.onLine===false);
     await offlineLink.click({timeout:10000});
+    if(new URL(page.url()).pathname!=="/")throw Error("b3_offline_document_not_preserved");
     const error=page.locator(".consoleRouteError[role='alert']");
     try{await error.waitFor({state:"visible",timeout:20000});}
     catch{throw Error("b3_real_states_connection_error_not_rendered");}
@@ -206,7 +208,11 @@ export async function verifyRealConsoleStateMatrix({
     checks.connectionError=true;
     await context.setOffline(false);
     offline=false;
-    await error.getByRole("button",{name:"Tentar novamente",exact:true}).click();
+    await page.waitForFunction(()=>navigator.onLine===true);
+    await Promise.all([
+     page.waitForResponse(r=>new URL(r.url()).origin===origin&&new URL(r.url()).pathname==="/runs"&&r.request().method()==="GET"&&r.ok(),{timeout:30000}),
+     error.getByRole("button",{name:"Tentar novamente",exact:true}).click(),
+    ]);
     await page.getByRole("heading",{name:"Execuções",exact:true})
       .waitFor({state:"visible",timeout:30000});
     checks.recovered=true;
