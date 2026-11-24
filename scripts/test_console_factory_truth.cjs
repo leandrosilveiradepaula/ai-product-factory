@@ -92,3 +92,44 @@ test("Console must not confuse administrative stage, approval and integration",(
  assert.doesNotMatch(shell,/\{attention\.count\} \{attention\.count===1\?"decisão pendente"/);
  assert.match(route,/pendingHumanGateCount,pendingIntegrationActionCount,projects/);
 });
+
+test("approval inbox never counts GitHub integration setup as a human release gate",()=>{
+ const pathToHelper=path.join(root,"apps/console/lib/gate-attention.ts");
+ const helperSource=fs.readFileSync(pathToHelper,"utf8");
+ const output=ts.transpileModule(helperSource,{compilerOptions:{
+  module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,
+ },reportDiagnostics:true});
+ assert.equal((output.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error).length,0);
+ const helper={};
+ vm.runInNewContext(output.outputText,{exports:helper},{timeout:5000});
+ const count=helper.countGateAttention;
+ assert.equal(typeof count,"function");
+ const cases=[
+  {human:0,install:1,configured:true,expectedHuman:0,expectedIntegration:1},
+  {human:2,install:0,configured:true,expectedHuman:2,expectedIntegration:0},
+  {human:0,install:4,configured:false,expectedHuman:0,expectedIntegration:1},
+  {human:3,install:2,configured:true,expectedHuman:3,expectedIntegration:2},
+ ];
+ for(const row of cases){
+  const result=count(row.human,row.install,row.configured);
+  assert.equal(result.pendingHumanGateCount,row.expectedHuman);
+  assert.equal(result.pendingIntegrationActionCount,row.expectedIntegration);
+ }
+ for(const args of [[-1,1,true],[0,-1,true],[1.5,0,true],[0,0,null]]){
+  assert.throws(()=>count(...args),/Invalid gate-attention counters/);
+ }
+ const gates=fs.readFileSync(path.join(root,"apps/console/app/gates/page.tsx"),"utf8");
+ const api=fs.readFileSync(path.join(root,"apps/console/app/api/human-attention/route.ts"),"utf8");
+ assert.match(gates,/countGateAttention\(pending\.length,githubInstallActions\.length,githubApp\.configured\)/);
+ assert.match(gates,/pendingHumanGateCount>0\?"attention":"healthy"/);
+ assert.match(gates,/0 decisões humanas pendentes/);
+ assert.match(gates,/Configurações de integração/);
+ assert.match(gates,/pendingIntegrationActionCount>0/);
+ assert.match(gates,/className="card gateCard integration"/);
+ assert.match(gates,/pending\.length===0\?<div className="humanGateEmpty"/);
+ assert.doesNotMatch(gates,/const pendingCount=/);
+ assert.doesNotMatch(gates,/críticas pendentes/);
+ assert.match(api,/const pendingHumanGateCount=pending\.length/);
+ assert.match(api,/const pendingIntegrationActionCount=githubApp\.configured\?installActions\.length:1/);
+ assert.match(api,/pendingHumanGateCount,pendingIntegrationActionCount,projects/);
+});

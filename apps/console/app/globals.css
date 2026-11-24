@@ -1226,3 +1226,10 @@ body{line-height:1.55}
 .homeFactoryProof{font-size:13px;font-weight:700;color:#8ad7c5}
 .homeFactoryProof.unverified{color:#c2d0e1}
 @media(max-width:760px){.factoryCertification{flex-direction:column;align-items:flex-start;padding:19px}.factoryCertificationLink{width:100%;justify-content:flex-start}}
+
+/* Separate human approval gates from optional integration setup (B3 owner truth). */
+.main .integrationActionsIntro{padding:16px 18px;border:1px solid #35475e;border-radius:8px;background:#172131;display:grid;gap:7px}
+.main .integrationActionsIntro h2{margin:0;font-size:16px;line-height:1.4;color:#e5efff}
+.main .integrationActionsIntro p{margin:0;max-width:76ch;font-size:13px;line-height:1.6;color:#b7c8dc}
+.main .gateCard.integration{border-top:3px solid #587ea6}
+@media(max-width:700px){.main .integrationActionsIntro{padding:14px}}
