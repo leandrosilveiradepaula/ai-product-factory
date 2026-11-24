@@ -86,7 +86,10 @@ test("Console must not confuse administrative stage, approval and integration",(
  assert.match(page,/portfolioProjectControlLabel\(p\)/);
  assert.match(page,/portfolio\.historicalFailureRecords/);
  assert.doesNotMatch(page,/health\.failedRuns\+health\.blockedRuns/);
- assert.match(page,/heading:"Escolha um produto para acompanhar"/);
+ assert.doesNotMatch(page,/Onde começar|Escolha um produto para acompanhar|overviewAction/);
+ assert.match(page,/\{requiresDecision\?<section className="homeFocus warning"/);
+ assert.match(page,/id="home-decisions-heading"/);
+ assert.match(page,/<ActionLink href="\/gates" variant="primary">Revisar decisões/);
  assert.match(page,/const hasIncident=pendingProjects\.length>0\|\|health\.expiredLeases>0\|\|unverifiedControls\.length>0/);
  assert.match(page,/const pendingProjects=trackedProjects\.filter\(p=>p\.pendingTasks\.length>0\)/);
  assert.match(page,/const blocked=portfolio\.trackedPendingTasks/);
@@ -95,7 +98,9 @@ test("Console must not confuse administrative stage, approval and integration",(
  assert.doesNotMatch(page,/attentionCard danger/);
  assert.match(page,/!requiresDecision&&!hasIncident/);
  assert.doesNotMatch(page,/:hasIncident\s*\?/);
- assert.match(page,/href:"\/projects",label:"Abrir projetos"/);
+ assert.doesNotMatch(page,/Abrir projetos/);
+ assert.equal((page.match(/href="\/projects\/new"/g)||[]).length,1);
+ assert.match(page,/trackedProjects.length===0\?\s*<div className="homeEmptyProject"/);
  assert.match(shell,/attention\.pendingHumanGateCount>0/);
  assert.match(shell,/pendingIntegrationActionCount/);
  assert.match(shell,/configuração de integração/);

@@ -839,6 +839,10 @@ test("B3: sweep the complete Console surface inventory with actual axe on inert 
         assert.equal(await page.locator("h1.title").count(),1,
           "real protected screen must render a title: "+route.name);
         if(route.name==="overview"){
+          assert.equal(await page.locator(".homeFocus").count(),0,"generic next-step banner must not duplicate the project grid");
+          assert.equal(await page.getByText("Onde começar",{exact:true}).count(),0);
+          assert.equal(await page.getByText("Escolha um produto para acompanhar",{exact:true}).count(),0);
+          assert.equal(await page.locator("section.factoryCertification + section.homeProjects").count(),1,"project grid must immediately follow certification when no human decision is needed");
           const summary=page.locator("section.homeSummary");
           for(const [label,count] of [["Projetos em acompanhamento","1"],["Execuções com reserva vigente","0"],["Decisões humanas pendentes","0"],["Tarefas a reconciliar","0"]]){
             const item=summary.locator(".homeSummaryItem").filter({hasText:label});

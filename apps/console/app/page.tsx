@@ -19,13 +19,8 @@ export default async function Home(){
  const recentAudit=audit.slice(0,8);
  const requiresDecision=pending.length>0;
  const hasIncident=pendingProjects.length>0||health.expiredLeases>0||unverifiedControls.length>0;
- // A historical failed or blocked run is operator evidence, not a next step
- // for the owner. Only actionable human gates displace product navigation.
- const overviewAction=requiresDecision
-  ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
-  :trackedProjects.length===0
-   ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
-   :{heading:"Escolha um produto para acompanhar",description:"Veja o que foi comprovado, o que ainda falta e qual é a próxima ação de cada projeto. Ocorrências operacionais continuam disponíveis abaixo e no histórico.",href:"/projects",label:"Abrir projetos",kind:"neutral"};
+ // A next-action banner is justified only by an actionable human gate.
+ // The project grid already provides navigation and its empty state provides creation.
  return <>
   <PageHeader
    eyebrow="Área de trabalho"
@@ -43,14 +38,13 @@ export default async function Home(){
    <Link href="/evals" className="factoryCertificationLink">Ver evidências e testes →</Link>
   </section>
 
-  <section className={"homeFocus "+overviewAction.kind} aria-label="Próximo passo">
+  {requiresDecision?<section className="homeFocus warning" aria-labelledby="home-decisions-heading">
    <div className="homeFocusContent">
-    <span className="homeFocusEyebrow">Onde começar</span>
-    <h2>{overviewAction.heading}</h2>
-    <p>{overviewAction.description}</p>
+    <h2 id="home-decisions-heading">{pending.length===1?"Uma decisão aguarda sua aprovação":pending.length+" decisões aguardam sua aprovação"}</h2>
+    <p>Revise as solicitações que precisam de uma resposta para o trabalho continuar.</p>
    </div>
-   <ActionLink href={overviewAction.href} variant={requiresDecision||trackedProjects.length===0?"primary":"secondary"}>{overviewAction.label} →</ActionLink>
-  </section>
+   <ActionLink href="/gates" variant="primary">Revisar decisões →</ActionLink>
+  </section>:null}
 
   <section className="section homeProjects" aria-label="Seus projetos">
    <SectionHeader title="Seus projetos" action={<Link className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
