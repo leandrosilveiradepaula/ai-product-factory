@@ -134,3 +134,44 @@ test("historical failed run plus blocked run counted exactly once each",()=>{
  assert.equal(summary.deadLetterRuns,1);
  assert.equal(summary.incidents.length,2);
 });
+
+// Portfolio tests exercise the same helper used by the actual authenticated Home.
+const {summarizePortfolioOverview,portfolioProjectControlLabel,portfolioPendingReason}=sandboxExports;
+const project=(n,key)=>({id:runId(n),created_at:time(n),updated_at:time(n),project_key:key,name:key,lifecycle_stage:"operations",is_active:true});
+const task=(n,p,status,journey=null)=>({id:runId(n),created_at:time(n),updated_at:time(n),project_id:p.id,journey_id:journey,title:"task "+n,status});
+const attempt=(n,t,status,error=null)=>({...run(n),task_id:t.id,journey_id:t.journey_id,status,last_error:error,lease_owner:null});
+test("portfolio groups duplicate failures, excludes recovered and superseded tasks, keeps stopped records separate",()=>{
+ const factory=project(100,"factory"),crm=project(101,"crm"),stopped=project(102,"service-desk");
+ const superseded={id:runId(103),project_id:crm.id,created_at:time(103),state:"superseded"};
+ const a=task(110,factory,"failed"),b=task(111,crm,"completed"),c=task(112,crm,"blocked",superseded.id),d=task(113,stopped,"failed");
+ const rows=[attempt(0,a,"failed","planning has no actionable tasks or decisions"),attempt(1,a,"failed"),attempt(2,b,"blocked"),attempt(3,c,"blocked"),attempt(4,d,"failed")];
+ const o=summarizePortfolioOverview(rows,[a,b,c,d],[factory,crm,stopped],[superseded],new Map([[factory.id,"running"],[crm.id,"running"],[stopped.id,"stopped"]]),Date.now());
+ assert.equal(o.historicalFailureRecords,5);
+ assert.equal(o.trackedPendingTasks,1);
+ assert.equal(o.stoppedPendingTasks,1);
+ assert.equal(o.activeLeases,0);
+ const f=o.projects.find(x=>x.key==="factory");
+ assert.equal(f.pendingTasks.length,1);
+ assert.equal(f.pendingTasks[0].runId,runId(0));
+ assert.equal(f.pendingTasks[0].legacy,true);
+ assert.equal(portfolioProjectControlLabel(f),"Pendência técnica registrada");
+ assert.equal(portfolioProjectControlLabel(o.projects.find(x=>x.key==="service-desk")),"Parado");
+ assert.match(portfolioPendingReason(f.pendingTasks[0].error),/não encontrou tarefas/);
+});
+test("unresolved tasks without attempts and unknown control are never silently healthy",()=>{
+ const p=project(100,"unknown"),t=task(110,p,"blocked");
+ const o=summarizePortfolioOverview([],[t],[p],[],new Map(),Date.now());
+ assert.equal(o.trackedPendingTasks,1);
+ assert.equal(o.projects[0].pendingTasks[0].runId,null);
+ assert.equal(portfolioProjectControlLabel(o.projects[0]),"Controle não verificável");
+});
+test("closed journey cannot hide a different live journey; cross-project lineage and missing rows fail closed",()=>{
+ const p=project(100,"one"),q=project(101,"two");
+ const j={id:runId(102),created_at:time(102),project_id:p.id,state:"active"};
+ const t=task(110,p,"blocked",j.id);
+ const o=summarizePortfolioOverview([attempt(0,t,"blocked")],[t],[p,q],[j],new Map([[p.id,"running"],[q.id,"running"]]),Date.now());
+ assert.equal(o.trackedPendingTasks,1);
+ assert.equal(o.projects.find(x=>x.key==="one").pendingTasks[0].legacy,false);
+ assert.throws(()=>summarizePortfolioOverview([attempt(0,t,"blocked")],[t],[p,q],[{...j,project_id:q.id}],new Map(),Date.now()),/Linhagem/);
+ assert.throws(()=>summarizePortfolioOverview([attempt(0,t,"blocked")],[],[p,q],[j],new Map(),Date.now()),/sem tarefa/);
+});
