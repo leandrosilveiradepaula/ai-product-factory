@@ -1,7 +1,7 @@
 import {createHash} from "crypto";import {requireConsoleAdmin,requireConsoleOperator} from "./auth-server";
 import {requestIntakeWorkerWake} from "./intake-worker-wake";
 import {wakeApprovedPlanningDecision} from "./planning-decision-wake";
-import {readCompleteOperationalRows,summarizeOperationalHealth} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
+import {readCompleteOperationalRows,summarizeOperationalHealth,summarizePortfolioOverview,type PortfolioOverview} from "./operational-health-inventory";import {getSupabaseServerConfig} from "./supabase-server";import {getReleaseMergeReadiness,getReleaseMergeReadinessForPr,type ReleaseMergeReadiness} from "./release-operator";import {getMigrationApplyReadiness} from "./migration-operator";
 export type Project={key:string;name:string;stage:string;status:string;updatedAt:string};
 export type Dashboard={projects:Project[];activeRuns:number;pendingGates:number;codexCalls:number;modelCalls:number;failedRuns:number};
 function slugify(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,64)}
@@ -665,6 +665,25 @@ export async function getOperationsHealth():Promise<OperationsHealth>{
   }
  }
  return summarizeOperationalHealth(runs,usage,failedTasks,Date.now());
+}
+
+// Read-only portfolio view; no scheduler or recovery mutation is triggered by opening the page.
+export async function getPortfolioOverview():Promise<PortfolioOverview>{
+ await requireConsoleOperator();
+ const cfg=serverHeaders();
+ if(!cfg)throw new Error("Control Plane indisponível; não é seguro mostrar o portfólio.");
+ const [runs,tasks,projects,journeys]=await Promise.all([
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_runs",select:"id,task_id,journey_id,status,last_error,lease_owner,lease_expires_at,created_at",idKind:"uuid"}),
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_tasks",select:"id,project_id,journey_id,title,status,updated_at,created_at",idKind:"uuid"}),
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_projects",select:"id,project_key,name,lifecycle_stage,is_active,updated_at,created_at",idKind:"uuid"}),
+  readCompleteOperationalRows({url:cfg.url,headers:cfg.headers,table:"factory_journeys",select:"id,project_id,state,created_at",idKind:"uuid"}),
+ ]);
+ const controls=new Map(await Promise.all(projects.map(async p=>{
+  const id=String(p.id);
+  const control=await getProjectExecutionControl(id);
+  return [id,control.state] as const;
+ })));
+ return summarizePortfolioOverview(runs,tasks,projects,journeys,controls,Date.now());
 }
 
 export type WorkQueueItem={id:string;title:string;status:string;complexity:string;externalKey:string|null;updatedAt:string;projectKey:string;projectName:string;requiresReconciliation:boolean;parentStatus:string|null};

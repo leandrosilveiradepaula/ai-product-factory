@@ -1,26 +1,29 @@
 import Link from "next/link";
-import {isProviderCreditExhausted} from "../lib/operational-health-inventory";
+import {portfolioProjectControlLabel,portfolioPendingReason} from "../lib/operational-health-inventory";
 import {getCurrentFactoryCertificate} from "../lib/factory-certification";
-import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getRuns,getUsageOverview} from "../lib/control-plane";
+import {getAuditEvents,getDashboard,getHumanGates,getOperationsHealth,getPortfolioOverview,getRuns,getUsageOverview} from "../lib/control-plane";
 import {ActionLink,EmptyState,humanizeStatus,PageHeader,SectionHeader,StatusPill} from "./ui";
 
 export default async function Home(){
- const [d,health,usage,gates,runs,audit,factoryCert]=await Promise.all([
-  getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(30,true),getRuns(12),getAuditEvents(12),getCurrentFactoryCertificate(),
+ const [d,health,usage,gates,runs,audit,factoryCert,portfolio]=await Promise.all([
+  getDashboard(),getOperationsHealth(),getUsageOverview(),getHumanGates(30,true),getRuns(12),getAuditEvents(12),getCurrentFactoryCertificate(),getPortfolioOverview(),
  ]);
  // Historical or superseded pending rows are not operator actions.
  const pending=gates.filter(g=>g.status==="pending"&&g.actionable);
- const incidents=health.incidents.slice(0,2);
- const blocked=health.failedRuns+health.blockedRuns;
+ const trackedProjects=portfolio.projects.filter(p=>p.active&&p.controlState!=="stopped");
+ const stoppedProjects=portfolio.projects.filter(p=>!p.active||p.controlState==="stopped");
+ const pendingProjects=trackedProjects.filter(p=>p.pendingTasks.length>0);
+ const unverifiedControls=trackedProjects.filter(p=>p.controlState==="unavailable");
+ const blocked=portfolio.trackedPendingTasks;
  const recentRuns=runs.slice(0,8);
  const recentAudit=audit.slice(0,8);
  const requiresDecision=pending.length>0;
- const hasIncident=incidents.length>0;
+ const hasIncident=pendingProjects.length>0||health.expiredLeases>0||unverifiedControls.length>0;
  // A historical failed or blocked run is operator evidence, not a next step
  // for the owner. Only actionable human gates displace product navigation.
  const overviewAction=requiresDecision
   ?{heading:"Você tem decisões pendentes",description:"Existem aprovações humanas aguardando uma resposta. Revise cada motivo antes de decidir.",href:"/gates",label:"Abrir aprovações",kind:"warning"}
-  :d.projects.length===0
+  :trackedProjects.length===0
    ?{heading:"Comece pelo primeiro projeto",description:"Descreva o produto que deseja desenvolver ou importe um projeto já existente.",href:"/projects/new",label:"Criar ou importar projeto",kind:"neutral"}
    :{heading:"Escolha um produto para acompanhar",description:"Veja o que foi comprovado, o que ainda falta e qual é a próxima ação de cada projeto. Ocorrências operacionais continuam disponíveis abaixo e no histórico.",href:"/projects",label:"Abrir projetos",kind:"neutral"};
  return <>
@@ -46,34 +49,37 @@ export default async function Home(){
     <h2>{overviewAction.heading}</h2>
     <p>{overviewAction.description}</p>
    </div>
-   <ActionLink href={overviewAction.href} variant={requiresDecision||d.projects.length===0?"primary":"secondary"}>{overviewAction.label} →</ActionLink>
+   <ActionLink href={overviewAction.href} variant={requiresDecision||trackedProjects.length===0?"primary":"secondary"}>{overviewAction.label} →</ActionLink>
   </section>
 
   <section className="section homeProjects" aria-label="Seus projetos">
    <SectionHeader title="Seus projetos" action={<Link className="homeSectionLink" href="/projects">Ver portfólio completo →</Link>}/>
-   {d.projects.length===0?
-    <div className="homeEmptyProject"><EmptyState>Nenhum projeto cadastrado. Você pode começar com uma ideia ou importar um repositório existente.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
+   {trackedProjects.length===0?
+    <div className="homeEmptyProject"><EmptyState>Nenhum projeto em acompanhamento. Você pode consultar projetos parados abaixo ou cadastrar um novo.</EmptyState><ActionLink href="/projects/new" variant="primary">Novo projeto</ActionLink></div>
    :<div className="homeProjectGrid">
-     {d.projects.slice(0,4).map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
-      <div className="homeProjectHeading"><strong>{p.name}</strong><StatusPill status={p.status} label={p.status==="active"?"Cadastro ativo":"Cadastro inativo"}/></div>
-      <span className="homeProjectStage">Etapa do cadastro: <b>{humanizeStatus(p.stage)}</b> <small>(não é certificação)</small></span>
+     {trackedProjects.map(p=><Link className="homeProjectCard" href={"/projects/"+p.key} key={p.key}>
+      <div className="homeProjectHeading"><strong>{p.name}</strong><span className="homeControlLabel">{portfolioProjectControlLabel(p)}</span></div>
+      <span className="homeProjectStage">{p.key==="ai-product-factory"&&factoryCert.state==="certified"?"Prontidão da Factory verificada.":<>Última etapa registrada: <b>{humanizeStatus(p.stage)}</b> · funcionamento do produto não comprovado nesta tela.</>}</span>
+      {p.pendingTasks.length>0?<span className="homeOperationalNote">{p.pendingTasks.length} {p.pendingTasks.length===1?"tarefa sem encerramento confirmado":"tarefas sem encerramento confirmado"}.</span>:null}
       {p.key==="ai-product-factory"?<span className={"homeFactoryProof"+(factoryCert.state==="certified"?"":" unverified")}>{factoryCert.state==="certified"?"Certificação da Factory: "+factoryCert.passed+"/"+factoryCert.total+" no commit atual":factoryCert.state==="not_certified"?"Certificação do commit atual pendente":"Certificação do commit atual não verificável"}</span>:null}
       <span className="homeProjectFooter">Atualizado em {new Date(p.updatedAt).toLocaleString("pt-BR")} <b>Ver projeto →</b></span>
      </Link>)}
     </div>}
+   {stoppedProjects.length>0?<details className="technicalDetails homeStoppedProjects"><summary>Projetos parados ou inativos ({stoppedProjects.length})</summary><div className="homeStoppedList">{stoppedProjects.map(p=><Link key={p.key} href={"/projects/"+p.key}><strong>{p.name}</strong><span>{portfolioProjectControlLabel(p)} · {p.pendingTasks.length} pendências registradas</span></Link>)}</div></details>:null}
   </section>
 
   <section className="homeSummary" aria-label="Resumo operacional">
-   <Link href="/projects" className="homeSummaryItem"><span>Projetos no portfólio</span><strong>{d.projects.length}</strong></Link>
-   <Link href="/runs" className="homeSummaryItem"><span>Execuções em andamento</span><strong>{d.activeRuns}</strong></Link>
-   <Link href="/gates" className={d.pendingGates?"homeSummaryItem warning":"homeSummaryItem"}><span>Aprovações registradas como pendentes</span><strong>{d.pendingGates}</strong></Link>
-   <Link href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Falhas / fila de erro</span><strong>{blocked}</strong></Link>
+   <Link href="/projects" className="homeSummaryItem"><span>Projetos em acompanhamento</span><strong>{trackedProjects.length}</strong></Link>
+   <Link href="/runs" className="homeSummaryItem"><span>Execuções com reserva vigente</span><strong>{portfolio.activeLeases}</strong></Link>
+   <Link href="/gates" className={pending.length?"homeSummaryItem warning":"homeSummaryItem"}><span>Decisões humanas pendentes</span><strong>{pending.length}</strong></Link>
+   <Link href="/runs" className={blocked?"homeSummaryItem warning":"homeSummaryItem"}><span>Tarefas a reconciliar</span><strong>{blocked}</strong></Link>
   </section>
 
   <section className="section homeAttention">
-   <SectionHeader title="Acompanhamento de atenção" action={<Link className="homeSectionLink" href="/gates">Abrir todas as aprovações →</Link>}/>
+   <SectionHeader title="O que precisa de atenção" action={<Link className="homeSectionLink" href="/gates">Ver aprovações humanas →</Link>}/> 
+   <p className="homeOperationalNote">As pendências técnicas abaixo são agrupadas por projeto e tarefa, não por tentativa. Não equivalem a decisões suas ou falhas em execução agora. Jornadas substituídas ou encerradas permanecem no histórico.</p>
    {!requiresDecision&&!hasIncident?
-    <div className="homeQuietStatus" role="status">Nenhuma decisão humana acionável ou ocorrência recente foi encontrada nesta consulta. O acompanhamento dos demais bloqueios continua nas telas de cada projeto.</div>
+    <div className="homeQuietStatus" role="status">Nenhuma decisão humana ou tarefa pendente de reconciliação foi encontrada no portfólio em acompanhamento nesta consulta. Isso não comprova a prontidão dos produtos.</div>
    :<div className="attentionGrid">
      {pending.slice(0,2).map(g=><article className="card attentionCard warning" key={g.id}>
       <div className="attentionBanner"><StatusPill status={g.type}/><span className="muted">Decisão humana</span></div>
@@ -82,12 +88,19 @@ export default async function Home(){
       <p>{Array.isArray(g.reasons)?g.reasons.map(r=>typeof r==="string"?r:JSON.stringify(r)).join(" · "):String(g.reasons||"A decisão humana é necessária para continuar.")}</p>
       <div className="attentionFooter"><Link href={"/runs/"+g.runId}>Ver execução</Link><ActionLink href="/gates" variant="ghostButton">Revisar decisão</ActionLink></div>
      </article>)}
-     {incidents.map(i=><article className="card attentionCard danger" key={i.id}>
-      <div className="attentionBanner"><StatusPill status={i.status}/><span className="muted">Ocorrência operacional</span></div>
-      <h3>{isProviderCreditExhausted(i.error)?"Execução bloqueada por crédito da API":"Execução com falha registrada"}</h3>
-      <p>{isProviderCreditExhausted(i.error)?"A API OpenAI recusou esta tentativa por crédito insuficiente. O registro é histórico e não comprova o saldo atual. Verifique o faturamento do provedor antes de solicitar recuperação auditada; o teto interno da Factory não adiciona créditos.":(i.error||"O processo ultrapassou a janela esperada ou registrou um bloqueio.")+" Registro histórico: confira se houve recuperação posterior antes de intervir."}</p>
-      <div className="attentionFooter"><span>{i.route?humanizeStatus(i.route):"Sem rota"}</span><ActionLink href={"/runs/"+i.id} variant="ghostButton">Ver execução</ActionLink></div>
-     </article>)}
+     {pendingProjects.map(p=>{
+      const latest=p.pendingTasks[0];
+      const legacy=p.pendingTasks.filter(t=>t.legacy).length;
+      return <article className="card homeReconciliationCard" key={p.key}>
+       <span className="homeOperationalNote">Pendência técnica registrada · {p.pendingTasks.length} {p.pendingTasks.length===1?"tarefa":"tarefas"}</span>
+       <h3>{p.name}</h3>
+       <p>{portfolioPendingReason(latest.error)}</p>
+       <p className="homeOperationalNote">Último registro em {new Date(latest.updatedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}. {legacy>0?legacy+" sem jornada vinculada. ":""}Nenhuma retomada é disparada por esta consulta.</p>
+       <div className="attentionFooter"><Link href={"/projects/"+p.key}>Acompanhar projeto →</Link>{latest.runId?<Link href={"/runs/"+latest.runId}>Ver última execução</Link>:null}</div>
+      </article>;
+     })}
+     {health.expiredLeases>0?<article className="card homeReconciliationCard"><h3>{health.expiredLeases} reservas expiradas</h3><p>O histórico indica reservas de execução expiradas. Consulte o diagnóstico para verificar a recuperação.</p><Link href="/runs">Ver execuções →</Link></article>:null}
+     {unverifiedControls.map(p=><article className="card homeReconciliationCard" key={"control-"+p.key}><h3>{p.name}</h3><p>Não foi possível verificar o controle de execução. Não é seguro afirmar que o projeto está em espera.</p><Link href={"/projects/"+p.key}>Ver projeto →</Link></article>)}
     </div>}
   </section>
 
@@ -99,7 +112,7 @@ export default async function Home(){
     <Link href="/usage"><span>Codex real</span><strong>{d.codexCalls}</strong><small>Invocações registradas</small></Link>
     <Link href="/usage"><span>Custo desconhecido</span><strong>{health.unknownCostEvents}</strong><small>Bloqueia novas chamadas pagas</small></Link>
    </div>
-   <div className="homeTechnicalNote">{health.queuedRuns} execuções registradas na fila · {health.expiredLeases} leases expirados. Valores do Control Plane, não prova de execução em tempo real.</div>
+   <div className="homeTechnicalNote">{portfolio.historicalFailureRecords} registros de falha ou bloqueio no histórico completo · {portfolio.stoppedPendingTasks} tarefas sem encerramento confirmado em projetos parados/inativos · {health.queuedRuns} execuções registradas na fila · {health.expiredLeases} reservas expiradas. Valores observados no Control Plane, não prova de execução em tempo real.</div>
   </details>
 
   <details className="overviewActivityDetails">

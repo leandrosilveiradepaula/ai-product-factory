@@ -29,7 +29,7 @@ function greater(a:string,b:string,kind:OperationalIdKind):boolean{
  return kind==="bigint"?BigInt(a)>BigInt(b):a>b;
 }
 export async function readCompleteOperationalRows(args:{
- url:string;headers:Record<string,string>;table:"factory_runs"|"factory_tool_usage";
+ url:string;headers:Record<string,string>;table:"factory_runs"|"factory_tool_usage"|"factory_tasks"|"factory_projects"|"factory_journeys";
  select:string;idKind:OperationalIdKind;transport?:typeof fetch;
 }):Promise<OperationalRow[]>{
  const fetcher=args.transport||fetch;
@@ -113,4 +113,123 @@ export function summarizeOperationalHealth(
   }
  }
  return {expiredLeases,deadLetterRuns,failedRuns,blockedRuns,queuedRuns,knownCost,unknownCostEvents,incidents};
+}
+
+// Portfolio attention is deliberately separate from the historical run/cost inventory.
+// A failed attempt is not an active incident, and a registered phase is not readiness.
+export type PortfolioProject = {
+ id:string; key:string; name:string; stage:string; active:boolean; updatedAt:string;
+ controlState:string; activeLeases:number; pendingTasks:PortfolioPendingTask[];
+};
+export type PortfolioPendingTask = {
+ taskId:string; runId:string|null; title:string; status:"failed"|"blocked";
+ legacy:boolean; updatedAt:string; error:string|null;
+};
+export type PortfolioOverview = {
+ projects:PortfolioProject[]; activeLeases:number; historicalFailureRecords:number;
+ trackedPendingTasks:number; stoppedPendingTasks:number;
+};
+const closedJourneyStates=new Set(["closed","superseded","cancelled","canceled"]);
+const controlStates=new Set(["draft","running","pausing","paused","stopping","stopped","unavailable"]);
+function requiredText(value:unknown,description:string):string {
+ if(typeof value!=="string"||!value.trim())throw new Error("Inventário do portfólio sem "+description+".");
+ return value;
+}
+function uniqueRows(rows:OperationalRow[],description:string):Map<string,OperationalRow>{
+ const result=new Map<string,OperationalRow>();
+ for(const row of rows){
+  const id=verifiedId(row.id,"uuid");
+  if(result.has(id))throw new Error("Inventário do portfólio duplicou "+description+".");
+  result.set(id,row);
+ }
+ return result;
+}
+export function summarizePortfolioOverview(
+ runs:OperationalRow[],tasks:OperationalRow[],projects:OperationalRow[],
+ journeys:OperationalRow[],controls:Map<string,string>,now:number
+):PortfolioOverview{
+ if(!Number.isFinite(now))throw new Error("Relógio do portfólio inválido.");
+ const taskMap=uniqueRows(tasks,"tarefa"),journeyMap=uniqueRows(journeys,"jornada");
+ const projectMap=new Map<string,PortfolioProject>();
+ const keys=new Set<string>();
+ for(const [id,row] of uniqueRows(projects,"projeto")){
+  const key=requiredText(row.project_key,"chave de projeto");
+  if(keys.has(key)||typeof row.is_active!=="boolean")throw new Error("Cadastro do portfólio inconsistente.");
+  keys.add(key);
+  verifiedTime(row.updated_at);
+  const controlState=controls.get(id)||"unavailable";
+  if(!controlStates.has(controlState))throw new Error("Controle de execução inválido.");
+  projectMap.set(id,{id,key,name:requiredText(row.name,"nome de projeto"),
+   stage:requiredText(row.lifecycle_stage,"etapa registrada"),active:row.is_active,
+   updatedAt:String(row.updated_at),controlState,activeLeases:0,pendingTasks:[]});
+ }
+ for(const id of controls.keys())if(!projectMap.has(id))throw new Error("Controle sem projeto no portfólio.");
+ for(const row of journeyMap.values()){
+  if(!projectMap.has(verifiedId(row.project_id,"uuid")))throw new Error("Jornada sem projeto no portfólio.");
+  requiredText(row.state,"estado de jornada");
+ }
+ const latest=new Map<string,OperationalRow>();
+ let historicalFailureRecords=0,activeLeases=0;
+ for(const row of uniqueRows(runs,"execução").values()){
+  const taskId=verifiedId(row.task_id,"uuid"),task=taskMap.get(taskId);
+  if(!task)throw new Error("Execução sem tarefa no portfólio.");
+  const project=projectMap.get(verifiedId(task.project_id,"uuid"));
+  if(!project)throw new Error("Execução sem projeto no portfólio.");
+  const status=requiredText(row.status,"estado da execução");
+  const at=verifiedTime(row.created_at);
+  const old=latest.get(taskId);
+  if(!old||at>verifiedTime(old.created_at)||(at===verifiedTime(old.created_at)&&String(row.id)>String(old.id)))latest.set(taskId,row);
+  if(status==="failed"||status==="blocked")historicalFailureRecords++;
+  const expires=row.lease_expires_at==null?null:verifiedTime(row.lease_expires_at);
+  if(expires!==null&&expires>now&&typeof row.lease_owner==="string"&&row.lease_owner.trim()){
+   activeLeases++;project.activeLeases++;
+  }
+ }
+ for(const [taskId,task] of taskMap){
+  const project=projectMap.get(verifiedId(task.project_id,"uuid"));
+  if(!project)throw new Error("Tarefa sem projeto no portfólio.");
+  const status=requiredText(task.status,"estado da tarefa");
+  if(status!=="failed"&&status!=="blocked")continue;
+  const run=latest.get(taskId);
+  const taskJourney=task.journey_id==null?null:verifiedId(task.journey_id,"uuid");
+  const runJourney=run?.journey_id==null?null:verifiedId(run.journey_id,"uuid");
+  if(taskJourney&&runJourney&&taskJourney!==runJourney)throw new Error("Linhagem de execução inconsistente.");
+  const journeyId=taskJourney||runJourney;
+  if(journeyId){
+   const journey=journeyMap.get(journeyId);
+   if(!journey||verifiedId(journey.project_id,"uuid")!==project.id)throw new Error("Linhagem de jornada não verificável.");
+   if(closedJourneyStates.has(String(journey.state)))continue;
+  }
+  verifiedTime(task.updated_at);
+  project.pendingTasks.push({taskId,runId:run?String(run.id):null,
+   title:requiredText(task.title,"título da tarefa"),status,legacy:journeyId===null,
+   updatedAt:String(task.updated_at),error:run&&(run.status==="failed"||run.status==="blocked")&&run.last_error!=null?String(run.last_error):null});
+ }
+ const ordered=[...projectMap.values()].sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt)||a.key.localeCompare(b.key));
+ for(const p of ordered)p.pendingTasks.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt)||a.taskId.localeCompare(b.taskId));
+ const tracked=ordered.filter(p=>p.active&&p.controlState!=="stopped");
+ const stopped=ordered.filter(p=>!p.active||p.controlState==="stopped");
+ return {projects:ordered,activeLeases,historicalFailureRecords,
+  trackedPendingTasks:tracked.reduce((n,p)=>n+p.pendingTasks.length,0),
+  stoppedPendingTasks:stopped.reduce((n,p)=>n+p.pendingTasks.length,0)};
+}
+export function portfolioProjectControlLabel(project:PortfolioProject):string{
+ if(project.controlState==="unavailable")return "Controle não verificável";
+ if(!project.active||project.controlState==="stopped")return "Parado";
+ if(project.controlState==="paused")return "Pausado";
+ if(project.controlState==="pausing")return "Pausa solicitada";
+ if(project.controlState==="stopping")return "Parada solicitada";
+ if(project.controlState==="draft")return "Não iniciado";
+ if(project.activeLeases)return "Execução com reserva vigente";
+ if(project.pendingTasks.length)return "Pendência técnica registrada";
+ return "Sem execução ativa";
+}
+export function portfolioPendingReason(error:string|null):string{
+ if(isProviderCreditExhausted(error))return "Uma tentativa anterior foi recusada por falta de crédito no provedor.";
+ if(error?.includes("reserved provider cost exceeds remaining budget")||error?.includes("budget_exhausted"))return "Uma tentativa anterior atingiu o limite financeiro interno da Factory.";
+ if(error?.includes("planning has no actionable tasks or decisions"))return "O planejamento anterior não encontrou tarefas ou decisões executáveis.";
+ if(error?.includes("reconciliation_context_preflight_failed"))return "A validação do contexto da reconciliação anterior falhou.";
+ if(error?.includes("reconciliation_source_candidate_sha_drift"))return "A versão do repositório mudou durante a reconciliação anterior.";
+ if(error?.includes("AGENTS.md")||error?.includes("CURRENT_TASK.md"))return "A tentativa anterior foi bloqueada pela falta de contexto ou autorização de escopo no repositório.";
+ return "Há uma tarefa sem encerramento confirmado no histórico do projeto.";
 }
