@@ -176,6 +176,19 @@ print("JOURNEY_V2_SAFE_SUPERSESSION_POSTGRES_PASS")
 with psycopg.connect(DSN, autocommit=True) as db:
     with db.cursor() as cur:
         cur.execute("alter table public.factory_human_gates add column status text")
+        cur.execute("""
+          alter table public.factory_tasks add column updated_at timestamptz default now();
+          alter table public.factory_change_set_work_units add column task_id uuid;
+          alter table public.factory_change_set_work_units add column run_id uuid;
+          create table public.factory_repair_jobs(id uuid primary key default gen_random_uuid(),project_id uuid,
+            change_set_id uuid,source_run_id uuid,source_role text,cycle integer,max_cycles integer,
+            candidate_commit text,finding jsonb,status text,task_id uuid,work_unit_id uuid,updated_at timestamptz default now());
+          create table public.factory_specialist_lane_jobs(id uuid primary key default gen_random_uuid(),project_id uuid,
+            run_id uuid,role text,candidate_commit text,status text,evidence jsonb);
+          create table public.factory_blocked_work_recovery_requests(id uuid primary key default gen_random_uuid(),
+            project_id uuid,command_id uuid,source_task_id uuid,source_run_id uuid,repair_job_id uuid,
+            continuation_task_id uuid,continuation_run_id uuid,status text,updated_at timestamptz default now());
+        """)
         cur.execute((ROOT / "supabase/migrations/20261124210000_terminal_journey_continuity.sql").read_text())
         p2="b2ea3201-e9a3-489f-bf14-916aecc7de09"
         old_j="bb14e150-2c7e-423b-8e5d-e211dab6225c"
@@ -232,3 +245,67 @@ with psycopg.connect(DSN, autocommit=True) as db:
         cur.execute("select count(*) from public.factory_tasks where project_id=%s",(p2,))
         assert cur.fetchone()[0]==0
 print("TERMINAL_JOURNEY_CONTINUITY_POSTGRES_PASS")
+
+# Terminal security settlement: build an actual linked repair, failed recovery,
+# independent security proof and observed human merge in the disposable DB.
+with psycopg.connect(DSN, autocommit=True) as db:
+    with db.cursor() as cur:
+        p3="c2ea3201-e9a3-489f-bf14-916aecc7de09"
+        cur.execute("insert into public.factory_projects(id,project_key,repository,manifest,is_active,project_kind) values(%s,'security-qa','owner/security-qa','{}',true,'greenfield')",(p3,))
+        cur.execute("insert into public.factory_project_execution_controls(project_id,state,generation,version) values(%s,'running',1,1)",(p3,))
+        def task(status,parent=None):
+            cur.execute("insert into public.factory_tasks(project_id,parent_task_id,status,title) values(%s,%s,%s,'qa') returning id",(p3,parent,status))
+            return cur.fetchone()[0]
+        def run(t,status,sha=None,meta=None):
+            cur.execute("insert into public.factory_runs(task_id,status,candidate_commit,metadata) values(%s,%s,%s,%s) returning id",(t,status,sha,Jsonb(meta or {})))
+            return cur.fetchone()[0]
+        root=task("integrated")
+        root_run=run(root,"merged","f"*40,{"execution_generation":"1"})
+        cur.execute("insert into public.factory_change_sets(project_id,root_task_id,release_run_id,status,candidate_commit,metadata) values(%s,%s,%s,'completed',%s,'{}') returning id",(p3,root,root_run,NEW_SHA))
+        cs=cur.fetchone()[0]
+        repair_task=task("blocked",root)
+        blocked_run=run(repair_task,"blocked",None,{"change_set_id":str(cs),"execution_generation":"1"})
+        cur.execute("insert into public.factory_change_set_work_units(change_set_id,task_id,run_id,status) values(%s,%s,%s,'blocked') returning id",(cs,repair_task,blocked_run))
+        unit=cur.fetchone()[0]
+        path="supabase/migrations/20261116132000_tenant_persistence_rls.sql"
+        cur.execute("""insert into public.factory_repair_jobs(project_id,change_set_id,source_run_id,source_role,
+           cycle,max_cycles,candidate_commit,finding,status,task_id,work_unit_id)
+           values(%s,%s,%s,'security',2,3,%s,%s,'blocked',%s,%s) returning id""",
+           (p3,cs,root_run,OLD_SHA,Jsonb({"kind":"database_security","code":"permissive_public_grant","path":path}),repair_task,unit))
+        repair=cur.fetchone()[0]
+        recovery_task=task("failed",repair_task)
+        recovery_run=run(recovery_task,"failed")
+        cur.execute("""insert into public.factory_blocked_work_recovery_requests(project_id,source_task_id,source_run_id,repair_job_id,
+         continuation_task_id,continuation_run_id,status) values(%s,%s,%s,%s,%s,%s,'blocked')""",
+         (p3,repair_task,blocked_run,repair,recovery_task,recovery_run))
+        cur.execute("insert into public.factory_audit_events(project_id,run_id,actor_type,actor_ref,event_type,payload) values(%s,%s,'system','release-observer','release.human_merge_observed',%s)",
+          (p3,root_run,Jsonb({"pr":2,"head_sha":NEW_SHA,"merge_sha":"f"*40})))
+        proof={"candidate_commit":NEW_SHA,"_factory_epoch":"1","blocking_findings":0,
+               "coverage":{"sql_rls_rpc_invariants":True},"unreviewable_paths":[],
+               "database_lineage":[{"path":path}]}
+        cur.execute("insert into public.factory_specialist_lane_jobs(project_id,run_id,role,candidate_commit,status,evidence) values(%s,%s,'security',%s,'passed',%s) returning id",(p3,root_run,NEW_SHA,Jsonb(proof)))
+        witness=cur.fetchone()[0]
+        cur.execute("update public.factory_specialist_lane_jobs set evidence=%s where id=%s",(Jsonb({**proof,"unreviewable_paths":[path]}),witness))
+        assert call(cur,"factory_settle_terminal_security_repair_v1",repair,False)["status"]=="not_eligible"
+        cur.execute("update public.factory_specialist_lane_jobs set evidence=%s where id=%s",(Jsonb(proof),witness))
+        cur.execute("insert into public.factory_human_gates(run_id,status) values(%s,'pending')",(recovery_run,))
+        assert call(cur,"factory_settle_terminal_security_repair_v1",repair,True)["status"]=="not_eligible"
+        cur.execute("delete from public.factory_human_gates where run_id=%s",(recovery_run,))
+        dry=call(cur,"factory_settle_terminal_security_repair_v1",repair,False)
+        assert dry["status"]=="eligible" and len(dry["task_ids"])==2
+        assert call(cur,"factory_blocked_recovery_eligibility_v2",p3)["status"]=="not_eligible"
+        cur.execute("select status from public.factory_tasks where id=%s",(repair_task,))
+        assert cur.fetchone()[0]=="blocked"
+        cur.execute("set role authenticated")
+        blocked(db,lambda c:call(c,"factory_settle_terminal_security_repair_v1",repair,True))
+        cur.execute("reset role")
+        done=call(cur,"factory_settle_terminal_security_repair_v1",repair,True)
+        assert done["status"]=="settled" and done["historical_runs_preserved"]
+        assert call(cur,"factory_settle_terminal_security_repair_v1",repair,True)["status"]=="already_settled"
+        cur.execute("select status from public.factory_tasks where id in (%s,%s) order by id",(repair_task,recovery_task))
+        assert cur.fetchall()==[("cancelled",),("cancelled",)]
+        cur.execute("select status from public.factory_runs where id in (%s,%s) order by status",(blocked_run,recovery_run))
+        assert cur.fetchall()==[("blocked",),("failed",)]
+        cur.execute("select status from public.factory_repair_jobs where id=%s",(repair,))
+        assert cur.fetchone()[0]=="blocked"
+print("TERMINAL_SECURITY_REPAIR_SETTLEMENT_POSTGRES_PASS")

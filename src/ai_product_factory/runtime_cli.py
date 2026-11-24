@@ -133,6 +133,7 @@ def run_recovery_once(max_attempts:int=3)->dict:
  journeys=queue.recover_failed_journeys_v2()
  decisions=queue.resume_resolved_decisions()
  descendants=queue.reconcile_terminal_descendants()
+ terminal_repairs=(queue.settle_terminal_security_repairs(apply=True) if os.getenv("FACTORY_OPERATIONAL_SETTLEMENT_ENABLED")=="true" else {"status":"disabled","settled":0})
  scheduler=SupabaseAgentScheduler()
  agents=scheduler.recover_expired()
  # Recovery never creates new agent assignments: the legacy global RPC can
@@ -142,7 +143,7 @@ def run_recovery_once(max_attempts:int=3)->dict:
               "deferred_to_readiness_gated_dispatch":True}
  specialist_lanes=SupabaseSpecialistLaneQueue().recover_expired(max_attempts)
  change_sets=SupabaseChangeSetStore().recover_expired(max_attempts)
- return {"runs":runs,"journeys_v2":journeys,"decisions":decisions,"descendants":descendants,"agents":agents,"agent_retry":agent_retry,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
+ return {"runs":runs,"journeys_v2":journeys,"decisions":decisions,"descendants":descendants,"terminal_security_repairs":terminal_repairs,"agents":agents,"agent_retry":agent_retry,"specialist_lanes":specialist_lanes,"change_sets":change_sets}
 
 def run_product_once(worker_id:str)->dict:
  try:

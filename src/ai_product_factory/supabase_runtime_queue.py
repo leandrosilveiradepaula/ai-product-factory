@@ -335,6 +335,16 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 outcomes.append({"journey_id":journey.get("id"),"status":"awaiting_source","reason":str(exc)[:120]})
         return {"resolved":sum(x["status"]=="source_bound" for x in outcomes),"outcomes":outcomes}
 
+    def settle_terminal_security_repairs(self, *, apply: bool = False, limit: int = 8) -> dict:
+        if type(apply) is not bool or type(limit) is not int or not 1 <= limit <= 20:
+            raise ValueError("invalid terminal repair settlement request")
+        receipt=self._rpc("factory_settle_terminal_security_repairs_v1",{"p_limit":limit,"p_apply":apply})
+        if (not isinstance(receipt,dict) or receipt.get("status")!="ok"
+            or receipt.get("applied") is not apply or type(receipt.get("settled")) is not int
+            or type(receipt.get("eligible")) is not int or not isinstance(receipt.get("receipts"),list)):
+            raise RuntimeError("terminal security settlement receipt invalid")
+        return receipt
+
     def recover_expired(self,max_attempts:int=3)->dict:
         data=self._rpc("factory_recover_expired_runs",{"p_max_attempts":max_attempts})
         return data or {"requeued":0,"failed":0}

@@ -4,8 +4,8 @@ import {useFormStatus} from "react-dom";
 type ProjectCommand="start"|"pause"|"resume"|"stop"|"restart";
 
 // Prevent SSR randomness and enforce one human-confirmed onSubmit path for all inputs.
-export function ProjectControlForm({command,label,version,projectKey,action}:{
-  command:ProjectCommand;label:string;version:number;projectKey:string;
+export function ProjectControlForm({command,label,version,projectKey,action,recovery=false}:{
+  command:ProjectCommand;label:string;version:number;projectKey:string;recovery?:boolean;
   action:(formData:FormData)=>void|Promise<void>;
 }){
   const commandId=useRef<HTMLInputElement>(null);
@@ -16,7 +16,7 @@ export function ProjectControlForm({command,label,version,projectKey,action}:{
       ?"Iniciar o desenvolvimento deste projeto? A Factory poderá enfileirar tarefas e executar ações autorizadas pelos gates existentes."
       :command==="stop"
       ?"Parar este projeto? Nenhuma tarefa nova será assumida. Trabalhos já assumidos poderão concluir com segurança; a fila e o histórico serão preservados."
-      :"Reiniciar este projeto? Uma nova geração de execução será autorizada, mantendo as tarefas pendentes e os gates existentes.")){
+      :recovery?"Reiniciar somente o reparo elegível? A Factory criará uma continuação auditável, preservando o trabalho anterior e os gates.":"Reiniciar este projeto? Uma nova geração de execução será autorizada, mantendo as tarefas pendentes e os gates existentes.")){
       event.preventDefault();
       return;
     }
