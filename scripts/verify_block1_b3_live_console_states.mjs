@@ -1,12 +1,19 @@
 /** B3: real authenticated React shell; intercepted GET responses are not backend certification. */
 const SHA=/^[0-9a-f]{40}$/;
 const names=["pending","unavailable","cleared","malformed"];
-const fixtures={
- pending:{status:200,body:{status:"ok",count:2,projects:[]}},
+// These intercepted GET responses exercise visual behavior, NOT a live
+// backend attestation. Their valid shapes must match the current first-party
+// /api/human-attention contract (human gates separated from integration tasks).
+// Invalid fixture payloads must remain explicitly invalid, never masquerade
+// as a successful pending decision. This protects credential-bearing capture
+// after a Console contract change without weakening any browser/error gate.
+export const B3_ATTENTION_FIXTURES={
+ pending:{status:200,body:{status:"ok",count:2,pendingHumanGateCount:2,pendingIntegrationActionCount:0,projects:[]}},
  unavailable:{status:503,body:{status:"unavailable"}},
- cleared:{status:200,body:{status:"ok",count:0,projects:[]}},
- malformed:{status:200,body:{status:"ok",count:-1,projects:[]}},
+ cleared:{status:200,body:{status:"ok",count:0,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]}},
+ malformed:{status:200,body:{status:"ok",count:-1,pendingHumanGateCount:0,pendingIntegrationActionCount:0,projects:[]}},
 };
+const fixtures=B3_ATTENTION_FIXTURES;
 // Chromium emits a native failed-resource console error for OUR deliberate
 // GET /api/human-attention -> 503 fixture, even when React handles it correctly.
 // The scope is strictly one 503 message with an exact resource URL per

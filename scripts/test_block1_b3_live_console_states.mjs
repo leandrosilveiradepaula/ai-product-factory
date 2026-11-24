@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {safeB3StateWitness,verifyConsoleStatesReadOnly,isExpectedFixture503ResourceError,B3SyntheticTransitionTimeout} from "./verify_block1_b3_live_console_states.mjs";
+import {safeB3StateWitness,verifyConsoleStatesReadOnly,isExpectedFixture503ResourceError,B3SyntheticTransitionTimeout,B3_ATTENTION_FIXTURES} from "./verify_block1_b3_live_console_states.mjs";
 import {collectBoundedB3Fixture} from "./b3_optional_fixture_capture.mjs";
 const source="a".repeat(40),target="b".repeat(40);
 function sample(){return {blocked:false,browserErrors:0,mutatingRequests:0,expected503ResourceErrors:0,
@@ -11,6 +11,36 @@ function build(observed=sample(),changes={}){
  return safeB3StateWitness({observed,runId:42824989568,
   sourceCommit:source,targetCommit:target,...changes});
 }
+test("B3 fixture values match the actual split human-gate/integration API",()=>{
+ const api=fs.readFileSync(new URL("../apps/console/app/api/human-attention/route.ts",import.meta.url),"utf8");
+ const shell=fs.readFileSync(new URL("../apps/console/app/shell.tsx",import.meta.url),"utf8");
+ // Never treat an integration action as a pending human approval.
+ assert.ok(api.includes("const pendingHumanGateCount=pending.length"));
+ assert.match(api,/const pendingIntegrationActionCount=/);
+ assert.ok(shell.includes("snapshot.count!==snapshot.pendingHumanGateCount+snapshot.pendingIntegrationActionCount"));
+ const required=["count","pendingHumanGateCount","pendingIntegrationActionCount","projects","status"];
+ for(const name of ["pending","cleared"]){
+   const fixture=B3_ATTENTION_FIXTURES[name];
+   assert.equal(fixture.status,200);
+   assert.deepEqual(Object.keys(fixture.body).sort(),required.slice().sort());
+   assert.equal(fixture.body.status,"ok");
+   assert.equal(fixture.body.count,
+     fixture.body.pendingHumanGateCount+fixture.body.pendingIntegrationActionCount);
+   assert.ok(fixture.body.pendingHumanGateCount>=0);
+   assert.ok(fixture.body.pendingIntegrationActionCount>=0);
+   assert.deepEqual(fixture.body.projects,[]);
+ }
+ assert.equal(B3_ATTENTION_FIXTURES.pending.body.pendingHumanGateCount,2);
+ assert.equal(B3_ATTENTION_FIXTURES.pending.body.pendingIntegrationActionCount,0);
+ assert.equal(B3_ATTENTION_FIXTURES.cleared.body.count,0);
+ // A deliberate negative fixture must fail the real Console parser.
+ const malformed=B3_ATTENTION_FIXTURES.malformed;
+ assert.equal(malformed.status,200);
+ assert.notEqual(malformed.body.count,
+   malformed.body.pendingHumanGateCount+malformed.body.pendingIntegrationActionCount);
+ assert.deepEqual(B3_ATTENTION_FIXTURES.unavailable,
+   {status:503,body:{status:"unavailable"}});
+});
 test("retain only bounded UI checks and no personal data or false PASS",()=>{
  const sampleData=sample();
  sampleData.email="private@example.invalid";sampleData.token="private-token";
