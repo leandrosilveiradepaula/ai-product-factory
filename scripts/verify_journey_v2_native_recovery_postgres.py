@@ -36,6 +36,7 @@ with psycopg.connect(dsn,autocommit=True) as db:
     # fixture predates it, so model the real column before applying recovery.
     cur.execute("alter table public.factory_tasks add column updated_at timestamptz default now()")
     cur.execute(V2); cur.execute(RECOVERY); cur.execute(REQUEUE); cur.execute(CHECKPOINT); cur.execute(EVENT_INTEGRITY)
+    cur.execute((root/"scripts/fixtures/greenfield_v2_recovery_candidate.sql").read_text())
     manifest={"journey_delivery_binding_v2":{"enabled":True,"version":2,"digest":policy,"source_mode":"main_snapshot","preview_base_ref":"main","release_base_ref":"main"}}
     cur.execute("insert into factory_projects values(%s,'crm-infodive','leandrosilveiradepaula/crm-infodive',%s,true,'existing')",(project,Jsonb(manifest)))
     cur.execute("insert into factory_project_execution_controls values(%s,'running',16,1)",(project,))
@@ -107,4 +108,41 @@ with psycopg.connect(dsn,autocommit=True) as db:
     except psycopg.Error: pass
     else: raise AssertionError("authenticated role reached V2 recovery RPC")
     finally: cur.execute("reset role")
+
+    # A linked greenfield with completed discovery/specification recovers only
+    # planning, using the exact request and original stage outputs.
+    gp="c1608b7f-07ac-47c4-85bc-46df5cd4cbe3"
+    greq="7db46ff1-9c5e-4823-8e46-17b068791c31"
+    repo="leandrosilveiradepaula/dark-channel-studio"
+    cur.execute("insert into factory_projects values(%s,'dark-channel-studio',%s,%s,true,'greenfield')",(gp,repo,Jsonb(manifest)))
+    cur.execute("insert into factory_project_execution_controls values(%s,'running',1,1)",(gp,))
+    gt="complete existing editorial delivery"
+    gd=hashlib.sha256(gt.encode()).hexdigest()
+    gj=call(cur,"factory_enqueue_journey_intake_v2","dark-channel-studio",gt,greq,"github-owner","github-owner","456",gd,"leandrosilveiradepaula/ai-product-factory",1055)["journey_id"]
+    call(cur,"factory_record_journey_source_evidence_v2",gj,repo,"main",sha,policy,proof,1)
+    gb={**binding,"journey_id":gj,"project_id":gp,"request_id":greq,"execution_generation":1,"repository":repo,"source_repository":repo,"integration_branch":"factory/journey-"+gj,"preview_branch_prefix":"preview/journey-"+gj[:8]}
+    gr=call(cur,"factory_bind_journey_source_v2","dark-channel-studio",greq,1,2,Jsonb(gb))
+    cur.execute("select metadata from factory_runs where id=%s",(gr["run_id"],)); gm=cur.fetchone()[0]
+    assert gm["stages"]==["discovery","specification","planning"]
+    disc={"problem":"editorial gap","_evidence":{"provider_ref":"discovery-proof"}}
+    spec={"scope":"editorial delivery","_evidence":{"provider_ref":"spec-proof"}}
+    empty={"reason_code":"planning_non_actionable","observed_model_response":True,"tasks_count":0,"decisions_count":0,"implementation_completed":False,"requires_scope_reconciliation":True}
+    gm.update(error="planning has no actionable tasks or decisions",stage_evidence={"discovery":{"status":"completed","output":disc},"specification":{"status":"completed","output":spec},"planning":{"status":"failed","output":empty}})
+    cur.execute("update factory_runs set status='failed',metadata=%s where id=%s",(Jsonb(gm),gr["run_id"]))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(gr["task_id"],))
+    cur.execute("update factory_runs set metadata=jsonb_set(metadata,'{stage_evidence,specification,status}','\"started\"') where id=%s",(gr["run_id"],))
+    try: call(cur,"factory_resume_failed_journey_v2",gj)
+    except psycopg.Error: pass
+    else: raise AssertionError("incomplete greenfield checkpoint admitted")
+    cur.execute("update factory_runs set metadata=%s where id=%s",(Jsonb(gm),gr["run_id"]))
+    recovered=call(cur,"factory_resume_failed_journey_v2",gj)
+    assert recovered["created"] and recovered["stages"]==["planning"]
+    cur.execute("select metadata,journey_id,source_commit from factory_runs where id=%s",(recovered["run_id"],))
+    checkpoint,jid,source_sha=cur.fetchone()
+    assert str(jid)==gj and source_sha==sha
+    assert checkpoint["resume_checkpoint"]["prior_kind"]=="greenfield"
+    assert checkpoint["resume_checkpoint"]["discovery"]==disc and checkpoint["resume_checkpoint"]["specification"]==spec
+    assert call(cur,"factory_resume_failed_journey_v2",gj)["created"] is False
+    cur.execute("select count(*) from factory_runs where journey_id=%s",(gj,)); assert cur.fetchone()[0]==2
+
 print("JOURNEY_V2_NATIVE_RECOVERY_POSTGRES_PASS")

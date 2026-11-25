@@ -245,4 +245,30 @@ class JourneyV2NativeRecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError,"checkpoint identity"):
             q._v2_planning_resume_context("new",TASK,PROJECT,16,original,claimed,metadata,checkpoint)
 
+    def test_greenfield_checkpoint_rehydrates_exact_completed_outputs(self):
+        from ai_product_factory.product_stage_output_contract import NON_ACTIONABLE_PLANNING_EVIDENCE
+        q=SupabaseRuntimeQueue(url="https://example.supabase.co",service_role_key="secret")
+        disc={"problem":"work","_evidence":{"provider_ref":"d"}}
+        spec={"scope":"work","_evidence":{"provider_ref":"s"}}
+        binding={"journey_id":JOURNEY,"request_id":"request","source_commit":SHA}
+        snapshot={"text":"complete product","digest":"d"*64}
+        checkpoint={"schema":"journey_v2_planning_recovery_v1","prior_kind":"greenfield",
+            "journey_id":JOURNEY,"project_id":PROJECT,"source_run_id":RUN,"generation":16,
+            "source_commit":SHA,"discovery":disc,"specification":spec}
+        source={"id":RUN,"task_id":TASK,"journey_id":JOURNEY,"status":"failed","execution_route":"direct",
+            "source_commit":SHA,"metadata":{"error":"planning has no actionable tasks or decisions",
+            "stages":["discovery","specification","planning"],"execution_generation":16,
+            "journey_binding_v2":binding,"journey_request":snapshot,"stage_evidence":{
+            "discovery":{"status":"completed","output":disc},"specification":{"status":"completed","output":spec},
+            "planning":{"status":"failed","output":NON_ACTIONABLE_PLANNING_EVIDENCE}}}}
+        q._get=lambda path:[source]
+        args=("new",TASK,PROJECT,16,{"journey_binding_v2":binding,"journey_request":snapshot},
+              {"journey_id":JOURNEY},{"stages":["planning"],"execution_generation":16},checkpoint)
+        context=q._v2_planning_resume_context(*args)
+        self.assertEqual(context["_verified_resume_prior_stages"],{"discovery":disc,"specification":spec})
+        self.assertEqual(context["_verified_resume_origin"]["prior_kind"],"greenfield")
+        source["metadata"]["stage_evidence"]["discovery"]["status"]="started"
+        with self.assertRaisesRegex(PermissionError,"greenfield recovery evidence invalid"):
+            q._v2_planning_resume_context(*args)
+
 if __name__=="__main__": unittest.main()

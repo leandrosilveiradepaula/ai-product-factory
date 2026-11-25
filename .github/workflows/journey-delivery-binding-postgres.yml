@@ -9,6 +9,7 @@ on:
       - "supabase/migrations/20261031141500_v2_recovery_retry_event_integrity.sql"
       - "scripts/verify_journey_delivery_binding_postgres.py"
       - "scripts/verify_journey_v2_native_recovery_postgres.py"
+      - "scripts/fixtures/greenfield_v2_recovery_candidate.sql"
   workflow_dispatch:
 permissions: { contents: read }
 jobs:
@@ -33,3 +34,30 @@ jobs:
       - run: python scripts/verify_journey_v2_native_recovery_postgres.py
         env:
           FACTORY_JOURNEY_RECOVERY_TEST_DSN: postgresql://postgres:postgres@localhost:5432/journey_binding_test
+
+      # Draft-only scaffold: the local environment lacks the Supabase CLI.
+      # Generate the actual migration with the official pinned binary in
+      # isolated CI, then commit the resulting file and remove this step.
+      - name: Generate versioned migration candidate in isolated workspace
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          curl -fsSL --retry 2 https://github.com/supabase/cli/releases/download/v2.98.1/supabase_linux_amd64.tar.gz -o "$work/cli.tar.gz"
+          echo "78ee2574205bbca1530d01749b0df3c1cd37c8ca35d047887584d4620542a729  $work/cli.tar.gz" | sha256sum -c -
+          tar -xzf "$work/cli.tar.gz" -C "$work" supabase
+          mkdir -p "$work/project/supabase/migrations" "$RUNNER_TEMP/greenfield-migration"
+          cd "$work/project"
+          "$work/supabase" migration new --help
+          "$work/supabase" migration new journey_v2_greenfield_planning_recovery
+          mapfile -t files < <(find supabase/migrations -maxdepth 1 -name '*_journey_v2_greenfield_planning_recovery.sql')
+          test "${#files[@]}" = 1
+          cp "$GITHUB_WORKSPACE/scripts/fixtures/greenfield_v2_recovery_candidate.sql" "$RUNNER_TEMP/greenfield-migration/$(basename "${files[0]}")"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: github.event_name == 'pull_request'
+        with:
+          name: greenfield-recovery-versioned-migration
+          path: ${{ runner.temp }}/greenfield-migration/*.sql
+          if-no-files-found: error
+          retention-days: 7
