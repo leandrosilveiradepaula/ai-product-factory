@@ -16,6 +16,7 @@ import re
 import stat
 import subprocess
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 
@@ -31,7 +32,7 @@ PIN = b"FACTORY_SQL_INFODIVE_WORKER_SHA="
 TIMERS = ("ai-product-factory-infodive-product.timer",
           "ai-product-factory-infodive-direct.timer")
 SERVICES = tuple(t.replace(".timer", ".service") for t in TIMERS)
-SHA = re.compile(r"[0-9a-f]{40}\\Z")
+SHA = re.compile(r"[0-9a-f]{40}\Z")
 # Do not pass the wake token or any worker/model secrets to subprocesses.
 ENV = {"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C",
        "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1"}
@@ -57,7 +58,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def github_reader(token):
     require(isinstance(token, str) and token.strip() == token and bool(token)
-            and not any(c in token for c in "\\r\\n"), "wake_credential_unavailable")
+            and not any(c in token for c in "\r\n"), "wake_credential_unavailable")
     opener = urllib.request.build_opener(NoRedirect())
     def get(path):
         require(path.startswith("/") and not path.startswith("//"), "api_path_invalid")
@@ -153,11 +154,15 @@ def unit_property(unit, name):
     return cmd("/usr/bin/systemctl", "show", "--value", "-p", name, unit).decode().strip()
 
 
-def assert_idle():
-    require(all(unit_property(s, "ActiveState") == "inactive" for s in SERVICES),
-            "worker_busy_or_unhealthy")
-    require(all(unit_property(s, "Job") in ("", "0") for s in SERVICES),
-            "worker_job_pending")
+def assert_idle(wait_seconds=0):
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        states = [unit_property(s, "ActiveState") for s in SERVICES]
+        jobs = [unit_property(s, "Job") for s in SERVICES]
+        if all(s == "inactive" for s in states) and all(j in ("", "0") for j in jobs):
+            return
+        require(time.monotonic() < deadline, "worker_busy_or_unhealthy")
+        time.sleep(2)
 
 
 def timers_stop():
@@ -210,9 +215,9 @@ def write_pin(old, new):
     data = PIN_FILE.read_bytes()
     anchor = PIN + old.encode()
     lines = data.splitlines(keepends=True)
-    require(sum(line.rstrip(b"\\r\\n") == anchor for line in lines) == 1, "pin_invalid")
+    require(sum(line.rstrip(b"\r\n") == anchor for line in lines) == 1, "pin_invalid")
     replacement = b"".join(PIN + new.encode() + line[len(anchor):]
-                           if line.rstrip(b"\\r\\n") == anchor else line for line in lines)
+                           if line.rstrip(b"\r\n") == anchor else line for line in lines)
     atomic_write(PIN_FILE, replacement, mode=0o600)
     require(pin_value() == new, "pin_update_failed")
 
@@ -239,7 +244,7 @@ def validate_origin():
 def compatible(old, target):
     # A Python-only checkout update must not pretend to deploy changed
     # dependencies, git filters/submodules, or installed worker unit files.
-    paths = git("diff", "--name-only", "-z", "--no-renames", old, target).split(b"\\0")
+    paths = git("diff", "--name-only", "-z", "--no-renames", old, target).split(b"\0")
     forbidden = (b"pyproject.toml", b"uv.lock", b"poetry.lock", b"Pipfile",
                  b"Pipfile.lock", b".gitmodules", b".gitattributes")
     require(not any(p in forbidden or p.startswith(b"requirements")
@@ -263,7 +268,7 @@ def journal_read():
 def recover():
     j = journal_read()
     timers_stop()
-    assert_idle()
+    assert_idle(wait_seconds=60)
     clean()
     current, pin = head(), pin_value()
     require(current in (j["old"], j["target"]) and pin in (j["old"], j["target"]),
@@ -296,15 +301,14 @@ def rollout(get):
     require(git("rev-parse", "FETCH_HEAD").decode().strip() == target, "fetched_sha_changed")
     git("merge-base", "--is-ancestor", old, target)
     compatible(old, target)
-    # Do not interrupt an in-flight worker. Stop only its timers and then
-    # recheck both services; preserve their prior enabled/active state.
+    # Do not interrupt an in-flight worker. Stop only its timers, wait
+    # briefly for existing work to finish, and preserve active timer state.
     saved = [t for t in TIMERS if unit_property(t, "ActiveState") == "active"]
-    assert_idle()
     atomic_write(JOURNAL, json.dumps({"old": old, "target": target, "timers": saved}).encode(),
                  mode=0o600)
     try:
         timers_stop()
-        assert_idle()
+        assert_idle(wait_seconds=60)
         clean()
         require(head() == pin_value() == old, "checkout_or_pin_changed")
         require(admit(get, target) == receipt, "merge_or_ci_changed")
@@ -313,6 +317,8 @@ def rollout(get):
         require(head() == target, "checkout_update_failed")
         write_pin(old, target)
         require(head() == pin_value() == target, "rollout_unverified")
+        # Once the new checkout and pin agree, record the completed
+        # transition before restarting timers. Keep the journal if start fails.
         timers_start(saved)
         JOURNAL.unlink()
         return {"status": "updated", "old_sha": old, "worker_sha": target, **receipt}
