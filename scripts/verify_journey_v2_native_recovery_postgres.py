@@ -189,4 +189,67 @@ with psycopg.connect(dsn,autocommit=True) as db:
     cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type='journey.planning.merge_source_preflight_requeued'",(rid,))
     assert cur.fetchone()[0]==1
 
+
+    # The next incident is a real completed zero-price model call, not a
+    # pre-provider failure. Preserve the full usage and original checkpoint.
+    cur.execute("alter table factory_audit_events add column created_at timestamptz default now()")
+    cur.execute("alter table factory_tool_usage add column tool_family text, add column estimated_cost numeric, add column usage_units numeric")
+    cur.execute("create table factory_execution_team_plans(source_run_id uuid)")
+    cur.execute("update factory_runs set status='failed',last_error='planning returned invalid JSON',finished_at='2026-11-25T15:42:47.971687Z',metadata=metadata||%s where id=%s",
+        (Jsonb({"error":"planning returned invalid JSON","worker_id":"factory-vps-infodive-product",
+            "claimed_at":"2026-11-25T15:41:17.774498+00:00",
+            "worker_sync_recovery":"dark-greenfield-worker-sync-4d5efbe9-v1",
+            "stage_evidence":{"planning":{"status":"failed","output":{},"recorded_at":"2026-11-25T15:42:47.724676+00:00"}}}),rid))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(gr["task_id"],))
+    events=[
+        ("run.claimed","factory-vps-infodive-product","2026-11-25T14:45:45.941793Z",{}),
+        ("run.failed","runtime-worker","2026-11-25T14:45:46.599505Z",{"error":"planning_resume_provenance_preflight_failed"}),
+        ("journey.planning.worker_sync_requeued","audited-worker-sync-recovery","2026-11-25T15:40:53.451288Z",{"incident":"dark-greenfield-worker-sync-4d5efbe9-v1"}),
+        ("run.claimed","factory-vps-infodive-product","2026-11-25T15:41:17.774498Z",{}),
+        ("run.stage.recorded","runtime-worker","2026-11-25T15:41:26.268422Z",{"stage":"planning","status":"started"}),
+        ("run.stage.recorded","runtime-worker","2026-11-25T15:42:47.724676Z",{"stage":"planning","status":"failed"}),
+        ("run.failed","runtime-worker","2026-11-25T15:42:47.971687Z",{"error":"planning returned invalid JSON"}),
+    ]
+    for event,actor,created,payload in events:
+        cur.execute("insert into factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload,created_at) values(%s,%s,%s,'system',%s,%s,%s,%s)",
+                    (gp,gr["task_id"],rid,actor,event,Jsonb(payload),created))
+    usage={"provider":"infodive_ibm_cloud","model":"SQL-InfoDive","status":"completed","input_tokens":16386,"output_tokens":4096,"cost_usd":"0"}
+    cur.execute("insert into factory_tool_usage(id,run_id,tool_family,operation,metadata,estimated_cost,usage_units) overriding system value values(382,%s,'model','private_sql_completed',%s,0,20482)",(rid,Jsonb(usage)))
+    statement=(root/"scripts/requeue_dark_greenfield_bounded_planning_once.sql").read_text()
+    for live,local in (("19f0f200-3777-46c6-969a-acf0d3426ff1",gp),
+          ("c43e7781-7cb9-49fd-8459-cc358880df0a",gj),
+          ("13fc575b-af98-4eb3-a5b8-01dce69ec8af",rid),
+          ("1ed3c5d1-fc2a-4bab-a4a9-12f53bc83c29",gr["run_id"]),
+          ("e30ee0cb-0be3-4ddc-a10e-d653d25fa266",gr["task_id"]),
+          ("0b6ab27d-11eb-acf6-1392-50857d8d854c",greq),
+          ("55e8e8d8422ee044eb1112ab678cb0223e987742",sha),
+          ("7162981651","456")):
+        statement=statement.replace(live,local)
+    for invalid,restore in (
+        ("update factory_tool_usage set estimated_cost=NULL where id=382","update factory_tool_usage set estimated_cost=0 where id=382"),
+        ("update factory_tool_usage set estimated_cost=1 where id=382","update factory_tool_usage set estimated_cost=0 where id=382"),
+        ("update factory_tool_usage set metadata=jsonb_set(metadata,'{output_tokens}','4095') where id=382","update factory_tool_usage set metadata=jsonb_set(metadata,'{output_tokens}','4096') where id=382"),
+        ("update factory_project_execution_controls set state='paused' where project_id='"+gp+"'","update factory_project_execution_controls set state='running' where project_id='"+gp+"'"),
+        ("insert into factory_execution_team_plans values('"+rid+"')","delete from factory_execution_team_plans where source_run_id='"+rid+"'"),
+    ):
+        cur.execute(invalid)
+        try: cur.execute(statement)
+        except psycopg.Error: cur.execute("rollback")
+        else: raise AssertionError("unsafe bounded-output retry admitted")
+        cur.execute(restore)
+    cur.execute(statement)
+    cur.execute(statement)
+    cur.execute("select status,last_error,metadata from factory_runs where id=%s",(rid,))
+    status,error,after=cur.fetchone()
+    assert status=="queued" and error is None and "stage_evidence" not in after
+    assert after["resume_checkpoint"]==checkpoint["resume_checkpoint"]
+    assert after["bounded_planning_output_recovery"]=="dark-greenfield-bounded-plan-output-382-v1"
+    cur.execute("select count(*) from factory_runs where journey_id=%s",(gj,))
+    assert cur.fetchone()[0]==2
+    cur.execute("select id,operation,estimated_cost,usage_units,metadata from factory_tool_usage where run_id=%s",(rid,))
+    receipt=cur.fetchone()
+    assert receipt==(382,"private_sql_completed",0,20482,usage) and cur.fetchone() is None
+    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type='journey.planning.bounded_output_requeued'",(rid,))
+    assert cur.fetchone()[0]==1
+
 print("JOURNEY_V2_NATIVE_RECOVERY_POSTGRES_PASS")

@@ -31,6 +31,8 @@ class ModelResult:
     provider_ref: str | None = None
     usage: dict[str, float] | None = None
     model: str | None = None
+    output_limit_reached: bool = False
+    output_truncated: bool = False
 
 
 class ModelProvider(Protocol):

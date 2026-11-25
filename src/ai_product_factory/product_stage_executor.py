@@ -7,6 +7,11 @@ from .model_executor import ModelExecutor, ModelRequest
 from .models import ExecutionRoute
 from .product_stage_output_contract import (
     assert_executed_product_stage_output, PlanningNoActionableWork,
+    ProductStageOutputTruncated, decode_product_stage_object,
+)
+from .compact_journey_planning import (
+    linked_greenfield_planning, compact_context, compact_objective,
+    planning_schema, validate_compact_tasks,
 )
 from .runtime_worker import WorkItem
 from .agent_scheduler import AgentProfile
@@ -269,7 +274,24 @@ class ProductStageExecutor:
         self.team_profiles=team_profiles
         self.outputs: dict[tuple[str,str],dict] = {}
 
-    def execute(self,item:WorkItem,stage:str)->dict:
+    def retry_truncated_planning(self, item: WorkItem, stage: str,
+                                 error: ProductStageOutputTruncated) -> dict:
+        """Called at most once by RuntimeWorker after a fresh epoch assertion.
+
+        The private wrapper returns a result only after durable cost settlement.
+        Never retry paid, unmetered, unknown-cost or non-planning output.
+        """
+        from .private_model_metering import MeteredPrivateProvider
+        provider = self.executor.primary
+        if (not isinstance(error, ProductStageOutputTruncated)
+                or error.stage != stage
+                or not linked_greenfield_planning(item.context, stage)
+                or not isinstance(provider, MeteredPrivateProvider)
+                or provider.pricing.input_rate != 0 or provider.pricing.output_rate != 0):
+            raise error
+        return self.execute(item, stage, _compact_retry=True)
+
+    def execute(self,item:WorkItem,stage:str, *, _compact_retry: bool = False)->dict:
         if stage not in self._supported:
             raise ValueError(f"unsupported product stage: {stage}")
 
@@ -422,22 +444,12 @@ class ProductStageExecutor:
                 manifest=dict(manifest)
                 manifest.pop("gap_analysis",None)
                 intake_context["manifest"]=manifest
-        if stage=="planning" and isinstance(item.context.get("journey_binding_v2"),dict):
-            manifest=item.context.get("manifest")
-            if isinstance(manifest,dict) and manifest.get("onboarding_mode")=="greenfield":
-                objective += (
-                    " LINKED GREENFIELD CONTINUATION: The immutable journey_request is the current "
-                    "authorized product objective. Discovery/specification and completed historical "
-                    "tasks are not proof that the current application works. Use the exact-SHA "
-                    "repository inventory, governance and bounded source/test excerpts in "
-                    "current_state_facts.live_candidate. Do not recreate historical implementation. "
-                    "Where current inspected code substantiates missing integration or coverage "
-                    "required by the request, plan concrete bounded builder changes and executable "
-                    "end-to-end regression tests. Read-only inventory is not write authorization; "
-                    "do not guess about uninspected functionality. Independent security, QA, Preview "
-                    "and production gates remain mandatory. Report truly missing evidence without "
-                    "inventing code changes."
-                )
+        compact = linked_greenfield_planning(item.context, stage)
+        if compact:
+            objective = compact_objective(retry=_compact_retry)
+            intake_context = compact_context(intake_context)
+        elif _compact_retry:
+            raise PermissionError("compact retry is not authorized for this stage")
         registry=None
         if stage=="planning" and self.team_profiles is not None:
             registry=[
@@ -458,6 +470,7 @@ class ProductStageExecutor:
             },
             ensure_ascii=False,
             sort_keys=True,
+            **({"separators": (",", ":")} if compact else {}),
         )
         result=self.executor.execute(
             ExecutionRoute.DIRECT,
@@ -466,6 +479,7 @@ class ProductStageExecutor:
                 objective=objective,
                 context=context,
                 run_id=item.run_id,
+                output_schema=planning_schema() if compact else None,
                 constraints=(
                     "Return valid JSON only.",
                     "Do not invent unavailable business decisions.",
@@ -478,12 +492,7 @@ class ProductStageExecutor:
                 ),
             ),
         )
-        try:
-            output=json.loads(result.output)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{stage} returned invalid JSON") from exc
-        if not isinstance(output,dict):
-            raise ValueError(f"{stage} output must be a JSON object")
+        output=decode_product_stage_object(result,stage)
         # A response that declares itself deferred, simulated, or dependent on
         # a later model call is not executed Product Stage evidence. Reject it
         # before it can enter in-memory prior-stage context or durable storage.
@@ -528,6 +537,8 @@ class ProductStageExecutor:
                 raise ValueError("planning requires an explicit tasks array")
             if not output["tasks"] and not output.get("decisions_needed"):
                 raise PlanningNoActionableWork()
+        if compact:
+            validate_compact_tasks(output)
         if stage=="planning" and self.team_profiles is not None:
             _validate_pre_pr_planning_tasks(output,self.team_profiles)
             output["_team_plan"]=build_execution_team_plan(output,self.team_profiles)

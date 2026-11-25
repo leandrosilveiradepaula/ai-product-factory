@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import re
+
 
 class ProductStageOutputBlocked(ValueError):
     """A model response explicitly says that Product Stage was not executed."""
@@ -94,3 +97,51 @@ def assert_executed_product_stage_output(output: dict) -> None:
     for key in _STATUS_FIELDS:
         if _normalise(output.get(key)) in _NON_EXECUTION_STATUSES:
             raise ProductStageOutputBlocked("product_stage_output_not_executed")
+
+
+class ProductStageOutputTruncated(ValueError):
+    """A provider explicitly truncated output or malformed JSON hit its cap."""
+
+    def __init__(self, stage: str):
+        self.stage = stage
+        super().__init__(f"{stage} output truncated at provider limit")
+
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _reject_constant(_):
+    raise ValueError("non-finite JSON value")
+
+
+def decode_product_stage_object(result, stage: str) -> dict:
+    """Parse exactly one complete JSON object, optionally in one JSON fence.
+
+    Never reconstruct missing braces, accept a partial object, select a JSON
+    substring from prose, or persist the rejected provider response.
+    """
+    if result.output_truncated:
+        raise ProductStageOutputTruncated(stage)
+    try:
+        if not isinstance(result.output, str):
+            raise ValueError("non-text output")
+        text = result.output.strip()
+        fenced = re.fullmatch(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```[ \t]*",
+                              text, flags=re.IGNORECASE | re.DOTALL)
+        if fenced:
+            text = fenced.group(1)
+        output = json.loads(text, object_pairs_hook=_unique_object,
+                            parse_constant=_reject_constant)
+    except (ValueError, TypeError, RecursionError):
+        if result.output_limit_reached:
+            raise ProductStageOutputTruncated(stage) from None
+        raise ValueError(f"{stage} returned invalid JSON") from None
+    if not isinstance(output, dict):
+        raise ValueError(f"{stage} output must be a JSON object")
+    return output
