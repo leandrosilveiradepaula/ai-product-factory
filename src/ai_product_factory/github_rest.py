@@ -385,6 +385,33 @@ class GitHubRestAdapter:
                    payload={"sha": new_commit["sha"], "force": False})
         return new_commit["sha"]
 
+    def assert_source_commit(self, sha: str) -> None:
+        """Verify a pinned SOURCE object, including root and merge commits.
+
+        A source may have zero, one or multiple parents. The single-parent
+        invariant belongs exclusively to integration-write recovery below.
+        This is a GET-only identity check, not write or release authority.
+        """
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("source commit requires an exact lowercase SHA")
+        row = self._call("GET", f"/repos/{self.repository}/git/commits/{sha}")
+        if not isinstance(row, dict) or row.get("sha") != sha:
+            raise PermissionError("GitHub source commit identity mismatch")
+        tree = row.get("tree")
+        parents = row.get("parents")
+        if (not isinstance(tree, dict)
+                or not isinstance(tree.get("sha"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}", tree["sha"])
+                or not isinstance(parents, list) or len(parents) > 64):
+            raise PermissionError("GitHub source commit tree or parents invalid")
+        seen = set()
+        for parent in parents:
+            value = parent.get("sha") if isinstance(parent, dict) else None
+            if (not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value)
+                    or value == sha or value in seen):
+                raise PermissionError("GitHub source commit parent identity invalid")
+            seen.add(value)
+
     def get_commit_provenance(self, sha: str) -> tuple[str, tuple[str, ...]]:
         """Return the immutable message and parents for one Git commit.
 

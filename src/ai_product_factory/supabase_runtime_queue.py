@@ -924,12 +924,31 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             raise JourneyBindingBlocked("journey_binding_missing")
         binding = JourneyBinding.parse(raw, project_id=str(raw.get("project_id") or ""),
             request_id=str(raw.get("request_id") or ""), repository=str(raw.get("repository") or ""))
-        github = GitHubRestAdapter(repository=binding.repository)
-        # Binding already proved the ref at admission.  A later main advance
-        # cannot rewrite the immutable source capability; prove that exact
-        # object still exists instead of silently switching to the new head.
+        # Native Product Stage must mint a repository-scoped token just as
+        # the existing-project path does. Actions uses the broker's existing
+        # repository binding; neither path may fall back to another repo token.
+        native_vps = (
+            os.environ.get("GITHUB_ACTIONS", "").lower() != "true"
+            and os.environ.get("FACTORY_PRIMARY_MODEL_PROVIDER") == "infodive_ibm_cloud"
+            and os.environ.get("FACTORY_INFODIVE_VPS_WORKER_ENABLED") == "true"
+        )
+        if native_vps:
+            projects = self._get(
+                "factory_projects?select=id,project_key,repository"
+                "&id=eq." + quote(binding.project_id, safe="") + "&limit=2"
+            )
+            if (not isinstance(projects, list) or len(projects) != 1
+                    or not isinstance(projects[0], dict)
+                    or projects[0].get("id") != binding.project_id
+                    or projects[0].get("repository") != binding.repository):
+                raise JourneyBindingBlocked("journey_source_project_unverified")
+            github = self._github_for_project(projects[0])
+        else:
+            github = GitHubRestAdapter(repository=binding.repository)
+        # The bound object may be a merge commit (normal main history).
+        # Do not call the single-parent integration-write recovery verifier.
         try:
-            github.get_commit_provenance(binding.source_commit)
+            github.assert_source_commit(binding.source_commit)
         except Exception as exc:
             raise JourneyBindingBlocked("journey_source_commit_unavailable") from exc
         # Journey V2 does not use the mutable V1 delivery_target. Inspect
@@ -1202,10 +1221,18 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                     execution_generation=data["execution_generation"],
                     worker_id=worker_id,
                 )
+                # Keep machine-readable safe source failure codes. Generic
+                # failures remain redacted; never persist upstream response text.
+                safe_source_codes = {
+                    "journey_source_commit_unavailable", "journey_source_project_unverified",
+                    "journey_source_commit_invalid", "journey_request_snapshot_invalid",
+                }
                 reason = (
                     exc.code if isinstance(exc, PlanningReplayBlocked)
                     else "planning_resume_" + exc.code
                     if isinstance(exc, SourceScopeBlocked)
+                    else "planning_resume_" + str(exc)
+                    if isinstance(exc, JourneyBindingBlocked) and str(exc) in safe_source_codes
                     else "planning_resume_provenance_preflight_failed"
                 )
                 try:
