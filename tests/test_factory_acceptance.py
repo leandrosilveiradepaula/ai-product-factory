@@ -462,6 +462,7 @@ class FactoryAcceptanceTests(unittest.TestCase):
             "20261118005000_platform_empty_planning_checkpoint_recovery.sql",
             "20261118014500_retry_verified_document_scope_preflight.sql",
             "20261118022000_platform_blocked_change_set_source_repin.sql",
+            "20261125132642_journey_v2_greenfield_planning_recovery.sql",
         }
         self.assertEqual(migration_names, expected_history)
 
