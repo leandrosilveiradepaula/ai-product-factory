@@ -35,7 +35,7 @@ SERVICES = tuple(t.replace(".timer", ".service") for t in TIMERS)
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 # Do not pass the wake token or any worker/model secrets to subprocesses.
 ENV = {"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C",
-       "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1"}
+       "GIT_TERMINAL_PROMPT": "0"}
 
 
 class Blocked(Exception):
@@ -159,7 +159,10 @@ def assert_idle(wait_seconds=0):
     while True:
         states = [unit_property(s, "ActiveState") for s in SERVICES]
         jobs = [unit_property(s, "Job") for s in SERVICES]
-        if all(s == "inactive" for s in states) and all(j in ("", "0") for j in jobs):
+        pids = [unit_property(s, key) for s in SERVICES for key in ("MainPID", "ControlPID")]
+        if (all(s in ("inactive", "failed") for s in states)
+                and all(j in ("", "0") for j in jobs)
+                and all(p == "0" for p in pids)):
             return
         require(time.monotonic() < deadline, "worker_busy_or_unhealthy")
         time.sleep(2)
@@ -251,7 +254,9 @@ def compatible(old, target):
                     or p.endswith(b"/.gitattributes")
                     or p.startswith(b"docs/systemd/ai-product-factory-infodive-")
                     or p.startswith(b"deploy/systemd/")
-                    for p in paths), "dependency_or_unit_rollout_requires_admin")
+                    or p.startswith(b"supabase/migrations/")
+                    or p.startswith(b"supabase/functions/")
+                    for p in paths), "dependency_or_database_or_unit_rollout_requires_admin")
 
 
 def journal_read():

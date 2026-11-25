@@ -25,8 +25,9 @@ Git já provisionada, separada do token de wake.
   exata e ambos os jobs test/factory-acceptance. Falhar fechado se faltar prova,
   ocorrer rerun pendente, mudança concorrente ou resposta ambígua.
 - Exigir fast-forward, checkout limpo, origem HTTPS oficial, SHA da configuração
-  igual ao checkout. Alteração em dependências, filtros Git ou unidades
-  instaladas exige atualização administrativa específica.
+  igual ao checkout. Alteração em dependências, filtros Git, migrations,
+  Edge Functions ou unidades instaladas exige atualização administrativa
+  específica; nenhuma migração ou deploy externo é executado pelo controller.
 - Não interromper worker ativo. Suspender apenas os timers existentes, verificar
   novamente o estado, atualizar checkout e pin, restaurar os timers originalmente
   ativos. Journal root-only com SHAs (sem credenciais) permite recuperação após
@@ -45,6 +46,8 @@ SHA e integridade da árvore antes de copiar. Não copiar segredos ou gerar toke
 
 ```bash
 # Neste ponto, TARGET deve ser o merge SHA explicitamente aprovado deste rollout.
+set -eu
+test "${#TARGET}" -eq 40
 cd /opt/ai-product-factory/worker
 git fetch --no-tags origin main
 test "$(git rev-parse FETCH_HEAD)" = "$TARGET"
