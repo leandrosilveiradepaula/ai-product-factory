@@ -127,7 +127,9 @@ class CompactPlanningTests(unittest.TestCase):
         self.assertEqual(data["intake"]["manifest"]["human_decisions"], original["manifest"]["human_decisions"])
         self.assertEqual(data["intake"]["manifest"]["engineering_plan"]["tasks"],
                          original["manifest"]["engineering_plan"]["tasks"])
-        self.assertNotIn("old narrative", req.context)
+        self.assertEqual(data["intake"]["manifest"]["engineering_plan"],
+                         original["manifest"]["engineering_plan"])
+        self.assertNotIn("_verified_resume_prior_stages", data["intake"])
         self.assertEqual(item.context, original)
         self.assertEqual(req.output_schema, planning_schema())
         self.assertIn("2500 output tokens", req.objective)
