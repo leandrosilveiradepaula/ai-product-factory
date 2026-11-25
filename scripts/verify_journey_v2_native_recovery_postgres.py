@@ -36,7 +36,7 @@ with psycopg.connect(dsn,autocommit=True) as db:
     # fixture predates it, so model the real column before applying recovery.
     cur.execute("alter table public.factory_tasks add column updated_at timestamptz default now()")
     cur.execute(V2); cur.execute(RECOVERY); cur.execute(REQUEUE); cur.execute(CHECKPOINT); cur.execute(EVENT_INTEGRITY)
-    cur.execute((root/"scripts/fixtures/greenfield_v2_recovery_candidate.sql").read_text())
+    cur.execute((root/"supabase/migrations/20261125132642_journey_v2_greenfield_planning_recovery.sql").read_text())
     manifest={"journey_delivery_binding_v2":{"enabled":True,"version":2,"digest":policy,"source_mode":"main_snapshot","preview_base_ref":"main","release_base_ref":"main"}}
     cur.execute("insert into factory_projects values(%s,'crm-infodive','leandrosilveiradepaula/crm-infodive',%s,true,'existing')",(project,Jsonb(manifest)))
     cur.execute("insert into factory_project_execution_controls values(%s,'running',16,1)",(project,))

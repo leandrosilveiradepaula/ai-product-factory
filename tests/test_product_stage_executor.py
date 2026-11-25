@@ -50,6 +50,50 @@ def existing_item():
 
 
 class ProductStageExecutorTests(unittest.TestCase):
+    def test_greenfield_v2_recovery_reuses_completed_stages_and_requires_bound_source_before_model(self):
+        from copy import deepcopy
+        sha="a"*40
+        context={
+            "manifest":{"source":"factory-console","onboarding_mode":"greenfield"},
+            "journey_binding_v2":{"journey_id":"journey-1","request_id":"request-1","source_commit":sha},
+            "journey_request":{"text":"Complete authenticated editorial flow"},
+            "_verified_resume_prior_stages":{
+                "discovery":{"problem":"editorial gap","_evidence":{"provider_ref":"d"}},
+                "specification":{"scope":"editorial flow","_evidence":{"provider_ref":"s"}},
+            },
+            "_verified_resume_origin":{"generation":1,"prior_kind":"greenfield",
+                "request_id":"request-1","snapshot_id":sha},
+            "current_state_facts":{"live_candidate":{
+                "observed_from":"journey_delivery_binding_v2","journey_id":"journey-1","sha":sha,
+                "source_evidence":{"assessed_commit":sha,"status":"bounded_source_inspected",
+                    "inspected_files":[{"path":"app/server.js","content":"function serve() {}"}]},
+            }},
+        }
+        for tamper in ("none","cross-journey","different-sha","no-code","missing-receipt"):
+            with self.subTest(tamper=tamper):
+                provider=Provider()
+                handler=ProductStageExecutor(ModelExecutor(primary=provider))
+                candidate=deepcopy(context)
+                live=candidate["current_state_facts"]["live_candidate"]
+                if tamper=="cross-journey": live["journey_id"]="other"
+                if tamper=="different-sha": live["source_evidence"]["assessed_commit"]="b"*40
+                if tamper=="no-code": live["source_evidence"]["inspected_files"]=[]
+                if tamper=="missing-receipt":
+                    candidate["_verified_resume_prior_stages"]["discovery"].pop("_evidence")
+                work=WorkItem("r","t","p","dark-channel-studio",("planning",),candidate,execution_generation=1)
+                if tamper=="none":
+                    output=handler.execute(work,"planning")
+                    self.assertTrue(output["tasks"])
+                    self.assertEqual(len(provider.requests),1)
+                    request=provider.requests[0]
+                    self.assertIn("LINKED GREENFIELD CONTINUATION",request.objective)
+                    self.assertNotIn("README-only",request.objective)
+                    self.assertEqual(json.loads(request.context)["prior_stages"],context["_verified_resume_prior_stages"])
+                else:
+                    with self.assertRaisesRegex(PermissionError,"verified planning checkpoint is invalid"):
+                        handler.execute(work,"planning")
+                    self.assertEqual(provider.requests,[])
+
     def test_v2_checkpoint_accepts_structured_summary_and_rejects_empty_object(self):
         class CountingProvider:
             def __init__(self): self.calls = 0
