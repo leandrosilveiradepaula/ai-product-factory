@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from .models import RiskProfile
 
-_ACTIVE = {"queued", "running", "awaiting_human", "blocked"}
 _RISK_KEYS = tuple(RiskProfile.__dataclass_fields__)
 
 
@@ -21,12 +20,9 @@ def linked_greenfield_planning(context: dict, stage: str) -> bool:
 
 
 def compact_context(context: dict) -> dict:
-    """Keep all requirements, evidence, task scopes, risks and prior decisions.
+    """Retain all approved requirements, risks, evidence and historical context.
 
-    The old manifest engineering plan is not current journey authority. Its
-    long narrative sections can be repeated in the new discovery/specification
-    and current source receipts. Keep the task array and all decisions, and
-    preserve every other top-level context field.
+    Bound output by prompt/schema, not by deleting input constraints.
     """
     out = dict(context)
     manifest = out.get("manifest")
@@ -35,15 +31,9 @@ def compact_context(context: dict) -> dict:
     manifest = dict(manifest)
     old = manifest.get("engineering_plan")
     if isinstance(old, dict):
-        manifest["engineering_plan"] = {
-            key: value for key, value in old.items()
-            if key not in {"architecture", "workstreams", "dependencies",
-                           "test_strategy", "release_strategy", "risks"}
-        }
         manifest["historical_plan_context_note"] = (
-            "Historical plan narrative omitted to avoid duplicate planning; "
-            "all prior tasks, decisions, current authorized request, checkpoint "
-            "and exact source evidence are retained. Do not infer completion."
+            "The complete prior plan is historical context; current immutable request, "
+            "approved decisions and exact source evidence govern. Do not infer completion."
         )
     out["manifest"] = manifest
     return out
