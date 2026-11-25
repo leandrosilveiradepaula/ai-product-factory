@@ -119,7 +119,7 @@ export function summarizeOperationalHealth(
 // A failed attempt is not an active incident, and a registered phase is not readiness.
 export type PortfolioProject = {
  id:string; key:string; name:string; stage:string; active:boolean; updatedAt:string;
- controlState:string; activeLeases:number; pendingTasks:PortfolioPendingTask[];
+ controlState:string; activeLeases:number; totalTasks:number; pendingTasks:PortfolioPendingTask[];
 };
 export type PortfolioPendingTask = {
  taskId:string; runId:string|null; title:string; status:"failed"|"blocked";
@@ -161,7 +161,7 @@ export function summarizePortfolioOverview(
   if(!controlStates.has(controlState))throw new Error("Controle de execução inválido.");
   projectMap.set(id,{id,key,name:requiredText(row.name,"nome de projeto"),
    stage:requiredText(row.lifecycle_stage,"etapa registrada"),active:row.is_active,
-   updatedAt:String(row.updated_at),controlState,activeLeases:0,pendingTasks:[]});
+   updatedAt:String(row.updated_at),controlState,activeLeases:0,totalTasks:0,pendingTasks:[]});
  }
  for(const id of controls.keys())if(!projectMap.has(id))throw new Error("Controle sem projeto no portfólio.");
  for(const row of journeyMap.values()){
@@ -188,6 +188,7 @@ export function summarizePortfolioOverview(
  for(const [taskId,task] of taskMap){
   const project=projectMap.get(verifiedId(task.project_id,"uuid"));
   if(!project)throw new Error("Tarefa sem projeto no portfólio.");
+  project.totalTasks++;
   const status=requiredText(task.status,"estado da tarefa");
   if(status!=="failed"&&status!=="blocked")continue;
   const run=latest.get(taskId);
@@ -232,4 +233,56 @@ export function portfolioPendingReason(error:string|null):string{
  if(error?.includes("reconciliation_source_candidate_sha_drift"))return "A versão do repositório mudou durante a reconciliação anterior.";
  if(error?.includes("AGENTS.md")||error?.includes("CURRENT_TASK.md"))return "A tentativa anterior foi bloqueada pela falta de contexto ou autorização de escopo no repositório.";
  return "Há uma tarefa sem encerramento confirmado no histórico do projeto.";
+}
+
+
+// The next-action panel consumes operational evidence, not the registered lifecycle phase.
+export function projectWorkFocus(input:{
+ observation:"running"|"recorded"|"idle"|"unavailable";
+ pendingCount:number|null;
+ gateCount:number|null;
+ hasPendingDatabase:boolean;
+ projectKey:string;
+}):{title:string;body:string;href:string;label:string}|null{
+ if(input.gateCount!==null&&input.gateCount>0)return {
+  title:"Decisão humana pendente",body:"Existe uma aprovação acionável vinculada a este projeto. Revise o motivo antes de continuar.",
+  href:"/gates",label:"Abrir aprovações"
+ };
+ if(input.hasPendingDatabase)return {
+  title:"Conectar o banco de dados",body:"Há uma conexão de banco registrada como pendente. Revise o acesso necessário; isso não comprova que um worker esteja executando.",
+  href:"#databases",label:"Ver banco de dados"
+ };
+ if(input.observation==="unavailable"||input.pendingCount===null||input.gateCount===null)return {
+  title:"Estado operacional não verificável",body:"Não foi possível confirmar todos os dados da fila e das aprovações. Nenhuma execução ou conclusão é inferida.",
+  href:"#project-control",label:"Ver estado do projeto"
+ };
+ if(input.observation==="running")return {
+  title:"Trabalho assumido por um worker",body:"Uma execução possui reserva vigente e início observado. Acompanhe sua evolução; isso não comprova a conclusão da etapa.",
+  href:"/runs",label:"Ver execuções"
+ };
+ if(input.observation==="recorded")return {
+  title:"Pedido na fila",body:"Existe trabalho registrado, ainda sem execução ativa comprovada. O worker deve verificar a elegibilidade e os bloqueios.",
+  href:"/queue",label:"Ver fila"
+ };
+ if(input.pendingCount>0)return {
+  title:"Pendências técnicas sem execução ativa",body:input.pendingCount+" tarefa(s) sem encerramento confirmado. Consulte as causas registradas; o projeto não está sendo desenvolvido neste momento.",
+  href:"#technical-pendencies",label:"Ver pendências"
+ };
+ return null;
+}
+
+export function projectCandidateTaskIds(tasks:readonly {id:string;status:string}[]):string[]{
+ const historical=new Set(["completed","cancelled","canceled","failed","merged","integrated","work_unit_completed","blocked","superseded"]);
+ return tasks.filter(t=>!historical.has(t.status)).map(t=>t.id);
+}
+
+export function projectWorkObservation(
+ observed:"running"|"recorded"|"idle"|"unavailable",
+ inventory:{totalTasks:number;activeLeases:number;controlState:string}|null,
+ taskCount:number,controlState:string
+):"running"|"recorded"|"idle"|"unavailable"{
+ if(!inventory||inventory.totalTasks!==taskCount||inventory.controlState!==controlState||
+    (observed==="running"&&inventory.activeLeases===0)||
+    (observed!=="running"&&inventory.activeLeases>0))return "unavailable";
+ return observed;
 }

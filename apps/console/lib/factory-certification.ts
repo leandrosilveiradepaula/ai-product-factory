@@ -86,3 +86,23 @@ export async function getCurrentFactoryCertificate():Promise<FactoryCertificate>
   return classifyFactoryCertificate(sha,await result.json());
  }catch{return unavailable;}
 }
+
+
+// Public-only read of the repository main. An inaccessible private repo remains
+// unverified here; never expose an installation token or use an arbitrary URL.
+export async function getPublicProjectMainCommit(repo:string|null):Promise<string|null>{
+ await requireConsoleOperator();
+ if(typeof repo!=="string"||!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))return null;
+ try{
+  const path=repo.split("/").map(encodeURIComponent).join("/");
+  const response=await fetch("https://api.github.com/repos/"+path+"/git/ref/heads/main",{
+   headers:{"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},
+   cache:"no-store",
+  });
+  if(!response.ok)return null;
+  const row:unknown=await response.json();
+  if(!row||typeof row!=="object"||!("object" in row)||!("ref" in row)||row.ref!=="refs/heads/main")return null;
+  const sha=(row as {object?:{sha?:unknown}}).object?.sha;
+  return typeof sha==="string"&&shaPattern.test(sha)?sha:null;
+ }catch{return null;}
+}

@@ -175,3 +175,41 @@ test("closed journey cannot hide a different live journey; cross-project lineage
  assert.throws(()=>summarizePortfolioOverview([attempt(0,t,"blocked")],[t],[p,q],[{...j,project_id:q.id}],new Map(),Date.now()),/Linhagem/);
  assert.throws(()=>summarizePortfolioOverview([attempt(0,t,"blocked")],[],[p,q],[j],new Map(),Date.now()),/sem tarefa/);
 });
+
+
+// Regression for the six historical CRM tasks and the contradictory idle action.
+const {projectWorkFocus,projectCandidateTaskIds,projectWorkObservation}=sandboxExports;
+test("idle project with historical pendencies cannot claim agents are building",()=>{
+ const focus=projectWorkFocus({observation:"idle",pendingCount:6,gateCount:0,hasPendingDatabase:false,projectKey:"crm"});
+ assert.equal(focus.title,"Pendências técnicas sem execução ativa");
+ assert.equal(focus.href,"#technical-pendencies");
+ assert.match(focus.body,/6 tarefa/);
+});
+test("only a verified active worker or a real queued request gets an execution-oriented action",()=>{
+ const input={pendingCount:0,gateCount:0,hasPendingDatabase:false,projectKey:"crm"};
+ assert.equal(projectWorkFocus({...input,observation:"running"}).title,"Trabalho assumido por um worker");
+ assert.equal(projectWorkFocus({...input,observation:"recorded"}).title,"Pedido na fila");
+ assert.equal(projectWorkFocus({...input,observation:"idle"}),null);
+ assert.equal(projectWorkFocus({...input,observation:"idle",gateCount:1}).href,"/gates");
+ assert.equal(projectWorkFocus({...input,observation:"idle",gateCount:null}).title,"Estado operacional não verificável");
+ assert.equal(projectWorkFocus({...input,observation:"idle",pendingCount:null}).title,"Estado operacional não verificável");
+});
+test("integrated, completed work units and blocked historical tasks never count as pending runnable work",()=>{
+ const tasks=["integrated","work_unit_completed","completed","cancelled","merged","failed","blocked","superseded","queued"].map((status,i)=>({id:String(i),status}));
+ assert.equal(JSON.stringify(projectCandidateTaskIds(tasks)),JSON.stringify(["8"]));
+ const inventory={totalTasks:87,activeLeases:0,controlState:"running"};
+ assert.equal(projectWorkObservation("idle",inventory,87,"running"),"idle");
+ assert.equal(projectWorkObservation("running",inventory,87,"running"),"unavailable");
+ assert.equal(projectWorkObservation("idle",inventory,86,"running"),"unavailable");
+ assert.equal(projectWorkObservation("idle",{...inventory,activeLeases:1},87,"running"),"unavailable");
+ assert.equal(projectWorkObservation("idle",inventory,87,"paused"),"unavailable");
+});
+test("detail page uses portfolio pending count and separates historical assessment",()=>{
+ const page=fs.readFileSync(path.join(root,"apps/console/app/projects/[key]/page.tsx"),"utf8");
+ assert.match(page,/getPortfolioOverview\(\)/);
+ assert.match(page,/projectWorkFocus\(/);
+ assert.match(page,/label="Tarefas a reconciliar" value=\{pendingCount===null\?"—":pendingCount\}/);
+ assert.match(page,/getCurrentFactoryCertificate\(\)/);
+ assert.match(page,/p\.productReadiness\.assessedCommit===currentMain/);
+ assert.doesNotMatch(page,/A Factory está cuidando desta etapa|Tarefas abertas|A execução está com os agentes/);
+});

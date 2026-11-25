@@ -30,7 +30,7 @@ class ConsoleGlobalReadinessOperabilityTests(unittest.TestCase):
         self.assertEqual(re.findall(r'key:"([a-z_]+)"',block),list(DOMAINS))
         self.assertIn('className="readinessDomainChecklist" role="list"',PROJECT)
         self.assertIn('className="readinessDomain" role="listitem"',PROJECT)
-        self.assertIn('p.productReadiness.ready?"Avaliado no SHA registrado":"Comprovação pendente"',PROJECT)
+        self.assertIn('currentReadinessReady?"Avaliado no SHA atual":"Comprovação atual pendente"',PROJECT)
         self.assertIn("Sem avaliação global independente para o SHA atual",PROJECT)
         self.assertIn('href="/evals"',PROJECT)
         self.assertIn('href="/deployments"',PROJECT)

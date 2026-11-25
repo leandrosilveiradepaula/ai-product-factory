@@ -409,14 +409,18 @@ export async function getProjectDetail(projectKey:string):Promise<ProjectDetail|
  const projects=await projectResponse.json();if(!projects.length)return null;
  const p=projects[0];
  const tasksResponse=await fetch(`${cfg.url}/rest/v1/factory_tasks?select=id,title,status,complexity,external_key,updated_at&project_id=eq.${p.id}&order=created_at.asc`,{headers:cfg.headers,cache:"no-store"});
- const tasks=tasksResponse.ok?await tasksResponse.json():[];
+ if(!tasksResponse.ok)throw new Error("Unable to load project task history");
+ const tasks=await tasksResponse.json();
+ if(!Array.isArray(tasks))throw new Error("Invalid project task history");
  const taskIds=tasks.map((x:any)=>String(x.id));
  let productReadiness:ProjectReadinessSummary={ready:false,status:"not_assessed",assessedCommit:null,assessmentRef:null,domains:{},blockers:[],createdAt:null};
  let pendingRun:ProjectPendingRun|null=null;
  let wakeEvidence:ProjectWakeEvidence|null=null;
  if(taskIds.length){
   const runsResponse=await fetch(`${cfg.url}/rest/v1/factory_runs?select=id,status,attempt_count,created_at,started_at&task_id=in.(${taskIds.join(",")})&order=created_at.desc`,{headers:cfg.headers,cache:"no-store"});
-  const runs=runsResponse.ok?await runsResponse.json():[];
+  if(!runsResponse.ok)throw new Error("Unable to load project runs");
+  const runs=await runsResponse.json();
+  if(!Array.isArray(runs))throw new Error("Invalid project runs");
   const waiting=runs.find((x:any)=>x.status==="created"&&x.started_at==null);
   if(waiting){
    pendingRun={id:String(waiting.id),status:"created",attemptCount:Number(waiting.attempt_count||0),createdAt:String(waiting.created_at)};
