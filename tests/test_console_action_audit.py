@@ -168,6 +168,7 @@ class OperationalContinuityActionTests(unittest.TestCase):
         self.assertIn('recoveryEligibility.status==="eligible"',detail)
         self.assertIn('restartBlockedWork:controlProject',detail)
         self.assertIn('/rest/v1/rpc/factory_restart_blocked_work_v2',control)
-        self.assertIn('getProjectWorkObservation(p.tasks.map',detail)
+        self.assertIn('getProjectWorkObservation(projectCandidateTaskIds(p.tasks))',detail)
+        self.assertIn('projectWorkObservation(observedWork,projectInventory,p.tasks.length,executionControl.state)',detail)
         self.assertIn('Sem execução ativa',detail)
         self.assertNotIn('executionControl.state==="running"?"Em execução"',detail)
