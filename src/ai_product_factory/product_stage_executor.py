@@ -316,6 +316,7 @@ class ProductStageExecutor:
             manifest = item.context.get("manifest")
             original = item.context.get("intake_spec")
             if (isinstance(manifest, dict)
+                    and not item.context.get("journey_binding_v2")
                     and manifest.get("source") == "factory-console"
                     and manifest.get("onboarding_mode") == "greenfield"
                     and isinstance(manifest.get("human_decisions"), list)
@@ -373,15 +374,30 @@ class ProductStageExecutor:
         resume=item.context.get("_verified_resume_prior_stages")
         if resume is not None:
             origin=item.context.get("_verified_resume_origin")
+            greenfield=isinstance(origin,dict) and origin.get("prior_kind")=="greenfield"
+            expected={"discovery","specification"} if greenfield else {"reconciliation","gap_analysis"}
             if (stage!="planning" or tuple(item.stages)!=("planning",)
-                or prior or not isinstance(resume,dict)
-                or set(resume)!={"reconciliation","gap_analysis"}
+                or prior or not isinstance(resume,dict) or set(resume)!=expected
                 or not isinstance(origin,dict)
                 or origin.get("generation")!=item.execution_generation
-                or not all(isinstance(v,dict) for v in resume.values())
-                or not _verified_v2_reconciliation_summary(
-                    resume["reconciliation"].get("summary")
-                )
+                or not all(isinstance(v,dict) for v in resume.values())):
+                raise PermissionError("verified planning checkpoint is invalid")
+            if greenfield:
+                binding=item.context.get("journey_binding_v2")
+                candidate=(item.context.get("current_state_facts") or {}).get("live_candidate")
+                source=candidate.get("source_evidence") if isinstance(candidate,dict) else None
+                if (not isinstance(binding,dict) or binding.get("request_id")!=origin.get("request_id")
+                    or not isinstance(candidate,dict) or candidate.get("observed_from")!="journey_delivery_binding_v2"
+                    or candidate.get("journey_id")!=binding.get("journey_id")
+                    or candidate.get("sha")!=binding.get("source_commit")
+                    or candidate.get("sha")!=origin.get("snapshot_id")
+                    or not isinstance(source,dict) or source.get("assessed_commit")!=candidate.get("sha")
+                    or source.get("status")!="bounded_source_inspected" or not source.get("inspected_files")
+                    or not resume["discovery"].get("problem") or not resume["specification"].get("scope")
+                    or any(not isinstance(v.get("_evidence"),dict) or not v["_evidence"].get("provider_ref")
+                           for v in resume.values())):
+                    raise PermissionError("verified planning checkpoint is invalid")
+            elif (not _verified_v2_reconciliation_summary(resume["reconciliation"].get("summary"))
                 or not isinstance(resume["gap_analysis"].get("recommended_next_work"),list)
                 or not resume["gap_analysis"]["recommended_next_work"]):
                 raise PermissionError("verified planning checkpoint is invalid")
@@ -406,6 +422,22 @@ class ProductStageExecutor:
                 manifest=dict(manifest)
                 manifest.pop("gap_analysis",None)
                 intake_context["manifest"]=manifest
+        if stage=="planning" and isinstance(item.context.get("journey_binding_v2"),dict):
+            manifest=item.context.get("manifest")
+            if isinstance(manifest,dict) and manifest.get("onboarding_mode")=="greenfield":
+                objective += (
+                    " LINKED GREENFIELD CONTINUATION: The immutable journey_request is the current "
+                    "authorized product objective. Discovery/specification and completed historical "
+                    "tasks are not proof that the current application works. Use the exact-SHA "
+                    "repository inventory, governance and bounded source/test excerpts in "
+                    "current_state_facts.live_candidate. Do not recreate historical implementation. "
+                    "Where current inspected code substantiates missing integration or coverage "
+                    "required by the request, plan concrete bounded builder changes and executable "
+                    "end-to-end regression tests. Read-only inventory is not write authorization; "
+                    "do not guess about uninspected functionality. Independent security, QA, Preview "
+                    "and production gates remain mandatory. Report truly missing evidence without "
+                    "inventing code changes."
+                )
         registry=None
         if stage=="planning" and self.team_profiles is not None:
             registry=[
