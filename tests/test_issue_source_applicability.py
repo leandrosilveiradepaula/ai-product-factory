@@ -132,6 +132,7 @@ class IssueSourceApplicabilityTests(unittest.TestCase):
         }
         from unittest.mock import patch
         github=MagicMock()
+        github.assert_source_commit=MagicMock()
         github.repository=REPO
         github.get_issue.return_value=SimpleNamespace(number=171,body=ISSUE)
         with patch("ai_product_factory.supabase_runtime_queue.GitHubRestAdapter",return_value=github), \
@@ -142,6 +143,7 @@ class IssueSourceApplicabilityTests(unittest.TestCase):
             })
         self.assertEqual(result["current_state_facts"]["source_issue_applicability"]["status"],"reported_code_present")
         github.get_issue.assert_called_once_with(171)
+        github.assert_source_commit.assert_called_once_with(SHA)
 
 
 if __name__=="__main__":
