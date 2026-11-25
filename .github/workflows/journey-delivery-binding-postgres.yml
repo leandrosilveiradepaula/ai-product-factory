@@ -9,6 +9,7 @@ on:
       - "supabase/migrations/20261031141500_v2_recovery_retry_event_integrity.sql"
       - "scripts/verify_journey_delivery_binding_postgres.py"
       - "scripts/verify_journey_v2_native_recovery_postgres.py"
+      - "supabase/migrations/20261125132642_journey_v2_greenfield_planning_recovery.sql"
   workflow_dispatch:
 permissions: { contents: read }
 jobs:

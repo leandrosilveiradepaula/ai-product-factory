@@ -94,6 +94,24 @@ class JourneySourceInspectionTests(unittest.TestCase):
         self.assertEqual(len(result["inspected_files"]), 2)
         self.assertTrue(all(x["assessed_commit"] == SHA for x in result["inspected_files"]))
 
+    def test_greenfield_broad_delivery_uses_bounded_real_inventory_not_write_authority(self):
+        self.github.list_file_paths.return_value=["README.md","package.json","app/server.js","app/editorial.js",
+            "app/server.test.js","app/editorial.test.js",".env","supabase/migrations/x.sql"]
+        self.github.get_file_text.side_effect=lambda path,ref: "verified content of "+path
+        result=inspect_journey_source(self.github,sha=SHA,request="Concluir o produto funcional",allow_inventory_fallback=True)
+        self.assertEqual(result["discovery"],"immutable_greenfield_inventory_sample")
+        self.assertEqual(result["status"],"bounded_source_inspected")
+        self.assertEqual(result["request_source_paths"],[])
+        self.assertEqual(len(result["inspected_files"]),4)
+        self.assertNotIn(".env",result["inventory_paths"])
+        self.assertEqual(set(result["governance"]),{"README.md","package.json"})
+        self.assertTrue(all(call.kwargs["ref"]==SHA for call in self.github.get_file_text.call_args_list))
+        self.github.reset_mock()
+        result=inspect_journey_source(self.github,sha=SHA,request="Corrigir issue #123",
+                                      issue_body="scope",allow_inventory_fallback=True)
+        self.assertEqual(result["status"],"no_scoped_source_paths")
+        self.github.get_file_text.assert_not_called()
+
     def test_invalid_inventory_and_secret_fail_closed(self):
         self.github.list_file_paths.return_value = ["../private.py"]
         with self.assertRaises(PermissionError):

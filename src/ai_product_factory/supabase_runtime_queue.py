@@ -788,14 +788,14 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         """Rehydrate only same-journey V2 evidence after an empty-plan failure."""
         source_id = proof.get("source_run_id") if isinstance(proof, dict) else None
         binding = original.get("journey_binding_v2")
+        greenfield = proof.get("prior_kind") == "greenfield" if isinstance(proof, dict) else False
+        prior_names = ("discovery", "specification") if greenfield else ("reconciliation", "gap_analysis")
         if (not isinstance(source_id, str) or claimed.get("journey_id") != proof.get("journey_id")
-                or claimed.get("journey_id") != proof.get("journey_id")
                 or md.get("stages") != ["planning"] or md.get("execution_generation") != epoch
                 or proof.get("project_id") != project_id or proof.get("generation") != epoch
                 or not isinstance(binding, dict) or binding.get("journey_id") != proof.get("journey_id")
                 or binding.get("source_commit") != proof.get("source_commit")
-                or not isinstance(proof.get("reconciliation"), dict)
-                or not isinstance(proof.get("gap_analysis"), dict)):
+                or any(not isinstance(proof.get(name), dict) for name in prior_names)):
             raise PermissionError("journey V2 recovery checkpoint identity invalid")
         source = self._get("factory_runs?select=id,task_id,journey_id,status,execution_route,source_commit,metadata"
                            "&id=eq." + quote(source_id, safe="") + "&limit=2")
@@ -807,18 +807,31 @@ class SupabaseRuntimeQueue(RuntimeQueue):
         source_md = source[0].get("metadata")
         stages = source_md.get("stage_evidence") if isinstance(source_md, dict) else None
         if (not isinstance(source_md, dict) or source_md.get("error") != "planning has no actionable tasks or decisions"
-                or source_md.get("stages") != ["reconciliation", "gap_analysis", "planning"]
+                or source_md.get("stages") != [*prior_names, "planning"]
                 or source_md.get("execution_generation") != epoch or not isinstance(stages, dict)
-                or stages.get("reconciliation", {}).get("output") != proof["reconciliation"]
-                or stages.get("gap_analysis", {}).get("output") != proof["gap_analysis"]):
+                or any(not isinstance(stages.get(name), dict) or stages[name].get("output") != proof[name]
+                       for name in prior_names)):
             raise PermissionError("journey V2 recovery source evidence invalid")
         context = dict(original)
-        context["_verified_resume_prior_stages"] = {
-            "reconciliation": proof["reconciliation"], "gap_analysis": proof["gap_analysis"],
-        }
+        if greenfield:
+            snapshot = original.get("journey_request")
+            planning = stages.get("planning")
+            if (not isinstance(snapshot, dict) or source_md.get("journey_request") != snapshot
+                    or not isinstance(source_md.get("journey_binding_v2"), dict)
+                    or any(source_md["journey_binding_v2"].get(key) != value for key, value in binding.items())
+                    or any(stages[name].get("status") != "completed" for name in prior_names)
+                    or not isinstance(planning, dict) or planning.get("status") != "failed"
+                    or not isinstance(planning.get("output"), dict)
+                    or any(planning["output"].get(key) != value
+                           for key, value in NON_ACTIONABLE_PLANNING_EVIDENCE.items())
+                    or any(not isinstance(proof[name].get("_evidence"), dict)
+                           or not proof[name]["_evidence"].get("provider_ref") for name in prior_names)):
+                raise PermissionError("journey V2 greenfield recovery evidence invalid")
+        context["_verified_resume_prior_stages"] = {name: proof[name] for name in prior_names}
         context["_verified_resume_origin"] = {
             "source_run_id": source_id, "snapshot_id": proof["source_commit"],
             "request_id": binding["request_id"], "generation": epoch,
+            **({"prior_kind": "greenfield"} if greenfield else {}),
         }
         return context
 
@@ -938,9 +951,14 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             issue = github.get_issue(issue_number)
             if issue.number != issue_number:
                 raise PermissionError("journey issue identity mismatch")
+        manifest = context.get("manifest")
+        greenfield = (isinstance(manifest, dict) and manifest.get("source") == "factory-console"
+                      and manifest.get("onboarding_mode") == "greenfield"
+                      and binding.source_mode == "main_snapshot")
         source_evidence = inspect_journey_source(
             github, sha=binding.source_commit, request=snapshot["text"],
             issue_body=issue.body if issue is not None else None,
+            **({"allow_inventory_fallback": True} if greenfield else {}),
         )
         # Before any paid reconciliation/planning, verify that an issue's
         # explicit description of *existing code* is actually present at the
@@ -1103,7 +1121,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             except Exception as settlement_error:
                 raise RuntimeError("claimed journey binding failure was not settled") from settlement_error
             raise
-        if "reconciliation" in stages:
+        if "reconciliation" in stages or (
+            journey_id and stages == ["discovery", "specification", "planning"]
+        ):
             try:
                 context = self._reconciliation_context(data["project_id"], context)
                 context = self._live_journey_context(context) if journey_id else self._live_claimed_candidate_context(data["project_id"], context, run_id=data["run_id"])
@@ -1155,9 +1175,10 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 raise
         if stages==["planning"]:
             try:
-                context=self._approved_greenfield_planning_context(
-                    data["project_id"],context,
-                )
+                if not journey_id:
+                    context=self._approved_greenfield_planning_context(
+                        data["project_id"],context,
+                    )
                 context=self._planning_resume_context(
                     data["run_id"],data["task_id"],data["project_id"],
                     data["execution_generation"],context,
@@ -1165,6 +1186,9 @@ class SupabaseRuntimeQueue(RuntimeQueue):
                 if "_verified_resume_prior_stages" in context:
                     # Recheck the pinned nonproduction candidate using GETs;
                     # a moved branch must not enter a new paid planning call.
+                    origin=context.get("_verified_resume_origin",{})
+                    if origin.get("prior_kind")=="greenfield":
+                        context=self._reconciliation_context(data["project_id"],context)
                     context=self._live_journey_context(context) if journey_id else self._live_candidate_context(data["project_id"],context)
                     _assert_changed_platform_source_for_empty_plan(context)
                     self._reject_repeat_empty_planning(
