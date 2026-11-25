@@ -1,0 +1,29 @@
+# Inert template. Administrator installs a reviewed, fixed copy of the script.
+[Unit]
+Description=Controlled AI Product Factory native worker rollout after owner merge and exact CI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/ai-product-factory/vps-wake.env
+ExecStart=/usr/bin/python3 -I -B /usr/local/libexec/ai-product-factory-worker-rollout.py
+TimeoutStartSec=300
+Restart=no
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/ai-product-factory/worker /etc/ai-product-factory /var/lib/ai-product-factory-rollout
+InaccessiblePaths=/docker/agente-sql-langgraph-repo /etc/wireguard
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+StandardOutput=journal
+StandardError=journal

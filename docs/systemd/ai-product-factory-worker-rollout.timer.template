@@ -1,0 +1,12 @@
+# Inert template. Enable only after explicit administrator rollout approval.
+[Unit]
+Description=Check for a human-merged, CI-approved Factory worker revision
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+Persistent=false
+Unit=ai-product-factory-worker-rollout.service
+
+[Install]
+WantedBy=timers.target
