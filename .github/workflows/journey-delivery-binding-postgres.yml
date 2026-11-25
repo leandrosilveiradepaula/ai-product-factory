@@ -9,6 +9,9 @@ on:
       - "supabase/migrations/20261031141500_v2_recovery_retry_event_integrity.sql"
       - "scripts/verify_journey_delivery_binding_postgres.py"
       - "scripts/verify_journey_v2_native_recovery_postgres.py"
+      - "scripts/requeue_dark_greenfield_merge_source_once.sql"
+      - "src/ai_product_factory/github_rest.py"
+      - "src/ai_product_factory/supabase_runtime_queue.py"
       - "supabase/migrations/20261125132642_journey_v2_greenfield_planning_recovery.sql"
   workflow_dispatch:
 permissions: { contents: read }

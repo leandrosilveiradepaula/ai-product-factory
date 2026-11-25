@@ -145,4 +145,48 @@ with psycopg.connect(dsn,autocommit=True) as db:
     assert call(cur,"factory_resume_failed_journey_v2",gj)["created"] is False
     cur.execute("select count(*) from factory_runs where journey_id=%s",(gj,)); assert cur.fetchone()[0]==2
 
+
+    # Reproduce the real exhausted, pre-provider merge-source incident.
+    # Only local fixture identity is substituted; guards are unchanged.
+    cur.execute("alter table factory_runs add column lease_owner text, add column lease_expires_at timestamptz, add column last_error text, add column attempt_count int default 0, add column finished_at timestamptz")
+    cur.execute("create table factory_human_gates(run_id uuid)")
+    rid=recovered["run_id"]
+    cur.execute("update factory_runs set status='failed',last_error='planning_resume_provenance_preflight_failed',metadata=metadata||%s where id=%s",
+                (Jsonb({"error":"planning_resume_provenance_preflight_failed","worker_id":"gha-45626839179"}),rid))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(gr["task_id"],))
+    for actor in ("factory-vps-infodive-product","gha-45626839179"):
+        cur.execute("insert into factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload) values(%s,%s,%s,'system',%s,'run.claimed','{}')",(gp,gr["task_id"],rid,actor))
+        cur.execute("insert into factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload) values(%s,%s,%s,'system','runtime-worker','run.failed',%s)",(gp,gr["task_id"],rid,Jsonb({"error":"planning_resume_provenance_preflight_failed"})))
+    cur.execute("insert into factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload) values(%s,%s,%s,'system','journey-v2-recovery','journey.planning.preflight_requeued','{}')",(gp,gr["task_id"],rid))
+    statement=(root/"scripts/requeue_dark_greenfield_merge_source_once.sql").read_text()
+    for live,local in (("19f0f200-3777-46c6-969a-acf0d3426ff1",gp),
+          ("c43e7781-7cb9-49fd-8459-cc358880df0a",gj),
+          ("13fc575b-af98-4eb3-a5b8-01dce69ec8af",rid),
+          ("1ed3c5d1-fc2a-4bab-a4a9-12f53bc83c29",gr["run_id"]),
+          ("e30ee0cb-0be3-4ddc-a10e-d653d25fa266",gr["task_id"]),
+          ("0b6ab27d-11eb-acf6-1392-50857d8d854c",greq),
+          ("55e8e8d8422ee044eb1112ab678cb0223e987742",sha),
+          ("7162981651","456")):
+        statement=statement.replace(live,local)
+    # Refuse a paid or otherwise side-effectful run before retrying.
+    cur.execute("insert into factory_tool_usage(run_id,operation,metadata) values(%s,'model_call','{}')",(rid,))
+    try: cur.execute(statement)
+    except psycopg.Error: cur.execute("rollback")
+    else: raise AssertionError("paid run was admitted for pre-provider recovery")
+    cur.execute("delete from factory_tool_usage where run_id=%s",(rid,))
+    cur.execute("update factory_project_execution_controls set state='paused' where project_id=%s",(gp,))
+    try: cur.execute(statement)
+    except psycopg.Error: cur.execute("rollback")
+    else: raise AssertionError("paused greenfield recovered")
+    cur.execute("update factory_project_execution_controls set state='running' where project_id=%s",(gp,))
+    cur.execute(statement)
+    cur.execute(statement)  # exact replay is a no-op
+    cur.execute("select status,last_error,metadata from factory_runs where id=%s",(rid,))
+    status,error,after=cur.fetchone()
+    assert status=="queued" and error is None and after["resume_checkpoint"]==checkpoint["resume_checkpoint"]
+    assert "merge_source_preflight_recovery" in after
+    cur.execute("select count(*) from factory_runs where journey_id=%s",(gj,)); assert cur.fetchone()[0]==2
+    cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type='journey.planning.merge_source_preflight_requeued'",(rid,))
+    assert cur.fetchone()[0]==1
+
 print("JOURNEY_V2_NATIVE_RECOVERY_POSTGRES_PASS")
