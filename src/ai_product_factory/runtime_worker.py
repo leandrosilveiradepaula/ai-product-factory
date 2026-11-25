@@ -6,6 +6,7 @@ from typing import Protocol
 
 from .product_stage_output_contract import (
     assert_executed_product_stage_output, PlanningNoActionableWork,
+    ProductStageOutputTruncated,
 )
 
 
@@ -137,7 +138,17 @@ class RuntimeWorker:
                 recorder = getattr(self.queue, "record_stage_event", None)
                 if callable(recorder):
                     recorder(item, stage, "started")
-                output = self.handler.execute(item, stage)
+                try:
+                    output = self.handler.execute(item, stage)
+                except ProductStageOutputTruncated as exc:
+                    retry = getattr(self.handler, "retry_truncated_planning", None)
+                    if stage != "planning" or not callable(checkpoint) or not callable(retry):
+                        raise
+                    # One bounded recovery, only after the current claim/epoch
+                    # is still authorized. The handler independently proves
+                    # zero-priced metered private provider and linked scope.
+                    checkpoint(item)
+                    output = retry(item, stage, exc)
                 if not isinstance(output, dict):
                     raise ValueError("stage handler must return a mapping")
                 if any(not isinstance(key,str) for key in output):

@@ -136,7 +136,9 @@ class MeteredPrivateProvider:
             metadata={"provider": PROVIDER, "model": result.model,
                       "status": "completed", "input_tokens": int(input_tokens),
                       "output_tokens": int(output_tokens),
-                      "cost_usd": str(actual)},
+                      "cost_usd": str(actual),
+                      "output_limit_reached": result.output_limit_reached,
+                      "output_truncated": result.output_truncated},
         )
         return result
 

@@ -219,7 +219,9 @@ class SqlInfodiveProvider:
         if not isinstance(status, int) or not 200 <= status < 300:
             raise PrivateModelError("private model unavailable")
         try:
-            text = payload["choices"][0]["message"]["content"]
+            choice = payload["choices"][0]
+            text = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason")
             usage = payload["usage"]
             inp = usage["prompt_tokens"]
             out = usage["completion_tokens"]
@@ -236,6 +238,8 @@ class SqlInfodiveProvider:
             model=self.config.model_id, provider_ref=PROVIDER_KEY,
             usage={"input_tokens": float(inp),
                    "output_tokens": float(out), "total_tokens": float(total)},
+            output_limit_reached=out >= self.config.max_tokens,
+            output_truncated=finish_reason in ("length", "max_tokens"),
         )
 
 

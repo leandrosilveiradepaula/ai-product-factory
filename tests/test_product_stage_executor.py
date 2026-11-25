@@ -14,7 +14,8 @@ class Provider:
         self.requests.append(request)
         output=(
             {"tasks":[{"task_key":"unit-test-builder","required_capabilities":["implementation"],
-                       "scope_keys":["src/unit_test_module.py"],"depends_on":[]}],
+                       "scope_keys":["src/unit_test_module.py"],"depends_on":[],
+                       "acceptance_criteria":["Run the module regression tests."]}],
              "decisions_needed":[]}
             if request.objective.startswith("Return explicit tasks array for implementation")
             else {"stage":"ok","assumptions":[]}
