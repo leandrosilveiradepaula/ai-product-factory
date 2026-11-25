@@ -65,6 +65,21 @@ class PrivateChatTests(unittest.TestCase):
         self.assertNotIn("test-sentinel-not-real", repr(provider))
         self.assertNotIn("10.66.66.1", repr(provider))
 
+    def test_output_cap_and_explicit_finish_reason_are_retained(self):
+        for reason, tokens, reached, truncated in (
+            ("length", 4096, True, True),
+            ("max_tokens", 40, False, True),
+            ("stop", 4096, True, False),
+            (None, 3, False, False),
+        ):
+            def fake(*args):
+                return 200, {"choices": [{"message": {"content": "partial"}, "finish_reason": reason}],
+                             "usage": {"prompt_tokens": 10, "completion_tokens": tokens}}
+            provider = build_sql_infodive_provider(env=ENV, transport=fake)
+            result = provider.execute(ModelRequest(task_id="t", objective="plan", context="fixture"))
+            self.assertIs(result.output_limit_reached, reached)
+            self.assertIs(result.output_truncated, truncated)
+
     def test_provider_response_errors_are_sanitized(self):
         for status, response in [
             (401, {"error": {"message": "test-sentinel-not-real"}}),
