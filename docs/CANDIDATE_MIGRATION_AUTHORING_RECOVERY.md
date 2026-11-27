@@ -1,0 +1,9 @@
+# Candidate migration authoring and scoped implementation recovery
+
+27 Nov 2026: Dark Channel V2 materialized a four-wave Change Set after assisted planning. Wave 1 blocked before any model invocation because the literal planned new migration was not admitted by the code-file resolver. The existing source and work branch both point to `55e8e8d8422ee044eb1112ab678cb0223e987742`. Do not restart discovery/planning.
+
+The V2 development assignment must explicitly require migration_authoring and name one exact later version under a populated supabase/migrations directory. Existing migrations are read-only context for that grant. This authorizes candidate files only, never remote SQL application or broader privileges. Existing workflows that already call a scoped disposable SQL test are kept unchanged: exercise the new migration through the existing SQL entrypoint and preserve isolated rollback/forward recovery coverage. If no such entrypoint is verified, block before model invocation rather than request additional GitHub token rights.
+
+For Change Set outputs, existing file edits may use bounded unique exact anchors against the pinned repository snapshot. The runtime constructs full output files locally and enforces scope and snapshot safety. No partial output is accepted, no additional paid attempt is implicit. The individual wave description is retained separately from the immutable product request.
+
+After human merge, verify exact main validation, native worker pin, source main and work ref equal the original source, then execute `scripts/requeue_dark_v2_migration_authoring_once.sql` once, after running the same guards read-only. The script preserves the plan, journey, run identity, prior audit and zero-call ledger; no schema change. Check actual work-unit commits, integration and independent CI/QA/security/Preview afterward. No global readiness claim follows from this recovery alone.

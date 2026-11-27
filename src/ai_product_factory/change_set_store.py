@@ -260,7 +260,11 @@ class SupabaseChangeSetStore:
             if not isinstance(snapshot,dict) or not isinstance(snapshot.get("text"),str):
                 raise PermissionError("journey request snapshot unavailable")
             enriched["journey_request"]=snapshot
-            enriched["task"]={**(enriched.get("task") if isinstance(enriched.get("task"),dict) else {}),"description":snapshot["text"]}
+            task = enriched.get("task") if isinstance(enriched.get("task"), dict) else {}
+            # Keep the immutable request for authorization but do not replace
+            # the executable wave's scoped implementation objective with it.
+            enriched["task"] = {**task, "implementation_description": task.get("description"),
+                                "description": snapshot["text"]}
             # Do not pass V1 selection/evidence to a V2 implementation prompt.
             enriched["delivery_target"]=None
             enriched["repin_evidence"]=None

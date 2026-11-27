@@ -172,7 +172,7 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
     packet={
         "objective":{
             "title":str(task.get("title") or ""),
-            "description":str(task.get("description") or ""),
+            "description":str(task.get("implementation_description") or task.get("description") or ""),
             "acceptance_criteria":task.get("acceptance_criteria") if isinstance(task.get("acceptance_criteria"),list) else [],
         },
         "work_unit":{
@@ -198,6 +198,16 @@ def build_context_packet(*,source:dict,impact:dict|None,base_commit:str,branch:s
         "repair":repair,
         "constraints":source.get("constraints") if isinstance(source.get("constraints"),list) else [],
     }
+    if isinstance(source.get("journey_request"), dict):
+        request = source["journey_request"]
+        if not isinstance(request.get("text"), str) or not request["text"].strip():
+            raise PermissionError("immutable journey request is missing")
+        packet["journey_request"] = {
+            "text": request["text"],
+            "digest": request.get("digest"),
+            "scope_note": "The work unit objective and explicit write scopes govern this wave; "
+                          "the immutable product request is context, not wider write authority.",
+        }
     clean=_sanitize(packet)
     canonical=json.dumps(clean,sort_keys=True,separators=(",",":"),ensure_ascii=False).encode()
     return ContextPacket(version=1,payload=clean,sha256=hashlib.sha256(canonical).hexdigest())
