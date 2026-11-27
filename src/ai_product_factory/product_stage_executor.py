@@ -13,6 +13,7 @@ from .compact_journey_planning import (
     linked_greenfield_planning, compact_context, compact_objective,
     planning_schema, validate_compact_tasks,
 )
+from .reviewed_greenfield_plan import reviewed_plan_output
 from .runtime_worker import WorkItem
 from .agent_scheduler import AgentProfile
 from .execution_team_planner import build_execution_team_plan, _canonical_routing_task, _choose_agent, _execution_lane
@@ -444,6 +445,19 @@ class ProductStageExecutor:
                 manifest=dict(manifest)
                 manifest.pop("gap_analysis",None)
                 intake_context["manifest"]=manifest
+        assisted = reviewed_plan_output(item, stage)
+        if assisted is not None:
+            if self.team_profiles is None:
+                raise PermissionError("reviewed_plan_requires_builder_registry")
+            assert_executed_product_stage_output(assisted)
+            validate_compact_tasks(assisted)
+            _validate_pre_pr_planning_tasks(assisted, self.team_profiles)
+            team = build_execution_team_plan(assisted, self.team_profiles)
+            if team.get("status") != "ready":
+                raise PermissionError("reviewed_plan_builder_team_not_ready")
+            assisted["_team_plan"] = team
+            self.outputs[(item.run_id,stage)] = assisted
+            return assisted
         compact = linked_greenfield_planning(item.context, stage)
         if compact:
             objective = compact_objective(retry=_compact_retry)
