@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+from .work_unit_context import enforce_write_scopes
 from .execution_worker import DirectExecutionItem,ImplementationArtifact
 from .model_executor import ModelExecutor,ModelRequest
 from .models import ExecutionRoute
@@ -33,6 +34,15 @@ class ModelImplementationProducer:
   if getattr(item,"change_set_id",None) and not isinstance(packet,dict):
    raise RuntimeError("Change Set implementation requires a durable context packet")
   context=packet if isinstance(packet,dict) else {"project_key":item.project_key,"repository":item.repository,"title":item.title,"description":item.description,"impact":getattr(item,"impact_context",None)}
+  bounded=isinstance(packet,dict) and bool(getattr(item,"change_set_id",None))
+  if bounded:
+   objective += (" For Change Set files already present in repository_snapshot, prefer compact "
+                 "exact-anchor edits rather than repeating entire files. Each anchor must be a "
+                 "nonempty verbatim substring occurring exactly once in the original file; "
+                 "provide replacement text. Multiple edits must be nonoverlapping in the original "
+                 "file. New files use complete content with edits=[]. Never edit a read-only "
+                 "source or a path outside the work unit. Complete the scoped wave, not the whole "
+                 "journey. A truncated response is not an implementation.")
   schema={
    "type":"object",
    "properties":{
@@ -66,9 +76,28 @@ class ModelImplementationProducer:
    "required":["plan_markdown","files","commit_message","pr_title","pr_body","blocked_reason","decision_needed"],
    "additionalProperties":False,
   }
-  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.","Return complete file contents, not diffs.","Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Honor AGENTS.md when actually supplied at the exact SHA. Do not hallucinate absent governance or treat missing AGENTS.md alone as a blocker in greenfield; keep explicit scopes, approved constraints and safety gates authoritative.","Do not invent authorization that repository governance or durable human decisions do not grant."),output_schema=schema)
+  if bounded:
+   shape=schema["properties"]["files"]["items"]
+   shape["properties"]["edits"]={"type":"array","items":{
+    "type":"object","properties":{"anchor":{"type":"string"},"replacement":{"type":"string"}},
+    "required":["anchor","replacement"],"additionalProperties":False}}
+   shape["required"].append("edits")
+  request=ModelRequest(task_id=item.task_id,objective=objective,context=json.dumps(context,ensure_ascii=False),run_id=item.run_id,constraints=("Do not include secrets or .env files.","Do not use absolute paths or .. paths.",("Use exact nonoverlapping anchor edits on complete existing sources, full content for new files." if bounded else "Return complete file contents, not diffs."),"Write only inside repository.write_scopes from the context packet.","Keep the change narrowly scoped to the task.","Honor AGENTS.md when actually supplied at the exact SHA. Do not hallucinate absent governance or treat missing AGENTS.md alone as a blocker in greenfield; keep explicit scopes, approved constraints and safety gates authoritative.","Do not invent authorization that repository governance or durable human decisions do not grant."),output_schema=schema)
   result=self.executor.execute(ExecutionRoute.DIRECT,request)
-  try:data=json.loads(result.output)
+  if result.output_truncated or result.output_limit_reached:
+   raise ValueError("implementation output reached provider limit; no partial artifact accepted")
+  def unique_pairs(pairs):
+   obj={}
+   for key,value in pairs:
+    if key in obj:raise ValueError("duplicate key in implementation output")
+    obj[key]=value
+   return obj
+  def reject_constant(value):
+   raise ValueError("nonfinite value in implementation output")
+  raw=result.output.strip()
+  if raw.startswith("```json\n") and raw.endswith("\n```"):
+   raw=raw[len("```json\n"):-len("\n```")]
+  try:data=json.loads(raw,object_pairs_hook=unique_pairs,parse_constant=reject_constant)
   except json.JSONDecodeError as exc:raise ValueError("implementation producer returned invalid JSON") from exc
   if not isinstance(data,dict):raise ValueError("implementation output must be a JSON object")
   raw_files=data.get("files")
@@ -83,6 +112,39 @@ class ModelImplementationProducer:
    if not isinstance(path,str) or not path.strip() or not isinstance(content,str):
     raise ValueError("implementation files require path and content")
    if path in files:raise ValueError("implementation output contains duplicate file path")
+   if bounded:
+    repo=packet.get("repository")
+    if not isinstance(repo,dict) or not isinstance(repo.get("write_scopes"),list):
+     raise PermissionError("implementation packet missing exact write scopes")
+    enforce_write_scopes([path],repo["write_scopes"])
+    snapshot=packet.get("repository_snapshot")
+    if not isinstance(snapshot,dict):
+     raise ValueError("implementation packet missing pinned source snapshot")
+    edits=entry.get("edits",[])
+    if not isinstance(edits,list) or len(edits)>64:
+     raise ValueError("invalid bounded implementation edits")
+    if edits:
+     original=snapshot.get(path)
+     if content or not isinstance(original,str):
+      raise ValueError("anchor edits require existing complete source and empty full content")
+     spans=[]
+     for edit in edits:
+      if not isinstance(edit,dict) or set(edit)!={"anchor","replacement"}:
+       raise ValueError("invalid exact-anchor edit")
+      anchor,replacement=edit["anchor"],edit["replacement"]
+      if (not isinstance(anchor,str) or not anchor or not isinstance(replacement,str)
+          or anchor==replacement or original.count(anchor)!=1):
+       raise ValueError("exact-anchor edit is missing, ambiguous or unchanged")
+      start=original.index(anchor)
+      spans.append((start,start+len(anchor),replacement))
+     spans.sort()
+     if any(a[1]>b[0] for a,b in zip(spans,spans[1:])):
+      raise ValueError("exact-anchor edits overlap")
+     content=original
+     for start,end,replacement in reversed(spans):
+      content=content[:start]+replacement+content[end:]
+    if not content or content==snapshot.get(path):
+     raise ValueError("implementation file is empty or unchanged")
    files[path]=content
   if not isinstance(data.get("plan_markdown"),str) or not data["plan_markdown"].strip():
    raise ValueError("implementation output is missing required text fields")

@@ -62,4 +62,35 @@ class Tests(unittest.TestCase):
   self.assertIn("never broadens repository.write_scopes",p.request.objective)
   self.assertIn("AGENTS.md remains authoritative",p.request.objective)
 
+class BoundedAnchorTests(unittest.TestCase):
+ def setUp(self):
+  from dataclasses import replace
+  self.item=replace(item(),change_set_id="cs",context_packet={
+   "repository":{"write_scopes":["app/server.js","app/new.js"]},
+   "repository_snapshot":{"app/server.js":"first\nunique old\nlast\n"}})
+ def artifact(self,files,**flags):
+  data={"plan_markdown":"plan","files":files,"commit_message":"fix: x",
+        "pr_title":"fix","pr_body":"details","blocked_reason":"","decision_needed":None}
+  class P:
+   def execute(self,request):
+    assert "edits" in request.output_schema["properties"]["files"]["items"]["properties"]
+    return ModelResult(ModelRole.PRIMARY,json.dumps(data),**flags)
+  return ModelImplementationProducer(ModelExecutor(primary=P())).produce(self.item)
+ def test_exact_anchor_materializes_complete_file_and_new_file(self):
+  result=self.artifact([{"path":"app/server.js","content":"","edits":[{"anchor":"unique old","replacement":"new"}]},
+                        {"path":"app/new.js","content":"new file","edits":[]}])
+  self.assertEqual(result.files["app/server.js"],"first\nnew\nlast\n")
+  self.assertEqual(result.files["app/new.js"],"new file")
+ def test_ambiguous_or_overlapping_or_out_of_scope_or_truncated_rejected(self):
+  for files,flags in (
+    ([{"path":"app/server.js","content":"","edits":[{"anchor":"missing","replacement":"x"}]}],{}),
+    ([{"path":"app/server.js","content":"","edits":[{"anchor":"unique old","replacement":"x"},
+       {"anchor":"old","replacement":"y"}]}],{}),
+    ([{"path":"app/other.js","content":"x","edits":[]}],{}),
+    ([{"path":"app/server.js","content":"x","edits":[]}],{"output_truncated":True}),
+    ([{"path":"app/server.js","content":"x","edits":[]}],{"output_limit_reached":True}),
+  ):
+   with self.subTest(files=files,flags=flags),self.assertRaises((ValueError,PermissionError)):
+    self.artifact(files,**flags)
+
 if __name__=="__main__":unittest.main()

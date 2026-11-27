@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass,replace
 import hashlib
+from datetime import datetime
 import re
 from typing import Protocol
 
@@ -305,6 +306,38 @@ class ChangeSetBuilderWorker:
                     return None
         return path,match.group("condition")
 
+    @staticmethod
+    def _new_versioned_migration(scope: str, paths: tuple[str, ...], assignment: dict,
+                                 source: dict, base_commit: str) -> str | None:
+        """Permit candidate authoring only in an explicit, populated SQL lane.
+
+        No guessed directory, semantic remapping, production connection,
+        migration execution or permission change is authorized here.
+        """
+        binding = source.get("journey_binding")
+        caps = assignment.get("required_capabilities")
+        if (not isinstance(binding, dict) or binding.get("binding_version") != 2
+                or binding.get("journey_id") != source.get("journey_id")
+                or binding.get("repository") != source.get("repository")
+                or not re.fullmatch(r"[0-9a-f]{40}", base_commit)
+                or not isinstance(caps, list) or "migration_authoring" not in caps
+                or assignment.get("agent_role") != "development"
+                or scope in paths):
+            return None
+        pattern = r"supabase/migrations/([0-9]{14})_[a-z0-9][a-z0-9_]{0,119}\.sql"
+        match = re.fullmatch(pattern, scope)
+        if match is None:
+            return None
+        try:
+            datetime.strptime(match.group(1), "%Y%m%d%H%M%S")
+        except ValueError:
+            return None
+        existing = [(m.group(1), p) for p in paths if (m := re.fullmatch(pattern, p))]
+        if not existing or match.group(1) <= max(v for v, _ in existing):
+            return None
+        # Same timestamp under a different name is not an independent version.
+        return max(existing)[1]
+
     @classmethod
     def _co_located_test_scopes(cls, paths:list[str], all_paths:tuple[str,...])->tuple[str,...]:
         """Bound test authorization to exact siblings of declared source files."""
@@ -411,12 +444,27 @@ class ChangeSetBuilderWorker:
         normalized_scopes=[]
         precise_scopes=[]
         conditional_notes=[]
+        migration_bases=[]
+        migration_targets=[]
         for raw in raw_scopes:
             literal=str(raw or "").strip().replace("\\","/")
             if literal.startswith("/") or literal.startswith("../") or ".." in literal.split("/"):
                 raise PermissionError("planned write scope contains an unsafe path")
             scope=self._normalize_path(raw)
             if not scope:
+                continue
+            migration_base = self._new_versioned_migration(
+                scope, all_paths, assignment, source, base_commit,
+            ) if raw == scope else None
+            if migration_base is not None:
+                precise_scopes.append(scope)
+                migration_bases.append(migration_base)
+                migration_targets.append(scope)
+                normalized_scopes.append(scope)
+                conditional_notes.append(
+                    "Author this exact new SQL migration as a candidate only; do not edit prior "
+                    "versions, apply to hosted databases, expand access or bypass review: " + scope
+                )
                 continue
             exact=self._bounded_file_scope(
                 scope,all_paths,allow_new_ui_root=(continuation and
@@ -439,7 +487,43 @@ class ChangeSetBuilderWorker:
             if scope in all_paths and scope.endswith(self._TEXT_EXTENSIONS)
         ]
 
-        required_context=list(dict.fromkeys([*governance,*exact_scope_context]))
+        # The scoped migration can be exercised through the existing isolated
+        # SQL test entrypoint. Native App tokens lack workflow-write rights;
+        # do not request wider credentials or ask the model to rewrite CI.
+        # Only narrow the workflow scope when its existing psql invocation
+        # of a scoped SQL test is actually visible at this exact base.
+        readonly_migration_context=list(dict.fromkeys(migration_bases))
+        if migration_targets:
+            test_paths = [p for p in normalized_scopes
+                          if re.fullmatch(r"supabase/tests/[A-Za-z0-9_/-]+\.sql", p)
+                          and p in all_paths]
+            workflow_paths = [p for p in normalized_scopes
+                              if re.fullmatch(r"\.github/workflows/[A-Za-z0-9_-]+\.ya?ml", p)
+                              and p in all_paths]
+            for workflow in workflow_paths:
+                body = self.github.get_file_text(workflow, ref=base_commit)
+                entrypoints = [p for p in test_paths
+                               if any("psql" in line and re.search(
+                                   r"(?:^|\s)-f\s+" + re.escape(p) + r"(?:\s|$)", line)
+                                      for line in body.splitlines())]
+                if not entrypoints:
+                    raise PermissionError(
+                        "migration CI requires a verified existing scoped SQL test entrypoint"
+                    )
+                normalized_scopes.remove(workflow)
+                if workflow in precise_scopes:
+                    precise_scopes.remove(workflow)
+                readonly_migration_context.append(workflow)
+                conditional_notes.append(
+                    "Keep " + workflow + " unchanged. Its existing isolated PostgreSQL job "
+                    "already invokes " + ", ".join(entrypoints) + ". Extend that test "
+                    "entrypoint to exercise the new migration after the original version "
+                    "in the disposable database and retain all existing tests; independently "
+                    "verify atomic rollback/forward recovery. Do not apply migrations remotely."
+                )
+        required_context=list(dict.fromkeys(
+            [*governance,*exact_scope_context,*readonly_migration_context]
+        ))
         optional_context=[path for path in context_paths if path not in required_context]
         if len(required_context)>12:
             raise ValueError("too many required repository context paths")
@@ -523,6 +607,8 @@ class ChangeSetBuilderWorker:
         assignment["scope_keys"]=resolved_scopes
         enriched=dict(source)
         enriched["assignment"]=assignment
+        if readonly_migration_context:
+            enriched["verified_readonly_migration_context_paths"] = readonly_migration_context
         # A semantic call-site scope is an evidence requirement, not a grant
         # to edit callers. Verify the real call chain at the frozen SHA,
         # including readonly type/auth context, before invoking a paid model.
@@ -625,7 +711,13 @@ class ChangeSetBuilderWorker:
                    or p.startswith("/") or ".." in p.split("/")
                    for p in callsite)):
             raise PermissionError("invalid pinned call-site read-only context")
-        required = governance | (set(paths) & exact_scopes) | set(readonly) | set(callsite)
+        migration_context = source.get("verified_readonly_migration_context_paths", [])
+        if (not isinstance(migration_context, list) or len(migration_context) > 6
+                or any(not isinstance(p, str) or p not in paths or p in exact_scopes
+                       for p in migration_context)):
+            raise PermissionError("invalid pinned migration read-only context")
+        required = (governance | (set(paths) & exact_scopes) | set(readonly)
+                    | set(callsite) | set(migration_context))
         ordered = [path for path in paths if path in required] + [
             path for path in paths if path not in required
         ]
@@ -656,7 +748,7 @@ class ChangeSetBuilderWorker:
             encoded = clean.encode("utf-8")
             if clean != original:
                 unsafe.add(path)
-                if path in readonly or path in callsite:
+                if path in readonly or path in callsite or path in migration_context:
                     raise PermissionError("verified read-only context contains redacted secret")
                 if path in exact_scopes:
                     raise PermissionError(
