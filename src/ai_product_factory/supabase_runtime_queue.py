@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote
 
+from .reviewed_greenfield_plan import admit_reviewed_plan, verify_reviewed_plan_source
 from .runtime_worker import RuntimeQueue, StageEvidence, WorkItem
 from .agent_scheduler import AgentProfile
 from .project_brain import build_project_brain_graph
@@ -833,7 +834,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             "request_id": binding["request_id"], "generation": epoch,
             **({"prior_kind": "greenfield"} if greenfield else {}),
         }
-        return context
+        return admit_reviewed_plan(run_id, task_id, project_id, epoch, context, md)
 
     def _reject_repeat_empty_planning(self, *, run_id: str, task_id: str, context: dict) -> None:
         """Read-only proof of an identical prior failed paid plan, before model."""
@@ -1034,7 +1035,7 @@ class SupabaseRuntimeQueue(RuntimeQueue):
             "journey_id": binding.journey_id, "integration_branch": binding.integration_branch,
             "source_evidence": source_evidence,
         }
-        return {**context, "current_state_facts": facts}
+        return verify_reviewed_plan_source({**context, "current_state_facts": facts}, github)
 
     def _approved_greenfield_planning_context(
         self, project_id: str, context: dict,

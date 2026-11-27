@@ -252,4 +252,51 @@ with psycopg.connect(dsn,autocommit=True) as db:
     cur.execute("select count(*) from factory_audit_events where run_id=%s and event_type='journey.planning.bounded_output_requeued'",(rid,))
     assert cur.fetchone()[0]==1
 
+
+    # The subsequent paid provider returned an empty plan. Admit only the
+    # exact reviewed-plan handoff; preserve both usage rows and the failure.
+    failed_output={"reason_code":"planning_non_actionable","tasks_count":0,
+        "assessed_commit":sha,"decisions_count":0,"observed_model_response":True,
+        "implementation_completed":False,"requires_scope_reconciliation":True}
+    failed_evidence={"planning":{"output":failed_output,"status":"failed",
+        "recorded_at":"2026-11-26T12:46:53.409338+00:00"}}
+    cur.execute("update factory_runs set status='failed',last_error='planning has no actionable tasks or decisions',finished_at='2026-11-26T12:46:54.032911Z',metadata=metadata||%s where id=%s",
+        (Jsonb({"error":"planning has no actionable tasks or decisions","worker_id":"gha-45822639911",
+            "claimed_at":"2026-11-26T12:46:27.931388+00:00","stage_evidence":failed_evidence}),rid))
+    cur.execute("update factory_tasks set status='failed' where id=%s",(gr["task_id"],))
+    paid={"provider":"openai","model":"gpt-5.6-terra","status":"completed","input_tokens":26120,"output_tokens":710}
+    cur.execute("insert into factory_tool_usage(id,run_id,tool_family,operation,metadata,estimated_cost,usage_units) overriding system value values(383,%s,'openai','model_call',%s,0.06076,26830)",(rid,Jsonb(paid)))
+    for event,actor,created,payload in [
+        ("run.claimed","gha-45822639911","2026-11-26T12:46:27.931388Z",{}),
+        ("run.stage.recorded","runtime-worker","2026-11-26T12:46:28Z",{"stage":"planning","status":"started"}),
+        ("run.stage.recorded","runtime-worker","2026-11-26T12:46:53.409338Z",{"stage":"planning","status":"failed"}),
+        ("run.failed","runtime-worker","2026-11-26T12:46:54.032911Z",{"error":"planning has no actionable tasks or decisions"}),
+    ]:
+        cur.execute("insert into factory_audit_events(project_id,task_id,run_id,actor_type,actor_ref,event_type,payload,created_at) values(%s,%s,%s,'system',%s,%s,%s,%s)",
+                    (gp,gr["task_id"],rid,actor,event,Jsonb(payload),created))
+    statement=(root/"scripts/requeue_dark_greenfield_reviewed_plan_once.sql").read_text()
+    for live,local in (("19f0f200-3777-46c6-969a-acf0d3426ff1",gp),
+          ("c43e7781-7cb9-49fd-8459-cc358880df0a",gj),("13fc575b-af98-4eb3-a5b8-01dce69ec8af",rid),("1ed3c5d1-fc2a-4bab-a4a9-12f53bc83c29",gr["run_id"]),
+          ("e30ee0cb-0be3-4ddc-a10e-d653d25fa266",gr["task_id"]),("0b6ab27d-11eb-acf6-1392-50857d8d854c",greq),("55e8e8d8422ee044eb1112ab678cb0223e987742",sha),
+          ("6325ff172bc0e73417bd365767deef78136ed016333e3d591adf921e8833888d",gd),("7162981651","456")):
+        statement=statement.replace(live,local)
+    cur.execute("update factory_tool_usage set estimated_cost=NULL where id=383")
+    try: cur.execute(statement)
+    except psycopg.Error: cur.execute("rollback")
+    else: raise AssertionError("unknown cost admitted for reviewed plan")
+    cur.execute("update factory_tool_usage set estimated_cost=0.06076 where id=383")
+    cur.execute(statement)
+    cur.execute(statement)
+    cur.execute("select status,last_error,metadata from factory_runs where id=%s",(rid,))
+    status,error,after=cur.fetchone()
+    assert status=="queued" and error is None and "stage_evidence" not in after
+    assert after["resume_checkpoint"]==checkpoint["resume_checkpoint"]
+    assert after["reviewed_plan_recovery"]=="dark-greenfield-reviewed-plan-20261126-v1"
+    cur.execute("select count(*) from factory_runs where journey_id=%s",(gj,)); assert cur.fetchone()[0]==2
+    cur.execute("select count(*) from factory_tool_usage where run_id=%s",(rid,)); assert cur.fetchone()[0]==2
+    cur.execute("select payload from factory_audit_events where run_id=%s and event_type='journey.planning.reviewed_plan_requeued'",(rid,))
+    saved=cur.fetchone()[0]
+    assert saved["prior_stage_evidence"]==failed_evidence and saved["autonomous_model_planning"] is False
+    assert cur.fetchone() is None
+
 print("JOURNEY_V2_NATIVE_RECOVERY_POSTGRES_PASS")
